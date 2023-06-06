@@ -43,5 +43,5 @@ jobs:
             linux/amd64
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/nasbot:latest
-            ${{ secrets.DOCKER_USERNAME }}/nasbot:${{ env.app_version }}
+            ${{ secrets.DOCKER_USERNAME }}/moviepilot:latest
+            ${{ secrets.DOCKER_USERNAME }}/moviepilot:${{ env.app_version }}
