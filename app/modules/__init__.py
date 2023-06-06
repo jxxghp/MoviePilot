@@ -130,9 +130,25 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
+    def list_torrents(self, status: Union[str, list]) -> List[dict]:
+        """
+        获取下载器种子列表
+        :param status:  种子状态
+        :return: 下载器中符合状态的种子列表
+        """
+        pass
+
+    def remove_torrents(self, status: Union[str, list]) -> bool:
+        """
+        删除下载器种子
+        :param status:  种子状态
+        :return: bool
+        """
+        pass
+
     def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[bool]:
         """
-        文件转移
+        转移一个路径下的文件
         :param path:  文件路径
         :param mediainfo:  识别的媒体信息
         :return: 成功或失败
