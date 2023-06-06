@@ -2,7 +2,7 @@ from threading import Event, Thread
 from typing import Optional, List
 from urllib.parse import urlencode
 
-from app.core import settings, MediaInfo
+from app.core import settings, MediaInfo, TorrentInfo
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
@@ -106,6 +106,35 @@ class Telegram(metaclass=Singleton):
                 chat_id = self._telegram_chat_id
 
             return self.__send_request(chat_id=chat_id, image=image, caption=caption)
+
+        except Exception as msg_e:
+            logger.error(f"发送消息失败：{msg_e}")
+            return False
+
+    def send_torrents_msg(self, torrents: List[TorrentInfo], userid: str = "", title: str = "") -> Optional[bool]:
+        """
+        发送列表消息
+        """
+        if not self._telegram_token or not self._telegram_chat_id:
+            return None
+
+        try:
+            index, caption = 1, "*%s*" % title
+            for torrent in torrents:
+                link = torrent.page_url
+                title = torrent.title
+                free = torrent.get_volume_factor_string()
+                seeder = f"{torrent.seeders}↑"
+                description = torrent.description
+                caption = f"{caption}\n{index}. [{title}]({link}) {free} {seeder}\n{description}"
+                index += 1
+
+            if userid:
+                chat_id = userid
+            else:
+                chat_id = self._telegram_chat_id
+
+            return self.__send_request(chat_id=chat_id, caption=caption)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")

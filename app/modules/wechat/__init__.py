@@ -135,10 +135,10 @@ class WechatModule(_ModuleBase):
     def post_torrents_message(self, title: str, items: List[TorrentInfo],
                               userid: Union[str, int] = None) -> Optional[bool]:
         """
-        TODO 发送种子信息选择列表
+        发送种子信息选择列表
         :param title: 标题
         :param items:  消息列表
         :param userid:  用户ID
         :return: 成功或失败
         """
-        pass
+        return self.wechat.send_torrents_msg(title=title, torrents=items, userid=userid)

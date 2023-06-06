@@ -3,7 +3,7 @@ import threading
 from datetime import datetime
 from typing import Optional, List
 
-from app.core import settings, MediaInfo
+from app.core import settings, MediaInfo, TorrentInfo
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
@@ -131,7 +131,7 @@ class WeChat(metaclass=Singleton):
         }
         return self.__post_request(message_url, req_json)
 
-    def send_msg(self, title: str, text: str = "", image: str = "", userid: str = None):
+    def send_msg(self, title: str, text: str = "", image: str = "", userid: str = None) -> Optional[bool]:
         """
         微信消息发送入口，支持文本、图片、链接跳转、指定发送对象
         :param title: 消息标题
@@ -145,11 +145,11 @@ class WeChat(metaclass=Singleton):
             return None
 
         if image:
-            ret_code, ret_msg = self.__send_image_message(title, text, image, userid)
+            ret_code = self.__send_image_message(title, text, image, userid)
         else:
-            ret_code, ret_msg = self.__send_message(title, text, userid)
+            ret_code = self.__send_message(title, text, userid)
 
-        return ret_code, ret_msg
+        return ret_code
 
     def send_medias_msg(self, medias: List[MediaInfo], userid: str = "") -> Optional[bool]:
         """
@@ -186,6 +186,31 @@ class WeChat(metaclass=Singleton):
             }
         }
         return self.__post_request(message_url, req_json)
+
+    def send_torrents_msg(self, torrents: List[TorrentInfo], userid: str = "", title: str = "") -> Optional[bool]:
+        """
+        发送列表消息
+        """
+        if not self.__get_access_token():
+            logger.error("获取微信access_token失败，请检查参数配置")
+            return None
+
+        try:
+            index, caption = 1, "*%s*" % title
+            for torrent in torrents:
+                link = torrent.page_url
+                title = torrent.title
+                free = torrent.get_volume_factor_string()
+                seeder = f"{torrent.seeders}↑"
+                description = torrent.description
+                caption = f"{caption}\n{index}. [{title}]({link}) {free} {seeder}\n{description}"
+                index += 1
+
+            return self.__send_message(title, caption, userid)
+
+        except Exception as msg_e:
+            logger.error(f"发送消息失败：{msg_e}")
+            return False
 
     def __post_request(self, message_url: str, req_json: dict) -> bool:
         """
