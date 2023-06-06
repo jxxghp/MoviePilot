@@ -263,10 +263,10 @@ class MediaInfo(object):
                     self.seasons[season_info.get("season_number")] = list(range(1, episode_count + 1))
         # 海报
         if info.get('poster_path'):
-            self.poster_path = f"https://{settings.TMDB_IMAGE_DOMAIN}{info.get('poster_path')}"
+            self.poster_path = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.get('poster_path')}"
         # 背景
         if info.get('backdrop_path'):
-            self.backdrop_path = f"https://{settings.TMDB_IMAGE_DOMAIN}{info.get('backdrop_path')}"
+            self.backdrop_path = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.get('backdrop_path')}"
         # 导演和演员
         self.directors, self.actors = __directors_actors(info)
 
