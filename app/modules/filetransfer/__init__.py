@@ -3,11 +3,14 @@ from pathlib import Path
 from threading import Lock
 from typing import Optional, List, Tuple, Union
 
+from jinja2 import Template
+
 from app.core import MediaInfo, MetaInfo, settings
 from app.core.meta import MetaBase
 from app.log import logger
 from app.modules import _ModuleBase
 from app.utils.system import SystemUtils
+from app.utils.types import MediaType
 
 lock = Lock()
 
@@ -22,12 +25,22 @@ class FileTransferModule(_ModuleBase):
 
     def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[bool]:
         """
-        TODO 文件转移
+        文件转移
         :param path:  文件路径
         :param mediainfo:  识别的媒体信息
         :return: 成功或失败
         """
-        pass
+        if not settings.LIBRARY_PATH:
+            logger.error("未设置媒体库目录，无法转移文件")
+            return None
+        state, msg = self.transfer_media(in_path=Path(path),
+                                         meidainfo=mediainfo,
+                                         rmt_mode=settings.TRANSFER_TYPE,
+                                         target_dir=Path(settings.LIBRARY_PATH))
+        if not state:
+            logger.error(msg)
+
+        return state
 
     @staticmethod
     def __transfer_command(file_item: Path, target_file: Path, rmt_mode) -> int:
@@ -280,6 +293,19 @@ class FileTransferModule(_ModuleBase):
                                            rmt_mode=rmt_mode,
                                            over_flag=over_flag)
 
+    @staticmethod
+    def __is_bluray_dir(dir_path: Path) -> bool:
+        """
+        判断是否为蓝光原盘目录
+        """
+        # 蓝光原盘目录必备的文件或文件夹
+        required_files = ['BDMV', 'CERTIFICATE']
+        # 检查目录下是否存在所需文件或文件夹
+        for item in required_files:
+            if (dir_path / item).exists():
+                return True
+        return False
+
     def transfer_media(self,
                        in_path: Path,
                        meidainfo: MediaInfo,
@@ -294,15 +320,119 @@ class FileTransferModule(_ModuleBase):
         :param meidainfo: 媒体信息
         :return: 处理状态，错误信息
         """
-        pass
+        # 检查目录路径
+        if not in_path.exists():
+            return False, f"路径不存在：{in_path}"
 
-    def __get_naming_dict(self, meta: MetaBase, mediainfo: MediaInfo) -> dict:
+        if not target_dir.exists():
+            return False, f"目标路径不存在：{target_dir}"
+
+        # 目的目录加上类型和二级分类
+        target_dir = target_dir / meidainfo.type.value / meidainfo.category
+
+        # 重命名格式
+        rename_format = settings.MOVIE_RENAME_FORMAT \
+            if meidainfo.type == MediaType.MOVIE else settings.TV_RENAME_FORMAT
+
+        # 判断是否为蓝光原盘
+        bluray_flag = self.__is_bluray_dir(in_path)
+        if bluray_flag:
+            # 识别目录名称，不包括后缀
+            meta = MetaInfo(in_path.stem)
+            # 目的路径
+            new_path = self.get_rename_path(
+                path=target_dir,
+                template_string=rename_format,
+                rename_dict=self.__get_naming_dict(meta=meta,
+                                                   mediainfo=meidainfo)
+            ).parent
+            # 转移蓝光原盘
+            retcode = self.__transfer_bluray_dir(file_path=in_path,
+                                                 new_path=new_path,
+                                                 rmt_mode=rmt_mode)
+            if retcode != 0:
+                return False, f"蓝光原盘转移失败，错误码：{retcode}"
+            else:
+                return True, ""
+        else:
+            # 获取文件清单
+            transfer_files: List[Path] = SystemUtils.list_files_with_extensions(in_path, settings.RMT_MEDIAEXT)
+            if len(transfer_files) == 0:
+                return False, f"目录下没有找到可转移的文件：{in_path}"
+            # 转移所有文件
+            for transfer_file in transfer_files:
+                # 识别文件元数据，不包含后缀
+                meta = MetaInfo(transfer_file.stem)
+                # 目的文件名
+                new_file = self.get_rename_path(
+                    path=target_dir,
+                    template_string=rename_format,
+                    rename_dict=self.__get_naming_dict(meta=meta,
+                                                       mediainfo=meidainfo,
+                                                       file_ext=transfer_file.suffix)
+                )
+                # 判断是否要覆盖
+                overflag = False
+                if new_file.exists():
+                    if new_file.stat().st_size < transfer_file.stat().st_size:
+                        logger.info(f"目标文件已存在，但文件大小更小，将覆盖：{new_file}")
+                        overflag = True
+                # 转移文件
+                retcode = self.__transfer_file(file_item=transfer_file,
+                                               new_file=new_file,
+                                               rmt_mode=rmt_mode,
+                                               over_flag=overflag)
+                if retcode != 0:
+                    return False, f"文件转移失败，错误码：{retcode}"
+
+            return True, ""
+
+    @staticmethod
+    def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None) -> dict:
         """
         根据媒体信息，返回Format字典
         :param meta: 文件元数据
         :param mediainfo: 识别的媒体信息
+        :param file_ext: 文件扩展名
         """
-        pass
+        return {
+            # 标题
+            "title": mediainfo.title,
+            # 原文件名
+            "original_name": meta.org_string,
+            # 原语种标题
+            "original_title": mediainfo.original_title,
+            # 识别名称
+            "name": meta.get_name(),
+            # 年份
+            "year": mediainfo.year,
+            # 版本
+            "edition": meta.get_edtion_string(),
+            # 分辨率
+            "videoFormat": meta.resource_pix,
+            # 制作组/字幕组
+            "releaseGroup": meta.resource_team,
+            # 特效
+            "effect": meta.resource_effect,
+            # 视频编码
+            "videoCodec": meta.video_encode,
+            # 音频编码
+            "audioCodec": meta.audio_encode,
+            # TMDBID
+            "tmdbid": mediainfo.tmdb_id,
+            # IMDBID
+            "imdbid": mediainfo.imdb_id,
+            # 季号
+            "season": meta.get_season_seq(),
+            # 集号
+            "episode": meta.get_episode_seqs(),
+            # 季集 SxxExx
+            "season_episode": "%s%s" % (meta.get_season_item(), meta.get_episode_items()),
+            # 段/节
+            "part": meta.part,
+            # 文件后缀
+            "fileExt": file_ext
+        }
 
     def get_movie_dest_path(self, meta: MetaBase, mediainfo: MediaInfo) -> Tuple[str, str]:
         """
@@ -317,3 +447,15 @@ class FileTransferModule(_ModuleBase):
         :return: 电视剧目录、季目录、集名称
         """
         pass
+
+    @staticmethod
+    def get_rename_path(path: Path, template_string: str, rename_dict: dict) -> Path:
+        """
+        生成重命名后的完整路径
+        """
+        # 创建jinja2模板对象
+        template = Template(template_string)
+        # 渲染生成的字符串
+        render_str = template.render(rename_dict)
+        # 目的路径
+        return path / render_str
