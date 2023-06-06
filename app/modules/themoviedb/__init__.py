@@ -196,14 +196,13 @@ class TheMovieDb(_ModuleBase):
                             and attr_value.startswith("http"):
                         image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
                         self.__save_image(url=attr_value,
-                                          file_path=file_path.parent / image_name)
+                                          file_path=file_path.with_name(image_name))
             # 电视剧
             else:
                 # 识别
                 meta = MetaInfo(file_path.stem)
                 # 不存在时才处理
-                if not file_path.parent.with_name("tvshow.nfo").exists() \
-                        and not file_path.parent.with_name(file_path.stem + ".nfo").exists():
+                if not file_path.parent.with_name("tvshow.nfo").exists():
                     # 根目录描述文件
                     self.__gen_tv_nfo_file(mediainfo=mediainfo,
                                            dir_path=file_path.parents[1])
@@ -215,14 +214,15 @@ class TheMovieDb(_ModuleBase):
                             and attr_value.startswith("http"):
                         image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
                         self.__save_image(url=attr_value,
-                                          file_path=file_path.parents[1] / image_name)
+                                          file_path=file_path.parent.with_name(image_name))
                 # 查询季信息
                 seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, meta.begin_season)
                 if seasoninfo:
                     # 季目录NFO
-                    self.__gen_tv_season_nfo_file(seasoninfo=seasoninfo,
-                                                  season=meta.begin_season,
-                                                  season_path=file_path.parent)
+                    if not file_path.with_name("season.nfo").exists():
+                        self.__gen_tv_season_nfo_file(seasoninfo=seasoninfo,
+                                                      season=meta.begin_season,
+                                                      season_path=file_path.parent)
                     # 季的图片
                     for attr_name, attr_value in vars(mediainfo).items():
                         if attr_value \
@@ -233,19 +233,20 @@ class TheMovieDb(_ModuleBase):
                                                                        f"{str(meta.begin_season).rjust(2, '0')}-")\
                                          + Path(attr_value).suffix
                             self.__save_image(url=attr_value,
-                                              file_path=file_path.parent / image_name)
+                                              file_path=file_path.parent.with_name(image_name))
                 # 查询集详情
                 episodeinfo = __get_episode_detail(seasoninfo, meta.begin_episode)
                 if episodeinfo:
                     # 集NFO
-                    self.__gen_tv_episode_nfo_file(episodeinfo=episodeinfo,
-                                                   season=meta.begin_season,
-                                                   episode=meta.begin_episode,
-                                                   file_path=file_path)
+                    if not file_path.with_suffix(".nfo").exists():
+                        self.__gen_tv_episode_nfo_file(episodeinfo=episodeinfo,
+                                                       season=meta.begin_season,
+                                                       episode=meta.begin_episode,
+                                                       file_path=file_path)
                     # 集的图片
                     if episodeinfo.get('still_path'):
-                        self.__save_image(f"https://image.tmdb.org/t/p/original{episodeinfo.get('still_path')}",
-                                          file_path.with_suffix(".jpg"))
+                        self.__save_image(f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{episodeinfo.get('still_path')}",
+                                          file_path.with_suffix(Path(episodeinfo.get('still_path')).suffix))
         except Exception as e:
             logger.error(f"{file_path} 刮削失败：{e}")
 
@@ -316,16 +317,12 @@ class TheMovieDb(_ModuleBase):
 
     def __gen_movie_nfo_file(self,
                              mediainfo: MediaInfo,
-                             file_path: Path,
-                             force_nfo: bool = False):
+                             file_path: Path):
         """
         生成电影的NFO描述文件
         :param mediainfo: 识别后的媒体信息
         :param file_path: 电影文件路径
-        :param force_nfo: 是否强制生成NFO文件
         """
-        if not force_nfo and file_path.with_suffix(".nfo").exists():
-            return
         # 开始生成XML
         logger.info(f"正在生成电影NFO文件：{file_path.name}")
         doc = minidom.Document()
@@ -346,16 +343,12 @@ class TheMovieDb(_ModuleBase):
 
     def __gen_tv_nfo_file(self,
                           mediainfo: MediaInfo,
-                          dir_path: Path,
-                          force_nfo: bool = False):
+                          dir_path: Path):
         """
         生成电视剧的NFO描述文件
         :param mediainfo: 媒体信息
         :param dir_path: 电视剧根目录
-        :param force_nfo: 是否强制生成NFO文件
         """
-        if not force_nfo and dir_path.joinpath("tvshow.nfo").exists():
-            return
         # 开始生成XML
         logger.info(f"正在生成电视剧NFO文件：{dir_path.name}")
         doc = minidom.Document()
@@ -376,19 +369,13 @@ class TheMovieDb(_ModuleBase):
         # 保存
         self.__save_nfo(doc, dir_path.joinpath("tvshow.nfo"))
 
-    def __gen_tv_season_nfo_file(self, seasoninfo: dict, season: int, season_path: Path,
-                                 force_nfo: bool = False):
+    def __gen_tv_season_nfo_file(self, seasoninfo: dict, season: int, season_path: Path):
         """
         生成电视剧季的NFO描述文件
         :param seasoninfo: TMDB季媒体信息
         :param season: 季号
         :param season_path: 电视剧季的目录
-        :param force_nfo: 是否强制生成NFO文件
         """
-
-        if not force_nfo and season_path.with_name("season.nfo").exists():
-            return
-
         logger.info(f"正在生成季NFO文件：{season_path.name}")
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "season")
@@ -409,24 +396,20 @@ class TheMovieDb(_ModuleBase):
         # seasonnumber
         DomUtils.add_node(doc, root, "seasonnumber", str(season))
         # 保存
-        self.__save_nfo(doc, season_path.with_name("season.nfo"))
+        self.__save_nfo(doc, season_path.joinpath("season.nfo"))
 
     def __gen_tv_episode_nfo_file(self,
                                   episodeinfo: dict,
                                   season: int,
                                   episode: int,
-                                  file_path: Path,
-                                  force_nfo: bool = False):
+                                  file_path: Path):
         """
         生成电视剧集的NFO描述文件
         :param episodeinfo: 集TMDB元数据
         :param season: 季号
         :param episode: 集号
         :param file_path: 集文件的路径
-        :param force_nfo: 是否强制生成NFO文件
         """
-        if not force_nfo and file_path.with_suffix(".nfo").exists():
-            return
         # 开始生成集的信息
         logger.info(f"正在生成剧集NFO文件：{file_path.name}")
         doc = minidom.Document()

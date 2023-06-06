@@ -182,8 +182,7 @@ class Douban(_ModuleBase):
             # 电视剧
             else:
                 # 不存在时才处理
-                if not file_path.parent.with_name("tvshow.nfo").exists() \
-                        and not file_path.parent.with_name(file_path.stem + ".nfo").exists():
+                if not file_path.parent.with_name("tvshow.nfo").exists():
                     # 根目录描述文件
                     self.__gen_tv_nfo_file(doubaninfo=doubaninfo,
                                            dir_path=file_path.parents[1])
@@ -191,9 +190,10 @@ class Douban(_ModuleBase):
                 self.__save_image(url=doubaninfo.get('poster_path'),
                                   file_path=file_path.with_name(f"poster{Path(doubaninfo.get('poster_path')).suffix}"))
                 # 季目录NFO
-                self.__gen_tv_season_nfo_file(seasoninfo=doubaninfo,
-                                              season=meta.begin_season,
-                                              season_path=file_path.parent)
+                if not file_path.with_name("season.nfo").exists():
+                    self.__gen_tv_season_nfo_file(seasoninfo=doubaninfo,
+                                                  season=meta.begin_season,
+                                                  season_path=file_path.parent)
         except Exception as e:
             logger.error(f"{file_path} 刮削失败：{e}")
 
@@ -226,16 +226,12 @@ class Douban(_ModuleBase):
 
     def __gen_movie_nfo_file(self,
                              doubaninfo: dict,
-                             file_path: Path,
-                             force_nfo: bool = False):
+                             file_path: Path):
         """
         生成电影的NFO描述文件
         :param doubaninfo: 豆瓣信息
         :param file_path: 电影文件路径
-        :param force_nfo: 是否强制生成NFO文件
         """
-        if not force_nfo and file_path.with_suffix(".nfo").exists():
-            return
         # 开始生成XML
         logger.info(f"正在生成电影NFO文件：{file_path.name}")
         doc = minidom.Document()
@@ -253,16 +249,12 @@ class Douban(_ModuleBase):
 
     def __gen_tv_nfo_file(self,
                           doubaninfo: dict,
-                          dir_path: Path,
-                          force_nfo: bool = False):
+                          dir_path: Path):
         """
         生成电视剧的NFO描述文件
         :param doubaninfo: 媒体信息
         :param dir_path: 电视剧根目录
-        :param force_nfo: 是否强制生成NFO文件
         """
-        if not force_nfo and dir_path.joinpath("tvshow.nfo").exists():
-            return
         # 开始生成XML
         logger.info(f"正在生成电视剧NFO文件：{dir_path.name}")
         doc = minidom.Document()
@@ -280,19 +272,13 @@ class Douban(_ModuleBase):
         # 保存
         self.__save_nfo(doc, dir_path.joinpath("tvshow.nfo"))
 
-    def __gen_tv_season_nfo_file(self, seasoninfo: dict, season: int, season_path: Path,
-                                 force_nfo: bool = False):
+    def __gen_tv_season_nfo_file(self, seasoninfo: dict, season: int, season_path: Path):
         """
         生成电视剧季的NFO描述文件
         :param seasoninfo: TMDB季媒体信息
         :param season: 季号
         :param season_path: 电视剧季的目录
-        :param force_nfo: 是否强制生成NFO文件
         """
-
-        if not force_nfo and season_path.with_name("season.nfo").exists():
-            return
-
         logger.info(f"正在生成季NFO文件：{season_path.name}")
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "season")
@@ -313,7 +299,7 @@ class Douban(_ModuleBase):
         # seasonnumber
         DomUtils.add_node(doc, root, "seasonnumber", str(season))
         # 保存
-        self.__save_nfo(doc, season_path.with_name("season.nfo"))
+        self.__save_nfo(doc, season_path.joinpath("season.nfo"))
 
     def __gen_tv_episode_nfo_file(self,
                                   episodeinfo: dict,
