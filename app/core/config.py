@@ -128,9 +128,14 @@ class Settings(BaseSettings):
     # 豆瓣用户ID，用于同步豆瓣数据，使用,分隔
     DOUBAN_USER_IDS: str = ""
     # 电影重命名格式
-    MOVIE_RENAME_FORMAT: str = "{{title}} ({{year}})/{{title}} ({{year}})-{{part}} - {{videoFormat}}{{fileExt}}"
+    MOVIE_RENAME_FORMAT: str = "{{title}}{% if year %} ({{year}}){% endif %}" \
+                               "/{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if videoFormat %} - {{videoFormat}}{% endif %}" \
+                               "{{fileExt}}"
     # 电视剧重命名格式
-    TV_RENAME_FORMAT: str = "{{title}} ({{year}})/Season {{season}}/{{title}} - {{season_episode}}-{{part}} - 第 {{episode}} 集{{fileExt}}"
+    TV_RENAME_FORMAT: str = "{{title}}{% if year %} ({{year}}){% endif %}" \
+                            "/Season {{season}}" \
+                            "/{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}" \
+                            "{{fileExt}}"
 
     @property
     def INNER_CONFIG_PATH(self):
