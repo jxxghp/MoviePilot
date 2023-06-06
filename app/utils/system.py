@@ -1,5 +1,6 @@
 import os
 import platform
+import re
 import shutil
 from pathlib import Path
 
@@ -83,3 +84,15 @@ class SystemUtils:
         except Exception as err:
             print(str(err))
             return -1, str(err)
+
+    @staticmethod
+    def list_files_with_extensions(directory: Path, extensions: list) -> list:
+        files = []
+        pattern = r".*\.(" + "|".join(extensions) + ")$"
+
+        # 遍历目录及子目录
+        for path in directory.glob('**/*'):
+            if path.is_file() and re.match(pattern, str(path), re.IGNORECASE):
+                files.append(path)
+
+        return files
