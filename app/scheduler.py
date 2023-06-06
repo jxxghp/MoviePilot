@@ -8,6 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.douban_sync import DoubanSyncChain
 from app.chain.subscribe import SubscribeChain
+from app.chain.transfer import TransferChain
 from app.core import settings
 from app.log import logger
 from app.utils.singleton import Singleton
@@ -51,6 +52,9 @@ class Scheduler(metaclass=Singleton):
 
         # 豆瓣同步（每30分钟）
         self._scheduler.add_job(DoubanSyncChain().process, "interval", minutes=30)
+
+        # 下载器文件转移（每5分钟）
+        self._scheduler.add_job(TransferChain().process, "interval", minutes=5)
 
         # 打印服务
         logger.debug(self._scheduler.print_jobs())
