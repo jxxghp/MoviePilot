@@ -35,6 +35,9 @@ class TransferChain(_ChainBase):
             # 更新媒体图片
             self.run_module("obtain_image", mediainfo=mediainfo)
             # 转移
-            self.run_module("transfer", mediainfo=mediainfo, torrent=torrent)
-        # 转移
-        pass
+            result: bool = self.run_module("transfer", mediainfo=mediainfo, path=torrent.get("path"))
+            if not result:
+                logger.warn(f"{torrent.get('title')} 转移失败")
+                return False
+        logger.info("下载器文件转移执行完成")
+        return True
