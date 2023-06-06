@@ -1,9 +1,10 @@
 from pathlib import Path
+from typing import Optional
 
 from app.chain import _ChainBase
 from app.chain.common import CommonChain
 from app.chain.search import SearchChain
-from app.core import settings, MetaInfo
+from app.core import settings, MetaInfo, MediaInfo
 from app.db.subscribes import Subscribes
 from app.helper.rss import RssHelper
 from app.log import logger
@@ -53,7 +54,7 @@ class DoubanSyncChain(_ChainBase):
                 if not douban_id or douban_id in caches:
                     continue
                 # 根据豆瓣ID获取豆瓣数据
-                doubaninfo = self.run_module('douban_info', doubanid=douban_id)
+                doubaninfo: Optional[dict] = self.run_module('douban_info', doubanid=douban_id)
                 if not doubaninfo:
                     logger.warn(f'未获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
                     continue
@@ -61,7 +62,7 @@ class DoubanSyncChain(_ChainBase):
                 meta = MetaInfo(doubaninfo.get("original_title") or doubaninfo.get("title"))
                 if doubaninfo.get("year"):
                     meta.year = doubaninfo.get("year")
-                mediainfo = self.run_module('recognize_media', meta=meta)
+                mediainfo: MediaInfo = self.run_module('recognize_media', meta=meta)
                 if not mediainfo:
                     logger.warn(f'未识别到媒体信息，标题：{title}，豆瓣ID：{douban_id}')
                     continue

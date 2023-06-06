@@ -1,5 +1,3 @@
-from typing import Any
-
 from app.chain import _ChainBase
 
 
@@ -13,7 +11,7 @@ class WebhookMessageChain(_ChainBase):
         处理Webhook报文并发送消息
         """
         # 获取主体内容
-        info = self.run_module('webhook_parser', message=message)
+        info: dict = self.run_module('webhook_parser', message=message)
         if not info:
             return
         # 发送消息

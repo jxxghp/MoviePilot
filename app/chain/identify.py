@@ -16,7 +16,7 @@ class IdentifyChain(_ChainBase):
         """
         logger.info(f'开始识别媒体信息，标题：{title}，副标题：{subtitle} ...')
         # 识别前预处理
-        result = self.run_module('prepare_recognize', title=title, subtitle=subtitle)
+        result: Optional[tuple] = self.run_module('prepare_recognize', title=title, subtitle=subtitle)
         if result:
             title, subtitle = result
         # 识别元数据

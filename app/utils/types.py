@@ -7,6 +7,11 @@ class MediaType(Enum):
     UNKNOWN = '未知'
 
 
+class TorrentStatus(Enum):
+    COMPLETE = "已完成"
+    DOWNLOADING = "下载中"
+
+
 # 可监听事件
 class EventType(Enum):
     # 插件重载

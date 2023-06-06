@@ -31,6 +31,7 @@ class UserMessageChain(_ChainBase):
         self.common = CommonChain()
         self.subscribes = Subscribes()
         self.searchchain = SearchChain()
+        self.torrent = TorrentHelper()
 
     def process(self, request: Request, *args, **kwargs) -> None:
         """
@@ -129,21 +130,28 @@ class UserMessageChain(_ChainBase):
                 else:
                     # 下载种子
                     torrent: TorrentInfo = cache_list[int(text) - 1]
-                    # 识别种子信息
-                    meta = MetaInfo(torrent.title)
-                    # 预处理种子
-                    torrent_file, msg = self.run_module("prepare_torrent", torrentinfo=torrent)
+                    meta: MetaBase = MetaInfo(torrent.title)
+                    torrent_file, _, _, _, error_msg = self.torrent.download_torrent(
+                        url=torrent.enclosure,
+                        cookie=torrent.site_cookie,
+                        ua=torrent.site_ua,
+                        proxy=torrent.site_proxy)
                     if not torrent_file:
-                        # 下载失败
+                        logger.error(f"下载种子文件失败：{torrent.title} - {torrent.enclosure}")
                         self.run_module('post_message',
                                         title=f"{torrent.title} 种子下载失败！",
-                                        text=f"错误信息：{msg}\n种子链接：{torrent.enclosure}",
+                                        text=f"错误信息：{error_msg}\n种子链接：{torrent.enclosure}",
                                         userid=userid)
                         return
                     # 添加下载
-                    state, msg = self.run_module("download_torrent",
-                                                 torrent_path=torrent_file,
-                                                 mediainfo=self._current_media)
+                    result: Optional[tuple] = self.run_module("download",
+                                                              torrent_path=torrent_file,
+                                                              mediainfo=self._current_media)
+                    if result:
+                        state, msg = result
+                    else:
+                        state, msg = False, "未知错误"
+                    # 发送消息
                     if not state:
                         # 下载失败
                         self.common.post_message(title=f"{torrent.title} 添加下载失败！",
@@ -234,7 +242,7 @@ class UserMessageChain(_ChainBase):
                 meta.year = year
             self._current_meta = meta
             # 开始搜索
-            medias = self.run_module('search_medias', meta=meta)
+            medias: Optional[List[MediaInfo]] = self.run_module('search_medias', meta=meta)
             if not medias:
                 self.common.post_message(title=f"{meta.get_name()} 没有找到对应的媒体信息！", userid=userid)
                 return

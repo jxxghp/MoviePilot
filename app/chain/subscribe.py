@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from app.chain import _ChainBase
 from app.chain.common import CommonChain
@@ -37,7 +37,7 @@ class SubscribeChain(_ChainBase):
         """
         logger.info(f'开始添加订阅，标题：{title} ...')
         # 识别前预处理
-        result = self.run_module('prepare_recognize', title=title)
+        result: Optional[tuple] = self.run_module('prepare_recognize', title=title)
         if result:
             title, _ = result
         # 识别元数据
@@ -48,7 +48,7 @@ class SubscribeChain(_ChainBase):
             metainfo.type = MediaType.TV
             metainfo.begin_season = season
         # 识别媒体信息
-        mediainfo = self.run_module('recognize_media', meta=metainfo, tmdbid=tmdbid)
+        mediainfo: MediaInfo = self.run_module('recognize_media', meta=metainfo, tmdbid=tmdbid)
         if not mediainfo:
             logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}')
             return False
@@ -88,7 +88,7 @@ class SubscribeChain(_ChainBase):
             meta.begin_season = subscribe.season
             meta.type = MediaType.MOVIE if subscribe.type == MediaType.MOVIE.value else MediaType.TV
             # 识别媒体信息
-            mediainfo = self.run_module('recognize_media', meta=meta, tmdbid=subscribe.tmdbid)
+            mediainfo: MediaInfo = self.run_module('recognize_media', meta=meta, tmdbid=subscribe.tmdbid)
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue
@@ -129,7 +129,7 @@ class SubscribeChain(_ChainBase):
                     # 识别
                     meta = MetaInfo(torrent.title, torrent.description)
                     # 识别媒体信息
-                    mediainfo = self.run_module('recognize_media', meta=meta)
+                    mediainfo: MediaInfo = self.run_module('recognize_media', meta=meta)
                     if not mediainfo:
                         logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
                         continue

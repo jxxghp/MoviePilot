@@ -113,10 +113,15 @@ class CommonChain(_ChainBase):
                 if not _torrent_file:
                     return
             # 添加下载
-            _hash, error_msg = self.run_module("download",
-                                               torrent_path=_torrent_file,
-                                               mediainfo=_media,
-                                               episodes=_episodes)
+            result: Optional[tuple] = self.run_module("download",
+                                                      torrent_path=_torrent_file,
+                                                      mediainfo=_media,
+                                                      episodes=_episodes)
+            if result:
+                _hash, error_msg = result
+            else:
+                _hash, error_msg = None, "未知错误"
+
             if _hash:
                 # 下载成功
                 downloaded_list.append(_context)
@@ -327,6 +332,7 @@ class CommonChain(_ChainBase):
         :param no_exists: 在调用该方法前已经存储的不存在的季集信息，有传入时该函数搜索的内容将会叠加后输出
         :return: 当前媒体是否缺失，各标题总的季集和缺失的季集
         """
+
         def __append_no_exists(_season: int, _episodes: list):
             """
             添加不存在的季集信息
@@ -353,14 +359,14 @@ class CommonChain(_ChainBase):
             return False, {}
         if mediainfo.type == MediaType.MOVIE:
             # 电影
-            exists_movies = self.run_module("media_exists", mediainfo)
+            exists_movies: Optional[dict] = self.run_module("media_exists", mediainfo)
             if exists_movies:
                 logger.info(f"媒体库中已存在电影：{mediainfo.get_title_string()}")
                 return True, {}
             return False, {}
         else:
             # 电视剧
-            exists_tvs = self.run_module("media_exists", mediainfo)
+            exists_tvs: Optional[dict] = self.run_module("media_exists", mediainfo)
             if not exists_tvs:
                 # 所有剧集均缺失
                 for season, episodes in mediainfo.seasons.items():

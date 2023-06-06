@@ -6,6 +6,7 @@ from fastapi import Request
 
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
+from app.utils.types import TorrentStatus
 
 
 class _ModuleBase(metaclass=ABCMeta):
@@ -130,7 +131,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def list_torrents(self, status: Union[str, list]) -> List[dict]:
+    def list_torrents(self, status: TorrentStatus) -> List[dict]:
         """
         获取下载器种子列表
         :param status:  种子状态

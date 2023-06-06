@@ -61,7 +61,7 @@ class SearchChain(_ChainBase):
         else:
             _match_torrents = torrents
         # 过滤种子
-        result = self.run_module("filter_torrents", torrent_list=_match_torrents)
+        result: List[TorrentInfo] = self.run_module("filter_torrents", torrent_list=_match_torrents)
         if result is not None:
             _match_torrents = result
         if not _match_torrents:
