@@ -1,10 +1,11 @@
 from pathlib import Path
-from typing import Set, Tuple, Optional, Union
+from typing import Set, Tuple, Optional, Union, List
 
 from app.core import settings, MetaInfo
 from app.modules import _ModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.utils.string import StringUtils
+from app.utils.types import TorrentStatus
 
 
 class QbittorrentModule(_ModuleBase):
@@ -73,3 +74,25 @@ class QbittorrentModule(_ModuleBase):
                     return torrent_hash, f"添加下载成功，已选择集数：{sucess_epidised}"
                 else:
                     return torrent_hash, "添加下载成功"
+
+    def list_torrents(self, status: TorrentStatus) -> Optional[List[dict]]:
+        """
+        获取下载器种子列表
+        :param status:  种子状态
+        :return: 下载器中符合状态的种子列表
+        """
+        if status == TorrentStatus.COMPLETE:
+            torrents = self.qbittorrent.get_completed_torrents()
+        elif status == TorrentStatus.DOWNLOADING:
+            torrents = self.qbittorrent.get_downloading_torrents()
+        else:
+            return None
+        return torrents
+
+    def remove_torrents(self, hashs: Union[str, list]) -> bool:
+        """
+        删除下载器种子
+        :param hashs:  种子Hash
+        :return: bool
+        """
+        return self.qbittorrent.delete_torrents(delete_file=True, ids=hashs)

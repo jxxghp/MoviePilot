@@ -131,7 +131,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def list_torrents(self, status: TorrentStatus) -> List[dict]:
+    def list_torrents(self, status: TorrentStatus) -> Optional[List[dict]]:
         """
         获取下载器种子列表
         :param status:  种子状态
@@ -139,10 +139,10 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def remove_torrents(self, status: Union[str, list]) -> bool:
+    def remove_torrents(self, hashs: Union[str, list]) -> bool:
         """
         删除下载器种子
-        :param status:  种子状态
+        :param hashs:  种子Hash
         :return: bool
         """
         pass

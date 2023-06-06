@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import Set, Tuple, Optional, Union
+from typing import Set, Tuple, Optional, Union, List
 
 from app.core import settings, MetaInfo
 from app.modules import _ModuleBase
 from app.modules.transmission.transmission import Transmission
+from app.utils.types import TorrentStatus
 
 
 class TransmissionModule(_ModuleBase):
@@ -68,3 +69,25 @@ class TransmissionModule(_ModuleBase):
                 self.transmission.start_torrents(torrent_hash)
             else:
                 return torrent_hash, "添加下载任务成功"
+
+    def list_torrents(self, status: TorrentStatus) -> Optional[List[dict]]:
+        """
+        获取下载器种子列表
+        :param status:  种子状态
+        :return: 下载器中符合状态的种子列表
+        """
+        if status == TorrentStatus.COMPLETE:
+            torrents = self.transmission.get_completed_torrents()
+        elif status == TorrentStatus.DOWNLOADING:
+            torrents = self.transmission.get_completed_torrents()
+        else:
+            return None
+        return torrents
+
+    def remove_torrents(self, hashs: Union[str, list]) -> bool:
+        """
+        删除下载器种子
+        :param hashs:  种子Hash
+        :return: bool
+        """
+        return self.transmission.delete_torrents(delete_file=True, ids=hashs)
