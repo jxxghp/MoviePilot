@@ -23,12 +23,12 @@ class FileTransferModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[bool]:
+    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[str]:
         """
         文件转移
         :param path:  文件路径
         :param mediainfo:  识别的媒体信息
-        :return: 成功或失败
+        :return: 转移后的目录或None代表失败
         """
         if not settings.LIBRARY_PATH:
             logger.error("未设置媒体库目录，无法转移文件")
@@ -254,7 +254,7 @@ class FileTransferModule(_ModuleBase):
                 logger.warn(f"{new_file} 文件已存在")
                 continue
             if not new_file.parent.exists():
-                new_file.parent.mkdir(parents=True)
+                new_file.parent.mkdir(parents=True, exist_ok=True)
             retcode = self.__transfer_command(file_item=file,
                                               target_file=new_file,
                                               rmt_mode=rmt_mode)
@@ -311,7 +311,7 @@ class FileTransferModule(_ModuleBase):
                        meidainfo: MediaInfo,
                        rmt_mode: str = None,
                        target_dir: Path = None
-                       ) -> Tuple[bool, str]:
+                       ) -> Tuple[Optional[Path], str]:
         """
         识别并转移一个文件、多个文件或者目录
         :param in_path: 转移的路径，可能是一个文件也可以是一个目录
@@ -322,10 +322,10 @@ class FileTransferModule(_ModuleBase):
         """
         # 检查目录路径
         if not in_path.exists():
-            return False, f"路径不存在：{in_path}"
+            return None, f"路径不存在：{in_path}"
 
         if not target_dir.exists():
-            return False, f"目标路径不存在：{target_dir}"
+            return None, f"目标路径不存在：{target_dir}"
 
         # 目的目录加上类型和二级分类
         target_dir = target_dir / meidainfo.type.value / meidainfo.category
@@ -351,41 +351,72 @@ class FileTransferModule(_ModuleBase):
                                                  new_path=new_path,
                                                  rmt_mode=rmt_mode)
             if retcode != 0:
-                return False, f"蓝光原盘转移失败，错误码：{retcode}"
+                return None, f"蓝光原盘转移失败，错误码：{retcode}"
             else:
-                return True, ""
+                # 返回转移后的路径
+                return new_path, ""
         else:
             # 获取文件清单
             transfer_files: List[Path] = SystemUtils.list_files_with_extensions(in_path, settings.RMT_MEDIAEXT)
             if len(transfer_files) == 0:
-                return False, f"目录下没有找到可转移的文件：{in_path}"
+                return None, f"目录下没有找到可转移的文件：{in_path}"
+            # 识别目录名称，不包括后缀
+            meta = MetaInfo(in_path.stem)
+            # 目的路径
+            new_path = target_dir / self.get_rename_path(
+                template_string=rename_format,
+                rename_dict=self.__get_naming_dict(meta=meta,
+                                                   mediainfo=meidainfo)
+            ).parents[-2].name
             # 转移所有文件
             for transfer_file in transfer_files:
-                # 识别文件元数据，不包含后缀
-                meta = MetaInfo(transfer_file.stem)
-                # 目的文件名
-                new_file = self.get_rename_path(
-                    path=target_dir,
-                    template_string=rename_format,
-                    rename_dict=self.__get_naming_dict(meta=meta,
-                                                       mediainfo=meidainfo,
-                                                       file_ext=transfer_file.suffix)
-                )
-                # 判断是否要覆盖
-                overflag = False
-                if new_file.exists():
-                    if new_file.stat().st_size < transfer_file.stat().st_size:
-                        logger.info(f"目标文件已存在，但文件大小更小，将覆盖：{new_file}")
-                        overflag = True
-                # 转移文件
-                retcode = self.__transfer_file(file_item=transfer_file,
-                                               new_file=new_file,
-                                               rmt_mode=rmt_mode,
-                                               over_flag=overflag)
-                if retcode != 0:
-                    return False, f"文件转移失败，错误码：{retcode}"
+                try:
+                    # 识别文件元数据，不包含后缀
+                    file_meta = MetaInfo(transfer_file.stem)
+                    # 组合目录和文件的Meta信息
+                    meta.type = file_meta.type
+                    # 开始季
+                    if file_meta.begin_season:
+                        meta.begin_season = file_meta.begin_season
+                    # 开始集
+                    if file_meta.begin_episode:
+                        meta.begin_episode = file_meta.begin_episode
+                    # 结束集
+                    if file_meta.end_episode:
+                        meta.end_episode = file_meta.end_episode
+                    # 总季数
+                    if file_meta.total_seasons:
+                        meta.total_seasons = file_meta.total_seasons
+                    # 总集数
+                    if file_meta.total_episodes:
+                        meta.total_episodes = file_meta.total_episodes
+                    # 结束季为空
+                    meta.end_season = None
+                    # 目的文件名
+                    new_file = self.get_rename_path(
+                        path=target_dir,
+                        template_string=rename_format,
+                        rename_dict=self.__get_naming_dict(meta=meta,
+                                                           mediainfo=meidainfo,
+                                                           file_ext=transfer_file.suffix)
+                    )
+                    # 判断是否要覆盖
+                    overflag = False
+                    if new_file.exists():
+                        if new_file.stat().st_size < transfer_file.stat().st_size:
+                            logger.info(f"目标文件已存在，但文件大小更小，将覆盖：{new_file}")
+                            overflag = True
+                    # 转移文件
+                    retcode = self.__transfer_file(file_item=transfer_file,
+                                                   new_file=new_file,
+                                                   rmt_mode=rmt_mode,
+                                                   over_flag=overflag)
+                    if retcode != 0:
+                        return None, f"文件转移失败，错误码：{retcode}"
+                except Exception as err:
+                    return None, f"文件转移失败，错误信息：{err}"
 
-            return True, ""
+            return new_path, ""
 
     @staticmethod
     def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None) -> dict:
@@ -449,7 +480,7 @@ class FileTransferModule(_ModuleBase):
         pass
 
     @staticmethod
-    def get_rename_path(path: Path, template_string: str, rename_dict: dict) -> Path:
+    def get_rename_path(template_string: str, rename_dict: dict, path: Path = None) -> Path:
         """
         生成重命名后的完整路径
         """
@@ -458,4 +489,7 @@ class FileTransferModule(_ModuleBase):
         # 渲染生成的字符串
         render_str = template.render(rename_dict)
         # 目的路径
-        return path / render_str
+        if path:
+            return path / render_str
+        else:
+            return Path(render_str)

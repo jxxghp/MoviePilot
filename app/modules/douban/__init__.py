@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 from app.core import MediaInfo, settings
@@ -104,7 +105,7 @@ class Douban(_ModuleBase):
 
         return ret_medias
 
-    def scrape_metadata(self, path: str, mediainfo: MediaInfo) -> None:
+    def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
         """
         TODO 刮削元数据
         :param path: 媒体文件路径

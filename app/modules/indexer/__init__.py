@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
-from app.core import MediaInfo, TorrentInfo, settings
+from app.core import MediaInfo, TorrentInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.spider import TorrentSpider

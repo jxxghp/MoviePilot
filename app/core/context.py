@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Optional, Any, List
 
 from app.core.config import settings
 from app.core.meta import MetaBase
@@ -126,6 +126,10 @@ class MediaInfo(object):
     tmdb_info: Optional[dict] = {}
     # 豆瓣 INFO
     douban_info: Optional[dict] = {}
+    # 导演
+    directors: List[dict] = []
+    # 演员
+    actors: List[dict] = []
 
     def __init__(self, tmdb_info: dict = None, douban_info: dict = None):
         if tmdb_info:
@@ -155,6 +159,61 @@ class MediaInfo(object):
         """
         初始化媒信息
         """
+
+        def __directors_actors(tmdbinfo: dict):
+            """
+            查询导演和演员
+            :param tmdbinfo: TMDB元数据
+            :return: 导演列表，演员列表
+            """
+            """
+            "cast": [
+              {
+                "adult": false,
+                "gender": 2,
+                "id": 3131,
+                "known_for_department": "Acting",
+                "name": "Antonio Banderas",
+                "original_name": "Antonio Banderas",
+                "popularity": 60.896,
+                "profile_path": "/iWIUEwgn2KW50MssR7tdPeFoRGW.jpg",
+                "cast_id": 2,
+                "character": "Puss in Boots (voice)",
+                "credit_id": "6052480e197de4006bb47b9a",
+                "order": 0
+              }
+            ],
+            "crew": [
+              {
+                "adult": false,
+                "gender": 2,
+                "id": 5524,
+                "known_for_department": "Production",
+                "name": "Andrew Adamson",
+                "original_name": "Andrew Adamson",
+                "popularity": 9.322,
+                "profile_path": "/qqIAVKAe5LHRbPyZUlptsqlo4Kb.jpg",
+                "credit_id": "63b86b2224b33300a0585bf1",
+                "department": "Production",
+                "job": "Executive Producer"
+              }
+            ]
+            """
+            if not tmdbinfo:
+                return [], []
+            _credits = tmdbinfo.get("credits")
+            if not _credits:
+                return [], []
+            directors = []
+            actors = []
+            for cast in self.__dict_media_casts(_credits.get("cast")):
+                if cast.get("known_for_department") == "Acting":
+                    actors.append(cast)
+            for crew in self.__dict_media_crews(_credits.get("crew")):
+                if crew.get("job") == "Director":
+                    directors.append(crew)
+            return directors, actors
+
         if not info:
             return
         # 本体
@@ -208,6 +267,8 @@ class MediaInfo(object):
         # 背景
         if info.get('backdrop_path'):
             self.backdrop_path = f"https://{settings.TMDB_IMAGE_DOMAIN}{info.get('backdrop_path')}"
+        # 导演和演员
+        self.directors, self.actors = __directors_actors(info)
 
     def set_douban_info(self, info: dict):
         """

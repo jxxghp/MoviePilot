@@ -53,7 +53,7 @@ class FanartModule(_ModuleBase):
         """
         转换Fanart图片的名字
         """
-        words_to_remove = r'tv|movie|hdmovie|hdtv'
+        words_to_remove = r'tv|movie|hdmovie|hdtv|show|hd'
         pattern = re.compile(words_to_remove, re.IGNORECASE)
         result = re.sub(pattern, '', fanart_name)
         return result

@@ -3,6 +3,7 @@ import platform
 import re
 import shutil
 from pathlib import Path
+from typing import List
 
 
 class SystemUtils:
@@ -86,7 +87,7 @@ class SystemUtils:
             return -1, str(err)
 
     @staticmethod
-    def list_files_with_extensions(directory: Path, extensions: list) -> list:
+    def list_files_with_extensions(directory: Path, extensions: list) -> List[Path]:
         files = []
         pattern = r".*\.(" + "|".join(extensions) + ")$"
 

@@ -85,7 +85,7 @@ class TNodeSpider:
                     'title': result.get('title'),
                     'description': result.get('subtitle'),
                     'enclosure': self._downloadurl % (self._domain, result.get('id')),
-                    'pubdate': StringUtils.timestamp_to_date(result.get('upload_time')),
+                    'pubdate': StringUtils.format_timestamp(result.get('upload_time')),
                     'size': result.get('size'),
                     'seeders': result.get('seeding'),
                     'peers': result.get('leeching'),

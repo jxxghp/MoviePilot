@@ -3,7 +3,7 @@ from typing import Optional, Tuple, List
 
 import zhconv
 from lxml import etree
-from tmdbv3api import TMDb, Search, Movie, TV
+from tmdbv3api import TMDb, Search, Movie, TV, Season, Episode
 from tmdbv3api.exceptions import TMDbException
 
 from app.core import settings
@@ -44,8 +44,10 @@ class TmdbHelper:
         self.search = Search()
         self.movie = Movie()
         self.tv = TV()
+        self.season = Season()
+        self.episode = Episode()
 
-    def search_multi_tmdbinfos(self, title: str) -> List[dict]:
+    def search_multiis(self, title: str) -> List[dict]:
         """
         同时查询模糊匹配的电影、电视剧TMDB信息
         """
@@ -59,7 +61,7 @@ class TmdbHelper:
                 ret_infos.append(multi)
         return ret_infos
 
-    def search_movie_tmdbinfos(self, title: str, year: str) -> List[dict]:
+    def search_movies(self, title: str, year: str) -> List[dict]:
         """
         查询模糊匹配的所有电影TMDB信息
         """
@@ -94,7 +96,7 @@ class TmdbHelper:
         return ret_infos
 
     @staticmethod
-    def __compare_tmdb_names(file_name: str, tmdb_names: list) -> bool:
+    def __compare_names(file_name: str, tmdb_names: list) -> bool:
         """
         比较文件名是否匹配，忽略大小写和特殊字符
         :param file_name: 识别的文件名或者种子名
@@ -112,7 +114,7 @@ class TmdbHelper:
                 return True
         return False
 
-    def __get_tmdb_names(self, mtype: MediaType, tmdb_id: str) -> Tuple[Optional[dict], List[str]]:
+    def __get_names(self, mtype: MediaType, tmdb_id: str) -> Tuple[Optional[dict], List[str]]:
         """
         搜索tmdb中所有的标题和译名，用于名称匹配
         :param mtype: 类型：电影、电视剧、动漫
@@ -122,7 +124,7 @@ class TmdbHelper:
         if not mtype or not tmdb_id:
             return {}, []
         ret_names = []
-        tmdb_info = self.get_tmdb_info(mtype=mtype, tmdbid=tmdb_id)
+        tmdb_info = self.get_info(mtype=mtype, tmdbid=tmdb_id)
         if not tmdb_info:
             return tmdb_info, []
         if mtype == MediaType.MOVIE:
@@ -149,11 +151,11 @@ class TmdbHelper:
                     ret_names.append(name)
         return tmdb_info, ret_names
 
-    def search_tmdb(self, name: str,
-                    mtype: MediaType,
-                    year: str = None,
-                    season_year: str = None,
-                    season_number: int = None) -> Optional[dict]:
+    def match(self, name: str,
+              mtype: MediaType,
+              year: str = None,
+              season_year: str = None,
+              season_number: int = None) -> Optional[dict]:
         """
         搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息
         :param name: 剑索的名称
@@ -239,16 +241,16 @@ class TmdbHelper:
             if year:
                 for movie in movies:
                     if movie.get('release_date'):
-                        if self.__compare_tmdb_names(name, movie.get('title')) \
+                        if self.__compare_names(name, movie.get('title')) \
                                 and movie.get('release_date')[0:4] == str(year):
                             return movie
-                        if self.__compare_tmdb_names(name, movie.get('original_title')) \
+                        if self.__compare_names(name, movie.get('original_title')) \
                                 and movie.get('release_date')[0:4] == str(year):
                             return movie
             else:
                 for movie in movies:
-                    if self.__compare_tmdb_names(name, movie.get('title')) \
-                            or self.__compare_tmdb_names(name, movie.get('original_title')):
+                    if self.__compare_names(name, movie.get('title')) \
+                            or self.__compare_names(name, movie.get('original_title')):
                         return movie
             if not info:
                 index = 0
@@ -259,13 +261,13 @@ class TmdbHelper:
                         if movie.get('release_date')[0:4] != str(year):
                             continue
                         index += 1
-                        info, names = self.__get_tmdb_names(MediaType.MOVIE, movie.get("id"))
-                        if self.__compare_tmdb_names(name, names):
+                        info, names = self.__get_names(MediaType.MOVIE, movie.get("id"))
+                        if self.__compare_names(name, names):
                             return info
                     else:
                         index += 1
-                        info, names = self.__get_tmdb_names(MediaType.MOVIE, movie.get("id"))
-                        if self.__compare_tmdb_names(name, names):
+                        info, names = self.__get_names(MediaType.MOVIE, movie.get("id"))
+                        if self.__compare_names(name, names):
                             return info
                     if index > 5:
                         break
@@ -298,16 +300,16 @@ class TmdbHelper:
             if year:
                 for tv in tvs:
                     if tv.get('first_air_date'):
-                        if self.__compare_tmdb_names(name, tv.get('name')) \
+                        if self.__compare_names(name, tv.get('name')) \
                                 and tv.get('first_air_date')[0:4] == str(year):
                             return tv
-                        if self.__compare_tmdb_names(name, tv.get('original_name')) \
+                        if self.__compare_names(name, tv.get('original_name')) \
                                 and tv.get('first_air_date')[0:4] == str(year):
                             return tv
             else:
                 for tv in tvs:
-                    if self.__compare_tmdb_names(name, tv.get('name')) \
-                            or self.__compare_tmdb_names(name, tv.get('original_name')):
+                    if self.__compare_names(name, tv.get('name')) \
+                            or self.__compare_names(name, tv.get('original_name')):
                         return tv
             if not info:
                 index = 0
@@ -318,13 +320,13 @@ class TmdbHelper:
                         if tv.get('first_air_date')[0:4] != str(year):
                             continue
                         index += 1
-                        info, names = self.__get_tmdb_names(MediaType.TV, tv.get("id"))
-                        if self.__compare_tmdb_names(name, names):
+                        info, names = self.__get_names(MediaType.TV, tv.get("id"))
+                        if self.__compare_names(name, names):
                             return info
                     else:
                         index += 1
-                        info, names = self.__get_tmdb_names(MediaType.TV, tv.get("id"))
-                        if self.__compare_tmdb_names(name, names):
+                        info, names = self.__get_names(MediaType.TV, tv.get("id"))
+                        if self.__compare_names(name, names):
                             return info
                     if index > 5:
                         break
@@ -343,7 +345,7 @@ class TmdbHelper:
             if not tv_info:
                 return False
             try:
-                seasons = self.__get_tmdb_tv_seasons(tv_info)
+                seasons = self.__get_tv_seasons(tv_info)
                 for season, season_info in seasons.values():
                     if season_info.get("air_date"):
                         if season.get("air_date")[0:4] == str(_season_year) \
@@ -368,21 +370,21 @@ class TmdbHelper:
             return {}
         else:
             for tv in tvs:
-                if (self.__compare_tmdb_names(name, tv.get('name'))
-                    or self.__compare_tmdb_names(name, tv.get('original_name'))) \
+                if (self.__compare_names(name, tv.get('name'))
+                    or self.__compare_names(name, tv.get('original_name'))) \
                         and (tv.get('first_air_date') and tv.get('first_air_date')[0:4] == str(season_year)):
                     return tv
 
             for tv in tvs[:5]:
-                info, names = self.__get_tmdb_names(MediaType.TV, tv.get("id"))
-                if not self.__compare_tmdb_names(name, names):
+                info, names = self.__get_names(MediaType.TV, tv.get("id"))
+                if not self.__compare_names(name, names):
                     continue
                 if __season_match(tv_info=info, _season_year=season_year):
                     return info
         return {}
 
     @staticmethod
-    def __get_tmdb_tv_seasons(tv_info: dict) -> Optional[dict]:
+    def __get_tv_seasons(tv_info: dict) -> Optional[dict]:
         """
         查询TMDB电视剧的所有季
         :param tv_info: TMDB 的季信息
@@ -419,7 +421,7 @@ class TmdbHelper:
             ret_seasons[season_info.get("season_number")] = season_info
         return ret_seasons
 
-    def search_multi_tmdb(self, name: str) -> Optional[dict]:
+    def search_multi(self, name: str) -> Optional[dict]:
         """
         根据名称同时查询电影和电视剧，不带年份
         :param name: 识别的文件名或种子名
@@ -441,22 +443,22 @@ class TmdbHelper:
             info = {}
             for multi in multis:
                 if multi.get("media_type") == "movie":
-                    if self.__compare_tmdb_names(name, multi.get('title')) \
-                            or self.__compare_tmdb_names(name, multi.get('original_title')):
+                    if self.__compare_names(name, multi.get('title')) \
+                            or self.__compare_names(name, multi.get('original_title')):
                         info = multi
                 elif multi.get("media_type") == "tv":
-                    if self.__compare_tmdb_names(name, multi.get('name')) \
-                            or self.__compare_tmdb_names(name, multi.get('original_name')):
+                    if self.__compare_names(name, multi.get('name')) \
+                            or self.__compare_names(name, multi.get('original_name')):
                         info = multi
             if not info:
                 for multi in multis[:5]:
                     if multi.get("media_type") == "movie":
-                        movie_info, names = self.__get_tmdb_names(MediaType.MOVIE, multi.get("id"))
-                        if self.__compare_tmdb_names(name, names):
+                        movie_info, names = self.__get_names(MediaType.MOVIE, multi.get("id"))
+                        if self.__compare_names(name, names):
                             info = movie_info
                     elif multi.get("media_type") == "tv":
-                        tv_info, names = self.__get_tmdb_names(MediaType.TV, multi.get("id"))
-                        if self.__compare_tmdb_names(name, names):
+                        tv_info, names = self.__get_names(MediaType.TV, multi.get("id"))
+                        if self.__compare_names(name, names):
                             info = tv_info
         # 返回
         if info:
@@ -467,7 +469,7 @@ class TmdbHelper:
         return info
 
     @lru_cache(maxsize=128)
-    def search_tmdb_web(self, name: str, mtype: MediaType) -> Optional[dict]:
+    def search_web(self, name: str, mtype: MediaType) -> Optional[dict]:
         """
         搜索TMDB网站，直接抓取结果，结果只有一条时才返回
         :param name: 名称
@@ -497,7 +499,7 @@ class TmdbHelper:
                     if link not in tmdb_links:
                         tmdb_links.append(link)
                 if len(tmdb_links) == 1:
-                    tmdbinfo = self.get_tmdb_info(
+                    tmdbinfo = self.get_info(
                         mtype=MediaType.TV if tmdb_links[0].startswith("/tv") else MediaType.MOVIE,
                         tmdbid=tmdb_links[0].split("/")[-1])
                     if tmdbinfo:
@@ -525,9 +527,9 @@ class TmdbHelper:
                 return None
         return None
 
-    def get_tmdb_info(self,
-                      mtype: MediaType,
-                      tmdbid: str) -> dict:
+    def get_info(self,
+                 mtype: MediaType,
+                 tmdbid: str) -> dict:
         """
         给定TMDB号，查询一条媒体信息
         :param mtype: 类型：电影、电视剧、动漫，为空时都查（此时用不上年份）
@@ -547,11 +549,11 @@ class TmdbHelper:
 
         # 设置语言
         if mtype == MediaType.MOVIE:
-            tmdb_info = self.__get_tmdb_movie_detail(tmdbid)
+            tmdb_info = self.__get_movie_detail(tmdbid)
             if tmdb_info:
                 tmdb_info['media_type'] = MediaType.MOVIE
         else:
-            tmdb_info = self.__get_tmdb_tv_detail(tmdbid)
+            tmdb_info = self.__get_tv_detail(tmdbid)
             if tmdb_info:
                 tmdb_info['media_type'] = MediaType.TV
         if tmdb_info:
@@ -599,13 +601,13 @@ class TmdbHelper:
                 else:
                     tmdb_info['name'] = cn_title
 
-    def __get_tmdb_movie_detail(self,
-                                tmdbid: str,
-                                append_to_response: str = "images,"
-                                                          "credits,"
-                                                          "alternative_titles,"
-                                                          "translations,"
-                                                          "external_ids") -> Optional[dict]:
+    def __get_movie_detail(self,
+                           tmdbid: str,
+                           append_to_response: str = "images,"
+                                                     "credits,"
+                                                     "alternative_titles,"
+                                                     "translations,"
+                                                     "external_ids") -> Optional[dict]:
         """
         获取电影的详情
         :param tmdbid: TMDB ID
@@ -711,13 +713,13 @@ class TmdbHelper:
             print(str(e))
             return None
 
-    def __get_tmdb_tv_detail(self,
-                             tmdbid: str,
-                             append_to_response: str = "images,"
-                                                       "credits,"
-                                                       "alternative_titles,"
-                                                       "translations,"
-                                                       "external_ids") -> Optional[dict]:
+    def __get_tv_detail(self,
+                        tmdbid: str,
+                        append_to_response: str = "images,"
+                                                  "credits,"
+                                                  "alternative_titles,"
+                                                  "translations,"
+                                                  "external_ids") -> Optional[dict]:
         """
         获取电视剧的详情
         :param tmdbid: TMDB ID
@@ -893,3 +895,94 @@ class TmdbHelper:
         except Exception as e:
             print(str(e))
             return None
+
+    def get_tv_season_detail(self, tmdbid, season: int):
+        """
+        获取电视剧季的详情
+        :param tmdbid: TMDB ID
+        :param season: 季，数字
+        :return: TMDB信息
+        """
+        """
+        {
+          "_id": "5e614cd3357c00001631a6ef",
+          "air_date": "2023-01-15",
+          "episodes": [
+            {
+              "air_date": "2023-01-15",
+              "episode_number": 1,
+              "id": 2181581,
+              "name": "当你迷失在黑暗中",
+              "overview": "在一场全球性的流行病摧毁了文明之后，一个顽强的幸存者负责照顾一个 14 岁的小女孩，她可能是人类最后的希望。",
+              "production_code": "",
+              "runtime": 81,
+              "season_number": 1,
+              "show_id": 100088,
+              "still_path": "/aRquEWm8wWF1dfa9uZ1TXLvVrKD.jpg",
+              "vote_average": 8,
+              "vote_count": 33,
+              "crew": [
+                {
+                  "job": "Writer",
+                  "department": "Writing",
+                  "credit_id": "619c370063536a00619a08ee",
+                  "adult": false,
+                  "gender": 2,
+                  "id": 35796,
+                  "known_for_department": "Writing",
+                  "name": "Craig Mazin",
+                  "original_name": "Craig Mazin",
+                  "popularity": 15.211,
+                  "profile_path": "/uEhna6qcMuyU5TP7irpTUZ2ZsZc.jpg"
+                },
+              ],
+              "guest_stars": [
+                {
+                  "character": "Marlene",
+                  "credit_id": "63c4ca5e5f2b8d00aed539fc",
+                  "order": 500,
+                  "adult": false,
+                  "gender": 1,
+                  "id": 1253388,
+                  "known_for_department": "Acting",
+                  "name": "Merle Dandridge",
+                  "original_name": "Merle Dandridge",
+                  "popularity": 21.679,
+                  "profile_path": "/lKwHdTtDf6NGw5dUrSXxbfkZLEk.jpg"
+                }
+              ]
+            },
+          ],
+          "name": "第 1 季",
+          "overview": "",
+          "id": 144593,
+          "poster_path": "/aUQKIpZZ31KWbpdHMCmaV76u78T.jpg",
+          "season_number": 1
+        }
+        """
+        if not self.season:
+            return {}
+        try:
+            logger.info("正在查询TMDB电视剧：%s，季：%s ..." % (tmdbid, season))
+            tmdbinfo = self.season.details(tmdbid, season)
+            return tmdbinfo or {}
+        except Exception as e:
+            print(str(e))
+            return {}
+
+    def get_tv_episode_detail(self, tmdbid: str, season: int, episode: int):
+        """
+        获取电视剧集的详情
+        :param tmdbid: TMDB ID
+        :param season: 季，数字
+        :param episode: 集，数字
+        """
+        if not self.episode:
+            return {}
+        try:
+            logger.info("正在查询TMDB集图片：%s，季：%s，集：%s ..." % (tmdbid, season, episode))
+            tmdbinfo = self.episode.details(tmdbid, season, episode)
+            return tmdbinfo or {}
+        except Exception as e:
+            print(str(e))
+            return {}

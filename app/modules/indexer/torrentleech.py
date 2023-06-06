@@ -43,7 +43,7 @@ class TorrentLeech:
                     'indexer': self._indexer.get('id'),
                     'title': result.get('name'),
                     'enclosure': self._downloadurl % (self._indexer.get('domain'), result.get('fid'), result.get('filename')),
-                    'pubdate': StringUtils.timestamp_to_date(result.get('addedTimestamp')),
+                    'pubdate': StringUtils.format_timestamp(result.get('addedTimestamp')),
                     'size': result.get('size'),
                     'seeders': result.get('seeders'),
                     'peers': result.get('leechers'),

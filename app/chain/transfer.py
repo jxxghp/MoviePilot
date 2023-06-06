@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List, Optional
 
 from app.chain import _ChainBase
@@ -35,9 +36,12 @@ class TransferChain(_ChainBase):
             # 更新媒体图片
             self.run_module("obtain_image", mediainfo=mediainfo)
             # 转移
-            result: bool = self.run_module("transfer", mediainfo=mediainfo, path=torrent.get("path"))
-            if not result:
+            dest_path: Path = self.run_module("transfer", mediainfo=mediainfo, path=torrent.get("path"))
+            if not dest_path:
                 logger.warn(f"{torrent.get('title')} 转移失败")
                 return False
+            # 刮剥
+            self.run_module("scrape_metadata", path=dest_path, mediainfo=mediainfo)
+
         logger.info("下载器文件转移执行完成")
         return True
