@@ -17,4 +17,4 @@ class RecognizeTest(TestCase):
         result = IdentifyChain().process(title="我和我的祖国 2019")
         self.assertEqual(str(result.media_info.tmdb_id), '612845')
         exists = CommonChain().get_no_exists_info(result.media_info)
-        self.assertEqual(exists, True)
+        self.assertEqual(exists[0], True)
