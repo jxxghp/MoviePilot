@@ -33,7 +33,7 @@ ENV LANG="C.UTF-8" \
 WORKDIR ${WORKDIR}
 COPY . .
 RUN apt-get update \
-    && apt-get install musl-dev \
+    && apt-get -y install musl-dev \
     && pip install cython \
     && pip install -r requirements.txt \
     && python_ver=$(python3 -V | awk '{print $2}') \
