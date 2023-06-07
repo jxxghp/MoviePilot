@@ -146,7 +146,7 @@ class UserMessageChain(_ChainBase):
                     # 添加下载
                     result: Optional[tuple] = self.run_module("download",
                                                               torrent_path=torrent_file,
-                                                              mediainfo=self._current_media)
+                                                              cookie=torrent.site_cookie)
                     if result:
                         state, msg = result
                     else:

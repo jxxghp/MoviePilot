@@ -115,7 +115,7 @@ class CommonChain(_ChainBase):
             # 添加下载
             result: Optional[tuple] = self.run_module("download",
                                                       torrent_path=_torrent_file,
-                                                      mediainfo=_media,
+                                                      cookie=_torrent.site_cookie,
                                                       episodes=_episodes)
             if result:
                 _hash, error_msg = result
