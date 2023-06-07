@@ -36,7 +36,8 @@ RUN pip install cython && pip install -r requirements.txt \
     && python_ver=$(python3 -V | awk '{print $2}') \
     && echo "${WORKDIR}/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
-    && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf
+    && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
+    && rm -rf /root/.cache/
 EXPOSE 3001
 VOLUME ["/config"]
 ENTRYPOINT [ "python3", "app/main.py" ]
