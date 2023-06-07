@@ -40,7 +40,7 @@ class _ChainBase(AbstractSingleton, metaclass=Singleton):
             else:
                 return result is None
 
-        logger.info(f"请求模块执行：{method} ...")
+        logger.debug(f"请求模块执行：{method} ...")
         result = None
         modules = self.modulemanager.get_modules(method)
         for module in modules:

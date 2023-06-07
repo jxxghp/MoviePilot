@@ -50,6 +50,8 @@ class DoubanSyncChain(_ChainBase):
                 title = result.get("title", "")[2:]
                 if dtype not in ["想看"]:
                     continue
+                if not result.get("link"):
+                    continue
                 douban_id = result.get("link", "").split("/")[-2]
                 if not douban_id or douban_id in caches:
                     continue

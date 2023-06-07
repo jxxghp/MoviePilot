@@ -18,6 +18,8 @@ class Qbittorrent(metaclass=Singleton):
     _username: str = None
     _passowrd: str = None
 
+    qbc: Client = None
+
     def __init__(self):
         host = settings.QB_HOST
         if host and host.find(":") != -1:
@@ -44,7 +46,7 @@ class Qbittorrent(metaclass=Singleton):
             try:
                 qbt.auth_log_in()
             except qbittorrentapi.LoginFailed as e:
-                print(str(e))
+                logger.error(f"qbittorrent 登录失败：{e}")
             return qbt
         except Exception as err:
             logger.error(f"qbittorrent 连接出错：{err}")

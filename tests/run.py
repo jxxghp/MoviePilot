@@ -1,7 +1,10 @@
 import unittest
 
+from tests.test_cookiecloud import CookieCloudTest
+from tests.test_doubansync import DoubanSyncTest
 from tests.test_metainfo import MetaInfoTest
 from tests.test_recognize import RecognizeTest
+from tests.test_transfer import TransferTest
 
 if __name__ == '__main__':
     suite = unittest.TestSuite()
@@ -9,6 +12,12 @@ if __name__ == '__main__':
     suite.addTest(MetaInfoTest('test_metainfo'))
     # 测试媒体识别
     suite.addTest(RecognizeTest('test_recognize'))
+    # 测试CookieCloud同步
+    suite.addTest(CookieCloudTest('test_cookiecloud'))
+    # 测试文件转移
+    suite.addTest(TransferTest('test_transfer'))
+    # 测试豆瓣同步
+    suite.addTest(DoubanSyncTest('test_doubansync'))
     # 运行测试
     runner = unittest.TextTestRunner()
     runner.run(suite)

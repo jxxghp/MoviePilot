@@ -53,7 +53,6 @@ class RssHelper:
                         # 部分RSS只有link没有enclosure
                         if not enclosure and link:
                             enclosure = link
-                            link = None
                         # 大小
                         size = DomUtils.tag_value(item, "enclosure", "length", default=0)
                         if size and str(size).isdigit():

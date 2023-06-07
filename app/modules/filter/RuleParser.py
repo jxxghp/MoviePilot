@@ -41,6 +41,7 @@ class RuleParser:
 
 if __name__ == '__main__':
     # 测试代码
-    expression1 = "!BLU & (1080P | CN)"
-    parsed_expr1 = RuleParser().parse(expression1)
-    print(parsed_expr1.as_list())
+    expression = "!BLU & 4K & CN > !BLU & 1080P & CN > !BLU & 4K > !BLU & 1080P"
+    for exp in expression.split('>'):
+        parsed_expr = RuleParser().parse(exp)
+        print(parsed_expr.as_list())

@@ -111,15 +111,18 @@ class FilterModule(_ModuleBase):
         if not isinstance(rule_group, list):
             # 不是列表，说明是规则名称
             return self.__match_rule(torrent, rule_group)
-        if rule_group[0] == "not":
+        elif isinstance(rule_group, list) and len(rule_group) == 1:
+            # 只有一个规则项
+            return self.__match_rule(torrent, rule_group[0])
+        elif rule_group[0] == "not":
             # 非操作
-            return not self.__match_group(torrent, rule_group[1])
+            return not self.__match_group(torrent, rule_group[1:])
         elif rule_group[1] == "and":
             # 与操作
-            return self.__match_group(torrent, rule_group[0]) and self.__match_group(torrent, rule_group[2])
+            return self.__match_group(torrent, rule_group[0]) and self.__match_group(torrent, rule_group[2:])
         elif rule_group[1] == "or":
             # 或操作
-            return self.__match_group(torrent, rule_group[0]) or self.__match_group(torrent, rule_group[2])
+            return self.__match_group(torrent, rule_group[0]) or self.__match_group(torrent, rule_group[2:])
 
     def __match_rule(self, torrent: TorrentInfo, rule_name: str) -> bool:
         """

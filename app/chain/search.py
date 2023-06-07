@@ -57,6 +57,7 @@ class SearchChain(_ChainBase):
                 # 过滤
                 if torrent_mediainfo.tmdb_id == mediainfo.tmdb_id \
                         and torrent_mediainfo.type == mediainfo.type:
+                    logger.info(f'{mediainfo.title} 匹配到资源：{torrent.title}')
                     _match_torrents.append(torrent)
         else:
             _match_torrents = torrents

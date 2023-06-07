@@ -16,6 +16,8 @@ class Transmission(metaclass=Singleton):
     _username: str = None
     _passowrd: str = None
 
+    trc: Optional[Client] = None
+
     # 参考transmission web，仅查询需要的参数，加速种子搜索
     _trarg = ["id", "name", "status", "labels", "hashString", "totalSize", "percentDone", "addedDate", "trackerStats",
               "leftUntilDone", "rateDownload", "rateUpload", "recheckProgress", "rateDownload", "rateUpload",
@@ -46,7 +48,7 @@ class Transmission(metaclass=Singleton):
                                           timeout=60)
             return trt
         except Exception as err:
-            logger.error(f"连接出错：{err}")
+            logger.error(f"transmission 连接出错：{err}")
             return None
 
     def get_torrents(self, ids: Union[str, list] = None, status: Union[str, list] = None,
