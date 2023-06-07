@@ -33,7 +33,7 @@ class EmbyModule(_ModuleBase):
         """
         if mediainfo.type == MediaType.MOVIE:
             movies = self.emby.get_movies(title=mediainfo.title, year=mediainfo.year)
-            if movies:
+            if not movies:
                 logger.info(f"{mediainfo.get_title_string()} 在媒体库中不存在")
                 return None
             else:
