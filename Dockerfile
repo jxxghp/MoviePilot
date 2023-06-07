@@ -34,7 +34,7 @@ WORKDIR ${WORKDIR}
 COPY . .
 RUN pip install cython && pip install -r requirements.txt \
     && python_ver=$(python3 -V | awk '{print $2}') \
-    && echo "${WORKDIR}/" > /usr/lib/python${python_ver%.*}/site-packages/app.pth \
+    && echo "${WORKDIR}/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf
 EXPOSE 3001
