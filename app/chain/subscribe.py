@@ -79,6 +79,7 @@ class SubscribeChain(_ChainBase):
             subscribes = self.subscribes.list(state)
         # 遍历订阅
         for subscribe in subscribes:
+            logger.info(f'开始搜索订阅，标题：{subscribe.name} ...')
             # 如果状态为N则更新为R
             if subscribe.state == 'N':
                 self.subscribes.update(subscribe.id, {'state': 'R'})
@@ -121,10 +122,18 @@ class SubscribeChain(_ChainBase):
         indexers = self.siteshelper.get_indexers()
         # 遍历站点缓存资源
         for indexer in indexers:
+            logger.info(f'开始刷新站点资源，站点：{indexer.get("name")} ...')
             domain = StringUtils.get_url_domain(indexer.get("domain"))
             torrents: List[TorrentInfo] = self.run_module("refresh_torrents", sites=[indexer])
             if torrents:
                 self._torrents_cache[domain] = []
+                # 过滤种子
+                result: List[TorrentInfo] = self.run_module("filter_torrents", torrent_list=torrents)
+                if result is not None:
+                    torrents = result
+                if not torrents:
+                    logger.warn(f'{indexer.get("name")} 没有符合过滤条件的资源')
+                    continue
                 for torrent in torrents:
                     # 识别
                     meta = MetaInfo(torrent.title, torrent.description)
@@ -147,6 +156,7 @@ class SubscribeChain(_ChainBase):
         subscribes = self.subscribes.list('R')
         # 遍历订阅
         for subscribe in subscribes:
+            logger.info(f'开始匹配订阅，标题：{subscribe.name} ...')
             # 生成元数据
             meta = MetaInfo(subscribe.name)
             meta.year = subscribe.year

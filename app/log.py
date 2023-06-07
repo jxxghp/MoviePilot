@@ -12,7 +12,7 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)
 
 # 创建文件输出Handler
-file_handler = RotatingFileHandler(filename=settings.LOG_PATH / 'nasbot.log',
+file_handler = RotatingFileHandler(filename=settings.LOG_PATH / 'moviepilot.log',
                                    mode='w',
                                    maxBytes=5 * 1024 * 1024,
                                    backupCount=3,

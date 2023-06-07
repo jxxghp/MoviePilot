@@ -113,7 +113,7 @@ class TorrentSpider(feapder.AirSpider):
         if self.domain and not str(self.domain).endswith("/"):
             self.domain = self.domain + "/"
         if indexer.get('ua'):
-            self.ua = indexer.get('ua')
+            self.ua = indexer.get('ua') or settings.USER_AGENT
         else:
             self.ua = settings.USER_AGENT
         if indexer.get('proxy'):

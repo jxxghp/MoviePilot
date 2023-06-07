@@ -100,21 +100,17 @@ class IndexerModule(_ModuleBase):
                     mtype=mediainfo.type
                 )
         except Exception as err:
-            error_flag = True
-            print(str(err))
+            logger.error(f"{site.get('name')} 搜索出错：{err}")
 
         # 索引花费的时间
         seconds = round((datetime.now() - start_time).seconds, 1)
-        if error_flag:
-            logger.error(f"{site.get('name')} 搜索发生错误，耗时 {seconds} 秒")
-        else:
-            logger.info(f"{site.get('name')} 搜索完成，耗时 {seconds} 秒")
+
         # 返回结果
         if len(result_array) == 0:
-            logger.warn(f"{site.get('name')} 未搜索到数据")
+            logger.warn(f"{site.get('name')} 未搜索到数据，耗时 {seconds} 秒")
             return []
         else:
-            logger.warn(f"{site.get('name')} 返回数据：{len(result_array)}")
+            logger.warn(f"{site.get('name')} 搜索完成，耗时 {seconds} 秒，返回数据：{len(result_array)}")
             # 合并站点信息，以TorrentInfo返回
             return [TorrentInfo(site=site.get("id"),
                                 site_name=site.get("name"),
