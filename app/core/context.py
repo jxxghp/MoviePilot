@@ -206,10 +206,10 @@ class MediaInfo(object):
                 return [], []
             directors = []
             actors = []
-            for cast in self.__dict_media_casts(_credits.get("cast")):
+            for cast in _credits.get("cast"):
                 if cast.get("known_for_department") == "Acting":
                     actors.append(cast)
-            for crew in self.__dict_media_crews(_credits.get("crew")):
+            for crew in _credits.get("crew"):
                 if crew.get("job") == "Director":
                     directors.append(crew)
             return directors, actors
