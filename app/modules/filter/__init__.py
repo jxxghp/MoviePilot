@@ -94,7 +94,7 @@ class FilterModule(_ModuleBase):
         for rule_group in rule_groups:
             # 解析规则组
             parsed_group = self.parser.parse(rule_group.strip())
-            if self.__match_group(torrent, parsed_group.as_list()):
+            if self.__match_group(torrent, parsed_group.as_list()[0]):
                 # 出现匹配时中断
                 matched = True
                 torrent.pri_order = res_order
