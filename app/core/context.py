@@ -221,13 +221,13 @@ class MediaInfo(object):
         # 类型
         self.type = info.get('media_type')
         # TMDBID
-        self.tmdb_id = info.get('id')
+        self.tmdb_id = str(info.get('id'))
         if not self.tmdb_id:
             return
         # 额外ID
         if info.get("external_ids"):
-            self.tvdb_id = info.get("external_ids", {}).get("tvdb_id", 0)
-            self.imdb_id = info.get("external_ids", {}).get("imdb_id", "")
+            self.tvdb_id = info.get("external_ids", {}).get("tvdb_id")
+            self.imdb_id = info.get("external_ids", {}).get("imdb_id")
         # 评分
         self.vote_average = round(float(info.get('vote_average')), 1) if info.get('vote_average') else 0
         # 描述
