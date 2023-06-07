@@ -37,6 +37,13 @@ class SearchChain(_ChainBase):
         if not torrents:
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
             return []
+        # 过滤种子
+        result: List[TorrentInfo] = self.run_module("filter_torrents", torrent_list=torrents)
+        if result is not None:
+            torrents = result
+        if not torrents:
+            logger.warn(f'{keyword or mediainfo.title} 没有符合过滤条件的资源')
+            return []
         # 过滤不匹配的资源
         _match_torrents = []
         if mediainfo:
@@ -61,13 +68,6 @@ class SearchChain(_ChainBase):
                     _match_torrents.append(torrent)
         else:
             _match_torrents = torrents
-        # 过滤种子
-        result: List[TorrentInfo] = self.run_module("filter_torrents", torrent_list=_match_torrents)
-        if result is not None:
-            _match_torrents = result
-        if not _match_torrents:
-            logger.warn(f'{keyword or mediainfo.title} 没有符合过滤条件的资源')
-            return []
         # 组装上下文返回
         return [Context(meta=MetaInfo(torrent.title),
                         mediainfo=mediainfo,

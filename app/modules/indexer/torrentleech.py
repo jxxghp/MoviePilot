@@ -24,6 +24,11 @@ class TorrentLeech:
             self._proxy = settings.PROXY
 
     def search(self, keyword: str, page: int = 0) -> Tuple[bool, List[dict]]:
+
+        if StringUtils.is_chinese(keyword):
+            # 不支持中文
+            return True, []
+
         if keyword:
             url = self._searchurl % (self._indexer.get('domain'), quote(keyword))
         else:

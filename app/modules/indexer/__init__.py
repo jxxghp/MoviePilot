@@ -11,6 +11,7 @@ from app.modules import _ModuleBase
 from app.modules.indexer.spider import TorrentSpider
 from app.modules.indexer.tnode import TNodeSpider
 from app.modules.indexer.torrentleech import TorrentLeech
+from app.utils.string import StringUtils
 from app.utils.types import MediaType
 
 
@@ -72,6 +73,13 @@ class IndexerModule(_ModuleBase):
             search_word = mediainfo.title
         else:
             search_word = None
+
+        if search_word \
+                and site.get('language') == "en" \
+                and StringUtils.is_chinese(search_word):
+            # 不支持中文
+            return []
+
         # 开始索引
         result_array = []
         # 开始计时
