@@ -42,11 +42,5 @@ class RuleParser:
 if __name__ == '__main__':
     # 测试代码
     expression1 = "!BLU & (1080P | CN)"
-    expression2 = "!(A | B) & C"
-    expression3 = "A & B | C"
     parsed_expr1 = RuleParser().parse(expression1)
-    parsed_expr2 = RuleParser().parse(expression2)
-    parsed_expr3 = RuleParser().parse(expression3)
-    print(f"Parsed Expression 1: {parsed_expr1}")
-    print(f"Parsed Expression 2: {parsed_expr2}")
-    print(f"Parsed Expression 3: {parsed_expr3}")
+    print(parsed_expr1.as_list())
