@@ -5,8 +5,10 @@ RUN apk add --no-cache --virtual .build-deps \
         musl-dev \
         libxml2-dev \
         libxslt-dev \
+        python3-dev \
+        py3-pip \
     && ln -sf /usr/bin/python3 /usr/bin/python \
-    && python -m pip install --upgrade pip setuptools wheel \
+    && pip install --upgrade pip setuptools wheel \
     && apk del --purge .build-deps \
     && rm -rf /tmp/* /root/.cache /var/cache/apk/*
 ENV LANG="C.UTF-8" \
@@ -42,7 +44,7 @@ ENV LANG="C.UTF-8" \
     DOUBAN_USER_IDS=""
 COPY . /${WORKDIR}
 WORKDIR ${WORKDIR}
-RUN python -m pip install -r requirements.txt \
+RUN pip install -r requirements.txt \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf
 EXPOSE 3001
