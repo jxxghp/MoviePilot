@@ -46,9 +46,9 @@ ENV LANG="C.UTF-8" \
     DOUBAN_USER_IDS=""
 COPY . ${WORKDIR}
 WORKDIR ${WORKDIR}
-RUN python -m pip install -r requirements.txt \
+RUN /usr/bin/python3 -m pip install -r requirements.txt \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf
 EXPOSE 3001
 VOLUME ["/config"]
-ENTRYPOINT [ "python", "app/main.py" ]
+ENTRYPOINT [ "/usr/bin/python3", "app/main.py" ]
