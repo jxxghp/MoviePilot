@@ -8,7 +8,7 @@ RUN apk add --no-cache --virtual .build-deps \
         python3 \
         py3-pip \
     && ln -sf /usr/bin/python3 /usr/bin/python \
-    && pip install --upgrade pip setuptools wheel \
+    && python3 -m pip install --upgrade pip setuptools wheel \
     && apk del --purge .build-deps \
     && rm -rf /tmp/* /root/.cache /var/cache/apk/*
 ENV LANG="C.UTF-8" \
@@ -17,9 +17,9 @@ ENV LANG="C.UTF-8" \
     PUID=0 \
     PGID=0 \
     UMASK=000 \
-    WORKDIR="/NASbot" \
+    WORKDIR="/MoviePilot" \
     CONFIG_DIR="/config" \
-    API_TOKEN="nasbot" \
+    API_TOKEN="moviepilot" \
     LIBRARY_PATH="" \
     SUPERUSER="admin" \
     SUPERUSER_PASSWORD="password" \
@@ -42,9 +42,9 @@ ENV LANG="C.UTF-8" \
     FILTER_RULE="" \
     TRANSFER_TYPE="copy" \
     DOUBAN_USER_IDS=""
-COPY . /${WORKDIR}
+COPY . ${WORKDIR}
 WORKDIR ${WORKDIR}
-RUN pip install -r requirements.txt \
+RUN python3 -m pip install -r requirements.txt \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf
 EXPOSE 3001

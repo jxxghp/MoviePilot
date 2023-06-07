@@ -6,7 +6,7 @@ from pydantic import BaseSettings
 
 class Settings(BaseSettings):
     # 项目名称
-    PROJECT_NAME = "NASbot"
+    PROJECT_NAME = "MoviePilot"
     # API路径
     API_V1_STR: str = "/api/v1"
     # 密钥
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # 超级管理员密码
     SUPERUSER_PASSWORD: str = "password"
     # API密钥，需要更换
-    API_TOKEN: str = "nasbot"
+    API_TOKEN: str = "moviepilot"
     # 网络代理
     PROXY_HOST: str = None
     # 媒体信息搜索来源
