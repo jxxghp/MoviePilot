@@ -1,5 +1,4 @@
 FROM python:3.10.11-alpine3.17
-RUN apk update && apk add --no-cache gcc
 ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
     PS1="\u@\h:\w \$ " \
@@ -33,7 +32,7 @@ ENV LANG="C.UTF-8" \
     DOUBAN_USER_IDS=""
 WORKDIR ${WORKDIR}
 COPY . .
-RUN python3 -m pip install -r requirements.txt \
+RUN pip install cython && pip install -r requirements.txt \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf
 EXPOSE 3001
