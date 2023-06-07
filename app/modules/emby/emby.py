@@ -14,6 +14,11 @@ class Emby(metaclass=Singleton):
 
     def __init__(self):
         self._host = settings.EMBY_HOST
+        if self._host:
+            if not self._host.endswith("/"):
+                self._host += "/"
+            if not self._host.startswith("http"):
+                self._host = "http://" + self._host
         self._apikey = settings.EMBY_API_KEY
         self._user = self.get_user()
         self._folders = self.get_emby_folders()

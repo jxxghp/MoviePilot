@@ -7,6 +7,7 @@ import feapder
 from feapder.utils.tools import urlencode
 from jinja2 import Template
 from pyquery import PyQuery
+from ruamel.yaml import CommentedMap
 
 from app.core import settings
 from app.log import logger
@@ -81,7 +82,7 @@ class TorrentSpider(feapder.AirSpider):
     # 种子列表
     torrents_info_array: list = []
 
-    def setparam(self, indexer,
+    def setparam(self, indexer: CommentedMap,
                  keyword: [str, list] = None,
                  page=None,
                  referer=None,

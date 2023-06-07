@@ -3,6 +3,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
+from ruamel.yaml import CommentedMap
+
 from app.core import MediaInfo, TorrentInfo
 from app.log import logger
 from app.modules import _ModuleBase
@@ -23,7 +25,7 @@ class IndexerModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "INDEXER", "builtin"
 
-    def search_torrents(self, mediainfo: Optional[MediaInfo], sites: List[dict],
+    def search_torrents(self, mediainfo: Optional[MediaInfo], sites: List[CommentedMap],
                         keyword: str = None) -> Optional[List[TorrentInfo]]:
         """
         搜索站点，多个站点需要多线程处理
@@ -54,7 +56,7 @@ class IndexerModule(_ModuleBase):
         # 返回
         return results
 
-    def __search(self, mediainfo: MediaInfo, site: dict,
+    def __search(self, mediainfo: MediaInfo, site: CommentedMap,
                  keyword: str = None) -> Optional[List[TorrentInfo]]:
         """
         搜索一个站点
@@ -111,7 +113,7 @@ class IndexerModule(_ModuleBase):
                                 **result) for result in result_array]
 
     @staticmethod
-    def __spider_search(indexer: dict,
+    def __spider_search(indexer: CommentedMap,
                         keyword: str = None,
                         mtype: MediaType = None,
                         page: int = None, timeout: int = 30) -> (bool, List[dict]):
@@ -145,7 +147,7 @@ class IndexerModule(_ModuleBase):
         _spider.torrents_info_array.clear()
         return result_flag, result_array
 
-    def refresh_torrents(self, sites: List[dict]) -> Optional[List[TorrentInfo]]:
+    def refresh_torrents(self, sites: List[CommentedMap]) -> Optional[List[TorrentInfo]]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
         :param sites:  站点列表

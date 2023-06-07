@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional, List, Tuple, Union, Set
 
 from fastapi import Request
+from ruamel.yaml import CommentedMap
 
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
@@ -93,7 +94,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def search_torrents(self, mediainfo: Optional[MediaInfo], sites: List[dict],
+    def search_torrents(self, mediainfo: Optional[MediaInfo], sites: List[CommentedMap],
                         keyword: str = None) -> Optional[List[TorrentInfo]]:
         """
         搜索站点，多个站点需要多线程处理
@@ -104,7 +105,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def refresh_torrents(self, sites: List[dict]) -> Optional[List[TorrentInfo]]:
+    def refresh_torrents(self, sites: List[CommentedMap]) -> Optional[List[TorrentInfo]]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
         :param sites:  站点列表

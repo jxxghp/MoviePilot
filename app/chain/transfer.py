@@ -27,11 +27,14 @@ class TransferChain(_ChainBase):
         for torrent in torrents:
             # 识别元数据
             meta = MetaInfo(torrent.get("title"))
+            if not meta.get_name():
+                logger.warn(f'未识别到元数据，标题：{torrent.get("title")}')
+                continue
             # 识别媒体信息
             mediainfo: MediaInfo = self.run_module('recognize_media', meta=meta)
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{torrent.get("title")}')
-                return False
+                continue
             logger.info(f"{torrent.get('title')} 识别为：{mediainfo.type.value} {mediainfo.get_title_string()}")
             # 更新媒体图片
             self.run_module("obtain_image", mediainfo=mediainfo)
@@ -39,7 +42,7 @@ class TransferChain(_ChainBase):
             dest_path: Path = self.run_module("transfer", mediainfo=mediainfo, path=torrent.get("path"))
             if not dest_path:
                 logger.warn(f"{torrent.get('title')} 转移失败")
-                return False
+                continue
             # 刮剥
             self.run_module("scrape_metadata", path=dest_path, mediainfo=mediainfo)
 

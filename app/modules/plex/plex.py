@@ -14,6 +14,11 @@ class Plex(metaclass=Singleton):
 
     def __init__(self):
         self._host = settings.PLEX_HOST
+        if self._host:
+            if not self._host.endswith("/"):
+                self._host += "/"
+            if not self._host.startswith("http"):
+                self._host = "http://" + self._host
         self._token = settings.PLEX_TOKEN
         if self._host and self._token:
             try:

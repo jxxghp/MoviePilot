@@ -1,3 +1,4 @@
+import traceback
 from abc import abstractmethod
 from typing import Optional, Any
 
@@ -54,5 +55,5 @@ class _ChainBase(AbstractSingleton, metaclass=Singleton):
                     if temp:
                         result = temp
             except Exception as err:
-                logger.error(f"运行模块出错：{module.__class__.__name__} - {err}")
+                logger.error(f"运行模块 {method} 出错：{module.__class__.__name__} - {err}\n{traceback.print_exc()}")
         return result
