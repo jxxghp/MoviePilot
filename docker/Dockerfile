@@ -6,7 +6,6 @@ RUN apk add --no-cache --virtual .build-deps \
         libxml2-dev \
         libxslt-dev \
     && ln -sf /usr/bin/python3 /usr/bin/python \
-    && chmod +x /usr/bin/mc \
     && pip install --upgrade pip setuptools wheel \
     && pip install cython \
     && apk del --purge .build-deps \
