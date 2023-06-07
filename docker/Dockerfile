@@ -46,8 +46,6 @@ ENV LANG="C.UTF-8" \
 COPY . /${WORKDIR}
 WORKDIR ${WORKDIR}
 RUN python -m pip install -r requirements.txt \
-    && python setup.py \
-    && rm -f "${WORKDIR}/app/helper/sites.py" \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf
 EXPOSE 3001
