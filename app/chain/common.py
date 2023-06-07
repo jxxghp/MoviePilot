@@ -354,9 +354,6 @@ class CommonChain(_ChainBase):
 
         if not no_exists:
             no_exists = {}
-        if not mediainfo.seasons:
-            logger.error(f"媒体信息中没有季集信息：{mediainfo.get_title_string()}")
-            return False, {}
         if mediainfo.type == MediaType.MOVIE:
             # 电影
             exists_movies: Optional[dict] = self.run_module("media_exists", mediainfo)
@@ -365,6 +362,9 @@ class CommonChain(_ChainBase):
                 return True, {}
             return False, {}
         else:
+            if not mediainfo.seasons:
+                logger.error(f"媒体信息中没有季集信息：{mediainfo.get_title_string()}")
+                return False, {}
             # 电视剧
             exists_tvs: Optional[dict] = self.run_module("media_exists", mediainfo)
             if not exists_tvs:

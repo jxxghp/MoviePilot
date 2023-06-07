@@ -60,6 +60,7 @@ class DoubanSyncChain(_ChainBase):
                 if not doubaninfo:
                     logger.warn(f'未获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
                     continue
+                logger.info(f'获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
                 # 识别媒体信息
                 meta = MetaInfo(doubaninfo.get("original_title") or doubaninfo.get("title"))
                 if doubaninfo.get("year"):
@@ -75,6 +76,7 @@ class DoubanSyncChain(_ChainBase):
                 if exist_flag:
                     logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在')
                     continue
+                logger.info(f'{mediainfo.get_title_string()} 媒体库中不存在，开始搜索 ...')
                 # 搜索
                 contexts = self.searchchain.process(meta=meta, mediainfo=mediainfo)
                 if not contexts:

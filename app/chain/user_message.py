@@ -85,6 +85,7 @@ class UserMessageChain(_ChainBase):
                     self.common.post_message(
                         title=f"{mediainfo.type.value} {mediainfo.get_title_string()} 媒体库中已存在", userid=userid)
                     return
+                logger.info(f"{mediainfo.get_title_string()} 媒体库中不存在，开始搜索 ...")
                 # 搜索种子
                 contexts = self.searchchain.process(meta=self._current_meta, mediainfo=mediainfo)
                 if not contexts:
@@ -98,6 +99,7 @@ class UserMessageChain(_ChainBase):
                 }
                 self._current_page = 0
                 # 发送种子数据
+                logger.info(f"搜索到 {len(contexts)} 条数据，开始发送选择消息 ...")
                 self.__post_torrents_message(items=contexts[:self._page_size], userid=userid)
 
             elif cache_type == "Subscribe":
@@ -130,6 +132,7 @@ class UserMessageChain(_ChainBase):
                 else:
                     # 下载种子
                     torrent: TorrentInfo = cache_list[int(text) - 1]
+                    logger.info(f"开始下载种子：{torrent.title} - {torrent.enclosure}")
                     meta: MetaBase = MetaInfo(torrent.title)
                     torrent_file, _, _, _, error_msg = self.torrent.download_torrent(
                         url=torrent.enclosure,
@@ -242,6 +245,7 @@ class UserMessageChain(_ChainBase):
                 meta.year = year
             self._current_meta = meta
             # 开始搜索
+            logger.info(f"开始搜索：{meta.get_name()}")
             medias: Optional[List[MediaInfo]] = self.run_module('search_medias', meta=meta)
             if not medias:
                 self.common.post_message(title=f"{meta.get_name()} 没有找到对应的媒体信息！", userid=userid)
