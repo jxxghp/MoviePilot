@@ -42,8 +42,8 @@ ENV LANG="C.UTF-8" \
     FILTER_RULE="" \
     TRANSFER_TYPE="copy" \
     DOUBAN_USER_IDS=""
-COPY . ${WORKDIR}
 WORKDIR ${WORKDIR}
+COPY . .
 RUN pip install -r requirements.txt \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf
