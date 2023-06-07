@@ -1,5 +1,11 @@
+import sys
+from pathlib import Path
+
 import uvicorn as uvicorn
 from fastapi import FastAPI
+
+# 将项目根目录添加到模块搜索路径
+sys.path.append(str(Path(__file__).parent.absolute()))
 
 from app.api.apiv1 import api_router
 from app.core import settings, ModuleManager, PluginManager

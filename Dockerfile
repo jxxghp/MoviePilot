@@ -1,5 +1,4 @@
-FROM python:3.10.11-alpine3.17
-RUN apk update && apk add gcc
+FROM python:3.10.11-slim
 ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
     PS1="\u@\h:\w \$ " \
