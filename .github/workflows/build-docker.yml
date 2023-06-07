@@ -1,4 +1,4 @@
-name: NASbot Docker
+name: MoviePilot Docker
 on:
   workflow_dispatch:
 
