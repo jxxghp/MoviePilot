@@ -5,7 +5,7 @@ RUN apk add --no-cache --virtual .build-deps \
         musl-dev \
         libxml2-dev \
         libxslt-dev \
-        python3 \
+        python3-dev \
         py3-pip \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && python3 -m pip install --upgrade pip setuptools wheel \
