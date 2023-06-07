@@ -30,3 +30,4 @@ plexapi~=4.14.0
 transmission-rpc~=4.3.0
 feapder~=1.8.5
 Jinja2~=3.1.2
+pyparsing~=3.0.9
