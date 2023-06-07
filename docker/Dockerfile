@@ -1,4 +1,4 @@
-FROM alpine:3.17
+FROM alpine:3.17 AS Builder
 RUN apk add --no-cache --virtual .build-deps \
         libffi-dev \
         gcc \
@@ -8,9 +8,11 @@ RUN apk add --no-cache --virtual .build-deps \
         python3-dev \
         py3-pip \
     && ln -sf /usr/bin/python3 /usr/bin/python \
-    && python3 -m pip install --upgrade pip setuptools wheel \
+    && python -m pip install --upgrade pip setuptools wheel \
     && apk del --purge .build-deps \
-    && rm -rf /tmp/* /root/.cache /var/cache/apk/*
+    && rm -rf /tmp/* /root/.cache /var/cache/apk/* \
+FROM scratch AS APP
+COPY --from=Builder / /
 ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
     PS1="\u@\h:\w \$ " \
@@ -44,9 +46,9 @@ ENV LANG="C.UTF-8" \
     DOUBAN_USER_IDS=""
 COPY . ${WORKDIR}
 WORKDIR ${WORKDIR}
-RUN python3 -m pip install -r requirements.txt \
+RUN python -m pip install -r requirements.txt \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf
 EXPOSE 3001
 VOLUME ["/config"]
-ENTRYPOINT [ "python3", "app/main.py" ]
+ENTRYPOINT [ "python", "app/main.py" ]
