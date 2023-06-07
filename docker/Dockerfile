@@ -7,7 +7,6 @@ RUN apk add --no-cache --virtual .build-deps \
         libxslt-dev \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && python -m pip install --upgrade pip setuptools wheel \
-    && python -m pip install cython \
     && apk del --purge .build-deps \
     && rm -rf /tmp/* /root/.cache /var/cache/apk/*
 ENV LANG="C.UTF-8" \
