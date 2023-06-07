@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     RMT_AUDIO_TRACK_EXT: list = ['.mka']
     # 索引器
     INDEXER: str = "builtin"
+    # 索引站点，站点域名关键字使用,分隔
+    INDEXER_SITES: str = ""
     # 消息通知渠道 telegram/wechat
     MESSAGER: str = "telegram"
     # WeChat企业ID

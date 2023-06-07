@@ -14,4 +14,4 @@ class CookieCloudTest(TestCase):
 
     def test_cookiecloud(self):
         result = CookieCloudChain().process()
-        self.assertEqual(result[0], True)
+        self.assertTrue(result[0])

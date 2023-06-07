@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple, Union
 
 from ruamel.yaml import CommentedMap
 
-from app.core import MediaInfo, TorrentInfo
+from app.core import MediaInfo, TorrentInfo, settings
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.spider import TorrentSpider
@@ -73,6 +73,10 @@ class IndexerModule(_ModuleBase):
             search_word = mediainfo.title
         else:
             search_word = None
+
+        # 未开启的站点不搜索
+        if settings.INDEXER_SITES and not any([s in site.get("domain") for s in settings.INDEXER_SITES.split(',')]):
+            return []
 
         if search_word \
                 and site.get('language') == "en" \

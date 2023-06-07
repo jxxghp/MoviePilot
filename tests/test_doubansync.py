@@ -14,4 +14,4 @@ class DoubanSyncTest(TestCase):
 
     def test_doubansync(self):
         result = DoubanSyncChain().process()
-        self.assertEqual(result[0], True)
+        self.assertTrue(result[0])

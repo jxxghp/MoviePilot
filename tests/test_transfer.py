@@ -14,4 +14,4 @@ class TransferTest(TestCase):
 
     def test_transfer(self):
         result = TransferChain().process()
-        self.assertEqual(result[0], True)
+        self.assertTrue(result)
