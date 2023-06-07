@@ -30,6 +30,8 @@ class QbittorrentModule(_ModuleBase):
             return None, f"种子文件不存在：{torrent_path}"
         # 生成随机Tag
         tag = StringUtils.generate_random_str(10)
+        if settings.TORRENT_TAG:
+            tag = [tag, settings.TORRENT_TAG]
         # 如果要选择文件则先暂停
         is_paused = True if episodes else False
         # 添加任务
@@ -75,16 +77,22 @@ class QbittorrentModule(_ModuleBase):
                 else:
                     return torrent_hash, "添加下载成功"
 
+    def transfer_completed(self, hashs: Union[str, list]) -> bool:
+        """
+        转移完成后的处理
+        :param hashs:  种子Hash
+        :return: 处理状态
+        """
+        return self.qbittorrent.set_torrents_tag(ids=hashs, tag=['已整理'])
+
     def list_torrents(self, status: TorrentStatus) -> Optional[List[dict]]:
         """
         获取下载器种子列表
         :param status:  种子状态
         :return: 下载器中符合状态的种子列表
         """
-        if status == TorrentStatus.COMPLETE:
-            torrents = self.qbittorrent.get_completed_torrents()
-        elif status == TorrentStatus.DOWNLOADING:
-            torrents = self.qbittorrent.get_downloading_torrents()
+        if status == TorrentStatus.TRANSFER:
+            torrents = self.qbittorrent.get_transfer_torrents(tag=settings.TORRENT_TAG)
         else:
             return None
         return torrents

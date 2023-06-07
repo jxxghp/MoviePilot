@@ -8,8 +8,7 @@ class MediaType(Enum):
 
 
 class TorrentStatus(Enum):
-    COMPLETE = "已完成"
-    DOWNLOADING = "下载中"
+    TRANSFER = "可转移"
 
 
 # 可监听事件

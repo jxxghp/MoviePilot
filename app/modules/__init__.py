@@ -157,6 +157,14 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
+    def transfer_completed(self, hashs: Union[str, list]) -> bool:
+        """
+        转移完成后的处理
+        :param hashs:  种子Hash
+        :return: 处理状态
+        """
+        pass
+
     def media_exists(self, mediainfo: MediaInfo) -> Optional[dict]:
         """
         判断媒体文件是否存在

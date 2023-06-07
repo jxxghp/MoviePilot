@@ -50,7 +50,7 @@ class Transmission(metaclass=Singleton):
             return None
 
     def get_torrents(self, ids: Union[str, list] = None, status: Union[str, list] = None,
-                     tag: Union[str, list] = None) -> Tuple[list, bool]:
+                     tag: Union[str, list] = None) -> Tuple[List[Torrent], bool]:
         """
         获取种子列表
         返回结果 种子列表, 是否有错误
@@ -81,7 +81,8 @@ class Transmission(metaclass=Singleton):
                 ret_torrents.append(torrent)
         return ret_torrents, False
 
-    def get_completed_torrents(self, ids: Union[str, list] = None, tag: Union[str, list] = None) -> Optional[list]:
+    def get_completed_torrents(self, ids: Union[str, list] = None,
+                               tag: Union[str, list] = None) -> Optional[List[Torrent]]:
         """
         获取已完成的种子列表
         return 种子列表, 发生错误时返回None
@@ -96,7 +97,7 @@ class Transmission(metaclass=Singleton):
             return None
 
     def get_downloading_torrents(self, ids: Union[str, list] = None,
-                                 tag: Union[str, list] = None) -> Optional[list]:
+                                 tag: Union[str, list] = None) -> Optional[List[Torrent]]:
         """
         获取正在下载的种子列表
         return 种子列表, 发生错误时返回None
@@ -112,30 +113,7 @@ class Transmission(metaclass=Singleton):
             logger.error(f"获取正在下载的种子列表出错：{err}")
             return None
 
-    def set_torrents_status(self, ids: Union[str, list],
-                            tags: Union[str, list] = None) -> bool:
-        """
-        设置种子为已整理状态
-        """
-        if not self.trc:
-            return False
-        # 合成标签
-        if tags:
-            if not isinstance(tags, list):
-                tags = [tags, "已整理"]
-            else:
-                tags.append("已整理")
-        else:
-            tags = ["已整理"]
-        # 打标签
-        try:
-            self.trc.change_torrent(labels=tags, ids=ids)
-            return True
-        except Exception as err:
-            logger.error(f"设置种子为已整理状态出错：{err}")
-            return False
-
-    def set_torrent_tag(self, ids: str, tag: Union[str, list]) -> bool:
+    def set_torrent_tag(self, ids: str, tag: list) -> bool:
         """
         设置种子标签
         """
@@ -148,7 +126,7 @@ class Transmission(metaclass=Singleton):
             logger.error(f"设置种子标签出错：{err}")
             return False
 
-    def get_transfer_task(self, tag: Union[str, list] = None) -> List[dict]:
+    def get_transfer_torrents(self, tag: Union[str, list] = None) -> List[dict]:
         """
         获取下载文件转移任务种子
         """
@@ -174,6 +152,7 @@ class Transmission(metaclass=Singleton):
                 logger.debug(f"未获取到 {torrent.name} 下载保存路径")
                 continue
             trans_tasks.append({
+                'title': torrent.name,
                 'path': Path(settings.DOWNLOAD_PATH) / torrent.name,
                 'id': torrent.hashString,
                 'tags': torrent.labels
@@ -183,12 +162,14 @@ class Transmission(metaclass=Singleton):
     def add_torrent(self, content: Union[str, bytes],
                     is_paused: bool = False,
                     download_dir: str = None,
+                    labels=None,
                     cookie=None) -> Optional[Torrent]:
         """
         添加下载任务
         :param content: 种子urls或文件内容
         :param is_paused: 添加后暂停
         :param download_dir: 下载路径
+        :param labels: 标签
         :param cookie: 站点Cookie用于辅助下载种子
         :return: Torrent
         """
@@ -196,6 +177,7 @@ class Transmission(metaclass=Singleton):
             return self.trc.add_torrent(torrent=content,
                                         download_dir=download_dir,
                                         paused=is_paused,
+                                        labels=labels,
                                         cookies=cookie)
         except Exception as err:
             logger.error(f"添加种子出错：{err}")

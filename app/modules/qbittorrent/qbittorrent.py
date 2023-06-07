@@ -1,9 +1,9 @@
 import time
 from pathlib import Path
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, List
 
 import qbittorrentapi
-from qbittorrentapi import TorrentFilesList
+from qbittorrentapi import TorrentFilesList, TorrentDictionary
 from qbittorrentapi.client import Client
 
 from app.core import settings
@@ -51,7 +51,8 @@ class Qbittorrent(metaclass=Singleton):
             return None
 
     def get_torrents(self, ids: Union[str, list] = None,
-                     status: Union[str, list] = None, tag: Union[str, list] = None) -> Tuple[list, bool]:
+                     status: Union[str, list] = None,
+                     tag: Union[str, list] = None) -> Tuple[List[TorrentDictionary], bool]:
         """
         获取种子列表
         return: 种子列表, 是否发生异常
@@ -73,14 +74,14 @@ class Qbittorrent(metaclass=Singleton):
                             break
                     if include_flag:
                         results.append(torrent)
-                return results or [], False
+                return results, False
             return torrents or [], False
         except Exception as err:
             logger.error(f"获取种子列表出错：{err}")
             return [], True
 
     def get_completed_torrents(self, ids: Union[str, list] = None,
-                               tag: Union[str, list] = None) -> Optional[list]:
+                               tag: Union[str, list] = None) -> Optional[List[TorrentDictionary]]:
         """
         获取已完成的种子
         return: 种子列表, 如发生异常则返回None
@@ -91,7 +92,7 @@ class Qbittorrent(metaclass=Singleton):
         return None if error else torrents or []
 
     def get_downloading_torrents(self, ids: Union[str, list] = None,
-                                 tag: Union[str, list] = None) -> Optional[list]:
+                                 tag: Union[str, list] = None) -> Optional[List[TorrentDictionary]]:
         """
         获取正在下载的种子
         return: 种子列表, 如发生异常则返回None
@@ -116,7 +117,7 @@ class Qbittorrent(metaclass=Singleton):
             logger.error(f"移除种子Tag出错：{err}")
             return False
 
-    def set_torrents_status(self, ids: Union[str, list]):
+    def set_torrents_tag(self, ids: Union[str, list], tag: list):
         """
         设置种子状态为已整理，以及是否强制做种
         """
@@ -124,7 +125,7 @@ class Qbittorrent(metaclass=Singleton):
             return
         try:
             # 打标签
-            self.qbc.torrents_add_tags(tags="已整理", torrent_hashes=ids)
+            self.qbc.torrents_add_tags(tags=tag, torrent_hashes=ids)
         except Exception as err:
             logger.error(f"设置种子Tag出错：{err}")
 
@@ -137,7 +138,7 @@ class Qbittorrent(metaclass=Singleton):
         except Exception as err:
             logger.error(f"设置强制作种出错：{err}")
 
-    def get_transfer_task(self, tag: Union[str, list] = None) -> Optional[list]:
+    def get_transfer_torrents(self, tag: Union[str, list] = None) -> Optional[List[dict]]:
         """
         获取下载文件转移任务种子
         """
@@ -166,8 +167,10 @@ class Qbittorrent(metaclass=Singleton):
             else:
                 trans_name = torrent.get('name')
             trans_tasks.append({
+                'title': torrent.get('name'),
                 'path': Path(settings.DOWNLOAD_PATH) / trans_name,
-                'id': torrent.get('hash')
+                'id': torrent.get('hash'),
+                'tags': torrent.get('tags')
             })
         return trans_tasks
 

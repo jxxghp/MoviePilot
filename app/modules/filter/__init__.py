@@ -1,8 +1,6 @@
 import re
 from typing import List, Tuple, Union, Dict, Optional
 
-from pyparsing import ParseResults
-
 from app.core import TorrentInfo, settings
 from app.modules import _ModuleBase
 from app.modules.filter.RuleParser import RuleParser

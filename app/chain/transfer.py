@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from app.chain import _ChainBase
-from app.core import MetaInfo, MediaInfo
+from app.core import MetaInfo, MediaInfo, settings
 from app.log import logger
 from app.utils.types import TorrentStatus
 
@@ -18,7 +18,7 @@ class TransferChain(_ChainBase):
         """
         logger.info("开始执行下载器文件转移 ...")
         # 从下载器获取种子列表
-        torrents: Optional[List[dict]] = self.run_module("list_torrents", status=TorrentStatus.COMPLETE)
+        torrents: Optional[List[dict]] = self.run_module("list_torrents", status=TorrentStatus.TRANSFER)
         if not torrents:
             logger.info("没有获取到已完成的下载任务")
             return False
@@ -43,8 +43,15 @@ class TransferChain(_ChainBase):
             if not dest_path:
                 logger.warn(f"{torrent.get('title')} 转移失败")
                 continue
+            # 转移完成
+            self.run_module("transfer_completed", hashs=torrent.get("hash"))
             # 刮剥
             self.run_module("scrape_metadata", path=dest_path, mediainfo=mediainfo)
+            # 移动模式删除种子
+            if settings.TRANSFER_TYPE == "move":
+                result = self.run_module("remove_torrents", hashs=torrent.get("hash"))
+                if result:
+                    logger.info(f"移动模式删除种子成功：{torrent.get('title')} ")
 
         logger.info("下载器文件转移执行完成")
         return True
