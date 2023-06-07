@@ -1,4 +1,4 @@
-FROM alpine:3.17 AS Builder
+FROM alpine:3.17
 RUN apk add --no-cache --virtual .build-deps \
         libffi-dev \
         gcc \
@@ -11,7 +11,6 @@ RUN apk add --no-cache --virtual .build-deps \
     && pip install cython \
     && apk del --purge .build-deps \
     && rm -rf /tmp/* /root/.cache /var/cache/apk/*
-COPY --from=Builder / /
 ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
     PS1="\u@\h:\w \$ " \
