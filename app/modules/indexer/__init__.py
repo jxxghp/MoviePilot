@@ -53,7 +53,7 @@ class IndexerModule(_ModuleBase):
                 results += result
         # 计算耗时
         end_time = datetime.now()
-        logger.info(f"所有站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
+        logger.info(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
         # 返回
         return results
 
@@ -73,10 +73,6 @@ class IndexerModule(_ModuleBase):
             search_word = mediainfo.title
         else:
             search_word = None
-
-        # 未开启的站点不搜索
-        if settings.INDEXER_SITES and not any([s in site.get("domain") for s in settings.INDEXER_SITES.split(',')]):
-            return []
 
         if search_word \
                 and site.get('language') == "en" \

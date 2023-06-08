@@ -2,7 +2,7 @@ from typing import Optional, List
 
 from app.chain import _ChainBase
 from app.chain.common import CommonChain
-from app.core import Context, MetaInfo, MediaInfo, TorrentInfo
+from app.core import Context, MetaInfo, MediaInfo, TorrentInfo, settings
 from app.core.meta import MetaBase
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -26,13 +26,22 @@ class SearchChain(_ChainBase):
         :param mediainfo: 媒体信息
         :param keyword: 搜索关键词
         """
-        # 执行搜索
         logger.info(f'开始搜索资源，关键词：{keyword or mediainfo.title} ...')
+        # 未开启的站点不搜索
+        indexer_sites = []
+        for indexer in self.siteshelper.get_indexers():
+            if settings.INDEXER_SITES \
+                    and any([s in indexer.get("domain") for s in settings.INDEXER_SITES.split(',')]):
+                indexer_sites.append(indexer)
+        if not indexer_sites:
+            logger.warn('未开启任何有效站点，无法搜索资源')
+            return []
+        # 执行搜索
         torrents: List[TorrentInfo] = self.run_module(
             'search_torrents',
             mediainfo=mediainfo,
             keyword=keyword,
-            sites=self.siteshelper.get_indexers()
+            sites=indexer_sites
         )
         if not torrents:
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')

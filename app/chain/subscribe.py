@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 from app.chain import _ChainBase
 from app.chain.common import CommonChain
 from app.chain.search import SearchChain
-from app.core import MetaInfo, TorrentInfo, Context, MediaInfo
+from app.core import MetaInfo, TorrentInfo, Context, MediaInfo, settings
 from app.db.subscribes import Subscribes
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -122,6 +122,10 @@ class SubscribeChain(_ChainBase):
         indexers = self.siteshelper.get_indexers()
         # 遍历站点缓存资源
         for indexer in indexers:
+            # 未开启的站点不搜索
+            if settings.INDEXER_SITES \
+                    and not any([s in indexer.get("domain") for s in settings.INDEXER_SITES.split(',')]):
+                continue
             logger.info(f'开始刷新站点资源，站点：{indexer.get("name")} ...')
             domain = StringUtils.get_url_domain(indexer.get("domain"))
             torrents: List[TorrentInfo] = self.run_module("refresh_torrents", sites=[indexer])
