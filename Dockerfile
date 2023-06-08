@@ -9,6 +9,7 @@ ENV LANG="C.UTF-8" \
     CONFIG_DIR="/config" \
     API_TOKEN="moviepilot" \
     LIBRARY_PATH="" \
+    DOWNLOAD_PATH="/downloads" \
     SUPERUSER="admin" \
     SUPERUSER_PASSWORD="password" \
     SEARCH_SOURCE="themoviedb" \
