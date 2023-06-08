@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import List, Optional, Tuple, Set
+from typing import List, Optional, Tuple, Set, Dict
 
 from app.chain import ChainBase
 from app.core import MediaInfo
@@ -79,7 +79,7 @@ class CommonChain(ChainBase):
                 ]
         """
         # 已下载的项目
-        downloaded_list: list = []
+        downloaded_list: List[Context] = []
 
         def __download_torrent(_torrent: TorrentInfo) -> Tuple[Optional[Path], list]:
             """
@@ -141,9 +141,9 @@ class CommonChain(ChainBase):
                                 userid=userid)
             return _hash
 
-        def __update_seasons(tmdbid, need, current):
+        def __update_seasons(tmdbid: str, need: list, current: list) -> list:
             """
-            更新need_tvs季数
+            更新need_tvs季数，返回剩余季数
             """
             need = list(set(need).difference(set(current)))
             for cur in current:
@@ -154,9 +154,9 @@ class CommonChain(ChainBase):
                 need_tvs.pop(tmdbid)
             return need
 
-        def __update_episodes(tmdbid, seq, need, current):
+        def __update_episodes(tmdbid: str, seq: int, need: list, current: set) -> list:
             """
-            更新need_tvs集数
+            更新need_tvs集数，返回剩余集数
             """
             need = list(set(need).difference(set(current)))
             if need:
@@ -167,7 +167,7 @@ class CommonChain(ChainBase):
                     need_tvs.pop(tmdbid)
             return need
 
-        def __get_season_episodes(tmdbid, season):
+        def __get_season_episodes(tmdbid: str, season: int) -> int:
             """
             获取需要的季的集数
             """
@@ -186,7 +186,7 @@ class CommonChain(ChainBase):
         # 电视剧整季匹配
         if need_tvs:
             # 先把整季缺失的拿出来，看是否刚好有所有季都满足的种子
-            need_seasons = {}
+            need_seasons: Dict[str, list] = {}
             for need_tmdbid, need_tv in need_tvs.items():
                 for tv in need_tv:
                     if not tv:
@@ -223,6 +223,7 @@ class CommonChain(ChainBase):
                                     continue
                             else:
                                 download_id = __download(context)
+
                             if download_id:
                                 # 更新仍需季集
                                 need_season = __update_seasons(tmdbid=need_tmdbid,

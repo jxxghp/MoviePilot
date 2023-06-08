@@ -279,7 +279,7 @@ class MediaInfo(object):
         # 本体
         self.douban_info = info
         # 豆瓣ID
-        self.douban_id = info.get("id")
+        self.douban_id = str(info.get("id"))
         # 评分
         if not self.vote_average:
             rating = info.get('rating')
@@ -350,7 +350,7 @@ class MediaInfo(object):
         返回背景图片地址
         """
         if self.backdrop_path:
-            return self.backdrop_path
+            return self.backdrop_path.replace("original", "w500")
         return default or ""
 
     def get_message_image(self, default: bool = None):
@@ -358,7 +358,7 @@ class MediaInfo(object):
         返回消息图片地址
         """
         if self.backdrop_path:
-            return self.backdrop_path
+            return self.backdrop_path.replace("original", "w500")
         return self.get_poster_image(default=default)
 
     def get_poster_image(self, default: bool = None):
@@ -366,7 +366,7 @@ class MediaInfo(object):
         返回海报图片地址
         """
         if self.poster_path:
-            return self.poster_path
+            return self.poster_path.replace("original", "w500")
         return default or ""
 
     def get_title_string(self):

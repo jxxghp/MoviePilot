@@ -128,7 +128,24 @@ class UserMessageChain(ChainBase):
                                                  userid=userid)
                         return
                     # 批量下载
-                    self.common.batch_download(contexts=cache_list, need_tvs=no_exists, userid=userid)
+                    downloads, lefts = self.common.batch_download(contexts=cache_list,
+                                                                  need_tvs=no_exists,
+                                                                  userid=userid)
+                    if downloads and not lefts:
+                        # 全部下载完成
+                        logger.info(f'{self._current_media.get_title_string()} 下载完成')
+                    else:
+                        # 未完成下载
+                        logger.info(f'{self._current_media.get_title_string()} 未下载未完整，添加订阅 ...')
+                        # 添加订阅
+                        state, msg = self.subscribes.add(self._current_media,
+                                                         season=self._current_meta.begin_season)
+                        if state:
+                            # 订阅成功
+                            self.common.post_message(
+                                title=f"{self._current_media.get_title_string()} 已添加订阅",
+                                text=f"用户：{userid}",
+                                image=self._current_media.get_message_image())
                 else:
                     # 下载种子
                     torrent: TorrentInfo = cache_list[int(text) - 1]

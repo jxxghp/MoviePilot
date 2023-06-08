@@ -143,7 +143,7 @@ class TmdbCache(metaclass=Singleton):
             if cache_year:
                 cache_year = cache_year[:4]
             self._meta_data[self.__get_key(meta)] = {
-                    "id": info.get("id"),
+                    "id": str(info.get("id")),
                     "type": info.get("media_type"),
                     "year": cache_year,
                     "title": cache_title,

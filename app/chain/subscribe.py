@@ -105,8 +105,8 @@ class SubscribeChain(ChainBase):
                 logger.warn(f'{subscribe.keyword or subscribe.name} 未搜索到资源')
                 continue
             # 自动下载
-            _, lefts = self.common.batch_download(contexts=contexts, need_tvs=no_exists)
-            if not lefts:
+            downloads, lefts = self.common.batch_download(contexts=contexts, need_tvs=no_exists)
+            if downloads and not lefts:
                 # 全部下载完成
                 logger.info(f'{mediainfo.get_title_string()} 下载完成，完成订阅')
                 self.subscribes.delete(subscribe.id)
@@ -195,8 +195,8 @@ class SubscribeChain(ChainBase):
             logger(f'{mediainfo.get_title_string()} 匹配完成，共匹配到{len(_match_context)}个资源')
             if _match_context:
                 # 批量择优下载
-                _, lefts = self.common.batch_download(contexts=_match_context, need_tvs=no_exists)
-                if not lefts:
+                downloads, lefts = self.common.batch_download(contexts=_match_context, need_tvs=no_exists)
+                if downloads and not lefts:
                     # 全部下载完成
                     logger.info(f'{mediainfo.get_title_string()} 下载完成，完成订阅')
                     self.subscribes.delete(subscribe.id)

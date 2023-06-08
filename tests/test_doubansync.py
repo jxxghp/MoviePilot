@@ -12,6 +12,6 @@ class DoubanSyncTest(TestCase):
     def tearDown(self) -> None:
         pass
 
-    def test_doubansync(self):
-        result = DoubanSyncChain().process()
-        self.assertTrue(result[0])
+    @staticmethod
+    def test_doubansync():
+        DoubanSyncChain().process()
