@@ -167,6 +167,8 @@ class Telegram(metaclass=Singleton):
 
         # 发送图文消息
         if image:
+            # 转换TMDB图片质量
+            image = image.replace("original", "w500")
             res = request.get_res("https://api.telegram.org/bot%s/sendPhoto?" % self._telegram_token + urlencode(
                 {"chat_id": chat_id, "photo": image, "caption": caption, "parse_mode": "Markdown"}))
             if __res_parse(res):

@@ -216,7 +216,7 @@ class CommonChain(ChainBase):
                                 torrent_episodes = self.torrent.get_torrent_episodes(torrent_files)
                                 if not torrent_episodes \
                                         or len(torrent_episodes) >= __get_season_episodes(need_tmdbid, item_season[0]):
-                                    _, download_id = __download(_context=context, _torrent_file=torrent_path)
+                                    download_id = __download(_context=context, _torrent_file=torrent_path)
                                 else:
                                     logger.info(
                                         f"【Downloader】种子 {meta.org_string} 未含集数信息，解析文件数为 {len(torrent_episodes)}")
