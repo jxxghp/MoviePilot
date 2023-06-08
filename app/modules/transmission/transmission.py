@@ -155,7 +155,7 @@ class Transmission(metaclass=Singleton):
                 continue
             trans_tasks.append({
                 'title': torrent.name,
-                'path': Path(settings.DOWNLOAD_PATH) / torrent.name,
+                'path': Path(path) / torrent.name,
                 'id': torrent.hashString,
                 'tags': torrent.labels
             })
