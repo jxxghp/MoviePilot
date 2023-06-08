@@ -1,11 +1,10 @@
 from abc import abstractmethod, ABCMeta
 from pathlib import Path
-from typing import Optional, List, Tuple, Union, Set
+from typing import Optional, List, Tuple, Union, Set, Any
 
-from fastapi import Request
 from ruamel.yaml import CommentedMap
 
-from app.core.context import MediaInfo, TorrentInfo
+from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.meta import MetaBase
 from app.utils.types import TorrentStatus
 
@@ -59,13 +58,15 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def message_parser(self, request: Request) -> Optional[dict]:
+    def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
         username: 用户名
         text: 内容
-        :param request:  请求体
+        :param body: 请求体
+        :param form: 表单
+        :param args: 参数
         :return: 消息内容、用户ID
         """
         pass
@@ -205,7 +206,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def post_torrents_message(self, title: str, items: List[TorrentInfo],
+    def post_torrents_message(self, title: str, items: List[Context],
                               userid: Union[str, int] = None) -> Optional[bool]:
         """
         发送种子信息选择列表

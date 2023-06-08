@@ -2,7 +2,7 @@ from threading import Event, Thread
 from typing import Optional, List
 from urllib.parse import urlencode
 
-from app.core import settings, MediaInfo, TorrentInfo
+from app.core import settings, MediaInfo, TorrentInfo, Context
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
@@ -28,6 +28,7 @@ class Telegram(metaclass=Singleton):
         # 消息轮循
         if self._telegram_token and self._telegram_chat_id:
             self._thread = Thread(target=self.__start_telegram_message_proxy)
+            self._thread.start()
 
     def send_msg(self, title: str, text: str = "", image: str = "", userid: str = "") -> Optional[bool]:
         """
@@ -46,19 +47,10 @@ class Telegram(metaclass=Singleton):
             return False
 
         try:
-            # text中的Markdown特殊字符转义
-            text = text.replace("[", r"\[").replace("_", r"\_").replace("*", r"\*").replace("`", r"\`")
-            # 拼装消息内容
-            titles = str(title).split('\n')
-            if len(titles) > 1:
-                title = titles[0]
-                if not text:
-                    text = "\n".join(titles[1:])
-                else:
-                    text = "%s\n%s" % ("\n".join(titles[1:]), text)
-
             if text:
-                caption = "*%s*\n%s" % (title, text.replace("\n\n", "\n"))
+                # text中的Markdown特殊字符转义
+                text = text.replace("[", r"\[").replace("_", r"\_").replace("*", r"\*").replace("`", r"\`").replace("\n\n", "\n")
+                caption = f"*{title}*\n{text}"
             else:
                 caption = title
 
@@ -85,19 +77,19 @@ class Telegram(metaclass=Singleton):
             for media in medias:
                 if not image:
                     image = media.get_message_image()
-                if media.get_vote_string():
+                if media.vote_average:
                     caption = "%s\n%s. [%s](%s)\n%s，%s" % (caption,
                                                            index,
                                                            media.get_title_string(),
                                                            media.get_detail_url(),
-                                                           media.get_type_string(),
-                                                           media.get_vote_string())
+                                                           f"类型：{media.type.value}",
+                                                           f"评分：{media.vote_average}")
                 else:
                     caption = "%s\n%s. [%s](%s)\n%s" % (caption,
                                                         index,
                                                         media.get_title_string(),
                                                         media.get_detail_url(),
-                                                        media.get_type_string())
+                                                        f"类型：{media.type.value}")
                 index += 1
 
             if userid:
@@ -111,7 +103,7 @@ class Telegram(metaclass=Singleton):
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_torrents_msg(self, torrents: List[TorrentInfo], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_torrents_msg(self, torrents: List[Context], userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表消息
         """
@@ -120,7 +112,8 @@ class Telegram(metaclass=Singleton):
 
         try:
             index, caption = 1, "*%s*" % title
-            for torrent in torrents:
+            for context in torrents:
+                torrent = context.torrent_info
                 link = torrent.page_url
                 title = torrent.title
                 free = torrent.get_volume_factor_string()
@@ -167,18 +160,13 @@ class Telegram(metaclass=Singleton):
 
         # 发送图文消息
         if image:
-            res = request.get_res("https://api.telegram.org/bot%s/sendPhoto?" % self._telegram_token + urlencode(
-                {"chat_id": chat_id, "photo": image, "caption": caption, "parse_mode": "Markdown"}))
-            if __res_parse(res):
-                return True
-            else:
-                photo_req = request.get_res(image)
-                if photo_req and photo_req.content:
-                    res = request.post_res("https://api.telegram.org/bot%s/sendPhoto" % self._telegram_token,
-                                           data={"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"},
-                                           files={"photo": photo_req.content})
-                    if __res_parse(res):
-                        return True
+            photo_req = request.get_res(image)
+            if photo_req and photo_req.content:
+                res = request.post_res("https://api.telegram.org/bot%s/sendPhoto" % self._telegram_token,
+                                       data={"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"},
+                                       files={"photo": photo_req.content})
+                if __res_parse(res):
+                    return True
         # 发送文本消息
         res = request.get_res("https://api.telegram.org/bot%s/sendMessage?" % self._telegram_token + urlencode(
             {"chat_id": chat_id, "text": caption, "parse_mode": "Markdown"}))

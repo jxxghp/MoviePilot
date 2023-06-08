@@ -3,7 +3,7 @@ import threading
 from datetime import datetime
 from typing import Optional, List
 
-from app.core import settings, MediaInfo, TorrentInfo
+from app.core import settings, MediaInfo, Context
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
@@ -165,10 +165,10 @@ class WeChat(metaclass=Singleton):
         articles = []
         index = 1
         for media in medias:
-            if media.get_vote_string():
-                title = f"{index}. {media.get_title_string()}\n{media.get_type_string()}，{media.get_vote_string()}"
+            if media.vote_average:
+                title = f"{index}. {media.get_title_string()}\n类型：{media.type.value}，评分：{media.vote_average}"
             else:
-                title = f"{index}. {media.get_title_string()}\n{media.get_type_string()}"
+                title = f"{index}. {media.get_title_string()}\n类型：{media.type.value}"
             articles.append({
                 "title": title,
                 "description": "",
@@ -187,7 +187,7 @@ class WeChat(metaclass=Singleton):
         }
         return self.__post_request(message_url, req_json)
 
-    def send_torrents_msg(self, torrents: List[TorrentInfo], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_torrents_msg(self, torrents: List[Context], userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表消息
         """
@@ -197,7 +197,8 @@ class WeChat(metaclass=Singleton):
 
         try:
             index, caption = 1, "*%s*" % title
-            for torrent in torrents:
+            for context in torrents:
+                torrent = context.torrent_info
                 link = torrent.page_url
                 title = torrent.title
                 free = torrent.get_volume_factor_string()

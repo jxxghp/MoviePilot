@@ -1,8 +1,7 @@
-from typing import Optional, Union, List, Tuple
+import json
+from typing import Optional, Union, List, Tuple, Any
 
-from fastapi import Request
-
-from app.core import MediaInfo, TorrentInfo, settings
+from app.core import MediaInfo, settings, Context
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.telegram.telegram import Telegram
@@ -18,13 +17,15 @@ class TelegramModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MESSAGER", "telegram"
 
-    async def message_parser(self, request: Request) -> Optional[dict]:
+    def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
         username: 用户名
         text: 内容
-        :param request:  请求体
+        :param body: 请求体
+        :param form: 表单
+        :param args: 参数
         :return: 消息内容、用户ID
         """
         """
@@ -50,7 +51,11 @@ class TelegramModule(_ModuleBase):
                 }
             }
         """
-        msg_json: dict = await request.json()
+        try:
+            msg_json: dict = json.loads(body)
+        except Exception as err:
+            logger.error(f"解析Telegram消息失败：{err}")
+            return None
         if msg_json:
             message = msg_json.get("message", {})
             text = message.get("text")
@@ -61,12 +66,15 @@ class TelegramModule(_ModuleBase):
                 logger.info(f"收到Telegram消息：userid={user_id}, username={user_name}, text={text}")
                 # 检查权限
                 if text.startswith("/"):
-                    if str(user_id) not in settings.TELEGRAM_ADMINS.split(',') \
+                    if settings.TELEGRAM_ADMINS \
+                            and str(user_id) not in settings.TELEGRAM_ADMINS.split(',') \
                             and str(user_id) != settings.TELEGRAM_CHAT_ID:
                         self.telegram.send_msg(title="只有管理员才有权限执行此命令", userid=user_id)
                         return {}
                 else:
-                    if not str(user_id) in settings.TELEGRAM_USERS.split(','):
+                    if settings.TELEGRAM_USERS \
+                            and not str(user_id) in settings.TELEGRAM_USERS.split(','):
+                        logger.info(f"用户{user_id}不在用户白名单中，无法使用此机器人")
                         self.telegram.send_msg(title="你不在用户白名单中，无法使用此机器人", userid=user_id)
                         return {}
                 return {
@@ -99,7 +107,7 @@ class TelegramModule(_ModuleBase):
         """
         return self.telegram.send_meidas_msg(title=title, medias=items, userid=userid)
 
-    def post_torrents_message(self, title: str, items: List[TorrentInfo],
+    def post_torrents_message(self, title: str, items: List[Context],
                               userid: Union[str, int] = None) -> Optional[bool]:
         """
         发送种子信息选择列表

@@ -1,8 +1,7 @@
-from typing import Optional, Union, List, Tuple
-
-from fastapi import Request
 import xml.dom.minidom
-from app.core import MediaInfo, TorrentInfo, settings
+from typing import Optional, Union, List, Tuple, Any
+
+from app.core import MediaInfo, settings, Context
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
@@ -20,26 +19,31 @@ class WechatModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MESSAGER", "wechat"
 
-    def message_parser(self, request: Request) -> Optional[dict]:
+    def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
         username: 用户名
         text: 内容
-        :param request:  请求体
+        :param body: 请求体
+        :param form: 表单
+        :param args: 参数
         :return: 消息内容、用户ID
         """
         try:
             # URL参数
-            sVerifyMsgSig = request.query_params.get("msg_signature")
-            sVerifyTimeStamp = request.query_params.get("timestamp")
-            sVerifyNonce = request.query_params.get("nonce")
+            sVerifyMsgSig = args.get("msg_signature")
+            sVerifyTimeStamp = args.get("timestamp")
+            sVerifyNonce = args.get("nonce")
+            if not sVerifyMsgSig or not sVerifyTimeStamp or not sVerifyNonce:
+                logger.error(f"微信请求参数错误：{args}")
+                return None
             # 解密模块
             wxcpt = WXBizMsgCrypt(sToken=settings.WECHAT_TOKEN,
                                   sEncodingAESKey=settings.WECHAT_ENCODING_AESKEY,
                                   sReceiveId=settings.WECHAT_CORPID)
             # 报文数据
-            sReqData = request.form()
+            sReqData = form
             if not sReqData:
                 return None
             logger.debug(f"收到微信请求：{sReqData}")
@@ -132,7 +136,7 @@ class WechatModule(_ModuleBase):
         # 再发送内容
         return self.wechat.send_medias_msg(medias=items, userid=userid)
 
-    def post_torrents_message(self, title: str, items: List[TorrentInfo],
+    def post_torrents_message(self, title: str, items: List[Context],
                               userid: Union[str, int] = None) -> Optional[bool]:
         """
         发送种子信息选择列表

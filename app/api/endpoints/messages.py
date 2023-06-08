@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Any
 
 from fastapi import APIRouter, BackgroundTasks
 from fastapi import Request
@@ -12,11 +12,11 @@ from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 router = APIRouter()
 
 
-def start_message_chain(request: Request):
+def start_message_chain(body: Any, form: Any, args: Any):
     """
     启动链式任务
     """
-    UserMessageChain().process(request)
+    UserMessageChain().process(body=body, form=form, args=args)
 
 
 @router.post("/", response_model=schemas.Response)
@@ -24,7 +24,10 @@ async def user_message(background_tasks: BackgroundTasks, request: Request):
     """
     用户消息响应
     """
-    background_tasks.add_task(start_message_chain, request)
+    body = await request.body()
+    form = await request.form()
+    args = request.query_params
+    background_tasks.add_task(start_message_chain, body, form, args)
     return {"success": True}
 
 

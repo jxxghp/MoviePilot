@@ -61,7 +61,7 @@ class SubscribeChain(ChainBase):
         else:
             logger.error(f'{mediainfo.get_title_string()} 添加订阅成功')
             self.common.post_message(title=f"{mediainfo.get_title_string()} 已添加订阅",
-                                     text="用户：{username}",
+                                     text=f"来自用户：{username}",
                                      image=mediainfo.get_message_image())
         # 返回结果
         return state

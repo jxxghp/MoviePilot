@@ -150,7 +150,7 @@ class CommonChain(ChainBase):
                 for nt in need_tvs.get(tmdbid):
                     if cur == nt.get("season") or (cur == 1 and not nt.get("season")):
                         need_tvs[tmdbid].remove(nt)
-            if not need_tvs.get(tmdbid):
+            if not need_tvs.get(tmdbid) and need_tvs.get(tmdbid) is not None:
                 need_tvs.pop(tmdbid)
             return need
 
@@ -163,7 +163,7 @@ class CommonChain(ChainBase):
                 need_tvs[tmdbid][seq]["episodes"] = need
             else:
                 need_tvs[tmdbid].pop(seq)
-                if not need_tvs.get(tmdbid):
+                if not need_tvs.get(tmdbid) and need_tvs.get(tmdbid) is not None:
                     need_tvs.pop(tmdbid)
             return need
 

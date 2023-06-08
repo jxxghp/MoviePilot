@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Any
 
 from fastapi import Request
 
@@ -33,23 +33,23 @@ class UserMessageChain(ChainBase):
         self.searchchain = SearchChain()
         self.torrent = TorrentHelper()
 
-    def process(self, request: Request, *args, **kwargs) -> None:
+    def process(self, body: Any, form: Any, args: Any) -> None:
         """
         识别消息内容，执行操作
         """
         # 获取消息内容
-        info: dict = self.run_module('message_parser', request=request)
+        info: dict = self.run_module('message_parser', body=body, form=form, args=args)
         if not info:
             return
         # 用户ID
         userid = info.get('userid')
         if not userid:
-            logger.debug(f'未识别到用户ID：{request}')
+            logger.debug(f'未识别到用户ID：{body}{form}{args}')
             return
         # 消息内容
         text = str(info.get('text')).strip() if info.get('text') else None
         if not text:
-            logger.debug(f'未识别到消息内容：{request}')
+            logger.debug(f'未识别到消息内容：：{body}{form}{args}')
             return
         logger.info(f'收到用户消息内容，用户：{userid}，内容：{text}')
         if text.startswith('/'):
@@ -76,7 +76,7 @@ class UserMessageChain(ChainBase):
             cache_list: list = cache_data.get('items')
             # 选择
             if cache_type == "Search":
-                mediainfo: MediaInfo = cache_list[int(text) - 1]
+                mediainfo: MediaInfo = cache_list[int(text) + self._current_page * self._page_size - 1]
                 self._current_media = mediainfo
                 # 检查是否已存在
                 exists: list = self.run_module('media_exists', mediainfo=mediainfo)
@@ -86,6 +86,8 @@ class UserMessageChain(ChainBase):
                         title=f"{mediainfo.type.value} {mediainfo.get_title_string()} 媒体库中已存在", userid=userid)
                     return
                 logger.info(f"{mediainfo.get_title_string()} 媒体库中不存在，开始搜索 ...")
+                self.common.post_message(
+                    title=f"开始搜索 {mediainfo.type.value} {mediainfo.get_title_string()} ...", userid=userid)
                 # 搜索种子
                 contexts = self.searchchain.process(meta=self._current_meta, mediainfo=mediainfo)
                 if not contexts:
@@ -100,7 +102,7 @@ class UserMessageChain(ChainBase):
                 self._current_page = 0
                 # 发送种子数据
                 logger.info(f"搜索到 {len(contexts)} 条数据，开始发送选择消息 ...")
-                self.__post_torrents_message(items=contexts[:self._page_size], userid=userid)
+                self.__post_torrents_message(items=contexts[:self._page_size], userid=userid, total=len(contexts))
 
             elif cache_type == "Subscribe":
                 # 订阅媒体
@@ -144,11 +146,12 @@ class UserMessageChain(ChainBase):
                             # 订阅成功
                             self.common.post_message(
                                 title=f"{self._current_media.get_title_string()} 已添加订阅",
-                                text=f"用户：{userid}",
+                                text=f"来自用户：{userid}",
                                 image=self._current_media.get_message_image())
                 else:
                     # 下载种子
-                    torrent: TorrentInfo = cache_list[int(text) - 1]
+                    context: Context = cache_list[int(text) - 1]
+                    torrent: TorrentInfo = context.torrent_info
                     logger.info(f"开始下载种子：{torrent.title} - {torrent.enclosure}")
                     meta: MetaBase = MetaInfo(torrent.title)
                     torrent_file, _, _, _, error_msg = self.torrent.download_torrent(
@@ -205,10 +208,10 @@ class UserMessageChain(ChainBase):
                 end = start + self._page_size
             if cache_type == "Torrent":
                 # 发送种子数据
-                self.__post_torrents_message(items=cache_list[start:end], userid=userid)
+                self.__post_torrents_message(items=cache_list[start:end], userid=userid, total=len(cache_list))
             else:
                 # 发送媒体数据
-                self.__post_medias_message(items=cache_list[start:end], userid=userid)
+                self.__post_medias_message(items=cache_list[start:end], userid=userid, total=len(cache_list))
 
         elif text.lower() == "n":
             # 下一页
@@ -219,9 +222,10 @@ class UserMessageChain(ChainBase):
                 return
             cache_type: str = cache_data.get('type')
             cache_list: list = cache_data.get('items')
+            total = len(cache_list)
             # 加一页
             self._current_page += 1
-            cache_list = cache_list[self._current_page * self._page_size:]
+            cache_list = cache_list[self._current_page * self._page_size:(self._current_page + 1) * self._page_size]
             if not cache_list:
                 # 没有数据
                 self.common.post_message(title="已经是最后一页了！", userid=userid)
@@ -229,10 +233,10 @@ class UserMessageChain(ChainBase):
             else:
                 if cache_type == "Torrent":
                     # 发送种子数据
-                    self.__post_torrents_message(items=cache_list, userid=userid)
+                    self.__post_torrents_message(items=cache_list, userid=userid, total=total)
                 else:
                     # 发送媒体数据
-                    self.__post_medias_message(items=cache_list, userid=userid)
+                    self.__post_medias_message(items=cache_list, userid=userid, total=total)
 
         else:
             # 搜索或订阅
@@ -274,22 +278,22 @@ class UserMessageChain(ChainBase):
             self._current_page = 0
             self._current_media = None
             # 发送媒体列表
-            self.__post_medias_message(items=medias[:self._page_size], userid=userid)
+            self.__post_medias_message(items=medias[:self._page_size], userid=userid, total=len(medias))
 
-    def __post_medias_message(self, items: list, userid: str):
+    def __post_medias_message(self, items: list, userid: str, total: int):
         """
         发送媒体列表消息
         """
         self.run_module('post_medias_message',
-                        title="请回复数字选择对应媒体（p：上一页, n：下一页）",
+                        title=f"共找到{total}条相关信息，请回复数字选择对应媒体（p：上一页 n：下一页）",
                         items=items,
                         userid=userid)
 
-    def __post_torrents_message(self, items: list, userid: str):
+    def __post_torrents_message(self, items: list, userid: str, total: int):
         """
         发送种子列表消息
         """
         self.run_module('post_torrents_message',
-                        title="请回复数字下载对应资源（0：自动选择, p：上一页, n：下一页）",
+                        title=f"共找到{total}条相关信息，请回复数字下载对应资源（0：自动选择 p：上一页 n：下一页）",
                         items=items,
                         userid=userid)
