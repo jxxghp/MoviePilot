@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 
-from app.chain import _ChainBase
+from app.chain import ChainBase
 from app.chain.common import CommonChain
 from app.chain.search import SearchChain
 from app.core import MetaInfo, TorrentInfo, Context, MediaInfo, settings
@@ -11,7 +11,7 @@ from app.utils.string import StringUtils
 from app.utils.types import MediaType
 
 
-class SubscribeChain(_ChainBase):
+class SubscribeChain(ChainBase):
     """
     订阅处理链
     """

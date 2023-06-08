@@ -12,6 +12,7 @@ class Site(BaseModel):
     rss: Optional[str] = None
     cookie: Optional[str] = None
     ua: Optional[str] = None
+    proxy: Optional[int] = 0
     filter: Optional[str] = None
     note: Optional[str] = None
     limit_interval: Optional[int] = 0

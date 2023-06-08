@@ -2,13 +2,11 @@ import traceback
 from threading import Thread
 from typing import Tuple, Optional, List, Any
 
-from app.helper import ModuleHelper
-
 from app.core import EventManager
 from app.db.systemconfigs import SystemConfigs
+from app.helper import ModuleHelper
 from app.log import logger
 from app.utils.singleton import Singleton
-from app.utils.types import SystemConfigKey
 
 
 class PluginManager(metaclass=Singleton):
@@ -91,21 +89,16 @@ class PluginManager(metaclass=Singleton):
         )
         # 排序
         plugins.sort(key=lambda x: x.plugin_order if hasattr(x, "plugin_order") else 0)
-        # 用户已安装插件列表
-        user_plugins = self.systemconfigs.get(SystemConfigKey.UserInstalledPlugins) or []
         self._running_plugins = {}
         self._plugins = {}
         for plugin in plugins:
             plugin_id = plugin.__name__
             self._plugins[plugin_id] = plugin
-            # 未安装的跳过加载
-            if plugin_id not in user_plugins:
-                continue
             # 生成实例
             self._running_plugins[plugin_id] = plugin()
             # 初始化配置
             self.reload_plugin(plugin_id)
-            logger.info(f"加载插件：{plugin}")
+            logger.info(f"Plugin Loaded：{plugin.__name__}")
 
     def reload_plugin(self, pid: str):
         """
@@ -237,7 +230,6 @@ class PluginManager(metaclass=Singleton):
         获取所有插件
         """
         all_confs = {}
-        installed_apps = self.systemconfigs.get(SystemConfigKey.UserInstalledPlugins) or []
         for pid, plugin in self._plugins.items():
             # 基本属性
             conf = {}
@@ -247,11 +239,6 @@ class PluginManager(metaclass=Singleton):
                 continue
             # ID
             conf.update({"id": pid})
-            # 安装状态
-            if pid in installed_apps:
-                conf.update({"installed": True})
-            else:
-                conf.update({"installed": False})
             # 名称
             if hasattr(plugin, "plugin_name"):
                 conf.update({"name": plugin.plugin_name})

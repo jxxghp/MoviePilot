@@ -1,7 +1,7 @@
-from app.chain import _ChainBase
+from app.chain import ChainBase
 
 
-class WebhookMessageChain(_ChainBase):
+class WebhookMessageChain(ChainBase):
     """
     响应Webhook事件
     """

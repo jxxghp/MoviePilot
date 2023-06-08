@@ -2,7 +2,7 @@ from typing import Dict
 
 from fastapi import Request
 
-from app.chain import _ChainBase
+from app.chain import ChainBase
 from app.chain.common import *
 from app.chain.search import SearchChain
 from app.core import MediaInfo, TorrentInfo, MetaInfo
@@ -11,7 +11,7 @@ from app.log import logger
 from app.utils.types import EventType
 
 
-class UserMessageChain(_ChainBase):
+class UserMessageChain(ChainBase):
     """
     外来消息处理链
     """

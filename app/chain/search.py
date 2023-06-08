@@ -1,6 +1,6 @@
 from typing import Optional, List
 
-from app.chain import _ChainBase
+from app.chain import ChainBase
 from app.chain.common import CommonChain
 from app.core import Context, MetaInfo, MediaInfo, TorrentInfo, settings
 from app.core.meta import MetaBase
@@ -8,7 +8,7 @@ from app.helper.sites import SitesHelper
 from app.log import logger
 
 
-class SearchChain(_ChainBase):
+class SearchChain(ChainBase):
     """
     站点资源搜索处理链
     """

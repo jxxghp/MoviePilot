@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from app.chain import _ChainBase
+from app.chain import ChainBase
 from app.chain.common import CommonChain
 from app.chain.search import SearchChain
 from app.core import settings, MetaInfo, MediaInfo
@@ -10,7 +10,7 @@ from app.helper.rss import RssHelper
 from app.log import logger
 
 
-class DoubanSyncChain(_ChainBase):
+class DoubanSyncChain(ChainBase):
     """
     同步豆瓣想看数据
     """

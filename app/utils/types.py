@@ -17,9 +17,26 @@ class EventType(Enum):
     PluginReload = "plugin.reload"
     # 执行命令
     CommandExcute = "command.excute"
+    # 站点签到
+    SiteSignin = "site.signin"
 
 
 # 系统配置Key字典
 class SystemConfigKey(Enum):
     # 用户已安装的插件
     UserInstalledPlugins = "UserInstalledPlugins"
+
+
+# 站点框架
+class SiteSchema(Enum):
+    DiscuzX = "Discuz!"
+    Gazelle = "Gazelle"
+    Ipt = "IPTorrents"
+    NexusPhp = "NexusPhp"
+    NexusProject = "NexusProject"
+    NexusRabbit = "NexusRabbit"
+    SmallHorse = "Small Horse"
+    Unit3d = "Unit3d"
+    TorrentLeech = "TorrentLeech"
+    FileList = "FileList"
+    TNode = "TNode"

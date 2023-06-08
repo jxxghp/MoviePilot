@@ -1,13 +1,13 @@
 from pathlib import Path
 from typing import List, Optional
 
-from app.chain import _ChainBase
+from app.chain import ChainBase
 from app.core import MetaInfo, MediaInfo, settings
 from app.log import logger
 from app.utils.types import TorrentStatus
 
 
-class TransferChain(_ChainBase):
+class TransferChain(ChainBase):
     """
     文件转移处理链
     """

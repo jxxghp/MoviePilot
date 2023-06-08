@@ -1,11 +1,11 @@
 from typing import Optional
 
-from app.chain import _ChainBase
+from app.chain import ChainBase
 from app.core import Context, MetaInfo, MediaInfo
 from app.log import logger
 
 
-class IdentifyChain(_ChainBase):
+class IdentifyChain(ChainBase):
     """
     识别处理链
     """

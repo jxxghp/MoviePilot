@@ -7,7 +7,7 @@ from app.log import logger
 from app.utils.singleton import AbstractSingleton, Singleton
 
 
-class _ChainBase(AbstractSingleton, metaclass=Singleton):
+class ChainBase(AbstractSingleton, metaclass=Singleton):
     """
     处理链基类
     """

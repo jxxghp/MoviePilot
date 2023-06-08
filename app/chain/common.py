@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 from typing import List, Optional, Tuple, Set
 
-from app.chain import _ChainBase
+from app.chain import ChainBase
 from app.core import MediaInfo
 from app.core import TorrentInfo, Context
 from app.core.meta import MetaBase
@@ -12,7 +12,7 @@ from app.utils.string import StringUtils
 from app.utils.types import MediaType
 
 
-class CommonChain(_ChainBase):
+class CommonChain(ChainBase):
 
     def __init__(self):
         super().__init__()

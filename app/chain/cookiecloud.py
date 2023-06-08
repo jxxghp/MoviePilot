@@ -1,6 +1,6 @@
 from typing import Tuple
 
-from app.chain import _ChainBase
+from app.chain import ChainBase
 from app.core import settings
 from app.db.sites import Sites
 from app.helper.cookiecloud import CookieCloudHelper
@@ -8,7 +8,7 @@ from app.helper.sites import SitesHelper
 from app.log import logger
 
 
-class CookieCloudChain(_ChainBase):
+class CookieCloudChain(ChainBase):
     """
     同步站点Cookie
     """

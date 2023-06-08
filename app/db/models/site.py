@@ -15,6 +15,7 @@ class Site(Base):
     rss = Column(String)
     cookie = Column(String)
     ua = Column(String)
+    proxy = Column(Integer)
     filter = Column(String)
     note = Column(String)
     limit_interval = Column(Integer)
