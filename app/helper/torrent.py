@@ -142,7 +142,7 @@ class TorrentHelper:
         return file_folder, file_names, ""
 
     @staticmethod
-    def __get_url_torrent_filename(req, url):
+    def __get_url_torrent_filename(req, url: str) -> str:
         """
         从下载请求中获取种子文件名
         """
@@ -161,7 +161,7 @@ class TorrentHelper:
         return file_name
 
     @staticmethod
-    def sort_group_torrents(torrent_list: List[Context]):
+    def sort_group_torrents(torrent_list: List[Context]) -> List[Context]:
         """
         对媒体信息进行排序、去重
         """
@@ -203,7 +203,7 @@ class TorrentHelper:
         return result
 
     @staticmethod
-    def get_torrent_episodes(files: list):
+    def get_torrent_episodes(files: list) -> list:
         """
         从种子的文件清单中获取所有集数
         """
