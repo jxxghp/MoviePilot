@@ -43,11 +43,10 @@ class WechatModule(_ModuleBase):
                                   sEncodingAESKey=settings.WECHAT_ENCODING_AESKEY,
                                   sReceiveId=settings.WECHAT_CORPID)
             # 报文数据
-            sReqData = form
-            if not sReqData:
+            if not form:
                 return None
-            logger.debug(f"收到微信请求：{sReqData}")
-            ret, sMsg = wxcpt.DecryptMsg(sPostData=sReqData,
+            logger.debug(f"收到微信请求：{form}")
+            ret, sMsg = wxcpt.DecryptMsg(sPostData=form,
                                          sMsgSignature=sVerifyMsgSig,
                                          sTimeStamp=sVerifyTimeStamp,
                                          sNonce=sVerifyNonce)
