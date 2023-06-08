@@ -163,14 +163,12 @@ class Qbittorrent(metaclass=Singleton):
                 continue
             content_path = torrent.get("content_path")
             if content_path:
-                trans_name = content_path.replace(path, "").replace("\\", "/")
-                if trans_name.startswith('/'):
-                    trans_name = trans_name[1:]
+                torrent_path = Path(content_path)
             else:
-                trans_name = torrent.get('name')
+                torrent_path = Path(settings.DOWNLOAD_PATH) / torrent.get('name')
             trans_tasks.append({
                 'title': torrent.get('name'),
-                'path': Path(settings.DOWNLOAD_PATH) / trans_name,
+                'path': torrent_path,
                 'id': torrent.get('hash'),
                 'tags': torrent.get('tags')
             })
