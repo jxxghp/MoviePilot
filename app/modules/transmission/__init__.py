@@ -91,7 +91,7 @@ class TransmissionModule(_ModuleBase):
         :return: 下载器中符合状态的种子列表
         """
         if status == TorrentStatus.TRANSFER:
-            torrents = self.transmission.get_transfer_torrents(tag=settings.TORRENT_TAG)
+            torrents = self.transmission.get_transfer_torrents(tag=settings.TORRENT_TAG or None)
         else:
             return None
         return torrents
