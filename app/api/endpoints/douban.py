@@ -1,6 +1,4 @@
-from typing import List
-
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app import schemas
@@ -12,8 +10,16 @@ from app.db.userauth import get_current_active_superuser
 router = APIRouter()
 
 
+def start_douban_chain():
+    """
+    启动链式任务
+    """
+    DoubanSyncChain().process()
+
+
 @router.get("/sync", response_model=schemas.Response)
 async def sync_douban(
+        background_tasks: BackgroundTasks,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_superuser)):
     """
@@ -24,5 +30,5 @@ async def sync_douban(
             status_code=400,
             detail="需要授权",
         )
-    DoubanSyncChain().process()
+    background_tasks.add_task(start_douban_chain)
     return {"success": True}
