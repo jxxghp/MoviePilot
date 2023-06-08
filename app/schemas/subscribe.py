@@ -21,6 +21,7 @@ class Subscribe(BaseModel):
     start_episode: Optional[int]
     lack_episode: Optional[int]
     note: Optional[str]
+    state: str
 
     class Config:
         orm_mode = True
