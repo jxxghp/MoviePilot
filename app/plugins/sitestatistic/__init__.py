@@ -241,7 +241,7 @@ class SiteStatistic(_PluginBase):
 
             # 没有指定站点，默认使用全部站点
             if not specify_sites:
-                refresh_sites = self.sites.get_indexers()
+                refresh_sites = [site for site in self.sites.get_indexers() if not site.get("public")]
             else:
                 refresh_sites = [site for site in self.sites.get_indexers() if
                                  site.get("name") in specify_sites]

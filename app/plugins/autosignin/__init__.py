@@ -84,7 +84,7 @@ class AutoSignIn(_PluginBase):
         if event:
             logger.info("收到远程签到命令，开始执行签到任务 ...")
         # 查询签到站点
-        sign_sites = self.sites.get_indexers()
+        sign_sites = [site for site in self.sites.get_indexers() if not site.get("public")]
         if not sign_sites:
             logger.info("没有需要签到的站点")
             return
