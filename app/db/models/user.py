@@ -6,6 +6,9 @@ from app.db.models import Base
 
 
 class User(Base):
+    """
+    用户表
+    """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
     full_name = Column(String, index=True)
     email = Column(String, unique=True, index=True, nullable=False)

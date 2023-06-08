@@ -5,7 +5,6 @@ from typing import Any
 from urllib.parse import urljoin
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from lxml import etree
 from ruamel.yaml import CommentedMap
 
 from app.core import EventManager, settings, eventmanager
@@ -15,6 +14,7 @@ from app.helper.sites import SitesHelper
 from app.log import logger
 from app.plugins import _PluginBase
 from app.utils.http import RequestUtils
+from app.utils.site import SiteUtils
 from app.utils.timer import TimerUtils
 from app.utils.types import EventType
 
@@ -81,6 +81,8 @@ class AutoSignIn(_PluginBase):
         """
         自动签到
         """
+        if event:
+            logger.info("收到远程签到命令，开始执行签到任务 ...")
         # 查询签到站点
         sign_sites = self.sites.get_indexers()
         if not sign_sites:
@@ -123,7 +125,8 @@ class AutoSignIn(_PluginBase):
         else:
             return self.__signin_base(site_info)
 
-    def __signin_base(self, site_info: CommentedMap) -> str:
+    @staticmethod
+    def __signin_base(site_info: CommentedMap) -> str:
         """
         通用签到处理
         :param site_info: 站点信息
@@ -158,7 +161,7 @@ class AutoSignIn(_PluginBase):
                                    ).get_res(url=site_url)
             # 判断登录状态
             if res and res.status_code in [200, 500, 403]:
-                if not self.is_logged_in(res.text):
+                if not SiteUtils.is_logged_in(res.text):
                     if under_challenge(res.text):
                         msg = "站点被Cloudflare防护，请更换Cookie和UA！"
                     elif res.status_code == 200:
@@ -194,32 +197,3 @@ class AutoSignIn(_PluginBase):
                 self._scheduler = None
         except Exception as e:
             logger.error("退出插件失败：%s" % str(e))
-
-    @classmethod
-    def is_logged_in(cls, html_text: str) -> bool:
-        """
-        判断站点是否已经登陆
-        :param html_text:
-        :return:
-        """
-        html = etree.HTML(html_text)
-        if not html:
-            return False
-        # 存在明显的密码输入框，说明未登录
-        if html.xpath("//input[@type='password']"):
-            return False
-        # 是否存在登出和用户面板等链接
-        xpaths = ['//a[contains(@href, "logout")'
-                  ' or contains(@data-url, "logout")'
-                  ' or contains(@href, "mybonus") '
-                  ' or contains(@onclick, "logout")'
-                  ' or contains(@href, "usercp")]',
-                  '//form[contains(@action, "logout")]']
-        for xpath in xpaths:
-            if html.xpath(xpath):
-                return True
-        user_info_div = html.xpath('//div[@class="user-info-side"]')
-        if user_info_div:
-            return True
-
-        return False

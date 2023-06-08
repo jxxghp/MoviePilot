@@ -5,6 +5,9 @@ from app.db.models import Base
 
 
 class Subscribe(Base):
+    """
+    订阅表
+    """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
     year = Column(String)

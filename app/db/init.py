@@ -1,3 +1,6 @@
+import importlib
+from pathlib import Path
+
 from alembic.command import upgrade
 from alembic.config import Config
 
@@ -13,6 +16,10 @@ def init_db():
     """
     初始化数据库
     """
+    # 导入模块，避免建表缺失
+    for module in Path(__file__).with_name("models").glob("*.py"):
+        importlib.import_module(f"app.db.models.{module.stem}")
+    # 全量建表
     Base.metadata.create_all(bind=Engine)
     # 初始化超级管理员
     _db = SessionLocal()

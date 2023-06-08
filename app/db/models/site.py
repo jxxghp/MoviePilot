@@ -7,6 +7,9 @@ from app.db.models import Base
 
 
 class Site(Base):
+    """
+    站点表
+    """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
     name = Column(String, nullable=False)
     domain = Column(String, index=True)

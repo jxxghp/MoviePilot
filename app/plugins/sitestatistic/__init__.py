@@ -1,9 +1,10 @@
 from datetime import datetime
 from multiprocessing.dummy import Pool as ThreadPool
 from threading import Lock
-from typing import Optional, Any
+from typing import Optional, Any, List
 
 import requests
+from apscheduler.schedulers.background import BackgroundScheduler
 from ruamel.yaml import CommentedMap
 
 from app.core import settings
@@ -11,23 +12,28 @@ from app.helper import ModuleHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.plugins import _PluginBase
-from app.plugins.sitestatistics.siteuserinfo import ISiteUserInfo
+from app.plugins.sitestatistic.siteuserinfo import ISiteUserInfo
 from app.utils.http import RequestUtils
+from app.utils.timer import TimerUtils
+
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 
 lock = Lock()
 
 
-class SiteStatistics(_PluginBase):
+class SiteStatistic(_PluginBase):
     sites = None
-
+    _scheduler: BackgroundScheduler = None
     _MAX_CONCURRENCY: int = 10
     _last_update_time: Optional[datetime] = None
     _sites_data: dict = {}
-    _site_schema: list = None
+    _site_schema: List[ISiteUserInfo] = None
 
     def init_plugin(self, config: dict = None):
         # 加载模块
-        self._site_schema = ModuleHelper.load('app.plugins.sitestatistics.siteuserinfo',
+        self._site_schema = ModuleHelper.load('app.plugins.sitestatistic.siteuserinfo',
                                               filter_func=lambda _, obj: hasattr(obj, 'schema'))
         self._site_schema.sort(key=lambda x: x.order)
         # 站点管理
@@ -36,6 +42,20 @@ class SiteStatistics(_PluginBase):
         self._last_update_time = None
         # 站点数据
         self._sites_data = {}
+        # 定时服务
+        self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+        triggers = TimerUtils.random_scheduler(num_executions=1,
+                                               begin_hour=0,
+                                               end_hour=1,
+                                               min_interval=1,
+                                               max_interval=60)
+        for trigger in triggers:
+            self._scheduler.add_job(self.refresh_all_site_data, "cron", hour=trigger.hour, minute=trigger.minute)
+
+        # 启动任务
+        if self._scheduler.get_jobs():
+            self._scheduler.print_jobs()
+            self._scheduler.start()
 
     def stop_service(self):
         pass
@@ -46,13 +66,16 @@ class SiteStatistics(_PluginBase):
                 if site_schema.match(html_text):
                     return site_schema
             except Exception as e:
-                logger.error(f"站点 {site_schema.name} 匹配失败 {e}")
+                logger.error(f"站点匹配失败 {e}")
         return None
 
     def build(self, url: str, site_name: str,
               site_cookie: str = None,
               ua: str = None,
-              proxy: bool = False) -> Any:
+              proxy: bool = False) -> Optional[ISiteUserInfo]:
+        """
+        构建站点信息
+        """
         if not site_cookie:
             return None
         session = requests.Session()
@@ -121,26 +144,26 @@ class SiteStatistics(_PluginBase):
             return None
         return site_schema(site_name, url, site_cookie, html_text, session=session, ua=ua, proxy=proxy)
 
-    def __refresh_site_data(self, site_info: CommentedMap):
+    def __refresh_site_data(self, site_info: CommentedMap) -> Optional[ISiteUserInfo]:
         """
         更新单个site 数据信息
         :param site_info:
         :return:
         """
         site_name = site_info.get("name")
-        site_url = site_info.get("strict_url")
+        site_url = site_info.get("url")
         if not site_url:
-            return
+            return None
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
         unread_msg_notify = True
         proxy = site_info.get("proxy")
         try:
-            site_user_info = self.build(url=site_url,
-                                        site_name=site_name,
-                                        site_cookie=site_cookie,
-                                        ua=ua,
-                                        proxy=proxy)
+            site_user_info: ISiteUserInfo = self.build(url=site_url,
+                                                       site_name=site_name,
+                                                       site_cookie=site_cookie,
+                                                       ua=ua,
+                                                       proxy=proxy)
             if site_user_info:
                 logger.debug(f"站点 {site_name} 开始以 {site_user_info.site_schema()} 模型解析")
                 # 开始解析
@@ -150,7 +173,7 @@ class SiteStatistics(_PluginBase):
                 # 获取不到数据时，仅返回错误信息，不做历史数据更新
                 if site_user_info.err_msg:
                     self._sites_data.update({site_name: {"err_msg": site_user_info.err_msg}})
-                    return
+                    return None
 
                 # 发送通知，存在未读消息
                 self.__notify_unread_msg(site_name, site_user_info, unread_msg_notify)
@@ -173,11 +196,11 @@ class SiteStatistics(_PluginBase):
                             "message_unread": site_user_info.message_unread
                         }
                     })
-
                 return site_user_info
 
         except Exception as e:
             logger.error(f"站点 {site_name} 获取流量数据失败：{str(e)}")
+        return None
 
     def __notify_unread_msg(self, site_name: str, site_user_info: ISiteUserInfo, unread_msg_notify: bool):
         if site_user_info.message_unread <= 0:
@@ -228,35 +251,15 @@ class SiteStatistics(_PluginBase):
 
             # 并发刷新
             with ThreadPool(min(len(refresh_sites), self._MAX_CONCURRENCY)) as p:
-                site_user_infos = p.map(self.__refresh_site_data, refresh_sites)
+                site_user_infos: List[ISiteUserInfo] = p.map(self.__refresh_site_data, refresh_sites)
                 site_user_infos = [info for info in site_user_infos if info]
-
-            print(site_user_infos)
-            # TODO 登记历史数据
-            # TODO 实时用户数据
-            # TODO 更新站点图标
-            # TODO 实时做种信息
+            # 保存数据
+            for site_user_info in site_user_infos:
+                # 获取今天的日期
+                key = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                value = site_user_info.to_dict()
+                # 按日期保存为字典
+                self.save_data(key, value)
 
             # 更新时间
             self._last_update_time = datetime.now()
-
-    @staticmethod
-    def __todict(raw_statistics):
-        statistics = []
-        for site in raw_statistics:
-            statistics.append({"site": site.SITE,
-                               "username": site.USERNAME,
-                               "user_level": site.USER_LEVEL,
-                               "join_at": site.JOIN_AT,
-                               "update_at": site.UPDATE_AT,
-                               "upload": site.UPLOAD,
-                               "download": site.DOWNLOAD,
-                               "ratio": site.RATIO,
-                               "seeding": site.SEEDING,
-                               "leeching": site.LEECHING,
-                               "seeding_size": site.SEEDING_SIZE,
-                               "bonus": site.BONUS,
-                               "url": site.URL,
-                               "msg_unread": site.MSG_UNREAD
-                               })
-        return statistics

@@ -1,10 +1,15 @@
+import json
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
 from typing import Any, Optional
 
 from app.chain import ChainBase
 from app.core import settings, Context
+from app.db import SessionLocal
+from app.db.models import Base
+from app.db.models.plugin import PluginData
 from app.db.systemconfigs import SystemConfigs
+from app.utils.object import ObjectUtils
 
 
 class PluginChian(ChainBase):
@@ -34,6 +39,7 @@ class _PluginBase(metaclass=ABCMeta):
     plugin_desc: str = ""
     
     def __init__(self):
+        self.db = SessionLocal()
         self.chain = PluginChian()
 
     @abstractmethod
@@ -80,3 +86,24 @@ class _PluginBase(metaclass=ABCMeta):
         if not data_path.exists():
             data_path.mkdir(parents=True)
         return data_path
+
+    def save_data(self, key: str, value: Any) -> Base:
+        """
+        保存插件数据
+        :param key: 数据key
+        :param value: 数据值
+        """
+        if ObjectUtils.is_obj(value):
+            value = json.dumps(value)
+        plugin = PluginData(plugin_id=self.__class__.__name__, key=key, value=value)
+        return plugin.create(self.db)
+
+    def get_data(self, key: str) -> Any:
+        """
+        获取插件数据
+        :param key: 数据key
+        """
+        data = PluginData.get_plugin_data_by_key(self.db, self.__class__.__name__, key)
+        if ObjectUtils.is_obj(data):
+            return json.load(data)
+        return data

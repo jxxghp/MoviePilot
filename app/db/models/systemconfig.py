@@ -5,6 +5,9 @@ from app.db.models import Base
 
 
 class SystemConfig(Base):
+    """
+    配置表
+    """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
     key = Column(String, index=True)
     value = Column(String, nullable=True)

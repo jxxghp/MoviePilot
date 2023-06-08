@@ -14,6 +14,7 @@ from app.core import settings
 from app.helper.cloudflare import under_challenge
 from app.log import logger
 from app.utils.http import RequestUtils
+from app.utils.site import SiteUtils
 from app.utils.types import SiteSchema
 
 SITE_BASE_ORDER = 1000
@@ -101,7 +102,7 @@ class ISiteUserInfo(metaclass=ABCMeta):
         self._emulate = emulate
         self._proxy = proxy
 
-    def site_schema(self):
+    def site_schema(self) -> SiteSchema:
         """
         站点解析模型
         :return: 站点解析模型
@@ -196,7 +197,7 @@ class ISiteUserInfo(metaclass=ABCMeta):
         """
         pass
 
-    def _parse_favicon(self, html_text):
+    def _parse_favicon(self, html_text: str):
         """
         解析站点favicon,返回base64 fav图标
         :param html_text:
@@ -213,7 +214,7 @@ class ISiteUserInfo(metaclass=ABCMeta):
         if res:
             self.site_favicon = base64.b64encode(res.content).decode()
 
-    def _get_page_content(self, url, params=None, headers=None):
+    def _get_page_content(self, url: str, params: dict = None, headers: dict = None):
         """
         :param url: 网页地址
         :param params: post参数
@@ -285,7 +286,7 @@ class ISiteUserInfo(metaclass=ABCMeta):
         :param html_text:
         :return: True/False
         """
-        logged_in = self.is_logged_in(html_text)
+        logged_in = SiteUtils.is_logged_in(html_text)
         if not logged_in:
             self.err_msg = "未检测到已登陆，请检查cookies是否过期"
             logger.warn(f"{self.site_name} 未登录，跳过后续操作")
@@ -330,31 +331,16 @@ class ISiteUserInfo(metaclass=ABCMeta):
         """
         pass
 
-    @classmethod
-    def is_logged_in(cls, html_text: str) -> bool:
+    def to_dict(self):
         """
-        判断站点是否已经登陆
-        :param html_text:
-        :return:
+        转化为字典
         """
-        html = etree.HTML(html_text)
-        if not html:
-            return False
-        # 存在明显的密码输入框，说明未登录
-        if html.xpath("//input[@type='password']"):
-            return False
-        # 是否存在登出和用户面板等链接
-        xpaths = ['//a[contains(@href, "logout")'
-                  ' or contains(@data-url, "logout")'
-                  ' or contains(@href, "mybonus") '
-                  ' or contains(@onclick, "logout")'
-                  ' or contains(@href, "usercp")]',
-                  '//form[contains(@action, "logout")]']
-        for xpath in xpaths:
-            if html.xpath(xpath):
-                return True
-        user_info_div = html.xpath('//div[@class="user-info-side"]')
-        if user_info_div:
-            return True
-
-        return False
+        attributes = [
+            attr for attr in dir(self)
+            if not callable(getattr(self, attr)) and not attr.startswith("_")
+        ]
+        return {
+            attr: getattr(self, attr).value
+            if isinstance(getattr(self, attr), SiteSchema)
+            else getattr(self, attr) for attr in attributes
+        }

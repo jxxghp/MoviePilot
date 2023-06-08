@@ -24,7 +24,9 @@ def shutdown_server():
     """
     服务关闭
     """
+    # 停止定时服务
     Scheduler().stop()
+    # 停止插件
     PluginManager().stop()
 
 
