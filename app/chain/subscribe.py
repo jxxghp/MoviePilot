@@ -192,7 +192,7 @@ class SubscribeChain(ChainBase):
                         # 匹配成功
                         logger.info(f'{mediainfo.get_title_string()} 匹配成功：{torrent_info.title}')
                         _match_context.append(context)
-            logger(f'{mediainfo.get_title_string()} 匹配完成，共匹配到{len(_match_context)}个资源')
+            logger.info(f'{mediainfo.get_title_string()} 匹配完成，共匹配到{len(_match_context)}个资源')
             if _match_context:
                 # 批量择优下载
                 downloads, lefts = self.common.batch_download(contexts=_match_context, need_tvs=no_exists)
