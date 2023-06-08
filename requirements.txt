@@ -35,4 +35,5 @@ func_timeout==4.3.5
 selenium~=4.9.1
 bs4~=0.0.1
 beautifulsoup4~=4.12.2
-pillow==9.5.0
+pillow~=9.5.0
+pyTelegramBotAPI~=4.12.0
