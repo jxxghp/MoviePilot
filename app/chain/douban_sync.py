@@ -12,7 +12,7 @@ from app.log import logger
 
 class DoubanSyncChain(_ChainBase):
     """
-    同步豆瓣相看数据
+    同步豆瓣想看数据
     """
 
     _interests_url: str = "https://www.douban.com/feed/people/%s/interests"
@@ -28,7 +28,7 @@ class DoubanSyncChain(_ChainBase):
 
     def process(self):
         """
-        通过用户RSS同步豆瓣相看数据
+        通过用户RSS同步豆瓣想看数据
         """
         if not settings.DOUBAN_USER_IDS:
             return
@@ -97,9 +97,9 @@ class DoubanSyncChain(_ChainBase):
                         # 订阅成功
                         self.common.post_message(
                             title=f"{mediainfo.get_title_string()} 已添加订阅",
-                            text="来自：豆瓣相看",
+                            text="来自：豆瓣想看",
                             image=mediainfo.get_message_image())
 
-            logger.info(f"用户 {user_id} 豆瓣相看同步完成")
+            logger.info(f"用户 {user_id} 豆瓣想看同步完成")
         # 保存缓存
         self._cache_path.write_text("\n".join(caches))

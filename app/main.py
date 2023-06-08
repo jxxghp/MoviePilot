@@ -1,8 +1,3 @@
-import os
-import signal
-import sys
-from typing import Any
-
 import uvicorn as uvicorn
 from fastapi import FastAPI
 from uvicorn import Config
@@ -21,7 +16,7 @@ App = FastAPI(title=settings.PROJECT_NAME,
 App.include_router(api_router, prefix=settings.API_V1_STR)
 
 # uvicorn服务
-server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT, reload=False))
+Server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT, reload=settings.RELOAD))
 
 
 @App.on_event("shutdown")
@@ -30,6 +25,7 @@ def shutdown_server():
     服务关闭
     """
     Scheduler().stop()
+    PluginManager().stop()
 
 
 @App.on_event("startup")
@@ -47,22 +43,10 @@ def start_module():
     Scheduler()
 
 
-def graceful_exit(signum: Any, frame: Any):
-    """
-    优雅退出
-    """
-    if server is not None:
-        server.should_exit = True
-
-
-# 注册退出信号处理函数
-signal.signal(signal.SIGINT, graceful_exit)
-signal.signal(signal.SIGTERM, graceful_exit)
-
 if __name__ == '__main__':
     # 初始化数据库
     init_db()
     # 更新数据库
     update_db()
     # 启动服务
-    server.run()
+    Server.run()

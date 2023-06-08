@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     # 监听端口
     PORT: int = 3001
+    # 是否自动重载
+    RELOAD: bool = False
     # 配置文件目录
     CONFIG_DIR: str = None
     # 超级管理员

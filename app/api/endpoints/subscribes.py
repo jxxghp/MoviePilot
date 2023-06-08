@@ -88,3 +88,35 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
                                       username=user_name)
 
     return {"success": True}
+
+
+@router.get("/refresh", response_model=schemas.Response)
+async def refresh_subscribes(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_superuser)):
+    """
+    刷新所有订阅
+    """
+    if not current_user:
+        raise HTTPException(
+            status_code=400,
+            detail="需要授权",
+        )
+    SubscribeChain().refresh()
+    return {"success": True}
+
+
+@router.get("/search", response_model=schemas.Response)
+async def search_subscribes(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_superuser)):
+    """
+    搜索所有订阅
+    """
+    if not current_user:
+        raise HTTPException(
+            status_code=400,
+            detail="需要授权",
+        )
+    SubscribeChain().search(state='R')
+    return {"success": True}

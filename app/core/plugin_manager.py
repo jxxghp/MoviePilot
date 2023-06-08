@@ -36,9 +36,9 @@ class PluginManager(metaclass=Singleton):
         self.systemconfigs = SystemConfigs()
         self.eventmanager = EventManager()
         # 停止已有插件
-        self.stop_service()
+        self.stop()
         # 启动插件
-        self.start_service()
+        self.start()
 
     def __run(self):
         """
@@ -55,7 +55,7 @@ class PluginManager(metaclass=Singleton):
                     except Exception as e:
                         logger.error(f"事件处理出错：{str(e)} - {traceback.format_exc()}")
 
-    def start_service(self):
+    def start(self):
         """
         启动
         """
@@ -68,7 +68,7 @@ class PluginManager(metaclass=Singleton):
         # 启动事件处理线程
         self._thread.start()
 
-    def stop_service(self):
+    def stop(self):
         """
         停止
         """
@@ -127,8 +127,8 @@ class PluginManager(metaclass=Singleton):
         停止所有插件
         """
         for plugin in self._running_plugins.values():
-            if hasattr(plugin, "stop_service"):
-                plugin.stop_service()
+            if hasattr(plugin, "stop"):
+                plugin.stop()
 
     def get_plugin_config(self, pid: str) -> dict:
         """

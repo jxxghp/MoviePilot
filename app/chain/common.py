@@ -379,7 +379,7 @@ class CommonChain(_ChainBase):
                     exist_seasons = exists_tvs.get("seasons")
                     if exist_seasons.get(season):
                         # 取差集
-                        episodes = set(episodes).difference(set(exist_seasons['season']))
+                        episodes = set(episodes).difference(set(exist_seasons[season]))
                     # 添加不存在的季集信息
                     __append_no_exists(season, episodes)
             # 存在不完整的剧集
