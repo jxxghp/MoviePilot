@@ -93,7 +93,7 @@ class SystemUtils:
 
         # 遍历目录及子目录
         for path in directory.glob('**/*'):
-            if path.is_file() and re.match(pattern, str(path), re.IGNORECASE):
+            if path.is_file() and re.match(pattern, path.name, re.IGNORECASE):
                 files.append(path)
 
         return files
