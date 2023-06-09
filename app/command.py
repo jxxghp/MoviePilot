@@ -40,9 +40,14 @@ class Command(metaclass=Singleton):
             "description": "同步豆瓣想看",
             "data": {}
         },
-        "/subscribe": {
-            "func": SubscribeChain().search,
+        "/subscriberefresh": {
+            "func": SubscribeChain().refresh,
             "description": "刷新所有订阅",
+            "data": {}
+        },
+        "/subscribesearch": {
+            "func": SubscribeChain().search,
+            "description": "搜索所有订阅",
             "data": {
                 'state': 'R',
             }
