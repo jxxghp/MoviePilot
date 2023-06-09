@@ -2,12 +2,12 @@ from pathlib import Path
 from typing import Optional
 
 from app.chain import ChainBase
-from app.chain.common import CommonChain
+from app.chain.download import DownloadChain
 from app.chain.search import SearchChain
+from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.meta_info import MetaInfo
 from app.core.context import MediaInfo
-from app.db.subscribes import Subscribes
 from app.helper.rss import RssHelper
 from app.log import logger
 
@@ -24,9 +24,9 @@ class DoubanSyncChain(ChainBase):
     def __init__(self):
         super().__init__()
         self.rsshelper = RssHelper()
-        self.common = CommonChain()
+        self.downloadchain = DownloadChain()
         self.searchchain = SearchChain()
-        self.subscribes = Subscribes()
+        self.subscribechain = SubscribeChain()
 
     def process(self):
         """
@@ -74,7 +74,7 @@ class DoubanSyncChain(ChainBase):
                 # 加入缓存
                 caches.append(douban_id)
                 # 查询缺失的媒体信息
-                exist_flag, no_exists = self.common.get_no_exists_info(mediainfo=mediainfo)
+                exist_flag, no_exists = self.downloadchain.get_no_exists_info(mediainfo=mediainfo)
                 if exist_flag:
                     logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在')
                     continue
@@ -85,7 +85,7 @@ class DoubanSyncChain(ChainBase):
                     logger.warn(f'{mediainfo.get_title_string()} 未搜索到资源')
                     continue
                 # 自动下载
-                downloads, lefts = self.common.batch_download(contexts=contexts, need_tvs=no_exists)
+                downloads, lefts = self.downloadchain.batch_download(contexts=contexts, need_tvs=no_exists)
                 if downloads and not lefts:
                     # 全部下载完成
                     logger.info(f'{mediainfo.get_title_string()} 下载完成')
@@ -93,14 +93,11 @@ class DoubanSyncChain(ChainBase):
                     # 未完成下载
                     logger.info(f'{mediainfo.get_title_string()} 未下载未完整，添加订阅 ...')
                     # 添加订阅
-                    state, msg = self.subscribes.add(mediainfo,
-                                                     season=meta.begin_season)
-                    if state:
-                        # 订阅成功
-                        self.common.post_message(
-                            title=f"{mediainfo.get_title_string()} 已添加订阅",
-                            text="来自：豆瓣想看",
-                            image=mediainfo.get_message_image())
+                    self.subscribechain.process(title=mediainfo.title,
+                                                mtype=mediainfo.type,
+                                                tmdbid=mediainfo.tmdb_id,
+                                                season=meta.begin_season,
+                                                username="豆瓣想看")
 
             logger.info(f"用户 {user_id} 豆瓣想看同步完成")
         # 保存缓存

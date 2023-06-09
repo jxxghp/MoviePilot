@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional
 
 from app.chain import ChainBase
-from app.chain.common import CommonChain
+from app.chain.download import DownloadChain
 from app.chain.search import SearchChain
 from app.core.meta_info import MetaInfo
 from app.core.context import TorrentInfo, Context, MediaInfo
@@ -23,7 +23,7 @@ class SubscribeChain(ChainBase):
 
     def __init__(self):
         super().__init__()
-        self.common = CommonChain()
+        self.downloadchain = DownloadChain()
         self.searchchain = SearchChain()
         self.subscribes = Subscribes()
         self.siteshelper = SitesHelper()
@@ -32,6 +32,7 @@ class SubscribeChain(ChainBase):
                 mtype: MediaType = None,
                 tmdbid: str = None,
                 season: int = None,
+                userid: str = None,
                 username: str = None,
                 **kwargs) -> bool:
         """
@@ -60,11 +61,18 @@ class SubscribeChain(ChainBase):
         state, err_msg = self.subscribes.add(mediainfo, season=season, **kwargs)
         if state:
             logger.info(f'{mediainfo.get_title_string()} {err_msg}')
+            # 发回原用户
+            self.post_message(title=f"{mediainfo.get_title_string()}{metainfo.get_season_string()} "
+                                    f"添加订阅失败！",
+                              text=f"{err_msg}",
+                              image=mediainfo.get_message_image(),
+                              userid=userid)
         else:
             logger.error(f'{mediainfo.get_title_string()} 添加订阅成功')
-            self.common.post_message(title=f"{mediainfo.get_title_string()} 已添加订阅",
-                                     text=f"来自用户：{username}",
-                                     image=mediainfo.get_message_image())
+            # 广而告之
+            self.post_message(title=f"{mediainfo.get_title_string()}{metainfo.get_season_string()} 已添加订阅",
+                              text=f"来自用户：{username or userid}",
+                              image=mediainfo.get_message_image())
         # 返回结果
         return state
 
@@ -96,7 +104,7 @@ class SubscribeChain(ChainBase):
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue
             # 查询缺失的媒体信息
-            exist_flag, no_exists = self.common.get_no_exists_info(mediainfo=mediainfo)
+            exist_flag, no_exists = self.downloadchain.get_no_exists_info(mediainfo=mediainfo)
             if exist_flag:
                 logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在，完成订阅')
                 self.subscribes.delete(subscribe.id)
@@ -110,7 +118,7 @@ class SubscribeChain(ChainBase):
                 logger.warn(f'{subscribe.keyword or subscribe.name} 未搜索到资源')
                 continue
             # 自动下载
-            downloads, lefts = self.common.batch_download(contexts=contexts, need_tvs=no_exists)
+            downloads, lefts = self.downloadchain.batch_download(contexts=contexts, need_tvs=no_exists)
             if downloads and not lefts:
                 # 全部下载完成
                 logger.info(f'{mediainfo.get_title_string()} 下载完成，完成订阅')
@@ -180,7 +188,7 @@ class SubscribeChain(ChainBase):
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue
             # 查询缺失的媒体信息
-            exist_flag, no_exists = self.common.get_no_exists_info(mediainfo=mediainfo)
+            exist_flag, no_exists = self.downloadchain.get_no_exists_info(mediainfo=mediainfo)
             if exist_flag:
                 logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在，完成订阅')
                 self.subscribes.delete(subscribe.id)
@@ -206,7 +214,7 @@ class SubscribeChain(ChainBase):
             logger.info(f'{mediainfo.get_title_string()} 匹配完成，共匹配到{len(_match_context)}个资源')
             if _match_context:
                 # 批量择优下载
-                downloads, lefts = self.common.batch_download(contexts=_match_context, need_tvs=no_exists)
+                downloads, lefts = self.downloadchain.batch_download(contexts=_match_context, need_tvs=no_exists)
                 if downloads and not lefts:
                     # 全部下载完成
                     logger.info(f'{mediainfo.get_title_string()} 下载完成，完成订阅')

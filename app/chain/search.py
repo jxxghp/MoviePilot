@@ -1,11 +1,10 @@
 from typing import Optional, List
 
 from app.chain import ChainBase
-from app.chain.common import CommonChain
-from app.core.context import Context, MediaInfo, TorrentInfo
 from app.core.config import settings
-from app.core.meta_info import MetaInfo
+from app.core.context import Context, MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
+from app.core.meta_info import MetaInfo
 from app.helper.sites import SitesHelper
 from app.log import logger
 
@@ -17,7 +16,6 @@ class SearchChain(ChainBase):
 
     def __init__(self):
         super().__init__()
-        self.common = CommonChain()
         self.siteshelper = SitesHelper()
 
     def process(self, meta: MetaBase, mediainfo: MediaInfo,

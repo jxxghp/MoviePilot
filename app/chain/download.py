@@ -11,7 +11,7 @@ from app.utils.string import StringUtils
 from app.utils.types import MediaType
 
 
-class CommonChain(ChainBase):
+class DownloadChain(ChainBase):
 
     def __init__(self):
         super().__init__()
