@@ -1,6 +1,5 @@
 import pickle
 import random
-import threading
 import time
 from pathlib import Path
 from threading import RLock
@@ -32,15 +31,8 @@ class TmdbCache(metaclass=Singleton):
     _meta_path: Path = None
     # TMDB缓存过期
     _tmdb_cache_expire: bool = True
-    # 自动保存暗隔时间
-    _save_interval: int = 600
 
     def __init__(self):
-        # 创建计时器
-        self.timer = threading.Timer(self._save_interval, self.save)
-        self.init_config()
-
-    def init_config(self):
         self._meta_path = settings.TEMP_PATH / "__tmdb_cache__"
         self._meta_data = self.__load(self._meta_path)
 
@@ -115,12 +107,12 @@ class TmdbCache(metaclass=Singleton):
             return self._meta_data.get(key)
 
     @staticmethod
-    def __load(path) -> dict:
+    def __load(path: Path) -> dict:
         """
         从文件中加载缓存
         """
         try:
-            if Path(path).exists():
+            if path.exists():
                 with open(path, 'rb') as f:
                     data = pickle.load(f)
                 return data
@@ -158,6 +150,7 @@ class TmdbCache(metaclass=Singleton):
         """
         保存缓存数据到文件
         """
+
         meta_data = self.__load(self._meta_path)
         new_meta_data = {k: v for k, v in self._meta_data.items() if str(v.get("id")) != '0'}
 
@@ -168,12 +161,6 @@ class TmdbCache(metaclass=Singleton):
 
         with open(self._meta_path, 'wb') as f:
             pickle.dump(new_meta_data, f, pickle.HIGHEST_PROTOCOL)
-
-        if not force:
-            # 重新创建计时器
-            self.timer = threading.Timer(self._save_interval, self.save)
-            # 启动计时器
-            self.timer.start()
 
     def _random_sample(self, new_meta_data: dict) -> bool:
         """
@@ -227,9 +214,3 @@ class TmdbCache(metaclass=Singleton):
         if not cache_media_info:
             return
         self._meta_data[key]['title'] = cn_title
-
-    def __del__(self):
-        """
-        退出
-        """
-        self.timer.cancel()

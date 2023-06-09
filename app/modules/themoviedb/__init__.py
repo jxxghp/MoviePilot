@@ -34,7 +34,7 @@ class TheMovieDb(_ModuleBase):
         self.category = CategoryHelper()
 
     def stop(self):
-        pass
+        self.cache.save()
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
