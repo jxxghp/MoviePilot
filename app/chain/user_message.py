@@ -109,6 +109,11 @@ class UserMessageChain(ChainBase):
             elif cache_type == "Subscribe":
                 # 订阅媒体
                 mediainfo: MediaInfo = cache_list[int(text) - 1]
+                # 补充识别媒体信息
+                mediainfo: MediaInfo = self.recognize_media(meta=self._current_meta, tmdbid=mediainfo.tmdb_id)
+                if not mediainfo:
+                    logger.warn(f'未识别到媒体信息，tmdbid：{mediainfo.tmdb_id}')
+                    continue
                 self._current_media = mediainfo
                 state, msg = self.subscribes.add(mediainfo,
                                                  season=self._current_meta.begin_season)
