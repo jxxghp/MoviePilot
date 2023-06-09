@@ -235,9 +235,10 @@ class DownloadChain(ChainBase):
                     need_season = tv.get("season") or 1
                     need_episodes = tv.get("episodes")
                     total_episodes = tv.get("total_episodes")
+                    start_episode = tv.get("start_episode") or 1
                     # 缺失整季的转化为缺失集进行比较
                     if not need_episodes:
-                        need_episodes = list(range(1, total_episodes + 1))
+                        need_episodes = list(range(start_episode, total_episodes + 1))
                     for context in contexts:
                         media = context.media_info
                         meta = context.meta_info
