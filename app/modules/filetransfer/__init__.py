@@ -54,6 +54,10 @@ class FileTransferModule(_ModuleBase):
         :param rmt_mode: RmtMode转移方式
         """
         with lock:
+
+            # 创建父目录
+            target_file.parent.mkdir(parents=True, exist_ok=True)
+            # 转移
             if rmt_mode == 'link':
                 # 硬链接
                 retcode, retmsg = SystemUtils.link(file_item, target_file)
