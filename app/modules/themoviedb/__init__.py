@@ -101,17 +101,19 @@ class TheMovieDb(_ModuleBase):
                                           tmdbid=cache_info.get("id"))
             else:
                 info = None
-        # 赋值TMDB信息并返回
-        mediainfo = MediaInfo(tmdb_info=info)
-        # 确定二级分类
+
         if info:
+            # 确定二级分类
             if info.get('media_type') == MediaType.MOVIE:
                 cat = self.category.get_movie_category(info)
             else:
                 cat = self.category.get_tv_category(info)
+            # 赋值TMDB信息并返回
+            mediainfo = MediaInfo(tmdb_info=info)
             mediainfo.set_category(cat)
+            return mediainfo
 
-        return mediainfo
+        return None
 
     def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
         """
