@@ -20,6 +20,9 @@ class FileTransferModule(_ModuleBase):
     def init_module(self) -> None:
         pass
 
+    def stop(self):
+        pass
+
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 

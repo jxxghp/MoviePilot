@@ -39,6 +39,14 @@ class ModuleManager(metaclass=Singleton):
             self._running_modules[module_id].init_module()
             logger.info(f"Moudle Loaded：{module_id}")
 
+    def stop(self):
+        """
+        停止所有模块
+        """
+        for _, module in self._running_modules.items():
+            if hasattr(module, "stop"):
+                module.stop()
+
     def get_modules(self, method: str) -> Generator:
         """
         获取模块列表

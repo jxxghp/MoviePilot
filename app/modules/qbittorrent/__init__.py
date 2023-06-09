@@ -14,6 +14,9 @@ class QbittorrentModule(_ModuleBase):
     def init_module(self) -> None:
         self.qbittorrent = Qbittorrent()
 
+    def stop(self):
+        pass
+
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "DOWNLOADER", "qbittorrent"
 

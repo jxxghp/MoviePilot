@@ -7,7 +7,8 @@ import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from ruamel.yaml import CommentedMap
 
-from app.core import settings
+from app.core import settings, eventmanager
+from app.core.event_manager import Event
 from app.helper import ModuleHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -17,6 +18,9 @@ from app.utils.http import RequestUtils
 from app.utils.timer import TimerUtils
 
 import warnings
+
+from app.utils.types import EventType
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
@@ -56,6 +60,19 @@ class SiteStatistic(_PluginBase):
         if self._scheduler.get_jobs():
             self._scheduler.print_jobs()
             self._scheduler.start()
+
+    @staticmethod
+    def get_command() -> dict:
+        """
+        定义远程控制命令
+        :return: 命令关键字、事件、描述、附带数据
+        """
+        return {
+            "cmd": "/sitestatistic",
+            "event": EventType.SiteStatistic,
+            "desc": "站点数据统计",
+            "data": {}
+        }
 
     def stop_service(self):
         pass
@@ -221,12 +238,22 @@ class SiteStatistic(_PluginBase):
                                   title=f"站点 {site_user_info.site_name} 收到 "
                                         f"{site_user_info.message_unread} 条新消息，请登陆查看")
 
+    @eventmanager.register(EventType.SiteStatistic)
+    def refresh(self, event: Event):
+        """
+        刷新站点数据
+        """
+        logger.info("开始执行站点数据刷新 ...")
+        self.refresh_all_site_data(force=True)
+
     def refresh_all_site_data(self, force: bool = False, specify_sites: list = None):
         """
         多线程刷新站点下载上传量，默认间隔6小时
         """
         if not self.sites.get_indexers():
             return
+
+        logger.info("开始刷新站点数据 ...")
 
         with lock:
 
@@ -251,15 +278,13 @@ class SiteStatistic(_PluginBase):
 
             # 并发刷新
             with ThreadPool(min(len(refresh_sites), self._MAX_CONCURRENCY)) as p:
-                site_user_infos: List[ISiteUserInfo] = p.map(self.__refresh_site_data, refresh_sites)
-                site_user_infos = [info for info in site_user_infos if info]
-            # 保存数据
-            for site_user_info in site_user_infos:
-                # 获取今天的日期
-                key = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                value = site_user_info.to_dict()
-                # 按日期保存为字典
-                self.save_data(key, value)
+                p.map(self.__refresh_site_data, refresh_sites)
 
+            # 获取今天的日期
+            key = datetime.now().strftime('%Y-%m-%d')
+            # 保存数据
+            self.save_data(key, self._sites_data)
             # 更新时间
             self._last_update_time = datetime.now()
+
+        logger.info("站点数据刷新完成")

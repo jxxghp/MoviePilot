@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from uvicorn import Config
 
 from app.api.apiv1 import api_router
+from app.command import Command
 from app.core import settings, ModuleManager, PluginManager
 from app.db.init import init_db, update_db
 from app.helper.sites import SitesHelper
@@ -28,6 +29,10 @@ def shutdown_server():
     Scheduler().stop()
     # 停止插件
     PluginManager().stop()
+    # 停止模块
+    ModuleManager().stop()
+    # 停止事件消费
+    Command().stop()
 
 
 @App.on_event("startup")
@@ -43,6 +48,8 @@ def start_module():
     SitesHelper()
     # 启动定时服务
     Scheduler()
+    # 启动事件消费
+    Command()
 
 
 if __name__ == '__main__':

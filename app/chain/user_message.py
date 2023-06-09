@@ -1,11 +1,8 @@
-from typing import Dict, Any
+from typing import Any
 
-from fastapi import Request
-
-from app.chain import ChainBase
 from app.chain.common import *
 from app.chain.search import SearchChain
-from app.core import MediaInfo, TorrentInfo, MetaInfo
+from app.core import MediaInfo, TorrentInfo, MetaInfo, EventManager
 from app.db.subscribes import Subscribes
 from app.log import logger
 from app.utils.types import EventType
@@ -32,6 +29,7 @@ class UserMessageChain(ChainBase):
         self.subscribes = Subscribes()
         self.searchchain = SearchChain()
         self.torrent = TorrentHelper()
+        self.eventmanager = EventManager()
 
     def process(self, body: Any, form: Any, args: Any) -> None:
         """
@@ -60,6 +58,8 @@ class UserMessageChain(ChainBase):
                     "cmd": text
                 }
             )
+            self.common.post_message(title=f"正在运行，请稍候 ...", userid=userid)
+
         elif text.isdigit():
             # 缓存
             cache_data: dict = self._user_cache.get(userid)
@@ -285,7 +285,7 @@ class UserMessageChain(ChainBase):
         发送媒体列表消息
         """
         self.run_module('post_medias_message',
-                        title=f"共找到{total}条相关信息，请回复数字选择对应媒体（p:上一页 n:下一页）",
+                        title=f"共找到{total}条相关信息，请回复数字选择对应媒体（p: 上一页 n: 下一页）",
                         items=items,
                         userid=userid)
 
@@ -294,6 +294,6 @@ class UserMessageChain(ChainBase):
         发送种子列表消息
         """
         self.run_module('post_torrents_message',
-                        title=f"共找到{total}条相关信息，请回复数字下载对应资源（0:自动选择 p:上一页 n:下一页）",
+                        title=f"共找到{total}条相关信息，请回复数字下载对应资源（0: 自动选择 p: 上一页 n: 下一页）",
                         items=items,
                         userid=userid)

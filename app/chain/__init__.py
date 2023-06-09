@@ -2,7 +2,7 @@ import traceback
 from abc import abstractmethod
 from typing import Optional, Any
 
-from app.core import Context, ModuleManager, EventManager
+from app.core import Context, ModuleManager
 from app.log import logger
 from app.utils.singleton import AbstractSingleton, Singleton
 
@@ -17,7 +17,6 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         公共初始化
         """
         self.modulemanager = ModuleManager()
-        self.eventmanager = EventManager()
 
     @abstractmethod
     def process(self, *args, **kwargs) -> Optional[Context]:

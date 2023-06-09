@@ -13,6 +13,9 @@ class JellyfinModule(_ModuleBase):
     def init_module(self) -> None:
         self.jellyfin = Jellyfin()
 
+    def stop(self):
+        pass
+
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "jellyfin"
 

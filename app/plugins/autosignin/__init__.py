@@ -31,11 +31,8 @@ class AutoSignIn(_PluginBase):
     event: EventManager = None
     # 定时器
     _scheduler = None
-
     # 加载的模块
     _site_schema: list = []
-    # 退出事件
-    _event = Event()
 
     def init_plugin(self, config: dict = None):
         self.sites = SitesHelper()
@@ -70,7 +67,7 @@ class AutoSignIn(_PluginBase):
         :return: 命令关键字、事件、描述、附带数据
         """
         return {
-            "cmd": "/pts",
+            "cmd": "/sitesignin",
             "event": EventType.SiteSignin,
             "desc": "站点自动签到",
             "data": {}
@@ -191,9 +188,7 @@ class AutoSignIn(_PluginBase):
             if self._scheduler:
                 self._scheduler.remove_all_jobs()
                 if self._scheduler.running:
-                    self._event.set()
                     self._scheduler.shutdown()
-                    self._event.clear()
                 self._scheduler = None
         except Exception as e:
             logger.error("退出插件失败：%s" % str(e))

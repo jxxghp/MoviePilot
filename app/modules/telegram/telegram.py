@@ -1,13 +1,13 @@
-from threading import Event, Thread
+import threading
+from threading import Event
 from typing import Optional, List
-from urllib.parse import urlencode
 
-from app.core import settings, MediaInfo, TorrentInfo, Context
+import telebot
+
+from app.core import settings, MediaInfo, Context
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
-import telebot
-
 from app.utils.string import StringUtils
 
 
@@ -26,15 +26,24 @@ class Telegram(metaclass=Singleton):
         self._telegram_chat_id = settings.TELEGRAM_CHAT_ID
         # 初始化机器人
         if self._telegram_token and self._telegram_chat_id:
+            # bot
             _bot = telebot.TeleBot(self._telegram_token, parse_mode="markdown")
+            # 记录句柄
             self._bot = _bot
 
             @_bot.message_handler(func=lambda message: True)
             def echo_all(message):
                 RequestUtils(timeout=10).post_res(self._ds_url, json=message.json)
 
-            # 启动轮询
+        def run_polling():
+            """
+            定义线程函数来运行 infinity_polling
+            """
             _bot.infinity_polling()
+
+        # 启动线程来运行 infinity_polling
+        self._polling_thread = threading.Thread(target=run_polling)
+        self._polling_thread.start()
 
     def send_msg(self, title: str, text: str = "", image: str = "", userid: str = "") -> Optional[bool]:
         """
@@ -156,8 +165,25 @@ class Telegram(metaclass=Singleton):
 
         return True if ret else False
 
+    def register_commands(self, commands: dict):
+        """
+        注册菜单命令
+        """
+        if not self._bot:
+            return
+        # 设置bot命令
+        if commands:
+            self._bot.delete_my_commands()
+            self._bot.set_my_commands(
+                commands=[
+                    telebot.types.BotCommand(cmd[1:], str(desc.get("description"))) for cmd, desc in
+                    commands.items()
+                ]
+            )
+
     def stop(self):
         """
         停止Telegram消息接收服务
         """
         self._bot.stop_polling()
+        self._polling_thread.join()

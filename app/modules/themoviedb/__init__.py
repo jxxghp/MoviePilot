@@ -33,6 +33,9 @@ class TheMovieDb(_ModuleBase):
         self.tmdb = TmdbHelper()
         self.category = CategoryHelper()
 
+    def stop(self):
+        pass
+
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 

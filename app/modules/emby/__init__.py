@@ -14,6 +14,9 @@ class EmbyModule(_ModuleBase):
     def init_module(self) -> None:
         self.emby = Emby()
 
+    def stop(self):
+        pass
+
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "emby"
 

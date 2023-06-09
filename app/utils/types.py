@@ -19,6 +19,8 @@ class EventType(Enum):
     CommandExcute = "command.excute"
     # 站点签到
     SiteSignin = "site.signin"
+    # 站点数据统计
+    SiteStatistic = "site.statistic"
 
 
 # 系统配置Key字典

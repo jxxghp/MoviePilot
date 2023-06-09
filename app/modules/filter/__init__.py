@@ -7,6 +7,7 @@ from app.modules.filter.RuleParser import RuleParser
 
 
 class FilterModule(_ModuleBase):
+
     # 规则解析器
     parser: RuleParser = None
 
@@ -61,6 +62,9 @@ class FilterModule(_ModuleBase):
 
     def init_module(self) -> None:
         self.parser = RuleParser()
+
+    def stop(self):
+        pass
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "FILTER_RULE", True

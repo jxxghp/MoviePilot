@@ -225,3 +225,17 @@ class _ModuleBase(metaclass=ABCMeta):
         :return: 成功或失败
         """
         pass
+
+    def register_commands(self, commands: dict):
+        """
+        注册命令，实现这个函数接收系统可用的命令菜单
+        :param commands: 命令字典
+        """
+        pass
+
+    @abstractmethod
+    def stop(self):
+        """
+        如果关闭时模块有服务需要停止，需要实现此方法
+        """
+        pass

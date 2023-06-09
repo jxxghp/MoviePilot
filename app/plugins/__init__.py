@@ -1,10 +1,10 @@
 import json
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from app.chain import ChainBase
-from app.core import settings, Context
+from app.core import settings
 from app.db import SessionLocal
 from app.db.models import Base
 from app.db.models.plugin import PluginData
@@ -17,7 +17,7 @@ class PluginChian(ChainBase):
     插件处理链
     """
 
-    def process(self, *args, **kwargs) -> Optional[Context]:
+    def process(self, *args, **kwargs):
         pass
 
 
