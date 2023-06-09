@@ -93,7 +93,7 @@ class IndexerModule(_ModuleBase):
                 error_flag, result_array = self.__spider_search(
                     keyword=search_word,
                     indexer=site,
-                    mtype=mediainfo.type
+                    mtype=mediainfo.type if mediainfo else None
                 )
         except Exception as err:
             logger.error(f"{site.get('name')} 搜索出错：{err}")
