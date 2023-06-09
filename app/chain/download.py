@@ -364,9 +364,9 @@ class DownloadChain(ChainBase):
             exists_tvs: Optional[dict] = self.media_exists(mediainfo)
             if not exists_tvs:
                 # 所有剧集均缺失
-                for season, episodes in mediainfo.seasons.items():
-                    # 添加不存在的季集信息
-                    __append_no_exists(season, episodes)
+                for season, _ in mediainfo.seasons.items():
+                    # 全季不存在
+                    __append_no_exists(season, [])
                 return False, no_exists
             else:
                 # 存在一些，检查缺失的季集
@@ -375,6 +375,9 @@ class DownloadChain(ChainBase):
                     if exist_seasons.get(season):
                         # 取差集
                         episodes = list(set(episodes).difference(set(exist_seasons[season])))
+                        if not episodes:
+                            # 全部集存在
+                            continue
                     # 添加不存在的季集信息
                     __append_no_exists(season, episodes)
             # 存在不完整的剧集
