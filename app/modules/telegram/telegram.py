@@ -186,6 +186,6 @@ class Telegram(metaclass=Singleton):
         """
         停止Telegram消息接收服务
         """
-        if not self._bot:
+        if self._bot:
             self._bot.stop_polling()
             self._polling_thread.join()

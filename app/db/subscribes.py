@@ -23,12 +23,8 @@ class Subscribes:
         """
         # 总集数
         if mediainfo.type == MediaType.TV:
-            if not kwargs.get('season'):
-                kwargs.update({
-                    'season': 1
-                })
             if not kwargs.get('total_episode'):
-                total_episode = len(mediainfo.seasons.get(kwargs.get('season')) or [])
+                total_episode = len(mediainfo.seasons.get(kwargs.get('season') or 1) or [])
                 if not total_episode:
                     return False, "未识别到总集数"
                 kwargs.update({
