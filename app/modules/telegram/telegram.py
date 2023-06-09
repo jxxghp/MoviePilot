@@ -33,13 +33,13 @@ class Telegram(metaclass=Singleton):
 
             @_bot.message_handler(func=lambda message: True)
             def echo_all(message):
-                RequestUtils(timeout=10).post_res(self._ds_url, json=message.json)
+                RequestUtils(timeout=5).post_res(self._ds_url, json=message.json)
 
         def run_polling():
             """
             定义线程函数来运行 infinity_polling
             """
-            _bot.infinity_polling()
+            _bot.infinity_polling(long_polling_timeout=5)
 
         # 启动线程来运行 infinity_polling
         self._polling_thread = threading.Thread(target=run_polling)

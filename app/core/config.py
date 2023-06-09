@@ -96,7 +96,7 @@ class Settings(BaseSettings):
     # Transmission密码
     TR_PASSWORD: str = None
     # 种子标签
-    TORRENT_TAG: str = "MP"
+    TORRENT_TAG: str = "MOVIEPILOT"
     # 下载保存目录，容器内映射路径需要一致
     DOWNLOAD_PATH: str = "/downloads"
     # 媒体服务器 emby/jellyfin/plex

@@ -530,3 +530,24 @@ class StringUtils:
         parses = re.sub(r"([_*\[\]()~`>#+\-=|.!{}])", r"\\\1", content)
         reparse = re.sub(r"\\\\([_*\[\]()~`>#+\-=|.!{}])", r"\1", parses)
         return reparse
+
+    @staticmethod
+    def get_domain_address(address: str) -> Tuple[Optional[str], Optional[int]]:
+        """
+        从地址中获取域名和端口号
+        """
+        if not address.startswith("http"):
+            address = "http://" + address
+        parts = address.split(":")
+        if len(parts) > 3:
+            # 处理不希望包含多个冒号的情况（除了协议后的冒号）
+            return None, None
+        domain = ":".join(parts[:-1])
+        # 检查是否包含端口号
+        try:
+            port = int(parts[-1])
+        except ValueError:
+            # 端口号不是整数，返回 None 表示无效
+            return None, None
+        return domain, port
+

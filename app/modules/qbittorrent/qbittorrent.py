@@ -9,6 +9,7 @@ from qbittorrentapi.client import Client
 from app.core import settings
 from app.log import logger
 from app.utils.singleton import Singleton
+from app.utils.string import StringUtils
 
 
 class Qbittorrent(metaclass=Singleton):
@@ -21,10 +22,7 @@ class Qbittorrent(metaclass=Singleton):
     qbc: Client = None
 
     def __init__(self):
-        host = settings.QB_HOST
-        if host and host.find(":") != -1:
-            self._host = settings.QB_HOST.split(":")[0]
-            self._port = settings.QB_HOST.split(":")[1]
+        self._host, self._port = StringUtils.get_domain_address(settings.QB_HOST)
         self._username = settings.QB_USER
         self._password = settings.QB_PASSWORD
         if self._host and self._port and self._username and self._password:

@@ -6,6 +6,7 @@ from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.douban_sync import DoubanSyncChain
 from app.chain.subscribe import SubscribeChain
+from app.chain.transfer import TransferChain
 from app.core import eventmanager, PluginManager, EventManager
 from app.core.event_manager import Event as ManagerEvent
 from app.log import logger
@@ -44,6 +45,11 @@ class Command(metaclass=Singleton):
             "data": {
                 'state': 'R',
             }
+        },
+        "/transfer": {
+            "func": TransferChain().process,
+            "description": "下载文件整理",
+            "data": {}
         }
     }
 

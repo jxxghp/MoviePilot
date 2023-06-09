@@ -7,6 +7,7 @@ from transmission_rpc import Client, Torrent, File
 from app.core import settings
 from app.log import logger
 from app.utils.singleton import Singleton
+from app.utils.string import StringUtils
 
 
 class Transmission(metaclass=Singleton):
@@ -25,10 +26,7 @@ class Transmission(metaclass=Singleton):
               "error", "errorString", "doneDate", "queuePosition", "activityDate", "trackers"]
 
     def __init__(self):
-        host = settings.TR_HOST
-        if host and host.find(":") != -1:
-            self._host = settings.TR_HOST.split(":")[0]
-            self._port = settings.TR_HOST.split(":")[1]
+        self._host, self._port = StringUtils.get_domain_address(settings.QB_HOST)
         self._username = settings.TR_USER
         self._password = settings.TR_PASSWORD
         if self._host and self._port and self._username and self._password:
