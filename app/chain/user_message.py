@@ -36,7 +36,7 @@ class UserMessageChain(ChainBase):
         识别消息内容，执行操作
         """
         # 获取消息内容
-        info: dict = self.run_module('message_parser', body=body, form=form, args=args)
+        info: dict = self.message_parser(body=body, form=form, args=args)
         if not info:
             return
         # 用户ID
@@ -79,7 +79,7 @@ class UserMessageChain(ChainBase):
                 mediainfo: MediaInfo = cache_list[int(text) + self._current_page * self._page_size - 1]
                 self._current_media = mediainfo
                 # 检查是否已存在
-                exists: list = self.run_module('media_exists', mediainfo=mediainfo)
+                exists: dict = self.media_exists(mediainfo=mediainfo)
                 if exists:
                     # 已存在
                     self.common.post_message(
@@ -161,15 +161,13 @@ class UserMessageChain(ChainBase):
                         proxy=torrent.site_proxy)
                     if not torrent_file:
                         logger.error(f"下载种子文件失败：{torrent.title} - {torrent.enclosure}")
-                        self.run_module('post_message',
-                                        title=f"{torrent.title} 种子下载失败！",
-                                        text=f"错误信息：{error_msg}\n种子链接：{torrent.enclosure}",
-                                        userid=userid)
+                        self.post_message(title=f"{torrent.title} 种子下载失败！",
+                                          text=f"错误信息：{error_msg}\n种子链接：{torrent.enclosure}",
+                                          userid=userid)
                         return
                     # 添加下载
-                    result: Optional[tuple] = self.run_module("download",
-                                                              torrent_path=torrent_file,
-                                                              cookie=torrent.site_cookie)
+                    result: Optional[tuple] = self.download(torrent_path=torrent_file,
+                                                            cookie=torrent.site_cookie)
                     if result:
                         state, msg = result
                     else:
@@ -269,7 +267,7 @@ class UserMessageChain(ChainBase):
             self._current_meta = meta
             # 开始搜索
             logger.info(f"开始搜索：{meta.get_name()}")
-            medias: Optional[List[MediaInfo]] = self.run_module('search_medias', meta=meta)
+            medias: Optional[List[MediaInfo]] = self.search_medias(meta=meta)
             if not medias:
                 self.common.post_message(title=f"{meta.get_name()} 没有找到对应的媒体信息！", userid=userid)
                 return
@@ -286,16 +284,18 @@ class UserMessageChain(ChainBase):
         """
         发送媒体列表消息
         """
-        self.run_module('post_medias_message',
-                        title=f"共找到{total}条相关信息，请回复数字选择对应媒体（p: 上一页 n: 下一页）",
-                        items=items,
-                        userid=userid)
+        self.post_medias_message(
+            title=f"共找到{total}条相关信息，请回复数字选择对应媒体（p: 上一页 n: 下一页）",
+            items=items,
+            userid=userid
+        )
 
     def __post_torrents_message(self, items: list, userid: str, total: int):
         """
         发送种子列表消息
         """
-        self.run_module('post_torrents_message',
-                        title=f"共找到{total}条相关信息，请回复数字下载对应资源（0: 自动选择 p: 上一页 n: 下一页）",
-                        items=items,
-                        userid=userid)
+        self.post_torrents_message(
+            title=f"共找到{total}条相关信息，请回复数字下载对应资源（0: 自动选择 p: 上一页 n: 下一页）",
+            items=items,
+            userid=userid
+        )

@@ -15,11 +15,11 @@ if __name__ == '__main__':
     # 测试名称识别
     # suite.addTest(MetaInfoTest('test_metainfo'))
     # 测试媒体识别
-    # suite.addTest(RecognizeTest('test_recognize'))
+    suite.addTest(RecognizeTest('test_recognize'))
     # 测试CookieCloud同步
     # suite.addTest(CookieCloudTest('test_cookiecloud'))
     # 测试文件转移
-    suite.addTest(TransferTest('test_transfer'))
+    # suite.addTest(TransferTest('test_transfer'))
     # 测试豆瓣同步
     # suite.addTest(DoubanSyncTest('test_doubansync'))
 

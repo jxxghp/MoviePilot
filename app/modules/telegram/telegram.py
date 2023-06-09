@@ -74,7 +74,7 @@ class Telegram(metaclass=Singleton):
             else:
                 chat_id = self._telegram_chat_id
 
-            return self.__send_request(chat_id=chat_id, image=image, caption=caption)
+            return self.__send_request(image=image, caption=caption)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
@@ -112,7 +112,7 @@ class Telegram(metaclass=Singleton):
             else:
                 chat_id = self._telegram_chat_id
 
-            return self.__send_request(chat_id=chat_id, image=image, caption=caption)
+            return self.__send_request(image=image, caption=caption)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
@@ -142,13 +142,13 @@ class Telegram(metaclass=Singleton):
             else:
                 chat_id = self._telegram_chat_id
 
-            return self.__send_request(chat_id=chat_id, caption=caption)
+            return self.__send_request(caption=caption)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def __send_request(self, chat_id="", image="", caption="") -> bool:
+    def __send_request(self, image="", caption="") -> bool:
         """
         向Telegram发送报文
         """

@@ -37,8 +37,7 @@ class SearchChain(ChainBase):
             logger.warn('未开启任何有效站点，无法搜索资源')
             return []
         # 执行搜索
-        torrents: List[TorrentInfo] = self.run_module(
-            'search_torrents',
+        torrents: List[TorrentInfo] = self.search_torrents(
             mediainfo=mediainfo,
             keyword=keyword,
             sites=indexer_sites
@@ -47,7 +46,7 @@ class SearchChain(ChainBase):
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
             return []
         # 过滤种子
-        result: List[TorrentInfo] = self.run_module("filter_torrents", torrent_list=torrents)
+        result: List[TorrentInfo] = self.filter_torrents(torrent_list=torrents)
         if result is not None:
             torrents = result
         if not torrents:
@@ -66,7 +65,7 @@ class SearchChain(ChainBase):
                 # 识别
                 torrent_meta = MetaInfo(torrent.title, torrent.description)
                 # 识别媒体信息
-                torrent_mediainfo: MediaInfo = self.run_module('recognize_media', meta=torrent_meta)
+                torrent_mediainfo: MediaInfo = self.recognize_media(meta=torrent_meta)
                 if not torrent_mediainfo:
                     logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
                     continue

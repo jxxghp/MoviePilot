@@ -20,7 +20,6 @@ def start_douban_chain():
 @router.get("/sync", response_model=schemas.Response)
 async def sync_douban(
         background_tasks: BackgroundTasks,
-        db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_superuser)):
     """
     查询所有订阅

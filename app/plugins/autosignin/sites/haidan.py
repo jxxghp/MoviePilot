@@ -1,8 +1,5 @@
-import random
-import re
 from typing import Tuple
 
-from lxml import etree
 from ruamel.yaml import CommentedMap
 
 from app.core import settings

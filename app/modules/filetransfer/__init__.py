@@ -26,7 +26,7 @@ class FileTransferModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[str]:
+    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[Path]:
         """
         文件转移
         :param path:  文件路径
@@ -36,14 +36,14 @@ class FileTransferModule(_ModuleBase):
         if not settings.LIBRARY_PATH:
             logger.error("未设置媒体库目录，无法转移文件")
             return None
-        state, msg = self.transfer_media(in_path=Path(path),
-                                         meidainfo=mediainfo,
-                                         rmt_mode=settings.TRANSFER_TYPE,
-                                         target_dir=Path(settings.LIBRARY_PATH))
-        if not state:
+        path, msg = self.transfer_media(in_path=Path(path),
+                                        meidainfo=mediainfo,
+                                        rmt_mode=settings.TRANSFER_TYPE,
+                                        target_dir=Path(settings.LIBRARY_PATH))
+        if not path:
             logger.error(msg)
 
-        return state
+        return path
 
     @staticmethod
     def __transfer_command(file_item: Path, target_file: Path, rmt_mode) -> int:
@@ -55,8 +55,6 @@ class FileTransferModule(_ModuleBase):
         """
         with lock:
 
-            # 创建父目录
-            target_file.parent.mkdir(parents=True, exist_ok=True)
             # 转移
             if rmt_mode == 'link':
                 # 硬链接
@@ -285,14 +283,16 @@ class FileTransferModule(_ModuleBase):
         if over_flag and old_file and old_file.exists():
             logger.info(f"正在删除已存在的文件：{old_file}")
             old_file.unlink()
-        logger.info(f"正在转移文件：{file_item.name} 到 {new_file}")
+        logger.info(f"正在转移文件：{file_item} 到 {new_file}")
+        # 创建父目录
+        new_file.parent.mkdir(parents=True, exist_ok=True)
         retcode = self.__transfer_command(file_item=file_item,
                                           target_file=new_file,
                                           rmt_mode=rmt_mode)
         if retcode == 0:
-            logger.info(f"文件 {file_item.name} {rmt_mode}完成")
+            logger.info(f"文件 {file_item} {rmt_mode}完成")
         else:
-            logger.error(f"文件 {file_item.name} {rmt_mode}失败，错误码：{retcode}")
+            logger.error(f"文件 {file_item} {rmt_mode}失败，错误码：{retcode}")
             return retcode
         # 处理其他相关文件
         return self.__transfer_other_files(org_path=file_item,

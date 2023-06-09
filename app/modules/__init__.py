@@ -149,7 +149,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[str]:
+    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[Path]:
         """
         转移一个路径下的文件
         :param path:  文件路径

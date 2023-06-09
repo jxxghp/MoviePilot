@@ -56,7 +56,7 @@ class DoubanSyncChain(ChainBase):
                 if not douban_id or douban_id in caches:
                     continue
                 # 根据豆瓣ID获取豆瓣数据
-                doubaninfo: Optional[dict] = self.run_module('douban_info', doubanid=douban_id)
+                doubaninfo: Optional[dict] = self.douban_info(doubanid=douban_id)
                 if not doubaninfo:
                     logger.warn(f'未获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
                     continue
@@ -65,7 +65,7 @@ class DoubanSyncChain(ChainBase):
                 meta = MetaInfo(doubaninfo.get("original_title") or doubaninfo.get("title"))
                 if doubaninfo.get("year"):
                     meta.year = doubaninfo.get("year")
-                mediainfo: MediaInfo = self.run_module('recognize_media', meta=meta)
+                mediainfo: MediaInfo = self.recognize_media(meta=meta)
                 if not mediainfo:
                     logger.warn(f'未识别到媒体信息，标题：{title}，豆瓣ID：{douban_id}')
                     continue

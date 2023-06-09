@@ -18,7 +18,7 @@ class TransferChain(ChainBase):
         """
         logger.info("开始执行下载器文件转移 ...")
         # 从下载器获取种子列表
-        torrents: Optional[List[dict]] = self.run_module("list_torrents", status=TorrentStatus.TRANSFER)
+        torrents: Optional[List[dict]] = self.list_torrents(status=TorrentStatus.TRANSFER)
         if not torrents:
             logger.info("没有获取到已完成的下载任务")
             return False
@@ -31,25 +31,25 @@ class TransferChain(ChainBase):
                 logger.warn(f'未识别到元数据，标题：{torrent.get("title")}')
                 continue
             # 识别媒体信息
-            mediainfo: MediaInfo = self.run_module('recognize_media', meta=meta)
+            mediainfo: MediaInfo = self.recognize_media(meta=meta)
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{torrent.get("title")}')
                 continue
             logger.info(f"{torrent.get('title')} 识别为：{mediainfo.type.value} {mediainfo.get_title_string()}")
             # 更新媒体图片
-            self.run_module("obtain_image", mediainfo=mediainfo)
+            self.obtain_image(mediainfo=mediainfo)
             # 转移
-            dest_path: Path = self.run_module("transfer", mediainfo=mediainfo, path=torrent.get("path"))
+            dest_path: Path = self.transfer(mediainfo=mediainfo, path=torrent.get("path"))
             if not dest_path:
                 logger.warn(f"{torrent.get('title')} 转移失败")
                 continue
             # 转移完成
-            self.run_module("transfer_completed", hashs=torrent.get("hash"))
+            self.transfer_completed(hashs=torrent.get("hash"))
             # 刮剥
-            self.run_module("scrape_metadata", path=dest_path, mediainfo=mediainfo)
+            self.scrape_metadata(path=dest_path, mediainfo=mediainfo)
             # 移动模式删除种子
             if settings.TRANSFER_TYPE == "move":
-                result = self.run_module("remove_torrents", hashs=torrent.get("hash"))
+                result = self.remove_torrents(hashs=torrent.get("hash"))
                 if result:
                     logger.info(f"移动模式删除种子成功：{torrent.get('title')} ")
 

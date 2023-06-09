@@ -92,7 +92,6 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
 
 @router.get("/refresh", response_model=schemas.Response)
 async def refresh_subscribes(
-        db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_superuser)):
     """
     刷新所有订阅
@@ -108,7 +107,6 @@ async def refresh_subscribes(
 
 @router.get("/search", response_model=schemas.Response)
 async def search_subscribes(
-        db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_superuser)):
     """
     搜索所有订阅

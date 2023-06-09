@@ -37,7 +37,7 @@ class SubscribeChain(ChainBase):
         """
         logger.info(f'开始添加订阅，标题：{title} ...')
         # 识别前预处理
-        result: Optional[tuple] = self.run_module('prepare_recognize', title=title)
+        result: Optional[tuple] = self.prepare_recognize(title=title)
         if result:
             title, _ = result
         # 识别元数据
@@ -48,12 +48,12 @@ class SubscribeChain(ChainBase):
             metainfo.type = MediaType.TV
             metainfo.begin_season = season
         # 识别媒体信息
-        mediainfo: MediaInfo = self.run_module('recognize_media', meta=metainfo, tmdbid=tmdbid)
+        mediainfo: MediaInfo = self.recognize_media(meta=metainfo, tmdbid=tmdbid)
         if not mediainfo:
             logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}')
             return False
         # 更新媒体图片
-        self.run_module('obtain_image', mediainfo=mediainfo)
+        self.obtain_image(mediainfo=mediainfo)
         # 添加订阅
         state, err_msg = self.subscribes.add(mediainfo, season=season, **kwargs)
         if state:
@@ -89,7 +89,7 @@ class SubscribeChain(ChainBase):
             meta.begin_season = subscribe.season
             meta.type = MediaType.MOVIE if subscribe.type == MediaType.MOVIE.value else MediaType.TV
             # 识别媒体信息
-            mediainfo: MediaInfo = self.run_module('recognize_media', meta=meta, tmdbid=subscribe.tmdbid)
+            mediainfo: MediaInfo = self.recognize_media(meta=meta, tmdbid=subscribe.tmdbid)
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue
@@ -128,11 +128,11 @@ class SubscribeChain(ChainBase):
                 continue
             logger.info(f'开始刷新站点资源，站点：{indexer.get("name")} ...')
             domain = StringUtils.get_url_domain(indexer.get("domain"))
-            torrents: List[TorrentInfo] = self.run_module("refresh_torrents", sites=[indexer])
+            torrents: List[TorrentInfo] = self.refresh_torrents(sites=[indexer])
             if torrents:
                 self._torrents_cache[domain] = []
                 # 过滤种子
-                result: List[TorrentInfo] = self.run_module("filter_torrents", torrent_list=torrents)
+                result: List[TorrentInfo] = self.filter_torrents(torrent_list=torrents)
                 if result is not None:
                     torrents = result
                 if not torrents:
@@ -142,7 +142,7 @@ class SubscribeChain(ChainBase):
                     # 识别
                     meta = MetaInfo(torrent.title, torrent.description)
                     # 识别媒体信息
-                    mediainfo: MediaInfo = self.run_module('recognize_media', meta=meta)
+                    mediainfo: MediaInfo = self.recognize_media(meta=meta)
                     if not mediainfo:
                         logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
                         continue
@@ -167,7 +167,7 @@ class SubscribeChain(ChainBase):
             meta.begin_season = subscribe.season
             meta.type = MediaType.MOVIE if subscribe.type == MediaType.MOVIE.value else MediaType.TV
             # 识别媒体信息
-            mediainfo: MediaInfo = self.run_module('recognize_media', meta=meta, tmdbid=subscribe.tmdbid)
+            mediainfo: MediaInfo = self.recognize_media(meta=meta, tmdbid=subscribe.tmdbid)
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue

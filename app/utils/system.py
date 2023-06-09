@@ -56,7 +56,7 @@ class SystemUtils:
         移动
         """
         try:
-            shutil.move(src.with_name(dest.name), dest)
+            shutil.move(src.replace(dest.name), dest)
             return 0, ""
         except Exception as err:
             print(str(err))
@@ -68,7 +68,7 @@ class SystemUtils:
         硬链接
         """
         try:
-            os.link(src, dest)
+            dest.hardlink_to(src)
             return 0, ""
         except Exception as err:
             print(str(err))
@@ -80,7 +80,7 @@ class SystemUtils:
         软链接
         """
         try:
-            os.symlink(src, dest)
+            dest.symlink_to(src)
             return 0, ""
         except Exception as err:
             print(str(err))
@@ -92,7 +92,7 @@ class SystemUtils:
         pattern = r".*(" + "|".join(extensions) + ")$"
 
         # 遍历目录及子目录
-        for path in directory.glob('**/*'):
+        for path in directory.rglob('**/*'):
             if path.is_file() and re.match(pattern, path.name, re.IGNORECASE):
                 files.append(path)
 

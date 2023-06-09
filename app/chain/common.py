@@ -21,12 +21,6 @@ class CommonChain(ChainBase):
     def process(self, *args, **kwargs) -> Optional[Context]:
         pass
 
-    def post_message(self, title: str, text: str = None, image: str = None, userid: str = None):
-        """
-        发送消息
-        """
-        self.run_module('post_message', title=title, text=text, image=image, userid=userid)
-
     def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo, userid: str = None):
         """
         发送添加下载的消息
@@ -93,10 +87,9 @@ class CommonChain(ChainBase):
                 proxy=_torrent.site_proxy)
             if not torrent_file:
                 logger.error(f"下载种子文件失败：{_torrent.title} - {_torrent.enclosure}")
-                self.run_module('post_message',
-                                title=f"{_torrent.title} 种子下载失败！",
-                                text=f"错误信息：{error_msg}\n种子链接：{_torrent.enclosure}",
-                                userid=userid)
+                self.post_message(title=f"{_torrent.title} 种子下载失败！",
+                                  text=f"错误信息：{error_msg}\n种子链接：{_torrent.enclosure}",
+                                  userid=userid)
                 return None, []
             return torrent_file, files
 
@@ -113,10 +106,9 @@ class CommonChain(ChainBase):
                 if not _torrent_file:
                     return
             # 添加下载
-            result: Optional[tuple] = self.run_module("download",
-                                                      torrent_path=_torrent_file,
-                                                      cookie=_torrent.site_cookie,
-                                                      episodes=_episodes)
+            result: Optional[tuple] = self.download(torrent_path=_torrent_file,
+                                                    cookie=_torrent.site_cookie,
+                                                    episodes=_episodes)
             if result:
                 _hash, error_msg = result
             else:
@@ -130,15 +122,15 @@ class CommonChain(ChainBase):
                 # 下载失败
                 logger.error(f"{_media.get_title_string()} 添加下载任务失败："
                              f"{_torrent.title} - {_torrent.enclosure}，{error_msg}")
-                self.run_module('post_message',
-                                title="添加下载任务失败：%s %s"
-                                      % (_media.get_title_string(), _meta.get_season_episode_string()),
-                                text=f"站点：{_torrent.site_name}\n"
-                                     f"种子名称：{_meta.org_string}\n"
-                                     f"种子链接：{_torrent.enclosure}\n"
-                                     f"错误信息：{error_msg}",
-                                image=_media.get_message_image(),
-                                userid=userid)
+                self.post_message(
+                    title="添加下载任务失败：%s %s"
+                          % (_media.get_title_string(), _meta.get_season_episode_string()),
+                    text=f"站点：{_torrent.site_name}\n"
+                         f"种子名称：{_meta.org_string}\n"
+                         f"种子链接：{_torrent.enclosure}\n"
+                         f"错误信息：{error_msg}",
+                    image=_media.get_message_image(),
+                    userid=userid)
             return _hash
 
         def __update_seasons(tmdbid: str, need: list, current: list) -> list:
@@ -177,7 +169,7 @@ class CommonChain(ChainBase):
                 if season == nt.get("season"):
                     return nt.get("total_episodes")
             return 0
-            
+
         # 分组排序
         contexts = TorrentHelper.sort_group_torrents(contexts)
 
@@ -360,7 +352,7 @@ class CommonChain(ChainBase):
             no_exists = {}
         if mediainfo.type == MediaType.MOVIE:
             # 电影
-            exists_movies: Optional[dict] = self.run_module("media_exists", mediainfo)
+            exists_movies: Optional[dict] = self.media_exists(mediainfo)
             if exists_movies:
                 logger.info(f"媒体库中已存在电影：{mediainfo.get_title_string()}")
                 return True, {}
@@ -370,7 +362,7 @@ class CommonChain(ChainBase):
                 logger.error(f"媒体信息中没有季集信息：{mediainfo.get_title_string()}")
                 return False, {}
             # 电视剧
-            exists_tvs: Optional[dict] = self.run_module("media_exists", mediainfo)
+            exists_tvs: Optional[dict] = self.media_exists(mediainfo)
             if not exists_tvs:
                 # 所有剧集均缺失
                 for season, episodes in mediainfo.seasons.items():

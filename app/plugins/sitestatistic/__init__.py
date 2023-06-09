@@ -243,7 +243,8 @@ class SiteStatistic(_PluginBase):
         """
         刷新站点数据
         """
-        logger.info("开始执行站点数据刷新 ...")
+        if event:
+            logger.info("收到命令，开始执行站点数据刷新 ...")
         self.refresh_all_site_data(force=True)
 
     def refresh_all_site_data(self, force: bool = False, specify_sites: list = None):

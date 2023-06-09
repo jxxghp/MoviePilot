@@ -97,6 +97,7 @@ class TheMovieDb(_ModuleBase):
         else:
             # 使用缓存信息
             if cache_info.get("title"):
+                logger.info(f"使用识别缓存：{cache_info.get('title')}")
                 info = self.tmdb.get_info(mtype=cache_info.get("type"),
                                           tmdbid=cache_info.get("id"))
             else:

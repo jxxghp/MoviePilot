@@ -1,10 +1,15 @@
 import traceback
 from abc import abstractmethod
-from typing import Optional, Any
+from pathlib import Path
+from typing import Optional, Any, Tuple, List, Set, Union
 
-from app.core import Context, ModuleManager
+from ruamel.yaml import CommentedMap
+
+from app.core import Context, ModuleManager, MediaInfo, TorrentInfo
+from app.core.meta import MetaBase
 from app.log import logger
 from app.utils.singleton import AbstractSingleton, Singleton
+from app.utils.types import TorrentStatus
 
 
 class ChainBase(AbstractSingleton, metaclass=Singleton):
@@ -56,3 +61,76 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
             except Exception as err:
                 logger.error(f"运行模块 {method} 出错：{module.__class__.__name__} - {err}\n{traceback.print_exc()}")
         return result
+
+    def prepare_recognize(self, title: str,
+                          subtitle: str = None) -> Tuple[str, str]:
+        return self.run_module("prepare_recognize", title=title, subtitle=subtitle)
+
+    def recognize_media(self, meta: MetaBase,
+                        tmdbid: str = None) -> Optional[MediaInfo]:
+        return self.run_module("recognize_media", meta=meta, tmdbid=tmdbid)
+
+    def douban_info(self, doubanid: str) -> Optional[dict]:
+        return self.run_module("douban_info", doubanid=doubanid)
+
+    def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
+        return self.run_module("message_parser", body=body, form=form, args=args)
+
+    def webhook_parser(self, message: dict) -> Optional[dict]:
+        return self.run_module("webhook_parser", message=message)
+
+    def obtain_image(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
+        return self.run_module("obtain_image", mediainfo=mediainfo)
+
+    def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+        return self.run_module("search_medias", meta=meta)
+
+    def search_torrents(self, mediainfo: Optional[MediaInfo], sites: List[CommentedMap],
+                        keyword: str = None) -> Optional[List[TorrentInfo]]:
+        return self.run_module("search_torrents", mediainfo=mediainfo, sites=sites, keyword=keyword)
+
+    def refresh_torrents(self, sites: List[CommentedMap]) -> Optional[List[TorrentInfo]]:
+        return self.run_module("refresh_torrents", sites=sites)
+
+    def filter_torrents(self, torrent_list: List[TorrentInfo]) -> List[TorrentInfo]:
+        return self.run_module("filter_torrents", torrent_list=torrent_list)
+
+    def download(self, torrent_path: Path, cookie: str,
+                 episodes: Set[int] = None) -> Optional[Tuple[Optional[str], str]]:
+        return self.run_module("download", torrent_path=torrent_path, cookie=cookie, episodes=episodes)
+
+    def list_torrents(self, status: TorrentStatus) -> Optional[List[dict]]:
+        return self.run_module("list_torrents", status=status)
+
+    def remove_torrents(self, hashs: Union[str, list]) -> bool:
+        return self.run_module("remove_torrents", hashs=hashs)
+
+    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[Path]:
+        return self.run_module("transfer", path=path, mediainfo=mediainfo)
+
+    def transfer_completed(self, hashs: Union[str, list]) -> bool:
+        return self.run_module("transfer_completed", hashs=hashs)
+
+    def media_exists(self, mediainfo: MediaInfo) -> Optional[dict]:
+        return self.run_module("media_exists", mediainfo=mediainfo)
+
+    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: str) -> Optional[bool]:
+        return self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
+
+    def post_message(self, title: str,
+                     text: str = None, image: str = None, userid: Union[str, int] = None) -> Optional[bool]:
+        return self.run_module("post_message", title=title, text=text, image=image, userid=userid)
+
+    def post_medias_message(self, title: str, items: List[MediaInfo],
+                            userid: Union[str, int] = None) -> Optional[bool]:
+        return self.run_module("post_medias_message", title=title, items=items, userid=userid)
+
+    def post_torrents_message(self, title: str, items: List[Context],
+                              userid: Union[str, int] = None) -> Optional[bool]:
+        return self.run_module("post_torrents_message", title=title, items=items, userid=userid)
+
+    def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
+        return self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
+
+    def register_commands(self, commands: dict):
+        return self.run_module("register_commands", commands=commands)
