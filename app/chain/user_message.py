@@ -113,7 +113,7 @@ class UserMessageChain(ChainBase):
                 mediainfo: MediaInfo = self.recognize_media(meta=self._current_meta, tmdbid=mediainfo.tmdb_id)
                 if not mediainfo:
                     logger.warn(f'未识别到媒体信息，tmdbid：{mediainfo.tmdb_id}')
-                    continue
+                    return
                 self._current_media = mediainfo
                 state, msg = self.subscribes.add(mediainfo,
                                                  season=self._current_meta.begin_season)
