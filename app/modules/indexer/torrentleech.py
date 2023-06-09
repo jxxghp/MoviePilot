@@ -62,10 +62,10 @@ class TorrentLeech:
                 }
                 torrents.append(torrent)
         elif res is not None:
-            logger.warn(f"【INDEXER】{self._indexer.get('name')} 搜索失败，错误码：{res.status_code}")
+            logger.warn(f"{self._indexer.get('name')} 搜索失败，错误码：{res.status_code}")
             return True, []
         else:
-            logger.warn(f"【INDEXER】{self._indexer.get('name')} 搜索失败，无法连接 {self._indexer.get('domain')}")
+            logger.warn(f"{self._indexer.get('name')} 搜索失败，无法连接 {self._indexer.get('domain')}")
             return True, []
 
         return False, torrents

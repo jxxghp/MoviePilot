@@ -37,7 +37,6 @@ WORKDIR ${WORKDIR}
 COPY . .
 RUN apt-get update \
     && apt-get -y install musl-dev \
-    && pip install cython \
     && pip install -r requirements.txt \
     && python_ver=$(python3 -V | awk '{print $2}') \
     && echo "${WORKDIR}/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \

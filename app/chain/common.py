@@ -213,7 +213,7 @@ class CommonChain(ChainBase):
                                     download_id = __download(_context=context, _torrent_file=torrent_path)
                                 else:
                                     logger.info(
-                                        f"【Downloader】种子 {meta.org_string} 未含集数信息，解析文件数为 {len(torrent_episodes)}")
+                                        f"种子 {meta.org_string} 未含集数信息，解析文件数为 {len(torrent_episodes)}")
                                     continue
                             else:
                                 download_id = __download(context)

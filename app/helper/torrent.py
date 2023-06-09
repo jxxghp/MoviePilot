@@ -1,10 +1,10 @@
 import datetime
 import re
 from pathlib import Path
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Union
 from urllib.parse import unquote
 
-from bencode import bdecode
+from torrentool.api import Torrent
 
 from app.core.config import settings
 from app.core.context import Context
@@ -24,13 +24,14 @@ class TorrentHelper:
                          ua: str = None,
                          referer: str = None,
                          proxy: bool = False) \
-            -> Tuple[Optional[Path], Optional[bytes], Optional[str], Optional[list], Optional[str]]:
+            -> Tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list], Optional[str]]:
         """
         把种子下载到本地
         :return: 种子保存路径、种子内容、种子主目录、种子文件清单、错误信息
         """
         if url.startswith("magnet:"):
-            return None, None, "", [], f"{url} 为磁力链接"
+            return None, url, "", [], f"{url} 为磁力链接"
+        # 请求种子文件
         req = RequestUtils(
             ua=ua,
             cookies=cookie,
@@ -40,7 +41,7 @@ class TorrentHelper:
         while req and req.status_code in [301, 302]:
             url = req.headers['Location']
             if url and url.startswith("magnet:"):
-                return None, None, "", [], f"获取到磁力链接：{url}"
+                return None, url, "", [], f"获取到磁力链接：{url}"
             req = RequestUtils(
                 ua=ua,
                 cookies=cookie,
@@ -50,10 +51,14 @@ class TorrentHelper:
         if req and req.status_code == 200:
             if not req.content:
                 return None, None, "", [], "未下载到种子数据"
+            # 读取种子文件名
+            file_name = self.__get_url_torrent_filename(req, url)
+            # 种子文件路径
+            file_path = Path(settings.TEMP_PATH) / file_name
             # 解析内容格式
             if req.text and str(req.text).startswith("magnet:"):
                 # 磁力链接
-                return None, None, "", [], f"获取到磁力链接：{req.text}"
+                return None, req.text, "", [], f"获取到磁力链接：{req.text}"
             elif req.text and "下载种子文件" in req.text:
                 # 首次下载提示页面
                 skip_flag = False
@@ -79,7 +84,7 @@ class TorrentHelper:
                             ).post_res(url=action, data=data)
                             if req and req.status_code == 200:
                                 # 检查是不是种子文件，如果不是抛出异常
-                                bdecode(req.content)
+                                Torrent.from_string(req.content)
                                 # 跳过成功
                                 logger.info(f"触发了站点首次种子下载，已自动跳过：{url}")
                                 skip_flag = True
@@ -89,59 +94,40 @@ class TorrentHelper:
                             else:
                                 logger.warn(f"触发了站点首次种子下载，且无法自动跳过：{url}")
                 except Exception as err:
-                    logger.warn(f"【Downloader】触发了站点首次种子下载，尝试自动跳过时出现错误：{err}，链接：{url}")
+                    logger.warn(f"触发了站点首次种子下载，尝试自动跳过时出现错误：{err}，链接：{url}")
 
                 if not skip_flag:
                     return None, None, "", [], "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"
-            else:
+
+            if req.content:
                 # 检查是不是种子文件，如果不是仍然抛出异常
                 try:
-                    bdecode(req.content)
+                    # 保存到文件
+                    file_path.write_bytes(req.content)
+                    # 获取种子目录和文件清单
+                    torrentinfo = Torrent.from_file(file_path)
+                    # 获取目录名
+                    folder_name = torrentinfo.name
+                    # 获取文件清单
+                    if len(torrentinfo.files) <= 1:
+                        # 单文件种子
+                        file_list = [torrentinfo.name]
+                    else:
+                        file_list = [fileinfo.name for fileinfo in torrentinfo.files]
+                    # 成功拿到种子数据
+                    return file_path, req.content, folder_name, file_list, ""
                 except Exception as err:
-                    print(str(err))
-                    return None, None, "", [], "种子数据有误，请确认链接是否正确"
-            # 读取种子文件名
-            file_name = self.__get_url_torrent_filename(req, url)
-            # 种子文件路径
-            file_path = Path(settings.TEMP_PATH) / file_name
-            # 种子内容
-            file_content: bytes = req.content
-            # 读取种子信息
-            file_folder, file_names, ret_msg = self.__get_torrent_fileinfo(file_content)
-            # 写入磁盘
-            file_path.write_bytes(file_content)
-            # 返回
-            return file_path, file_content, file_folder, file_names, ret_msg
-
+                    logger.error(f"种子文件解析失败：{err}")
+                # 种子数据仍然错误
+                return None, None, "", [], "种子数据有误，请确认链接是否正确"
+            # 返回失败
+            return None, None, "", [], ""
         elif req is None:
             return None, None, "", [], "无法打开链接：%s" % url
         elif req.status_code == 429:
             return None, None, "", [], "触发站点流控，请稍后重试"
         else:
-            return None, None, "", [], "下载种子出错，状态码：%s" % req.status_code
-
-    @staticmethod
-    def __get_torrent_fileinfo(content: bytes) -> Tuple[str, list, str]:
-        """
-        解析Torrent文件，获取文件清单
-        :return: 种子文件列表主目录、种子文件列表、错误信息
-        """
-        file_folder = ""
-        file_names = []
-        try:
-            torrent = bdecode(content)
-            if torrent.get("info"):
-                files = torrent.get("info", {}).get("files") or []
-                if files:
-                    for item in files:
-                        if item.get("path"):
-                            file_names.append(item["path"][0])
-                    file_folder = torrent.get("info", {}).get("name")
-                else:
-                    file_names.append(torrent.get("info", {}).get("name"))
-        except Exception as err:
-            return file_folder, file_names, "解析种子文件异常：%s" % str(err)
-        return file_folder, file_names, ""
+            return None, None, "", [], f"下载种子出错，状态码：{req.status_code}"
 
     @staticmethod
     def __get_url_torrent_filename(req, url: str) -> str:
