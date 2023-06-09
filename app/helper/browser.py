@@ -29,6 +29,7 @@ class PlaywrightHelper:
             if cookies:
                 page.set_extra_http_headers({"cookie": cookies})
             try:
+
                 page.goto(url)
                 page.wait_for_load_state("networkidle", timeout=timeout * 1000)
                 source = page.content()
