@@ -63,8 +63,6 @@ class Telegram(metaclass=Singleton):
 
         try:
             if text:
-                # text中的Markdown特殊字符转义
-                text = StringUtils.escape_markdown(text)
                 caption = f"*{title}*\n\n{text}"
             else:
                 caption = title
