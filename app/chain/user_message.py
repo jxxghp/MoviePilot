@@ -258,6 +258,8 @@ class UserMessageChain(ChainBase):
             # 合并信息
             if mtype:
                 meta.type = mtype
+            elif meta.type != MediaType.TV:
+                meta.type = None
             if season_num:
                 meta.begin_season = season_num
             if episode_num:
