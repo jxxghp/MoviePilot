@@ -109,8 +109,7 @@ class UserMessageChain(ChainBase):
                 mediainfo: MediaInfo = cache_list[int(text) - 1]
                 self._current_media = mediainfo
                 state, msg = self.subscribes.add(mediainfo,
-                                                 season=self._current_meta.begin_season,
-                                                 episode=self._current_meta.begin_episode)
+                                                 season=self._current_meta.begin_season)
                 if state:
                     # 订阅成功
                     self.common.post_message(
