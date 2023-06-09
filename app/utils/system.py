@@ -89,7 +89,7 @@ class SystemUtils:
     @staticmethod
     def list_files_with_extensions(directory: Path, extensions: list) -> List[Path]:
         files = []
-        pattern = r".*\.(" + "|".join(extensions) + ")$"
+        pattern = r".*(" + "|".join(extensions) + ")$"
 
         # 遍历目录及子目录
         for path in directory.glob('**/*'):
