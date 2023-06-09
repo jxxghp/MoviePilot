@@ -5,7 +5,7 @@ from urllib.parse import quote_plus
 from plexapi import media
 from plexapi.server import PlexServer
 
-from app.core import settings
+from app.core.config import settings
 from app.log import logger
 from app.utils.singleton import Singleton
 

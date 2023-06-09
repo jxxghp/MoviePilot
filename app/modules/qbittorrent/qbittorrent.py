@@ -6,7 +6,7 @@ import qbittorrentapi
 from qbittorrentapi import TorrentFilesList, TorrentDictionary
 from qbittorrentapi.client import Client
 
-from app.core import settings
+from app.core.config import settings
 from app.log import logger
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils

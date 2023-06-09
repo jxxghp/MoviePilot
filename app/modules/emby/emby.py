@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 from typing import List, Optional, Union, Dict
 
-from app.core import settings
+from app.core.config import settings
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton

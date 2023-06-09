@@ -1,7 +1,7 @@
 import re
 from typing import List, Union, Optional, Dict
 
-from app.core import settings
+from app.core.config import settings
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton

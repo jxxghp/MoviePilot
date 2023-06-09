@@ -1,7 +1,7 @@
 import logging
 from logging.handlers import RotatingFileHandler
 
-from app.core import settings
+from app.core.config import settings
 
 # logger
 logger = logging.getLogger()

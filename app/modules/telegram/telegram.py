@@ -4,11 +4,11 @@ from typing import Optional, List
 
 import telebot
 
-from app.core import settings, MediaInfo, Context
+from app.core.config import settings
+from app.core.context import MediaInfo, Context
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
-from app.utils.string import StringUtils
 
 
 class Telegram(metaclass=Singleton):
@@ -20,6 +20,9 @@ class Telegram(metaclass=Singleton):
         """
         初始化参数
         """
+        if settings.MESSAGER != "telegram":
+            return
+
         # Token
         self._telegram_token = settings.TELEGRAM_TOKEN
         # Chat Id
@@ -72,7 +75,7 @@ class Telegram(metaclass=Singleton):
             else:
                 chat_id = self._telegram_chat_id
 
-            return self.__send_request(image=image, caption=caption)
+            return self.__send_request(userid=chat_id, image=image, caption=caption)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
@@ -110,7 +113,7 @@ class Telegram(metaclass=Singleton):
             else:
                 chat_id = self._telegram_chat_id
 
-            return self.__send_request(image=image, caption=caption)
+            return self.__send_request(userid=chat_id, image=image, caption=caption)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
@@ -140,24 +143,24 @@ class Telegram(metaclass=Singleton):
             else:
                 chat_id = self._telegram_chat_id
 
-            return self.__send_request(caption=caption)
+            return self.__send_request(userid=chat_id, caption=caption)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def __send_request(self, image="", caption="") -> bool:
+    def __send_request(self, userid: str = None, image="", caption="") -> bool:
         """
         向Telegram发送报文
         """
 
         if image:
-            ret = self._bot.send_photo(chat_id=self._telegram_chat_id,
+            ret = self._bot.send_photo(chat_id=userid or self._telegram_chat_id,
                                        photo=image,
                                        caption=caption,
                                        parse_mode="Markdown")
         else:
-            ret = self._bot.send_message(chat_id=self._telegram_chat_id,
+            ret = self._bot.send_message(chat_id=userid or self._telegram_chat_id,
                                          text=caption,
                                          parse_mode="Markdown")
 

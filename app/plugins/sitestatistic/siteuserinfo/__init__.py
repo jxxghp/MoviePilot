@@ -10,7 +10,7 @@ import requests
 from lxml import etree
 from requests import Session
 
-from app.core import settings
+from app.core.config import settings
 from app.helper.cloudflare import under_challenge
 from app.log import logger
 from app.utils.http import RequestUtils

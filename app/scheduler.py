@@ -9,7 +9,7 @@ from app.chain.cookiecloud import CookieCloudChain
 from app.chain.douban_sync import DoubanSyncChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
-from app.core import settings
+from app.core.config import settings
 from app.log import logger
 from app.utils.singleton import Singleton
 from app.utils.timer import TimerUtils

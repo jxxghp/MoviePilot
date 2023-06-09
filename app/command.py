@@ -7,7 +7,8 @@ from app.chain.cookiecloud import CookieCloudChain
 from app.chain.douban_sync import DoubanSyncChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
-from app.core import eventmanager, PluginManager, EventManager
+from app.core.event_manager import eventmanager, EventManager
+from app.core.plugin_manager import PluginManager
 from app.core.event_manager import Event as ManagerEvent
 from app.log import logger
 from app.utils.singleton import Singleton

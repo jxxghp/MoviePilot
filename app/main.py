@@ -4,7 +4,9 @@ from uvicorn import Config
 
 from app.api.apiv1 import api_router
 from app.command import Command
-from app.core import settings, ModuleManager, PluginManager
+from app.core.config import settings
+from app.core.module_manager import ModuleManager
+from app.core.plugin_manager import PluginManager
 from app.db.init import init_db, update_db
 from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler

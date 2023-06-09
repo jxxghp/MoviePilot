@@ -3,7 +3,7 @@ from fastapi import APIRouter, BackgroundTasks, Request
 
 from app import schemas
 from app.chain.webhook_message import WebhookMessageChain
-from app.core import settings
+from app.core.config import settings
 
 router = APIRouter()
 

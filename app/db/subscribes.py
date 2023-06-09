@@ -2,7 +2,7 @@ from typing import Tuple, List
 
 from sqlalchemy.orm import Session
 
-from app.core import MediaInfo
+from app.core.context import MediaInfo
 from app.db import SessionLocal
 from app.db.models.subscribe import Subscribe
 from app.utils.types import MediaType

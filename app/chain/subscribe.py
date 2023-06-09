@@ -3,7 +3,9 @@ from typing import Dict, List, Optional
 from app.chain import ChainBase
 from app.chain.common import CommonChain
 from app.chain.search import SearchChain
-from app.core import MetaInfo, TorrentInfo, Context, MediaInfo, settings
+from app.core.meta_info import MetaInfo
+from app.core.context import TorrentInfo, Context, MediaInfo
+from app.core.config import settings
 from app.db.subscribes import Subscribes
 from app.helper.sites import SitesHelper
 from app.log import logger

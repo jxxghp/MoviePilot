@@ -3,8 +3,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Set, Dict
 
 from app.chain import ChainBase
-from app.core import MediaInfo
-from app.core import TorrentInfo, Context
+from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.meta import MetaBase
 from app.helper.torrent import TorrentHelper
 from app.log import logger

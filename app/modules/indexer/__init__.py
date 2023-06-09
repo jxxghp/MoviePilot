@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple, Union
 
 from ruamel.yaml import CommentedMap
 
-from app.core import MediaInfo, TorrentInfo
+from app.core.context import MediaInfo, TorrentInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.spider import TorrentSpider

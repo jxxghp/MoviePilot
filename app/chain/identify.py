@@ -1,7 +1,8 @@
 from typing import Optional
 
 from app.chain import ChainBase
-from app.core import Context, MetaInfo, MediaInfo
+from app.core.meta_info import MetaInfo
+from app.core.context import Context, MediaInfo
 from app.log import logger
 
 

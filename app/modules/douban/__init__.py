@@ -3,7 +3,9 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 from xml.dom import minidom
 
-from app.core import MediaInfo, settings, MetaInfo
+from app.core.context import MediaInfo
+from app.core.config import settings
+from app.core.meta_info import MetaInfo
 from app.core.meta import MetaBase
 from app.log import logger
 from app.modules import _ModuleBase

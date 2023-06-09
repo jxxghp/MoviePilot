@@ -1,7 +1,8 @@
 import re
 from typing import List, Tuple, Union, Dict, Optional
 
-from app.core import TorrentInfo, settings
+from app.core.context import TorrentInfo
+from app.core.config import settings
 from app.modules import _ModuleBase
 from app.modules.filter.RuleParser import RuleParser
 

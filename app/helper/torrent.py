@@ -6,7 +6,9 @@ from urllib.parse import unquote
 
 from bencode import bdecode
 
-from app.core import settings, Context, MetaInfo
+from app.core.config import settings
+from app.core.context import Context
+from app.core.meta_info import MetaInfo
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils

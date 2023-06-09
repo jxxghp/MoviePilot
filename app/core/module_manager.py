@@ -1,8 +1,8 @@
 from types import FunctionType
 from typing import Generator, Optional
 
-from app.core import settings
-from app.helper import ModuleHelper
+from app.core.config import settings
+from app.helper.module import ModuleHelper
 from app.log import logger
 from app.utils.singleton import Singleton
 

@@ -1,7 +1,7 @@
 import xml.dom.minidom
 from typing import List
 
-from app.core import settings
+from app.core.config import settings
 from app.utils.dom import DomUtils
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils

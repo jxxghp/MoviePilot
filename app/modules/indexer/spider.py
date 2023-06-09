@@ -8,8 +8,8 @@ from jinja2 import Template
 from pyquery import PyQuery
 from ruamel.yaml import CommentedMap
 
-from app.core import settings
-from app.helper.playwright import PlaywrightHelper
+from app.core.config import settings
+from app.helper.browser import PlaywrightHelper
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
@@ -17,6 +17,7 @@ from app.utils.types import MediaType
 
 
 class TorrentSpider:
+
     # 是否出现错误
     is_error: bool = False
     # 索引器ID
@@ -217,7 +218,7 @@ class TorrentSpider:
         if self.render:
             page_source = PlaywrightHelper().get_page_source(
                 url=searchurl,
-                cookie=self.cookie,
+                cookies=self.cookie,
                 ua=self.ua,
                 proxy=self.proxies
             )

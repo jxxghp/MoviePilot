@@ -1,7 +1,8 @@
 import json
 from typing import Optional, Union, List, Tuple, Any
 
-from app.core import MediaInfo, settings, Context
+from app.core.context import MediaInfo, Context
+from app.core.config import settings
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.telegram.telegram import Telegram

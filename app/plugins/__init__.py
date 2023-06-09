@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.chain import ChainBase
-from app.core import settings
+from app.core.config import settings
 from app.db import SessionLocal
 from app.db.models import Base
 from app.db.models.plugin import PluginData

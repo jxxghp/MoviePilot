@@ -2,7 +2,7 @@
 
 from unittest import TestCase
 
-from app.core import TorrentInfo
+from app.core.context import TorrentInfo
 from app.modules.filter import FilterModule
 
 

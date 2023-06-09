@@ -3,7 +3,7 @@ from typing import Tuple, List
 
 from ruamel.yaml import CommentedMap
 
-from app.core import settings
+from app.core.config import settings
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils

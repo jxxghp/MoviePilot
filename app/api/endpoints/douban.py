@@ -1,9 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.douban_sync import DoubanSyncChain
-from app.db import get_db
 from app.db.models.user import User
 from app.db.userauth import get_current_active_superuser
 

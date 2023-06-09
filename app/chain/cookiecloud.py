@@ -1,7 +1,7 @@
 from typing import Tuple
 
 from app.chain import ChainBase
-from app.core import settings
+from app.core.config import settings
 from app.db.sites import Sites
 from app.helper.cookiecloud import CookieCloudHelper
 from app.helper.sites import SitesHelper

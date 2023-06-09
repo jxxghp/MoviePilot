@@ -2,7 +2,9 @@ from typing import Any
 
 from app.chain.common import *
 from app.chain.search import SearchChain
-from app.core import MediaInfo, TorrentInfo, MetaInfo, EventManager
+from app.core.context import MediaInfo, TorrentInfo
+from app.core.meta_info import MetaInfo
+from app.core.event_manager import EventManager
 from app.db.subscribes import Subscribes
 from app.log import logger
 from app.utils.types import EventType

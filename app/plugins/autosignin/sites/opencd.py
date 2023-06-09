@@ -5,7 +5,7 @@ from typing import Tuple
 from lxml import etree
 from ruamel.yaml import CommentedMap
 
-from app.core import settings
+from app.core.config import settings
 from app.helper.ocr import OcrHelper
 from app.log import logger
 from app.plugins.autosignin.sites import _ISiteSigninHandler

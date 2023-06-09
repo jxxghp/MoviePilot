@@ -3,7 +3,7 @@ from pathlib import Path
 
 import ruamel.yaml
 
-from app.core import settings
+from app.core.config import settings
 from app.log import logger
 from app.utils.singleton import Singleton
 

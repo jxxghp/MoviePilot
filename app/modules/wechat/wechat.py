@@ -3,7 +3,8 @@ import threading
 from datetime import datetime
 from typing import Optional, List
 
-from app.core import settings, MediaInfo, Context
+from app.core.config import settings
+from app.core.context import MediaInfo, Context
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton

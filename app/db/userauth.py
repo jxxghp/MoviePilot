@@ -3,7 +3,8 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app import schemas
-from app.core import settings, security
+from app.core.config import settings
+from app.core import security
 from app.core.security import reusable_oauth2
 from app.db import get_db
 from app.db.models.user import User

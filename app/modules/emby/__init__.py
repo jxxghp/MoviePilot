@@ -1,6 +1,6 @@
 from typing import Optional, Tuple, Union
 
-from app.core import MediaInfo
+from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.emby.emby import Emby

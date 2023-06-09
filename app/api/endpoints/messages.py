@@ -5,7 +5,7 @@ from fastapi import Request
 
 from app import schemas
 from app.chain.user_message import UserMessageChain
-from app.core import settings
+from app.core.config import settings
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 

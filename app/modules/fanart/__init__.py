@@ -2,7 +2,7 @@ import re
 from functools import lru_cache
 from typing import Optional, Tuple, Union
 
-from app.core import MediaInfo, settings
+from app.core.context import MediaInfo, settings
 from app.log import logger
 from app.modules import _ModuleBase
 from app.utils.http import RequestUtils

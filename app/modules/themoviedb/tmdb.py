@@ -6,7 +6,7 @@ from lxml import etree
 from tmdbv3api import TMDb, Search, Movie, TV, Season, Episode
 from tmdbv3api.exceptions import TMDbException
 
-from app.core import settings
+from app.core.config import settings
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils

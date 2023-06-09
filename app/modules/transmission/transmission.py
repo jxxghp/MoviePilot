@@ -4,7 +4,7 @@ from typing import Optional, Union, Tuple, List
 import transmission_rpc
 from transmission_rpc import Client, Torrent, File
 
-from app.core import settings
+from app.core.config import settings
 from app.log import logger
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils

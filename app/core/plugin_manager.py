@@ -2,7 +2,7 @@ import traceback
 from typing import List, Any
 
 from app.db.systemconfigs import SystemConfigs
-from app.helper import ModuleHelper
+from app.helper.module import ModuleHelper
 from app.log import logger
 from app.utils.singleton import Singleton
 

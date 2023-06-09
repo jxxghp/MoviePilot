@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.subscribe import SubscribeChain
-from app.core import settings
+from app.core.config import settings
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
 from app.db.models.user import User
