@@ -1,4 +1,3 @@
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import List, Optional, Tuple, Union
@@ -123,7 +122,7 @@ class IndexerModule(_ModuleBase):
     def __spider_search(indexer: CommentedMap,
                         keyword: str = None,
                         mtype: MediaType = None,
-                        page: int = None, timeout: int = 30) -> (bool, List[dict]):
+                        page: int = None) -> (bool, List[dict]):
         """
         根据关键字搜索单个站点
         :param: indexer: 站点配置
@@ -133,26 +132,12 @@ class IndexerModule(_ModuleBase):
         :param: timeout: 超时时间
         :return: 是否发生错误, 种子列表
         """
-        _spider = TorrentSpider()
-        _spider.setparam(indexer=indexer,
-                         mtype=mtype,
-                         keyword=keyword,
-                         page=page)
-        _spider.start()
-        # 循环判断是否获取到数据
-        sleep_count = 0
-        while not _spider.is_complete:
-            sleep_count += 1
-            time.sleep(1)
-            if sleep_count > timeout:
-                break
-        # 是否发生错误
-        result_flag = _spider.is_error
-        # 种子列表
-        result_array = _spider.torrents_info_array.copy()
-        # 重置状态
-        _spider.torrents_info_array.clear()
-        return result_flag, result_array
+        _spider = TorrentSpider(indexer=indexer,
+                                mtype=mtype,
+                                keyword=keyword,
+                                page=page)
+
+        return _spider.is_error, _spider.get_torrents()
 
     def refresh_torrents(self, sites: List[CommentedMap]) -> Optional[List[TorrentInfo]]:
         """
