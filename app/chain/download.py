@@ -379,6 +379,7 @@ class DownloadChain(ChainBase):
                     __append_no_exists(season, episodes)
             # 存在不完整的剧集
             if no_exists:
+                logger.info(f"媒体库中已存在部分剧集，缺失：{no_exists}")
                 return False, no_exists
             # 全部存在
             return True, no_exists

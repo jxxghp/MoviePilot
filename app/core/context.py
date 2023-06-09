@@ -371,7 +371,7 @@ class MediaInfo(object):
 
     def get_title_string(self):
         if self.title:
-            return "%s (%s)" % (self.title, self.year) if self.year else self.title
+            return "%s (%s）" % (self.title, self.year) if self.year else self.title
         return ""
 
     def get_overview_string(self, max_len: int = 140):
