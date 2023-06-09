@@ -35,15 +35,15 @@ class Telegram(metaclass=Singleton):
             def echo_all(message):
                 RequestUtils(timeout=5).post_res(self._ds_url, json=message.json)
 
-        def run_polling():
-            """
-            定义线程函数来运行 infinity_polling
-            """
-            _bot.infinity_polling(long_polling_timeout=5)
+            def run_polling():
+                """
+                定义线程函数来运行 infinity_polling
+                """
+                _bot.infinity_polling(long_polling_timeout=5)
 
-        # 启动线程来运行 infinity_polling
-        self._polling_thread = threading.Thread(target=run_polling)
-        self._polling_thread.start()
+            # 启动线程来运行 infinity_polling
+            self._polling_thread = threading.Thread(target=run_polling)
+            self._polling_thread.start()
 
     def send_msg(self, title: str, text: str = "", image: str = "", userid: str = "") -> Optional[bool]:
         """
@@ -183,5 +183,6 @@ class Telegram(metaclass=Singleton):
         """
         停止Telegram消息接收服务
         """
-        self._bot.stop_polling()
-        self._polling_thread.join()
+        if not self._bot:
+            self._bot.stop_polling()
+            self._polling_thread.join()
