@@ -174,9 +174,9 @@ class AutoSignIn(_PluginBase):
                 if res and res.status_code in [200, 500, 403]:
                     if not SiteUtils.is_logged_in(res.text):
                         if under_challenge(res.text):
-                            msg = "站点被Cloudflare防护，请打开站点浏览器仿真！"
+                            msg = "站点被Cloudflare防护，请打开站点浏览器仿真"
                         elif res.status_code == 200:
-                            msg = "Cookie已失效！"
+                            msg = "Cookie已失效"
                         else:
                             msg = f"状态码：{res.status_code}"
                         logger.warn(f"{site} 签到失败，{msg}")
