@@ -10,6 +10,7 @@ from ruamel.yaml import CommentedMap
 from app.core.config import settings
 from app.core.event_manager import eventmanager
 from app.core.event_manager import Event
+from app.helper.browser import PlaywrightHelper
 from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -87,74 +88,89 @@ class SiteStatistic(_PluginBase):
                 logger.error(f"站点匹配失败 {e}")
         return None
 
-    def build(self, url: str, site_name: str,
-              site_cookie: str = None,
-              ua: str = None,
-              proxy: bool = False) -> Optional[ISiteUserInfo]:
+    def build(self, site_info: CommentedMap) -> Optional[ISiteUserInfo]:
         """
         构建站点信息
         """
+        site_cookie = site_info.get("cookie")
         if not site_cookie:
             return None
+        site_name = site_info.get("name")
+        url = site_info.get("url")
+        proxy = site_info.get("proxy")
+        ua = site_info.get("ua")
         session = requests.Session()
-        logger.debug(f"站点 {site_name} url={url} site_cookie={site_cookie} ua={ua}")
         proxies = settings.PROXY if proxy else None
-        res = RequestUtils(cookies=site_cookie,
-                           session=session,
-                           headers=ua,
-                           proxies=proxies
-                           ).get_res(url=url)
-        if res and res.status_code == 200:
-            if "charset=utf-8" in res.text or "charset=UTF-8" in res.text:
-                res.encoding = "UTF-8"
-            else:
-                res.encoding = res.apparent_encoding
-            html_text = res.text
-            # 第一次登录反爬
-            if html_text.find("title") == -1:
-                i = html_text.find("window.location")
-                if i == -1:
-                    return None
-                tmp_url = url + html_text[i:html_text.find(";")] \
-                    .replace("\"", "").replace("+", "").replace(" ", "").replace("window.location=", "")
-                res = RequestUtils(cookies=site_cookie,
-                                   session=session,
-                                   headers=ua,
-                                   proxies=proxies
-                                   ).get_res(url=tmp_url)
-                if res and res.status_code == 200:
-                    if "charset=utf-8" in res.text or "charset=UTF-8" in res.text:
-                        res.encoding = "UTF-8"
-                    else:
-                        res.encoding = res.apparent_encoding
-                    html_text = res.text
-                    if not html_text:
-                        return None
-                else:
-                    logger.error("站点 %s 被反爬限制：%s, 状态码：%s" % (site_name, url, res.status_code))
-                    return None
+        render = site_info.get("render")
 
-            # 兼容假首页情况，假首页通常没有 <link rel="search" 属性
-            if '"search"' not in html_text and '"csrf-token"' not in html_text:
-                res = RequestUtils(cookies=site_cookie,
-                                   session=session,
-                                   headers=ua,
-                                   proxies=proxies
-                                   ).get_res(url=url + "/index.php")
-                if res and res.status_code == 200:
-                    if "charset=utf-8" in res.text or "charset=UTF-8" in res.text:
-                        res.encoding = "UTF-8"
-                    else:
-                        res.encoding = res.apparent_encoding
-                    html_text = res.text
-                    if not html_text:
-                        return None
-        elif res is not None:
-            logger.error(f"站点 {site_name} 连接失败，状态码：{res.status_code}")
-            return None
+        logger.debug(f"站点 {site_name} url={url} site_cookie={site_cookie} ua={ua}")
+        if render:
+            # 演染模式
+            html_text = PlaywrightHelper().get_page_source(url=url,
+                                                           cookies=site_cookie,
+                                                           ua=ua,
+                                                           proxy=proxies)
         else:
-            logger.error(f"站点 {site_name} 无法访问：{url}")
-            return None
+            # 普通模式
+            res = RequestUtils(cookies=site_cookie,
+                               session=session,
+                               headers=ua,
+                               proxies=proxies
+                               ).get_res(url=url)
+            if res and res.status_code == 200:
+                if "charset=utf-8" in res.text or "charset=UTF-8" in res.text:
+                    res.encoding = "UTF-8"
+                else:
+                    res.encoding = res.apparent_encoding
+                html_text = res.text
+                # 第一次登录反爬
+                if html_text.find("title") == -1:
+                    i = html_text.find("window.location")
+                    if i == -1:
+                        return None
+                    tmp_url = url + html_text[i:html_text.find(";")]\
+                        .replace("\"", "")\
+                        .replace("+", "")\
+                        .replace(" ", "")\
+                        .replace("window.location=", "")
+                    res = RequestUtils(cookies=site_cookie,
+                                       session=session,
+                                       headers=ua,
+                                       proxies=proxies
+                                       ).get_res(url=tmp_url)
+                    if res and res.status_code == 200:
+                        if "charset=utf-8" in res.text or "charset=UTF-8" in res.text:
+                            res.encoding = "UTF-8"
+                        else:
+                            res.encoding = res.apparent_encoding
+                        html_text = res.text
+                        if not html_text:
+                            return None
+                    else:
+                        logger.error("站点 %s 被反爬限制：%s, 状态码：%s" % (site_name, url, res.status_code))
+                        return None
+
+                # 兼容假首页情况，假首页通常没有 <link rel="search" 属性
+                if '"search"' not in html_text and '"csrf-token"' not in html_text:
+                    res = RequestUtils(cookies=site_cookie,
+                                       session=session,
+                                       headers=ua,
+                                       proxies=proxies
+                                       ).get_res(url=url + "/index.php")
+                    if res and res.status_code == 200:
+                        if "charset=utf-8" in res.text or "charset=UTF-8" in res.text:
+                            res.encoding = "UTF-8"
+                        else:
+                            res.encoding = res.apparent_encoding
+                        html_text = res.text
+                        if not html_text:
+                            return None
+            elif res is not None:
+                logger.error(f"站点 {site_name} 连接失败，状态码：{res.status_code}")
+                return None
+            else:
+                logger.error(f"站点 {site_name} 无法访问：{url}")
+                return None
         # 解析站点类型
         site_schema = self.__build_class(html_text)
         if not site_schema:
@@ -168,20 +184,13 @@ class SiteStatistic(_PluginBase):
         :param site_info:
         :return:
         """
-        site_name = site_info.get("name")
-        site_url = site_info.get("url")
+        site_name = site_info.get('name')
+        site_url = site_info.get('url')
         if not site_url:
             return None
-        site_cookie = site_info.get("cookie")
-        ua = site_info.get("ua")
         unread_msg_notify = True
-        proxy = site_info.get("proxy")
         try:
-            site_user_info: ISiteUserInfo = self.build(url=site_url,
-                                                       site_name=site_name,
-                                                       site_cookie=site_cookie,
-                                                       ua=ua,
-                                                       proxy=proxy)
+            site_user_info: ISiteUserInfo = self.build(site_info=site_info)
             if site_user_info:
                 logger.debug(f"站点 {site_name} 开始以 {site_user_info.site_schema()} 模型解析")
                 # 开始解析

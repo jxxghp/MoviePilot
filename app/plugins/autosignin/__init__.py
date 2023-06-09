@@ -9,8 +9,9 @@ from ruamel.yaml import CommentedMap
 
 from app.core.event_manager import EventManager, eventmanager
 from app.core.config import settings
-from app.helper.module import ModuleHelper
+from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
+from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.plugins import _PluginBase
@@ -136,6 +137,8 @@ class AutoSignIn(_PluginBase):
         site_url = site_info.get("url")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
+        render = site_info.get("render")
+        proxy = settings.PROXY if site_info.get("proxy") else None
         if not site_url or not site_cookie:
             logger.warn(f"未配置 {site} 的站点地址或Cookie，无法签到")
             return ""
@@ -147,36 +150,46 @@ class AutoSignIn(_PluginBase):
                 # 拼登签到地址
                 checkin_url = urljoin(site_url, "attendance.php")
             logger.info(f"开始站点签到：{site}，地址：{checkin_url}...")
-            res = RequestUtils(cookies=site_cookie,
-                               headers=ua,
-                               proxies=settings.PROXY if site_info.get("proxy") else None
-                               ).get_res(url=checkin_url)
-            if not res and site_url != checkin_url:
-                logger.info(f"开始站点模拟登录：{site}，地址：{site_url}...")
+            if render:
+                page_source = PlaywrightHelper().get_page_source(url=checkin_url,
+                                                                 cookies=site_cookie,
+                                                                 ua=ua,
+                                                                 proxy=proxy)
+                if not SiteUtils.is_logged_in(page_source):
+                    if under_challenge(page_source):
+                        return f"【{site}】无法通过Cloudflare！"
+                    return f"【{site}】仿真登录失败，Cookie已失效！"
+            else:
                 res = RequestUtils(cookies=site_cookie,
                                    headers=ua,
-                                   proxies=settings.PROXY if site_info.get("proxy") else None
-                                   ).get_res(url=site_url)
-            # 判断登录状态
-            if res and res.status_code in [200, 500, 403]:
-                if not SiteUtils.is_logged_in(res.text):
-                    if under_challenge(res.text):
-                        msg = "站点被Cloudflare防护，请更换Cookie和UA！"
-                    elif res.status_code == 200:
-                        msg = "Cookie已失效"
+                                   proxies=proxy
+                                   ).get_res(url=checkin_url)
+                if not res and site_url != checkin_url:
+                    logger.info(f"开始站点模拟登录：{site}，地址：{site_url}...")
+                    res = RequestUtils(cookies=site_cookie,
+                                       headers=ua,
+                                       proxies=settings.PROXY if site_info.get("proxy") else None
+                                       ).get_res(url=site_url)
+                # 判断登录状态
+                if res and res.status_code in [200, 500, 403]:
+                    if not SiteUtils.is_logged_in(res.text):
+                        if under_challenge(res.text):
+                            msg = "站点被Cloudflare防护，请打开站点浏览器仿真！"
+                        elif res.status_code == 200:
+                            msg = "Cookie已失效！"
+                        else:
+                            msg = f"状态码：{res.status_code}"
+                        logger.warn(f"{site} 签到失败，{msg}")
+                        return f"【{site}】签到失败，{msg}！"
                     else:
-                        msg = f"状态码：{res.status_code}"
-                    logger.warn(f"{site} 签到失败，{msg}")
-                    return f"【{site}】签到失败，{msg}！"
+                        logger.info(f"{site} 签到成功")
+                        return f"【{site}】签到成功"
+                elif res is not None:
+                    logger.warn(f"{site} 签到失败，状态码：{res.status_code}")
+                    return f"【{site}】签到失败，状态码：{res.status_code}！"
                 else:
-                    logger.info(f"{site} 签到成功")
-                    return f"【{site}】签到成功"
-            elif res is not None:
-                logger.warn(f"{site} 签到失败，状态码：{res.status_code}")
-                return f"【{site}】签到失败，状态码：{res.status_code}！"
-            else:
-                logger.warn(f"{site} 签到失败，无法打开网站")
-                return f"【{site}】签到失败，无法打开网站！"
+                    logger.warn(f"{site} 签到失败，无法打开网站")
+                    return f"【{site}】签到失败，无法打开网站！"
         except Exception as e:
             logger.warn("%s 签到失败：%s" % (site, str(e)))
             return f"【{site}】签到失败：{str(e)}！"
