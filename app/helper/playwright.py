@@ -1,7 +1,7 @@
 from playwright.sync_api import sync_playwright
 
 
-class PlaywrightUtils:
+class PlaywrightHelper:
     def __init__(self, browser_type="chromium"):
         self.browser_type = browser_type
 
@@ -34,7 +34,7 @@ class PlaywrightUtils:
 
 # 示例用法
 if __name__ == "__main__":
-    utils = PlaywrightUtils()
+    utils = PlaywrightHelper()
     test_url = "https://www.baidu.com"
     test_cookies = "cookie1=value1; cookie2=value2"
     test_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36"

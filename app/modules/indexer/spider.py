@@ -9,8 +9,8 @@ from pyquery import PyQuery
 from ruamel.yaml import CommentedMap
 
 from app.core import settings
+from app.helper.playwright import PlaywrightHelper
 from app.log import logger
-from app.modules.indexer.playwright_utils import PlaywrightUtils
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.types import MediaType
@@ -215,7 +215,7 @@ class TorrentSpider:
         logger.info(f"开始请求：{searchurl}")
 
         if self.render:
-            page_source = PlaywrightUtils().get_page_source(
+            page_source = PlaywrightHelper().get_page_source(
                 url=searchurl,
                 cookie=self.cookie,
                 ua=self.ua,
