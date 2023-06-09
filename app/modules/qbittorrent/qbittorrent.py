@@ -167,7 +167,7 @@ class Qbittorrent(metaclass=Singleton):
             trans_tasks.append({
                 'title': torrent.get('name'),
                 'path': torrent_path,
-                'id': torrent.get('hash'),
+                'hash': torrent.get('hash'),
                 'tags': torrent.get('tags')
             })
         return trans_tasks

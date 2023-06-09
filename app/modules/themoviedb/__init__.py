@@ -474,8 +474,8 @@ class TheMovieDb(_ModuleBase):
             logger.info(f"正在下载{file_path.stem}图片：{url} ...")
             r = RequestUtils().get_res(url=url)
             if r:
-                # 下载到temp目录，远程则先存到temp再远程移动，本地则直接保存
-                logger.info(f"图片已保存：{file_path.name}")
+                file_path.write_bytes(r.content)
+                logger.info(f"图片已保存：{file_path}")
             else:
                 logger.info(f"{file_path.stem}图片下载失败，请检查网络连通性")
         except Exception as err:
@@ -490,4 +490,4 @@ class TheMovieDb(_ModuleBase):
             return
         xml_str = doc.toprettyxml(indent="  ", encoding="utf-8")
         file_path.write_bytes(xml_str)
-        logger.info(f"NFO文件已保存：{file_path.name}")
+        logger.info(f"NFO文件已保存：{file_path}")
