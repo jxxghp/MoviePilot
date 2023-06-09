@@ -9,7 +9,8 @@ class PlaywrightHelper:
                         cookie: str = None,
                         ua: str = None,
                         proxy: dict = None,
-                        headless: bool = True):
+                        headless: bool = True,
+                        timeout: int = 30) -> str:
         """
         获取网页源码
         :param url: 网页地址
@@ -17,6 +18,7 @@ class PlaywrightHelper:
         :param ua: user-agent
         :param proxy: 代理
         :param headless: 是否无头模式
+        :param timeout: 超时时间
         """
         with sync_playwright() as playwright:
             browser = playwright[self.browser_type].launch(headless=headless)
@@ -25,7 +27,7 @@ class PlaywrightHelper:
             if cookie:
                 page.set_extra_http_headers({"cookie": cookie})
             page.goto(url)
-            page.wait_for_load_state("networkidle")
+            page.wait_for_load_state("networkidle", timeout=timeout)
             source = page.content()
             browser.close()
 
