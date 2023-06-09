@@ -20,6 +20,7 @@ class Site(Base):
     ua = Column(String)
     proxy = Column(Integer)
     filter = Column(String)
+    render = Column(Integer)
     note = Column(String)
     limit_interval = Column(Integer)
     limit_count = Column(Integer)

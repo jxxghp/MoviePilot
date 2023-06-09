@@ -14,6 +14,7 @@ class Site(BaseModel):
     ua: Optional[str] = None
     proxy: Optional[int] = 0
     filter: Optional[str] = None
+    render: Optional[int] = 0
     note: Optional[str] = None
     limit_interval: Optional[int] = 0
     limit_count: Optional[int] = 0
