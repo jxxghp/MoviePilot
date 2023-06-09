@@ -222,13 +222,15 @@ class TorrentSpider:
                 proxy=self.proxies
             )
         else:
-            page_source = RequestUtils(
+            ret = RequestUtils(
                 ua=self.ua,
                 cookies=self.cookie,
                 timeout=30,
                 referer=self.referer,
                 proxies=self.proxies
             ).get_res(searchurl, allow_redirects=True)
+            
+            page_source = ret.text if ret else None
 
         # 解析
         return self.parse(page_source)
