@@ -15,6 +15,7 @@ from app.log import logger
 from app.plugins import _PluginBase
 from app.plugins.sitestatistic.siteuserinfo import ISiteUserInfo
 from app.utils.http import RequestUtils
+from app.utils.string import StringUtils
 from app.utils.timer import TimerUtils
 
 import warnings
@@ -22,7 +23,6 @@ import warnings
 from app.utils.types import EventType
 
 warnings.filterwarnings("ignore", category=FutureWarning)
-
 
 lock = Lock()
 
@@ -286,5 +286,37 @@ class SiteStatistic(_PluginBase):
             self.save_data(key, self._sites_data)
             # 更新时间
             self._last_update_time = datetime.now()
+
+            # 通知刷新完成
+            messages = []
+            # 按照上传降序排序
+            sites = self._sites_data.keys()
+            uploads = [self._sites_data[site].get("upload") or 0 for site in sites]
+            downloads = [self._sites_data[site].get("download") or 0 for site in sites]
+            data_list = sorted(list(zip(sites, uploads, downloads)),
+                               key=lambda x: x[1],
+                               reverse=True)
+            # 总上传
+            incUploads = 0
+            # 总下载
+            incDownloads = 0
+            for data in data_list:
+                site = data[0]
+                upload = int(data[1])
+                download = int(data[2])
+                if upload > 0 or download > 0:
+                    incUploads += int(upload)
+                    incDownloads += int(download)
+                    messages.append(f"【{site}】\n"
+                                    f"上传量：{StringUtils.str_filesize(upload)}\n"
+                                    f"下载量：{StringUtils.str_filesize(download)}\n"
+                                    f"————————————")
+
+            if incDownloads or incUploads:
+                messages.insert(0, f"【汇总】\n"
+                                   f"总上传：{StringUtils.str_filesize(incUploads)}\n"
+                                   f"总下载：{StringUtils.str_filesize(incDownloads)}\n"
+                                   f"————————————")
+            self.chain.run_module("post_message", title="站点数据统计", text="\n".join(messages))
 
         logger.info("站点数据刷新完成")

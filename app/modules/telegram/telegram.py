@@ -27,7 +27,7 @@ class Telegram(metaclass=Singleton):
         # 初始化机器人
         if self._telegram_token and self._telegram_chat_id:
             # bot
-            _bot = telebot.TeleBot(self._telegram_token, parse_mode="markdown")
+            _bot = telebot.TeleBot(self._telegram_token, parse_mode="Markdown")
             # 记录句柄
             self._bot = _bot
 
@@ -65,7 +65,7 @@ class Telegram(metaclass=Singleton):
             if text:
                 # text中的Markdown特殊字符转义
                 text = StringUtils.escape_markdown(text)
-                caption = f"*{title}*\n{text}"
+                caption = f"*{title}*\n\n{text}"
             else:
                 caption = title
 
@@ -93,18 +93,18 @@ class Telegram(metaclass=Singleton):
                 if not image:
                     image = media.get_message_image()
                 if media.vote_average:
-                    caption = "%s\n%s. [%s](%s)\n%s，%s" % (caption,
-                                                           index,
-                                                           media.get_title_string(),
-                                                           media.get_detail_url(),
-                                                           f"类型：{media.type.value}",
-                                                           f"评分：{media.vote_average}")
+                    caption = "%s\n%s. [%s](%s)\n_%s，%s_" % (caption,
+                                                             index,
+                                                             media.get_title_string(),
+                                                             media.get_detail_url(),
+                                                             f"类型：{media.type.value}",
+                                                             f"评分：{media.vote_average}")
                 else:
-                    caption = "%s\n%s. [%s](%s)\n%s" % (caption,
-                                                        index,
-                                                        media.get_title_string(),
-                                                        media.get_detail_url(),
-                                                        f"类型：{media.type.value}")
+                    caption = "%s\n%s. [%s](%s)\n_%s_" % (caption,
+                                                          index,
+                                                          media.get_title_string(),
+                                                          media.get_detail_url(),
+                                                          f"类型：{media.type.value}")
                 index += 1
 
             if userid:
@@ -157,11 +157,11 @@ class Telegram(metaclass=Singleton):
             ret = self._bot.send_photo(chat_id=self._telegram_chat_id,
                                        photo=image,
                                        caption=caption,
-                                       parse_mode="markdown")
+                                       parse_mode="Markdown")
         else:
             ret = self._bot.send_message(chat_id=self._telegram_chat_id,
                                          text=caption,
-                                         parse_mode="markdown")
+                                         parse_mode="Markdown")
 
         return True if ret else False
 
