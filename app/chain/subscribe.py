@@ -98,6 +98,9 @@ class SubscribeChain(ChainBase):
             if exist_flag:
                 logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在，完成订阅')
                 self.subscribes.delete(subscribe.id)
+                # 发送通知
+                self.post_message(title=f'{mediainfo.get_title_string()}{meta.get_season_string()} 已完成订阅',
+                                  image=mediainfo.get_message_image())
                 continue
             # 搜索
             contexts = self.searchchain.process(meta=meta, mediainfo=mediainfo, keyword=subscribe.keyword)
@@ -110,6 +113,9 @@ class SubscribeChain(ChainBase):
                 # 全部下载完成
                 logger.info(f'{mediainfo.get_title_string()} 下载完成，完成订阅')
                 self.subscribes.delete(subscribe.id)
+                # 发送通知
+                self.post_message(title=f'{mediainfo.get_title_string()}{meta.get_season_string()} 已完成订阅',
+                                  image=mediainfo.get_message_image())
             else:
                 # 未完成下载
                 logger.info(f'{mediainfo.get_title_string()} 未下载未完整，继续订阅 ...')
@@ -176,6 +182,9 @@ class SubscribeChain(ChainBase):
             if exist_flag:
                 logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在，完成订阅')
                 self.subscribes.delete(subscribe.id)
+                # 发送通知
+                self.post_message(title=f'{mediainfo.get_title_string()}{meta.get_season_string()} 已完成订阅',
+                                  image=mediainfo.get_message_image())
                 continue
             # 遍历缓存种子
             _match_context = []
@@ -200,6 +209,9 @@ class SubscribeChain(ChainBase):
                     # 全部下载完成
                     logger.info(f'{mediainfo.get_title_string()} 下载完成，完成订阅')
                     self.subscribes.delete(subscribe.id)
+                    # 发送通知
+                    self.post_message(title=f'{mediainfo.get_title_string()}{meta.get_season_string()} 已完成订阅',
+                                      image=mediainfo.get_message_image())
                 else:
                     # 未完成下载，计算剩余集数
                     left_episodes = lefts.get(mediainfo.tmdb_id, {}).get("episodes", [])

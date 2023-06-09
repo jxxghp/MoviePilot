@@ -105,7 +105,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
     def remove_torrents(self, hashs: Union[str, list]) -> bool:
         return self.run_module("remove_torrents", hashs=hashs)
 
-    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[Path]:
+    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[dict]:
         return self.run_module("transfer", path=path, mediainfo=mediainfo)
 
     def transfer_completed(self, hashs: Union[str, list]) -> bool:

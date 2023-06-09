@@ -97,3 +97,26 @@ class SystemUtils:
                 files.append(path)
 
         return files
+
+    @staticmethod
+    def get_directory_size(path: Path):
+        """
+        计算目录的大小
+
+        参数:
+            directory_path (Path): 目录路径
+
+        返回:
+            int: 目录的大小（以字节为单位）
+        """
+        if not path or not path.exists():
+            return 0
+        if path.is_file():
+            return path.stat().st_size
+        total_size = 0
+        for path in path.glob('**/*'):
+            if path.is_file():
+                total_size += path.stat().st_size
+
+        return total_size
+

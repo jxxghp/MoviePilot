@@ -26,7 +26,7 @@ class FileTransferModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[Path]:
+    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[dict]:
         """
         文件转移
         :param path:  文件路径
@@ -36,14 +36,18 @@ class FileTransferModule(_ModuleBase):
         if not settings.LIBRARY_PATH:
             logger.error("未设置媒体库目录，无法转移文件")
             return None
-        path, msg = self.transfer_media(in_path=Path(path),
-                                        meidainfo=mediainfo,
-                                        rmt_mode=settings.TRANSFER_TYPE,
-                                        target_dir=Path(settings.LIBRARY_PATH))
+        target_path, msg = self.transfer_media(in_path=Path(path),
+                                               meidainfo=mediainfo,
+                                               rmt_mode=settings.TRANSFER_TYPE,
+                                               target_dir=Path(settings.LIBRARY_PATH))
         if not path:
             logger.error(msg)
 
-        return path
+        return {
+            "path": path,
+            "target_path": target_path,
+            "message": msg
+        }
 
     @staticmethod
     def __transfer_command(file_item: Path, target_file: Path, rmt_mode) -> int:
