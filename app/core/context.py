@@ -2,7 +2,7 @@ from typing import Optional, Any, List
 
 from app.core.config import settings
 from app.core.meta import MetaBase
-from app.core.meta_info import MetaInfo
+from app.core.metainfo import MetaInfo
 from app.utils.types import MediaType
 
 

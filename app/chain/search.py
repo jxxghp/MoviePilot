@@ -4,7 +4,7 @@ from app.chain import ChainBase
 from app.core.config import settings
 from app.core.context import Context, MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
-from app.core.meta_info import MetaInfo
+from app.core.metainfo import MetaInfo
 from app.helper.sites import SitesHelper
 from app.log import logger
 

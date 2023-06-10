@@ -8,8 +8,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from ruamel.yaml import CommentedMap
 
 from app.core.config import settings
-from app.core.event_manager import eventmanager
-from app.core.event_manager import Event
+from app.core.event import eventmanager
+from app.core.event import Event
 from app.helper.browser import PlaywrightHelper
 from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper

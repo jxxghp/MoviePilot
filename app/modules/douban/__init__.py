@@ -5,7 +5,7 @@ from xml.dom import minidom
 
 from app.core.context import MediaInfo
 from app.core.config import settings
-from app.core.meta_info import MetaInfo
+from app.core.metainfo import MetaInfo
 from app.core.meta import MetaBase
 from app.log import logger
 from app.modules import _ModuleBase
@@ -18,12 +18,10 @@ from app.utils.types import MediaType
 
 class Douban(_ModuleBase):
 
-    def __init__(self):
-        super().__init__()
-        self.doubanapi = DoubanApi()
+    doubanapi: DoubanApi = None
 
     def init_module(self) -> None:
-        pass
+        self.doubanapi = DoubanApi()
 
     def stop(self):
         pass

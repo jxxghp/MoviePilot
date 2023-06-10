@@ -6,7 +6,7 @@ from typing import Optional, Any, Tuple, List, Set, Union
 from ruamel.yaml import CommentedMap
 
 from app.core.context import Context
-from app.core.module_manager import ModuleManager
+from app.core.module import ModuleManager
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
 from app.log import logger

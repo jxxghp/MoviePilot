@@ -6,7 +6,7 @@ from app.chain.download import DownloadChain
 from app.chain.search import SearchChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
-from app.core.meta_info import MetaInfo
+from app.core.metainfo import MetaInfo
 from app.core.context import MediaInfo
 from app.helper.rss import RssHelper
 from app.log import logger

@@ -20,9 +20,6 @@ class Telegram(metaclass=Singleton):
         """
         初始化参数
         """
-        if settings.MESSAGER != "telegram":
-            return
-
         # Token
         self._telegram_token = settings.TELEGRAM_TOKEN
         # Chat Id

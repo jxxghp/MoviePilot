@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from app.chain import ChainBase
-from app.core.meta_info import MetaInfo
+from app.core.metainfo import MetaInfo
 from app.core.context import MediaInfo
 from app.core.config import settings
 from app.core.meta import MetaBase

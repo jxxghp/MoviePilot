@@ -8,7 +8,7 @@ from torrentool.api import Torrent
 
 from app.core.config import settings
 from app.core.context import Context
-from app.core.meta_info import MetaInfo
+from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils

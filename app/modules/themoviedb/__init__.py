@@ -5,7 +5,7 @@ from xml.dom import minidom
 
 from app.core.config import settings
 from app.core.context import MediaInfo
-from app.core.meta_info import MetaInfo
+from app.core.metainfo import MetaInfo
 from app.core.meta import MetaBase
 from app.log import logger
 from app.modules import _ModuleBase

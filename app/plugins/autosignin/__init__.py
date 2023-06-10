@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 from apscheduler.schedulers.background import BackgroundScheduler
 from ruamel.yaml import CommentedMap
 
-from app.core.event_manager import EventManager, eventmanager
+from app.core.event import EventManager, eventmanager
 from app.core.config import settings
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge

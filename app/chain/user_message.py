@@ -4,8 +4,8 @@ from app.chain.download import *
 from app.chain.search import SearchChain
 from app.chain.subscribe import SubscribeChain
 from app.core.context import MediaInfo, TorrentInfo
-from app.core.meta_info import MetaInfo
-from app.core.event_manager import EventManager
+from app.core.metainfo import MetaInfo
+from app.core.event import EventManager
 from app.log import logger
 from app.utils.types import EventType
 

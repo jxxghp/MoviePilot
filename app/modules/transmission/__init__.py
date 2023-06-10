@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List
 
 from app.core.config import settings
-from app.core.meta_info import MetaInfo
+from app.core.metainfo import MetaInfo
 from app.modules import _ModuleBase
 from app.modules.transmission.transmission import Transmission
 from app.utils.types import TorrentStatus

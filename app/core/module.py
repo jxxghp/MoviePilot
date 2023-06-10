@@ -35,9 +35,12 @@ class ModuleManager(metaclass=Singleton):
             module_id = module.__name__
             self._modules[module_id] = module
             # 生成实例
-            self._running_modules[module_id] = module()
-            self._running_modules[module_id].init_module()
-            logger.info(f"Moudle Loaded：{module_id}")
+            _module = module()
+            # 初始化模块
+            if self.check_setting(_module.init_setting()):
+                _module.init_module()
+                self._running_modules[module_id] = _module
+                logger.info(f"Moudle Loaded：{module_id}")
 
     def stop(self):
         """
@@ -46,6 +49,20 @@ class ModuleManager(metaclass=Singleton):
         for _, module in self._running_modules.items():
             if hasattr(module, "stop"):
                 module.stop()
+
+    @staticmethod
+    def check_setting(setting: Optional[tuple]) -> bool:
+        """
+        检查开关是否己打开
+        """
+        if not setting:
+            return True
+        switch, value = setting
+        if getattr(settings, switch) and value is True:
+            return True
+        if getattr(settings, switch) == value:
+            return True
+        return False
 
     def get_modules(self, method: str) -> Generator:
         """
@@ -58,23 +75,9 @@ class ModuleManager(metaclass=Singleton):
             """
             return func.__code__.co_code != b'd\x01S\x00'
 
-        def check_setting(setting: Optional[tuple]) -> bool:
-            """
-            检查开关是否己打开
-            """
-            if not setting:
-                return True
-            switch, value = setting
-            if getattr(settings, switch) and value is True:
-                return True
-            if getattr(settings, switch) == value:
-                return True
-            return False
-
         if not self._running_modules:
             return []
         for _, module in self._running_modules.items():
             if hasattr(module, method) \
-                    and check_method(getattr(module, method)) \
-                    and check_setting(module.init_setting()):
+                    and check_method(getattr(module, method)):
                 yield module

@@ -6,7 +6,7 @@ from typing import Optional, List, Tuple, Union
 from jinja2 import Template
 
 from app.core.context import MediaInfo
-from app.core.meta_info import MetaInfo
+from app.core.metainfo import MetaInfo
 from app.core.config import settings
 from app.core.meta import MetaBase
 from app.log import logger
