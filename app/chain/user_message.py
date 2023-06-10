@@ -90,7 +90,7 @@ class UserMessageChain(ChainBase):
                 # 发送缺失的媒体信息
                 if no_exists:
                     # 发送消息
-                    messages = [f"第 {no_exist.get('season')} 季缺失 {len(no_exist.get('episodes'))} 集"
+                    messages = [f"第 {no_exist.get('season')} 季缺失 {len(no_exist.get('episodes')) or no_exist.get('total_episodes')} 集"
                                 for no_exist in no_exists.get(mediainfo.tmdb_id)]
                     self.post_message(title=f"{mediainfo.get_title_string()}：\n" + "\n".join(messages))
                 # 搜索种子，过滤掉不需要的剧集，以便选择
