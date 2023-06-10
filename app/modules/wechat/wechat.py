@@ -72,7 +72,7 @@ class WeChat(metaclass=Singleton):
                 return None
         return self._access_token
 
-    def __send_message(self, title: str, text: str, userid: str = None) -> Optional[bool]:
+    def __send_message(self, title: str, text: str = None, userid: str = None) -> Optional[bool]:
         """
         发送文本消息
         :param title: 消息标题
@@ -196,23 +196,35 @@ class WeChat(metaclass=Singleton):
             logger.error("获取微信access_token失败，请检查参数配置")
             return None
 
-        try:
-            index, caption = 1, "*%s*" % title
-            for context in torrents:
-                torrent = context.torrent_info
-                link = torrent.page_url
-                title = torrent.title
-                free = torrent.get_volume_factor_string()
-                seeder = f"{torrent.seeders}↑"
-                description = torrent.description
-                caption = f"{caption}\n{index}. [{title}]({link}) {free} {seeder}\n{description}"
-                index += 1
+        # 先发送标题
+        if title:
+            self.__send_message(title=title)
 
-            return self.__send_message(title, caption, userid)
+        # 发送列表
+        message_url = self._send_msg_url % self.__get_access_token()
+        if not userid:
+            userid = "@all"
+        articles = []
+        index = 1
+        for context in torrents:
+            torrent = context.torrent_info
+            articles.append({
+                "title": f"{torrent.title}",
+                "description": f"【{torrent.site_name}】{torrent.description} "
+                               f"{torrent.get_volume_factor_string()} {torrent.seeders}↑",
+                "url": torrent.page_url
+            })
+            index += 1
 
-        except Exception as msg_e:
-            logger.error(f"发送消息失败：{msg_e}")
-            return False
+        req_json = {
+            "touser": userid,
+            "msgtype": "news",
+            "agentid": self._appid,
+            "news": {
+                "articles": articles
+            }
+        }
+        return self.__post_request(message_url, req_json)
 
     def __post_request(self, message_url: str, req_json: dict) -> bool:
         """
