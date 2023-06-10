@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple, Set, Dict
 from app.chain import ChainBase
 from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.meta import MetaBase
+from app.core.metainfo import MetaInfo
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.utils.string import StringUtils
@@ -361,8 +362,15 @@ class DownloadChain(ChainBase):
             return False, {}
         else:
             if not mediainfo.seasons:
-                logger.error(f"媒体信息中没有季集信息：{mediainfo.get_title_string()}")
-                return False, {}
+                # 补充媒体信息
+                mediainfo: MediaInfo = self.recognize_media(meta=MetaInfo(title=mediainfo.get_title_string()),
+                                                            tmdbid=mediainfo.tmdb_id)
+                if not mediainfo:
+                    logger.warn(f'未识别到媒体信息，tmdbid：{mediainfo.tmdb_id}')
+                    return False, {}
+                if not mediainfo.seasons:
+                    logger.error(f"媒体信息中没有季集信息：{mediainfo.get_title_string()}")
+                    return False, {}
             # 电视剧
             exists_tvs: Optional[dict] = self.media_exists(mediainfo)
             if not exists_tvs:
