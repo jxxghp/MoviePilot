@@ -152,4 +152,4 @@ class WechatModule(_ModuleBase):
         :param userid:  用户ID
         :return: 成功或失败
         """
-        return self.wechat.send_torrents_msg(title=title, torrents=items, userid=userid)
+        return self.wechat.send_torrents_msg(title=title, torrents=items, mediainfo=mediainfo, userid=userid)
