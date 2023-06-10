@@ -35,9 +35,6 @@ class WechatModule(_ModuleBase):
         :return: 消息内容、用户ID
         """
         try:
-            print("args: ", args)
-            print("form", form)
-            print("body", body)
             # URL参数
             sVerifyMsgSig = args.get("msg_signature")
             sVerifyTimeStamp = args.get("timestamp")
@@ -50,11 +47,11 @@ class WechatModule(_ModuleBase):
                                   sEncodingAESKey=settings.WECHAT_ENCODING_AESKEY,
                                   sReceiveId=settings.WECHAT_CORPID)
             # 报文数据
-            if not form:
+            if not body:
                 logger.error(f"微信请求数据为空")
                 return None
-            logger.debug(f"收到微信请求：{form}")
-            ret, sMsg = wxcpt.DecryptMsg(sPostData=form,
+            logger.debug(f"收到微信请求：{body}")
+            ret, sMsg = wxcpt.DecryptMsg(sPostData=body,
                                          sMsgSignature=sVerifyMsgSig,
                                          sTimeStamp=sVerifyTimeStamp,
                                          sNonce=sVerifyNonce)
