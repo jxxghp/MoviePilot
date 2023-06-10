@@ -2,6 +2,7 @@ from typing import Union, Any
 
 from fastapi import APIRouter, BackgroundTasks
 from fastapi import Request
+from starlette.responses import PlainTextResponse
 
 from app import schemas
 from app.chain.user_message import UserMessageChain
@@ -51,4 +52,4 @@ async def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, 
     if ret != 0:
         logger.error("微信请求验证失败 VerifyURL ret: %s" % str(ret))
     # 验证URL成功，将sEchoStr返回给企业号
-    return sEchoStr
+    return PlainTextResponse(sEchoStr)
