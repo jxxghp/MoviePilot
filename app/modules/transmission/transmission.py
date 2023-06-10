@@ -240,24 +240,12 @@ class Transmission(metaclass=Singleton):
         else:
             return None
 
-    def set_files(self, **kwargs) -> bool:
+    def set_files(self, tid: str, file_ids: list) -> bool:
         """
         设置下载文件的状态
-        {
-            <torrent id>: {
-                <file id>: {
-                    'priority': <priority ('high'|'normal'|'low')>,
-                    'selected': <selected for download (True|False)>
-                },
-                ...
-            },
-            ...
-        }
         """
-        if not kwargs.get("file_info"):
-            return False
         try:
-            self.trc.set_files(kwargs.get("file_info"))
+            self.trc.change_torrent(ids=tid, files_wanted=file_ids)
             return True
         except Exception as err:
             logger.error(f"设置下载文件状态出错：{err}")
