@@ -148,8 +148,8 @@ class StringUtils:
         return 0.0
 
     @staticmethod
-    def clear_special_chars(text: Union[list, str], replace_word: str = "",
-                            allow_space: bool = False) -> Union[list, str]:
+    def clear(text: Union[list, str], replace_word: str = "",
+              allow_space: bool = False) -> Union[list, str]:
         """
         忽略特殊字符
         """
@@ -167,7 +167,7 @@ class StringUtils:
             else:
                 return re.sub(r"\s+", " ", text).strip()
         else:
-            return [StringUtils.clear_special_chars(x) for x in text]
+            return [StringUtils.clear(x) for x in text]
 
     @staticmethod
     def str_filesize(size: Union[str, float, int], pre: int = 2) -> str:
@@ -552,4 +552,3 @@ class StringUtils:
             # 端口号不是整数，返回 None 表示无效
             return None, None
         return domain, port
-

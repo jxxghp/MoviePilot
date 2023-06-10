@@ -118,6 +118,8 @@ class MediaInfo:
     vote_average: int = 0
     # 描述
     overview: Optional[str] = None
+    # 所有别名和译名
+    names: Optional[list] = []
     # 各季的剧集清单信息
     seasons: Optional[dict] = {}
     # 二级分类
@@ -134,6 +136,7 @@ class MediaInfo:
     def __init__(self, tmdb_info: dict = None, douban_info: dict = None):
         # 初始化
         self.seasons = {}
+        self.names = []
         self.directors = []
         self.actors = []
         self.tmdb_info = {}
@@ -276,6 +279,8 @@ class MediaInfo:
             self.backdrop_path = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.get('backdrop_path')}"
         # 导演和演员
         self.directors, self.actors = __directors_actors(info)
+        # 别名和译名
+        self.names = info.get('names')
 
     def set_douban_info(self, info: dict):
         """
