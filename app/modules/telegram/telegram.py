@@ -1,8 +1,10 @@
 import threading
+from pathlib import Path
 from threading import Event
 from typing import Optional, List
 
 import telebot
+from telebot.types import InputFile
 
 from app.core.config import settings
 from app.core.context import MediaInfo, Context
@@ -152,14 +154,20 @@ class Telegram(metaclass=Singleton):
         """
 
         if image:
-            ret = self._bot.send_photo(chat_id=userid or self._telegram_chat_id,
-                                       photo=image,
-                                       caption=caption,
-                                       parse_mode="Markdown")
-        else:
-            ret = self._bot.send_message(chat_id=userid or self._telegram_chat_id,
-                                         text=caption,
-                                         parse_mode="Markdown")
+            req = RequestUtils().get_res(image)
+            if req and req.content:
+                image_file = Path(settings.TEMP_PATH) / Path(image).name
+                image_file.write_bytes(req.content)
+                photo = InputFile(image_file)
+                ret = self._bot.send_photo(chat_id=userid or self._telegram_chat_id,
+                                           photo=photo,
+                                           caption=caption,
+                                           parse_mode="Markdown")
+                if ret:
+                    return True
+        ret = self._bot.send_message(chat_id=userid or self._telegram_chat_id,
+                                     text=caption,
+                                     parse_mode="Markdown")
 
         return True if ret else False
 
