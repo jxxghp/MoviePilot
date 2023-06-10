@@ -366,7 +366,6 @@ class DownloadChain(ChainBase):
                 mediainfo: MediaInfo = self.recognize_media(meta=MetaInfo(title=mediainfo.get_title_string()),
                                                             tmdbid=mediainfo.tmdb_id)
                 if not mediainfo:
-                    logger.warn(f'未识别到媒体信息，tmdbid：{mediainfo.tmdb_id}')
                     return False, {}
                 if not mediainfo.seasons:
                     logger.error(f"媒体信息中没有季集信息：{mediainfo.get_title_string()}")

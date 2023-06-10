@@ -1,7 +1,6 @@
 FROM python:3.10.11-slim
 ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
-    PS1="\u@\h:\w \$ " \
     PUID=0 \
     PGID=0 \
     UMASK=000 \
