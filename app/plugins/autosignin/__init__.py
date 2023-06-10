@@ -71,7 +71,7 @@ class AutoSignIn(_PluginBase):
         return {
             "cmd": "/sitesignin",
             "event": EventType.SiteSignin,
-            "desc": "站点自动签到",
+            "desc": "站点签到",
             "data": {}
         }
 
