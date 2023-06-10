@@ -125,26 +125,27 @@ class TmdbCache(metaclass=Singleton):
         """
         新增或更新缓存条目
         """
-        if info:
-            # 缓存标题
-            cache_title = info.get("title") \
-                if info.get("media_type") == MediaType.MOVIE else info.get("name")
-            # 缓存年份
-            cache_year = info.get('release_date') \
-                if info.get("media_type") == MediaType.MOVIE else info.get('first_air_date')
-            if cache_year:
-                cache_year = cache_year[:4]
-            self._meta_data[self.__get_key(meta)] = {
-                    "id": str(info.get("id")),
-                    "type": info.get("media_type"),
-                    "year": cache_year,
-                    "title": cache_title,
-                    "poster_path": info.get("poster_path"),
-                    "backdrop_path": info.get("backdrop_path"),
-                    CACHE_EXPIRE_TIMESTAMP_STR: int(time.time()) + EXPIRE_TIMESTAMP
-                }
-        else:
-            self._meta_data[self.__get_key(meta)] = {'id': 0}
+        with lock:
+            if info:
+                # 缓存标题
+                cache_title = info.get("title") \
+                    if info.get("media_type") == MediaType.MOVIE else info.get("name")
+                # 缓存年份
+                cache_year = info.get('release_date') \
+                    if info.get("media_type") == MediaType.MOVIE else info.get('first_air_date')
+                if cache_year:
+                    cache_year = cache_year[:4]
+                self._meta_data[self.__get_key(meta)] = {
+                        "id": str(info.get("id")),
+                        "type": info.get("media_type"),
+                        "year": cache_year,
+                        "title": cache_title,
+                        "poster_path": info.get("poster_path"),
+                        "backdrop_path": info.get("backdrop_path"),
+                        CACHE_EXPIRE_TIMESTAMP_STR: int(time.time()) + EXPIRE_TIMESTAMP
+                    }
+            else:
+                self._meta_data[self.__get_key(meta)] = {'id': 0}
 
     def save(self, force: bool = False) -> None:
         """
