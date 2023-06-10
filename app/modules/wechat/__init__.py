@@ -35,6 +35,9 @@ class WechatModule(_ModuleBase):
         :return: 消息内容、用户ID
         """
         try:
+            print("args: ", args)
+            print("form", form)
+            print("body", body)
             # URL参数
             sVerifyMsgSig = args.get("msg_signature")
             sVerifyTimeStamp = args.get("timestamp")
@@ -48,6 +51,7 @@ class WechatModule(_ModuleBase):
                                   sReceiveId=settings.WECHAT_CORPID)
             # 报文数据
             if not form:
+                logger.error(f"微信请求数据为空")
                 return None
             logger.debug(f"收到微信请求：{form}")
             ret, sMsg = wxcpt.DecryptMsg(sPostData=form,
@@ -89,6 +93,7 @@ class WechatModule(_ModuleBase):
             user_id = DomUtils.tag_value(root_node, "FromUserName")
             # 没的消息类型和用户ID的消息不要
             if not msg_type or not user_id:
+                logger.warn(f"解析不到消息类型和用户ID")
                 return None
             # 解析消息内容
             if msg_type == "event" and event == "click":
