@@ -280,7 +280,7 @@ class MediaInfo:
         # 导演和演员
         self.directors, self.actors = __directors_actors(info)
         # 别名和译名
-        self.names = info.get('names')
+        self.names = info.get('names') or []
 
     def set_douban_info(self, info: dict):
         """

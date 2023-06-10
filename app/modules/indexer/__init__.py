@@ -108,7 +108,7 @@ class IndexerModule(_ModuleBase):
             logger.warn(f"{site.get('name')} 未搜索到数据，耗时 {seconds} 秒")
             return []
         else:
-            logger.warn(f"{site.get('name')} 搜索完成，耗时 {seconds} 秒，返回数据：{len(result_array)}")
+            logger.info(f"{site.get('name')} 搜索完成，耗时 {seconds} 秒，返回数据：{len(result_array)}")
             # 合并站点信息，以TorrentInfo返回
             return [TorrentInfo(site=site.get("id"),
                                 site_name=site.get("name"),
