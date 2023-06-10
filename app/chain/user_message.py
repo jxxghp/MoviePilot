@@ -81,13 +81,17 @@ class UserMessageChain(ChainBase):
             if cache_type == "Search":
                 mediainfo: MediaInfo = cache_list[int(text) + self._current_page * self._page_size - 1]
                 self._current_media = mediainfo
-                # 检查是否已存在
-                exists: dict = self.media_exists(mediainfo=mediainfo)
-                if exists:
-                    # 已存在
-                    self.post_message(
-                        title=f"{mediainfo.type.value} {mediainfo.get_title_string()} 媒体库中已存在", userid=userid)
+                # 查询缺失的媒体信息
+                exist_flag, no_exists = self.downloadchain.get_no_exists_info(mediainfo=self._current_media)
+                if exist_flag:
+                    self.post_message(title=f"{self._current_media.get_title_string()} 媒体库中已存在",
+                                      userid=userid)
                     return
+                # 发送缺失的媒体信息
+                if no_exists:
+                    messages = [f"第 {no_exist.get('season')} 季缺失 {no_exist.get('total_episodes')} 集"
+                                for no_exist in no_exists.get(mediainfo.tmdb_id)]
+                    self.post_message(title=f"{mediainfo.get_title_string()}：\n" + "\n".join(messages))
                 logger.info(f"{mediainfo.get_title_string()} 媒体库中不存在，开始搜索 ...")
                 self.post_message(
                     title=f"开始搜索 {mediainfo.type.value} {mediainfo.get_title_string()} ...", userid=userid)
