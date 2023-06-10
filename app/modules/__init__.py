@@ -6,7 +6,7 @@ from ruamel.yaml import CommentedMap
 
 from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.meta import MetaBase
-from app.utils.types import TorrentStatus
+from app.utils.types import TorrentStatus, MediaType
 
 
 class _ModuleBase(metaclass=ABCMeta):
@@ -41,10 +41,12 @@ class _ModuleBase(metaclass=ABCMeta):
         pass
 
     def recognize_media(self, meta: MetaBase,
-                        tmdbid: str = None) -> Optional[MediaInfo]:
+                        mtype: MediaType = None,
+                        tmdbid: int = None) -> Optional[MediaInfo]:
         """
         识别媒体信息
         :param meta:     识别的元数据
+        :param mtype:    媒体类型，与tmdbid配套
         :param tmdbid:   tmdbid
         :return: 识别的媒体信息，包括剧集信息
         """

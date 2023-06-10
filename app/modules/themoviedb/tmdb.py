@@ -1,3 +1,4 @@
+import traceback
 from functools import lru_cache
 from typing import Optional, Tuple, List
 
@@ -114,7 +115,7 @@ class TmdbHelper:
                 return True
         return False
 
-    def __get_names(self, mtype: MediaType, tmdb_id: str) -> Tuple[Optional[dict], List[str]]:
+    def __get_names(self, mtype: MediaType, tmdb_id: int) -> Tuple[Optional[dict], List[str]]:
         """
         搜索tmdb中所有的标题和译名，用于名称匹配
         :param mtype: 类型：电影、电视剧、动漫
@@ -230,7 +231,8 @@ class TmdbHelper:
             logger.error(f"连接TMDB出错：{err}")
             return None
         except Exception as e:
-            logger.error(f"连接TMDB出错：{str(e)}")
+            logger.error(f"连接TMDB出错：{e}")
+            print(traceback.print_exc())
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
         if len(movies) == 0:
@@ -289,7 +291,8 @@ class TmdbHelper:
             logger.error(f"连接TMDB出错：{err}")
             return None
         except Exception as e:
-            logger.error(f"连接TMDB出错：{str(e)}")
+            logger.error(f"连接TMDB出错：{e}")
+            print(traceback.print_exc())
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
         if len(tvs) == 0:
@@ -346,13 +349,14 @@ class TmdbHelper:
                 return False
             try:
                 seasons = self.__get_tv_seasons(tv_info)
-                for season, season_info in seasons.values():
+                for season, season_info in seasons.items():
                     if season_info.get("air_date"):
                         if season.get("air_date")[0:4] == str(_season_year) \
                                 and season == int(season_number):
                             return True
             except Exception as e1:
                 logger.error(f"连接TMDB出错：{e1}")
+                print(traceback.print_exc())
                 return False
             return False
 
@@ -363,6 +367,7 @@ class TmdbHelper:
             return None
         except Exception as e:
             logger.error(f"连接TMDB出错：{e}")
+            print(traceback.print_exc())
             return None
 
         if len(tvs) == 0:
@@ -433,7 +438,8 @@ class TmdbHelper:
             logger.error(f"连接TMDB出错：{err}")
             return None
         except Exception as e:
-            logger.error(f"连接TMDB出错：{str(e)}")
+            logger.error(f"连接TMDB出错：{e}")
+            print(traceback.print_exc())
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
         if len(multis) == 0:
@@ -529,7 +535,7 @@ class TmdbHelper:
 
     def get_info(self,
                  mtype: MediaType,
-                 tmdbid: str) -> dict:
+                 tmdbid: int) -> dict:
         """
         给定TMDB号，查询一条媒体信息
         :param mtype: 类型：电影、电视剧、动漫，为空时都查（此时用不上年份）
@@ -602,7 +608,7 @@ class TmdbHelper:
                     tmdb_info['name'] = cn_title
 
     def __get_movie_detail(self,
-                           tmdbid: str,
+                           tmdbid: int,
                            append_to_response: str = "images,"
                                                      "credits,"
                                                      "alternative_titles,"
@@ -714,7 +720,7 @@ class TmdbHelper:
             return None
 
     def __get_tv_detail(self,
-                        tmdbid: str,
+                        tmdbid: int,
                         append_to_response: str = "images,"
                                                   "credits,"
                                                   "alternative_titles,"
@@ -896,7 +902,7 @@ class TmdbHelper:
             print(str(e))
             return None
 
-    def get_tv_season_detail(self, tmdbid, season: int):
+    def get_tv_season_detail(self, tmdbid: int, season: int):
         """
         获取电视剧季的详情
         :param tmdbid: TMDB ID
@@ -970,7 +976,7 @@ class TmdbHelper:
             print(str(e))
             return {}
 
-    def get_tv_episode_detail(self, tmdbid: str, season: int, episode: int):
+    def get_tv_episode_detail(self, tmdbid: int, season: int, episode: int):
         """
         获取电视剧集的详情
         :param tmdbid: TMDB ID

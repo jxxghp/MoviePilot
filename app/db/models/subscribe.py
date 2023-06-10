@@ -13,7 +13,7 @@ class Subscribe(Base):
     year = Column(String)
     type = Column(String)
     keyword = Column(String)
-    tmdbid = Column(String, index=True)
+    tmdbid = Column(Integer, index=True)
     doubanid = Column(String)
     season = Column(Integer)
     image = Column(String)
@@ -28,7 +28,7 @@ class Subscribe(Base):
     state = Column(String, nullable=False, index=True, default='N')
 
     @staticmethod
-    def exists(db: Session, tmdbid: str, season: int = None):
+    def exists(db: Session, tmdbid: int, season: int = None):
         if season:
             return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid,
                                               Subscribe.season == season).first()

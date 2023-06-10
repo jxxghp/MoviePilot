@@ -133,12 +133,13 @@ class Telegram(metaclass=Singleton):
             index, caption = 1, "*%s*" % title
             for context in torrents:
                 torrent = context.torrent_info
+                site_name = torrent.site_name
                 link = torrent.page_url
                 title = torrent.title
                 free = torrent.get_volume_factor_string()
                 seeder = f"{torrent.seeders}↑"
                 description = torrent.description
-                caption = f"{caption}\n{index}. [{title}]({link}) {free} {seeder}\n{description}"
+                caption = f"{caption}\n{index}. 【{site_name}】[{title}]({link}) {free} {seeder}\n_{description}_"
                 index += 1
 
             if userid:

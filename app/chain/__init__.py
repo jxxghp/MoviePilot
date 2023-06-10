@@ -11,7 +11,7 @@ from app.core.context import MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
 from app.log import logger
 from app.utils.singleton import AbstractSingleton, Singleton
-from app.utils.types import TorrentStatus
+from app.utils.types import TorrentStatus, MediaType
 
 
 class ChainBase(AbstractSingleton, metaclass=Singleton):
@@ -69,7 +69,8 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         return self.run_module("prepare_recognize", title=title, subtitle=subtitle)
 
     def recognize_media(self, meta: MetaBase,
-                        tmdbid: str = None) -> Optional[MediaInfo]:
+                        mtype: MediaType = None,
+                        tmdbid: int = None) -> Optional[MediaInfo]:
         return self.run_module("recognize_media", meta=meta, tmdbid=tmdbid)
 
     def douban_info(self, doubanid: str) -> Optional[dict]:

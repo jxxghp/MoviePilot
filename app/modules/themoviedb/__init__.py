@@ -42,21 +42,23 @@ class TheMovieDb(_ModuleBase):
         pass
 
     def recognize_media(self, meta: MetaBase,
-                        tmdbid: str = None) -> Optional[MediaInfo]:
+                        mtype: MediaType = None,
+                        tmdbid: int = None) -> Optional[MediaInfo]:
         """
        识别媒体信息
        :param meta:     识别的元数据
+       :param mtype:    识别的媒体类型，与tmdbid配套
        :param tmdbid:   tmdbid
        :return: 识别的媒体信息，包括剧集信息
        """
         if not meta:
             return None
         cache_info = self.cache.get(meta)
-        if not cache_info:
+        if not cache_info or cache_info.get('id') == 0:
             # 缓存没有或者强制不使用缓存
             if tmdbid:
                 # 直接查询详情
-                info = self.tmdb.get_info(mtype=meta.type, tmdbid=tmdbid)
+                info = self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
             else:
                 if meta.type != MediaType.TV and not meta.year:
                     info = self.tmdb.search_multi(meta.get_name())

@@ -75,12 +75,12 @@ class TmdbCache(metaclass=Singleton):
         with lock:
             return self._meta_data.pop(key, None)
 
-    def delete_by_tmdbid(self, tmdbid: str) -> None:
+    def delete_by_tmdbid(self, tmdbid: int) -> None:
         """
         清空对应TMDBID的所有缓存记录，以强制更新TMDB中最新的数据
         """
         for key in list(self._meta_data):
-            if str(self._meta_data.get(key, {}).get("id")) == str(tmdbid):
+            if self._meta_data.get(key, {}).get("id") == tmdbid:
                 with lock:
                     self._meta_data.pop(key)
 
@@ -89,7 +89,7 @@ class TmdbCache(metaclass=Singleton):
         清除未识别的缓存记录，以便重新搜索TMDB
         """
         for key in list(self._meta_data):
-            if str(self._meta_data.get(key, {}).get("id")) == '0':
+            if self._meta_data.get(key, {}).get("id") == 0:
                 with lock:
                     self._meta_data.pop(key)
 

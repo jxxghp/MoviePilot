@@ -207,7 +207,7 @@ class Jellyfin(metaclass=Singleton):
     def get_tv_episodes(self,
                         title: str = None,
                         year: str = None,
-                        tmdb_id: str = None,
+                        tmdb_id: int = None,
                         season: int = None) -> Optional[Dict[str, list]]:
         """
         根据标题和年份和季，返回Jellyfin中的剧集列表

@@ -9,7 +9,7 @@ class Subscribe(BaseModel):
     year: str
     type: str
     keyword: Optional[str]
-    tmdbid: str
+    tmdbid: int
     doubanid: Optional[str]
     season: Optional[int]
     image: Optional[str]

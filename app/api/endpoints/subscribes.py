@@ -16,7 +16,7 @@ router = APIRouter()
 
 
 def start_subscribe_chain(title: str,
-                          mtype: MediaType, tmdbid: str, season: int, username: str):
+                          mtype: MediaType, tmdbid: int, season: int, username: str):
     """
     启动订阅链式任务
     """

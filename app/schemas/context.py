@@ -54,7 +54,7 @@ class MediaInfo(BaseModel):
     # 年份
     year: Optional[str] = None
     # TMDB ID
-    tmdb_id: Optional[str] = None
+    tmdb_id: Optional[int] = None
     # IMDB ID
     imdb_id: Optional[str] = None
     # TVDB ID

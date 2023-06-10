@@ -30,7 +30,7 @@ class SubscribeChain(ChainBase):
 
     def process(self, title: str,
                 mtype: MediaType = None,
-                tmdbid: str = None,
+                tmdbid: int = None,
                 season: int = None,
                 userid: str = None,
                 username: str = None,
@@ -51,7 +51,7 @@ class SubscribeChain(ChainBase):
             metainfo.type = MediaType.TV
             metainfo.begin_season = season
         # 识别媒体信息
-        mediainfo: MediaInfo = self.recognize_media(meta=metainfo, tmdbid=tmdbid)
+        mediainfo: MediaInfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid)
         if not mediainfo:
             logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}')
             return False
@@ -99,7 +99,7 @@ class SubscribeChain(ChainBase):
             meta.begin_season = subscribe.season
             meta.type = MediaType.MOVIE if subscribe.type == MediaType.MOVIE.value else MediaType.TV
             # 识别媒体信息
-            mediainfo: MediaInfo = self.recognize_media(meta=meta, tmdbid=subscribe.tmdbid)
+            mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type, tmdbid=subscribe.tmdbid)
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue
@@ -183,7 +183,7 @@ class SubscribeChain(ChainBase):
             meta.begin_season = subscribe.season
             meta.type = MediaType.MOVIE if subscribe.type == MediaType.MOVIE.value else MediaType.TV
             # 识别媒体信息
-            mediainfo: MediaInfo = self.recognize_media(meta=meta, tmdbid=subscribe.tmdbid)
+            mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type, tmdbid=subscribe.tmdbid)
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue

@@ -232,7 +232,7 @@ class Emby(metaclass=Singleton):
     def get_tv_episodes(self,
                         title: str = None,
                         year: str = None,
-                        tmdb_id: str = None,
+                        tmdb_id: int = None,
                         season: int = None) -> Optional[Dict[int, list]]:
         """
         根据标题和年份和季，返回Emby中的剧集列表

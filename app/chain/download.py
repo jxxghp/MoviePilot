@@ -133,7 +133,7 @@ class DownloadChain(ChainBase):
                     userid=userid)
             return _hash
 
-        def __update_seasons(tmdbid: str, need: list, current: list) -> list:
+        def __update_seasons(tmdbid: int, need: list, current: list) -> list:
             """
             更新need_tvs季数，返回剩余季数
             """
@@ -146,7 +146,7 @@ class DownloadChain(ChainBase):
                 need_tvs.pop(tmdbid)
             return need
 
-        def __update_episodes(tmdbid: str, seq: int, need: list, current: set) -> list:
+        def __update_episodes(tmdbid: int, seq: int, need: list, current: set) -> list:
             """
             更新need_tvs集数，返回剩余集数
             """
@@ -159,7 +159,7 @@ class DownloadChain(ChainBase):
                     need_tvs.pop(tmdbid)
             return need
 
-        def __get_season_episodes(tmdbid: str, season: int) -> int:
+        def __get_season_episodes(tmdbid: int, season: int) -> int:
             """
             获取需要的季的集数
             """
@@ -181,7 +181,7 @@ class DownloadChain(ChainBase):
         # 电视剧整季匹配
         if need_tvs:
             # 先把整季缺失的拿出来，看是否刚好有所有季都满足的种子
-            need_seasons: Dict[str, list] = {}
+            need_seasons: Dict[int, list] = {}
             for need_tmdbid, need_tv in need_tvs.items():
                 for tv in need_tv:
                     if not tv:
@@ -364,6 +364,7 @@ class DownloadChain(ChainBase):
             if not mediainfo.seasons:
                 # 补充媒体信息
                 mediainfo: MediaInfo = self.recognize_media(meta=MetaInfo(title=mediainfo.get_title_string()),
+                                                            mtype=mediainfo.type,
                                                             tmdbid=mediainfo.tmdb_id)
                 if not mediainfo:
                     return False, {}
@@ -388,8 +389,11 @@ class DownloadChain(ChainBase):
                         if not episodes:
                             # 全部集存在
                             continue
-                    # 添加不存在的季集信息
-                    __append_no_exists(season, episodes, len(episodes), min(episodes))
+                        # 添加不存在的季集信息
+                        __append_no_exists(season, episodes, len(episodes), min(episodes))
+                    else:
+                        # 全季不存在
+                        __append_no_exists(season, [], len(episodes), min(episodes))
             # 存在不完整的剧集
             if no_exists:
                 logger.info(f"媒体库中已存在部分剧集，缺失：{no_exists}")

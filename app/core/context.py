@@ -6,7 +6,7 @@ from app.core.metainfo import MetaInfo
 from app.utils.types import MediaType
 
 
-class TorrentInfo(object):
+class TorrentInfo:
     # 站点ID
     site: int = None
     # 站点名称
@@ -89,7 +89,7 @@ class TorrentInfo(object):
         return self.get_free_string(self.uploadvolumefactor, self.downloadvolumefactor)
 
 
-class MediaInfo(object):
+class MediaInfo:
     # 类型 电影、电视剧
     type: MediaType = None
     # 媒体标题
@@ -97,7 +97,7 @@ class MediaInfo(object):
     # 年份
     year: Optional[str] = None
     # TMDB ID
-    tmdb_id: Optional[str] = None
+    tmdb_id: Optional[int] = None
     # IMDB ID
     imdb_id: Optional[str] = None
     # TVDB ID
@@ -132,6 +132,13 @@ class MediaInfo(object):
     actors: List[dict] = []
 
     def __init__(self, tmdb_info: dict = None, douban_info: dict = None):
+        # 初始化
+        self.seasons = {}
+        self.directors = []
+        self.actors = []
+        self.tmdb_info = {}
+        self.douban_info = {}
+        # 设置媒体信息
         if tmdb_info:
             self.set_tmdb_info(tmdb_info)
         if douban_info:
@@ -221,7 +228,7 @@ class MediaInfo(object):
         # 类型
         self.type = info.get('media_type')
         # TMDBID
-        self.tmdb_id = str(info.get('id'))
+        self.tmdb_id = info.get('id')
         if not self.tmdb_id:
             return
         # 额外ID
@@ -395,7 +402,7 @@ class MediaInfo(object):
         return self.seasons.get(sea) or []
 
 
-class Context(object):
+class Context:
     """
     上下文对象
     """
