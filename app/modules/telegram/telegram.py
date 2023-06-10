@@ -4,6 +4,7 @@ from threading import Event
 from typing import Optional, List
 
 import telebot
+from telebot import apihelper
 from telebot.types import InputFile
 
 from app.core.config import settings
@@ -11,6 +12,9 @@ from app.core.context import MediaInfo, Context
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
+
+
+apihelper.proxy = settings.PROXY
 
 
 class Telegram(metaclass=Singleton):
@@ -154,7 +158,7 @@ class Telegram(metaclass=Singleton):
         """
 
         if image:
-            req = RequestUtils().get_res(image)
+            req = RequestUtils(proxies=settings.PROXY).get_res(image)
             if req and req.content:
                 image_file = Path(settings.TEMP_PATH) / Path(image).name
                 image_file.write_bytes(req.content)
