@@ -1,7 +1,7 @@
 import traceback
 from abc import abstractmethod
 from pathlib import Path
-from typing import Optional, Any, Tuple, List, Set, Union
+from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
 from ruamel.yaml import CommentedMap
 
@@ -71,7 +71,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
     def recognize_media(self, meta: MetaBase,
                         mtype: MediaType = None,
                         tmdbid: int = None) -> Optional[MediaInfo]:
-        return self.run_module("recognize_media", meta=meta, tmdbid=tmdbid)
+        return self.run_module("recognize_media", meta=meta, mtype=mtype, tmdbid=tmdbid)
 
     def douban_info(self, doubanid: str) -> Optional[dict]:
         return self.run_module("douban_info", doubanid=doubanid)
@@ -95,8 +95,10 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
     def refresh_torrents(self, sites: List[CommentedMap]) -> Optional[List[TorrentInfo]]:
         return self.run_module("refresh_torrents", sites=sites)
 
-    def filter_torrents(self, torrent_list: List[TorrentInfo]) -> List[TorrentInfo]:
-        return self.run_module("filter_torrents", torrent_list=torrent_list)
+    def filter_torrents(self, torrent_list: List[TorrentInfo],
+                        season_episodes: Dict[int, list] = None) -> List[TorrentInfo]:
+        return self.run_module("filter_torrents", torrent_list=torrent_list,
+                               season_episodes=season_episodes)
 
     def download(self, torrent_path: Path, cookie: str,
                  episodes: Set[int] = None) -> Optional[Tuple[Optional[str], str]]:

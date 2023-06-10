@@ -351,7 +351,7 @@ class TmdbHelper:
                 seasons = self.__get_tv_seasons(tv_info)
                 for season, season_info in seasons.items():
                     if season_info.get("air_date"):
-                        if season.get("air_date")[0:4] == str(_season_year) \
+                        if season_info.get("air_date")[0:4] == str(_season_year) \
                                 and season == int(season_number):
                             return True
             except Exception as e1:

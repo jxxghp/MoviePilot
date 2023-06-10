@@ -59,7 +59,7 @@ class SubscribeChain(ChainBase):
         self.obtain_image(mediainfo=mediainfo)
         # 添加订阅
         state, err_msg = self.subscribes.add(mediainfo, season=season, **kwargs)
-        if state:
+        if not state:
             logger.info(f'{mediainfo.get_title_string()} {err_msg}')
             # 发回原用户
             self.post_message(title=f"{mediainfo.get_title_string()}{metainfo.get_season_string()} "

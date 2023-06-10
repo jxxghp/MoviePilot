@@ -3,6 +3,8 @@ from typing import List, Tuple, Union, Dict, Optional
 
 from app.core.context import TorrentInfo
 from app.core.config import settings
+from app.core.metainfo import MetaInfo
+from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filter.RuleParser import RuleParser
 
@@ -70,20 +72,56 @@ class FilterModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "FILTER_RULE", True
 
-    def filter_torrents(self, torrent_list: List[TorrentInfo]) -> List[TorrentInfo]:
+    def filter_torrents(self, torrent_list: List[TorrentInfo],
+                        season_episodes: Dict[int, list] = None) -> List[TorrentInfo]:
         """
         过滤种子资源
         :param torrent_list:  资源列表
+        :param season_episodes:  季集数过滤 {season:[episodes]}
         :return: 过滤后的资源列表，添加资源优先级
         """
         # 返回种子列表
         ret_torrents = []
         for torrent in torrent_list:
             # 能命中优先级的才返回
-            if self.__get_order(torrent, settings.FILTER_RULE):
-                ret_torrents.append(torrent)
+            if not self.__get_order(torrent, settings.FILTER_RULE):
+                continue
+            # 季集数过滤
+            if season_episodes \
+                    and not self.__match_season_episodes(torrent, season_episodes):
+                continue
+            ret_torrents.append(torrent)
 
         return ret_torrents
+
+    @staticmethod
+    def __match_season_episodes(torrent: TorrentInfo, season_episodes: Dict[int, list]):
+        """
+        判断种子是否匹配季集数
+        """
+        # 匹配季
+        seasons = season_episodes.keys()
+        meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+        # 种子季
+        torrent_seasons = meta.get_season_list()
+        if not torrent_seasons:
+            # 按第一季处理
+            torrent_seasons = [1]
+        # 种子集
+        torrent_episodes = meta.get_episode_list()
+        if not set(torrent_seasons).issubset(set(seasons)):
+            # 种子季不在过滤季中
+            logger.info(f"种子 {torrent.title} 不是需要的季")
+            return False
+        if not torrent_episodes:
+            # 整季按匹配处理
+            return True
+        if len(torrent_episodes) == 1 \
+                and not set(torrent_seasons).issubset(set(season_episodes.get(torrent_seasons[0]))):
+            # 单季不是子集的种子不要
+            logger.info(f"种子 {torrent.title} 集 {torrent_episodes} 不是需要的集")
+            return False
+        return True
 
     def __get_order(self, torrent: TorrentInfo, rule_str: str) -> Optional[TorrentInfo]:
         """

@@ -1,6 +1,6 @@
 from abc import abstractmethod, ABCMeta
 from pathlib import Path
-from typing import Optional, List, Tuple, Union, Set, Any
+from typing import Optional, List, Tuple, Union, Set, Any, Dict
 
 from ruamel.yaml import CommentedMap
 
@@ -116,10 +116,12 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def filter_torrents(self, torrent_list: List[TorrentInfo]) -> List[TorrentInfo]:
+    def filter_torrents(self, torrent_list: List[TorrentInfo],
+                        season_episodes: Dict[int, dict] = None) -> List[TorrentInfo]:
         """
         过滤资源
         :param torrent_list:  资源列表
+        :param season_episodes:  过滤的剧集信息
         :return: 过滤后的资源列表，注意如果返回None，有可能是没有对应的处理模块，应无视结果
         """
         pass

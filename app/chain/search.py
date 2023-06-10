@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from app.chain import ChainBase
 from app.core.config import settings
@@ -19,12 +19,14 @@ class SearchChain(ChainBase):
         self.siteshelper = SitesHelper()
 
     def process(self, meta: MetaBase, mediainfo: MediaInfo,
-                keyword: str = None) -> Optional[List[Context]]:
+                keyword: str = None,
+                season_episodes: Dict[int, list] = None) -> Optional[List[Context]]:
         """
         根据媒体信息，执行搜索
         :param meta: 元数据
         :param mediainfo: 媒体信息
         :param keyword: 搜索关键词
+        :param season_episodes: 媒体季度集数
         """
         logger.info(f'开始搜索资源，关键词：{keyword or mediainfo.title} ...')
         # 未开启的站点不搜索
@@ -46,7 +48,8 @@ class SearchChain(ChainBase):
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
             return []
         # 过滤种子
-        result: List[TorrentInfo] = self.filter_torrents(torrent_list=torrents)
+        result: List[TorrentInfo] = self.filter_torrents(torrent_list=torrents,
+                                                         season_episodes=season_episodes)
         if result is not None:
             torrents = result
         if not torrents:
