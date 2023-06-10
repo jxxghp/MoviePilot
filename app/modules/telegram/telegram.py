@@ -126,7 +126,9 @@ class Telegram(metaclass=Singleton):
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_torrents_msg(self, torrents: List[Context], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_torrents_msg(self, torrents: List[Context],
+                          mediainfo: MediaInfo = None,
+                          userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表消息
         """
@@ -151,7 +153,8 @@ class Telegram(metaclass=Singleton):
             else:
                 chat_id = self._telegram_chat_id
 
-            return self.__send_request(userid=chat_id, caption=caption)
+            return self.__send_request(userid=chat_id, caption=caption,
+                                       image=mediainfo.get_message_image())
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")

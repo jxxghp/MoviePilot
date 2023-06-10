@@ -142,11 +142,13 @@ class WechatModule(_ModuleBase):
         return self.wechat.send_medias_msg(medias=items, userid=userid)
 
     def post_torrents_message(self, title: str, items: List[Context],
+                              mediainfo: MediaInfo,
                               userid: Union[str, int] = None) -> Optional[bool]:
         """
         发送种子信息选择列表
         :param title: 标题
         :param items:  消息列表
+        :param mediainfo:  媒体信息
         :param userid:  用户ID
         :return: 成功或失败
         """

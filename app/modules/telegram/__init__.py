@@ -114,15 +114,18 @@ class TelegramModule(_ModuleBase):
         return self.telegram.send_meidas_msg(title=title, medias=items, userid=userid)
 
     def post_torrents_message(self, title: str, items: List[Context],
+                              mediainfo: MediaInfo = None,
                               userid: Union[str, int] = None) -> Optional[bool]:
         """
         发送种子信息选择列表
         :param title: 标题
         :param items:  消息列表
+        :param mediainfo:  媒体信息
         :param userid:  用户ID
         :return: 成功或失败
         """
-        return self.telegram.send_torrents_msg(title=title, torrents=items, userid=userid)
+        return self.telegram.send_torrents_msg(title=title, torrents=items,
+                                               mediainfo=mediainfo, userid=userid)
 
     def register_commands(self, commands: dict):
         """

@@ -130,8 +130,10 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         return self.run_module("post_medias_message", title=title, items=items, userid=userid)
 
     def post_torrents_message(self, title: str, items: List[Context],
+                              mediainfo: MediaInfo,
                               userid: Union[str, int] = None) -> Optional[bool]:
-        return self.run_module("post_torrents_message", title=title, items=items, userid=userid)
+        return self.run_module("post_torrents_message", title=title, mediainfo=mediainfo,
+                               items=items, userid=userid)
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
         return self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)

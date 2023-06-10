@@ -114,6 +114,7 @@ class UserMessageChain(ChainBase):
                 logger.info(f"搜索到 {len(contexts)} 条数据，开始发送选择消息 ...")
                 self.__post_torrents_message(title=mediainfo.title,
                                              items=contexts[:self._page_size],
+                                             mediainfo=mediainfo,
                                              userid=userid,
                                              total=len(contexts))
 
@@ -212,6 +213,7 @@ class UserMessageChain(ChainBase):
                 # 发送种子数据
                 self.__post_torrents_message(title=self._current_media.title,
                                              items=cache_list[start:end],
+                                             mediainfo=self._current_media,
                                              userid=userid,
                                              total=len(cache_list))
             else:
@@ -242,6 +244,7 @@ class UserMessageChain(ChainBase):
                 if cache_type == "Torrent":
                     # 发送种子数据
                     self.__post_torrents_message(title=self._current_media.title,
+                                                 mediainfo=self._current_media,
                                                  items=cache_list, userid=userid, total=total)
                 else:
                     # 发送媒体数据
@@ -305,12 +308,14 @@ class UserMessageChain(ChainBase):
             userid=userid
         )
 
-    def __post_torrents_message(self, title: str, items: list, userid: str, total: int):
+    def __post_torrents_message(self, title: str, items: list,
+                                mediainfo: MediaInfo, userid: str, total: int):
         """
         发送种子列表消息
         """
         self.post_torrents_message(
             title=f"【{title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择 p: 上一页 n: 下一页）",
             items=items,
+            mediainfo=mediainfo,
             userid=userid
         )

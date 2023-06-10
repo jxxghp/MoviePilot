@@ -5,6 +5,7 @@ from typing import Optional, List
 
 from app.core.config import settings
 from app.core.context import MediaInfo, Context
+from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
@@ -188,7 +189,8 @@ class WeChat(metaclass=Singleton):
         }
         return self.__post_request(message_url, req_json)
 
-    def send_torrents_msg(self, torrents: List[Context], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_torrents_msg(self, torrents: List[Context], mediainfo: MediaInfo,
+                          userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表消息
         """
@@ -208,10 +210,16 @@ class WeChat(metaclass=Singleton):
         index = 1
         for context in torrents:
             torrent = context.torrent_info
+            meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+            torrent_title = f"【{torrent.site_name}】" \
+                            f"{meta.get_season_episode_string()} " \
+                            f"{meta.get_resource_type_string()} " \
+                            f"{meta.get_volume_factor_string()} " \
+                            f"{torrent.seeders}↑"
             articles.append({
-                "title": f"{torrent.title}",
-                "description": f"【{torrent.site_name}】{torrent.description} "
-                               f"{torrent.get_volume_factor_string()} {torrent.seeders}↑",
+                "title": torrent_title,
+                "description": torrent.description if index == 1 else '',
+                "picurl": mediainfo.get_message_image() if index == 1 else '',
                 "url": torrent.page_url
             })
             index += 1
