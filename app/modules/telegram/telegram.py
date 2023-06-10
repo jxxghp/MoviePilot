@@ -37,6 +37,10 @@ class Telegram(metaclass=Singleton):
             # 记录句柄
             self._bot = _bot
 
+            @_bot.message_handler(commands=['start', 'help'])
+            def send_welcome(message):
+                _bot.reply_to(message, "温馨提示：直接发送名称或`订阅`+名称，搜索或订阅电影、电视剧")
+
             @_bot.message_handler(func=lambda message: True)
             def echo_all(message):
                 RequestUtils(timeout=5).post_res(self._ds_url, json=message.json)

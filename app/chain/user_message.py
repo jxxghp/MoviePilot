@@ -297,7 +297,7 @@ class UserMessageChain(ChainBase):
         发送媒体列表消息
         """
         self.post_medias_message(
-            title=f"【{title}】共找到{total}条相关信息，请回复数字选择对应媒体（p: 上一页 n: 下一页）",
+            title=f"【{title}】共找到{total}条相关信息，请回复对应数字选择（p: 上一页 n: 下一页）",
             items=items,
             userid=userid
         )
@@ -307,7 +307,7 @@ class UserMessageChain(ChainBase):
         发送种子列表消息
         """
         self.post_torrents_message(
-            title=f"【{title}】共找到{total}条相关信息，请回复数字下载对应资源（0: 自动选择 p: 上一页 n: 下一页）",
+            title=f"【{title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择 p: 上一页 n: 下一页）",
             items=items,
             userid=userid
         )
