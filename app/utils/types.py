@@ -27,6 +27,8 @@ class EventType(Enum):
 class SystemConfigKey(Enum):
     # 用户已安装的插件
     UserInstalledPlugins = "UserInstalledPlugins"
+    # 用户认证参数
+    UserSiteAuthParams = "UserSiteAuthParams"
 
 
 # 站点框架

@@ -52,6 +52,8 @@ def start_module():
     Scheduler()
     # 启动事件消费
     Command()
+    # 用户认证
+    SitesHelper().check_user()
 
 
 if __name__ == '__main__':
