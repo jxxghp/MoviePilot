@@ -117,9 +117,9 @@ class FilterModule(_ModuleBase):
             # 整季按匹配处理
             return True
         if len(torrent_episodes) == 1 \
-                and not set(torrent_seasons).issubset(set(season_episodes.get(torrent_seasons[0]))):
-            # 单季不是子集的种子不要
-            logger.info(f"种子 {torrent.title} 集 {torrent_episodes} 不是需要的集")
+                and not set(torrent_seasons).intersection(set(season_episodes.get(torrent_seasons[0]))):
+            # 单季集没有交集的不要
+            logger.info(f"种子 {torrent.title} 集 {torrent_episodes} 没有需要的集")
             return False
         return True
 
