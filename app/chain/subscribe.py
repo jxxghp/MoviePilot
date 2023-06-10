@@ -113,7 +113,10 @@ class SubscribeChain(ChainBase):
                                   image=mediainfo.get_message_image())
                 continue
             # 搜索
-            contexts = self.searchchain.process(meta=meta, mediainfo=mediainfo, keyword=subscribe.keyword)
+            contexts = self.searchchain.process(meta=meta,
+                                                mediainfo=mediainfo,
+                                                keyword=subscribe.keyword,
+                                                no_exists=no_exists)
             if not contexts:
                 logger.warn(f'{subscribe.keyword or subscribe.name} 未搜索到资源')
                 continue

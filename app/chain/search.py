@@ -20,13 +20,13 @@ class SearchChain(ChainBase):
 
     def process(self, meta: MetaBase, mediainfo: MediaInfo,
                 keyword: str = None,
-                season_episodes: Dict[int, list] = None) -> Optional[List[Context]]:
+                no_exists: Dict[int, List[dict]] = None) -> Optional[List[Context]]:
         """
         根据媒体信息，执行搜索
         :param meta: 元数据
         :param mediainfo: 媒体信息
         :param keyword: 搜索关键词
-        :param season_episodes: 媒体季度集数
+        :param no_exists: 缺失的媒体信息
         """
         logger.info(f'开始搜索资源，关键词：{keyword or mediainfo.title} ...')
         # 未开启的站点不搜索
@@ -38,6 +38,13 @@ class SearchChain(ChainBase):
         if not indexer_sites:
             logger.warn('未开启任何有效站点，无法搜索资源')
             return []
+        # 缺失的媒体信息
+        if no_exists:
+            # 过滤剧集
+            season_episodes = {info.get('season'): info.get('episodes')
+                               for info in no_exists.get(mediainfo.tmdb_id)}
+        else:
+            season_episodes = None
         # 执行搜索
         torrents: List[TorrentInfo] = self.search_torrents(
             mediainfo=mediainfo,

@@ -97,8 +97,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
 
     def filter_torrents(self, torrent_list: List[TorrentInfo],
                         season_episodes: Dict[int, list] = None) -> List[TorrentInfo]:
-        return self.run_module("filter_torrents", torrent_list=torrent_list,
-                               season_episodes=season_episodes)
+        return self.run_module("filter_torrents", torrent_list=torrent_list, season_episodes=season_episodes)
 
     def download(self, torrent_path: Path, cookie: str,
                  episodes: Set[int] = None) -> Optional[Tuple[Optional[str], str]]:

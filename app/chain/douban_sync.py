@@ -80,7 +80,9 @@ class DoubanSyncChain(ChainBase):
                     continue
                 logger.info(f'{mediainfo.get_title_string()} 媒体库中不存在，开始搜索 ...')
                 # 搜索
-                contexts = self.searchchain.process(meta=meta, mediainfo=mediainfo)
+                contexts = self.searchchain.process(meta=meta,
+                                                    mediainfo=mediainfo,
+                                                    no_exists=no_exists)
                 if not contexts:
                     logger.warn(f'{mediainfo.get_title_string()} 未搜索到资源')
                     continue

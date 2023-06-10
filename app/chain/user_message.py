@@ -89,23 +89,17 @@ class UserMessageChain(ChainBase):
                     return
                 # 发送缺失的媒体信息
                 if no_exists:
-                    # 过滤剧集
-                    season_episodes = {info.get('season'): info.get('episodes')
-                                       for info in no_exists.get(mediainfo.tmdb_id)}
                     # 发送消息
                     messages = [f"第 {no_exist.get('season')} 季缺失 {len(no_exist.get('episodes'))} 集"
                                 for no_exist in no_exists.get(mediainfo.tmdb_id)]
-                    logger.info(f"{mediainfo.get_title_string()}：" + "\n".join(messages))
                     self.post_message(title=f"{mediainfo.get_title_string()}：\n" + "\n".join(messages))
-                else:
-                    season_episodes = None
                 # 搜索种子，过滤掉不需要的剧集，以便选择
                 logger.info(f"{mediainfo.get_title_string()} 媒体库中不存在，开始搜索 ...")
                 self.post_message(
                     title=f"开始搜索 {mediainfo.type.value} {mediainfo.get_title_string()} ...", userid=userid)
                 contexts = self.searchchain.process(meta=self._current_meta,
                                                     mediainfo=mediainfo,
-                                                    season_episodes=season_episodes)
+                                                    no_exists=no_exists)
                 if not contexts:
                     # 没有数据
                     self.post_message(title=f"{mediainfo.title} 未搜索到资源！", userid=userid)
