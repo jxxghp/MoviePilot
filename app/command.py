@@ -42,12 +42,12 @@ class Command(metaclass=Singleton):
         },
         "/subscriberefresh": {
             "func": SubscribeChain().refresh,
-            "description": "刷新所有订阅",
+            "description": "刷新订阅",
             "data": {}
         },
         "/subscribesearch": {
             "func": SubscribeChain().search,
-            "description": "搜索所有订阅",
+            "description": "搜索订阅",
             "data": {
                 'state': 'R',
             }
