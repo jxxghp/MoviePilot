@@ -106,7 +106,7 @@ class UserMessageChain(ChainBase):
                     self.post_message(title=f"{mediainfo.title} 未搜索到资源！", userid=userid)
                     return
                 # 搜索结果排序
-
+                contexts = TorrentHelper.sort_torrents(contexts)
                 # 更新缓存
                 self._user_cache[userid] = {
                     "type": "Torrent",
