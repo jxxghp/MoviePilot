@@ -233,16 +233,19 @@ class TorrentSpider:
                 referer=self.referer,
                 proxies=self.proxies
             ).get_res(searchurl, allow_redirects=True)
-
             # 使用chardet检测字符编码
             raw_data = ret.content
             if raw_data:
-                result = chardet.detect(raw_data)
-                encoding = result['encoding']
-                # 解码为字符串
-                page_source = raw_data.decode(encoding)
+                try:
+                    result = chardet.detect(raw_data)
+                    encoding = result['encoding']
+                    # 解码为字符串
+                    page_source = raw_data.decode(encoding)
+                except Exception as e:
+                    logger.error(f"chardet解码失败：{e}")
+                    page_source = ret.text
             else:
-                page_source = ""
+                page_source = ret.text
 
         # 解析
         return self.parse(page_source)
