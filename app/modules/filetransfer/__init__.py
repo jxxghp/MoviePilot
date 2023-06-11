@@ -335,10 +335,10 @@ class FileTransferModule(_ModuleBase):
         """
         # 检查目录路径
         if not in_path.exists():
-            return None, f"路径不存在：{in_path}"
+            return None, f"{in_path} 路径不存在"
 
         if not target_dir.exists():
-            return None, f"目标路径不存在：{target_dir}"
+            return None, f"{target_dir} 目标路径不存在"
 
         # 目的目录加上类型和二级分类
         target_dir = target_dir / meidainfo.type.value / meidainfo.category
@@ -364,7 +364,7 @@ class FileTransferModule(_ModuleBase):
                                                  new_path=new_path,
                                                  rmt_mode=rmt_mode)
             if retcode != 0:
-                return None, f"蓝光原盘转移失败，错误码：{retcode}"
+                return None, f"{retcode}，蓝光原盘转移失败"
             else:
                 # 返回转移后的路径
                 return new_path, ""
@@ -372,7 +372,7 @@ class FileTransferModule(_ModuleBase):
             # 获取文件清单
             transfer_files: List[Path] = SystemUtils.list_files_with_extensions(in_path, settings.RMT_MEDIAEXT)
             if len(transfer_files) == 0:
-                return None, f"目录下没有找到可转移的文件：{in_path}"
+                return None, f"{in_path} 目录下没有找到可转移的文件"
             # 识别目录名称，不包括后缀
             meta = MetaInfo(in_path.stem)
             # 目的路径
@@ -425,9 +425,9 @@ class FileTransferModule(_ModuleBase):
                                                    rmt_mode=rmt_mode,
                                                    over_flag=overflag)
                     if retcode != 0:
-                        return None, f"文件转移失败，错误码：{retcode}"
+                        return None, f"{retcode}，文件转移失败"
                 except Exception as err:
-                    return None, f"文件转移失败，错误信息：{err}"
+                    return None, f"{err}"
 
             return new_path, ""
 
