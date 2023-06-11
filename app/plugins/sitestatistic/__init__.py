@@ -70,7 +70,7 @@ class SiteStatistic(_PluginBase):
         :return: 命令关键字、事件、描述、附带数据
         """
         return {
-            "cmd": "/sitestatistic",
+            "cmd": "/site_statistic",
             "event": EventType.SiteStatistic,
             "desc": "站点数据统计",
             "data": {}

@@ -69,7 +69,7 @@ class AutoSignIn(_PluginBase):
         :return: 命令关键字、事件、描述、附带数据
         """
         return {
-            "cmd": "/sitesignin",
+            "cmd": "/site_signin",
             "event": EventType.SiteSignin,
             "desc": "站点签到",
             "data": {}

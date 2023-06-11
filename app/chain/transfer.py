@@ -72,7 +72,7 @@ class TransferChain(ChainBase):
                 if not mediainfo:
                     logger.warn(f'未识别到媒体信息，标题：{torrent.get("title")}')
                     self.post_message(title=f"{torrent.get('title')} 未识别到媒体信息，无法入库！\n"
-                                            f"回复：```/transfer {torrent.get('hash')} [tmdbid]``` 手动识别转移。")
+                                            f"回复：```\n/transfer {torrent.get('hash')} [tmdbid]\n``` 手动识别转移。")
                     continue
             else:
                 mediainfo = arg_mediainfo
@@ -85,8 +85,7 @@ class TransferChain(ChainBase):
                 logger.warn(f"{torrent.get('title')} 入库失败")
                 self.post_message(
                     title=f"{mediainfo.get_title_string()}{meta.get_season_episode_string()} 入库失败！",
-                    text=f"原因：{transferinfo.get('message') if transferinfo else '未知'}\n"
-                         f"路径：{torrent.get('path')}",
+                    text=f"原因：{transferinfo.get('message') if transferinfo else '未知'}",
                     image=mediainfo.get_message_image()
                 ),
                 continue

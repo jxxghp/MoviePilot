@@ -35,7 +35,7 @@ class Command(metaclass=Singleton):
             "description": "同步站点Cookie",
             "data": {}
         },
-        "/doubansync": {
+        "/douban_sync": {
             "func": DoubanSyncChain().process,
             "description": "同步豆瓣想看",
             "data": {}
