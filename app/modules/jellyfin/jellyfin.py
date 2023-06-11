@@ -330,13 +330,20 @@ class Jellyfin(metaclass=Singleton):
             logger.error(f"连接Users/Items出错：" + str(e))
             return {}
 
-    @staticmethod
-    def get_webhook_message(message: dict) -> dict:
+    def get_webhook_message(self, message: dict) -> dict:
         """
         解析Jellyfin报文
         """
         eventItem = {'event': message.get('NotificationType', ''),
                      'item_name': message.get('Name'),
-                     'user_name': message.get('NotificationUsername')
+                     'user_name': message.get('NotificationUsername'),
+                     "channel": "jellyfin"
                      }
+
+        # 获取消息图片
+        if eventItem.get("item_id"):
+            # 根据返回的item_id去调用媒体服务器获取
+            eventItem['image_url'] = self.get_remote_image_by_id(item_id=eventItem.get('item_id'),
+                                                                 image_type="Backdrop")
+
         return eventItem

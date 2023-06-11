@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple
 from urllib.parse import quote_plus
@@ -250,8 +251,7 @@ class Plex(metaclass=Singleton):
                         break
         return ids
 
-    @staticmethod
-    def get_webhook_message(message: dict) -> dict:
+    def get_webhook_message(self, message_str: str) -> dict:
         """
         解析Plex报文
         eventItem  字段的含义
@@ -261,7 +261,8 @@ class Plex(metaclass=Singleton):
                    MOV:猪猪侠大冒险(2001)
         overview   剧情描述
         """
-        eventItem = {'event': message.get('event', '')}
+        message = json.loads(message_str)
+        eventItem = {'event': message.get('event', ''), "channel": "plex"}
         if message.get('Metadata'):
             if message.get('Metadata', {}).get('type') == 'episode':
                 eventItem['item_type'] = "TV"
@@ -294,5 +295,11 @@ class Plex(metaclass=Singleton):
             eventItem['device_name'] = ' '
         if message.get('Account'):
             eventItem['user_name'] = message.get("Account").get('title')
+
+        # 获取消息图片
+        if eventItem.get("item_id"):
+            # 根据返回的item_id去调用媒体服务器获取
+            eventItem['image_url'] = self.get_remote_image_by_id(item_id=eventItem.get('item_id'),
+                                                                 image_type="Backdrop")
 
         return eventItem

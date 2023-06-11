@@ -29,7 +29,7 @@ class EmbyModule(_ModuleBase):
         :param args:  请求参数
         :return: 字典，解析为消息时需要包含：title、text、image
         """
-        return self.emby.get_webhook_message(json.loads(body))
+        return self.emby.get_webhook_message(form.get("data"))
 
     def media_exists(self, mediainfo: MediaInfo) -> Optional[dict]:
         """

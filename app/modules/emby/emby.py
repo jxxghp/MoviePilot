@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 from typing import List, Optional, Union, Dict
@@ -438,12 +439,12 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接Items/Id出错：" + str(e))
             return {}
 
-    @staticmethod
-    def get_webhook_message(message: dict) -> dict:
+    def get_webhook_message(self, message_str: str) -> dict:
         """
         解析Emby Webhook报文
         """
-        eventItem = {'event': message.get('Event', '')}
+        message = json.loads(message_str)
+        eventItem = {'event': message.get('Event', ''), "channel": "emby"}
         if message.get('Item'):
             if message.get('Item', {}).get('Type') == 'Episode':
                 eventItem['item_type'] = "TV"
@@ -485,5 +486,11 @@ class Emby(metaclass=Singleton):
             eventItem['client'] = message.get('Session').get('Client')
         if message.get("User"):
             eventItem['user_name'] = message.get("User").get('Name')
+
+        # 获取消息图片
+        if eventItem.get("item_id"):
+            # 根据返回的item_id去调用媒体服务器获取
+            eventItem['image_url'] = self.get_remote_image_by_id(item_id=eventItem.get('item_id'),
+                                                                 image_type="Backdrop")
 
         return eventItem
