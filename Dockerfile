@@ -41,8 +41,7 @@ RUN apt-get update \
     && echo "${WORKDIR}/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
-    && rm -rf /root/.cache/ \
-    && playwright install --with-deps chromium
+    && rm -rf /root/.cache/
 EXPOSE 3001
 VOLUME ["/config"]
-ENTRYPOINT [ "python3", "app/main.py" ]
+ENTRYPOINT [ "start.sh" ]
