@@ -1,4 +1,4 @@
-#!/usr/bin/sh
+#!/bin/sh
 
 umask ${UMASK}
 playwright install --with-deps chromium
