@@ -31,6 +31,12 @@ class Sites:
         """
         return Site.list(self._db)
 
+    def list_active(self):
+        """
+        按状态获取站点列表
+        """
+        return Site.get_actives(self._db)
+
     def get_by_domain(self, domain: str) -> Site:
         """
         按域名获取站点

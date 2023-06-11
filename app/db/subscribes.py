@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from app.core.context import MediaInfo
 from app.db import SessionLocal
 from app.db.models.subscribe import Subscribe
-from app.utils.types import MediaType
 
 
 class Subscribes:
@@ -21,15 +20,6 @@ class Subscribes:
         """
         新增订阅
         """
-        # 总集数
-        if mediainfo.type == MediaType.TV:
-            if not kwargs.get('total_episode'):
-                total_episode = len(mediainfo.seasons.get(kwargs.get('season') or 1) or [])
-                if not total_episode:
-                    return False, "未识别到总集数"
-                kwargs.update({
-                    'total_episode': total_episode
-                })
         subscribe = Subscribe(name=mediainfo.title,
                               year=mediainfo.year,
                               type=mediainfo.type.value,

@@ -61,7 +61,7 @@ class TmdbCache(metaclass=Singleton):
                 expire = info.get(CACHE_EXPIRE_TIMESTAMP_STR)
                 if not expire or int(time.time()) < expire:
                     info[CACHE_EXPIRE_TIMESTAMP_STR] = int(time.time()) + EXPIRE_TIMESTAMP
-                    self.update(meta, info)
+                    self._meta_data[key] = info
                 elif expire and self._tmdb_cache_expire:
                     self.delete(key)
             return info or {}
@@ -136,7 +136,7 @@ class TmdbCache(metaclass=Singleton):
                 if cache_year:
                     cache_year = cache_year[:4]
                 self._meta_data[self.__get_key(meta)] = {
-                        "id": str(info.get("id")),
+                        "id": info.get("id"),
                         "type": info.get("media_type"),
                         "year": cache_year,
                         "title": cache_title,

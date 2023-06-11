@@ -39,6 +39,14 @@ class SearchChain(ChainBase):
         if not indexer_sites:
             logger.warn('未开启任何有效站点，无法搜索资源')
             return []
+        # 补充媒体信息
+        if not mediainfo.names:
+            mediainfo: MediaInfo = self.recognize_media(meta=MetaInfo(title=mediainfo.get_title_string()),
+                                                        mtype=mediainfo.type,
+                                                        tmdbid=mediainfo.tmdb_id)
+            if not mediainfo:
+                logger.error(f'媒体信息识别失败！')
+                return []
         # 缺失的媒体信息
         if no_exists:
             # 过滤剧集

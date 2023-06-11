@@ -330,7 +330,7 @@ class DownloadChain(ChainBase):
         :return: 当前媒体是否缺失，各标题总的季集和缺失的季集
         """
 
-        def __append_no_exists(_season: int, _episodes: list, _start: int, _total: int):
+        def __append_no_exists(_season: int, _episodes: list, _total: int, _start: int):
             """
             添加不存在的季集信息
             """
@@ -367,6 +367,7 @@ class DownloadChain(ChainBase):
                                                             mtype=mediainfo.type,
                                                             tmdbid=mediainfo.tmdb_id)
                 if not mediainfo:
+                    logger.error(f"媒体信息识别失败！")
                     return False, {}
                 if not mediainfo.seasons:
                     logger.error(f"媒体信息中没有季集信息：{mediainfo.get_title_string()}")
@@ -377,7 +378,7 @@ class DownloadChain(ChainBase):
                 # 所有剧集均缺失
                 for season, episodes in mediainfo.seasons.items():
                     # 全季不存在
-                    __append_no_exists(season, [], len(episodes), min(episodes))
+                    __append_no_exists(_season=season, _episodes=[], _total=len(episodes), _start=min(episodes))
                 return False, no_exists
             else:
                 # 存在一些，检查缺失的季集
@@ -390,10 +391,12 @@ class DownloadChain(ChainBase):
                             # 全部集存在
                             continue
                         # 添加不存在的季集信息
-                        __append_no_exists(season, episodes, len(episodes), min(episodes))
+                        __append_no_exists(_season=season, _episodes=episodes,
+                                           _total=len(episodes), _start=min(episodes))
                     else:
                         # 全季不存在
-                        __append_no_exists(season, [], len(episodes), min(episodes))
+                        __append_no_exists(_season=season, _episodes=[],
+                                           _total=len(episodes), _start=min(episodes))
             # 存在不完整的剧集
             if no_exists:
                 logger.info(f"媒体库中已存在部分剧集，缺失：{no_exists}")

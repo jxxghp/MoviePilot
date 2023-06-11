@@ -287,6 +287,7 @@ class UserMessageChain(ChainBase):
             if not medias:
                 self.post_message(title=f"{meta.get_name()} 没有找到对应的媒体信息！", userid=userid)
                 return
+            logger.info(f"搜索到 {len(medias)} 条相关媒体信息")
             self._user_cache[userid] = {
                 'type': action,
                 'items': medias

@@ -31,3 +31,7 @@ class Site(Base):
     @staticmethod
     def get_by_domain(db: Session, domain: str):
         return db.query(Site).filter(Site.domain == domain).first()
+
+    @staticmethod
+    def get_actives(db: Session):
+        return db.query(Site).filter(Site.is_active is True).all()

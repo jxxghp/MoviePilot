@@ -57,6 +57,27 @@ class SubscribeChain(ChainBase):
             return False
         # 更新媒体图片
         self.obtain_image(mediainfo=mediainfo)
+        # 总集数
+        if mediainfo.type == MediaType.TV:
+            if not kwargs.get('total_episode'):
+                if not mediainfo.seasons:
+                    # 补充媒体信息
+                    mediainfo: MediaInfo = self.recognize_media(meta=MetaInfo(title=mediainfo.get_title_string()),
+                                                                mtype=mediainfo.type,
+                                                                tmdbid=mediainfo.tmdb_id)
+                    if not mediainfo:
+                        logger.error(f"媒体信息识别失败！")
+                        return False
+                    if not mediainfo.seasons:
+                        logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}")
+                        return False
+                total_episode = len(mediainfo.seasons.get(kwargs.get('season') or 1) or [])
+                if not total_episode:
+                    logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}')
+                    return False
+                kwargs.update({
+                    'total_episode': total_episode
+                })
         # 添加订阅
         state, err_msg = self.subscribes.add(mediainfo, season=season, **kwargs)
         if not state:
