@@ -161,12 +161,12 @@ class TorrentHelper:
             _meta = _context.meta_info
             _torrent = _context.torrent_info
             season_len = str(len(_meta.get_season_list())).rjust(2, '0')
-            episode_len = str(len(_meta.get_episode_list())).rjust(4, '0')
+            episode_len = str(9999 - len(_meta.get_episode_list())).rjust(4, '0')
             # 排序：标题、资源类型、站点、做种、季集
             return "%s%s%s%s" % (str(_torrent.title).ljust(100, ' '),
                                  str(_torrent.pri_order).rjust(3, '0'),
                                  str(_torrent.seeders).rjust(10, '0'),
-                                 "%s%s" % (season_len, 9999 - episode_len))
+                                 "%s%s" % (season_len, episode_len))
 
         # 匹配的资源中排序分组选最好的一个下载
         # 按站点顺序、资源匹配顺序、做种人数下载数逆序排序
