@@ -153,7 +153,7 @@ class TmdbCache(metaclass=Singleton):
         """
 
         meta_data = self.__load(self._meta_path)
-        new_meta_data = {k: v for k, v in self._meta_data.items() if str(v.get("id")) != '0'}
+        new_meta_data = {k: v for k, v in self._meta_data.items() if v.get("id")}
 
         if not force \
                 and not self._random_sample(new_meta_data) \
