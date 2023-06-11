@@ -66,7 +66,7 @@ class Qbittorrent(metaclass=Singleton):
                 if not isinstance(tags, list):
                     tags = [tags]
                 for torrent in torrents:
-                    if set(tags).issubset(set(torrent.get("tags"))):
+                    if set(tags).issubset(set(torrent.get("tags").split(','))):
                         results.append(torrent)
                 return results, False
             return torrents or [], False
