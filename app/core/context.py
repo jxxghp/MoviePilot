@@ -122,6 +122,8 @@ class MediaInfo:
     names: Optional[list] = []
     # 各季的剧集清单信息
     seasons: Optional[dict] = {}
+    # 各季的年份
+    season_years: Optional[dict] = {}
     # 二级分类
     category: str = ""
     # TMDB INFO
@@ -137,6 +139,7 @@ class MediaInfo:
         # 初始化
         self.seasons = {}
         self.names = []
+        self.season_years = {}
         self.directors = []
         self.actors = []
         self.tmdb_info = {}
@@ -267,10 +270,17 @@ class MediaInfo:
             # 季集信息
             if info.get('seasons'):
                 for season_info in info.get('seasons'):
-                    if not season_info.get("season_number"):
+                    # 季
+                    season = season_info.get("season_number")
+                    if not season:
                         continue
+                    # 集
                     episode_count = season_info.get("episode_count")
-                    self.seasons[season_info.get("season_number")] = list(range(1, episode_count + 1))
+                    self.seasons[season] = list(range(1, episode_count + 1))
+                    # 年份
+                    air_date = season_info.get("air_date")
+                    if air_date:
+                        self.season_years[season] = air_date[:4]
         # 海报
         if info.get('poster_path'):
             self.poster_path = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.get('poster_path')}"

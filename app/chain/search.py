@@ -8,6 +8,7 @@ from app.core.metainfo import MetaInfo
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.utils.string import StringUtils
+from app.utils.types import MediaType
 
 
 class SearchChain(ChainBase):
@@ -64,6 +65,7 @@ class SearchChain(ChainBase):
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
             return []
         # 过滤种子
+        logger.info(f'开始过滤资源，当前规则：{settings.FILTER_RULE} ...')
         result: List[TorrentInfo] = self.filter_torrents(torrent_list=torrents,
                                                          season_episodes=season_episodes)
         if result is not None:
@@ -72,6 +74,7 @@ class SearchChain(ChainBase):
             logger.warn(f'{keyword or mediainfo.title} 没有符合过滤条件的资源')
             return []
         # 过滤不匹配的资源
+        logger.info(f'开始匹配，总 {len(torrents)} 个资源 ...')
         _match_torrents = []
         if mediainfo:
             for torrent in torrents:
@@ -84,6 +87,16 @@ class SearchChain(ChainBase):
                     continue
                 # 识别
                 torrent_meta = MetaInfo(torrent.title, torrent.description)
+                # 比对年份
+                if torrent_meta.year and mediainfo.year:
+                    if mediainfo.type == MediaType.TV:
+                        # 剧集
+                        if torrent_meta.year not in [year for year in mediainfo.season_years.values()]:
+                            continue
+                    else:
+                        # 没有季的剧集或者电影
+                        if torrent_meta.year != mediainfo.year:
+                            continue
                 # 比对标题
                 if torrent_meta.get_name() in [mediainfo.title, mediainfo.original_title]:
                     logger.info(f'{mediainfo.title} 匹配到资源：{torrent.site_name} - {torrent.title}')
@@ -98,6 +111,7 @@ class SearchChain(ChainBase):
                         break
         else:
             _match_torrents = torrents
+        logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
         # 组装上下文返回
         return [Context(meta=MetaInfo(torrent.title),
                         mediainfo=mediainfo,

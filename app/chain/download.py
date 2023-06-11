@@ -386,7 +386,7 @@ class DownloadChain(ChainBase):
                 # 所有剧集均缺失
                 for season, episodes in mediainfo.seasons.items():
                     # 全季不存在
-                    if meta.get_season_list() \
+                    if meta.begin_season \
                             and season not in meta.get_season_list():
                         continue
                     __append_no_exists(_season=season, _episodes=[], _total=len(episodes), _start=min(episodes))
@@ -394,7 +394,7 @@ class DownloadChain(ChainBase):
             else:
                 # 存在一些，检查缺失的季集
                 for season, episodes in mediainfo.seasons.items():
-                    if meta.get_season_list() \
+                    if meta.begin_season \
                             and season not in meta.get_season_list():
                         continue
                     exist_seasons = exists_tvs.get("seasons")

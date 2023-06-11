@@ -105,7 +105,9 @@ class UserMessageChain(ChainBase):
                                                     no_exists=no_exists)
                 if not contexts:
                     # 没有数据
-                    self.post_message(title=f"{mediainfo.title} 未搜索到资源！", userid=userid)
+                    self.post_message(title=f"{mediainfo.title}"
+                                            f"{self._current_meta.get_season_string()} 未搜索到资源！",
+                                      userid=userid)
                     return
                 # 搜索结果排序
                 contexts = TorrentHelper.sort_torrents(contexts)
