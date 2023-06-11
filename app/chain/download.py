@@ -171,7 +171,7 @@ class DownloadChain(ChainBase):
             return 0
 
         # 分组排序
-        contexts = TorrentHelper.sort_group_torrents(contexts)
+        contexts = TorrentHelper().sort_group_torrents(contexts)
 
         # 如果是电影，直接下载
         for context in contexts:

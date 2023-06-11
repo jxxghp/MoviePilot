@@ -1,3 +1,4 @@
+import re
 import threading
 from pathlib import Path
 from threading import Event
@@ -9,6 +10,7 @@ from telebot.types import InputFile
 
 from app.core.config import settings
 from app.core.context import MediaInfo, Context
+from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
@@ -140,8 +142,12 @@ class Telegram(metaclass=Singleton):
             for context in torrents:
                 torrent = context.torrent_info
                 site_name = torrent.site_name
+                meta = MetaInfo(torrent.title, torrent.description)
                 link = torrent.page_url
-                title = torrent.title
+                title = f"{meta.get_season_episode_string()} " \
+                        f"{meta.get_resource_type_string()} " \
+                        f"{meta.get_resource_team_string()}"
+                title = re.sub(r"\s+", " ", title).strip()
                 free = torrent.get_volume_factor_string()
                 seeder = f"{torrent.seeders}↑"
                 description = torrent.description

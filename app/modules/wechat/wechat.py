@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 from datetime import datetime
 from typing import Optional, List
@@ -211,11 +212,13 @@ class WeChat(metaclass=Singleton):
         for context in torrents:
             torrent = context.torrent_info
             meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
-            torrent_title = f"【{torrent.site_name}】" \
+            torrent_title = f"{index}.【{torrent.site_name}】" \
                             f"{meta.get_season_episode_string()} " \
                             f"{meta.get_resource_type_string()} " \
+                            f"{meta.get_resource_team_string()}" \
                             f"{torrent.get_volume_factor_string()} " \
                             f"{torrent.seeders}↑"
+            title = re.sub(r"\s+", " ", title).strip()
             articles.append({
                 "title": torrent_title,
                 "description": torrent.description if index == 1 else '',

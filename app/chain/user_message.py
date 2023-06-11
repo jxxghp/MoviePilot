@@ -97,6 +97,7 @@ class UserMessageChain(ChainBase):
                 logger.info(f"{mediainfo.get_title_string()} 媒体库中不存在，开始搜索 ...")
                 self.post_message(
                     title=f"开始搜索 {mediainfo.type.value} {mediainfo.get_title_string()} ...", userid=userid)
+                # 开始搜索
                 contexts = self.searchchain.process(meta=self._current_meta,
                                                     mediainfo=mediainfo,
                                                     no_exists=no_exists)
@@ -104,6 +105,8 @@ class UserMessageChain(ChainBase):
                     # 没有数据
                     self.post_message(title=f"{mediainfo.title} 未搜索到资源！", userid=userid)
                     return
+                # 搜索结果排序
+
                 # 更新缓存
                 self._user_cache[userid] = {
                     "type": "Torrent",

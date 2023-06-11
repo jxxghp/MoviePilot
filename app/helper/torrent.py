@@ -149,9 +149,9 @@ class TorrentHelper:
         return file_name
 
     @staticmethod
-    def sort_group_torrents(torrent_list: List[Context]) -> List[Context]:
+    def sort_torrents(torrent_list: List[Context]) -> List[Context]:
         """
-        对媒体信息进行排序、去重
+        对种子对行排序
         """
         if not torrent_list:
             return []
@@ -171,6 +171,19 @@ class TorrentHelper:
         # 匹配的资源中排序分组选最好的一个下载
         # 按站点顺序、资源匹配顺序、做种人数下载数逆序排序
         torrent_list = sorted(torrent_list, key=lambda x: get_sort_str(x), reverse=True)
+
+        return torrent_list
+
+    def sort_group_torrents(self, torrent_list: List[Context]) -> List[Context]:
+        """
+        对媒体信息进行排序、去重
+        """
+        if not torrent_list:
+            return []
+
+        # 排序
+        torrent_list = self.sort_torrents(torrent_list)
+
         # 控重
         result = []
         _added = []

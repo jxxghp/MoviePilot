@@ -116,11 +116,13 @@ class FilterModule(_ModuleBase):
         if not torrent_episodes:
             # 整季按匹配处理
             return True
-        if len(torrent_episodes) == 1 \
-                and not set(torrent_seasons).intersection(set(season_episodes.get(torrent_seasons[0]))):
-            # 单季集没有交集的不要
-            logger.info(f"种子 {torrent.title} 集 {torrent_episodes} 没有需要的集")
-            return False
+        if len(torrent_seasons) == 1:
+            need_episodes = season_episodes.get(torrent_seasons[0])
+            if need_episodes \
+                    and not set(torrent_seasons).intersection(set(need_episodes)):
+                # 单季集没有交集的不要
+                logger.info(f"种子 {torrent.title} 集 {torrent_episodes} 没有需要的集")
+                return False
         return True
 
     def __get_order(self, torrent: TorrentInfo, rule_str: str) -> Optional[TorrentInfo]:
