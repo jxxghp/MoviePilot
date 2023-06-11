@@ -103,18 +103,18 @@ class Telegram(metaclass=Singleton):
                 if not image:
                     image = media.get_message_image()
                 if media.vote_average:
-                    caption = "%s\n%s. [%s](%s)\n- %s，%s" % (caption,
-                                                             index,
-                                                             media.get_title_string(),
-                                                             media.get_detail_url(),
-                                                             f"类型：{media.type.value}",
-                                                             f"评分：{media.vote_average}")
+                    caption = "%s\n%s. [%s](%s)\n   %s，%s" % (caption,
+                                                              index,
+                                                              media.get_title_string(),
+                                                              media.get_detail_url(),
+                                                              f"类型：{media.type.value}",
+                                                              f"评分：{media.vote_average}")
                 else:
-                    caption = "%s\n%s. [%s](%s)\n- %s" % (caption,
-                                                          index,
-                                                          media.get_title_string(),
-                                                          media.get_detail_url(),
-                                                          f"类型：{media.type.value}")
+                    caption = "%s\n%s. [%s](%s)\n   %s" % (caption,
+                                                           index,
+                                                           media.get_title_string(),
+                                                           media.get_detail_url(),
+                                                           f"类型：{media.type.value}")
                 index += 1
 
             if userid:
@@ -152,7 +152,7 @@ class Telegram(metaclass=Singleton):
                 free = torrent.get_volume_factor_string()
                 seeder = f"{torrent.seeders}↑"
                 description = torrent.description
-                caption = f"{caption}\n{index}. 【{site_name}】[{title}]({link}) {free} {seeder}\n- {description}"
+                caption = f"{caption}\n{index}. 【{site_name}】[{title}]({link}) {free} {seeder}\n   {description}"
                 index += 1
 
             if userid:

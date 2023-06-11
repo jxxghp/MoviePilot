@@ -267,7 +267,7 @@ class Slack:
                 free = torrent.get_volume_factor_string()
                 seeder = f"{torrent.seeders}↑"
                 description = torrent.description
-                text = f"{index}. 【{site_name}】[{title}]({link}) {free} {seeder}\n- {description}"
+                text = f"{index}. 【{site_name}】[{title}]({link}) {free} {seeder}\n{description}"
                 blocks.append(
                     {
                         "type": "section",
