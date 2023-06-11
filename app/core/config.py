@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     INDEXER: str = "builtin"
     # 索引站点，站点域名关键字使用,分隔
     INDEXER_SITES: str = ""
-    # 消息通知渠道 telegram/wechat
+    # 消息通知渠道 telegram/wechat/slack
     MESSAGER: str = "telegram"
     # WeChat企业ID
     WECHAT_CORPID: str = None
@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     TELEGRAM_USERS: str = ""
     # Telegram 管理员ID，使用,分隔
     TELEGRAM_ADMINS: str = ""
+    # Slack Bot User OAuth Token
+    SLACK_OAUTH_TOKEN: str = ""
+    # Slack App-Level Token
+    SLACK_APP_TOKEN: str = ""
+    # Slack 频道名称
+    SLACK_CHANNEL: str = ""
     # 下载器 qbittorrent/transmission
     DOWNLOADER: str = "qbittorrent"
     # Qbittorrent地址
