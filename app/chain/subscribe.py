@@ -89,7 +89,7 @@ class SubscribeChain(ChainBase):
                               image=mediainfo.get_message_image(),
                               userid=userid)
         else:
-            logger.error(f'{mediainfo.get_title_string()} 添加订阅成功')
+            logger.error(f'{mediainfo.get_title_string()}{metainfo.get_season_string()} 添加订阅成功')
             # 广而告之
             self.post_message(title=f"{mediainfo.get_title_string()}{metainfo.get_season_string()} 已添加订阅",
                               text=f"来自用户：{username or userid}",
@@ -125,7 +125,7 @@ class SubscribeChain(ChainBase):
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue
             # 查询缺失的媒体信息
-            exist_flag, no_exists = self.downloadchain.get_no_exists_info(mediainfo=mediainfo)
+            exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
             if exist_flag:
                 logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在，完成订阅')
                 self.subscribes.delete(subscribe.id)
@@ -133,6 +133,15 @@ class SubscribeChain(ChainBase):
                 self.post_message(title=f'{mediainfo.get_title_string()}{meta.get_season_string()} 已完成订阅',
                                   image=mediainfo.get_message_image())
                 continue
+            # 使用订阅的总集数和开始集数替换no_exists
+            no_exists = self.__get_subscribe_no_exits(
+                no_exists=no_exists,
+                tmdb_id=mediainfo.tmdb_id,
+                begin_season=meta.begin_season,
+                total_episode=subscribe.total_episode,
+                start_episode=subscribe.start_episode,
+
+            )
             # 搜索
             contexts = self.searchchain.process(meta=meta,
                                                 mediainfo=mediainfo,
@@ -212,7 +221,7 @@ class SubscribeChain(ChainBase):
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue
             # 查询缺失的媒体信息
-            exist_flag, no_exists = self.downloadchain.get_no_exists_info(mediainfo=mediainfo)
+            exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
             if exist_flag:
                 logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在，完成订阅')
                 self.subscribes.delete(subscribe.id)
@@ -220,6 +229,15 @@ class SubscribeChain(ChainBase):
                 self.post_message(title=f'{mediainfo.get_title_string()}{meta.get_season_string()} 已完成订阅',
                                   image=mediainfo.get_message_image())
                 continue
+            # 使用订阅的总集数和开始集数替换no_exists
+            no_exists = self.__get_subscribe_no_exits(
+                no_exists=no_exists,
+                tmdb_id=mediainfo.tmdb_id,
+                begin_season=meta.begin_season,
+                total_episode=subscribe.total_episode,
+                start_episode=subscribe.start_episode,
+
+            )
             # 遍历缓存种子
             _match_context = []
             for domain, contexts in self._torrents_cache.items():
@@ -253,3 +271,59 @@ class SubscribeChain(ChainBase):
                     self.subscribes.update(subscribe.id, {
                         "lack_episode": len(left_episodes)
                     })
+
+    @staticmethod
+    def __get_subscribe_no_exits(no_exists: Dict[int, List[dict]],
+                                 tmdb_id: int,
+                                 begin_season: int,
+                                 total_episode: int,
+                                 start_episode: int):
+        """
+        根据订阅开始集数和总结数，结合TMDB信息计算当前订阅的缺失集数
+        :param no_exists: 缺失季集列表
+        :param tmdb_id: TMDB ID
+        :param begin_season: 开始季
+        :param total_episode: 总集数
+        :param start_episode: 开始集数
+        """
+        # 使用订阅的总集数和开始集数替换no_exists
+        if no_exists \
+                and no_exists.get(tmdb_id) \
+                and (total_episode or start_episode):
+            # 原缺失集列表
+            episode_list = no_exists.get(tmdb_id)[0].get("episodes")
+            if total_episode and start_episode:
+                # 有开始集和总集数
+                episodes = list(range(start_episode, total_episode + 1))
+                no_exists[tmdb_id] = [
+                    {
+                        "season": begin_season,
+                        "episodes": episodes,
+                        "total_episodes": total_episode,
+                        "start_episode": start_episode
+                    }
+                ]
+            elif not start_episode:
+                # 有总集数没有开始集
+                episodes = list(range(min(episode_list), total_episode + 1))
+                no_exists[tmdb_id] = [
+                    {
+                        "season": begin_season,
+                        "episodes": episodes,
+                        "total_episodes": total_episode,
+                        "start_episode": min(episode_list)
+                    }
+                ]
+            else:
+                # 有开始集没有总集数
+                episodes = list(range(start_episode, max(episode_list) + 1))
+                no_exists[tmdb_id] = [
+                    {
+                        "season": begin_season,
+                        "episodes": episodes,
+                        "total_episodes": max(episode_list),
+                        "start_episode": start_episode
+                    }
+                ]
+
+        return no_exists

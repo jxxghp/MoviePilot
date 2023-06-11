@@ -74,7 +74,7 @@ class DoubanSyncChain(ChainBase):
                 # 加入缓存
                 caches.append(douban_id)
                 # 查询缺失的媒体信息
-                exist_flag, no_exists = self.downloadchain.get_no_exists_info(mediainfo=mediainfo)
+                exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
                 if exist_flag:
                     logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在')
                     continue

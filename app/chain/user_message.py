@@ -21,7 +21,7 @@ class UserMessageChain(ChainBase):
     # 当前页面
     _current_page: int = 0
     # 当前元数据
-    _current_meta: Optional[MetaInfo] = None
+    _current_meta: Optional[MetaBase] = None
     # 当前媒体信息
     _current_media: Optional[MediaInfo] = None
 
@@ -82,9 +82,11 @@ class UserMessageChain(ChainBase):
                 mediainfo: MediaInfo = cache_list[int(text) + self._current_page * self._page_size - 1]
                 self._current_media = mediainfo
                 # 查询缺失的媒体信息
-                exist_flag, no_exists = self.downloadchain.get_no_exists_info(mediainfo=self._current_media)
+                exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=self._current_meta,
+                                                                              mediainfo=self._current_media)
                 if exist_flag:
-                    self.post_message(title=f"{self._current_media.get_title_string()} 媒体库中已存在",
+                    self.post_message(title=f"{self._current_media.get_title_string()}"
+                                            f"{self._current_meta.get_season_string()} 媒体库中已存在",
                                       userid=userid)
                     return
                 # 发送缺失的媒体信息
@@ -134,9 +136,11 @@ class UserMessageChain(ChainBase):
                 if int(text) == 0:
                     # 自动选择下载
                     # 查询缺失的媒体信息
-                    exist_flag, no_exists = self.downloadchain.get_no_exists_info(mediainfo=self._current_media)
+                    exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=self._current_meta,
+                                                                                  mediainfo=self._current_media)
                     if exist_flag:
-                        self.post_message(title=f"{self._current_media.get_title_string()} 媒体库中已存在",
+                        self.post_message(title=f"{self._current_media.get_title_string()}"
+                                                f"{self._current_meta.get_season_string()} 媒体库中已存在",
                                           userid=userid)
                         return
                     # 批量下载

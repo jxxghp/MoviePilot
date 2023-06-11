@@ -106,7 +106,7 @@ class Slack:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*{title}*\n{text}"
+                    "text": f"*{title}*\n{text or ''}"
                 }
             }
             # 消息图片

@@ -322,9 +322,11 @@ class DownloadChain(ChainBase):
         # 返回下载的资源，剩下没下完的
         return downloaded_list, need_tvs
 
-    def get_no_exists_info(self, mediainfo: MediaInfo, no_exists: dict = None) -> Tuple[bool, dict]:
+    def get_no_exists_info(self, meta: MetaBase,
+                           mediainfo: MediaInfo, no_exists: dict = None) -> Tuple[bool, dict]:
         """
         检查媒体库，查询是否存在，对于剧集同时返回不存在的季集信息
+        :param meta: 元数据
         :param mediainfo: 已识别的媒体信息
         :param no_exists: 在调用该方法前已经存储的不存在的季集信息，有传入时该函数搜索的内容将会叠加后输出
         :return: 当前媒体是否缺失，各标题总的季集和缺失的季集
@@ -333,6 +335,12 @@ class DownloadChain(ChainBase):
         def __append_no_exists(_season: int, _episodes: list, _total: int, _start: int):
             """
             添加不存在的季集信息
+            {tmdbid: [
+                "season": int,
+                "episodes": list,
+                "total_episodes": int,
+                "start_episode": int
+            ]}
             """
             if not no_exists.get(mediainfo.tmdb_id):
                 no_exists[mediainfo.tmdb_id] = [
@@ -378,11 +386,17 @@ class DownloadChain(ChainBase):
                 # 所有剧集均缺失
                 for season, episodes in mediainfo.seasons.items():
                     # 全季不存在
+                    if meta.get_season_list() \
+                            and season not in meta.get_season_list():
+                        continue
                     __append_no_exists(_season=season, _episodes=[], _total=len(episodes), _start=min(episodes))
                 return False, no_exists
             else:
                 # 存在一些，检查缺失的季集
                 for season, episodes in mediainfo.seasons.items():
+                    if meta.get_season_list() \
+                            and season not in meta.get_season_list():
+                        continue
                     exist_seasons = exists_tvs.get("seasons")
                     if exist_seasons.get(season):
                         # 取差集
