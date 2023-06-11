@@ -54,7 +54,7 @@ class TheMovieDb(_ModuleBase):
         if not meta:
             return None
         cache_info = self.cache.get(meta)
-        if not cache_info:
+        if not cache_info or tmdbid:
             # 缓存没有或者强制不使用缓存
             if tmdbid:
                 # 直接查询详情
