@@ -146,13 +146,14 @@ class Telegram(metaclass=Singleton):
                 link = torrent.page_url
                 title = f"{meta.get_season_episode_string()} " \
                         f"{meta.get_resource_type_string()} " \
-                        f"{meta.get_resource_team_string()} " \
-                        f"{StringUtils.str_filesize(torrent.size)}"
+                        f"{meta.get_resource_team_string()}"
                 title = re.sub(r"\s+", " ", title).strip()
                 free = torrent.get_volume_factor_string()
                 seeder = f"{torrent.seeders}↑"
                 description = torrent.description
-                caption = f"{caption}\n{index}. 【{site_name}】[{title}]({link}) {free} {seeder}\n   {description}"
+                caption = f"{caption}\n{index}. 【{site_name}】[{title}]({link}) " \
+                          f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}\n   " \
+                          f"{description}"
                 index += 1
 
             if userid:
