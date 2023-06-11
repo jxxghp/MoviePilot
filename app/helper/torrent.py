@@ -11,7 +11,6 @@ from app.core.context import Context
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.http import RequestUtils
-from app.utils.string import StringUtils
 from app.utils.types import MediaType
 
 
@@ -51,10 +50,6 @@ class TorrentHelper:
         if req and req.status_code == 200:
             if not req.content:
                 return None, None, "", [], "未下载到种子数据"
-            # 读取种子文件名
-            file_name = self.__get_url_torrent_filename(req, url)
-            # 种子文件路径
-            file_path = Path(settings.TEMP_PATH) / file_name
             # 解析内容格式
             if req.text and str(req.text).startswith("magnet:"):
                 # 磁力链接
@@ -63,15 +58,14 @@ class TorrentHelper:
                 # 首次下载提示页面
                 skip_flag = False
                 try:
-                    form = re.findall(r'<form.*?action="(.*?)".*?>(.*?)</form>', req.text, re.S)
-                    if form:
-                        action = form[0][0]
-                        if not action or action == "?":
-                            action = url
-                        elif not action.startswith('http'):
-                            action = StringUtils.get_base_url(url) + action
-                        inputs = re.findall(r'<input.*?name="(.*?)".*?value="(.*?)".*?>', form[0][1], re.S)
-                        if action and inputs:
+                    forms = re.findall(r'<form.*?action="(.*?)".*?>(.*?)</form>', req.text, re.S)
+                    for form in forms:
+                        action = form[0]
+                        if action != "?":
+                            continue
+                        action = url
+                        inputs = re.findall(r'<input.*?name="(.*?)".*?value="(.*?)".*?>', form[1], re.S)
+                        if inputs:
                             data = {}
                             for item in inputs:
                                 data[item[0]] = item[1]
@@ -93,15 +87,19 @@ class TorrentHelper:
                                             f"返回码：{req.status_code}，错误原因：{req.reason}")
                             else:
                                 logger.warn(f"触发了站点首次种子下载，且无法自动跳过：{url}")
+                        break
                 except Exception as err:
                     logger.warn(f"触发了站点首次种子下载，尝试自动跳过时出现错误：{err}，链接：{url}")
-
                 if not skip_flag:
                     return None, None, "", [], "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"
-
+            # 种子内容
             if req.content:
                 # 检查是不是种子文件，如果不是仍然抛出异常
                 try:
+                    # 读取种子文件名
+                    file_name = self.__get_url_torrent_filename(req, url)
+                    # 种子文件路径
+                    file_path = Path(settings.TEMP_PATH) / file_name
                     # 保存到文件
                     file_path.write_bytes(req.content)
                     # 获取种子目录和文件清单
