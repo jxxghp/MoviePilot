@@ -36,6 +36,11 @@ class SearchChain(ChainBase):
         for indexer in self.siteshelper.get_indexers():
             if not settings.INDEXER_SITES \
                     or any([s in indexer.get("domain") for s in settings.INDEXER_SITES.split(',')]):
+                # 站点流控
+                state, msg = self.siteshelper.check(indexer.get("domain"))
+                if not state:
+                    logger.warn(msg)
+                    continue
                 indexer_sites.append(indexer)
         if not indexer_sites:
             logger.warn('未开启任何有效站点，无法搜索资源')

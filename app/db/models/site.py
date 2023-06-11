@@ -22,9 +22,9 @@ class Site(Base):
     filter = Column(String)
     render = Column(Integer)
     note = Column(String)
-    limit_interval = Column(Integer)
-    limit_count = Column(Integer)
-    limit_seconds = Column(Integer)
+    limit_interval = Column(Integer, default=0)
+    limit_count = Column(Integer, default=0)
+    limit_seconds = Column(Integer, default=0)
     is_active = Column(Boolean(), default=True)
     lst_mod_date = Column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
