@@ -10,6 +10,7 @@ from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
+from app.utils.string import StringUtils
 
 lock = threading.Lock()
 
@@ -215,7 +216,8 @@ class WeChat(metaclass=Singleton):
             torrent_title = f"{index}.【{torrent.site_name}】" \
                             f"{meta.get_season_episode_string()} " \
                             f"{meta.get_resource_type_string()} " \
-                            f"{meta.get_resource_team_string()}" \
+                            f"{meta.get_resource_team_string()} " \
+                            f"{StringUtils.str_filesize(torrent.size)} " \
                             f"{torrent.get_volume_factor_string()} " \
                             f"{torrent.seeders}↑"
             title = re.sub(r"\s+", " ", title).strip()
