@@ -26,7 +26,7 @@ class TransferChain(ChainBase):
             """
             从字符串中提取种子hash和编号
             """
-            pattern = r'([a-fA-F0-9]{32}) (\d+)'
+            pattern = r'([a-fA-F0-9]+) (\d+)'
             match = re.search(pattern, string)
             if match:
                 hash_value = match.group(1)
@@ -72,7 +72,7 @@ class TransferChain(ChainBase):
                 if not mediainfo:
                     logger.warn(f'未识别到媒体信息，标题：{torrent.get("title")}')
                     self.post_message(title=f"{torrent.get('title')} 未识别到媒体信息，无法入库！\n"
-                                            f"回复：/transfer {torrent.get('hash')} [tmdbid] 手动识别转移。")
+                                            f"回复：```/transfer {torrent.get('hash')} [tmdbid]``` 手动识别转移。")
                     continue
             else:
                 mediainfo = arg_mediainfo

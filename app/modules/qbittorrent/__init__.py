@@ -101,7 +101,7 @@ class QbittorrentModule(_ModuleBase):
         ret_torrents = []
         if hashs:
             # 按Hash获取
-            torrents, _ = self.qbittorrent.get_torrents(ids=hashs)
+            torrents, _ = self.qbittorrent.get_torrents(ids=hashs, tags=settings.TORRENT_TAG)
             for torrent in torrents:
                 content_path = torrent.get("content_path")
                 if content_path:

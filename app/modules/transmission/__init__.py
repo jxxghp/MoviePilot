@@ -89,7 +89,7 @@ class TransmissionModule(_ModuleBase):
         ret_torrents = []
         if hashs:
             # 按Hash获取
-            torrents, _ = self.transmission.get_torrents(ids=hashs)
+            torrents, _ = self.transmission.get_torrents(ids=hashs, tags=settings.TORRENT_TAG)
             for torrent in torrents:
                 ret_torrents.append({
                     'title': torrent.name,
