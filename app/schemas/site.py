@@ -19,7 +19,7 @@ class Site(BaseModel):
     limit_interval: Optional[int] = 0
     limit_count: Optional[int] = 0
     limit_seconds: Optional[int] = 0
-    is_active: Optional[str] = 'N'
+    is_active: Optional[bool] = True
 
     class Config:
         orm_mode = True
