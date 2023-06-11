@@ -89,19 +89,53 @@ class QbittorrentModule(_ModuleBase):
         :param hashs:  种子Hash
         :return: 处理状态
         """
-        return self.qbittorrent.set_torrents_tag(ids=hashs, tag=['已整理'])
+        return self.qbittorrent.set_torrents_tag(ids=hashs, tags=['已整理'])
 
-    def list_torrents(self, status: TorrentStatus) -> Optional[List[dict]]:
+    def list_torrents(self, status: TorrentStatus = None, hashs: Union[list, str] = None) -> Optional[List[dict]]:
         """
         获取下载器种子列表
         :param status:  种子状态
+        :param hashs:  种子Hash
         :return: 下载器中符合状态的种子列表
         """
-        if status == TorrentStatus.TRANSFER:
-            torrents = self.qbittorrent.get_transfer_torrents(tag=settings.TORRENT_TAG or None)
+        ret_torrents = []
+        if hashs:
+            # 按Hash获取
+            torrents, _ = self.qbittorrent.get_torrents(ids=hashs)
+            for torrent in torrents:
+                content_path = torrent.get("content_path")
+                if content_path:
+                    torrent_path = Path(content_path)
+                else:
+                    torrent_path = Path(settings.DOWNLOAD_PATH) / torrent.get('name')
+                ret_torrents.append({
+                    'title': torrent.get('name'),
+                    'path': torrent_path,
+                    'hash': torrent.get('hash'),
+                    'tags': torrent.get('tags')
+                })
+        elif status == TorrentStatus.TRANSFER:
+            # 获取已完成且未整理的
+            torrents = self.qbittorrent.get_completed_torrents(tags=settings.TORRENT_TAG)
+            for torrent in torrents:
+                tags = torrent.get("tags") or []
+                if "已整理" in tags:
+                    continue
+                # 内容路径
+                content_path = torrent.get("content_path")
+                if content_path:
+                    torrent_path = Path(content_path)
+                else:
+                    torrent_path = Path(settings.DOWNLOAD_PATH) / torrent.get('name')
+                ret_torrents.append({
+                    'title': torrent.get('name'),
+                    'path': torrent_path,
+                    'hash': torrent.get('hash'),
+                    'tags': torrent.get('tags')
+                })
         else:
             return None
-        return torrents
+        return ret_torrents
 
     def remove_torrents(self, hashs: Union[str, list]) -> bool:
         """

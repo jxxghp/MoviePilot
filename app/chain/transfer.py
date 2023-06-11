@@ -1,14 +1,15 @@
+import re
 from typing import List, Optional
 
 from app.chain import ChainBase
-from app.core.metainfo import MetaInfo
-from app.core.context import MediaInfo
 from app.core.config import settings
+from app.core.context import MediaInfo
 from app.core.meta import MetaBase
+from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
-from app.utils.types import TorrentStatus, MediaType
+from app.utils.types import TorrentStatus
 
 
 class TransferChain(ChainBase):
@@ -16,16 +17,47 @@ class TransferChain(ChainBase):
     文件转移处理链
     """
 
-    def process(self) -> bool:
+    def process(self, arg_str: str = None) -> bool:
         """
         获取下载器中的种子列表，并执行转移
         """
-        logger.info("开始执行下载器文件转移 ...")
-        # 从下载器获取种子列表
-        torrents: Optional[List[dict]] = self.list_torrents(status=TorrentStatus.TRANSFER)
-        if not torrents:
-            logger.info("没有获取到已完成的下载任务")
-            return False
+
+        def extract_hash_and_number(string: str):
+            """
+            从字符串中提取种子hash和编号
+            """
+            pattern = r'([a-fA-F0-9]{32}) (\d+)'
+            match = re.search(pattern, string)
+            if match:
+                hash_value = match.group(1)
+                number = match.group(2)
+                return hash_value, int(number)
+            else:
+                return None, None
+
+        if arg_str:
+            logger.info(f"开始转移下载器文件，参数：{arg_str}")
+            # 解析中种子hash，TMDB ID
+            torrent_hash, tmdbid = extract_hash_and_number(arg_str)
+            if not hash or not tmdbid:
+                logger.error(f"参数错误，参数：{arg_str}")
+                return False
+            # 获取种子
+            torrents: Optional[List[dict]] = self.list_torrents(hashs=torrent_hash)
+            if not torrents:
+                logger.error(f"没有获取到种子，参数：{arg_str}")
+                return False
+            # 查询媒体信息
+            arg_mediainfo = self.recognize_media(meta=MetaInfo(torrents[0].get("title")), tmdbid=tmdbid)
+        else:
+            arg_mediainfo = None
+            logger.info("开始执行下载器文件转移 ...")
+            # 从下载器获取种子列表
+            torrents: Optional[List[dict]] = self.list_torrents(status=TorrentStatus.TRANSFER)
+            if not torrents:
+                logger.info("没有获取到已完成的下载任务")
+                return False
+
         logger.info(f"获取到 {len(torrents)} 个已完成的下载任务")
         # 识别
         for torrent in torrents:
@@ -35,11 +67,15 @@ class TransferChain(ChainBase):
                 logger.warn(f'未识别到元数据，标题：{torrent.get("title")}')
                 continue
             # 识别媒体信息
-            mediainfo: MediaInfo = self.recognize_media(meta=meta)
-            if not mediainfo:
-                logger.warn(f'未识别到媒体信息，标题：{torrent.get("title")}')
-                self.post_message(title=f"{torrent.get('title')} 未识别到媒体信息，无法入库！")
-                continue
+            if not arg_mediainfo:
+                mediainfo: MediaInfo = self.recognize_media(meta=meta)
+                if not mediainfo:
+                    logger.warn(f'未识别到媒体信息，标题：{torrent.get("title")}')
+                    self.post_message(title=f"{torrent.get('title')} 未识别到媒体信息，无法入库！\n"
+                                            f"回复：/transfer {torrent.get('hash')} [tmdbid] 手动识别转移。")
+                    continue
+            else:
+                mediainfo = arg_mediainfo
             logger.info(f"{torrent.get('title')} 识别为：{mediainfo.type.value} {mediainfo.get_title_string()}")
             # 更新媒体图片
             self.obtain_image(mediainfo=mediainfo)

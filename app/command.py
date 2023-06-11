@@ -40,12 +40,12 @@ class Command(metaclass=Singleton):
             "description": "同步豆瓣想看",
             "data": {}
         },
-        "/subscriberefresh": {
+        "/subscribe_refresh": {
             "func": SubscribeChain().refresh,
             "description": "刷新订阅",
             "data": {}
         },
-        "/subscribesearch": {
+        "/subscribe_search": {
             "func": SubscribeChain().search,
             "description": "搜索订阅",
             "data": {
@@ -135,15 +135,20 @@ class Command(metaclass=Singleton):
         """
         return self._commands.get(cmd, {})
 
-    def execute(self, cmd: str) -> None:
+    def execute(self, cmd: str, data_str: str = "") -> None:
         """
         执行命令
         """
         command = self.get(cmd)
         if command:
             logger.info(f"开始执行：{command.get('description')} ...")
-            data = command['data'] if command.get('data') else {}
-            command['func'](**data)
+            cmd_data = command['data'] if command.get('data') else {}
+            if cmd_data:
+                command['func'](**cmd_data)
+            elif data_str:
+                command['func'](data_str)
+            else:
+                command['func']()
 
     @staticmethod
     def send_plugin_event(etype: EventType, data: dict) -> None:
@@ -157,9 +162,12 @@ class Command(metaclass=Singleton):
         """
         注册命令执行事件
         event_data: {
-            "cmd": "/xxx"
+            "cmd": "/xxx args"
         }
         """
-        cmd = event.event_data.get('cmd')
-        if self.get(cmd):
-            self.execute(cmd)
+        event_str = event.event_data.get('cmd')
+        if event_str:
+            cmd = event_str.split()[0]
+            args = " ".join(event_str.split()[1:])
+            if self.get(cmd):
+                self.execute(cmd, args)

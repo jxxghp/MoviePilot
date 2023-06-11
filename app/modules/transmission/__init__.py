@@ -3,13 +3,13 @@ from typing import Set, Tuple, Optional, Union, List
 
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
+from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.transmission.transmission import Transmission
 from app.utils.types import TorrentStatus
 
 
 class TransmissionModule(_ModuleBase):
-
     transmission: Transmission = None
 
     def init_module(self) -> None:
@@ -77,19 +77,48 @@ class TransmissionModule(_ModuleBase):
         :param hashs:  种子Hash
         :return: 处理状态
         """
-        return self.transmission.set_torrent_tag(ids=hashs, tag=['已整理'])
+        return self.transmission.set_torrent_tag(ids=hashs, tags=['已整理'])
 
-    def list_torrents(self, status: TorrentStatus) -> Optional[List[dict]]:
+    def list_torrents(self, status: TorrentStatus = None, hashs: Union[list, str] = None) -> Optional[List[dict]]:
         """
         获取下载器种子列表
         :param status:  种子状态
+        :param hashs:  种子Hash
         :return: 下载器中符合状态的种子列表
         """
-        if status == TorrentStatus.TRANSFER:
-            torrents = self.transmission.get_transfer_torrents(tag=settings.TORRENT_TAG or None)
+        ret_torrents = []
+        if hashs:
+            # 按Hash获取
+            torrents, _ = self.transmission.get_torrents(ids=hashs)
+            for torrent in torrents:
+                ret_torrents.append({
+                    'title': torrent.name,
+                    'path': Path(torrent.download_dir) / torrent.name,
+                    'hash': torrent.hashString,
+                    'tags': torrent.labels
+                })
+        elif status == TorrentStatus.TRANSFER:
+            # 获取已完成且未整理的
+            torrents = self.transmission.get_completed_torrents(tags=settings.TORRENT_TAG)
+            for torrent in torrents:
+                # 含"已整理"tag的不处理
+                if "已整理" in torrent.labels or []:
+                    continue
+                # 下载路径
+                path = torrent.download_dir
+                # 无法获取下载路径的不处理
+                if not path:
+                    logger.debug(f"未获取到 {torrent.name} 下载保存路径")
+                    continue
+                ret_torrents.append({
+                    'title': torrent.name,
+                    'path': Path(path) / torrent.name,
+                    'hash': torrent.hashString,
+                    'tags': torrent.labels
+                })
         else:
             return None
-        return torrents
+        return ret_torrents
 
     def remove_torrents(self, hashs: Union[str, list]) -> bool:
         """

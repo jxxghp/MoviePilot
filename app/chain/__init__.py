@@ -103,8 +103,8 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
                  episodes: Set[int] = None) -> Optional[Tuple[Optional[str], str]]:
         return self.run_module("download", torrent_path=torrent_path, cookie=cookie, episodes=episodes)
 
-    def list_torrents(self, status: TorrentStatus) -> Optional[List[dict]]:
-        return self.run_module("list_torrents", status=status)
+    def list_torrents(self, status: TorrentStatus = None, hashs: Union[list, str] = None) -> Optional[List[dict]]:
+        return self.run_module("list_torrents", status=status, hashs=hashs)
 
     def remove_torrents(self, hashs: Union[str, list]) -> bool:
         return self.run_module("remove_torrents", hashs=hashs)

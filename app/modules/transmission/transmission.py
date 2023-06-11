@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Optional, Union, Tuple, List
 
 import transmission_rpc
@@ -50,7 +49,7 @@ class Transmission(metaclass=Singleton):
             return None
 
     def get_torrents(self, ids: Union[str, list] = None, status: Union[str, list] = None,
-                     tag: Union[str, list] = None) -> Tuple[List[Torrent], bool]:
+                     tags: Union[str, list] = None) -> Tuple[List[Torrent], bool]:
         """
         获取种子列表
         返回结果 种子列表, 是否有错误
@@ -64,25 +63,22 @@ class Transmission(metaclass=Singleton):
             return [], True
         if status and not isinstance(status, list):
             status = [status]
-        if tag and not isinstance(tag, list):
-            tag = [tag]
+        if tags and not isinstance(tags, list):
+            tags = [tags]
         ret_torrents = []
         for torrent in torrents:
+            # 状态过滤
             if status and torrent.status not in status:
                 continue
+            # 种子标签
             labels = torrent.labels if hasattr(torrent, "labels") else []
-            include_flag = True
-            if tag:
-                for t in tag:
-                    if t and t not in labels:
-                        include_flag = False
-                        break
-            if include_flag:
-                ret_torrents.append(torrent)
+            if tags and not set(tags).issubset(set(labels)):
+                continue
+            ret_torrents.append(torrent)
         return ret_torrents, False
 
     def get_completed_torrents(self, ids: Union[str, list] = None,
-                               tag: Union[str, list] = None) -> Optional[List[Torrent]]:
+                               tags: Union[str, list] = None) -> Optional[List[Torrent]]:
         """
         获取已完成的种子列表
         return 种子列表, 发生错误时返回None
@@ -90,14 +86,14 @@ class Transmission(metaclass=Singleton):
         if not self.trc:
             return None
         try:
-            torrents, error = self.get_torrents(status=["seeding", "seed_pending"], ids=ids, tag=tag)
+            torrents, error = self.get_torrents(status=["seeding", "seed_pending"], ids=ids, tags=tags)
             return None if error else torrents or []
         except Exception as err:
             logger.error(f"获取已完成的种子列表出错：{err}")
             return None
 
     def get_downloading_torrents(self, ids: Union[str, list] = None,
-                                 tag: Union[str, list] = None) -> Optional[List[Torrent]]:
+                                 tags: Union[str, list] = None) -> Optional[List[Torrent]]:
         """
         获取正在下载的种子列表
         return 种子列表, 发生错误时返回None
@@ -107,57 +103,24 @@ class Transmission(metaclass=Singleton):
         try:
             torrents, error = self.get_torrents(ids=ids,
                                                 status=["downloading", "download_pending"],
-                                                tag=tag)
+                                                tags=tags)
             return None if error else torrents or []
         except Exception as err:
             logger.error(f"获取正在下载的种子列表出错：{err}")
             return None
 
-    def set_torrent_tag(self, ids: str, tag: list) -> bool:
+    def set_torrent_tag(self, ids: str, tags: list) -> bool:
         """
         设置种子标签
         """
-        if not ids or not tag:
+        if not ids or not tags:
             return False
         try:
-            self.trc.change_torrent(labels=tag, ids=ids)
+            self.trc.change_torrent(labels=tags, ids=ids)
             return True
         except Exception as err:
             logger.error(f"设置种子标签出错：{err}")
             return False
-
-    def get_transfer_torrents(self, tag: Union[str, list] = None) -> List[dict]:
-        """
-        获取下载文件转移任务种子
-        """
-        # 处理下载完成的任务
-        torrents = self.get_completed_torrents() or []
-        trans_tasks = []
-        for torrent in torrents:
-            # 3.0版本以下的Transmission没有labels
-            if not hasattr(torrent, "labels"):
-                logger.error(f"版本可能过低，无labels属性，请安装3.0以上版本！")
-                break
-            torrent_tags = torrent.labels or ""
-            # 含"已整理"tag的不处理
-            if "已整理" in torrent_tags:
-                continue
-            # 开启标签隔离，未包含指定标签的不处理
-            if tag and tag not in torrent_tags:
-                logger.debug(f"{torrent.name} 未包含指定标签：{tag}")
-                continue
-            path = torrent.download_dir
-            # 无法获取下载路径的不处理
-            if not path:
-                logger.debug(f"未获取到 {torrent.name} 下载保存路径")
-                continue
-            trans_tasks.append({
-                'title': torrent.name,
-                'path': Path(path) / torrent.name,
-                'hash': torrent.hashString,
-                'tags': torrent.labels
-            })
-        return trans_tasks
 
     def add_torrent(self, content: Union[str, bytes],
                     is_paused: bool = False,

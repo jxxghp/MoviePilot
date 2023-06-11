@@ -262,7 +262,7 @@ class TmdbHelper:
                         continue
                 index += 1
                 if not movie.get("names"):
-                    movie = self.get_info(MediaType.MOVIE, movie.get("id"))
+                    movie = self.get_info(mtype=MediaType.MOVIE, tmdbid=movie.get("id"))
                 if movie and self.__compare_names(name, movie.get("names")):
                     return movie
                 if index > 5:
@@ -319,7 +319,7 @@ class TmdbHelper:
                         continue
                 index += 1
                 if not tv.get("names"):
-                    tv = self.get_info(MediaType.TV, tv.get("id"))
+                    tv = self.get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
                 if self.__compare_names(name, tv.get("names")):
                     return tv
                 if index > 5:
@@ -374,7 +374,7 @@ class TmdbHelper:
             # 匹配别名、译名
             for tv in tvs[:5]:
                 if not tv.get("names"):
-                    tv = self.get_info(MediaType.TV, tv.get("id"))
+                    tv = self.get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
                 if not self.__compare_names(name, tv.get("names")):
                     continue
                 if __season_match(tv_info=tv, _season_year=season_year):
@@ -452,12 +452,12 @@ class TmdbHelper:
             for multi in multis[:5]:
                 if multi.get("media_type") == "movie":
                     if not multi.get("names"):
-                        multi = self.get_info(MediaType.MOVIE, multi.get("id"))
+                        multi = self.get_info(mtype=MediaType.MOVIE, tmdbid=multi.get("id"))
                     if self.__compare_names(name, multi.get("names")):
                         return multi
                 elif multi.get("media_type") == "tv":
                     if not multi.get("names"):
-                        multi = self.get_info(MediaType.TV, multi.get("id"))
+                        multi = self.get_info(mtype=MediaType.TV, tmdbid=multi.get("id"))
                     if self.__compare_names(name, multi.get("names")):
                         return multi
         return {}
@@ -541,15 +541,24 @@ class TmdbHelper:
                 genre_ids.append(genre.get('id'))
             return genre_ids
 
-        # 设置语言
+        # 查询TMDB详ngeq
         if mtype == MediaType.MOVIE:
             tmdb_info = self.__get_movie_detail(tmdbid)
             if tmdb_info:
                 tmdb_info['media_type'] = MediaType.MOVIE
-        else:
+        elif mtype == MediaType.TV:
             tmdb_info = self.__get_tv_detail(tmdbid)
             if tmdb_info:
                 tmdb_info['media_type'] = MediaType.TV
+        else:
+            tmdb_info = self.__get_movie_detail(tmdbid)
+            if tmdb_info:
+                tmdb_info['media_type'] = MediaType.MOVIE
+            else:
+                tmdb_info = self.__get_tv_detail(tmdbid)
+                if tmdb_info:
+                    tmdb_info['media_type'] = MediaType.TV
+
         if tmdb_info:
             # 转换genreid
             tmdb_info['genre_ids'] = __get_genre_ids(tmdb_info.get('genres'))
