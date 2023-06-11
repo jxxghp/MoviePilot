@@ -4,6 +4,7 @@ import re
 from typing import List
 from urllib.parse import quote, urlencode
 
+import chardet
 from jinja2 import Template
 from pyquery import PyQuery
 from ruamel.yaml import CommentedMap
@@ -216,6 +217,7 @@ class TorrentSpider:
         logger.info(f"开始请求：{searchurl}")
 
         if self.render:
+            # 浏览器仿真
             page_source = PlaywrightHelper().get_page_source(
                 url=searchurl,
                 cookies=self.cookie,
@@ -223,6 +225,7 @@ class TorrentSpider:
                 proxy=self.proxies
             )
         else:
+            # requests请求
             ret = RequestUtils(
                 ua=self.ua,
                 cookies=self.cookie,
@@ -230,8 +233,16 @@ class TorrentSpider:
                 referer=self.referer,
                 proxies=self.proxies
             ).get_res(searchurl, allow_redirects=True)
-            
-            page_source = ret.text if ret else None
+
+            # 使用chardet检测字符编码
+            raw_data = ret.content
+            if raw_data:
+                result = chardet.detect(raw_data)
+                encoding = result['encoding']
+                # 解码为字符串
+                page_source = raw_data.decode(encoding)
+            else:
+                page_source = ""
 
         # 解析
         return self.parse(page_source)

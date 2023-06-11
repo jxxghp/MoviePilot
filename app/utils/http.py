@@ -1,8 +1,8 @@
-from typing import Union, Any
+from typing import Union, Any, Optional
 
 import requests
 import urllib3
-from requests import Session
+from requests import Session, Response
 from urllib3.exceptions import InsecureRequestWarning
 
 urllib3.disable_warnings(InsecureRequestWarning)
@@ -48,7 +48,7 @@ class RequestUtils:
         if timeout:
             self._timeout = timeout
 
-    def post(self, url: str, data: Any = None, json: dict = None):
+    def post(self, url: str, data: Any = None, json: dict = None) -> Optional[Response]:
         if json is None:
             json = {}
         try:
@@ -71,7 +71,7 @@ class RequestUtils:
         except requests.exceptions.RequestException:
             return None
 
-    def get(self, url: str, params: dict = None):
+    def get(self, url: str, params: dict = None) -> Optional[str]:
         try:
             if self._session:
                 r = self._session.get(url,
@@ -91,7 +91,8 @@ class RequestUtils:
         except requests.exceptions.RequestException:
             return None
 
-    def get_res(self, url: str, params: dict = None, allow_redirects: bool = True, raise_exception: bool = False):
+    def get_res(self, url: str, params: dict = None,
+                allow_redirects: bool = True, raise_exception: bool = False) -> Optional[Response]:
         try:
             if self._session:
                 return self._session.get(url,
@@ -116,9 +117,10 @@ class RequestUtils:
                 raise requests.exceptions.RequestException
             return None
 
-    def post_res(self, url: str, data: Any = None, params: dict = None, allow_redirects: bool = True,
+    def post_res(self, url: str, data: Any = None, params: dict = None,
+                 allow_redirects: bool = True,
                  files: Any = None,
-                 json: dict = None):
+                 json: dict = None) -> Optional[Response]:
         try:
             if self._session:
                 return self._session.post(url,
@@ -148,7 +150,7 @@ class RequestUtils:
             return None
 
     @staticmethod
-    def cookie_parse(cookies_str: str, array: bool = False):
+    def cookie_parse(cookies_str: str, array: bool = False) -> dict:
         """
         解析cookie，转化为字典或者数组
         :param cookies_str: cookie字符串

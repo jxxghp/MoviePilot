@@ -38,3 +38,4 @@ cf_clearance~=0.29.2
 torrentool~=1.2.0
 slack_bolt~=1.18.0
 slack_sdk~=3.21.3
+chardet~=4.0.0
