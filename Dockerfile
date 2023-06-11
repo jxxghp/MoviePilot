@@ -44,4 +44,4 @@ RUN apt-get update \
     && rm -rf /root/.cache/
 EXPOSE 3001
 VOLUME ["/config"]
-ENTRYPOINT [ "./start.sh" ]
+ENTRYPOINT [ "${WORKDIR}/start.sh" ]
