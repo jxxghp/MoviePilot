@@ -48,7 +48,7 @@ class TransferChain(ChainBase):
                 logger.error(f"没有获取到种子，参数：{arg_str}")
                 return False
             # 查询媒体信息
-            arg_mediainfo = self.recognize_media(meta=MetaInfo(torrents[0].get("title")), tmdbid=tmdbid)
+            arg_mediainfo = self.recognize_media(meta=MetaInfo(torrents[0].get("title")), tmdbid=int(tmdbid))
         else:
             arg_mediainfo = None
             logger.info("开始执行下载器文件转移 ...")
