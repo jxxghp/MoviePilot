@@ -88,6 +88,12 @@ class SystemUtils:
 
     @staticmethod
     def list_files_with_extensions(directory: Path, extensions: list) -> List[Path]:
+        """
+        获取目录下所有指定扩展名的文件
+        """
+        if directory.is_file():
+            return [directory]
+
         files = []
         pattern = r".*(" + "|".join(extensions) + ")$"
 
