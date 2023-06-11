@@ -77,7 +77,7 @@ class Telegram(metaclass=Singleton):
             if text:
                 caption = f"*{title}*\n{text}"
             else:
-                caption = title
+                caption = f"*{title}*"
 
             if userid:
                 chat_id = userid
@@ -103,14 +103,14 @@ class Telegram(metaclass=Singleton):
                 if not image:
                     image = media.get_message_image()
                 if media.vote_average:
-                    caption = "%s\n%s. [%s](%s)\n%s，%s" % (caption,
+                    caption = "%s\n%s. [%s](%s)\n_%s，%s_" % (caption,
                                                            index,
                                                            media.get_title_string(),
                                                            media.get_detail_url(),
                                                            f"类型：{media.type.value}",
                                                            f"评分：{media.vote_average}")
                 else:
-                    caption = "%s\n%s. [%s](%s)\n%s" % (caption,
+                    caption = "%s\n%s. [%s](%s)\n_%s_" % (caption,
                                                         index,
                                                         media.get_title_string(),
                                                         media.get_detail_url(),
@@ -151,9 +151,9 @@ class Telegram(metaclass=Singleton):
                 free = torrent.get_volume_factor_string()
                 seeder = f"{torrent.seeders}↑"
                 description = torrent.description
-                caption = f"{caption}\n{index}.【{site_name}】[{title}]({link}) " \
-                          f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}\n" \
-                          f"{description}"
+                caption = f"{caption}\n*{index}.【{site_name}】[{title}]({link}) " \
+                          f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}*\n" \
+                          f"_{description}_"
                 index += 1
 
             if userid:
