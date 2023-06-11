@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Any
 
 from app.core.context import MediaInfo
 from app.log import logger
@@ -19,13 +19,15 @@ class JellyfinModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "jellyfin"
 
-    def webhook_parser(self, message: dict) -> Optional[dict]:
+    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
         """
         解析Webhook报文体
-        :param message:  请求体
+        :param body:  请求体
+        :param form:  请求表单
+        :param args:  请求参数
         :return: 字典，解析为消息时需要包含：title、text、image
         """
-        return self.jellyfin.get_webhook_message(message)
+        return self.jellyfin.get_webhook_message(form.get("data"))
 
     def media_exists(self, mediainfo: MediaInfo) -> Optional[dict]:
         """

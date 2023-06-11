@@ -73,10 +73,12 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def webhook_parser(self, message: dict) -> Optional[dict]:
+    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
         """
         解析Webhook报文体
-        :param message:  请求体
+        :param body: 请求体
+        :param form: 表单
+        :param args: 参数
         :return: 字典，解析为消息时需要包含：title、text、image
         """
         pass

@@ -79,8 +79,8 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
     def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
         return self.run_module("message_parser", body=body, form=form, args=args)
 
-    def webhook_parser(self, message: dict) -> Optional[dict]:
-        return self.run_module("webhook_parser", message=message)
+    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
+        return self.run_module("webhook_parser", body=body, form=form, args=args)
 
     def obtain_image(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         return self.run_module("obtain_image", mediainfo=mediainfo)
