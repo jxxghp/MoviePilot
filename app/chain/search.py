@@ -79,21 +79,21 @@ class SearchChain(ChainBase):
                 if torrent.imdbid \
                         and mediainfo.imdb_id \
                         and torrent.imdbid == mediainfo.imdb_id:
-                    logger.info(f'{mediainfo.title} 匹配到资源：{torrent.title}')
+                    logger.info(f'{mediainfo.title} 匹配到资源：{torrent.site_name} - {torrent.title}')
                     _match_torrents.append(torrent)
                     continue
                 # 识别
                 torrent_meta = MetaInfo(torrent.title, torrent.description)
                 # 比对标题
                 if torrent_meta.get_name() in [mediainfo.title, mediainfo.original_title]:
-                    logger.info(f'{mediainfo.title} 匹配到资源：{torrent.title}')
+                    logger.info(f'{mediainfo.title} 匹配到资源：{torrent.site_name} - {torrent.title}')
                     _match_torrents.append(torrent)
                     continue
                 # 比对别名和译名
                 for name in mediainfo.names:
                     if StringUtils.clear(name).strip().upper() == \
                             StringUtils.clear(torrent_meta.get_name()).strip().upper():
-                        logger.info(f'{mediainfo.title} 匹配到资源：{torrent.title}')
+                        logger.info(f'{mediainfo.title} 匹配到资源：{torrent.site_name} - {torrent.title}')
                         _match_torrents.append(torrent)
                         break
         else:
