@@ -214,7 +214,7 @@ class WeChat(metaclass=Singleton):
             torrent_title = f"【{torrent.site_name}】" \
                             f"{meta.get_season_episode_string()} " \
                             f"{meta.get_resource_type_string()} " \
-                            f"{meta.get_volume_factor_string()} " \
+                            f"{torrent.get_volume_factor_string()} " \
                             f"{torrent.seeders}↑"
             articles.append({
                 "title": torrent_title,
