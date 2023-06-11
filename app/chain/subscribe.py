@@ -62,7 +62,7 @@ class SubscribeChain(ChainBase):
             if not kwargs.get('total_episode'):
                 if not mediainfo.seasons:
                     # 补充媒体信息
-                    mediainfo: MediaInfo = self.recognize_media(meta=MetaInfo(title=mediainfo.get_title_string()),
+                    mediainfo: MediaInfo = self.recognize_media(meta=metainfo,
                                                                 mtype=mediainfo.type,
                                                                 tmdbid=mediainfo.tmdb_id)
                     if not mediainfo:
@@ -188,8 +188,15 @@ class SubscribeChain(ChainBase):
                     logger.warn(f'{indexer.get("name")} 没有符合过滤条件的资源')
                     continue
                 for torrent in torrents:
+                    # 识别前预处理
+                    result: Optional[tuple] = self.prepare_recognize(title=torrent.title,
+                                                                     subtitle=torrent.description)
+                    if result:
+                        title, subtitle = result
+                    else:
+                        title, subtitle = torrent.title, torrent.description
                     # 识别
-                    meta = MetaInfo(torrent.title, torrent.description)
+                    meta = MetaInfo(title=title, subtitle=subtitle)
                     # 识别媒体信息
                     mediainfo: MediaInfo = self.recognize_media(meta=meta)
                     if not mediainfo:

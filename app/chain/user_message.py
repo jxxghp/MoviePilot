@@ -167,7 +167,15 @@ class UserMessageChain(ChainBase):
                     context: Context = cache_list[int(text) - 1]
                     torrent: TorrentInfo = context.torrent_info
                     logger.info(f"开始下载种子：{torrent.title} - {torrent.enclosure}")
-                    meta: MetaBase = MetaInfo(torrent.title)
+                    # 识别前预处理
+                    result: Optional[tuple] = self.prepare_recognize(title=torrent.title,
+                                                                     subtitle=torrent.description)
+                    if result:
+                        title, subtitle = result
+                    else:
+                        title, subtitle = torrent.title, torrent.description
+                    # 识别
+                    meta = MetaInfo(title=title, subtitle=subtitle)
                     torrent_file, _, _, _, error_msg = self.torrent.download_torrent(
                         url=torrent.enclosure,
                         cookie=torrent.site_cookie,

@@ -47,7 +47,7 @@ class SearchChain(ChainBase):
             return []
         # 补充媒体信息
         if not mediainfo.names:
-            mediainfo: MediaInfo = self.recognize_media(meta=MetaInfo(title=mediainfo.get_title_string()),
+            mediainfo: MediaInfo = self.recognize_media(meta=meta,
                                                         mtype=mediainfo.type,
                                                         tmdbid=mediainfo.tmdb_id)
             if not mediainfo:
@@ -90,8 +90,14 @@ class SearchChain(ChainBase):
                     logger.info(f'{mediainfo.title} 匹配到资源：{torrent.site_name} - {torrent.title}')
                     _match_torrents.append(torrent)
                     continue
+                # 识别前预处理
+                result: Optional[tuple] = self.prepare_recognize(title=torrent.title, subtitle=torrent.description)
+                if result:
+                    title, subtitle = result
+                else:
+                    title, subtitle = torrent.title, torrent.description
                 # 识别
-                torrent_meta = MetaInfo(torrent.title, torrent.description)
+                torrent_meta = MetaInfo(title=title, subtitle=subtitle)
                 # 比对年份
                 if torrent_meta.year and mediainfo.year:
                     if mediainfo.type == MediaType.TV:

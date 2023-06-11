@@ -82,7 +82,7 @@ class Command(metaclass=Singleton):
         # 处理链
         self.chain = CommandChian()
         # 广播注册命令
-        self.chain.run_module("register_commands", commands=self.get_commands())
+        self.chain.register_commands(commands=self.get_commands())
         # 消息处理线程
         self._thread = Thread(target=self.__run)
         # 启动事件处理线程

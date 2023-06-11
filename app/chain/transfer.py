@@ -47,8 +47,16 @@ class TransferChain(ChainBase):
             if not torrents:
                 logger.error(f"没有获取到种子，参数：{arg_str}")
                 return False
+            # 识别前预处理
+            result: Optional[tuple] = self.prepare_recognize(title=torrents[0].get("title"))
+            if result:
+                title, subtitle = result
+            else:
+                title, subtitle = torrents[0].get("title"), None
+            # 识别
+            meta = MetaInfo(title=title, subtitle=subtitle)
             # 查询媒体信息
-            arg_mediainfo = self.recognize_media(meta=MetaInfo(torrents[0].get("title")), tmdbid=int(tmdbid))
+            arg_mediainfo = self.recognize_media(meta=meta)
         else:
             arg_mediainfo = None
             logger.info("开始执行下载器文件转移 ...")
@@ -61,13 +69,19 @@ class TransferChain(ChainBase):
         logger.info(f"获取到 {len(torrents)} 个已完成的下载任务")
         # 识别
         for torrent in torrents:
+            # 识别前预处理
+            result: Optional[tuple] = self.prepare_recognize(title=torrent.get("title"))
+            if result:
+                title, subtitle = result
+            else:
+                title, subtitle = torrent.get("title"), None
             # 识别元数据
-            meta: MetaBase = MetaInfo(torrent.get("title"))
+            meta: MetaBase = MetaInfo(title=title, subtitle=subtitle)
             if not meta.get_name():
-                logger.warn(f'未识别到元数据，标题：{torrent.get("title")}')
+                logger.warn(f'未识别到元数据，标题：{title}')
                 continue
-            # 识别媒体信息
             if not arg_mediainfo:
+                # 识别媒体信息
                 mediainfo: MediaInfo = self.recognize_media(meta=meta)
                 if not mediainfo:
                     logger.warn(f'未识别到媒体信息，标题：{torrent.get("title")}')
@@ -95,9 +109,11 @@ class TransferChain(ChainBase):
             self.scrape_metadata(path=transferinfo.get('target_path'), mediainfo=mediainfo)
             # 移动模式删除种子
             if settings.TRANSFER_TYPE == "move":
-                result = self.remove_torrents(hashs=torrent.get("hash"))
-                if result:
+                result2 = self.remove_torrents(hashs=torrent.get("hash"))
+                if result2:
                     logger.info(f"移动模式删除种子成功：{torrent.get('title')} ")
+            # 刷新媒体库
+            self.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.get('target_path'))
             # 发送通知
             self.__send_transfer_message(meta=meta, mediainfo=mediainfo, transferinfo=transferinfo)
 
