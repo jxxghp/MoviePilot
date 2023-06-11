@@ -75,7 +75,7 @@ class Telegram(metaclass=Singleton):
 
         try:
             if text:
-                caption = f"*{title}*\n\n{text}"
+                caption = f"*{title}*\n{text}"
             else:
                 caption = title
 

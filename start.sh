@@ -1,5 +1,5 @@
 #!/bin/sh
 
 umask ${UMASK}
-playwright install --with-deps chromium
+playwright install chromium
 python3 app/main.py

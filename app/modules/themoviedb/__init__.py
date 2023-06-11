@@ -203,6 +203,8 @@ class TheMovieDb(_ModuleBase):
                 for attr_name, attr_value in vars(mediainfo).items():
                     if attr_value \
                             and attr_name.endswith("_path") \
+                            and attr_value \
+                            and isinstance(attr_value, str) \
                             and attr_value.startswith("http"):
                         image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
                         self.__save_image(url=attr_value,
@@ -221,6 +223,8 @@ class TheMovieDb(_ModuleBase):
                     if attr_value \
                             and attr_name.endswith("_path") \
                             and not attr_name.startswith("season") \
+                            and attr_value \
+                            and isinstance(attr_value, str) \
                             and attr_value.startswith("http"):
                         image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
                         self.__save_image(url=attr_value,
@@ -237,6 +241,8 @@ class TheMovieDb(_ModuleBase):
                     for attr_name, attr_value in vars(mediainfo).items():
                         if attr_value \
                                 and attr_name.startswith("season") \
+                                and attr_value \
+                                and isinstance(attr_value, str) \
                                 and attr_value.startswith("http"):
                             image_name = attr_name.replace("_path",
                                                            "").replace("season",

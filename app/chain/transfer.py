@@ -79,29 +79,15 @@ class TransferChain(ChainBase):
                 transferinfo.get('target_path')
             )
         )
-        if mediainfo.type == MediaType.TV:
-            # 电影
-            msg_title = f"{mediainfo.get_title_string()} {meta.get_season_episode_string()} 已入库"
-            if mediainfo.vote_average:
-                msg_str = f"评分：{mediainfo.vote_average}，类型：{mediainfo.type.value}"
-            else:
-                msg_str = f"类型：{mediainfo.type.value}"
-            if mediainfo.category:
-                msg_str = f"{msg_str}，类别：{mediainfo.category}"
-            if meta.total_seasons <= 1 and meta.total_episodes == 1:
-                msg_str = f"{msg_str}，大小：{file_size}"
-            else:
-                msg_str = f"{msg_str}，共{meta.total_seasons}季{meta.total_episodes}集，总大小：{file_size}"
+        msg_title = f"{mediainfo.get_title_string()} 已入库"
+        if mediainfo.vote_average:
+            msg_str = f"评分：{mediainfo.vote_average}，类型：{mediainfo.type.value}"
         else:
-            msg_title = f"{mediainfo.get_title_string()} 已入库"
-            if mediainfo.vote_average:
-                msg_str = f"评分：{mediainfo.vote_average}，类型：电影"
-            else:
-                msg_str = "类型：电影"
-            if mediainfo.category:
-                msg_str = f"{msg_str}，类别：{mediainfo.category}"
-            if meta.get_resource_type_string():
-                msg_str = f"{msg_str}，质量：{meta.get_resource_type_string()}"
-            msg_str = f"{msg_str}， 大小：{file_size}"
+            msg_str = f"类型：{mediainfo.type.value}"
+        if mediainfo.category:
+            msg_str = f"{msg_str}，类别：{mediainfo.category}"
+        if meta.get_resource_type_string():
+            msg_str = f"{msg_str}，质量：{meta.get_resource_type_string()}"
+        msg_str = f"{msg_str}， 大小：{file_size}"
         # 发送
         self.post_message(title=msg_title, text=msg_str, image=mediainfo.get_message_image())
