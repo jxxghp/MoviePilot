@@ -35,14 +35,16 @@ class QbittorrentModule(_ModuleBase):
         # 生成随机Tag
         tag = StringUtils.generate_random_str(10)
         if settings.TORRENT_TAG:
-            tag = [tag, settings.TORRENT_TAG]
+            tags = [tag, settings.TORRENT_TAG]
+        else:
+            tags = [tag]
         # 如果要选择文件则先暂停
         is_paused = True if episodes else False
         # 添加任务
         state = self.qbittorrent.add_torrent(content=torrent_path.read_bytes(),
                                              download_dir=settings.DOWNLOAD_PATH,
                                              is_paused=is_paused,
-                                             tag=tag,
+                                             tag=tags,
                                              cookie=cookie)
         if not state:
             return None, f"添加种子任务失败：{torrent_path}"

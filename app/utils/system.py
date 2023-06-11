@@ -119,4 +119,3 @@ class SystemUtils:
                 total_size += path.stat().st_size
 
         return total_size
-
