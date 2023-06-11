@@ -92,7 +92,7 @@ class SubscribeChain(ChainBase):
             logger.error(f'{mediainfo.get_title_string()}{metainfo.get_season_string()} 添加订阅成功')
             # 广而告之
             self.post_message(title=f"{mediainfo.get_title_string()}{metainfo.get_season_string()} 已添加订阅",
-                              text=f"来自用户：{username or userid}",
+                              text=f"评分：{mediainfo.vote_average}，来自用户：{username or userid}",
                               image=mediainfo.get_message_image())
         # 返回结果
         return state
