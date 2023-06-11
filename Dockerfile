@@ -14,7 +14,6 @@ ENV LANG="C.UTF-8" \
     TORRENT_TAG="MOVIEPILOT" \
     SEARCH_SOURCE="themoviedb" \
     SCRAP_SOURCE="themoviedb" \
-    INDEXER_SITES="" \
     COOKIECLOUD_HOST="https://nastool.org/cookiecloud" \
     COOKIECLOUD_KEY="" \
     COOKIECLOUD_PASSWORD="" \
