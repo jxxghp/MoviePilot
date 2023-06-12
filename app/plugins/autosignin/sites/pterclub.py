@@ -6,7 +6,6 @@ from ruamel.yaml import CommentedMap
 from app.core.config import settings
 from app.log import logger
 from app.plugins.autosignin.sites import _ISiteSigninHandler
-from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
 
@@ -35,18 +34,20 @@ class PTerClub(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
+        render = site_info.get("render")
 
         # 签到
-        sign_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
-                                proxies=proxy
-                                ).get_res(url="https://pterclub.com/attendance-ajax.php")
-        if not sign_res or sign_res.status_code != 200:
+        html_text = self.get_page_source(url='https://pterclub.com/attendance-ajax.php',
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
+        if not html_text:
             logger.error(f"签到失败，签到接口请求失败")
             return False, f'【{site}】签到失败，请检查cookie是否失效'
 
-        sign_dict = json.loads(sign_res.text)
+        sign_dict = json.loads(html_text)
         if sign_dict['status'] == '1':
             # {"status":"1","data":" (签到已成功300)","message":"<p>这是您的第<b>237</b>次签到，
             # 已连续签到<b>237</b>天。</p><p>本次签到获得<b>300</b>克猫粮。</p>"}

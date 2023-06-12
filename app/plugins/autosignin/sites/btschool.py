@@ -5,7 +5,6 @@ from ruamel.yaml import CommentedMap
 from app.core.config import settings
 from app.log import logger
 from app.plugins.autosignin.sites import _ISiteSigninHandler
-from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
 
@@ -37,37 +36,41 @@ class BTSchool(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        render = site_info.get("render")
+        proxies = settings.PROXY if site_info.get("proxy") else None
 
         logger.info(f"{site} 开始签到")
-        html_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
-                                proxies=proxy
-                                ).get_res(url="https://pt.btschool.club")
+        # 判断今日是否已签到
+        html_text = self.get_page_source(url='https://pt.btschool.club',
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
 
-        if not html_res or html_res.status_code != 200:
+        if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
 
-        if "login.php" in html_res.text:
-            logger.error(f"签到失败，cookie失效")
-            return False, f'【{site}】签到失败，cookie失效'
+        if "login.php" in html_text:
+            logger.error(f"签到失败，Cookie失效")
+            return False, f'【{site}】签到失败，Cookie失效'
 
         # 已签到
-        if self._sign_text not in html_res.text:
+        if self._sign_text not in html_text:
             logger.info(f"今日已签到")
             return True, f'【{site}】今日已签到'
 
-        sign_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
-                                proxies=proxy
-                                ).get_res(url="https://pt.btschool.club/index.php?action=addbonus")
+        html_text = self.get_page_source(url='https://pt.btschool.club/index.php?action=addbonus',
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
 
-        if not sign_res or sign_res.status_code != 200:
+        if not html_text:
             logger.error(f"签到失败，签到接口请求失败")
             return False, f'【{site}】签到失败，签到接口请求失败'
 
         # 签到成功
-        if self._sign_text not in sign_res.text:
+        if self._sign_text not in html_text:
             logger.info(f"签到成功")
             return True, f'【{site}】签到成功'

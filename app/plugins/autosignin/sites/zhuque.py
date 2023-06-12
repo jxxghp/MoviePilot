@@ -36,22 +36,24 @@ class ZhuQue(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
+        render = site_info.get("render")
 
         # 获取页面html
-        html_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
-                                proxies=proxy
-                                ).get_res(url="https://zhuque.in")
-        if not html_res or html_res.status_code != 200:
+        html_text = self.get_page_source(url="https://zhuque.in",
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
+        if not html_text:
             logger.error(f"模拟登录失败，请检查站点连通性")
             return False, f'【{site}】模拟登录失败，请检查站点连通性'
 
-        if "login.php" in html_res.text:
-            logger.error(f"模拟登录失败，cookie失效")
-            return False, f'【{site}】模拟登录失败，cookie失效'
+        if "login.php" in html_text:
+            logger.error(f"模拟登录失败，Cookie失效")
+            return False, f'【{site}】模拟登录失败，Cookie失效'
 
-        html = etree.HTML(html_res.text)
+        html = etree.HTML(html_text)
 
         if not html:
             return False, f'【{site}】模拟登录失败'
@@ -71,7 +73,7 @@ class ZhuQue(_ISiteSigninHandler):
             }
             skill_res = RequestUtils(cookies=site_cookie,
                                      headers=headers,
-                                     proxies=proxy
+                                     proxies=proxies
                                      ).post_res(url="https://zhuque.in/api/gaming/fireGenshinCharacterMagic", json=data)
             if not skill_res or skill_res.status_code != 200:
                 logger.error(f"模拟登录失败，释放技能失败")

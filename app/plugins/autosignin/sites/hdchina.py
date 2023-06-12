@@ -39,7 +39,7 @@ class HDChina(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
 
         # 尝试解决瓷器cookie每天签到后过期,只保留hdchina=部分
         cookie = ""
@@ -52,22 +52,22 @@ class HDChina(_ISiteSigninHandler):
                 cookie += sub_str + ";"
 
         if "hdchina=" not in cookie:
-            logger.error(f"签到失败，cookie失效")
-            return False, f'【{site}】签到失败，cookie失效'
+            logger.error(f"签到失败，Cookie失效")
+            return False, f'【{site}】签到失败，Cookie失效'
 
         site_cookie = cookie
         # 获取页面html
         html_res = RequestUtils(cookies=site_cookie,
                                 headers=ua,
-                                proxies=proxy
+                                proxies=proxies
                                 ).get_res(url="https://hdchina.org/index.php")
         if not html_res or html_res.status_code != 200:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
 
         if "login.php" in html_res.text or "阻断页面" in html_res.text:
-            logger.error(f"签到失败，cookie失效")
-            return False, f'【{site}】签到失败，cookie失效'
+            logger.error(f"签到失败，Cookie失效")
+            return False, f'【{site}】签到失败，Cookie失效'
 
         # 获取新返回的cookie进行签到
         site_cookie = ';'.join(['{}={}'.format(k, v) for k, v in html_res.cookies.get_dict().items()])
@@ -99,7 +99,7 @@ class HDChina(_ISiteSigninHandler):
         }
         sign_res = RequestUtils(cookies=site_cookie,
                                 headers=ua,
-                                proxies=proxy
+                                proxies=proxies
                                 ).post_res(url="https://hdchina.org/plugin_sign-in.php?cmd=signin", data=data)
         if not sign_res or sign_res.status_code != 200:
             logger.error(f"签到失败，签到接口请求失败")

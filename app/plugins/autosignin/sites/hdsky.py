@@ -40,22 +40,24 @@ class HDSky(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
+        render = site_info.get("render")
 
         # 判断今日是否已签到
-        index_res = RequestUtils(cookies=site_cookie,
-                                 headers=ua,
-                                 proxies=proxy
-                                 ).get_res(url='https://hdsky.me')
-        if not index_res or index_res.status_code != 200:
+        html_text = self.get_page_source(url='https://hdsky.me',
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
+        if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
 
-        if "login.php" in index_res.text:
-            logger.error(f"签到失败，cookie失效")
-            return False, f'【{site}】签到失败，cookie失效'
+        if "login.php" in html_text:
+            logger.error(f"签到失败，Cookie失效")
+            return False, f'【{site}】签到失败，Cookie失效'
 
-        sign_status = self.sign_in_result(html_res=index_res.text,
+        sign_status = self.sign_in_result(html_res=html_text,
                                           regexs=self._sign_regex)
         if sign_status:
             logger.info(f"今日已签到")
@@ -67,7 +69,7 @@ class HDSky(_ISiteSigninHandler):
         while not img_hash and res_times <= 3:
             image_res = RequestUtils(cookies=site_cookie,
                                      headers=ua,
-                                     proxies=proxy
+                                     proxies=proxies
                                      ).post_res(url='https://hdsky.me/image_code_ajax.php',
                                                 data={'action': 'new'})
             if image_res and image_res.status_code == 200:
@@ -112,7 +114,7 @@ class HDSky(_ISiteSigninHandler):
                 # 访问签到链接
                 res = RequestUtils(cookies=site_cookie,
                                    headers=ua,
-                                   proxies=proxy
+                                   proxies=proxies
                                    ).post_res(url='https://hdsky.me/showup.php', data=data)
                 if res and res.status_code == 200:
                     if json.loads(res.text)["success"]:

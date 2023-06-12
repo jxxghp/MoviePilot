@@ -39,7 +39,7 @@ class HDArea(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
 
         # 获取页面html
         data = {
@@ -47,15 +47,15 @@ class HDArea(_ISiteSigninHandler):
         }
         html_res = RequestUtils(cookies=site_cookie,
                                 headers=ua,
-                                proxies=proxy
+                                proxies=proxies
                                 ).post_res(url="https://www.hdarea.co/sign_in.php", data=data)
         if not html_res or html_res.status_code != 200:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
 
         if "login.php" in html_res.text:
-            logger.error(f"签到失败，cookie失效")
-            return False, f'【{site}】签到失败，cookie失效'
+            logger.error(f"签到失败，Cookie失效")
+            return False, f'【{site}】签到失败，Cookie失效'
 
         # 判断是否已签到
         # '已连续签到278天，此次签到您获得了100魔力值奖励!'

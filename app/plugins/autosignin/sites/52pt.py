@@ -11,7 +11,7 @@ from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
 
-class FWpt(_ISiteSigninHandler):
+class Pt52(_ISiteSigninHandler):
     """
     52pt
     如果填写openai key则调用chatgpt获取答案
@@ -44,30 +44,32 @@ class FWpt(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        render = site_info.get("render")
+        proxies = settings.PROXY if site_info.get("proxy") else None
 
         # 判断今日是否已签到
-        index_res = RequestUtils(cookies=site_cookie,
-                                 headers=ua,
-                                 proxies=proxy
-                                 ).get_res(url='https://52pt.site/bakatest.php')
+        html_text = self.get_page_source(url='https://52pt.site/bakatest.php',
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
         
-        if not index_res or index_res.status_code != 200:
+        if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
 
-        if "login.php" in index_res.text:
+        if "login.php" in html_text:
             logger.error(f"签到失败，Cookie失效")
             return False, f'【{site}】签到失败，Cookie失效'
 
-        sign_status = self.sign_in_result(html_res=index_res.text,
+        sign_status = self.sign_in_result(html_res=html_text,
                                           regexs=self._sign_regex)
         if sign_status:
             logger.info(f"今日已签到")
             return True, f'【{site}】今日已签到'
 
         # 没有签到则解析html
-        html = etree.HTML(index_res.text)
+        html = etree.HTML(html_text)
 
         if not html:
             return False, f'【{site}】签到失败'
@@ -94,7 +96,7 @@ class FWpt(_ISiteSigninHandler):
                              choice=choice,
                              site_cookie=site_cookie,
                              ua=ua,
-                             proxy=proxy,
+                             proxies=proxies,
                              site=site)
 
     def __signin(self, questionid: str,
@@ -102,7 +104,7 @@ class FWpt(_ISiteSigninHandler):
                  site: str,
                  site_cookie: str,
                  ua: str,
-                 proxy: dict) -> Tuple[bool, str]:
+                 proxies: dict) -> Tuple[bool, str]:
         """
         签到请求
         questionid: 450
@@ -122,7 +124,7 @@ class FWpt(_ISiteSigninHandler):
 
         sign_res = RequestUtils(cookies=site_cookie,
                                 ua=ua,
-                                proxies=proxy
+                                proxies=proxies
                                 ).post_res(url='https://52pt.site/bakatest.php', data=data)
         if not sign_res or sign_res.status_code != 200:
             logger.error(f"签到失败，签到接口请求失败")

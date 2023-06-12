@@ -55,35 +55,37 @@ class Tjupt(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
+        render = site_info.get("render")
 
         # 创建正确答案存储目录
         if not os.path.exists(os.path.dirname(self._answer_file)):
             os.makedirs(os.path.dirname(self._answer_file))
 
         # 获取北洋签到页面html
-        html_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
-                                proxies=proxy
-                                ).get_res(url=self._sign_in_url)
+        html_text = self.get_page_source(url=self._sign_in_url,
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
 
         # 获取签到后返回html，判断是否签到成功
-        if not html_res or html_res.status_code != 200:
+        if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
 
-        if "login.php" in html_res.text:
-            logger.error(f"签到失败，cookie失效")
-            return False, f'【{site}】签到失败，cookie失效'
+        if "login.php" in html_text:
+            logger.error(f"签到失败，Cookie失效")
+            return False, f'【{site}】签到失败，Cookie失效'
 
-        sign_status = self.sign_in_result(html_res=html_res.text,
+        sign_status = self.sign_in_result(html_res=html_text,
                                           regexs=self._sign_regex)
         if sign_status:
             logger.info(f"今日已签到")
             return True, f'【{site}】今日已签到'
 
         # 没有签到则解析html
-        html = etree.HTML(html_res.text)
+        html = etree.HTML(html_text)
         if not html:
             return False, f'【{site}】签到失败'
         img_url = html.xpath('//table[@class="captcha"]//img/@src')[0]
@@ -98,7 +100,7 @@ class Tjupt(_ISiteSigninHandler):
         # 获取签到图片hash
         captcha_img_res = RequestUtils(cookies=site_cookie,
                                        headers=ua,
-                                       proxies=proxy
+                                       proxies=proxies
                                        ).get_res(url=img_url)
         if not captcha_img_res or captcha_img_res.status_code != 200:
             logger.error(f"签到图片 {img_url} 请求失败")
@@ -136,7 +138,7 @@ class Tjupt(_ISiteSigninHandler):
                         return self.__signin(answer=value,
                                              site_cookie=site_cookie,
                                              ua=ua,
-                                             proxy=proxy,
+                                             proxies=proxies,
                                              site=site)
         except (FileNotFoundError, IOError, OSError) as e:
             logger.debug(f"查询本地已知答案失败：{e}，继续请求豆瓣查询")
@@ -179,7 +181,7 @@ class Tjupt(_ISiteSigninHandler):
                         return self.__signin(answer=value,
                                              site_cookie=site_cookie,
                                              ua=ua,
-                                             proxy=proxy,
+                                             proxies=proxies,
                                              site=site,
                                              exits_answers=exits_answers,
                                              captcha_img_hash=captcha_img_hash)
@@ -191,7 +193,7 @@ class Tjupt(_ISiteSigninHandler):
         # 没有匹配签到成功，则签到失败
         return False, f'【{site}】签到失败，未获取到匹配答案'
 
-    def __signin(self, answer, site_cookie, ua, proxy, site, exits_answers=None, captcha_img_hash=None):
+    def __signin(self, answer, site_cookie, ua, proxies, site, exits_answers=None, captcha_img_hash=None):
         """
         签到请求
         """
@@ -202,7 +204,7 @@ class Tjupt(_ISiteSigninHandler):
         logger.debug(f"提交data {data}")
         sign_in_res = RequestUtils(cookies=site_cookie,
                                    headers=ua,
-                                   proxies=proxy
+                                   proxies=proxies
                                    ).post_res(url=self._sign_in_url, data=data)
         if not sign_in_res or sign_in_res.status_code != 200:
             logger.error(f"签到失败，签到接口请求失败")

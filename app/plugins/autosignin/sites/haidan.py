@@ -5,7 +5,6 @@ from ruamel.yaml import CommentedMap
 from app.core.config import settings
 from app.log import logger
 from app.plugins.autosignin.sites import _ISiteSigninHandler
-from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
 
@@ -37,26 +36,28 @@ class HaiDan(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
+        render = site_info.get("render")
 
         # 签到
-        sign_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
-                                proxies=proxy
-                                ).get_res(url="https://www.haidan.video/signin.php")
-        if not sign_res or sign_res.status_code != 200:
+        html_text = self.get_page_source(url='https://www.haidan.video/signin.php',
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
+        if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
 
-        if "login.php" in sign_res.text:
-            logger.error(f"签到失败，cookie失效")
-            return False, f'【{site}】签到失败，cookie失效'
+        if "login.php" in html_text:
+            logger.error(f"签到失败，Cookie失效")
+            return False, f'【{site}】签到失败，Cookie失效'
 
-        sign_status = self.sign_in_result(html_res=sign_res.text,
+        sign_status = self.sign_in_result(html_res=html_text,
                                           regexs=self._succeed_regex)
         if sign_status:
             logger.info(f"签到成功")
             return True, f'【{site}】签到成功'
 
-        logger.error(f"签到失败，签到接口返回 {sign_res.text}")
+        logger.error(f"签到失败，签到接口返回 {html_text}")
         return False, f'【{site}】签到失败'

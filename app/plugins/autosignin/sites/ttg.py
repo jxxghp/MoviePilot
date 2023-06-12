@@ -42,32 +42,33 @@ class TTG(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
+        render = site_info.get("render")
 
         # 获取页面html
-        html_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
-                                proxies=proxy
-                                ).get_res(url="https://totheglory.im")
-        if not html_res or html_res.status_code != 200:
+        html_text = self.get_page_source(url="https://totheglory.im",
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
+        if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
 
-        if "login.php" in html_res.text:
-            logger.error(f"签到失败，cookie失效")
-            return False, f'【{site}】签到失败，cookie失效'
+        if "login.php" in html_text:
+            logger.error(f"签到失败，Cookie失效")
+            return False, f'【{site}】签到失败，Cookie失效'
 
         # 判断是否已签到
-        html_res.encoding = "utf-8"
-        sign_status = self.sign_in_result(html_res=html_res.text,
+        sign_status = self.sign_in_result(html_res=html_text,
                                           regexs=self._sign_regex)
         if sign_status:
             logger.info(f"今日已签到")
             return True, f'【{site}】今日已签到'
 
         # 获取签到参数
-        signed_timestamp = re.search('(?<=signed_timestamp: ")\\d{10}', html_res.text).group()
-        signed_token = re.search('(?<=signed_token: ").*(?=")', html_res.text).group()
+        signed_timestamp = re.search('(?<=signed_timestamp: ")\\d{10}', html_text).group()
+        signed_token = re.search('(?<=signed_token: ").*(?=")', html_text).group()
         logger.debug(f"signed_timestamp={signed_timestamp} signed_token={signed_token}")
 
         data = {
@@ -77,7 +78,7 @@ class TTG(_ISiteSigninHandler):
         # 签到
         sign_res = RequestUtils(cookies=site_cookie,
                                 headers=ua,
-                                proxies=proxy
+                                proxies=proxies
                                 ).post_res(url="https://totheglory.im/signed.php",
                                            data=data)
         if not sign_res or sign_res.status_code != 200:

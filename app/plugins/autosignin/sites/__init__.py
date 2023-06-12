@@ -3,8 +3,12 @@ import re
 from abc import ABCMeta, abstractmethod
 from typing import Tuple
 
+import chardet
 from ruamel.yaml import CommentedMap
 
+from app.helper.browser import PlaywrightHelper
+from app.log import logger
+from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
 
@@ -33,6 +37,43 @@ class _ISiteSigninHandler(metaclass=ABCMeta):
         :return: True|False,签到结果信息
         """
         pass
+
+    @staticmethod
+    def get_page_source(url: str, cookie: str, ua: str, proxies: dict, render: bool) -> str:
+        """
+        获取页面源码
+        :param url: Url地址
+        :param cookie: Cookie
+        :param ua: UA
+        :param proxies: 代理
+        :param render: 是否渲染
+        :return: 页面源码，错误信息
+        """
+        if render:
+            return PlaywrightHelper().get_page_source(url=url,
+                                                      cookies=cookie,
+                                                      ua=ua,
+                                                      proxies=proxies)
+        else:
+            res = RequestUtils(cookies=cookie,
+                               ua=ua,
+                               proxies=proxies
+                               ).get_res(url=url)
+            if res is not None:
+                # 使用chardet检测字符编码
+                raw_data = res.content
+                if raw_data:
+                    try:
+                        result = chardet.detect(raw_data)
+                        encoding = result['encoding']
+                        # 解码为字符串
+                        return raw_data.decode(encoding)
+                    except Exception as e:
+                        logger.error(f"chardet解码失败：{e}")
+                        return res.text
+                else:
+                    return res.text
+            return ""
 
     @staticmethod
     def sign_in_result(html_res: str, regexs: list) -> bool:

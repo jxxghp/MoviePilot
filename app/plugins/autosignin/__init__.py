@@ -138,7 +138,7 @@ class AutoSignIn(_PluginBase):
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
         render = site_info.get("render")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
         if not site_url or not site_cookie:
             logger.warn(f"未配置 {site} 的站点地址或Cookie，无法签到")
             return ""
@@ -154,7 +154,7 @@ class AutoSignIn(_PluginBase):
                 page_source = PlaywrightHelper().get_page_source(url=checkin_url,
                                                                  cookies=site_cookie,
                                                                  ua=ua,
-                                                                 proxy=proxy)
+                                                                 proxies=proxies)
                 if not SiteUtils.is_logged_in(page_source):
                     if under_challenge(page_source):
                         return f"【{site}】无法通过Cloudflare！"
@@ -162,7 +162,7 @@ class AutoSignIn(_PluginBase):
             else:
                 res = RequestUtils(cookies=site_cookie,
                                    headers=ua,
-                                   proxies=proxy
+                                   proxies=proxies
                                    ).get_res(url=checkin_url)
                 if not res and site_url != checkin_url:
                     logger.info(f"开始站点模拟登录：{site}，地址：{site_url}...")

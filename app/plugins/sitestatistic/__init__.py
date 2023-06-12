@@ -109,7 +109,7 @@ class SiteStatistic(_PluginBase):
             html_text = PlaywrightHelper().get_page_source(url=url,
                                                            cookies=site_cookie,
                                                            ua=ua,
-                                                           proxy=proxies)
+                                                           proxies=proxies)
         else:
             # 普通模式
             res = RequestUtils(cookies=site_cookie,

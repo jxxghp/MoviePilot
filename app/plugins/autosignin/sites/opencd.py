@@ -41,36 +41,39 @@ class Opencd(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
+        render = site_info.get("render")
 
         # 判断今日是否已签到
-        index_res = RequestUtils(cookies=site_cookie,
-                                 headers=ua,
-                                 proxies=proxy
-                                 ).get_res(url='https://www.open.cd')
-        if not index_res or index_res.status_code != 200:
+        html_text = self.get_page_source(url='https://www.open.cd',
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
+        if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
 
-        if "login.php" in index_res.text:
-            logger.error(f"签到失败，cookie失效")
-            return False, f'【{site}】签到失败，cookie失效'
+        if "login.php" in html_text:
+            logger.error(f"签到失败，Cookie失效")
+            return False, f'【{site}】签到失败，Cookie失效'
 
-        if self._repeat_text in index_res.text:
+        if self._repeat_text in html_text:
             logger.info(f"今日已签到")
             return True, f'【{site}】今日已签到'
 
         # 获取签到参数
-        sign_param_res = RequestUtils(cookies=site_cookie,
-                                      headers=ua,
-                                      proxies=proxy
-                                      ).get_res(url='https://www.open.cd/plugin_sign-in.php')
-        if not sign_param_res or sign_param_res.status_code != 200:
+        html_text = self.get_page_source(url='https://www.open.cd/plugin_sign-in.php',
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
+        if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
 
         # 没有签到则解析html
-        html = etree.HTML(sign_param_res.text)
+        html = etree.HTML(html_text)
         if not html:
             return False, f'【{site}】签到失败'
 
@@ -112,7 +115,7 @@ class Opencd(_ISiteSigninHandler):
             # 访问签到链接
             sign_res = RequestUtils(cookies=site_cookie,
                                     headers=ua,
-                                    proxies=proxy
+                                    proxies=proxies
                                     ).post_res(url='https://www.open.cd/plugin_sign-in.php?cmd=signin', data=data)
             if sign_res and sign_res.status_code == 200:
                 logger.debug(f"sign_res返回 {sign_res.text}")

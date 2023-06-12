@@ -10,7 +10,7 @@ class PlaywrightHelper:
     def get_page_source(self, url: str,
                         cookies: str = None,
                         ua: str = None,
-                        proxy: dict = None,
+                        proxies: dict = None,
                         headless: bool = True,
                         timeout: int = 30) -> str:
         """
@@ -18,30 +18,33 @@ class PlaywrightHelper:
         :param url: 网页地址
         :param cookies: cookies
         :param ua: user-agent
-        :param proxy: 代理
+        :param proxies: 代理
         :param headless: 是否无头模式
         :param timeout: 超时时间
         """
-        with sync_playwright() as playwright:
-            browser = playwright[self.browser_type].launch(headless=headless)
-            context = browser.new_context(user_agent=ua, proxy=proxy)
-            page = context.new_page()
-            if cookies:
-                page.set_extra_http_headers({"cookie": cookies})
-            try:
-                sync_stealth(page, pure=True)
-                page.goto(url)
-                res = sync_cf_retry(page)
-                if not res:
-                    logger.warn("cloudflare challenge fail！")
-                page.wait_for_load_state("networkidle", timeout=timeout * 1000)
-                source = page.content()
-            except Exception as e:
-                logger.error(f"获取网页源码失败: {e}")
-                source = None
-            finally:
-                browser.close()
-
+        source = ""
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright[self.browser_type].launch(headless=headless)
+                context = browser.new_context(user_agent=ua, proxy=proxies)
+                page = context.new_page()
+                if cookies:
+                    page.set_extra_http_headers({"cookie": cookies})
+                try:
+                    sync_stealth(page, pure=True)
+                    page.goto(url)
+                    res = sync_cf_retry(page)
+                    if not res:
+                        logger.warn("cloudflare challenge fail！")
+                    page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+                    source = page.content()
+                except Exception as e:
+                    logger.error(f"获取网页源码失败: {e}")
+                    source = None
+                finally:
+                    browser.close()
+        except Exception as e:
+            logger.error(f"获取网页源码失败: {e}")
         return source
 
 

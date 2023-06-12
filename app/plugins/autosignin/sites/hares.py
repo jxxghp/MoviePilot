@@ -38,20 +38,23 @@ class Hares(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
+        render = site_info.get("render")
 
         # 获取页面html
-        html_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
-                                proxies=proxy
-                                ).get_res(url="https://club.hares.top")
-        if not html_res or html_res.status_code != 200:
+        html_text = self.get_page_source(url='https://club.hares.top',
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
+
+        if not html_text:
             logger.error(f"模拟访问失败，请检查站点连通性")
             return False, f'【{site}】模拟访问失败，请检查站点连通性'
 
-        if "login.php" in html_res.text:
-            logger.error(f"模拟访问失败，cookie失效")
-            return False, f'【{site}】模拟访问失败，cookie失效'
+        if "login.php" in html_text:
+            logger.error(f"模拟访问失败，Cookie失效")
+            return False, f'【{site}】模拟访问失败，Cookie失效'
 
         # if self._sign_text in html_res.text:
         #     logger.info(f"今日已签到")
@@ -63,7 +66,7 @@ class Hares(_ISiteSigninHandler):
         }
         sign_res = RequestUtils(cookies=site_cookie,
                                 headers=headers,
-                                proxies=proxy
+                                proxies=proxies
                                 ).get_res(url="https://club.hares.top/attendance.php?action=sign")
         if not sign_res or sign_res.status_code != 200:
             logger.error(f"签到失败，签到接口请求失败")

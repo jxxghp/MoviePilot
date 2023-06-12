@@ -222,7 +222,7 @@ class TorrentSpider:
                 url=searchurl,
                 cookies=self.cookie,
                 ua=self.ua,
-                proxy=self.proxies
+                proxies=self.proxies
             )
         else:
             # requests请求

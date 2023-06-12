@@ -48,7 +48,8 @@ class U2(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxy = settings.PROXY if site_info.get("proxy") else None
+        proxies = settings.PROXY if site_info.get("proxy") else None
+        render = site_info.get("render")
 
         now = datetime.datetime.now()
         # 判断当前时间是否小于9点
@@ -57,28 +58,28 @@ class U2(_ISiteSigninHandler):
             return False, f'【{site}】签到失败，9点前不签到'
         
         # 获取页面html
-        html_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
-                                proxies=proxy
-                                ).get_res(url="https://u2.dmhy.org/showup.php")
-        if not html_res or html_res.status_code != 200:
+        html_text = self.get_page_source(url="https://u2.dmhy.org/showup.php",
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxies=proxies,
+                                         render=render)
+        if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
 
-        if "login.php" in html_res.text:
-            logger.error(f"签到失败，cookie失效")
-            return False, f'【{site}】签到失败，cookie失效'
+        if "login.php" in html_text:
+            logger.error(f"签到失败，Cookie失效")
+            return False, f'【{site}】签到失败，Cookie失效'
         
         # 判断是否已签到
-        html_res.encoding = "utf-8"
-        sign_status = self.sign_in_result(html_res=html_res.text,
+        sign_status = self.sign_in_result(html_res=html_text,
                                           regexs=self._sign_regex)
         if sign_status:
             logger.info(f"今日已签到")
             return True, f'【{site}】今日已签到'
 
         # 没有签到则解析html
-        html = etree.HTML(html_res.text)
+        html = etree.HTML(html_text)
 
         if not html:
             return False, f'【{site}】签到失败'
@@ -105,7 +106,7 @@ class U2(_ISiteSigninHandler):
         # 签到
         sign_res = RequestUtils(cookies=site_cookie,
                                 headers=ua,
-                                proxies=proxy
+                                proxies=proxies
                                 ).post_res(url="https://u2.dmhy.org/showup.php?action=show",
                                            data=data)
         if not sign_res or sign_res.status_code != 200:
