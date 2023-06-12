@@ -138,6 +138,7 @@ class Slack:
             # 发送
             result = self._client.chat_postMessage(
                 channel=channel,
+                text=f"*{title}*\n{text or ''}",
                 blocks=blocks
             )
             return True, result
@@ -220,6 +221,7 @@ class Slack:
             # 发送
             result = self._client.chat_postMessage(
                 channel=channel,
+                text=title,
                 blocks=blocks
             )
             return True if result else False
@@ -299,6 +301,7 @@ class Slack:
             # 发送
             result = self._client.chat_postMessage(
                 channel=channel,
+                text=title,
                 blocks=blocks
             )
             return True if result else False
@@ -318,7 +321,7 @@ class Slack:
                 if conversation_id:
                     break
                 for channel in result["channels"]:
-                    if channel.get("name") == settings.SLACK_CHANNEL or "全体":
+                    if channel.get("name") == (settings.SLACK_CHANNEL or "全体"):
                         conversation_id = channel.get("id")
                         break
         except Exception as e:

@@ -471,7 +471,7 @@ class FileTransferModule(_ModuleBase):
             # 集号
             "episode": meta.get_episode_seqs(),
             # 季集 SxxExx
-            "season_episode": "%s%s" % (meta.get_season_item(), meta.get_episode_items()),
+            "season_episode": "%s%s" % (meta.get_begin_season_string(), meta.get_episode_strings()),
             # 段/节
             "part": meta.part,
             # 文件后缀

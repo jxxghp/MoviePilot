@@ -104,7 +104,7 @@ class IndexerModule(_ModuleBase):
         seconds = round((datetime.now() - start_time).seconds, 1)
 
         # 返回结果
-        if len(result_array) == 0:
+        if not result_array or len(result_array) == 0:
             logger.warn(f"{site.get('name')} 未搜索到数据，耗时 {seconds} 秒")
             return []
         else:

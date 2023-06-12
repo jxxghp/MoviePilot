@@ -86,7 +86,7 @@ class UserMessageChain(ChainBase):
                                                                               mediainfo=self._current_media)
                 if exist_flag:
                     self.post_message(title=f"{self._current_media.get_title_string()}"
-                                            f"{self._current_meta.get_season_string()} 媒体库中已存在",
+                                            f"{self._current_meta.get_season()} 媒体库中已存在",
                                       userid=userid)
                     return
                 # 发送缺失的媒体信息
@@ -106,7 +106,7 @@ class UserMessageChain(ChainBase):
                 if not contexts:
                     # 没有数据
                     self.post_message(title=f"{mediainfo.title}"
-                                            f"{self._current_meta.get_season_string()} 未搜索到资源！",
+                                            f"{self._current_meta.get_season()} 未搜索到资源！",
                                       userid=userid)
                     return
                 # 搜索结果排序
@@ -142,7 +142,7 @@ class UserMessageChain(ChainBase):
                                                                                   mediainfo=self._current_media)
                     if exist_flag:
                         self.post_message(title=f"{self._current_media.get_title_string()}"
-                                                f"{self._current_meta.get_season_string()} 媒体库中已存在",
+                                                f"{self._current_meta.get_season()} 媒体库中已存在",
                                           userid=userid)
                         return
                     # 批量下载

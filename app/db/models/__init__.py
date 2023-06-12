@@ -23,7 +23,6 @@ class Base:
         for key, value in payload.items():
             setattr(self, key, value)
         db.commit()
-        db.refresh(self)
 
     @classmethod
     def delete(cls, db, rid):

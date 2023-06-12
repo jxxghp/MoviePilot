@@ -1,4 +1,4 @@
-from typing import Union, Optional
+from typing import Union, Optional, List
 
 import cn2an
 import regex as re
@@ -66,7 +66,7 @@ class MetaBase(object):
         self.subtitle = subtitle
         self.isfile = isfile
 
-    def get_name(self):
+    def get_name(self) -> str:
         """
         返回名称
         """
@@ -181,7 +181,7 @@ class MetaBase(object):
                     self.type = MediaType.TV
                     self._subtitle_flag = True
 
-    def is_in_season(self, season: Union[list, int, str]):
+    def is_in_season(self, season: Union[list, int, str]) -> bool:
         """
         是否包含季
         """
@@ -204,7 +204,7 @@ class MetaBase(object):
                 else:
                     return int(season) == 1
 
-    def is_in_episode(self, episode: Union[list, int, str]):
+    def is_in_episode(self, episode: Union[list, int, str]) -> bool:
         """
         是否包含集
         """
@@ -220,9 +220,9 @@ class MetaBase(object):
             else:
                 return int(episode) == self.begin_episode
 
-    def get_season_string(self):
+    def get_season_string(self) -> str:
         """
-        返回季字符串
+        返回季字符串，确定是剧集没有季的返回S01
         """
         if self.begin_season is not None:
             return "S%s" % str(self.begin_season).rjust(2, "0") \
@@ -236,7 +236,16 @@ class MetaBase(object):
             else:
                 return "S01"
 
-    def get_season_item(self):
+    def get_season(self) -> str:
+        """
+        返回季字符串，确定是剧集没有季的返回空
+        """
+        if self.begin_season is not None:
+            return self.get_season_string()
+        else:
+            return "S01"
+
+    def get_begin_season_string(self) -> str:
         """
         返回begin_season 的Sxx
         """
@@ -248,9 +257,9 @@ class MetaBase(object):
             else:
                 return "S01"
 
-    def get_season_seq(self):
+    def get_season_seq(self) -> str:
         """
-        返回begin_season 的数字
+        返回begin_season 的数字，电视剧没有季的返回1
         """
         if self.begin_season is not None:
             return str(self.begin_season)
@@ -260,7 +269,7 @@ class MetaBase(object):
             else:
                 return "1"
 
-    def get_season_list(self):
+    def get_season_list(self) -> List[int]:
         """
         返回季的数组
         """
@@ -309,7 +318,7 @@ class MetaBase(object):
             self.end_episode = None
 
     #
-    def get_episode_string(self):
+    def get_episode_string(self) -> str:
         """
         返回集字符串
         """
@@ -323,7 +332,7 @@ class MetaBase(object):
         else:
             return ""
 
-    def get_episode_list(self):
+    def get_episode_list(self) -> List[int]:
         """
         返回集的数组
         """
@@ -334,13 +343,13 @@ class MetaBase(object):
         else:
             return [self.begin_episode]
 
-    def get_episode_items(self):
+    def get_episode_strings(self) -> str:
         """
         返回集的并列表达方式，用于支持单文件多集
         """
         return "E%s" % "E".join(str(episode).rjust(2, '0') for episode in self.get_episode_list())
 
-    def get_episode_seqs(self):
+    def get_episode_seqs(self) -> str:
         """
         返回单文件多集的集数表达方式，用于支持单文件多集
         """
@@ -354,7 +363,7 @@ class MetaBase(object):
         else:
             return ""
 
-    def get_episode_seq(self):
+    def get_episode_seq(self) -> str:
         """
         返回begin_episode 的数字
         """
@@ -364,7 +373,7 @@ class MetaBase(object):
         else:
             return ""
 
-    def get_season_episode_string(self):
+    def get_season_episode_string(self) -> str:
         """
         返回季集字符串
         """
@@ -381,7 +390,7 @@ class MetaBase(object):
                 return "%s" % episode
         return ""
 
-    def get_resource_type_string(self):
+    def get_resource_type_string(self) -> str:
         """
         返回资源类型字符串，含分辨率
         """
@@ -394,7 +403,7 @@ class MetaBase(object):
             ret_string = f"{ret_string} {self.resource_pix}"
         return ret_string
 
-    def get_edtion_string(self):
+    def get_edtion_string(self) -> str:
         """
         返回资源类型字符串，不含分辨率
         """
@@ -405,7 +414,7 @@ class MetaBase(object):
             ret_string = f"{ret_string} {self.resource_effect}"
         return ret_string.strip()
 
-    def get_resource_team_string(self):
+    def get_resource_team_string(self) -> str:
         """
         返回发布组/字幕组字符串
         """
@@ -414,13 +423,13 @@ class MetaBase(object):
         else:
             return ""
 
-    def get_video_encode_string(self):
+    def get_video_encode_string(self) -> str:
         """
         返回视频编码
         """
         return self.video_encode or ""
 
-    def get_audio_encode_string(self):
+    def get_audio_encode_string(self) -> str:
         """
         返回音频编码
         """
