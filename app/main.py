@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.module import ModuleManager
 from app.core.plugin import PluginManager
 from app.db.init import init_db, update_db
+from app.helper.display import DisplayHelper
 from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
 
@@ -35,6 +36,8 @@ def shutdown_server():
     ModuleManager().stop()
     # 停止事件消费
     Command().stop()
+    # 停止虚拟显示
+    DisplayHelper().stop()
 
 
 @App.on_event("startup")
@@ -42,18 +45,18 @@ def start_module():
     """
     启动模块
     """
+    # 虚伪显示
+    DisplayHelper()
     # 加载模块
     ModuleManager()
     # 加载插件
     PluginManager()
-    # 加载站点
-    SitesHelper()
     # 启动定时服务
     Scheduler()
     # 启动事件消费
     Command()
-    # 用户认证
-    SitesHelper().check_user()
+    # 站点管理
+    SitesHelper()
 
 
 if __name__ == '__main__':

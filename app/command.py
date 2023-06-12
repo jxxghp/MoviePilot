@@ -29,35 +29,7 @@ class Command(metaclass=Singleton):
     全局命令管理，消费事件
     """
     # 内建命令
-    _commands = {
-        "/cookiecloud": {
-            "func": CookieCloudChain().process,
-            "description": "同步站点Cookie",
-            "data": {}
-        },
-        "/douban_sync": {
-            "func": DoubanSyncChain().process,
-            "description": "同步豆瓣想看",
-            "data": {}
-        },
-        "/subscribe_refresh": {
-            "func": SubscribeChain().refresh,
-            "description": "刷新订阅",
-            "data": {}
-        },
-        "/subscribe_search": {
-            "func": SubscribeChain().search,
-            "description": "搜索订阅",
-            "data": {
-                'state': 'R',
-            }
-        },
-        "/transfer": {
-            "func": TransferChain().process,
-            "description": "下载文件整理",
-            "data": {}
-        }
-    }
+    _commands = {}
 
     # 退出事件
     _event = Event()
@@ -68,6 +40,35 @@ class Command(metaclass=Singleton):
         # 插件管理器
         self.pluginmanager = PluginManager()
         # 汇总插件命令
+        self._commands = {
+            "/cookiecloud": {
+                "func": CookieCloudChain().process,
+                "description": "同步站点Cookie",
+                "data": {}
+            },
+            "/douban_sync": {
+                "func": DoubanSyncChain().process,
+                "description": "同步豆瓣想看",
+                "data": {}
+            },
+            "/subscribe_refresh": {
+                "func": SubscribeChain().refresh,
+                "description": "刷新订阅",
+                "data": {}
+            },
+            "/subscribe_search": {
+                "func": SubscribeChain().search,
+                "description": "搜索订阅",
+                "data": {
+                    'state': 'R',
+                }
+            },
+            "/transfer": {
+                "func": TransferChain().process,
+                "description": "下载文件整理",
+                "data": {}
+            }
+        }
         plugin_commands = self.pluginmanager.get_plugin_commands()
         for command in plugin_commands:
             self.register(
