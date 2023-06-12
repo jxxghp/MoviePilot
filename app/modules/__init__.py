@@ -11,9 +11,8 @@ from app.utils.types import TorrentStatus, MediaType
 
 class _ModuleBase(metaclass=ABCMeta):
     """
-    模块基类，实现对应方法，在有需要时会被自动调用，返回None代表不启用该模块
-    输入参数与输出参数一致的，可以被多个模块重复实现
-    通过监听事件来实现多个模块之间的协作
+    模块基类，实现对应方法，在有需要时会被自动调用，返回None代表不启用该模块，将继续执行下一模块
+    输入参数与输出参数一致的，或没有输出的，可以被多个模块重复实现
     """
 
     @abstractmethod
@@ -56,7 +55,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         获取豆瓣信息
         :param doubanid: 豆瓣ID
-        :return: 识别的媒体信息，包括剧集信息
+        :return: 识别的媒体信息
         """
         pass
 
@@ -87,7 +86,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         获取图片
         :param mediainfo:  识别的媒体信息
-        :return: 更新后的媒体信息，注意如果返回None，有可能是没有对应的处理模块，应无视结果
+        :return: 更新后的媒体信息，该方法可被多个模块同时处理
         """
         pass
 
@@ -124,7 +123,7 @@ class _ModuleBase(metaclass=ABCMeta):
         过滤资源
         :param torrent_list:  资源列表
         :param season_episodes:  过滤的剧集信息
-        :return: 过滤后的资源列表，注意如果返回None，有可能是没有对应的处理模块，应无视结果
+        :return: 过滤后的资源列表，该方法可被多个模块同时处理
         """
         pass
 
@@ -139,7 +138,8 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def list_torrents(self, status: TorrentStatus = None, hashs: Union[list, str] = None) -> Optional[List[dict]]:
+    def list_torrents(self, status: TorrentStatus = None,
+                      hashs: Union[list, str] = None) -> Optional[List[dict]]:
         """
         获取下载器种子列表
         :param status:  种子状态
@@ -148,28 +148,21 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def remove_torrents(self, hashs: Union[str, list]) -> bool:
-        """
-        删除下载器种子
-        :param hashs:  种子Hash
-        :return: bool
-        """
-        pass
-
     def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[dict]:
         """
         转移一个路径下的文件
         :param path:  文件路径
         :param mediainfo:  识别的媒体信息
-        :return: 转移后的目录或None代表失败
+        :return: {path, target_path, message}
         """
         pass
 
-    def transfer_completed(self, hashs: Union[str, list]) -> bool:
+    def transfer_completed(self, hashs: Union[str, list], transinfo: dict) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash
-        :return: 处理状态
+        :param transinfo:  转移信息
+        :return: None，该方法可被多个模块同时处理
         """
         pass
 
@@ -190,8 +183,8 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def post_message(self, title: str,
-                     text: str = None, image: str = None, userid: Union[str, int] = None) -> Optional[bool]:
+    def post_message(self, title: str, text: str = None,
+                     image: str = None, userid: Union[str, int] = None) -> Optional[bool]:
         """
         发送消息
         :param title:  标题
@@ -231,20 +224,22 @@ class _ModuleBase(metaclass=ABCMeta):
         刮削元数据
         :param path: 媒体文件路径
         :param mediainfo:  识别的媒体信息
-        :return: 成功或失败
+        :return: None，该方法可被多个模块同时处理
         """
         pass
 
-    def register_commands(self, commands: dict):
+    def register_commands(self, commands: dict) -> None:
         """
         注册命令，实现这个函数接收系统可用的命令菜单
         :param commands: 命令字典
+        :return: None，该方法可被多个模块同时处理
         """
         pass
 
     @abstractmethod
-    def stop(self):
+    def stop(self) -> None:
         """
         如果关闭时模块有服务需要停止，需要实现此方法
+        :return: None，该方法可被多个模块同时处理
         """
         pass

@@ -104,14 +104,9 @@ class TransferChain(ChainBase):
                 ),
                 continue
             # 转移完成
-            self.transfer_completed(hashs=torrent.get("hash"))
+            self.transfer_completed(hashs=torrent.get("hash"), transinfo=transferinfo)
             # 刮剥
             self.scrape_metadata(path=transferinfo.get('target_path'), mediainfo=mediainfo)
-            # 移动模式删除种子
-            if settings.TRANSFER_TYPE == "move":
-                result2 = self.remove_torrents(hashs=torrent.get("hash"))
-                if result2:
-                    logger.info(f"移动模式删除种子成功：{torrent.get('title')} ")
             # 刷新媒体库
             self.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.get('target_path'))
             # 发送通知

@@ -3,6 +3,7 @@ from typing import Set, Tuple, Optional, Union, List
 
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
+from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.utils.string import StringUtils
@@ -28,7 +29,7 @@ class QbittorrentModule(_ModuleBase):
         :param torrent_path:  种子文件地址
         :param cookie:  cookie
         :param episodes:  需要下载的集数
-        :return: 种子Hash
+        :return: 种子Hash，错误信息
         """
         if not torrent_path.exists():
             return None, f"种子文件不存在：{torrent_path}"
@@ -83,14 +84,6 @@ class QbittorrentModule(_ModuleBase):
                 else:
                     return torrent_hash, "添加下载成功"
 
-    def transfer_completed(self, hashs: Union[str, list]) -> bool:
-        """
-        转移完成后的处理
-        :param hashs:  种子Hash
-        :return: 处理状态
-        """
-        return self.qbittorrent.set_torrents_tag(ids=hashs, tags=['已整理'])
-
     def list_torrents(self, status: TorrentStatus = None, hashs: Union[list, str] = None) -> Optional[List[dict]]:
         """
         获取下载器种子列表
@@ -137,10 +130,14 @@ class QbittorrentModule(_ModuleBase):
             return None
         return ret_torrents
 
-    def remove_torrents(self, hashs: Union[str, list]) -> bool:
+    def transfer_completed(self, hashs: Union[str, list], transinfo: dict) -> None:
         """
-        删除下载器种子
+        转移完成后的处理
         :param hashs:  种子Hash
-        :return: bool
+        :param transinfo:  转移信息
         """
-        return self.qbittorrent.delete_torrents(delete_file=True, ids=hashs)
+        self.qbittorrent.set_torrents_tag(ids=hashs, tags=['已整理'])
+        # 移动模式删除种子
+        if settings.TRANSFER_TYPE == "move":
+            if self.qbittorrent.delete_torrents(delete_file=True, ids=hashs):
+                logger.info(f"移动模式删除种子成功：{hashs} ")

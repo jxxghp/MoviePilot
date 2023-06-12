@@ -33,7 +33,7 @@ class FileTransferModule(_ModuleBase):
         文件转移
         :param path:  文件路径
         :param mediainfo:  识别的媒体信息
-        :return: 转移后的目录或None代表失败
+        :return: {path, target_path, message}
         """
         if not settings.LIBRARY_PATH:
             logger.error("未设置媒体库目录，无法转移文件")

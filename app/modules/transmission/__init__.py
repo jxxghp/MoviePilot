@@ -71,14 +71,6 @@ class TransmissionModule(_ModuleBase):
             else:
                 return torrent_hash, "添加下载任务成功"
 
-    def transfer_completed(self, hashs: Union[str, list]) -> bool:
-        """
-        转移完成后的处理
-        :param hashs:  种子Hash
-        :return: 处理状态
-        """
-        return self.transmission.set_torrent_tag(ids=hashs, tags=['已整理'])
-
     def list_torrents(self, status: TorrentStatus = None, hashs: Union[list, str] = None) -> Optional[List[dict]]:
         """
         获取下载器种子列表
@@ -120,10 +112,15 @@ class TransmissionModule(_ModuleBase):
             return None
         return ret_torrents
 
-    def remove_torrents(self, hashs: Union[str, list]) -> bool:
+    def transfer_completed(self, hashs: Union[str, list], transinfo: dict) -> None:
         """
-        删除下载器种子
+        转移完成后的处理
         :param hashs:  种子Hash
-        :return: bool
+        :param transinfo:  转移信息
+        :return: None
         """
-        return self.transmission.delete_torrents(delete_file=True, ids=hashs)
+        self.transmission.set_torrent_tag(ids=hashs, tags=['已整理'])
+        # 移动模式删除种子
+        if settings.TRANSFER_TYPE == "move":
+            if self.transmission.delete_torrents(delete_file=True, ids=hashs):
+                logger.info(f"移动模式删除种子成功：{hashs} ")

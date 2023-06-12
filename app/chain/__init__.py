@@ -106,14 +106,11 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
     def list_torrents(self, status: TorrentStatus = None, hashs: Union[list, str] = None) -> Optional[List[dict]]:
         return self.run_module("list_torrents", status=status, hashs=hashs)
 
-    def remove_torrents(self, hashs: Union[str, list]) -> bool:
-        return self.run_module("remove_torrents", hashs=hashs)
-
     def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[dict]:
         return self.run_module("transfer", path=path, mediainfo=mediainfo)
 
-    def transfer_completed(self, hashs: Union[str, list]) -> bool:
-        return self.run_module("transfer_completed", hashs=hashs)
+    def transfer_completed(self, hashs: Union[str, list], transinfo: dict) -> None:
+        return self.run_module("transfer_completed", hashs=hashs, transinfo=transinfo)
 
     def media_exists(self, mediainfo: MediaInfo) -> Optional[dict]:
         return self.run_module("media_exists", mediainfo=mediainfo)
@@ -121,8 +118,8 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
     def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: str) -> Optional[bool]:
         return self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
 
-    def post_message(self, title: str,
-                     text: str = None, image: str = None, userid: Union[str, int] = None) -> Optional[bool]:
+    def post_message(self, title: str, text: str = None,
+                     image: str = None, userid: Union[str, int] = None) -> Optional[bool]:
         return self.run_module("post_message", title=title, text=text, image=image, userid=userid)
 
     def post_medias_message(self, title: str, items: List[MediaInfo],
@@ -138,5 +135,5 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
         return self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
 
-    def register_commands(self, commands: dict):
+    def register_commands(self, commands: dict) -> None:
         return self.run_module("register_commands", commands=commands)
