@@ -1,6 +1,7 @@
 import traceback
 from functools import lru_cache
 from typing import Optional, List
+from urllib.parse import quote
 
 import zhconv
 from lxml import etree
@@ -461,8 +462,8 @@ class TmdbHelper:
         if StringUtils.is_chinese(name):
             return {}
         logger.info("正在从TheDbMovie网站查询：%s ..." % name)
-        tmdb_url = "https://www.themoviedb.org/search?query=%s" % name
-        res = RequestUtils(timeout=5).get_res(url=tmdb_url)
+        tmdb_url = "https://www.themoviedb.org/search?query=%s" % quote(name)
+        res = RequestUtils(timeout=5, ua=settings.USER_AGENT).get_res(url=tmdb_url)
         if res and res.status_code == 200:
             html_text = res.text
             if not html_text:
