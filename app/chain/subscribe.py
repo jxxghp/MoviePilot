@@ -274,11 +274,16 @@ class SubscribeChain(ChainBase):
                                       image=mediainfo.get_message_image())
                 else:
                     # 未完成下载，计算剩余集数
-                    left_episodes = lefts.get(mediainfo.tmdb_id, {}).get("episodes", [])
-                    logger.info(f'{mediainfo.get_title_string()} 未下载未完整，更新缺失集数为{len(left_episodes)} ...')
-                    self.subscribes.update(subscribe.id, {
-                        "lack_episode": len(left_episodes)
-                    })
+                    left_seasons = lefts.get(mediainfo.tmdb_id) or []
+                    for season_info in left_seasons:
+                        season = season_info.get('season')
+                        if season == subscribe.season:
+                            left_episodes = season_info.get('episodes')
+                            logger.info(f'{mediainfo.get_title_string()} 季 {season} 未下载未完整，'
+                                        f'更新缺失集数为{len(left_episodes)} ...')
+                            self.subscribes.update(subscribe.id, {
+                                "lack_episode": len(left_episodes)
+                            })
 
     @staticmethod
     def __get_subscribe_no_exits(no_exists: Dict[int, List[dict]],
