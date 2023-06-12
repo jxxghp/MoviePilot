@@ -16,7 +16,7 @@ from app.utils.system import SystemUtils
 from app.utils.types import MediaType
 
 
-class Douban(_ModuleBase):
+class DoubanModule(_ModuleBase):
 
     doubanapi: DoubanApi = None
 

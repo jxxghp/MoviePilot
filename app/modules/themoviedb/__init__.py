@@ -18,7 +18,7 @@ from app.utils.system import SystemUtils
 from app.utils.types import MediaType
 
 
-class TheMovieDb(_ModuleBase):
+class TheMovieDbModule(_ModuleBase):
     """
     TMDB媒体信息匹配
     """
