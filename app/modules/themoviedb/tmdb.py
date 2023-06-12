@@ -180,11 +180,6 @@ class TmdbHelper:
                 info = self.__search_movie_by_name(name, year)
                 if info:
                     info['media_type'] = MediaType.MOVIE
-                    logger.info("%s 识别到 电影：TMDBID=%s, 名称=%s, 上映日期=%s" % (
-                        name,
-                        info.get('id'),
-                        info.get('title'),
-                        info.get('release_date')))
                     break
         else:
             # 有当前季和当前季集年份，使用精确匹配
@@ -201,15 +196,7 @@ class TmdbHelper:
                                                 year)
             if info:
                 info['media_type'] = MediaType.TV
-                logger.info("%s 识别到 电视剧：TMDBID=%s, 名称=%s, 首播日期=%s" % (
-                    name,
-                    info.get('id'),
-                    info.get('name'),
-                    info.get('first_air_date')))
         # 返回
-        if not info:
-            logger.info("%s 以年份 %s 在TMDB中未找到%s信息!" % (
-                name, year, mtype.value if mtype else ""))
         return info
 
     def __search_movie_by_name(self, name: str, year: str) -> Optional[dict]:
@@ -419,7 +406,7 @@ class TmdbHelper:
             ret_seasons[season_info.get("season_number")] = season_info
         return ret_seasons
 
-    def search_multi(self, name: str) -> Optional[dict]:
+    def match_multi(self, name: str) -> Optional[dict]:
         """
         根据名称同时查询电影和电视剧，不带年份
         :param name: 识别的文件名或种子名
@@ -463,7 +450,7 @@ class TmdbHelper:
         return {}
 
     @lru_cache(maxsize=128)
-    def search_web(self, name: str, mtype: MediaType) -> Optional[dict]:
+    def match_web(self, name: str, mtype: MediaType) -> Optional[dict]:
         """
         搜索TMDB网站，直接抓取结果，结果只有一条时才返回
         :param name: 名称
@@ -517,7 +504,7 @@ class TmdbHelper:
                 else:
                     logger.info("%s TMDB网站未查询到媒体信息！" % name)
             except Exception as err:
-                print(str(err))
+                logger.error(f"从TheDbMovie网站查询出错：{err}")
                 return None
         return None
 

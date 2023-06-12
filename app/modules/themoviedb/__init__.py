@@ -60,8 +60,9 @@ class TheMovieDb(_ModuleBase):
                 # 直接查询详情
                 info = self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
             else:
+                logger.info(f"正在识别 {meta.get_name()} ...")
                 if meta.type != MediaType.TV and not meta.year:
-                    info = self.tmdb.search_multi(meta.get_name())
+                    info = self.tmdb.match_multi(meta.get_name())
                 else:
                     if meta.type == MediaType.TV:
                         # 确定是电视
@@ -86,12 +87,12 @@ class TheMovieDb(_ModuleBase):
                                                    mtype=MediaType.TV)
                         if not info:
                             # 非严格模式下去掉年份和类型再查一次
-                            info = self.tmdb.search_multi(name=meta.get_name())
+                            info = self.tmdb.match_multi(name=meta.get_name())
 
                 if not info:
                     # 从网站查询
-                    info = self.tmdb.search_web(name=meta.get_name(),
-                                                mtype=meta.type)
+                    info = self.tmdb.match_web(name=meta.get_name(),
+                                               mtype=meta.type)
                 # 补充全量信息
                 if info and not info.get("genres"):
                     info = self.tmdb.get_info(mtype=info.get("media_type"),
@@ -101,10 +102,11 @@ class TheMovieDb(_ModuleBase):
         else:
             # 使用缓存信息
             if cache_info.get("title"):
-                logger.info(f"使用识别缓存：{cache_info.get('title')}")
+                logger.info(f"{meta.get_name()} 使用识别缓存：{cache_info.get('title')}")
                 info = self.tmdb.get_info(mtype=cache_info.get("type"),
                                           tmdbid=cache_info.get("id"))
             else:
+                logger.info(f"{meta.get_name()} 使用识别缓存：无法识别")
                 info = None
 
         if info:
@@ -116,7 +118,12 @@ class TheMovieDb(_ModuleBase):
             # 赋值TMDB信息并返回
             mediainfo = MediaInfo(tmdb_info=info)
             mediainfo.set_category(cat)
+            logger.info(f"{meta.get_name()} 识别结果：{mediainfo.type.value} "
+                        f"{mediainfo.get_title_string()} "
+                        f"{mediainfo.tmdb_id}")
             return mediainfo
+        else:
+            logger.info(f"{meta.get_name()} 未匹配到媒体信息")
 
         return None
 
@@ -246,7 +253,7 @@ class TheMovieDb(_ModuleBase):
                                 and attr_value.startswith("http"):
                             image_name = attr_name.replace("_path",
                                                            "").replace("season",
-                                                                       f"{str(meta.begin_season).rjust(2, '0')}-")\
+                                                                       f"{str(meta.begin_season).rjust(2, '0')}-") \
                                          + Path(attr_value).suffix
                             self.__save_image(url=attr_value,
                                               file_path=file_path.parent.with_name(image_name))
@@ -261,8 +268,9 @@ class TheMovieDb(_ModuleBase):
                                                        file_path=file_path)
                     # 集的图片
                     if episodeinfo.get('still_path'):
-                        self.__save_image(f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{episodeinfo.get('still_path')}",
-                                          file_path.with_suffix(Path(episodeinfo.get('still_path')).suffix))
+                        self.__save_image(
+                            f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{episodeinfo.get('still_path')}",
+                            file_path.with_suffix(Path(episodeinfo.get('still_path')).suffix))
         except Exception as e:
             logger.error(f"{file_path} 刮削失败：{e}")
 
