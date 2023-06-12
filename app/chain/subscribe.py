@@ -188,6 +188,7 @@ class SubscribeChain(ChainBase):
                     logger.warn(f'{indexer.get("name")} 没有符合过滤条件的资源')
                     continue
                 for torrent in torrents:
+                    logger.info(f'处理资源：{torrent.title} ...')
                     # 识别前预处理
                     result: Optional[tuple] = self.prepare_recognize(title=torrent.title,
                                                                      subtitle=torrent.description)
