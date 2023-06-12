@@ -11,7 +11,7 @@ class PlaywrightHelper:
                         cookies: str = None,
                         ua: str = None,
                         proxies: dict = None,
-                        headless: bool = True,
+                        headless: bool = False,
                         timeout: int = 30) -> str:
         """
         获取网页源码

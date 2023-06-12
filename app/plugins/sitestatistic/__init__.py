@@ -172,11 +172,13 @@ class SiteStatistic(_PluginBase):
                 logger.error(f"站点 {site_name} 无法访问：{url}")
                 return None
         # 解析站点类型
-        site_schema = self.__build_class(html_text)
-        if not site_schema:
-            logger.error("站点 %s 无法识别站点类型" % site_name)
-            return None
-        return site_schema(site_name, url, site_cookie, html_text, session=session, ua=ua, proxy=proxy)
+        if html_text:
+            site_schema = self.__build_class(html_text)
+            if not site_schema:
+                logger.error("站点 %s 无法识别站点类型" % site_name)
+                return None
+            return site_schema(site_name, url, site_cookie, html_text, session=session, ua=ua, proxy=proxy)
+        return None
 
     def __refresh_site_data(self, site_info: CommentedMap) -> Optional[ISiteUserInfo]:
         """
