@@ -3,7 +3,7 @@ from typing import Tuple, List
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.db.models.site import Site
+from app.db.models.site import Site, SiteIcon
 
 
 class Sites:
@@ -60,3 +60,17 @@ class Sites:
             "cookie": cookies
         })
         return True, "更新站点Cookie成功"
+
+    def update_icon(self, name: str, domain: str, icon_url: str, icon_base64: str) -> bool:
+        """
+        更新站点图标
+        """
+        siteicon = SiteIcon(name=name, domain=domain, url=icon_url, base64=icon_base64)
+        if not siteicon.get_by_domain(self._db, domain):
+            siteicon.create(self._db)
+        elif icon_base64:
+            siteicon.update(self._db, {
+                "url": icon_url,
+                "base64": f"data:image/ico;base64,{icon_base64}"
+            })
+        return True

@@ -38,7 +38,6 @@ class ISiteUserInfo(metaclass=ABCMeta):
         # 站点信息
         self.site_name = None
         self.site_url = None
-        self.site_favicon = None
         # 用户信息
         self.username = None
         self.userid = None
@@ -92,8 +91,6 @@ class ISiteUserInfo(metaclass=ABCMeta):
         self.site_name = site_name
         self.site_url = url
         self._base_url = f"{split_url.scheme}://{split_url.netloc}"
-        self._favicon_url = urljoin(self._base_url, "favicon.ico")
-        self.site_favicon = ""
         self._site_cookie = site_cookie
         self._index_html = index_html
         self._session = session if session else requests.Session()
@@ -123,7 +120,6 @@ class ISiteUserInfo(metaclass=ABCMeta):
         解析站点信息
         :return:
         """
-        self._parse_favicon(self._index_html)
         if not self._parse_logged_in(self._index_html):
             return
 
@@ -196,23 +192,6 @@ class ISiteUserInfo(metaclass=ABCMeta):
         :return:
         """
         pass
-
-    def _parse_favicon(self, html_text: str):
-        """
-        解析站点favicon,返回base64 fav图标
-        :param html_text:
-        :return:
-        """
-        html = etree.HTML(html_text)
-        if html:
-            fav_link = html.xpath('//head/link[contains(@rel, "icon")]/@href')
-            if fav_link:
-                self._favicon_url = urljoin(self._base_url, fav_link[0])
-
-        res = RequestUtils(cookies=self._site_cookie, session=self._session, timeout=60, headers=self._ua).get_res(
-            url=self._favicon_url)
-        if res:
-            self.site_favicon = base64.b64encode(res.content).decode()
 
     def _get_page_content(self, url: str, params: dict = None, headers: dict = None):
         """
