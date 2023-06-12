@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Any
 
 from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
@@ -27,16 +27,44 @@ def start_subscribe_chain(title: str,
 @router.get("/", response_model=List[schemas.Subscribe])
 async def read_subscribes(
         db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_active_superuser)):
+        _: User = Depends(get_current_active_superuser)):
     """
     查询所有订阅
     """
-    if not current_user:
-        raise HTTPException(
-            status_code=400,
-            detail="需要授权",
-        )
     return Subscribe.list(db)
+
+
+@router.post("/", response_model=schemas.Response)
+async def create_subscribe(
+    *,
+    subscribe_in: schemas.Subscribe,
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    新增订阅
+    """
+    result = SubscribeChain().process(**subscribe_in.dict())
+    return {"success": result}
+
+
+@router.post("/update", response_model=schemas.Subscribe)
+async def update_subscribe(
+    *,
+    db: Session = Depends(get_db),
+    subscribe_in: schemas.Subscribe,
+    _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    更新订阅信息
+    """
+    subscribe = Subscribe.get(db, subscribe_in.id)
+    if not subscribe:
+        raise HTTPException(
+            status_code=404,
+            detail=f"订阅 {subscribe_in.id} 不存在",
+        )
+    subscribe.update(db, **subscribe_in.dict())
+    return subscribe
 
 
 @router.post("/seerr", response_model=schemas.Response)
@@ -92,29 +120,19 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
 
 @router.get("/refresh", response_model=schemas.Response)
 async def refresh_subscribes(
-        current_user: User = Depends(get_current_active_superuser)):
+        _: User = Depends(get_current_active_superuser)):
     """
     刷新所有订阅
     """
-    if not current_user:
-        raise HTTPException(
-            status_code=400,
-            detail="需要授权",
-        )
     SubscribeChain().refresh()
     return {"success": True}
 
 
 @router.get("/search", response_model=schemas.Response)
 async def search_subscribes(
-        current_user: User = Depends(get_current_active_superuser)):
+        _: User = Depends(get_current_active_superuser)):
     """
     搜索所有订阅
     """
-    if not current_user:
-        raise HTTPException(
-            status_code=400,
-            detail="需要授权",
-        )
     SubscribeChain().search(state='R')
     return {"success": True}

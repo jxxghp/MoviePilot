@@ -37,3 +37,7 @@ class Subscribe(Base):
     @staticmethod
     def get_by_state(db: Session, state: str):
         return db.query(Subscribe).filter(Subscribe.state == state).all()
+
+    @staticmethod
+    def get_by_tmdbid(db: Session, tmdbid: str):
+        return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid).first()
