@@ -1,9 +1,13 @@
 from typing import Any, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from requests import Session
 
 from app import schemas
 from app.core.config import settings
+from app.db import get_db
+from app.db.models.subscribe import Subscribe
+from app.schemas import RadarrMovie
 from version import APP_VERSION
 
 arr_router = APIRouter()
@@ -116,7 +120,7 @@ async def arr_languageprofile(apikey: str) -> Any:
 
 
 @arr_router.get("/movie", response_model=List[schemas.RadarrMovie])
-async def arr_movies(apikey: str) -> Any:
+async def arr_movies(apikey: str, db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影
     """
@@ -190,10 +194,28 @@ async def arr_movies(apikey: str) -> Any:
             status_code=403,
             detail="认证失败！",
         )
+    # 查询所有电影订阅
+    result = []
+    subscribes = Subscribe.list(db)
+    for subscribe in subscribes:
+        if subscribe.type != "电影":
+            continue
+        result.append(RadarrMovie(
+            id=subscribe.id,
+            title=subscribe.name,
+            isAvailable=True,
+            monitored=True,
+            tmdbId=subscribe.tmdbid,
+            profileId=1,
+            qualityProfileId=1,
+            added=True,
+            hasFile=False,
+        ))
+    return result
 
 
 @arr_router.get("/movie/{mid}", response_model=schemas.RadarrMovie)
-async def arr_movie(apikey: str) -> Any:
+async def arr_movie(apikey: str, mid: int, db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影
     """
@@ -202,10 +224,28 @@ async def arr_movie(apikey: str) -> Any:
             status_code=403,
             detail="认证失败！",
         )
+    subscribe = Subscribe.get(db, mid)
+    if subscribe:
+        return RadarrMovie(
+            id=subscribe.id,
+            title=subscribe.name,
+            isAvailable=True,
+            monitored=True,
+            tmdbId=subscribe.tmdbid,
+            profileId=1,
+            qualityProfileId=1,
+            added=True,
+            hasFile=False,
+        )
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail="未找到该电影！"
+        )
 
 
 @arr_router.get("/movie/lookup", response_model=List[schemas.RadarrMovie])
-async def arr_movie_lookup(apikey: str, term: str) -> Any:
+async def arr_movie_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影 term: `tmdb:${id}`
     """
@@ -213,6 +253,25 @@ async def arr_movie_lookup(apikey: str, term: str) -> Any:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
+        )
+    tmdbid = term.replace("tmdb:", "")
+    subscribe = Subscribe.get_by_tmdbid(db, int(tmdbid))
+    if subscribe:
+        return RadarrMovie(
+            id=subscribe.id,
+            title=subscribe.name,
+            isAvailable=True,
+            monitored=True,
+            tmdbId=subscribe.tmdbid,
+            profileId=1,
+            qualityProfileId=1,
+            added=True,
+            hasFile=False,
+        )
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail="未找到该电影！"
         )
 
 
