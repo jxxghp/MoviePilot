@@ -341,7 +341,14 @@ class MediaInfo:
                 if overview.split("/")[0].strip().isdigit():
                     self.year = overview.split("/")[0].strip()
 
-    def get_detail_url(self):
+    @property
+    def title_year(self):
+        if self.title:
+            return "%s (%s）" % (self.title, self.year) if self.year else self.title
+        return ""
+
+    @property
+    def detail_link(self):
         """
         TMDB媒体详情页地址
         """
@@ -354,7 +361,8 @@ class MediaInfo:
             return "https://movie.douban.com/subject/%s" % self.douban_id
         return ""
 
-    def get_stars(self):
+    @property
+    def stars(self):
         """
         返回评分星星个数
         """
@@ -362,9 +370,10 @@ class MediaInfo:
             return ""
         return "".rjust(int(self.vote_average), "★")
 
-    def get_star_string(self):
+    @property
+    def vote_star(self):
         if self.vote_average:
-            return "评分：%s" % self.get_stars()
+            return "评分：%s" % self.stars
         return ""
 
     def get_backdrop_image(self, default: bool = False):
@@ -390,11 +399,6 @@ class MediaInfo:
         if self.poster_path:
             return self.poster_path.replace("original", "w500")
         return default or ""
-
-    def get_title_string(self):
-        if self.title:
-            return "%s (%s）" % (self.title, self.year) if self.year else self.title
-        return ""
 
     def get_overview_string(self, max_len: int = 140):
         """
@@ -487,6 +491,7 @@ class Context:
         """
         转换为字典
         """
+
         def object_to_dict(obj):
             attributes = [
                 attr for attr in dir(obj)

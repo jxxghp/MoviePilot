@@ -175,8 +175,8 @@ class TorrentHelper:
         def get_sort_str(_context):
             _meta = _context.meta_info
             _torrent = _context.torrent_info
-            season_len = str(len(_meta.get_season_list())).rjust(2, '0')
-            episode_len = str(9999 - len(_meta.get_episode_list())).rjust(4, '0')
+            season_len = str(len(_meta.season_list)).rjust(2, '0')
+            episode_len = str(9999 - len(_meta.episode_list)).rjust(4, '0')
             # 排序：标题、资源类型、站点、做种、季集
             return "%s%s%s%s" % (str(_torrent.title).ljust(100, ' '),
                                  str(_torrent.pri_order).rjust(3, '0'),
@@ -208,10 +208,10 @@ class TorrentHelper:
             meta = context.meta_info
             media = context.media_info
             if media.type == MediaType.TV:
-                media_name = "%s%s" % (media.get_title_string(),
+                media_name = "%s%s" % (media.title_year,
                                        meta.get_season_episode_string())
             else:
-                media_name = media.get_title_string()
+                media_name = media.title_year
             if media_name not in _added:
                 _added.append(media_name)
                 result.append(context)
@@ -230,5 +230,5 @@ class TorrentHelper:
             meta = MetaInfo(file)
             if not meta.begin_episode:
                 continue
-            episodes = list(set(episodes).union(set(meta.get_episode_list())))
+            episodes = list(set(episodes).union(set(meta.episode_list)))
         return episodes

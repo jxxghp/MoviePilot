@@ -27,7 +27,7 @@ class IdentifyChain(ChainBase):
         if not mediainfo:
             logger.warn(f'{title} 未识别到媒体信息')
             return Context(meta=metainfo)
-        logger.info(f'{title} 识别到媒体信息：{mediainfo.type.value} {mediainfo.get_title_string()}')
+        logger.info(f'{title} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}')
         # 更新媒体图片
         self.obtain_image(mediainfo=mediainfo)
         # 返回上下文

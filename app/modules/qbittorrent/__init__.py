@@ -71,11 +71,11 @@ class QbittorrentModule(_ModuleBase):
                         file_id = torrent_file.get("id")
                         file_name = torrent_file.get("name")
                         meta_info = MetaInfo(file_name)
-                        if not meta_info.get_episode_list() \
-                                or not set(meta_info.get_episode_list()).issubset(episodes):
+                        if not meta_info.episode_list \
+                                or not set(meta_info.episode_list).issubset(episodes):
                             file_ids.append(file_id)
                         else:
-                            sucess_epidised = list(set(sucess_epidised).union(set(meta_info.get_episode_list())))
+                            sucess_epidised = list(set(sucess_epidised).union(set(meta_info.episode_list)))
                     if sucess_epidised and file_ids:
                         # 选择文件
                         self.qbittorrent.set_files(torrent_hash=torrent_hash, file_ids=file_ids, priority=0)

@@ -60,38 +60,38 @@ class TheMovieDbModule(_ModuleBase):
                 # 直接查询详情
                 info = self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
             else:
-                logger.info(f"正在识别 {meta.get_name()} ...")
+                logger.info(f"正在识别 {meta.name} ...")
                 if meta.type == MediaType.UNKNOWN and not meta.year:
-                    info = self.tmdb.match_multi(meta.get_name())
+                    info = self.tmdb.match_multi(meta.name)
                 else:
                     if meta.type == MediaType.TV:
                         # 确定是电视
-                        info = self.tmdb.match(name=meta.get_name(),
+                        info = self.tmdb.match(name=meta.name,
                                                year=meta.year,
                                                mtype=meta.type,
                                                season_year=meta.year,
                                                season_number=meta.begin_season)
                         if meta.year:
                             # 非严格模式下去掉年份再查一次
-                            info = self.tmdb.match(name=meta.get_name(),
+                            info = self.tmdb.match(name=meta.name,
                                                    mtype=meta.type)
                     else:
                         # 有年份先按电影查
-                        info = self.tmdb.match(name=meta.get_name(),
+                        info = self.tmdb.match(name=meta.name,
                                                year=meta.year,
                                                mtype=MediaType.MOVIE)
                         # 没有再按电视剧查
                         if not info:
-                            info = self.tmdb.match(name=meta.get_name(),
+                            info = self.tmdb.match(name=meta.name,
                                                    year=meta.year,
                                                    mtype=MediaType.TV)
                         if not info:
                             # 非严格模式下去掉年份和类型再查一次
-                            info = self.tmdb.match_multi(name=meta.get_name())
+                            info = self.tmdb.match_multi(name=meta.name)
 
                 if not info:
                     # 从网站查询
-                    info = self.tmdb.match_web(name=meta.get_name(),
+                    info = self.tmdb.match_web(name=meta.name,
                                                mtype=meta.type)
                 # 补充全量信息
                 if info and not info.get("genres"):
@@ -102,11 +102,11 @@ class TheMovieDbModule(_ModuleBase):
         else:
             # 使用缓存信息
             if cache_info.get("title"):
-                logger.info(f"{meta.get_name()} 使用识别缓存：{cache_info.get('title')}")
+                logger.info(f"{meta.name} 使用识别缓存：{cache_info.get('title')}")
                 info = self.tmdb.get_info(mtype=cache_info.get("type"),
                                           tmdbid=cache_info.get("id"))
             else:
-                logger.info(f"{meta.get_name()} 使用识别缓存：无法识别")
+                logger.info(f"{meta.name} 使用识别缓存：无法识别")
                 info = None
 
         if info:
@@ -118,12 +118,12 @@ class TheMovieDbModule(_ModuleBase):
             # 赋值TMDB信息并返回
             mediainfo = MediaInfo(tmdb_info=info)
             mediainfo.set_category(cat)
-            logger.info(f"{meta.get_name()} 识别结果：{mediainfo.type.value} "
-                        f"{mediainfo.get_title_string()} "
+            logger.info(f"{meta.name} 识别结果：{mediainfo.type.value} "
+                        f"{mediainfo.title_year} "
                         f"{mediainfo.tmdb_id}")
             return mediainfo
         else:
-            logger.info(f"{meta.get_name()} 未匹配到媒体信息")
+            logger.info(f"{meta.name} 未匹配到媒体信息")
 
         return None
 
@@ -137,15 +137,15 @@ class TheMovieDbModule(_ModuleBase):
         if settings.SEARCH_SOURCE != "themoviedb":
             return None
 
-        if not meta.get_name():
+        if not meta.name:
             return []
         if meta.type == MediaType.UNKNOWN and not meta.year:
-            results = self.tmdb.search_multiis(meta.get_name())
+            results = self.tmdb.search_multiis(meta.name)
         else:
             if meta.type == MediaType.UNKNOWN:
                 results = list(
-                    set(self.tmdb.search_movies(meta.get_name(), meta.year))
-                    .union(set(self.tmdb.search_tv_tmdbinfos(meta.get_name(), meta.year)))
+                    set(self.tmdb.search_movies(meta.name, meta.year))
+                    .union(set(self.tmdb.search_tv_tmdbinfos(meta.name, meta.year)))
                 )
                 # 组合结果的情况下要排序
                 results = sorted(
@@ -154,9 +154,9 @@ class TheMovieDbModule(_ModuleBase):
                     reverse=True
                 )
             elif meta.type == MediaType.MOVIE:
-                results = self.tmdb.search_movies(meta.get_name(), meta.year)
+                results = self.tmdb.search_movies(meta.name, meta.year)
             else:
-                results = self.tmdb.search_tv_tmdbinfos(meta.get_name(), meta.year)
+                results = self.tmdb.search_tv_tmdbinfos(meta.name, meta.year)
 
         return [MediaInfo(tmdb_info=info) for info in results]
 

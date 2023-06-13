@@ -38,7 +38,7 @@ class FanartModule(_ModuleBase):
         else:
             result = self.__request_fanart(mediainfo.type, mediainfo.tvdb_id)
         if not result or result.get('status') == 'error':
-            logger.warn(f"没有获取到 {mediainfo.get_title_string()} 的Fanart图片数据")
+            logger.warn(f"没有获取到 {mediainfo.title_year} 的Fanart图片数据")
             return
         for name, images in result.items():
             if not images:

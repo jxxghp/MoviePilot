@@ -48,7 +48,7 @@ class TmdbCache(metaclass=Singleton):
         """
         获取缓存KEY
         """
-        return f"[{meta.type.value if meta.type else '未知'}]{meta.get_name()}-{meta.year}-{meta.begin_season}"
+        return f"[{meta.type.value if meta.type else '未知'}]{meta.name}-{meta.year}-{meta.begin_season}"
 
     def get(self, meta: MetaBase):
         """

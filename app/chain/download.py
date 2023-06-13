@@ -29,8 +29,8 @@ class DownloadChain(ChainBase):
         msg_text = ""
         if torrent.site_name:
             msg_text = f"站点：{torrent.site_name}"
-        if meta.get_resource_type_string():
-            msg_text = f"{msg_text}\n质量：{meta.get_resource_type_string()}"
+        if meta.resource:
+            msg_text = f"{msg_text}\n质量：{meta.resource}"
         if torrent.size:
             if str(torrent.size).isdigit():
                 size = StringUtils.str_filesize(torrent.size)
@@ -50,8 +50,8 @@ class DownloadChain(ChainBase):
             torrent.description = re.sub(r'<[^>]+>', '', description)
             msg_text = f"{msg_text}\n描述：{torrent.description}"
 
-        self.post_message(title=f"{mediainfo.get_title_string()}"
-                                f"{meta.get_season_episode_string()} 开始下载",
+        self.post_message(title=f"{mediainfo.title_year}"
+                                f"{meta.season_episode} 开始下载",
                           text=msg_text,
                           image=mediainfo.get_message_image(),
                           userid=userid)
@@ -124,11 +124,11 @@ class DownloadChain(ChainBase):
                 self.download_added(context=_context, torrent_path=_torrent_file)
             else:
                 # 下载失败
-                logger.error(f"{_media.get_title_string()} 添加下载任务失败："
+                logger.error(f"{_media.title_year} 添加下载任务失败："
                              f"{_torrent.title} - {_torrent.enclosure}，{error_msg}")
                 self.post_message(
                     title="添加下载任务失败：%s %s"
-                          % (_media.get_title_string(), _meta.get_season_episode_string()),
+                          % (_media.title_year, _meta.get_season_episode_string()),
                     text=f"站点：{_torrent.site_name}\n"
                          f"种子名称：{_meta.org_string}\n"
                          f"种子链接：{_torrent.enclosure}\n"
@@ -208,8 +208,8 @@ class DownloadChain(ChainBase):
                     torrent = context.torrent_info
                     if media.type != MediaType.TV:
                         continue
-                    item_season = meta.get_season_list()
-                    if meta.get_episode_list():
+                    item_season = meta.season_list
+                    if meta.episode_list:
                         continue
                     if need_tmdbid == media.tmdb_id:
                         if set(item_season).issubset(set(need_season)):
@@ -259,10 +259,10 @@ class DownloadChain(ChainBase):
                             if context in downloaded_list:
                                 continue
                             # 只处理单季含集的种子
-                            item_season = meta.get_season_list()
+                            item_season = meta.season_list
                             if len(item_season) != 1 or item_season[0] != need_season:
                                 continue
-                            item_episodes = meta.get_episode_list()
+                            item_episodes = meta.episode_list
                             if not item_episodes:
                                 continue
                             # 为需要集的子集则下载
@@ -301,10 +301,10 @@ class DownloadChain(ChainBase):
                             break
                         # 选中一个单季整季的或单季包括需要的所有集的
                         if media.tmdb_id == need_tmdbid \
-                                and (not meta.get_episode_list()
-                                     or set(meta.get_episode_list()).intersection(set(need_episodes))) \
-                                and len(meta.get_season_list()) == 1 \
-                                and meta.get_season_list()[0] == need_season:
+                                and (not meta.episode_list
+                                     or set(meta.episode_list).intersection(set(need_episodes))) \
+                                and len(meta.season_list) == 1 \
+                                and meta.season_list[0] == need_season:
                             # 检查种子看是否有需要的集
                             torrent_path, torrent_files = __download_torrent(torrent)
                             if not torrent_path:
@@ -377,20 +377,20 @@ class DownloadChain(ChainBase):
             # 电影
             exists_movies: Optional[ExistMediaInfo] = self.media_exists(mediainfo)
             if exists_movies:
-                logger.info(f"媒体库中已存在电影：{mediainfo.get_title_string()}")
+                logger.info(f"媒体库中已存在电影：{mediainfo.title_year}")
                 return True, {}
             return False, {}
         else:
             if not mediainfo.seasons:
                 # 补充媒体信息
-                mediainfo: MediaInfo = self.recognize_media(meta=MetaInfo(title=mediainfo.get_title_string()),
+                mediainfo: MediaInfo = self.recognize_media(meta=MetaInfo(title=mediainfo.title_year),
                                                             mtype=mediainfo.type,
                                                             tmdbid=mediainfo.tmdb_id)
                 if not mediainfo:
                     logger.error(f"媒体信息识别失败！")
                     return False, {}
                 if not mediainfo.seasons:
-                    logger.error(f"媒体信息中没有季集信息：{mediainfo.get_title_string()}")
+                    logger.error(f"媒体信息中没有季集信息：{mediainfo.title_year}")
                     return False, {}
             # 电视剧
             exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo)
@@ -399,7 +399,7 @@ class DownloadChain(ChainBase):
                 for season, episodes in mediainfo.seasons.items():
                     # 全季不存在
                     if meta.begin_season \
-                            and season not in meta.get_season_list():
+                            and season not in meta.season_list:
                         continue
                     __append_no_exists(_season=season, _episodes=[], _total=len(episodes), _start=min(episodes))
                 return False, no_exists
@@ -407,7 +407,7 @@ class DownloadChain(ChainBase):
                 # 存在一些，检查缺失的季集
                 for season, episodes in mediainfo.seasons.items():
                     if meta.begin_season \
-                            and season not in meta.get_season_list():
+                            and season not in meta.season_list:
                         continue
                     exist_seasons = exists_tvs.seasons
                     if exist_seasons.get(season):

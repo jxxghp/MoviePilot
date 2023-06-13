@@ -105,12 +105,12 @@ class FilterModule(_ModuleBase):
         seasons = season_episodes.keys()
         meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
         # 种子季
-        torrent_seasons = meta.get_season_list()
+        torrent_seasons = meta.season_list
         if not torrent_seasons:
             # 按第一季处理
             torrent_seasons = [1]
         # 种子集
-        torrent_episodes = meta.get_episode_list()
+        torrent_episodes = meta.episode_list
         if not set(torrent_seasons).issubset(set(seasons)):
             # 种子季不在过滤季中
             logger.info(f"种子 {torrent.title} 不是需要的季")

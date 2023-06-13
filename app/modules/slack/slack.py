@@ -177,13 +177,13 @@ class Slack:
                 index = 1
                 for media in medias:
                     if media.get_poster_image():
-                        if media.get_star_string():
-                            text = f"{index}. *<{media.get_detail_url()}|{media.get_title_string()}>*" \
+                        if media.vote_star:
+                            text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
                                    f"\n类型：{media.type.value}" \
-                                   f"\n{media.get_star_string()}" \
+                                   f"\n{media.vote_star}" \
                                    f"\n{media.get_overview_string(50)}"
                         else:
-                            text = f"{index}. *<{media.get_detail_url()}|{media.get_title_string()}>*" \
+                            text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
                                    f"\n类型：{media.type.value}" \
                                    f"\n{media.get_overview_string(50)}"
                         blocks.append(
@@ -196,7 +196,7 @@ class Slack:
                                 "accessory": {
                                     "type": "image",
                                     "image_url": f"{media.get_poster_image()}",
-                                    "alt_text": f"{media.get_title_string()}"
+                                    "alt_text": f"{media.title_year}"
                                 }
                             }
                         )
@@ -261,9 +261,9 @@ class Slack:
                 site_name = torrent.site_name
                 meta = MetaInfo(torrent.title, torrent.description)
                 link = torrent.page_url
-                title = f"{meta.get_season_episode_string()} " \
-                        f"{meta.get_resource_type_string()} " \
-                        f"{meta.get_resource_team_string()}"
+                title = f"{meta.season_episode} " \
+                        f"{meta.resource} " \
+                        f"{meta.release_team}"
                 title = re.sub(r"\s+", " ", title).strip()
                 free = torrent.get_volume_factor_string()
                 seeder = f"{torrent.seeders}↑"

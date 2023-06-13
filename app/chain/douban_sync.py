@@ -76,24 +76,24 @@ class DoubanSyncChain(ChainBase):
                 # 查询缺失的媒体信息
                 exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
                 if exist_flag:
-                    logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在')
+                    logger.info(f'{mediainfo.title_year} 媒体库中已存在')
                     continue
-                logger.info(f'{mediainfo.get_title_string()} 媒体库中不存在，开始搜索 ...')
+                logger.info(f'{mediainfo.title_year} 媒体库中不存在，开始搜索 ...')
                 # 搜索
                 contexts = self.searchchain.process(meta=meta,
                                                     mediainfo=mediainfo,
                                                     no_exists=no_exists)
                 if not contexts:
-                    logger.warn(f'{mediainfo.get_title_string()} 未搜索到资源')
+                    logger.warn(f'{mediainfo.title_year} 未搜索到资源')
                     continue
                 # 自动下载
                 downloads, lefts = self.downloadchain.batch_download(contexts=contexts, need_tvs=no_exists)
                 if downloads and not lefts:
                     # 全部下载完成
-                    logger.info(f'{mediainfo.get_title_string()} 下载完成')
+                    logger.info(f'{mediainfo.title_year} 下载完成')
                 else:
                     # 未完成下载
-                    logger.info(f'{mediainfo.get_title_string()} 未下载未完整，添加订阅 ...')
+                    logger.info(f'{mediainfo.title_year} 未下载未完整，添加订阅 ...')
                     # 添加订阅
                     self.subscribechain.process(title=mediainfo.title,
                                                 year=mediainfo.year,

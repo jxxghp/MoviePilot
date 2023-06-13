@@ -137,11 +137,11 @@ class FileTransferModule(_ModuleBase):
                 if (org_path.stem == Path(sub_file_name).stem) or \
                         (sub_metainfo.cn_name and sub_metainfo.cn_name == metainfo.cn_name) \
                         or (sub_metainfo.en_name and sub_metainfo.en_name == metainfo.en_name):
-                    if metainfo.get_season_string() \
-                            and metainfo.get_season_string() != sub_metainfo.get_season_string():
+                    if metainfo.season \
+                            and metainfo.season != sub_metainfo.season:
                         continue
-                    if metainfo.get_episode_string() \
-                            and metainfo.get_episode_string() != sub_metainfo.get_episode_string():
+                    if metainfo.episode \
+                            and metainfo.episode != sub_metainfo.episode:
                         continue
                     new_file_type = ""
                     # 兼容jellyfin字幕识别(多重识别), emby则会识别最后一个后缀
@@ -444,11 +444,11 @@ class FileTransferModule(_ModuleBase):
             # 原语种标题
             "original_title": mediainfo.original_title,
             # 识别名称
-            "name": meta.get_name(),
+            "name": meta.name,
             # 年份
             "year": mediainfo.year,
             # 版本
-            "edition": meta.get_edtion_string(),
+            "edition": meta.edtion,
             # 分辨率
             "videoFormat": meta.resource_pix,
             # 制作组/字幕组
@@ -464,11 +464,11 @@ class FileTransferModule(_ModuleBase):
             # IMDBID
             "imdbid": mediainfo.imdb_id,
             # 季号
-            "season": meta.get_season_seq(),
+            "season": meta.season_seq,
             # 集号
-            "episode": meta.get_episode_seqs(),
+            "episode": meta.episode_seqs,
             # 季集 SxxExx
-            "season_episode": "%s%s" % (meta.get_begin_season_string(), meta.get_episode_strings()),
+            "season_episode": "%s%s" % (meta.season_name, meta.episode),
             # 段/节
             "part": meta.part,
             # 文件后缀

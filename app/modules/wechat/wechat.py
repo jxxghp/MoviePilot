@@ -170,14 +170,14 @@ class WeChat(metaclass=Singleton):
         index = 1
         for media in medias:
             if media.vote_average:
-                title = f"{index}. {media.get_title_string()}\n类型：{media.type.value}，评分：{media.vote_average}"
+                title = f"{index}. {media.title_year}\n类型：{media.type.value}，评分：{media.vote_average}"
             else:
-                title = f"{index}. {media.get_title_string()}\n类型：{media.type.value}"
+                title = f"{index}. {media.title_year}\n类型：{media.type.value}"
             articles.append({
                 "title": title,
                 "description": "",
                 "picurl": media.get_message_image() if index == 1 else media.get_poster_image(),
-                "url": media.get_detail_url()
+                "url": media.detail_link
             })
             index += 1
 
@@ -214,9 +214,9 @@ class WeChat(metaclass=Singleton):
             torrent = context.torrent_info
             meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
             torrent_title = f"{index}.【{torrent.site_name}】" \
-                            f"{meta.get_season_episode_string()} " \
-                            f"{meta.get_resource_type_string()} " \
-                            f"{meta.get_resource_team_string()} " \
+                            f"{meta.season_episode} " \
+                            f"{meta.resource} " \
+                            f"{meta.release_team} " \
                             f"{StringUtils.str_filesize(torrent.size)} " \
                             f"{torrent.get_volume_factor_string()} " \
                             f"{torrent.seeders}↑"

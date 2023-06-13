@@ -98,9 +98,9 @@ class DoubanModule(_ModuleBase):
         if settings.SEARCH_SOURCE != "douban":
             return None
 
-        if not meta.get_name():
+        if not meta.name:
             return []
-        result = self.doubanapi.search(meta.get_name())
+        result = self.doubanapi.search(meta.name)
         if not result:
             return []
         # 返回数据
@@ -128,7 +128,7 @@ class DoubanModule(_ModuleBase):
             if not title:
                 continue
             meta = MetaInfo(title)
-            if meta.get_name() == name and (not season or meta.begin_season == season):
+            if meta.name == name and (not season or meta.begin_season == season):
                 return item_obj
         return {}
 
@@ -148,7 +148,7 @@ class DoubanModule(_ModuleBase):
             logger.info(f"开始刮削媒体库文件：{file} ...")
             try:
                 meta = MetaInfo(file.stem)
-                if not meta.get_name():
+                if not meta.name:
                     continue
                 # 根据名称查询豆瓣数据
                 doubaninfo = self.match(name=mediainfo.title, year=mediainfo.year, season=meta.begin_season)

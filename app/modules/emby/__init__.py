@@ -41,7 +41,7 @@ class EmbyModule(_ModuleBase):
         if mediainfo.type == MediaType.MOVIE:
             movies = self.emby.get_movies(title=mediainfo.title, year=mediainfo.year)
             if not movies:
-                logger.info(f"{mediainfo.get_title_string()} 在媒体库中不存在")
+                logger.info(f"{mediainfo.title_year} 在媒体库中不存在")
                 return None
             else:
                 logger.info(f"媒体库中已存在：{movies}")
@@ -51,10 +51,10 @@ class EmbyModule(_ModuleBase):
                                             year=mediainfo.year,
                                             tmdb_id=mediainfo.tmdb_id)
             if not tvs:
-                logger.info(f"{mediainfo.get_title_string()} 在媒体库中不存在")
+                logger.info(f"{mediainfo.title_year} 在媒体库中不存在")
                 return None
             else:
-                logger.info(f"{mediainfo.get_title_string()} 媒体库中已存在：{tvs}")
+                logger.info(f"{mediainfo.title_year} 媒体库中已存在：{tvs}")
                 return ExistMediaInfo(type=MediaType.TV, seasons=tvs)
 
     def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> Optional[bool]:

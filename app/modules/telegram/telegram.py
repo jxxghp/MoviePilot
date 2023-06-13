@@ -109,15 +109,15 @@ class Telegram(metaclass=Singleton):
                 if media.vote_average:
                     caption = "%s\n%s. [%s](%s)\n_%s，%s_" % (caption,
                                                              index,
-                                                             media.get_title_string(),
-                                                             media.get_detail_url(),
+                                                             media.title_year,
+                                                             media.detail_link,
                                                              f"类型：{media.type.value}",
                                                              f"评分：{media.vote_average}")
                 else:
                     caption = "%s\n%s. [%s](%s)\n_%s_" % (caption,
                                                           index,
-                                                          media.get_title_string(),
-                                                          media.get_detail_url(),
+                                                          media.title_year,
+                                                          media.detail_link,
                                                           f"类型：{media.type.value}")
                 index += 1
 
@@ -148,9 +148,9 @@ class Telegram(metaclass=Singleton):
                 site_name = torrent.site_name
                 meta = MetaInfo(torrent.title, torrent.description)
                 link = torrent.page_url
-                title = f"{meta.get_season_episode_string()} " \
-                        f"{meta.get_resource_type_string()} " \
-                        f"{meta.get_resource_team_string()}"
+                title = f"{meta.season_episode} " \
+                        f"{meta.resource} " \
+                        f"{meta.release_team}"
                 title = re.sub(r"\s+", " ", title).strip()
                 free = torrent.get_volume_factor_string()
                 seeder = f"{torrent.seeders}↑"

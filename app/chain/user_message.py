@@ -85,8 +85,8 @@ class UserMessageChain(ChainBase):
                 exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=self._current_meta,
                                                                               mediainfo=self._current_media)
                 if exist_flag:
-                    self.post_message(title=f"{self._current_media.get_title_string()}"
-                                            f"{self._current_meta.get_season()} 媒体库中已存在",
+                    self.post_message(title=f"{self._current_media.title_year}"
+                                            f"{self._current_meta.sea} 媒体库中已存在",
                                       userid=userid)
                     return
                 # 发送缺失的媒体信息
@@ -94,11 +94,11 @@ class UserMessageChain(ChainBase):
                     # 发送消息
                     messages = [f"第 {no_exist.get('season')} 季缺失 {len(no_exist.get('episodes')) or no_exist.get('total_episodes')} 集"
                                 for no_exist in no_exists.get(mediainfo.tmdb_id)]
-                    self.post_message(title=f"{mediainfo.get_title_string()}：\n" + "\n".join(messages))
+                    self.post_message(title=f"{mediainfo.title_year}：\n" + "\n".join(messages))
                 # 搜索种子，过滤掉不需要的剧集，以便选择
-                logger.info(f"{mediainfo.get_title_string()} 媒体库中不存在，开始搜索 ...")
+                logger.info(f"{mediainfo.title_year} 媒体库中不存在，开始搜索 ...")
                 self.post_message(
-                    title=f"开始搜索 {mediainfo.type.value} {mediainfo.get_title_string()} ...", userid=userid)
+                    title=f"开始搜索 {mediainfo.type.value} {mediainfo.title_year} ...", userid=userid)
                 # 开始搜索
                 contexts = self.searchchain.process(meta=self._current_meta,
                                                     mediainfo=mediainfo,
@@ -106,7 +106,7 @@ class UserMessageChain(ChainBase):
                 if not contexts:
                     # 没有数据
                     self.post_message(title=f"{mediainfo.title}"
-                                            f"{self._current_meta.get_season()} 未搜索到资源！",
+                                            f"{self._current_meta.sea} 未搜索到资源！",
                                       userid=userid)
                     return
                 # 搜索结果排序
@@ -142,8 +142,8 @@ class UserMessageChain(ChainBase):
                     exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=self._current_meta,
                                                                                   mediainfo=self._current_media)
                     if exist_flag:
-                        self.post_message(title=f"{self._current_media.get_title_string()}"
-                                                f"{self._current_meta.get_season()} 媒体库中已存在",
+                        self.post_message(title=f"{self._current_media.title_year}"
+                                                f"{self._current_meta.sea} 媒体库中已存在",
                                           userid=userid)
                         return
                     # 批量下载
@@ -152,10 +152,10 @@ class UserMessageChain(ChainBase):
                                                                          userid=userid)
                     if downloads and not lefts:
                         # 全部下载完成
-                        logger.info(f'{self._current_media.get_title_string()} 下载完成')
+                        logger.info(f'{self._current_media.title_year} 下载完成')
                     else:
                         # 未完成下载
-                        logger.info(f'{self._current_media.get_title_string()} 未下载未完整，添加订阅 ...')
+                        logger.info(f'{self._current_media.title_year} 未下载未完整，添加订阅 ...')
                         # 添加订阅
                         self.subscribechain.process(title=self._current_media.title,
                                                     year=self._current_media.year,
@@ -286,7 +286,7 @@ class UserMessageChain(ChainBase):
             mtype, key_word, season_num, episode_num, year, title = StringUtils.get_keyword(content)
             # 识别
             meta = MetaInfo(title)
-            if not meta.get_name():
+            if not meta.name:
                 self.post_message(title="无法识别输入内容！", userid=userid)
                 return
             # 合并信息
@@ -301,10 +301,10 @@ class UserMessageChain(ChainBase):
             # 记录当前状态
             self._current_meta = meta
             # 开始搜索
-            logger.info(f"开始搜索：{meta.get_name()}")
+            logger.info(f"开始搜索：{meta.name}")
             medias: Optional[List[MediaInfo]] = self.search_medias(meta=meta)
             if not medias:
-                self.post_message(title=f"{meta.get_name()} 没有找到对应的媒体信息！", userid=userid)
+                self.post_message(title=f"{meta.name} 没有找到对应的媒体信息！", userid=userid)
                 return
             logger.info(f"搜索到 {len(medias)} 条相关媒体信息")
             self._user_cache[userid] = {
@@ -314,7 +314,7 @@ class UserMessageChain(ChainBase):
             self._current_page = 0
             self._current_media = None
             # 发送媒体列表
-            self.__post_medias_message(title=meta.get_name(),
+            self.__post_medias_message(title=meta.name,
                                        items=medias[:self._page_size],
                                        userid=userid, total=len(medias))
 

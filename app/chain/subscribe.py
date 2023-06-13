@@ -86,17 +86,17 @@ class SubscribeChain(ChainBase):
         # 添加订阅
         sid, err_msg = self.subscribes.add(mediainfo, season=season, **kwargs)
         if not sid:
-            logger.error(f'{mediainfo.get_title_string()} {err_msg}')
+            logger.error(f'{mediainfo.title_year} {err_msg}')
             # 发回原用户
-            self.post_message(title=f"{mediainfo.get_title_string()}{metainfo.get_season_string()} "
+            self.post_message(title=f"{mediainfo.title_year}{metainfo.season} "
                                     f"添加订阅失败！",
                               text=f"{err_msg}",
                               image=mediainfo.get_message_image(),
                               userid=userid)
         else:
-            logger.info(f'{mediainfo.get_title_string()}{metainfo.get_season_string()} 添加订阅成功')
+            logger.info(f'{mediainfo.title_year}{metainfo.season} 添加订阅成功')
             # 广而告之
-            self.post_message(title=f"{mediainfo.get_title_string()}{metainfo.get_season_string()} 已添加订阅",
+            self.post_message(title=f"{mediainfo.title_year}{metainfo.season} 已添加订阅",
                               text=f"评分：{mediainfo.vote_average}，来自用户：{username or userid}",
                               image=mediainfo.get_message_image())
         # 返回结果
@@ -132,10 +132,10 @@ class SubscribeChain(ChainBase):
             # 查询缺失的媒体信息
             exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
             if exist_flag:
-                logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在，完成订阅')
+                logger.info(f'{mediainfo.title_year} 媒体库中已存在，完成订阅')
                 self.subscribes.delete(subscribe.id)
                 # 发送通知
-                self.post_message(title=f'{mediainfo.get_title_string()}{meta.get_season_string()} 已完成订阅',
+                self.post_message(title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
                                   image=mediainfo.get_message_image())
                 continue
             # 使用订阅的总集数和开始集数替换no_exists
@@ -159,14 +159,14 @@ class SubscribeChain(ChainBase):
             downloads, lefts = self.downloadchain.batch_download(contexts=contexts, need_tvs=no_exists)
             if downloads and not lefts:
                 # 全部下载完成
-                logger.info(f'{mediainfo.get_title_string()} 下载完成，完成订阅')
+                logger.info(f'{mediainfo.title_year} 下载完成，完成订阅')
                 self.subscribes.delete(subscribe.id)
                 # 发送通知
-                self.post_message(title=f'{mediainfo.get_title_string()}{meta.get_season_string()} 已完成订阅',
+                self.post_message(title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
                                   image=mediainfo.get_message_image())
             else:
                 # 未完成下载
-                logger.info(f'{mediainfo.get_title_string()} 未下载未完整，继续订阅 ...')
+                logger.info(f'{mediainfo.title_year} 未下载未完整，继续订阅 ...')
 
     def refresh(self):
         """
@@ -236,10 +236,10 @@ class SubscribeChain(ChainBase):
             # 查询缺失的媒体信息
             exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
             if exist_flag:
-                logger.info(f'{mediainfo.get_title_string()} 媒体库中已存在，完成订阅')
+                logger.info(f'{mediainfo.title_year} 媒体库中已存在，完成订阅')
                 self.subscribes.delete(subscribe.id)
                 # 发送通知
-                self.post_message(title=f'{mediainfo.get_title_string()}{meta.get_season_string()} 已完成订阅',
+                self.post_message(title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
                                   image=mediainfo.get_message_image())
                 continue
             # 使用订阅的总集数和开始集数替换no_exists
@@ -264,18 +264,18 @@ class SubscribeChain(ChainBase):
                         if meta.begin_season and meta.begin_season != torrent_meta.begin_season:
                             continue
                         # 匹配成功
-                        logger.info(f'{mediainfo.get_title_string()} 匹配成功：{torrent_info.title}')
+                        logger.info(f'{mediainfo.title_year} 匹配成功：{torrent_info.title}')
                         _match_context.append(context)
-            logger.info(f'{mediainfo.get_title_string()} 匹配完成，共匹配到{len(_match_context)}个资源')
+            logger.info(f'{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源')
             if _match_context:
                 # 批量择优下载
                 downloads, lefts = self.downloadchain.batch_download(contexts=_match_context, need_tvs=no_exists)
                 if downloads and not lefts:
                     # 全部下载完成
-                    logger.info(f'{mediainfo.get_title_string()} 下载完成，完成订阅')
+                    logger.info(f'{mediainfo.title_year} 下载完成，完成订阅')
                     self.subscribes.delete(subscribe.id)
                     # 发送通知
-                    self.post_message(title=f'{mediainfo.get_title_string()}{meta.get_season_string()} 已完成订阅',
+                    self.post_message(title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
                                       image=mediainfo.get_message_image())
                 else:
                     # 未完成下载，计算剩余集数
@@ -284,7 +284,7 @@ class SubscribeChain(ChainBase):
                         season = season_info.get('season')
                         if season == subscribe.season:
                             left_episodes = season_info.get('episodes')
-                            logger.info(f'{mediainfo.get_title_string()} 季 {season} 未下载完整，'
+                            logger.info(f'{mediainfo.title_year} 季 {season} 未下载完整，'
                                         f'更新缺失集数为{len(left_episodes)} ...')
                             self.subscribes.update(subscribe.id, {
                                 "lack_episode": len(left_episodes)

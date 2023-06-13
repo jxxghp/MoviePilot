@@ -59,9 +59,9 @@ class TransmissionModule(_ModuleBase):
                     file_id = torrent_file.id
                     file_name = torrent_file.name
                     meta_info = MetaInfo(file_name)
-                    if not meta_info.get_episode_list():
+                    if not meta_info.episode_list:
                         continue
-                    selected = set(meta_info.get_episode_list()).issubset(set(episodes))
+                    selected = set(meta_info.episode_list).issubset(set(episodes))
                     if not selected:
                         continue
                     file_ids.append(file_id)

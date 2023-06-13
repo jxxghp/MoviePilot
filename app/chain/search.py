@@ -110,14 +110,14 @@ class SearchChain(ChainBase):
                         if torrent_meta.year != mediainfo.year:
                             continue
                 # 比对标题
-                if torrent_meta.get_name() in [mediainfo.title, mediainfo.original_title]:
+                if torrent_meta.name in [mediainfo.title, mediainfo.original_title]:
                     logger.info(f'{mediainfo.title} 匹配到资源：{torrent.site_name} - {torrent.title}')
                     _match_torrents.append(torrent)
                     continue
                 # 比对别名和译名
                 for name in mediainfo.names:
                     if StringUtils.clear(name).strip().upper() == \
-                            StringUtils.clear(torrent_meta.get_name()).strip().upper():
+                            StringUtils.clear(torrent_meta.name).strip().upper():
                         logger.info(f'{mediainfo.title} 匹配到资源：{torrent.site_name} - {torrent.title}')
                         _match_torrents.append(torrent)
                         break

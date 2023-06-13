@@ -190,7 +190,7 @@ class MetaVideo(MetaBase):
                 # 第季集后面的不要
                 if self._last_token_type == 'name_se_words':
                     return
-                if self.get_name():
+                if self.name:
                     # 名字后面以 0 开头的不要，极有可能是集
                     if token.startswith('0'):
                         return
@@ -245,7 +245,7 @@ class MetaVideo(MetaBase):
                 self._last_token_type = "enname"
 
     def __init_part(self, token: str):
-        if not self.get_name():
+        if not self.name:
             return
         if not self.year \
                 and not self.begin_season \
@@ -268,7 +268,7 @@ class MetaVideo(MetaBase):
             self._stop_name_flag = False
 
     def __init_year(self, token: str):
-        if not self.get_name():
+        if not self.name:
             return
         if not token.isdigit():
             return
@@ -290,7 +290,7 @@ class MetaVideo(MetaBase):
         self._stop_name_flag = True
 
     def __init_resource_pix(self, token: str):
-        if not self.get_name():
+        if not self.name:
             return
         re_res = re.findall(r"%s" % self._resources_pix_re, token, re.IGNORECASE)
         if re_res:
@@ -443,7 +443,7 @@ class MetaVideo(MetaBase):
             self._last_token_type = "EPISODE"
 
     def __init_resource_type(self, token):
-        if not self.get_name():
+        if not self.name:
             return
         source_res = re.search(r"(%s)" % self._source_re, token, re.IGNORECASE)
         if source_res:
@@ -481,7 +481,7 @@ class MetaVideo(MetaBase):
             self._last_token = effect.upper()
 
     def __init_video_encode(self, token: str):
-        if not self.get_name():
+        if not self.name:
             return
         if not self.year \
                 and not self.resource_pix \
@@ -521,7 +521,7 @@ class MetaVideo(MetaBase):
                 self.video_encode = f"{self.video_encode} 10bit"
 
     def __init_audio_encode(self, token: str):
-        if not self.get_name():
+        if not self.name:
             return
         if not self.year \
                 and not self.resource_pix \

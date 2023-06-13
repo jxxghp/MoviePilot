@@ -41,7 +41,7 @@ class PlexModule(_ModuleBase):
         if mediainfo.type == MediaType.MOVIE:
             movies = self.plex.get_movies(title=mediainfo.title, year=mediainfo.year)
             if not movies:
-                logger.info(f"{mediainfo.get_title_string()} 在媒体库中不存在")
+                logger.info(f"{mediainfo.title_year} 在媒体库中不存在")
                 return None
             else:
                 logger.info(f"媒体库中已存在：{movies}")
@@ -50,10 +50,10 @@ class PlexModule(_ModuleBase):
             tvs = self.plex.get_tv_episodes(title=mediainfo.title,
                                             year=mediainfo.year)
             if not tvs:
-                logger.info(f"{mediainfo.get_title_string()} 在媒体库中不存在")
+                logger.info(f"{mediainfo.title_year} 在媒体库中不存在")
                 return None
             else:
-                logger.info(f"{mediainfo.get_title_string()} 媒体库中已存在：{tvs}")
+                logger.info(f"{mediainfo.title_year} 媒体库中已存在：{tvs}")
                 return ExistMediaInfo(type=MediaType.TV, seasons=tvs)
 
     def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> Optional[bool]:

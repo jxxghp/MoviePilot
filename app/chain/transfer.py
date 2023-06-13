@@ -78,7 +78,7 @@ class TransferChain(ChainBase):
                 title, subtitle = torrent.title, None
             # 识别元数据
             meta: MetaBase = MetaInfo(title=title, subtitle=subtitle)
-            if not meta.get_name():
+            if not meta.name:
                 logger.warn(f'未识别到元数据，标题：{title}')
                 continue
             if not arg_mediainfo:
@@ -91,7 +91,7 @@ class TransferChain(ChainBase):
                     continue
             else:
                 mediainfo = arg_mediainfo
-            logger.info(f"{torrent.title} 识别为：{mediainfo.type.value} {mediainfo.get_title_string()}")
+            logger.info(f"{torrent.title} 识别为：{mediainfo.type.value} {mediainfo.title_year}")
             # 更新媒体图片
             self.obtain_image(mediainfo=mediainfo)
             # 转移
@@ -99,7 +99,7 @@ class TransferChain(ChainBase):
             if not transferinfo or not transferinfo.target_path:
                 logger.warn(f"{torrent.title} 入库失败")
                 self.post_message(
-                    title=f"{mediainfo.get_title_string()}{meta.get_season_episode_string()} 入库失败！",
+                    title=f"{mediainfo.title_year}{meta.season_episode} 入库失败！",
                     text=f"原因：{transferinfo.message if transferinfo else '未知'}",
                     image=mediainfo.get_message_image()
                 ),
@@ -126,15 +126,15 @@ class TransferChain(ChainBase):
                 transferinfo.target_path
             )
         )
-        msg_title = f"{mediainfo.get_title_string()} 已入库"
+        msg_title = f"{mediainfo.title_year} 已入库"
         if mediainfo.vote_average:
             msg_str = f"评分：{mediainfo.vote_average}，类型：{mediainfo.type.value}"
         else:
             msg_str = f"类型：{mediainfo.type.value}"
         if mediainfo.category:
             msg_str = f"{msg_str}，类别：{mediainfo.category}"
-        if meta.get_resource_type_string():
-            msg_str = f"{msg_str}，质量：{meta.get_resource_type_string()}"
+        if meta.resource:
+            msg_str = f"{msg_str}，质量：{meta.resource}"
         msg_str = f"{msg_str}， 大小：{file_size}"
         # 发送
         self.post_message(title=msg_title, text=msg_str, image=mediainfo.get_message_image())
