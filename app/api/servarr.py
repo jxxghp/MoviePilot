@@ -23,7 +23,7 @@ async def arr_system_status(apikey: str) -> Any:
         "appName": "MoviePilot",
         "instanceName": "moviepilot",
         "version": APP_VERSION,
-        "urlBase": "/api/v3"
+        "urlBase": ""
     }
 
 

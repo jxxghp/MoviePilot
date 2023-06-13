@@ -305,40 +305,38 @@ class SubscribeChain(ChainBase):
         if no_exists \
                 and no_exists.get(tmdb_id) \
                 and (total_episode or start_episode):
-            # 原缺失集列表
-            episode_list = no_exists.get(tmdb_id)[0].get("episodes")
-            if total_episode and start_episode:
-                # 有开始集和总集数
-                episodes = list(range(start_episode, total_episode + 1))
-                no_exists[tmdb_id] = [
-                    {
-                        "season": begin_season,
-                        "episodes": episodes,
-                        "total_episodes": total_episode,
-                        "start_episode": start_episode
-                    }
-                ]
-            elif not start_episode:
-                # 有总集数没有开始集
-                episodes = list(range(min(episode_list), total_episode + 1))
-                no_exists[tmdb_id] = [
-                    {
-                        "season": begin_season,
-                        "episodes": episodes,
-                        "total_episodes": total_episode,
-                        "start_episode": min(episode_list)
-                    }
-                ]
-            else:
-                # 有开始集没有总集数
-                episodes = list(range(start_episode, max(episode_list) + 1))
-                no_exists[tmdb_id] = [
-                    {
-                        "season": begin_season,
-                        "episodes": episodes,
-                        "total_episodes": max(episode_list),
-                        "start_episode": start_episode
-                    }
-                ]
-
+            for no_exist in no_exists.get(tmdb_id):
+                # 替换原季值
+                if no_exist.get("season") == begin_season:
+                    # 原季集列表
+                    episode_list = no_exist.get("episodes")
+                    # 原总集数
+                    total = no_exist.get("total_episodes")
+                    if total_episode and start_episode:
+                        # 有开始集和总集数
+                        episodes = list(range(start_episode, total_episode + 1))
+                        no_exist = {
+                            "season": begin_season,
+                            "episodes": episodes,
+                            "total_episodes": total_episode,
+                            "start_episode": start_episode
+                        }
+                    elif not start_episode:
+                        # 有总集数没有开始集
+                        episodes = list(range(min(episode_list or [1]), total_episode + 1))
+                        no_exist = {
+                            "season": begin_season,
+                            "episodes": episodes,
+                            "total_episodes": total_episode,
+                            "start_episode": min(episode_list or [1])
+                        }
+                    elif not total_episode:
+                        # 有开始集没有总集数
+                        episodes = list(range(start_episode, max(episode_list or [total]) + 1))
+                        no_exist = {
+                                "season": begin_season,
+                                "episodes": episodes,
+                                "total_episodes": max(episode_list or [total]),
+                                "start_episode": start_episode
+                            }
         return no_exists
