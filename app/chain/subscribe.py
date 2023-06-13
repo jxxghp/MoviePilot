@@ -34,7 +34,7 @@ class SubscribeChain(ChainBase):
                 season: int = None,
                 userid: str = None,
                 username: str = None,
-                **kwargs) -> bool:
+                **kwargs) -> Optional[int]:
         """
         识别媒体信息并添加订阅
         """
@@ -83,8 +83,8 @@ class SubscribeChain(ChainBase):
                     'total_episode': total_episode
                 })
         # 添加订阅
-        state, err_msg = self.subscribes.add(mediainfo, season=season, **kwargs)
-        if not state:
+        sid, err_msg = self.subscribes.add(mediainfo, season=season, **kwargs)
+        if not sid:
             logger.error(f'{mediainfo.get_title_string()} {err_msg}')
             # 发回原用户
             self.post_message(title=f"{mediainfo.get_title_string()}{metainfo.get_season_string()} "
@@ -99,7 +99,7 @@ class SubscribeChain(ChainBase):
                               text=f"评分：{mediainfo.vote_average}，来自用户：{username or userid}",
                               image=mediainfo.get_message_image())
         # 返回结果
-        return state
+        return sid
 
     def search(self, sid: int = None, state: str = 'N'):
         """

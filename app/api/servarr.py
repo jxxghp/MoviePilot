@@ -283,7 +283,7 @@ async def arr_movie(apikey: str, mid: int, db: Session = Depends(get_db)) -> Any
         )
 
 
-@arr_router.post("/movie", response_model=schemas.Response)
+@arr_router.post("/movie")
 async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
     """
     新增Rardar电影订阅
@@ -293,11 +293,16 @@ async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
             status_code=403,
             detail="认证失败！",
         )
-    if SubscribeChain().process(title=movie.title,
-                                year=str(movie.year) if movie.year else None,
-                                mtype=MediaType.MOVIE,
-                                tmdbid=movie.tmdbId):
-        return {"success": True, "msg": "添加订阅成功！"}
+    sid = SubscribeChain().process(title=movie.title,
+                                   year=str(movie.year) if movie.year else None,
+                                   mtype=MediaType.MOVIE,
+                                   tmdbid=movie.tmdbId)
+    if sid:
+        return {
+            "data": {
+                "id": sid
+            }
+        }
     else:
         raise HTTPException(
             status_code=500,

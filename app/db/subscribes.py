@@ -16,7 +16,7 @@ class Subscribes:
     def __init__(self, _db=SessionLocal()):
         self._db = _db
 
-    def add(self, mediainfo: MediaInfo, **kwargs) -> Tuple[bool, str]:
+    def add(self, mediainfo: MediaInfo, **kwargs) -> Tuple[int, str]:
         """
         新增订阅
         """
@@ -29,9 +29,9 @@ class Subscribes:
                               **kwargs)
         if not subscribe.exists(self._db, tmdbid=mediainfo.tmdb_id, season=kwargs.get('season')):
             subscribe.create(self._db)
-            return True, "新增订阅成功"
+            return subscribe.id, "新增订阅成功"
         else:
-            return False, "订阅已存在"
+            return subscribe.id, "订阅已存在"
 
     def get(self, sid: int) -> Subscribe:
         """
