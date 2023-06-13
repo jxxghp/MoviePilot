@@ -297,7 +297,7 @@ async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
                                    year=str(movie.year) if movie.year else None,
                                    mtype=MediaType.MOVIE,
                                    tmdbid=movie.tmdbId,
-                                   userid="Rardar")
+                                   userid="Seerr")
     if sid:
         return {
             "id": sid
