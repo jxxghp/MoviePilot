@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Tuple, Optional, List, Union
 from urllib.parse import unquote
 
+from requests import Response
 from torrentool.api import Torrent
 
 from app.core.config import settings
@@ -97,21 +98,13 @@ class TorrentHelper:
                 # 检查是不是种子文件，如果不是仍然抛出异常
                 try:
                     # 读取种子文件名
-                    file_name = self.__get_url_torrent_filename(req, url)
+                    file_name = self.get_url_filename(req, url)
                     # 种子文件路径
                     file_path = Path(settings.TEMP_PATH) / file_name
                     # 保存到文件
                     file_path.write_bytes(req.content)
                     # 获取种子目录和文件清单
-                    torrentinfo = Torrent.from_file(file_path)
-                    # 获取目录名
-                    folder_name = torrentinfo.name
-                    # 获取文件清单
-                    if len(torrentinfo.files) <= 1:
-                        # 单文件种子
-                        file_list = [torrentinfo.name]
-                    else:
-                        file_list = [fileinfo.name for fileinfo in torrentinfo.files]
+                    folder_name, file_list = self.get_torrent_info(file_path)
                     # 成功拿到种子数据
                     return file_path, req.content, folder_name, file_list, ""
                 except Exception as err:
@@ -128,7 +121,31 @@ class TorrentHelper:
             return None, None, "", [], f"下载种子出错，状态码：{req.status_code}"
 
     @staticmethod
-    def __get_url_torrent_filename(req, url: str) -> str:
+    def get_torrent_info(torrent_path: Path) -> Tuple[str, List[str]]:
+        """
+        获取种子文件的文件夹名和文件清单
+        :param torrent_path: 种子文件路径
+        :return: 文件夹名、文件清单
+        """
+        if not torrent_path or not torrent_path.exists():
+            return "", []
+        try:
+            torrentinfo = Torrent.from_file(torrent_path)
+            # 获取目录名
+            folder_name = torrentinfo.name
+            # 获取文件清单
+            if len(torrentinfo.files) <= 1:
+                # 单文件种子
+                file_list = [torrentinfo.name]
+            else:
+                file_list = [fileinfo.name for fileinfo in torrentinfo.files]
+            return folder_name, file_list
+        except Exception as err:
+            logger.error(f"种子文件解析失败：{err}")
+            return "", []
+
+    @staticmethod
+    def get_url_filename(req: Response, url: str) -> str:
         """
         从下载请求中获取种子文件名
         """
