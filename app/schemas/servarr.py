@@ -4,10 +4,10 @@ from pydantic import BaseModel
 
 class RadarrMovie(BaseModel):
     id: Optional[int]
-    title: str
+    title: Optional[str]
     year: Optional[int]
-    isAvailable: bool
-    monitored: bool
+    isAvailable: Optional[bool]
+    monitored: Optional[bool]
     tmdbId: Optional[int]
     imdbId: Optional[str]
     titleSlug: Optional[str]
@@ -16,12 +16,12 @@ class RadarrMovie(BaseModel):
     profileId: Optional[int]
     qualityProfileId: Optional[int]
     added: Optional[str]
-    hasFile: bool
+    hasFile: Optional[bool]
 
 
 class SonarrSeries(BaseModel):
     id: Optional[int]
-    title: str
+    title: Optional[str]
     sortTitle: Optional[str]
     seasonCount: Optional[int]
     status: Optional[str]
