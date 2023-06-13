@@ -66,7 +66,8 @@ class Qbittorrent(metaclass=Singleton):
                 if not isinstance(tags, list):
                     tags = [tags]
                 for torrent in torrents:
-                    if set(tags).issubset(set(torrent.get("tags").split(','))):
+                    torrent_tags = [str(tag).strip() for tag in torrent.get("tags").split(',')]
+                    if set(tags).issubset(set(torrent_tags)):
                         results.append(torrent)
                 return results, False
             return torrents or [], False
@@ -132,14 +133,14 @@ class Qbittorrent(metaclass=Singleton):
         except Exception as err:
             logger.error(f"设置强制作种出错：{err}")
 
-    def __get_last_add_torrentid_by_tag(self, tag: Union[str, list],
+    def __get_last_add_torrentid_by_tag(self, tags: Union[str, list],
                                         status: Union[str, list] = None) -> Optional[str]:
         """
         根据种子的下载链接获取下载中或暂停的钟子的ID
         :return: 种子ID
         """
         try:
-            torrents, _ = self.get_torrents(status=status, tags=tag)
+            torrents, _ = self.get_torrents(status=status, tags=tags)
         except Exception as err:
             logger.error(f"获取种子列表出错：{err}")
             return None
@@ -148,21 +149,21 @@ class Qbittorrent(metaclass=Singleton):
         else:
             return None
 
-    def get_torrent_id_by_tag(self, tag: Union[str, list],
+    def get_torrent_id_by_tag(self, tags: Union[str, list],
                               status: Union[str, list] = None) -> Optional[str]:
         """
         通过标签多次尝试获取刚添加的种子ID，并移除标签
         """
         torrent_id = None
         # QB添加下载后需要时间，重试5次每次等待5秒
-        for i in range(1, 6):
-            time.sleep(5)
-            torrent_id = self.__get_last_add_torrentid_by_tag(tag=tag,
+        for i in range(1, 10):
+            time.sleep(3)
+            torrent_id = self.__get_last_add_torrentid_by_tag(tags=tags,
                                                               status=status)
             if torrent_id is None:
                 continue
             else:
-                self.remove_torrents_tag(torrent_id, tag)
+                self.remove_torrents_tag(torrent_id, tags)
                 break
         return torrent_id
 

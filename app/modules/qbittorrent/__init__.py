@@ -51,7 +51,7 @@ class QbittorrentModule(_ModuleBase):
             return None, f"添加种子任务失败：{torrent_path}"
         else:
             # 获取种子Hash
-            torrent_hash = self.qbittorrent.get_torrent_id_by_tag(tag=tag)
+            torrent_hash = self.qbittorrent.get_torrent_id_by_tag(tags=tag)
             if not torrent_hash:
                 return None, f"获取种子Hash失败：{torrent_path}"
             else:
@@ -149,4 +149,3 @@ class QbittorrentModule(_ModuleBase):
         :return: bool
         """
         return self.qbittorrent.delete_torrents(delete_file=True, ids=hashs)
-

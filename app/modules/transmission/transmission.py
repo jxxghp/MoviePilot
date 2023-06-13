@@ -71,7 +71,8 @@ class Transmission(metaclass=Singleton):
             if status and torrent.status not in status:
                 continue
             # 种子标签
-            labels = torrent.labels.split(',') if hasattr(torrent, "labels") else []
+            labels = [str(tag).strip()
+                      for tag in torrent.labels.split(',')] if hasattr(torrent, "labels") else []
             if tags and not set(tags).issubset(set(labels)):
                 continue
             ret_torrents.append(torrent)
