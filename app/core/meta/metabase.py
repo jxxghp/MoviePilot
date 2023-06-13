@@ -18,7 +18,7 @@ class MetaBase(object):
     # 副标题
     subtitle: Optional[str] = None
     # 类型 电影、电视剧
-    type: Optional[MediaType] = None
+    type: MediaType = MediaType.UNKNOWN
     # 识别的中文名
     cn_name: Optional[str] = None
     # 识别的英文名
@@ -231,10 +231,10 @@ class MetaBase(object):
                      (str(self.begin_season).rjust(2, "0"),
                       str(self.end_season).rjust(2, "0"))
         else:
-            if self.type == MediaType.MOVIE:
-                return ""
-            else:
+            if self.type == MediaType.TV:
                 return "S01"
+            else:
+                return ""
 
     def get_season(self) -> str:
         """
@@ -243,7 +243,7 @@ class MetaBase(object):
         if self.begin_season is not None:
             return self.get_season_string()
         else:
-            return "S01"
+            return ""
 
     def get_begin_season_string(self) -> str:
         """
@@ -252,10 +252,10 @@ class MetaBase(object):
         if self.begin_season is not None:
             return "S%s" % str(self.begin_season).rjust(2, "0")
         else:
-            if self.type == MediaType.MOVIE:
-                return ""
-            else:
+            if self.type == MediaType.TV:
                 return "S01"
+            else:
+                return ""
 
     def get_season_seq(self) -> str:
         """
@@ -264,20 +264,20 @@ class MetaBase(object):
         if self.begin_season is not None:
             return str(self.begin_season)
         else:
-            if self.type == MediaType.MOVIE:
-                return ""
-            else:
+            if self.type == MediaType.TV:
                 return "1"
+            else:
+                return ""
 
     def get_season_list(self) -> List[int]:
         """
         返回季的数组
         """
         if self.begin_season is None:
-            if self.type == MediaType.MOVIE:
-                return []
-            else:
+            if self.type == MediaType.TV:
                 return [1]
+            else:
+                return []
         elif self.end_season is not None:
             return [season for season in range(self.begin_season, self.end_season + 1)]
         else:
@@ -377,9 +377,7 @@ class MetaBase(object):
         """
         返回季集字符串
         """
-        if self.type == MediaType.MOVIE:
-            return ""
-        else:
+        if self.type == MediaType.TV:
             seaion = self.get_season_string()
             episode = self.get_episode_string()
             if seaion and episode:
@@ -388,6 +386,8 @@ class MetaBase(object):
                 return "%s" % seaion
             elif episode:
                 return "%s" % episode
+        else:
+            return ""
         return ""
 
     def get_resource_type_string(self) -> str:

@@ -207,7 +207,7 @@ class TorrentHelper:
             # 控重的主链是名称、年份、季、集
             meta = context.meta_info
             media = context.media_info
-            if media.type != MediaType.MOVIE:
+            if media.type == MediaType.TV:
                 media_name = "%s%s" % (media.get_title_string(),
                                        meta.get_season_episode_string())
             else:

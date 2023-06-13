@@ -199,7 +199,7 @@ class DownloadChain(ChainBase):
                     media = context.media_info
                     meta = context.meta_info
                     torrent = context.torrent_info
-                    if media.type == MediaType.MOVIE:
+                    if media.type != MediaType.TV:
                         continue
                     item_season = meta.get_season_list()
                     if meta.get_episode_list():
@@ -246,7 +246,7 @@ class DownloadChain(ChainBase):
                     for context in contexts:
                         media = context.media_info
                         meta = context.meta_info
-                        if media.type == MediaType.MOVIE:
+                        if media.type != MediaType.TV:
                             continue
                         if media.tmdb_id == need_tmdbid:
                             if context in downloaded_list:
@@ -286,7 +286,7 @@ class DownloadChain(ChainBase):
                         media = context.media_info
                         meta = context.meta_info
                         torrent = context.torrent_info
-                        if media.type == MediaType.MOVIE:
+                        if media.type != MediaType.TV:
                             continue
                         if context in downloaded_list:
                             continue

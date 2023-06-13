@@ -344,8 +344,8 @@ class FileTransferModule(_ModuleBase):
         target_dir = target_dir / meidainfo.type.value / meidainfo.category
 
         # 重命名格式
-        rename_format = settings.MOVIE_RENAME_FORMAT \
-            if meidainfo.type == MediaType.MOVIE else settings.TV_RENAME_FORMAT
+        rename_format = settings.TV_RENAME_FORMAT \
+            if meidainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
 
         # 判断是否为蓝光原盘
         bluray_flag = self.__is_bluray_dir(in_path)

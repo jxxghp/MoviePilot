@@ -61,7 +61,7 @@ class TheMovieDbModule(_ModuleBase):
                 info = self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
             else:
                 logger.info(f"正在识别 {meta.get_name()} ...")
-                if meta.type != MediaType.TV and not meta.year:
+                if meta.type == MediaType.UNKNOWN and not meta.year:
                     info = self.tmdb.match_multi(meta.get_name())
                 else:
                     if meta.type == MediaType.TV:
@@ -111,10 +111,10 @@ class TheMovieDbModule(_ModuleBase):
 
         if info:
             # 确定二级分类
-            if info.get('media_type') == MediaType.MOVIE:
-                cat = self.category.get_movie_category(info)
-            else:
+            if info.get('media_type') == MediaType.TV:
                 cat = self.category.get_tv_category(info)
+            else:
+                cat = self.category.get_movie_category(info)
             # 赋值TMDB信息并返回
             mediainfo = MediaInfo(tmdb_info=info)
             mediainfo.set_category(cat)
@@ -139,10 +139,10 @@ class TheMovieDbModule(_ModuleBase):
 
         if not meta.get_name():
             return []
-        if not meta.type and not meta.year:
+        if meta.type == MediaType.UNKNOWN and not meta.year:
             results = self.tmdb.search_multiis(meta.get_name())
         else:
-            if not meta.type:
+            if meta.type == MediaType.UNKNOWN:
                 results = list(
                     set(self.tmdb.search_movies(meta.get_name(), meta.year))
                     .union(set(self.tmdb.search_tv_tmdbinfos(meta.get_name(), meta.year)))

@@ -36,9 +36,9 @@ async def read_subscribes(
 
 @router.post("/", response_model=schemas.Response)
 async def create_subscribe(
-    *,
-    subscribe_in: schemas.Subscribe,
-    _: User = Depends(get_current_active_superuser),
+        *,
+        subscribe_in: schemas.Subscribe,
+        _: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
     新增订阅
@@ -49,10 +49,10 @@ async def create_subscribe(
 
 @router.post("/update", response_model=schemas.Subscribe)
 async def update_subscribe(
-    *,
-    db: Session = Depends(get_db),
-    subscribe_in: schemas.Subscribe,
-    _: User = Depends(get_current_active_superuser),
+        *,
+        db: Session = Depends(get_db),
+        subscribe_in: schemas.Subscribe,
+        _: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
     更新订阅信息
@@ -65,6 +65,20 @@ async def update_subscribe(
         )
     subscribe.update(db, **subscribe_in.dict())
     return subscribe
+
+
+@router.post("/delete", response_model=schemas.Response)
+async def delete_subscribe(
+        *,
+        db: Session = Depends(get_db),
+        subscribe_in: schemas.Subscribe,
+        _: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    删除订阅信息
+    """
+    Subscribe.delete(db, subscribe_in.id)
+    return {"success": True}
 
 
 @router.post("/seerr", response_model=schemas.Response)

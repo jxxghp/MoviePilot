@@ -122,9 +122,6 @@ class MetaVideo(MetaBase):
         self.init_subtitle(self.org_string)
         if not self._subtitle_flag and self.subtitle:
             self.init_subtitle(self.subtitle)
-        # 没有识别出类型时默认为电影
-        if not self.type:
-            self.type = MediaType.MOVIE
         # 去掉名字中不需要的干扰字符，过短的纯数字不要
         self.cn_name = self.__fix_name(self.cn_name)
         self.en_name = StringUtils.str_title(self.__fix_name(self.en_name))

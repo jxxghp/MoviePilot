@@ -167,10 +167,10 @@ class TorrentSpider:
                     })
                 # 分类条件
                 if self.category:
-                    if self.mtype == MediaType.MOVIE:
-                        cats = self.category.get("movie") or []
-                    elif self.mtype:
+                    if self.mtype == MediaType.TV:
                         cats = self.category.get("tv") or []
+                    elif self.mtype == MediaType.MOVIE:
+                        cats = self.category.get("movie") or []
                     else:
                         cats = (self.category.get("movie") or []) + (self.category.get("tv") or [])
                     for cat in cats:

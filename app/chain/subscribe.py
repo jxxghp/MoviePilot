@@ -59,6 +59,8 @@ class SubscribeChain(ChainBase):
         self.obtain_image(mediainfo=mediainfo)
         # 总集数
         if mediainfo.type == MediaType.TV:
+            if not season:
+                season = 1
             if not kwargs.get('total_episode'):
                 if not mediainfo.seasons:
                     # 补充媒体信息
@@ -71,7 +73,7 @@ class SubscribeChain(ChainBase):
                     if not mediainfo.seasons:
                         logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}")
                         return False
-                total_episode = len(mediainfo.seasons.get(kwargs.get('season') or 1) or [])
+                total_episode = len(mediainfo.seasons.get(season) or [])
                 if not total_episode:
                     logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}')
                     return False
@@ -81,7 +83,7 @@ class SubscribeChain(ChainBase):
         # 添加订阅
         state, err_msg = self.subscribes.add(mediainfo, season=season, **kwargs)
         if not state:
-            logger.info(f'{mediainfo.get_title_string()} {err_msg}')
+            logger.error(f'{mediainfo.get_title_string()} {err_msg}')
             # 发回原用户
             self.post_message(title=f"{mediainfo.get_title_string()}{metainfo.get_season_string()} "
                                     f"添加订阅失败！",
@@ -89,7 +91,7 @@ class SubscribeChain(ChainBase):
                               image=mediainfo.get_message_image(),
                               userid=userid)
         else:
-            logger.error(f'{mediainfo.get_title_string()}{metainfo.get_season_string()} 添加订阅成功')
+            logger.info(f'{mediainfo.get_title_string()}{metainfo.get_season_string()} 添加订阅成功')
             # 广而告之
             self.post_message(title=f"{mediainfo.get_title_string()}{metainfo.get_season_string()} 已添加订阅",
                               text=f"评分：{mediainfo.vote_average}，来自用户：{username or userid}",
@@ -279,7 +281,7 @@ class SubscribeChain(ChainBase):
                         season = season_info.get('season')
                         if season == subscribe.season:
                             left_episodes = season_info.get('episodes')
-                            logger.info(f'{mediainfo.get_title_string()} 季 {season} 未下载未完整，'
+                            logger.info(f'{mediainfo.get_title_string()} 季 {season} 未下载完整，'
                                         f'更新缺失集数为{len(left_episodes)} ...')
                             self.subscribes.update(subscribe.id, {
                                 "lack_episode": len(left_episodes)
