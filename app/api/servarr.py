@@ -310,7 +310,7 @@ async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
 
 
 @arr_router.delete("/movie/{mid}", response_model=schemas.Response)
-async def arr_remove_movie(apikey: str, mid: int) -> Any:
+async def arr_remove_movie(apikey: str, mid: int, db: Session = Depends(get_db)) -> Any:
     """
     删除Rardar电影订阅
     """
@@ -318,6 +318,15 @@ async def arr_remove_movie(apikey: str, mid: int) -> Any:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
+        )
+    subscribe = Subscribe.get(db, mid)
+    if subscribe:
+        subscribe.delete(db, mid)
+        return {"success": True}
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail="未找到该电影！"
         )
 
 
