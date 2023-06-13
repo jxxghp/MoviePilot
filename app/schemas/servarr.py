@@ -18,7 +18,7 @@ class RadarrMovie(BaseModel):
     hasFile: bool
 
 
-class SonarrSeries:
+class SonarrSeries(BaseModel):
     title: str
     sortTitle: Optional[str]
     seasonCount: Optional[int]
