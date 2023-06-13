@@ -10,11 +10,11 @@ arr_router = APIRouter()
 
 
 @arr_router.get("/system/status")
-async def arr_system_status(apiKey: str) -> Any:
+async def arr_system_status(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr系统状态
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -28,11 +28,11 @@ async def arr_system_status(apiKey: str) -> Any:
 
 
 @arr_router.get("/qualityProfile")
-async def arr_qualityProfile(apiKey: str) -> Any:
+async def arr_qualityProfile(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr质量配置
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -46,11 +46,11 @@ async def arr_qualityProfile(apiKey: str) -> Any:
 
 
 @arr_router.get("/rootfolder")
-async def arr_rootfolder(apiKey: str) -> Any:
+async def arr_rootfolder(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr根目录
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -67,11 +67,11 @@ async def arr_rootfolder(apiKey: str) -> Any:
 
 
 @arr_router.get("/tag")
-async def arr_tag(apiKey: str) -> Any:
+async def arr_tag(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr标签
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -85,11 +85,11 @@ async def arr_tag(apiKey: str) -> Any:
 
 
 @arr_router.get("/languageprofile")
-async def arr_languageprofile(apiKey: str) -> Any:
+async def arr_languageprofile(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr语言
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -101,7 +101,7 @@ async def arr_languageprofile(apiKey: str) -> Any:
 
 
 @arr_router.get("/movie", response_model=List[schemas.RadarrMovie])
-async def arr_movies(apiKey: str) -> Any:
+async def arr_movies(apikey: str) -> Any:
     """
     查询Rardar电影
     """
@@ -170,7 +170,7 @@ async def arr_movies(apiKey: str) -> Any:
       }
     ]
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -178,11 +178,11 @@ async def arr_movies(apiKey: str) -> Any:
 
 
 @arr_router.get("/movie/{mid}", response_model=schemas.RadarrMovie)
-async def arr_movie(apiKey: str) -> Any:
+async def arr_movie(apikey: str) -> Any:
     """
     查询Rardar电影
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -190,11 +190,11 @@ async def arr_movie(apiKey: str) -> Any:
 
 
 @arr_router.get("/movie/lookup", response_model=List[schemas.RadarrMovie])
-async def arr_movie_lookup(apiKey: str, term: str) -> Any:
+async def arr_movie_lookup(apikey: str, term: str) -> Any:
     """
     查询Rardar电影 term: `tmdb:${id}`
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -202,11 +202,11 @@ async def arr_movie_lookup(apiKey: str, term: str) -> Any:
 
 
 @arr_router.put("/movie", response_model=schemas.Response)
-async def arr_add_movie(apiKey: str, title: str, tmdbId: int, year: int) -> Any:
+async def arr_add_movie(apikey: str, title: str, tmdbId: int, year: int) -> Any:
     """
     新增Rardar电影订阅
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -214,11 +214,11 @@ async def arr_add_movie(apiKey: str, title: str, tmdbId: int, year: int) -> Any:
 
 
 @arr_router.delete("/movie/{mid}", response_model=schemas.Response)
-async def arr_remove_movie(apiKey: str, mid: int) -> Any:
+async def arr_remove_movie(apikey: str, mid: int) -> Any:
     """
     删除Rardar电影订阅
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -226,7 +226,7 @@ async def arr_remove_movie(apiKey: str, mid: int) -> Any:
 
 
 @arr_router.get("/series", response_model=List[schemas.SonarrSeries])
-async def arr_series(apiKey: str) -> Any:
+async def arr_series(apikey: str) -> Any:
     """
     查询Sonarr剧集
     """
@@ -332,7 +332,7 @@ async def arr_series(apiKey: str) -> Any:
       }
     ]
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -340,11 +340,11 @@ async def arr_series(apiKey: str) -> Any:
 
 
 @arr_router.get("/series/{tid}")
-async def arr_serie(apiKey: str) -> Any:
+async def arr_serie(apikey: str) -> Any:
     """
     查询Sonarr剧集
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -352,11 +352,11 @@ async def arr_serie(apiKey: str) -> Any:
 
 
 @arr_router.get("/series/lookup")
-async def arr_series_lookup(apiKey: str, term: str) -> Any:
+async def arr_series_lookup(apikey: str, term: str) -> Any:
     """
     查询Sonarr剧集 term: `tvdb:${id}` title
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -364,11 +364,11 @@ async def arr_series_lookup(apiKey: str, term: str) -> Any:
 
 
 @arr_router.put("/series")
-async def arr_add_series(apiKey: str, title: str, seasons: list, year: int) -> Any:
+async def arr_add_series(apikey: str, title: str, seasons: list, year: int) -> Any:
     """
     新增Sonarr剧集订阅
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
@@ -376,11 +376,11 @@ async def arr_add_series(apiKey: str, title: str, seasons: list, year: int) -> A
 
 
 @arr_router.delete("/series/{tid}")
-async def arr_remove_series(apiKey: str, tid: int) -> Any:
+async def arr_remove_series(apikey: str, tid: int) -> Any:
     """
     删除Sonarr剧集订阅
     """
-    if not apiKey or apiKey != settings.API_TOKEN:
+    if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
