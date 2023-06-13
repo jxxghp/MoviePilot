@@ -241,10 +241,7 @@ async def arr_movie_lookup(apikey: str, term: str, db: Session = Depends(get_db)
             hasFile=False,
         )]
     else:
-        raise HTTPException(
-            status_code=404,
-            detail="未找到该电影！"
-        )
+        return []
 
 
 @arr_router.get("/movie/{mid}", response_model=schemas.RadarrMovie)
@@ -277,8 +274,8 @@ async def arr_movie(apikey: str, mid: int, db: Session = Depends(get_db)) -> Any
         )
 
 
-@arr_router.put("/movie", response_model=schemas.Response)
-async def arr_add_movie(apikey: str, title: str, tmdbId: int, year: str) -> Any:
+@arr_router.post("/movie", response_model=schemas.Response)
+async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
     """
     新增Rardar电影订阅
     """
@@ -287,7 +284,10 @@ async def arr_add_movie(apikey: str, title: str, tmdbId: int, year: str) -> Any:
             status_code=403,
             detail="认证失败！",
         )
-    if SubscribeChain().process(title=title, year=year, mtype=MediaType.MOVIE, tmdbid=tmdbId):
+    if SubscribeChain().process(title=movie.title,
+                                year=str(movie.year) if movie.year else None,
+                                mtype=MediaType.MOVIE,
+                                tmdbid=movie.tmdbId):
         return {"success": True, "msg": "添加订阅成功！"}
     else:
         raise HTTPException(

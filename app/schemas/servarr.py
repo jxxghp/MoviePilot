@@ -3,8 +3,9 @@ from pydantic import BaseModel
 
 
 class RadarrMovie(BaseModel):
-    id: int
+    id: Optional[int]
     title: str
+    year: Optional[int]
     isAvailable: bool
     monitored: bool
     tmdbId: Optional[int]
@@ -19,6 +20,7 @@ class RadarrMovie(BaseModel):
 
 
 class SonarrSeries(BaseModel):
+    id: Optional[int]
     title: str
     sortTitle: Optional[str]
     seasonCount: Optional[int]
@@ -29,7 +31,7 @@ class SonarrSeries(BaseModel):
     images: Optional[list]
     remotePoster: Optional[str]
     seasons: Optional[list]
-    year: int
+    year: Optional[int]
     path: Optional[str]
     profileId: Optional[int]
     languageProfileId: Optional[int]
