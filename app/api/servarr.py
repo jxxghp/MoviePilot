@@ -296,12 +296,11 @@ async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
     sid = SubscribeChain().process(title=movie.title,
                                    year=str(movie.year) if movie.year else None,
                                    mtype=MediaType.MOVIE,
-                                   tmdbid=movie.tmdbId)
+                                   tmdbid=movie.tmdbId,
+                                   userid="Rardar")
     if sid:
         return {
-            "data": {
-                "id": sid
-            }
+            "id": sid
         }
     else:
         raise HTTPException(
