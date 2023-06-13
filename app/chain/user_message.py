@@ -129,6 +129,7 @@ class UserMessageChain(ChainBase):
                 # 订阅媒体
                 mediainfo: MediaInfo = cache_list[int(text) - 1]
                 self.subscribechain.process(title=mediainfo.title,
+                                            year=mediainfo.year,
                                             mtype=mediainfo.type,
                                             tmdbid=mediainfo.tmdb_id,
                                             season=self._current_meta.begin_season,
@@ -157,6 +158,7 @@ class UserMessageChain(ChainBase):
                         logger.info(f'{self._current_media.get_title_string()} 未下载未完整，添加订阅 ...')
                         # 添加订阅
                         self.subscribechain.process(title=self._current_media.title,
+                                                    year=self._current_media.year,
                                                     mtype=self._current_media.type,
                                                     tmdbid=self._current_media.tmdb_id,
                                                     season=self._current_meta.begin_season,

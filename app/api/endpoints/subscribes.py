@@ -15,12 +15,12 @@ from app.utils.types import MediaType
 router = APIRouter()
 
 
-def start_subscribe_chain(title: str,
+def start_subscribe_chain(title: str, year: str,
                           mtype: MediaType, tmdbid: int, season: int, username: str):
     """
     启动订阅链式任务
     """
-    SubscribeChain().process(title=title,
+    SubscribeChain().process(title=title, year=year,
                              mtype=mtype, tmdbid=tmdbid, season=season, username=username)
 
 
@@ -113,6 +113,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
                                   mtype=media_type,
                                   tmdbid=tmdbId,
                                   title=subject,
+                                  year="",
                                   season=0,
                                   username=user_name)
     else:
@@ -126,6 +127,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
                                       mtype=media_type,
                                       tmdbid=tmdbId,
                                       title=subject,
+                                      year="",
                                       season=season,
                                       username=user_name)
 

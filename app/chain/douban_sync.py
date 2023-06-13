@@ -96,6 +96,7 @@ class DoubanSyncChain(ChainBase):
                     logger.info(f'{mediainfo.get_title_string()} 未下载未完整，添加订阅 ...')
                     # 添加订阅
                     self.subscribechain.process(title=mediainfo.title,
+                                                year=mediainfo.year,
                                                 mtype=mediainfo.type,
                                                 tmdbid=mediainfo.tmdb_id,
                                                 season=meta.begin_season,

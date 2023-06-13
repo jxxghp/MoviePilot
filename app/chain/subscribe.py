@@ -28,7 +28,7 @@ class SubscribeChain(ChainBase):
         self.subscribes = Subscribes()
         self.siteshelper = SitesHelper()
 
-    def process(self, title: str,
+    def process(self, title: str, year: str,
                 mtype: MediaType = None,
                 tmdbid: int = None,
                 season: int = None,
@@ -45,6 +45,8 @@ class SubscribeChain(ChainBase):
             title, _ = result
         # 识别元数据
         metainfo = MetaInfo(title)
+        if year:
+            metainfo.year = year
         if mtype:
             metainfo.type = mtype
         if season:
@@ -305,6 +307,7 @@ class SubscribeChain(ChainBase):
         if no_exists \
                 and no_exists.get(tmdb_id) \
                 and (total_episode or start_episode):
+            index = 0
             for no_exist in no_exists.get(tmdb_id):
                 # 替换原季值
                 if no_exist.get("season") == begin_season:
@@ -315,7 +318,7 @@ class SubscribeChain(ChainBase):
                     if total_episode and start_episode:
                         # 有开始集和总集数
                         episodes = list(range(start_episode, total_episode + 1))
-                        no_exist = {
+                        no_exists[tmdb_id][index] = {
                             "season": begin_season,
                             "episodes": episodes,
                             "total_episodes": total_episode,
@@ -324,7 +327,7 @@ class SubscribeChain(ChainBase):
                     elif not start_episode:
                         # 有总集数没有开始集
                         episodes = list(range(min(episode_list or [1]), total_episode + 1))
-                        no_exist = {
+                        no_exists[tmdb_id][index] = {
                             "season": begin_season,
                             "episodes": episodes,
                             "total_episodes": total_episode,
@@ -333,10 +336,11 @@ class SubscribeChain(ChainBase):
                     elif not total_episode:
                         # 有开始集没有总集数
                         episodes = list(range(start_episode, max(episode_list or [total]) + 1))
-                        no_exist = {
+                        no_exists[tmdb_id][index] = {
                                 "season": begin_season,
                                 "episodes": episodes,
                                 "total_episodes": max(episode_list or [total]),
                                 "start_episode": start_episode
                             }
+                index += 1
         return no_exists
