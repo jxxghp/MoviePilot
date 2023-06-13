@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from uvicorn import Config
 
 from app.api.apiv1 import api_router
+from app.api.servarr import arr_router
 from app.command import Command
 from app.core.config import settings
 from app.core.module import ModuleManager
@@ -18,6 +19,9 @@ App = FastAPI(title=settings.PROJECT_NAME,
 
 # API路由
 App.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Radarr、Sonarr路由
+App.include_router(arr_router, prefix="/api/v3")
 
 # uvicorn服务
 Server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT, reload=settings.RELOAD))

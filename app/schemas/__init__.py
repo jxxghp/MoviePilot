@@ -4,3 +4,4 @@ from .response import Response
 from .site import Site
 from .subscribe import Subscribe
 from .context import Context
+from .servarr import RadarrMovie, SonarrSeries

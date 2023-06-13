@@ -47,7 +47,7 @@ async def create_subscribe(
     return {"success": result}
 
 
-@router.post("/update", response_model=schemas.Subscribe)
+@router.put("/", response_model=schemas.Subscribe)
 async def update_subscribe(
         *,
         db: Session = Depends(get_db),
@@ -67,7 +67,7 @@ async def update_subscribe(
     return subscribe
 
 
-@router.post("/delete", response_model=schemas.Response)
+@router.delete("/", response_model=schemas.Response)
 async def delete_subscribe(
         *,
         db: Session = Depends(get_db),

@@ -22,7 +22,7 @@ async def read_sites(db: Session = Depends(get_db),
     return Site.list(db)
 
 
-@router.post("/update", response_model=schemas.Site)
+@router.put("/", response_model=schemas.Site)
 async def update_site(
     *,
     db: Session = Depends(get_db),
