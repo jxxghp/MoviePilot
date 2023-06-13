@@ -241,7 +241,16 @@ async def arr_movie_lookup(apikey: str, term: str, db: Session = Depends(get_db)
             hasFile=False,
         )]
     else:
-        return []
+        return [RadarrMovie(
+            title=subscribe.name,
+            isAvailable=False,
+            monitored=False,
+            tmdbId=subscribe.tmdbid,
+            profileId=1,
+            qualityProfileId=1,
+            added=False,
+            hasFile=False,
+        )]
 
 
 @arr_router.get("/movie/{mid}", response_model=schemas.RadarrMovie)
