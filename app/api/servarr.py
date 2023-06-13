@@ -220,6 +220,7 @@ async def arr_movies(apikey: str, db: Session = Depends(get_db)) -> Any:
 async def arr_movie_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影 term: `tmdb:${id}`
+    存在和不存在均不能返回错误
     """
     if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
@@ -242,10 +243,9 @@ async def arr_movie_lookup(apikey: str, term: str, db: Session = Depends(get_db)
         )]
     else:
         return [RadarrMovie(
-            title=subscribe.name,
             isAvailable=False,
             monitored=False,
-            tmdbId=subscribe.tmdbid,
+            tmdbId=tmdbid,
             profileId=1,
             qualityProfileId=1,
             added=False,
