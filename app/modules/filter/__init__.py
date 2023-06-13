@@ -80,6 +80,8 @@ class FilterModule(_ModuleBase):
         :param season_episodes:  季集数过滤 {season:[episodes]}
         :return: 过滤后的资源列表，添加资源优先级
         """
+        if not settings.FILTER_RULE:
+            return torrent_list
         # 返回种子列表
         ret_torrents = []
         for torrent in torrent_list:
