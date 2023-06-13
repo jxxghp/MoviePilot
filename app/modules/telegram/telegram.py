@@ -51,11 +51,15 @@ class Telegram(metaclass=Singleton):
                 """
                 定义线程函数来运行 infinity_polling
                 """
-                _bot.infinity_polling(long_polling_timeout=5)
+                try:
+                    _bot.infinity_polling(long_polling_timeout=5)
+                except Exception as err:
+                    logger.error(f"Telegram消息接收服务异常：{err}")
 
             # 启动线程来运行 infinity_polling
             self._polling_thread = threading.Thread(target=run_polling)
             self._polling_thread.start()
+            logger.info("Telegram消息接收服务启动")
 
     def send_msg(self, title: str, text: str = "", image: str = "", userid: str = "") -> Optional[bool]:
         """
@@ -104,17 +108,17 @@ class Telegram(metaclass=Singleton):
                     image = media.get_message_image()
                 if media.vote_average:
                     caption = "%s\n%s. [%s](%s)\n_%s，%s_" % (caption,
-                                                           index,
-                                                           media.get_title_string(),
-                                                           media.get_detail_url(),
-                                                           f"类型：{media.type.value}",
-                                                           f"评分：{media.vote_average}")
+                                                             index,
+                                                             media.get_title_string(),
+                                                             media.get_detail_url(),
+                                                             f"类型：{media.type.value}",
+                                                             f"评分：{media.vote_average}")
                 else:
                     caption = "%s\n%s. [%s](%s)\n_%s_" % (caption,
-                                                        index,
-                                                        media.get_title_string(),
-                                                        media.get_detail_url(),
-                                                        f"类型：{media.type.value}")
+                                                          index,
+                                                          media.get_title_string(),
+                                                          media.get_detail_url(),
+                                                          f"类型：{media.type.value}")
                 index += 1
 
             if userid:
@@ -214,3 +218,4 @@ class Telegram(metaclass=Singleton):
         if self._bot:
             self._bot.stop_polling()
             self._polling_thread.join()
+            logger.info("Telegram消息接收服务已停止")
