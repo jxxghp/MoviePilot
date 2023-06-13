@@ -7,6 +7,7 @@ from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.helper.sites import SitesHelper
 from app.log import logger
+from app.schemas.context import NotExistMediaInfo
 from app.utils.string import StringUtils
 from app.utils.types import MediaType
 
@@ -22,7 +23,7 @@ class SearchChain(ChainBase):
 
     def process(self, meta: MetaBase, mediainfo: MediaInfo,
                 keyword: str = None,
-                no_exists: Dict[int, List[dict]] = None) -> Optional[List[Context]]:
+                no_exists: Dict[int, List[NotExistMediaInfo]] = None) -> Optional[List[Context]]:
         """
         根据媒体信息，执行搜索
         :param meta: 元数据

@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.meta import MetaBase
 from app.log import logger
 from app.modules import _ModuleBase
+from app.schemas.context import TransferInfo
 from app.utils.system import SystemUtils
 from app.utils.types import MediaType
 
@@ -28,7 +29,7 @@ class FileTransferModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[dict]:
+    def transfer(self, path: Path, mediainfo: MediaInfo) -> Optional[TransferInfo]:
         """
         文件转移
         :param path:  文件路径
@@ -38,18 +39,14 @@ class FileTransferModule(_ModuleBase):
         if not settings.LIBRARY_PATH:
             logger.error("未设置媒体库目录，无法转移文件")
             return None
-        target_path, msg = self.transfer_media(in_path=Path(path),
+        target_path, msg = self.transfer_media(in_path=path,
                                                meidainfo=mediainfo,
                                                rmt_mode=settings.TRANSFER_TYPE,
                                                target_dir=Path(settings.LIBRARY_PATH))
         if not path:
             logger.error(msg)
 
-        return {
-            "path": path,
-            "target_path": target_path,
-            "message": msg
-        }
+        return TransferInfo(path=path, target_path=target_path, message=msg)
 
     @staticmethod
     def __transfer_command(file_item: Path, target_file: Path, rmt_mode) -> int:

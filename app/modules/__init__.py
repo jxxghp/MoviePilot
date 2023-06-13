@@ -6,6 +6,7 @@ from ruamel.yaml import CommentedMap
 
 from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.meta import MetaBase
+from app.schemas.context import TransferInfo, TransferTorrent, ExistMediaInfo
 from app.utils.types import TorrentStatus, MediaType
 
 
@@ -98,7 +99,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def media_exists(self, mediainfo: MediaInfo) -> Optional[dict]:
+    def media_exists(self, mediainfo: MediaInfo) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
@@ -156,7 +157,7 @@ class _ModuleBase(metaclass=ABCMeta):
         pass
 
     def list_torrents(self, status: TorrentStatus = None,
-                      hashs: Union[list, str] = None) -> Optional[List[dict]]:
+                      hashs: Union[list, str] = None) -> Optional[List[TransferTorrent]]:
         """
         获取下载器种子列表
         :param status:  种子状态
@@ -165,7 +166,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[dict]:
+    def transfer(self, path: Path, mediainfo: MediaInfo) -> Optional[TransferInfo]:
         """
         转移一个路径下的文件
         :param path:  文件路径
@@ -174,7 +175,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def transfer_completed(self, hashs: Union[str, list], transinfo: dict) -> None:
+    def transfer_completed(self, hashs: Union[str, list], transinfo: TransferInfo) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash
@@ -191,7 +192,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: str) -> Optional[bool]:
+    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> Optional[bool]:
         """
         刷新媒体库
         :param mediainfo:  识别的媒体信息

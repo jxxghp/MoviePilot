@@ -6,6 +6,7 @@ from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.transmission.transmission import Transmission
+from app.schemas.context import TransferInfo, TransferTorrent
 from app.utils.types import TorrentStatus
 
 
@@ -71,7 +72,8 @@ class TransmissionModule(_ModuleBase):
             else:
                 return torrent_hash, "添加下载任务成功"
 
-    def list_torrents(self, status: TorrentStatus = None, hashs: Union[list, str] = None) -> Optional[List[dict]]:
+    def list_torrents(self, status: TorrentStatus = None,
+                      hashs: Union[list, str] = None) -> Optional[List[TransferTorrent]]:
         """
         获取下载器种子列表
         :param status:  种子状态
@@ -83,12 +85,12 @@ class TransmissionModule(_ModuleBase):
             # 按Hash获取
             torrents, _ = self.transmission.get_torrents(ids=hashs, tags=settings.TORRENT_TAG)
             for torrent in torrents:
-                ret_torrents.append({
-                    'title': torrent.name,
-                    'path': Path(torrent.download_dir) / torrent.name,
-                    'hash': torrent.hashString,
-                    'tags': torrent.labels
-                })
+                ret_torrents.append(TransferTorrent(
+                    title=torrent.name,
+                    path=Path(torrent.download_dir) / torrent.name,
+                    hash=torrent.hashString,
+                    tags=torrent.labels
+                ))
         elif status == TorrentStatus.TRANSFER:
             # 获取已完成且未整理的
             torrents = self.transmission.get_completed_torrents(tags=settings.TORRENT_TAG)
@@ -102,17 +104,17 @@ class TransmissionModule(_ModuleBase):
                 if not path:
                     logger.debug(f"未获取到 {torrent.name} 下载保存路径")
                     continue
-                ret_torrents.append({
-                    'title': torrent.name,
-                    'path': Path(path) / torrent.name,
-                    'hash': torrent.hashString,
-                    'tags': torrent.labels
-                })
+                ret_torrents.append(TransferTorrent(
+                    title=torrent.name,
+                    path=Path(torrent.download_dir) / torrent.name,
+                    hash=torrent.hashString,
+                    tags=torrent.labels
+                ))
         else:
             return None
         return ret_torrents
 
-    def transfer_completed(self, hashs: Union[str, list], transinfo: dict) -> None:
+    def transfer_completed(self, hashs: Union[str, list], transinfo: TransferInfo) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import base64
 import json
 import re
 from abc import ABCMeta, abstractmethod
@@ -7,7 +6,6 @@ from typing import Optional
 from urllib.parse import urljoin, urlsplit
 
 import requests
-from lxml import etree
 from requests import Session
 
 from app.core.config import settings

@@ -1,9 +1,11 @@
+from pathlib import Path
 from typing import Optional, Tuple, Union, Any
 
 from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.plex.plex import Plex
+from app.schemas.context import ExistMediaInfo
 from app.utils.types import MediaType
 
 
@@ -30,7 +32,7 @@ class PlexModule(_ModuleBase):
         """
         return self.plex.get_webhook_message(form.get("payload"))
 
-    def media_exists(self, mediainfo: MediaInfo) -> Optional[dict]:
+    def media_exists(self, mediainfo: MediaInfo) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
@@ -43,7 +45,7 @@ class PlexModule(_ModuleBase):
                 return None
             else:
                 logger.info(f"媒体库中已存在：{movies}")
-                return {"type": MediaType.MOVIE}
+                return ExistMediaInfo(type=MediaType.MOVIE)
         else:
             tvs = self.plex.get_tv_episodes(title=mediainfo.title,
                                             year=mediainfo.year)
@@ -52,9 +54,9 @@ class PlexModule(_ModuleBase):
                 return None
             else:
                 logger.info(f"{mediainfo.get_title_string()} 媒体库中已存在：{tvs}")
-                return {"type": MediaType.TV, "seasons": tvs}
+                return ExistMediaInfo(type=MediaType.TV, seasons=tvs)
 
-    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: str) -> Optional[bool]:
+    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> Optional[bool]:
         """
         刷新媒体库
         :param mediainfo:  识别的媒体信息

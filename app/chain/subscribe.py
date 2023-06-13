@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.db.subscribes import Subscribes
 from app.helper.sites import SitesHelper
 from app.log import logger
+from app.schemas.context import NotExistMediaInfo
 from app.utils.string import StringUtils
 from app.utils.types import MediaType
 
@@ -290,7 +291,7 @@ class SubscribeChain(ChainBase):
                             })
 
     @staticmethod
-    def __get_subscribe_no_exits(no_exists: Dict[int, List[dict]],
+    def __get_subscribe_no_exits(no_exists: Dict[int, List[NotExistMediaInfo]],
                                  tmdb_id: int,
                                  begin_season: int,
                                  total_episode: int,
@@ -310,37 +311,37 @@ class SubscribeChain(ChainBase):
             index = 0
             for no_exist in no_exists.get(tmdb_id):
                 # 替换原季值
-                if no_exist.get("season") == begin_season:
+                if no_exist.season == begin_season:
                     # 原季集列表
-                    episode_list = no_exist.get("episodes")
+                    episode_list = no_exist.episodes
                     # 原总集数
-                    total = no_exist.get("total_episodes")
+                    total = no_exist.total_episodes
                     if total_episode and start_episode:
                         # 有开始集和总集数
                         episodes = list(range(start_episode, total_episode + 1))
-                        no_exists[tmdb_id][index] = {
-                            "season": begin_season,
-                            "episodes": episodes,
-                            "total_episodes": total_episode,
-                            "start_episode": start_episode
-                        }
+                        no_exists[tmdb_id][index] = NotExistMediaInfo(
+                            season=begin_season,
+                            episodes=episodes,
+                            total_episodes=total_episode,
+                            start_episode=start_episode
+                        )
                     elif not start_episode:
                         # 有总集数没有开始集
                         episodes = list(range(min(episode_list or [1]), total_episode + 1))
-                        no_exists[tmdb_id][index] = {
-                            "season": begin_season,
-                            "episodes": episodes,
-                            "total_episodes": total_episode,
-                            "start_episode": min(episode_list or [1])
-                        }
+                        no_exists[tmdb_id][index] = NotExistMediaInfo(
+                            season=begin_season,
+                            episodes=episodes,
+                            total_episodes=total_episode,
+                            start_episode=min(episode_list or [1])
+                        )
                     elif not total_episode:
                         # 有开始集没有总集数
                         episodes = list(range(start_episode, max(episode_list or [total]) + 1))
-                        no_exists[tmdb_id][index] = {
-                                "season": begin_season,
-                                "episodes": episodes,
-                                "total_episodes": max(episode_list or [total]),
-                                "start_episode": start_episode
-                            }
+                        no_exists[tmdb_id][index] = NotExistMediaInfo(
+                            season=begin_season,
+                            episodes=episodes,
+                            total_episodes=max(episode_list or [total]),
+                            start_episode=start_episode
+                        )
                 index += 1
         return no_exists

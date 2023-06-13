@@ -10,6 +10,7 @@ from app.core.module import ModuleManager
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
 from app.log import logger
+from app.schemas.context import TransferInfo, TransferTorrent, ExistMediaInfo
 from app.utils.singleton import AbstractSingleton, Singleton
 from app.utils.types import TorrentStatus, MediaType
 
@@ -106,22 +107,23 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
     def download_added(self, context: Context, torrent_path: Path) -> None:
         return self.run_module("download_added", context=context, torrent_path=torrent_path)
 
-    def list_torrents(self, status: TorrentStatus = None, hashs: Union[list, str] = None) -> Optional[List[dict]]:
+    def list_torrents(self, status: TorrentStatus = None,
+                      hashs: Union[list, str] = None) -> Optional[List[TransferTorrent]]:
         return self.run_module("list_torrents", status=status, hashs=hashs)
 
-    def transfer(self, path: str, mediainfo: MediaInfo) -> Optional[dict]:
+    def transfer(self, path: Path, mediainfo: MediaInfo) -> Optional[TransferInfo]:
         return self.run_module("transfer", path=path, mediainfo=mediainfo)
 
-    def transfer_completed(self, hashs: Union[str, list], transinfo: dict) -> None:
+    def transfer_completed(self, hashs: Union[str, list], transinfo: TransferInfo) -> None:
         return self.run_module("transfer_completed", hashs=hashs, transinfo=transinfo)
 
     def remove_torrents(self, hashs: Union[str, list]) -> bool:
         return self.run_module("remove_torrents", hashs=hashs)
 
-    def media_exists(self, mediainfo: MediaInfo) -> Optional[dict]:
+    def media_exists(self, mediainfo: MediaInfo) -> Optional[ExistMediaInfo]:
         return self.run_module("media_exists", mediainfo=mediainfo)
 
-    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: str) -> Optional[bool]:
+    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> Optional[bool]:
         return self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
 
     def post_message(self, title: str, text: str = None,

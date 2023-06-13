@@ -1,6 +1,9 @@
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Dict
 
 from pydantic import BaseModel
+
+from app.utils.types import MediaType
 
 
 class MetaInfo(BaseModel):
@@ -84,3 +87,37 @@ class Context(BaseModel):
     meta_info: Optional[MetaInfo]
     # 媒体信息
     media_info: Optional[MediaInfo]
+
+
+class TransferTorrent(BaseModel):
+    title: Optional[str] = None
+    path: Optional[Path] = None
+    hash: Optional[str] = None
+    tags: Optional[str] = None
+
+
+class TransferInfo(BaseModel):
+    # 转移⼁路径
+    path: Optional[Path] = None
+    # 转移后路径
+    target_path: Optional[Path] = None
+    # 错误信息
+    message: Optional[str] = None
+
+
+class ExistMediaInfo(BaseModel):
+    # 类型 电影、电视剧
+    type: MediaType
+    # 季
+    seasons: Optional[Dict[int, list]] = None
+
+
+class NotExistMediaInfo(BaseModel):
+    # 季
+    season: int
+    # 剧集列表
+    episodes: list = []
+    # 总集数
+    total_episodes: int = 0
+    # 开始集
+    start_episode: int = 0

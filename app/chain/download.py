@@ -8,6 +8,7 @@ from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.helper.torrent import TorrentHelper
 from app.log import logger
+from app.schemas.context import ExistMediaInfo, NotExistMediaInfo
 from app.utils.string import StringUtils
 from app.utils.types import MediaType
 
@@ -57,7 +58,7 @@ class DownloadChain(ChainBase):
 
     def batch_download(self,
                        contexts: List[Context],
-                       need_tvs: dict = None,
+                       need_tvs: Dict[int, List[NotExistMediaInfo]] = None,
                        userid: str = None) -> Tuple[List[Context], dict]:
         """
         根据缺失数据，自动种子列表中组合择优下载
@@ -155,7 +156,13 @@ class DownloadChain(ChainBase):
             """
             need = list(set(need).difference(set(current)))
             if need:
-                need_tvs[tmdbid][seq]["episodes"] = need
+                not_exist = need_tvs[tmdbid][seq]
+                need_tvs[tmdbid][seq] = NotExistMediaInfo(
+                    season=not_exist.season,
+                    episodes=need,
+                    total_episodes=not_exist.total_episodes,
+                    start_episode=not_exist.start_episode
+                )
             else:
                 need_tvs[tmdbid].pop(seq)
                 if not need_tvs.get(tmdbid) and need_tvs.get(tmdbid) is not None:
@@ -189,10 +196,10 @@ class DownloadChain(ChainBase):
                 for tv in need_tv:
                     if not tv:
                         continue
-                    if not tv.get("episodes"):
+                    if not tv.episodes:
                         if not need_seasons.get(need_tmdbid):
                             need_seasons[need_tmdbid] = []
-                        need_seasons[need_tmdbid].append(tv.get("season") or 1)
+                        need_seasons[need_tmdbid].append(tv.season or 1)
             # 查找整季包含的种子，只处理整季没集的种子或者是集数超过季的种子
             for need_tmdbid, need_season in need_seasons.items():
                 for context in contexts:
@@ -236,10 +243,10 @@ class DownloadChain(ChainBase):
                     continue
                 index = 0
                 for tv in need_tv:
-                    need_season = tv.get("season") or 1
-                    need_episodes = tv.get("episodes")
-                    total_episodes = tv.get("total_episodes")
-                    start_episode = tv.get("start_episode") or 1
+                    need_season = tv.season or 1
+                    need_episodes = tv.episodes
+                    total_episodes = tv.total_episodes
+                    start_episode = tv.start_episode or 1
                     # 缺失整季的转化为缺失集进行比较
                     if not need_episodes:
                         need_episodes = list(range(start_episode, total_episodes + start_episode))
@@ -278,8 +285,8 @@ class DownloadChain(ChainBase):
                     continue
                 index = 0
                 for tv in need_tv:
-                    need_season = tv.get("season") or 1
-                    need_episodes = tv.get("episodes")
+                    need_season = tv.season or 1
+                    need_episodes = tv.episodes
                     if not need_episodes:
                         continue
                     for context in contexts:
@@ -326,7 +333,9 @@ class DownloadChain(ChainBase):
         return downloaded_list, need_tvs
 
     def get_no_exists_info(self, meta: MetaBase,
-                           mediainfo: MediaInfo, no_exists: dict = None) -> Tuple[bool, dict]:
+                           mediainfo: MediaInfo,
+                           no_exists: Dict[int, List[NotExistMediaInfo]] = None
+                           ) -> Tuple[bool, Dict[int, List[NotExistMediaInfo]]]:
         """
         检查媒体库，查询是否存在，对于剧集同时返回不存在的季集信息
         :param meta: 元数据
@@ -347,26 +356,26 @@ class DownloadChain(ChainBase):
             """
             if not no_exists.get(mediainfo.tmdb_id):
                 no_exists[mediainfo.tmdb_id] = [
-                    {
-                        "season": _season,
-                        "episodes": _episodes,
-                        "total_episodes": _total,
-                        "start_episode": _start
-                    }
+                    NotExistMediaInfo(
+                        season=_season,
+                        episodes=_episodes,
+                        total_episodes=_total,
+                        start_episode=_start)
                 ]
             else:
-                no_exists[mediainfo.tmdb_id].append({
-                    "season": _season,
-                    "episodes": _episodes,
-                    "total_episodes": _total,
-                    "start_episode": _start
-                })
+                no_exists[mediainfo.tmdb_id].append(
+                    NotExistMediaInfo(
+                        season=_season,
+                        episodes=_episodes,
+                        total_episodes=_total,
+                        start_episode=_start)
+                )
 
         if not no_exists:
             no_exists = {}
         if mediainfo.type == MediaType.MOVIE:
             # 电影
-            exists_movies: Optional[dict] = self.media_exists(mediainfo)
+            exists_movies: Optional[ExistMediaInfo] = self.media_exists(mediainfo)
             if exists_movies:
                 logger.info(f"媒体库中已存在电影：{mediainfo.get_title_string()}")
                 return True, {}
@@ -384,7 +393,7 @@ class DownloadChain(ChainBase):
                     logger.error(f"媒体信息中没有季集信息：{mediainfo.get_title_string()}")
                     return False, {}
             # 电视剧
-            exists_tvs: Optional[dict] = self.media_exists(mediainfo)
+            exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo)
             if not exists_tvs:
                 # 所有剧集均缺失
                 for season, episodes in mediainfo.seasons.items():
@@ -400,7 +409,7 @@ class DownloadChain(ChainBase):
                     if meta.begin_season \
                             and season not in meta.get_season_list():
                         continue
-                    exist_seasons = exists_tvs.get("seasons")
+                    exist_seasons = exists_tvs.seasons
                     if exist_seasons.get(season):
                         # 取差集
                         episodes = list(set(episodes).difference(set(exist_seasons[season])))

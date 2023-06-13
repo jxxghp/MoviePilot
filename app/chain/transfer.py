@@ -1,12 +1,13 @@
 import re
+from pathlib import Path
 from typing import List, Optional
 
 from app.chain import ChainBase
-from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.log import logger
+from app.schemas.context import TransferInfo, TransferTorrent
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 from app.utils.types import TorrentStatus
@@ -43,16 +44,16 @@ class TransferChain(ChainBase):
                 logger.error(f"参数错误，参数：{arg_str}")
                 return False
             # 获取种子
-            torrents: Optional[List[dict]] = self.list_torrents(hashs=torrent_hash)
+            torrents: Optional[List[TransferTorrent]] = self.list_torrents(hashs=torrent_hash)
             if not torrents:
                 logger.error(f"没有获取到种子，参数：{arg_str}")
                 return False
             # 识别前预处理
-            result: Optional[tuple] = self.prepare_recognize(title=torrents[0].get("title"))
+            result: Optional[tuple] = self.prepare_recognize(title=torrents[0].title)
             if result:
                 title, subtitle = result
             else:
-                title, subtitle = torrents[0].get("title"), None
+                title, subtitle = torrents[0].title, None
             # 识别
             meta = MetaInfo(title=title, subtitle=subtitle)
             # 查询媒体信息
@@ -61,7 +62,7 @@ class TransferChain(ChainBase):
             arg_mediainfo = None
             logger.info("开始执行下载器文件转移 ...")
             # 从下载器获取种子列表
-            torrents: Optional[List[dict]] = self.list_torrents(status=TorrentStatus.TRANSFER)
+            torrents: Optional[List[TransferTorrent]] = self.list_torrents(status=TorrentStatus.TRANSFER)
             if not torrents:
                 logger.info("没有获取到已完成的下载任务")
                 return False
@@ -70,11 +71,11 @@ class TransferChain(ChainBase):
         # 识别
         for torrent in torrents:
             # 识别前预处理
-            result: Optional[tuple] = self.prepare_recognize(title=torrent.get("title"))
+            result: Optional[tuple] = self.prepare_recognize(title=torrent.title)
             if result:
                 title, subtitle = result
             else:
-                title, subtitle = torrent.get("title"), None
+                title, subtitle = torrent.title, None
             # 识别元数据
             meta: MetaBase = MetaInfo(title=title, subtitle=subtitle)
             if not meta.get_name():
@@ -84,45 +85,45 @@ class TransferChain(ChainBase):
                 # 识别媒体信息
                 mediainfo: MediaInfo = self.recognize_media(meta=meta)
                 if not mediainfo:
-                    logger.warn(f'未识别到媒体信息，标题：{torrent.get("title")}')
-                    self.post_message(title=f"{torrent.get('title')} 未识别到媒体信息，无法入库！\n"
-                                            f"回复：```\n/transfer {torrent.get('hash')} [tmdbid]\n``` 手动识别转移。")
+                    logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
+                    self.post_message(title=f"{torrent.title} 未识别到媒体信息，无法入库！\n"
+                                            f"回复：```\n/transfer {torrent.hash} [tmdbid]\n``` 手动识别转移。")
                     continue
             else:
                 mediainfo = arg_mediainfo
-            logger.info(f"{torrent.get('title')} 识别为：{mediainfo.type.value} {mediainfo.get_title_string()}")
+            logger.info(f"{torrent.title} 识别为：{mediainfo.type.value} {mediainfo.get_title_string()}")
             # 更新媒体图片
             self.obtain_image(mediainfo=mediainfo)
             # 转移
-            transferinfo: dict = self.transfer(mediainfo=mediainfo, path=torrent.get("path"))
-            if not transferinfo or not transferinfo.get("target_path"):
-                logger.warn(f"{torrent.get('title')} 入库失败")
+            transferinfo: TransferInfo = self.transfer(mediainfo=mediainfo, path=Path(torrent.path))
+            if not transferinfo or not transferinfo.target_path:
+                logger.warn(f"{torrent.title} 入库失败")
                 self.post_message(
                     title=f"{mediainfo.get_title_string()}{meta.get_season_episode_string()} 入库失败！",
-                    text=f"原因：{transferinfo.get('message') if transferinfo else '未知'}",
+                    text=f"原因：{transferinfo.message if transferinfo else '未知'}",
                     image=mediainfo.get_message_image()
                 ),
                 continue
             # 转移完成
-            self.transfer_completed(hashs=torrent.get("hash"), transinfo=transferinfo)
+            self.transfer_completed(hashs=torrent.hash, transinfo=transferinfo)
             # 刮剥
-            self.scrape_metadata(path=transferinfo.get('target_path'), mediainfo=mediainfo)
+            self.scrape_metadata(path=transferinfo.target_path, mediainfo=mediainfo)
             # 刷新媒体库
-            self.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.get('target_path'))
+            self.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
             # 发送通知
             self.__send_transfer_message(meta=meta, mediainfo=mediainfo, transferinfo=transferinfo)
 
         logger.info("下载器文件转移执行完成")
         return True
 
-    def __send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo, transferinfo: dict):
+    def __send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo, transferinfo: TransferInfo):
         """
         发送入库成功的消息
         """
         # 文件大小
         file_size = StringUtils.str_filesize(
             SystemUtils.get_directory_size(
-                transferinfo.get('target_path')
+                transferinfo.target_path
             )
         )
         msg_title = f"{mediainfo.get_title_string()} 已入库"
