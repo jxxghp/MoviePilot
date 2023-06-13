@@ -35,7 +35,7 @@ class _ModuleBase(metaclass=ABCMeta):
         识别前的预处理
         :param title:     标题
         :param subtitle:  副标题
-        :return: 处理后的标题、副标题，注意如果返回None，有可能是没有对应的处理模块，应无视结果
+        :return: 处理后的标题、副标题，该方法可被多个模块同时处理
         """
         pass
 
@@ -48,6 +48,14 @@ class _ModuleBase(metaclass=ABCMeta):
         :param mtype:    媒体类型，与tmdbid配套
         :param tmdbid:   tmdbid
         :return: 识别的媒体信息，包括剧集信息
+        """
+        pass
+
+    def obtain_image(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
+        """
+        获取图片
+        :param mediainfo:  识别的媒体信息
+        :return: 更新后的媒体信息，该方法可被多个模块同时处理
         """
         pass
 
@@ -82,19 +90,19 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def obtain_image(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
-        """
-        获取图片
-        :param mediainfo:  识别的媒体信息
-        :return: 更新后的媒体信息，该方法可被多个模块同时处理
-        """
-        pass
-
     def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息
         :param meta:  识别的元数据
         :reutrn: 媒体信息
+        """
+        pass
+
+    def media_exists(self, mediainfo: MediaInfo) -> Optional[dict]:
+        """
+        判断媒体文件是否存在
+        :param mediainfo:  识别的媒体信息
+        :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
         pass
 
@@ -138,6 +146,15 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
+    def download_added(self, context: Context, torrent_path: Path) -> None:
+        """
+        添加下载任务后的处理
+        :param context:  上下文，包括识别信息、媒体信息、种子信息
+        :param torrent_path:  种子文件地址
+        :return: None，该方法可被多个模块同时处理
+        """
+        pass
+
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None) -> Optional[List[dict]]:
         """
@@ -166,11 +183,11 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def media_exists(self, mediainfo: MediaInfo) -> Optional[dict]:
+    def remove_torrents(self, hashs: Union[str, list]) -> bool:
         """
-        判断媒体文件是否存在
-        :param mediainfo:  识别的媒体信息
-        :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
+        删除下载器种子
+        :param hashs:  种子Hash
+        :return: bool
         """
         pass
 

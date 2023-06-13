@@ -122,5 +122,13 @@ class TransmissionModule(_ModuleBase):
         self.transmission.set_torrent_tag(ids=hashs, tags=['已整理'])
         # 移动模式删除种子
         if settings.TRANSFER_TYPE == "move":
-            if self.transmission.delete_torrents(delete_file=True, ids=hashs):
+            if self.remove_torrents(hashs):
                 logger.info(f"移动模式删除种子成功：{hashs} ")
+
+    def remove_torrents(self, hashs: Union[str, list]) -> bool:
+        """
+        删除下载器种子
+        :param hashs:  种子Hash
+        :return: bool
+        """
+        return self.transmission.delete_torrents(delete_file=True, ids=hashs)

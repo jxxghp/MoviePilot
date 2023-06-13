@@ -203,6 +203,8 @@ class UserMessageChain(ChainBase):
                         return
                     # 下载成功，发送通知
                     self.downloadchain.post_download_message(meta=meta, mediainfo=self._current_media, torrent=torrent)
+                    # 下载成功后处理
+                    self.download_added(context=context, torrent_path=torrent_file)
 
         elif text.lower() == "p":
             # 上一页

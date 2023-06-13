@@ -117,7 +117,10 @@ class DownloadChain(ChainBase):
             if _hash:
                 # 下载成功
                 downloaded_list.append(_context)
+                # 发送消息
                 self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, userid=userid)
+                # 下载成功后处理
+                self.download_added(context=_context, torrent_path=_torrent_file)
             else:
                 # 下载失败
                 logger.error(f"{_media.get_title_string()} 添加下载任务失败："

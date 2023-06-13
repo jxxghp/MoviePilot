@@ -73,6 +73,9 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
                         tmdbid: int = None) -> Optional[MediaInfo]:
         return self.run_module("recognize_media", meta=meta, mtype=mtype, tmdbid=tmdbid)
 
+    def obtain_image(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
+        return self.run_module("obtain_image", mediainfo=mediainfo)
+
     def douban_info(self, doubanid: str) -> Optional[dict]:
         return self.run_module("douban_info", doubanid=doubanid)
 
@@ -81,9 +84,6 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
         return self.run_module("webhook_parser", body=body, form=form, args=args)
-
-    def obtain_image(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
-        return self.run_module("obtain_image", mediainfo=mediainfo)
 
     def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
         return self.run_module("search_medias", meta=meta)
@@ -103,6 +103,9 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
                  episodes: Set[int] = None) -> Optional[Tuple[Optional[str], str]]:
         return self.run_module("download", torrent_path=torrent_path, cookie=cookie, episodes=episodes)
 
+    def download_added(self, context: Context, torrent_path: Path) -> None:
+        return self.run_module("download_added", context=context, torrent_path=torrent_path)
+
     def list_torrents(self, status: TorrentStatus = None, hashs: Union[list, str] = None) -> Optional[List[dict]]:
         return self.run_module("list_torrents", status=status, hashs=hashs)
 
@@ -111,6 +114,9 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
 
     def transfer_completed(self, hashs: Union[str, list], transinfo: dict) -> None:
         return self.run_module("transfer_completed", hashs=hashs, transinfo=transinfo)
+
+    def remove_torrents(self, hashs: Union[str, list]) -> bool:
+        return self.run_module("remove_torrents", hashs=hashs)
 
     def media_exists(self, mediainfo: MediaInfo) -> Optional[dict]:
         return self.run_module("media_exists", mediainfo=mediainfo)
