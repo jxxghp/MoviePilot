@@ -96,7 +96,17 @@ async def arr_languageprofile(apikey: str) -> Any:
         )
     return {
         "id": 1,
-        "name": "中文"
+        "name": "默认",
+        "languages": [
+            {
+                "id": 1,
+                "language": {
+                    "id": 1,
+                    "name": "中文"
+                },
+                "allowed": True
+            }
+        ]
     }
 
 
