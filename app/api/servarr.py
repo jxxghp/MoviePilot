@@ -444,18 +444,6 @@ async def arr_series(apikey: str) -> Any:
         )
 
 
-@arr_router.get("/series/{tid}")
-async def arr_serie(apikey: str) -> Any:
-    """
-    查询Sonarr剧集
-    """
-    if not apikey or apikey != settings.API_TOKEN:
-        raise HTTPException(
-            status_code=403,
-            detail="认证失败！",
-        )
-
-
 @arr_router.get("/series/lookup")
 async def arr_series_lookup(apikey: str, term: str) -> Any:
     """
@@ -468,7 +456,19 @@ async def arr_series_lookup(apikey: str, term: str) -> Any:
         )
 
 
-@arr_router.put("/series")
+@arr_router.get("/series/{tid}")
+async def arr_serie(apikey: str) -> Any:
+    """
+    查询Sonarr剧集
+    """
+    if not apikey or apikey != settings.API_TOKEN:
+        raise HTTPException(
+            status_code=403,
+            detail="认证失败！",
+        )
+
+
+@arr_router.post("/series")
 async def arr_add_series(apikey: str, title: str, seasons: list, year: int) -> Any:
     """
     新增Sonarr剧集订阅
