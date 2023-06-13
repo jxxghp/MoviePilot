@@ -94,7 +94,7 @@ async def arr_languageprofile(apikey: str) -> Any:
             status_code=403,
             detail="认证失败！",
         )
-    return {
+    return [{
         "id": 1,
         "name": "默认",
         "upgradeAllowed": True,
@@ -112,7 +112,7 @@ async def arr_languageprofile(apikey: str) -> Any:
                 "allowed": True
             }
         ]
-    }
+    }]
 
 
 @arr_router.get("/movie", response_model=List[schemas.RadarrMovie])
