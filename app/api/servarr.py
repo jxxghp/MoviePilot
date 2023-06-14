@@ -483,13 +483,13 @@ async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db
             if tmdbinfo:
                 season_num = tmdbinfo.get('season')
                 if season_num:
-                    seasons = list(range(1, int(season_num) + 1))
+                    seasons = [{"seasonNumber": sea} for sea in range(1, int(season_num) + 1)]
     if subscribe:
         return [SonarrSeries(
             id=subscribe.id,
             title=subscribe.name,
             seasonCount=1,
-            seasons=[subscribe.season],
+            seasons=[{"seasonNumber": subscribe.season}],
             year=subscribe.year,
             isAvailable=True,
             monitored=True,
