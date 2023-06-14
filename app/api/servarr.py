@@ -210,7 +210,6 @@ async def arr_movies(apikey: str, db: Session = Depends(get_db)) -> Any:
             tmdbId=subscribe.tmdbid,
             profileId=1,
             qualityProfileId=1,
-            added=True,
             hasFile=False,
         ))
     return result
@@ -238,19 +237,10 @@ async def arr_movie_lookup(apikey: str, term: str, db: Session = Depends(get_db)
             tmdbId=subscribe.tmdbid,
             profileId=1,
             qualityProfileId=1,
-            added=True,
             hasFile=False,
         )]
     else:
-        return [RadarrMovie(
-            isAvailable=False,
-            monitored=False,
-            tmdbId=tmdbid,
-            profileId=1,
-            qualityProfileId=1,
-            added=False,
-            hasFile=False,
-        )]
+        return [RadarrMovie()]
 
 
 @arr_router.get("/movie/{mid}", response_model=schemas.RadarrMovie)
@@ -273,7 +263,6 @@ async def arr_movie(apikey: str, mid: int, db: Session = Depends(get_db)) -> Any
             tmdbId=subscribe.tmdbid,
             profileId=1,
             qualityProfileId=1,
-            added=True,
             hasFile=False,
         )
     else:
@@ -463,7 +452,6 @@ async def arr_series(apikey: str, db: Session = Depends(get_db)) -> Any:
             profileId=1,
             languageProfileId=1,
             qualityProfileId=1,
-            added=True,
             hasFile=False,
         ))
     return result
@@ -501,21 +489,10 @@ async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db
             profileId=1,
             languageProfileId=1,
             qualityProfileId=1,
-            added=True,
             hasFile=False,
         )]
     else:
-        return [SonarrSeries(
-            id=0,
-            isAvailable=False,
-            monitored=False,
-            profileId=1,
-            languageProfileId=1,
-            qualityProfileId=1,
-            added=False,
-            hasFile=False,
-            seasons=[]
-        )]
+        return [SonarrSeries()]
 
 
 @arr_router.get("/series/{tid}")

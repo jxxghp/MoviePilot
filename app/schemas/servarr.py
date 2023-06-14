@@ -6,8 +6,8 @@ class RadarrMovie(BaseModel):
     id: Optional[int]
     title: Optional[str]
     year: Optional[int]
-    isAvailable: Optional[bool]
-    monitored: Optional[bool]
+    isAvailable: bool = False
+    monitored: bool = False
     tmdbId: Optional[int]
     imdbId: Optional[str]
     titleSlug: Optional[str]
@@ -16,7 +16,7 @@ class RadarrMovie(BaseModel):
     profileId: Optional[int]
     qualityProfileId: Optional[int]
     added: Optional[str]
-    hasFile: Optional[bool]
+    hasFile: bool = False
 
 
 class SonarrSeries(BaseModel):
@@ -28,16 +28,16 @@ class SonarrSeries(BaseModel):
     overview: Optional[str]
     network: Optional[str]
     airTime: Optional[str]
-    images: Optional[list]
+    images: list = []
     remotePoster: Optional[str]
-    seasons: Optional[list]
+    seasons: list = []
     year: Optional[int]
     path: Optional[str]
     profileId: Optional[int]
     languageProfileId: Optional[int]
-    seasonFolder: Optional[bool]
-    monitored: Optional[bool]
-    useSceneNumbering: Optional[bool]
+    seasonFolder: bool = False
+    monitored: bool = False
+    useSceneNumbering: bool = False
     runtime: Optional[int]
     tvdbId: Optional[int]
     tvRageId: Optional[int]
@@ -48,9 +48,9 @@ class SonarrSeries(BaseModel):
     imdbId: Optional[str]
     titleSlug: Optional[str]
     certification: Optional[str]
-    genres: Optional[list]
-    tags: Optional[list]
+    genres: list = []
+    tags: list = []
     added: Optional[str]
     ratings: Optional[dict]
     qualityProfileId: Optional[int]
-    statistics: Optional[dict]
+    statistics: dict = {}
