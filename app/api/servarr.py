@@ -8,7 +8,7 @@ from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
-from app.schemas import RadarrMovie
+from app.schemas import RadarrMovie, SonarrSeries
 from app.utils.types import MediaType
 from version import APP_VERSION
 
@@ -331,7 +331,7 @@ async def arr_remove_movie(apikey: str, mid: int, db: Session = Depends(get_db))
 
 
 @arr_router.get("/series", response_model=List[schemas.SonarrSeries])
-async def arr_series(apikey: str) -> Any:
+async def arr_series(apikey: str, db: Session = Depends(get_db)) -> Any:
     """
     查询Sonarr剧集
     """
@@ -442,10 +442,35 @@ async def arr_series(apikey: str) -> Any:
             status_code=403,
             detail="认证失败！",
         )
+    # 查询所有电视剧订阅
+    result = []
+    subscribes = Subscribe.list(db)
+    for subscribe in subscribes:
+        if subscribe.type != "电视剧":
+            continue
+        result.append(SonarrSeries(
+            id=subscribe.id,
+            title=subscribe.name,
+            seasonCount=1,
+            seasons=[{
+                "seasonNumber": subscribe.season,
+                "monitored": True,
+            }],
+            year=subscribe.year,
+            isAvailable=True,
+            monitored=True,
+            tmdbId=subscribe.tmdbid,
+            profileId=1,
+            languageProfileId=1,
+            qualityProfileId=1,
+            added=True,
+            hasFile=False,
+        ))
+    return result
 
 
 @arr_router.get("/series/lookup")
-async def arr_series_lookup(apikey: str, term: str) -> Any:
+async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> Any:
     """
     查询Sonarr剧集 term: `tvdb:${id}` title
     """
@@ -454,10 +479,45 @@ async def arr_series_lookup(apikey: str, term: str) -> Any:
             status_code=403,
             detail="认证失败！",
         )
+    if not term.startswith("tvdb:"):
+        title = term
+        subscribe = Subscribe.get_by_title(db, title)
+    else:
+        tmdbid = term.replace("tvdb:", "")
+        subscribe = Subscribe.get_by_tmdbid(db, int(tmdbid))
+    if subscribe:
+        return [SonarrSeries(
+            id=subscribe.id,
+            title=subscribe.name,
+            seasonCount=1,
+            seasons=[{
+                "seasonNumber": subscribe.season,
+                "monitored": True,
+            }],
+            year=subscribe.year,
+            isAvailable=True,
+            monitored=True,
+            tvdbId=subscribe.tvdbid,
+            profileId=1,
+            languageProfileId=1,
+            qualityProfileId=1,
+            added=True,
+            hasFile=False,
+        )]
+    else:
+        return [SonarrSeries(
+            isAvailable=False,
+            monitored=False,
+            profileId=1,
+            languageProfileId=1,
+            qualityProfileId=1,
+            added=False,
+            hasFile=False,
+        )]
 
 
 @arr_router.get("/series/{tid}")
-async def arr_serie(apikey: str) -> Any:
+async def arr_serie(apikey: str, tid: int, db: Session = Depends(get_db)) -> Any:
     """
     查询Sonarr剧集
     """
@@ -466,10 +526,35 @@ async def arr_serie(apikey: str) -> Any:
             status_code=403,
             detail="认证失败！",
         )
+    subscribe = Subscribe.get(db, tid)
+    if subscribe:
+        return SonarrSeries(
+            id=subscribe.id,
+            title=subscribe.name,
+            seasonCount=1,
+            seasons=[{
+                "seasonNumber": subscribe.season,
+                "monitored": True,
+            }],
+            year=subscribe.year,
+            isAvailable=True,
+            monitored=True,
+            tvdbId=subscribe.tvdbid,
+            profileId=1,
+            languageProfileId=1,
+            qualityProfileId=1,
+            added=True,
+            hasFile=False,
+        )
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail="未找到该电视剧！"
+        )
 
 
 @arr_router.post("/series")
-async def arr_add_series(apikey: str, title: str, seasons: list, year: int) -> Any:
+async def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
     """
     新增Sonarr剧集订阅
     """
@@ -478,10 +563,23 @@ async def arr_add_series(apikey: str, title: str, seasons: list, year: int) -> A
             status_code=403,
             detail="认证失败！",
         )
+    sid = SubscribeChain().process(title=tv.title,
+                                   year=str(tv.year) if tv.year else None,
+                                   mtype=MediaType.TV,
+                                   userid="Seerr")
+    if sid:
+        return {
+            "id": sid
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="添加订阅失败！"
+        )
 
 
 @arr_router.delete("/series/{tid}")
-async def arr_remove_series(apikey: str, tid: int) -> Any:
+async def arr_remove_series(apikey: str, tid: int, db: Session = Depends(get_db)) -> Any:
     """
     删除Sonarr剧集订阅
     """
@@ -489,4 +587,13 @@ async def arr_remove_series(apikey: str, tid: int) -> Any:
         raise HTTPException(
             status_code=403,
             detail="认证失败！",
+        )
+    subscribe = Subscribe.get(db, tid)
+    if subscribe:
+        subscribe.delete(db, tid)
+        return {"success": True}
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail="未找到该电视剧！"
         )
