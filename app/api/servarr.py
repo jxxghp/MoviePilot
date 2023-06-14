@@ -534,7 +534,7 @@ async def arr_serie(apikey: str, tid: int, db: Session = Depends(get_db)) -> Any
 
 
 @arr_router.post("/series")
-async def arr_add_series(request: Request, apikey: str, tv: schemas.SonarrSeries) -> Any:
+async def arr_add_series(request: Request, apikey: str) -> Any:
     """
     新增Sonarr剧集订阅
     """
@@ -544,7 +544,7 @@ async def arr_add_series(request: Request, apikey: str, tv: schemas.SonarrSeries
             detail="认证失败！",
         )
     logger.info(await request.body())
-    logger.info(tv.dict())
+    '''
     sid = 0
     for season in tv.seasons:
         sid = SubscribeChain().process(title=tv.title,
@@ -562,6 +562,7 @@ async def arr_add_series(request: Request, apikey: str, tv: schemas.SonarrSeries
             status_code=500,
             detail="添加订阅失败！"
         )
+    '''
 
 
 @arr_router.delete("/series/{tid}")
