@@ -5,7 +5,7 @@ from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.plex.plex import Plex
-from app.schemas.context import ExistMediaInfo
+from app.schemas.context import ExistMediaInfo, RefreshMediaItem
 from app.utils.types import MediaType
 
 
@@ -64,12 +64,12 @@ class PlexModule(_ModuleBase):
         :return: 成功或失败
         """
         items = [
-            {
-                "title": mediainfo.title,
-                "year": mediainfo.year,
-                "type": mediainfo.type,
-                "category": mediainfo.category,
-                "target_path": file_path
-            }
+            RefreshMediaItem(
+                title=mediainfo.title,
+                year=mediainfo.year,
+                type=mediainfo.type,
+                category=mediainfo.category,
+                target_path=file_path
+            )
         ]
         return self.plex.refresh_library_by_items(items)

@@ -121,3 +121,16 @@ class NotExistMediaInfo(BaseModel):
     total_episodes: int = 0
     # 开始集
     start_episode: int = 0
+
+
+class RefreshMediaItem(BaseModel):
+    # 标题
+    title: str
+    # 年份
+    year: Optional[str] = None
+    # 类型
+    type: Optional[MediaType] = None
+    # 类别
+    category: Optional[str] = None
+    # 目录
+    target_path: Optional[Path] = None

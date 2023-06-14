@@ -29,8 +29,8 @@ class DownloadChain(ChainBase):
         msg_text = ""
         if torrent.site_name:
             msg_text = f"站点：{torrent.site_name}"
-        if meta.resource:
-            msg_text = f"{msg_text}\n质量：{meta.resource}"
+        if meta.resource_term:
+            msg_text = f"{msg_text}\n质量：{meta.resource_term}"
         if torrent.size:
             if str(torrent.size).isdigit():
                 size = StringUtils.str_filesize(torrent.size)

@@ -300,18 +300,6 @@ class Jellyfin(metaclass=Singleton):
             logger.error(f"连接Library/Refresh出错：" + str(e))
             return False
 
-    def refresh_library_by_items(self, items: List[dict]) -> bool:
-        """
-        按类型、名称、年份来刷新媒体库，Jellyfin没有刷单个项目的API，这里直接刷新整个库
-        :param items: 已识别的需要刷新媒体库的媒体信息列表
-        """
-        # 没找到单项目刷新的对应的API，先按全库刷新
-        if not items:
-            return False
-        if not self._host or not self._apikey:
-            return False
-        return self.refresh_root_library()
-
     def get_iteminfo(self, itemid: str) -> dict:
         """
         获取单个项目详情

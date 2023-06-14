@@ -133,8 +133,8 @@ class TransferChain(ChainBase):
             msg_str = f"类型：{mediainfo.type.value}"
         if mediainfo.category:
             msg_str = f"{msg_str}，类别：{mediainfo.category}"
-        if meta.resource:
-            msg_str = f"{msg_str}，质量：{meta.resource}"
+        if meta.resource_term:
+            msg_str = f"{msg_str}，质量：{meta.resource_term}"
         msg_str = f"{msg_str}， 大小：{file_size}"
         # 发送
         self.post_message(title=msg_title, text=msg_str, image=mediainfo.get_message_image())

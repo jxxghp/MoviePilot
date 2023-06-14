@@ -262,7 +262,7 @@ class Slack:
                 meta = MetaInfo(torrent.title, torrent.description)
                 link = torrent.page_url
                 title = f"{meta.season_episode} " \
-                        f"{meta.resource} " \
+                        f"{meta.resource_term} " \
                         f"{meta.release_team}"
                 title = re.sub(r"\s+", " ", title).strip()
                 free = torrent.get_volume_factor_string()

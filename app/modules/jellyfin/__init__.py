@@ -64,13 +64,4 @@ class JellyfinModule(_ModuleBase):
         :param file_path:  文件路径
         :return: 成功或失败
         """
-        items = [
-            {
-                "title": mediainfo.title,
-                "year": mediainfo.year,
-                "type": mediainfo.type,
-                "category": mediainfo.category,
-                "target_path": file_path
-            }
-        ]
-        return self.jellyfin.refresh_library_by_items(items)
+        return self.jellyfin.refresh_root_library()

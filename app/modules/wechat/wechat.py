@@ -215,7 +215,7 @@ class WeChat(metaclass=Singleton):
             meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
             torrent_title = f"{index}.【{torrent.site_name}】" \
                             f"{meta.season_episode} " \
-                            f"{meta.resource} " \
+                            f"{meta.resource_term} " \
                             f"{meta.release_team} " \
                             f"{StringUtils.str_filesize(torrent.size)} " \
                             f"{torrent.get_volume_factor_string()} " \

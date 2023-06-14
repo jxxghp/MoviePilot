@@ -5,6 +5,7 @@ from typing import List, Optional, Union, Dict
 
 from app.core.config import settings
 from app.log import logger
+from app.schemas.context import RefreshMediaItem
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
@@ -346,7 +347,7 @@ class Emby(metaclass=Singleton):
             return False
         return False
 
-    def refresh_library_by_items(self, items: List[dict]) -> bool:
+    def refresh_library_by_items(self, items: List[RefreshMediaItem]) -> bool:
         """
         按类型、名称、年份来刷新媒体库
         :param items: 已识别的需要刷新媒体库的媒体信息列表
@@ -357,8 +358,6 @@ class Emby(metaclass=Singleton):
         logger.info(f"开始刷新Emby媒体库...")
         library_ids = []
         for item in items:
-            if not item:
-                continue
             library_id = self.__get_emby_library_id_by_item(item)
             if library_id and library_id not in library_ids:
                 library_ids.append(library_id)
@@ -370,24 +369,24 @@ class Emby(metaclass=Singleton):
                 return self.__refresh_emby_library_by_id(library_id)
         logger.info(f"Emby媒体库刷新完成")
 
-    def __get_emby_library_id_by_item(self, item: dict) -> Optional[str]:
+    def __get_emby_library_id_by_item(self, item: RefreshMediaItem) -> Optional[str]:
         """
         根据媒体信息查询在哪个媒体库，返回要刷新的位置的ID
         :param item: {title, year, type, category, target_path}
         """
-        if not item.get("title") or not item.get("year") or not item.get("type"):
+        if not item.title or not item.year or not item.type:
             return None
-        if item.get("type") != MediaType.MOVIE.value:
-            item_id = self.__get_emby_series_id_by_name(item.get("title"), item.get("year"))
+        if item.type != MediaType.MOVIE.value:
+            item_id = self.__get_emby_series_id_by_name(item.title, item.year)
             if item_id:
                 # 存在电视剧，则直接刷新这个电视剧就行
                 return item_id
         else:
-            if self.get_movies(item.get("title"), item.get("year")):
+            if self.get_movies(item.title, item.year):
                 # 已存在，不用刷新
                 return None
         # 查找需要刷新的媒体库ID
-        item_path = Path(item.get("target_path"))
+        item_path = Path(item.target_path)
         for folder in self._folders:
             # 找同级路径最多的媒体库（要求容器内映射路径与实际一致）
             max_comm_path = ""
@@ -416,7 +415,7 @@ class Emby(metaclass=Singleton):
                 return match_id if match_num == 1 else folder.get("Id")
             # 如果找不到，只要路径中有分类目录名就命中
             for subfolder in folder.get("SubFolders"):
-                if subfolder.get("Path") and re.search(r"[/\\]%s" % item.get("category"),
+                if subfolder.get("Path") and re.search(r"[/\\]%s" % item.category,
                                                        subfolder.get("Path")):
                     return folder.get("Id")
         # 刷新根目录

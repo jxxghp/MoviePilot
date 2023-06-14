@@ -8,6 +8,7 @@ from plexapi.server import PlexServer
 
 from app.core.config import settings
 from app.log import logger
+from app.schemas.context import RefreshMediaItem
 from app.utils.singleton import Singleton
 
 
@@ -164,7 +165,7 @@ class Plex(metaclass=Singleton):
             return False
         return self._plex.library.update()
 
-    def refresh_library_by_items(self, items: List[dict]) -> bool:
+    def refresh_library_by_items(self, items: List[RefreshMediaItem]) -> bool:
         """
         按路径刷新媒体库 item: target_path
         """
@@ -172,7 +173,7 @@ class Plex(metaclass=Singleton):
             return False
         result_dict = {}
         for item in items:
-            file_path = item.get("target_path")
+            file_path = item.target_path
             lib_key, path = self.__find_librarie(file_path, self._libraries)
             # 如果存在同一剧集的多集,key(path)相同会合并
             result_dict[path] = lib_key
@@ -186,18 +187,18 @@ class Plex(metaclass=Singleton):
                 self._plex.query(f'/library/sections/{lib_key}/refresh?path={quote_plus(path)}')
 
     @staticmethod
-    def __find_librarie(path: str, libraries: List[dict]) -> Tuple[str, str]:
+    def __find_librarie(path: Path, libraries: List[dict]) -> Tuple[str, str]:
         """
         判断这个path属于哪个媒体库
         多个媒体库配置的目录不应有重复和嵌套,
         """
 
-        def is_subpath(_path: str, _parent: str) -> bool:
+        def is_subpath(_path: Path, _parent: Path) -> bool:
             """
             判断_path是否是_parent的子目录下
             """
-            _path = Path(_path).resolve()
-            _parent = Path(_parent).resolve()
+            _path = _path.resolve()
+            _parent = _parent.resolve()
             return _path.parts[:len(_parent.parts)] == _parent.parts
 
         if path is None:
@@ -207,7 +208,7 @@ class Plex(metaclass=Singleton):
             for lib in libraries:
                 if hasattr(lib, "locations") and lib.locations:
                     for location in lib.locations:
-                        if is_subpath(path, location):
+                        if is_subpath(path, Path(location)):
                             return lib.key, location
         except Exception as err:
             logger.error(f"查找媒体库出错：{err}")

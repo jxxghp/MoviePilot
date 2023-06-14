@@ -182,45 +182,6 @@ class MetaBase(object):
                     self.type = MediaType.TV
                     self._subtitle_flag = True
 
-    def is_in_season(self, season: Union[list, int, str]) -> bool:
-        """
-        是否包含季
-        """
-        if isinstance(season, list):
-            if self.end_season is not None:
-                meta_season = list(range(self.begin_season, self.end_season + 1))
-            else:
-                if self.begin_season is not None:
-                    meta_season = [self.begin_season]
-                else:
-                    meta_season = [1]
-
-            return set(meta_season).issuperset(set(season))
-        else:
-            if self.end_season is not None:
-                return self.begin_season <= int(season) <= self.end_season
-            else:
-                if self.begin_season is not None:
-                    return int(season) == self.begin_season
-                else:
-                    return int(season) == 1
-
-    def is_in_episode(self, episode: Union[list, int, str]) -> bool:
-        """
-        是否包含集
-        """
-        if isinstance(episode, list):
-            if self.end_episode is not None:
-                meta_episode = list(range(self.begin_episode, self.end_episode + 1))
-            else:
-                meta_episode = [self.begin_episode]
-            return set(meta_episode).issuperset(set(episode))
-        else:
-            if self.end_episode is not None:
-                return self.begin_episode <= int(episode) <= self.end_episode
-            else:
-                return int(episode) == self.begin_episode
-
     @property
     def season(self) -> str:
         """
@@ -249,19 +210,6 @@ class MetaBase(object):
             return ""
     
     @property
-    def season_name(self) -> str:
-        """
-        返回begin_season 的Sxx
-        """
-        if self.begin_season is not None:
-            return "S%s" % str(self.begin_season).rjust(2, "0")
-        else:
-            if self.type == MediaType.TV:
-                return "S01"
-            else:
-                return ""
-    
-    @property
     def season_seq(self) -> str:
         """
         返回begin_season 的数字，电视剧没有季的返回1
@@ -288,40 +236,6 @@ class MetaBase(object):
             return [season for season in range(self.begin_season, self.end_season + 1)]
         else:
             return [self.begin_season]
-
-    def set_season(self, sea: Union[list, int, str]):
-        """
-        更新季
-        """
-        if not sea:
-            return
-        if isinstance(sea, list):
-            if len(sea) == 1 and str(sea[0]).isdigit():
-                self.begin_season = int(sea[0])
-                self.end_season = None
-            elif len(sea) > 1 and str(sea[0]).isdigit() and str(sea[-1]).isdigit():
-                self.begin_season = int(sea[0])
-                self.end_season = int(sea[-1])
-        elif str(sea).isdigit():
-            self.begin_season = int(sea)
-            self.end_season = None
-
-    def set_episode(self, ep: Union[list, int, str]):
-        """
-        更新集
-        """
-        if not ep:
-            return
-        if isinstance(ep, list):
-            if len(ep) == 1 and str(ep[0]).isdigit():
-                self.begin_episode = int(ep[0])
-                self.end_episode = None
-            elif len(ep) > 1 and str(ep[0]).isdigit() and str(ep[-1]).isdigit():
-                self.begin_episode = int(ep[0])
-                self.end_episode = int(ep[-1])
-        elif str(ep).isdigit():
-            self.begin_episode = int(ep)
-            self.end_episode = None
 
     @ property
     def episode(self) -> str:
@@ -402,7 +316,7 @@ class MetaBase(object):
         return ""
 
     @property
-    def resource(self) -> str:
+    def resource_term(self) -> str:
         """
         返回资源类型字符串，含分辨率
         """
@@ -450,3 +364,76 @@ class MetaBase(object):
         返回音频编码
         """
         return self.audio_encode or ""
+
+    def is_in_season(self, season: Union[list, int, str]) -> bool:
+        """
+        是否包含季
+        """
+        if isinstance(season, list):
+            if self.end_season is not None:
+                meta_season = list(range(self.begin_season, self.end_season + 1))
+            else:
+                if self.begin_season is not None:
+                    meta_season = [self.begin_season]
+                else:
+                    meta_season = [1]
+
+            return set(meta_season).issuperset(set(season))
+        else:
+            if self.end_season is not None:
+                return self.begin_season <= int(season) <= self.end_season
+            else:
+                if self.begin_season is not None:
+                    return int(season) == self.begin_season
+                else:
+                    return int(season) == 1
+
+    def is_in_episode(self, episode: Union[list, int, str]) -> bool:
+        """
+        是否包含集
+        """
+        if isinstance(episode, list):
+            if self.end_episode is not None:
+                meta_episode = list(range(self.begin_episode, self.end_episode + 1))
+            else:
+                meta_episode = [self.begin_episode]
+            return set(meta_episode).issuperset(set(episode))
+        else:
+            if self.end_episode is not None:
+                return self.begin_episode <= int(episode) <= self.end_episode
+            else:
+                return int(episode) == self.begin_episode
+
+    def set_season(self, sea: Union[list, int, str]):
+        """
+        更新季
+        """
+        if not sea:
+            return
+        if isinstance(sea, list):
+            if len(sea) == 1 and str(sea[0]).isdigit():
+                self.begin_season = int(sea[0])
+                self.end_season = None
+            elif len(sea) > 1 and str(sea[0]).isdigit() and str(sea[-1]).isdigit():
+                self.begin_season = int(sea[0])
+                self.end_season = int(sea[-1])
+        elif str(sea).isdigit():
+            self.begin_season = int(sea)
+            self.end_season = None
+
+    def set_episode(self, ep: Union[list, int, str]):
+        """
+        更新集
+        """
+        if not ep:
+            return
+        if isinstance(ep, list):
+            if len(ep) == 1 and str(ep[0]).isdigit():
+                self.begin_episode = int(ep[0])
+                self.end_episode = None
+            elif len(ep) > 1 and str(ep[0]).isdigit() and str(ep[-1]).isdigit():
+                self.begin_episode = int(ep[0])
+                self.end_episode = int(ep[-1])
+        elif str(ep).isdigit():
+            self.begin_episode = int(ep)
+            self.end_episode = None

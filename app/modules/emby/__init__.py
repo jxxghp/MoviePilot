@@ -5,7 +5,7 @@ from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.emby.emby import Emby
-from app.schemas.context import ExistMediaInfo
+from app.schemas.context import ExistMediaInfo, RefreshMediaItem
 from app.utils.types import MediaType
 
 
@@ -65,12 +65,12 @@ class EmbyModule(_ModuleBase):
         :return: 成功或失败
         """
         items = [
-            {
-                "title": mediainfo.title,
-                "year": mediainfo.year,
-                "type": mediainfo.type,
-                "category": mediainfo.category,
-                "target_path": file_path
-            }
+            RefreshMediaItem(
+                title=mediainfo.title,
+                year=mediainfo.year,
+                type=mediainfo.type,
+                category=mediainfo.category,
+                target_path=file_path
+            )
         ]
         return self.emby.refresh_library_by_items(items)
