@@ -514,6 +514,7 @@ async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db
             qualityProfileId=1,
             added=False,
             hasFile=False,
+            seasons=[]
         )]
 
 
