@@ -80,6 +80,9 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
     def douban_info(self, doubanid: str) -> Optional[dict]:
         return self.run_module("douban_info", doubanid=doubanid)
 
+    def tvdb_info(self, tvdbid: int) -> Optional[dict]:
+        return self.run_module("tvdb_info", tvdbid=tvdbid)
+
     def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
         return self.run_module("message_parser", body=body, form=form, args=args)
 

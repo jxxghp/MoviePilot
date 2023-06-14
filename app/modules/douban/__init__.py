@@ -37,6 +37,7 @@ class DoubanModule(_ModuleBase):
         """
         if not doubanid:
             return None
+        logger.info(f"开始获取豆瓣信息：{doubanid} ...")
         douban_info = self.doubanapi.movie_detail(doubanid)
         if douban_info:
             celebrities = self.doubanapi.movie_celebrities(doubanid)

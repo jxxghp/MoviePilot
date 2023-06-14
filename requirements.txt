@@ -42,3 +42,4 @@ chardet~=4.0.0
 starlette~=0.27.0
 PyVirtualDisplay~=3.0
 Cython~=0.29.35
+tvdb_api~=3.1

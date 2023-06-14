@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from requests import Session
 
 from app import schemas
+from app.chain.identify import IdentifyChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.db import get_db
@@ -468,21 +469,27 @@ async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db
             status_code=403,
             detail="认证失败！",
         )
+    # 季列表
+    seasons = []
     if not term.startswith("tvdb:"):
         title = term
         subscribe = Subscribe.get_by_title(db, title)
     else:
         tmdbid = term.replace("tvdb:", "")
         subscribe = Subscribe.get_by_tmdbid(db, int(tmdbid))
+        if not subscribe:
+            # 查询TMDB季信息
+            tmdbinfo = IdentifyChain().tvdb_info(tvdbid=int(tmdbid))
+            if tmdbinfo:
+                season_num = tmdbinfo.get('season')
+                if season_num:
+                    seasons = list(range(1, season_num + 1))
     if subscribe:
         return [SonarrSeries(
             id=subscribe.id,
             title=subscribe.name,
             seasonCount=1,
-            seasons=[{
-                "seasonNumber": subscribe.season,
-                "monitored": True,
-            }],
+            seasons=[subscribe.season],
             year=subscribe.year,
             isAvailable=True,
             monitored=True,
@@ -493,7 +500,7 @@ async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db
             hasFile=False,
         )]
     else:
-        return [SonarrSeries()]
+        return [SonarrSeries(seasons=seasons)]
 
 
 @arr_router.get("/series/{tid}")
@@ -534,7 +541,7 @@ async def arr_serie(apikey: str, tid: int, db: Session = Depends(get_db)) -> Any
 
 
 @arr_router.post("/series")
-async def arr_add_series(request: Request, apikey: str) -> Any:
+async def arr_add_series(request: Request, apikey: str, tv: schemas.SonarrSeries) -> Any:
     """
     新增Sonarr剧集订阅
     """
@@ -544,7 +551,6 @@ async def arr_add_series(request: Request, apikey: str) -> Any:
             detail="认证失败！",
         )
     logger.info(await request.body())
-    '''
     sid = 0
     for season in tv.seasons:
         sid = SubscribeChain().process(title=tv.title,
@@ -562,7 +568,6 @@ async def arr_add_series(request: Request, apikey: str) -> Any:
             status_code=500,
             detail="添加订阅失败！"
         )
-    '''
 
 
 @arr_router.delete("/series/{tid}")

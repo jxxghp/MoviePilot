@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     TMDB_API_DOMAIN: str = "api.themoviedb.org"
     # TMDB API Key
     TMDB_API_KEY: str = "db55323b8d3e4154498498a75642b381"
+    # TVDB API Key
+    TVDB_API_KEY: str = "6b481081-10aa-440c-99f2-21d17717ee02"
     # Fanart API Key
     FANART_API_KEY: str = "d2d31f9ecabea050fc7d68aa3146015f"
     # 支持的后缀格式

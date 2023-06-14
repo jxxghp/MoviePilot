@@ -68,6 +68,14 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
+    def tvdb_info(self, tvdbid: int) -> Optional[dict]:
+        """
+        获取TVDB信息
+        :param tvdbid: int
+        :return: 识别的媒体信息，包括剧集信息
+        """
+        pass
+
     def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
         """
         解析消息内容，返回字典，注意以下约定值：
