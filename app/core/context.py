@@ -101,7 +101,7 @@ class MediaInfo:
     # IMDB ID
     imdb_id: Optional[str] = None
     # TVDB ID
-    tvdb_id: Optional[str] = None
+    tvdb_id: Optional[int] = None
     # 豆瓣ID
     douban_id: Optional[str] = None
     # 媒体原语种

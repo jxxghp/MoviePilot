@@ -24,6 +24,7 @@ class Subscribes:
                               year=mediainfo.year,
                               type=mediainfo.type.value,
                               tmdbid=mediainfo.tmdb_id,
+                              tvdbid=mediainfo.tvdb_id,
                               image=mediainfo.get_poster_image(),
                               description=mediainfo.overview,
                               **kwargs)
