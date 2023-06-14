@@ -483,7 +483,7 @@ async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db
             if tmdbinfo:
                 season_num = tmdbinfo.get('season')
                 if season_num:
-                    seasons = list(range(1, season_num + 1))
+                    seasons = list(range(1, int(season_num) + 1))
     if subscribe:
         return [SonarrSeries(
             id=subscribe.id,
