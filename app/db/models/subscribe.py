@@ -14,6 +14,7 @@ class Subscribe(Base):
     type = Column(String)
     keyword = Column(String)
     tmdbid = Column(Integer, index=True)
+    imdbid = Column(String)
     tvdbid = Column(Integer, index=True)
     doubanid = Column(String)
     season = Column(Integer)
@@ -41,7 +42,7 @@ class Subscribe(Base):
 
     @staticmethod
     def get_by_tmdbid(db: Session, tmdbid: int):
-        return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid).first()
+        return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid).all()
 
     @staticmethod
     def get_by_title(db: Session, title: str):

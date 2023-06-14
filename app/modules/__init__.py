@@ -40,7 +40,7 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
-    def recognize_media(self, meta: MetaBase,
+    def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
                         tmdbid: int = None) -> Optional[MediaInfo]:
         """

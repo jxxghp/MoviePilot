@@ -69,7 +69,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
                           subtitle: str = None) -> Tuple[str, str]:
         return self.run_module("prepare_recognize", title=title, subtitle=subtitle)
 
-    def recognize_media(self, meta: MetaBase,
+    def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
                         tmdbid: int = None) -> Optional[MediaInfo]:
         return self.run_module("recognize_media", meta=meta, mtype=mtype, tmdbid=tmdbid)

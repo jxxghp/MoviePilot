@@ -48,8 +48,7 @@ class SearchChain(ChainBase):
             return []
         # 补充媒体信息
         if not mediainfo.names:
-            mediainfo: MediaInfo = self.recognize_media(meta=meta,
-                                                        mtype=mediainfo.type,
+            mediainfo: MediaInfo = self.recognize_media(mtype=mediainfo.type,
                                                         tmdbid=mediainfo.tmdb_id)
             if not mediainfo:
                 logger.error(f'媒体信息识别失败！')

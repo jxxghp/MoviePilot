@@ -41,7 +41,7 @@ class TheMovieDbModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def recognize_media(self, meta: MetaBase,
+    def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
                         tmdbid: int = None) -> Optional[MediaInfo]:
         """
@@ -52,14 +52,17 @@ class TheMovieDbModule(_ModuleBase):
        :return: 识别的媒体信息，包括剧集信息
        """
         if not meta:
-            return None
-        cache_info = self.cache.get(meta)
-        if not cache_info or tmdbid:
+            cache_info = {}
+        else:
+            if mtype:
+                meta.type = mtype
+            cache_info = self.cache.get(meta)
+        if not cache_info:
             # 缓存没有或者强制不使用缓存
             if tmdbid:
                 # 直接查询详情
                 info = self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
-            else:
+            elif meta:
                 logger.info(f"正在识别 {meta.name} ...")
                 if meta.type == MediaType.UNKNOWN and not meta.year:
                     info = self.tmdb.match_multi(meta.name)
@@ -97,8 +100,12 @@ class TheMovieDbModule(_ModuleBase):
                 if info and not info.get("genres"):
                     info = self.tmdb.get_info(mtype=info.get("media_type"),
                                               tmdbid=info.get("id"))
+            else:
+                logger.error("识别媒体信息时未提供元数据或tmdbid")
+                return None
             # 保存到缓存
-            self.cache.update(meta, info)
+            if meta:
+                self.cache.update(meta, info)
         else:
             # 使用缓存信息
             if cache_info.get("title"):

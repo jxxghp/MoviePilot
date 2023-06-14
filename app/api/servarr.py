@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, List
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -7,6 +8,7 @@ from app import schemas
 from app.chain.identify import IdentifyChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
+from app.core.metainfo import MetaInfo
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
 from app.schemas import RadarrMovie, SonarrSeries
@@ -206,12 +208,14 @@ async def arr_movies(apikey: str, db: Session = Depends(get_db)) -> Any:
         result.append(RadarrMovie(
             id=subscribe.id,
             title=subscribe.name,
+            year=subscribe.year,
             isAvailable=True,
             monitored=True,
             tmdbId=subscribe.tmdbid,
+            imdbId=subscribe.imdbid,
             profileId=1,
             qualityProfileId=1,
-            hasFile=False,
+            hasFile=False
         ))
     return result
 
@@ -228,26 +232,49 @@ async def arr_movie_lookup(apikey: str, term: str, db: Session = Depends(get_db)
             detail="认证失败！",
         )
     tmdbid = term.replace("tmdb:", "")
-    subscribe = Subscribe.get_by_tmdbid(db, int(tmdbid))
-    if subscribe:
-        return [RadarrMovie(
-            id=subscribe.id,
-            title=subscribe.name,
-            isAvailable=True,
-            monitored=True,
-            tmdbId=subscribe.tmdbid,
-            profileId=1,
-            qualityProfileId=1,
-            hasFile=False,
-        )]
-    else:
+    # 查询媒体信息
+    mediainfo = IdentifyChain().recognize_media(mtype=MediaType.MOVIE, tmdbid=int(tmdbid))
+    if not mediainfo:
         return [RadarrMovie()]
+    # 查询是否已存在
+    exists = IdentifyChain().media_exists(mediainfo=mediainfo)
+    if not exists:
+        # 文件不存在
+        hasfile = False
+    else:
+        # 文件存在
+        hasfile = True
+    # 查询是否已订阅
+    subscribes = Subscribe.get_by_tmdbid(db, int(tmdbid))
+    if subscribes:
+        # 订阅ID
+        subid = subscribes[0].id
+        # 已订阅
+        monitored = True
+    else:
+        subid = None
+        monitored = False
+
+    return [RadarrMovie(
+        id=subid,
+        title=mediainfo.title,
+        year=mediainfo.year,
+        isAvailable=True,
+        monitored=monitored,
+        tmdbId=mediainfo.tmdb_id,
+        imdbId=mediainfo.imdb_id,
+        titleSlug=mediainfo.original_title,
+        folderName=mediainfo.title_year,
+        profileId=1,
+        qualityProfileId=1,
+        hasFile=hasfile
+    )]
 
 
 @arr_router.get("/movie/{mid}", response_model=schemas.RadarrMovie)
 async def arr_movie(apikey: str, mid: int, db: Session = Depends(get_db)) -> Any:
     """
-    查询Rardar电影
+    查询Rardar电影订阅
     """
     if not apikey or apikey != settings.API_TOKEN:
         raise HTTPException(
@@ -259,12 +286,14 @@ async def arr_movie(apikey: str, mid: int, db: Session = Depends(get_db)) -> Any
         return RadarrMovie(
             id=subscribe.id,
             title=subscribe.name,
+            year=subscribe.year,
             isAvailable=True,
             monitored=True,
             tmdbId=subscribe.tmdbid,
+            imdbId=subscribe.imdbid,
             profileId=1,
             qualityProfileId=1,
-            hasFile=False,
+            hasFile=False
         )
     else:
         raise HTTPException(
@@ -284,7 +313,7 @@ async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
             detail="认证失败！",
         )
     sid = SubscribeChain().process(title=movie.title,
-                                   year=str(movie.year) if movie.year else None,
+                                   year=movie.year,
                                    mtype=MediaType.MOVIE,
                                    tmdbid=movie.tmdbId,
                                    userid="Seerr")
@@ -446,14 +475,17 @@ async def arr_series(apikey: str, db: Session = Depends(get_db)) -> Any:
                 "seasonNumber": subscribe.season,
                 "monitored": True,
             }],
+            remotePoster=subscribe.image,
             year=subscribe.year,
-            isAvailable=True,
-            monitored=True,
             tmdbId=subscribe.tmdbid,
+            tvdbId=subscribe.tvdbid,
+            imdbId=subscribe.imdbid,
             profileId=1,
             languageProfileId=1,
             qualityProfileId=1,
-            hasFile=False,
+            isAvailable=True,
+            monitored=True,
+            hasFile=False
         ))
     return result
 
@@ -468,38 +500,81 @@ async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db
             status_code=403,
             detail="认证失败！",
         )
-    # 季列表
-    seasons = []
+    # 查询TMDB媒体信息
     if not term.startswith("tvdb:"):
-        title = term
-        subscribe = Subscribe.get_by_title(db, title)
+        mediainfo = IdentifyChain().recognize_media(meta=MetaInfo(term),
+                                                    mtype=MediaType.MOVIE)
+        if not mediainfo:
+            return [SonarrSeries()]
+        tvdbid = mediainfo.tvdb_id
+        tmdbid = mediainfo.tmdb_id
     else:
-        tmdbid = term.replace("tvdb:", "")
-        subscribe = Subscribe.get_by_tmdbid(db, int(tmdbid))
-        if not subscribe:
-            # 查询TMDB季信息
-            tmdbinfo = IdentifyChain().tvdb_info(tvdbid=int(tmdbid))
-            if tmdbinfo:
-                season_num = tmdbinfo.get('season')
-                if season_num:
-                    seasons = [{"seasonNumber": sea} for sea in range(1, int(season_num) + 1)]
-    if subscribe:
-        return [SonarrSeries(
-            id=subscribe.id,
-            title=subscribe.name,
-            seasonCount=1,
-            seasons=[{"seasonNumber": subscribe.season}],
-            year=subscribe.year,
-            isAvailable=True,
-            monitored=True,
-            tvdbId=subscribe.tvdbid,
-            profileId=1,
-            languageProfileId=1,
-            qualityProfileId=1,
-            hasFile=False,
-        )]
+        tvdbid = int(term.replace("tvdb:", ""))
+        mediainfo = IdentifyChain().recognize_media(mtype=MediaType.MOVIE,
+                                                    tmdbid=tvdbid)
+        if not mediainfo:
+            return [SonarrSeries()]
+        tmdbid = mediainfo.tmdb_id
+    # 查询TVDB季信息
+    seas: List[int] = []
+    if tvdbid:
+        tvdbinfo = IdentifyChain().tvdb_info(tvdbid=tvdbid)
+        if tvdbinfo:
+            sea_num = tvdbinfo.get('season')
+            if sea_num:
+                seas = list(range(1, int(sea_num) + 1))
+    # 查询是否存在
+    exists = IdentifyChain().media_exists(mediainfo)
+    if exists:
+        hasfile = True
     else:
-        return [SonarrSeries(seasons=seasons)]
+        hasfile = False
+    # 查询订阅信息
+    seasons: List[dict] = []
+    subscribes = Subscribe.get_by_tmdbid(db, tmdbid)
+    if subscribes:
+        # 已监控
+        monitored = True
+        # 已监控季
+        sub_seas = [sub.season for sub in subscribes]
+        for sea in seas:
+            if sea in sub_seas:
+                seasons.append({
+                    "seasonNumber": sea,
+                    "monitored": True,
+                })
+            else:
+                seasons.append({
+                    "seasonNumber": sea,
+                    "monitored": False,
+                })
+        subid = subscribes[-1].id
+    else:
+        subid = None
+        monitored = False
+        for sea in seas:
+            seasons.append({
+                "seasonNumber": sea,
+                "monitored": False,
+            })
+
+    return [SonarrSeries(
+        id=subid,
+        title=mediainfo.title,
+        seasonCount=len(seasons),
+        seasons=seasons,
+        remotePoster=mediainfo.get_poster_image(),
+        year=mediainfo.year,
+        tmdbId=mediainfo.tmdb_id,
+        tvdbId=mediainfo.tvdb_id,
+        imdbId=mediainfo.imdb_id,
+        profileId=1,
+        languageProfileId=1,
+        qualityProfileId=1,
+        isAvailable=True,
+        monitored=monitored,
+        hasFile=hasfile
+    )]
 
 
 @arr_router.get("/series/{tid}")
@@ -523,14 +598,16 @@ async def arr_serie(apikey: str, tid: int, db: Session = Depends(get_db)) -> Any
                 "monitored": True,
             }],
             year=subscribe.year,
-            isAvailable=True,
-            monitored=True,
+            remotePoster=subscribe.image,
+            tmdbId=subscribe.tmdbid,
             tvdbId=subscribe.tvdbid,
+            imdbId=subscribe.imdbid,
             profileId=1,
             languageProfileId=1,
             qualityProfileId=1,
-            added=True,
-            hasFile=False,
+            isAvailable=True,
+            monitored=True,
+            hasFile=False
         )
     else:
         raise HTTPException(
@@ -554,8 +631,9 @@ async def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
         if not season.get("monitored"):
             continue
         sid = SubscribeChain().process(title=tv.title,
-                                       year=str(tv.year) if tv.year else None,
+                                       year=tv.year,
                                        season=season.get("seasonNumber"),
+                                       tmdbid=tv.tmdbId,
                                        mtype=MediaType.TV,
                                        userid="Seerr")
 
