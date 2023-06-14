@@ -506,6 +506,7 @@ async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db
         )]
     else:
         return [SonarrSeries(
+            id=0,
             isAvailable=False,
             monitored=False,
             profileId=1,
