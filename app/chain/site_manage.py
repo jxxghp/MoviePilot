@@ -28,7 +28,7 @@ class SiteManageChain(ChainBase):
             else:
                 render_str = ""
             if site.is_active:
-                messages.append(f"{site.id}. [{site.name}]{site.url}{render_str}")
+                messages.append(f"{site.id}. [{site.name}]({site.url}){render_str}")
             else:
                 messages.append(f"{site.id}. ~~{site.name}~~")
         # 发送列表
