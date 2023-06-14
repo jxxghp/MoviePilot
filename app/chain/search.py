@@ -23,7 +23,7 @@ class SearchChain(ChainBase):
 
     def process(self, meta: MetaBase, mediainfo: MediaInfo,
                 keyword: str = None,
-                no_exists: Dict[int, List[NotExistMediaInfo]] = None) -> Optional[List[Context]]:
+                no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None) -> Optional[List[Context]]:
         """
         根据媒体信息，执行搜索
         :param meta: 元数据
@@ -55,10 +55,10 @@ class SearchChain(ChainBase):
                 logger.error(f'媒体信息识别失败！')
                 return []
         # 缺失的媒体信息
-        if no_exists:
+        if no_exists and no_exists.get(mediainfo.tmdb_id):
             # 过滤剧集
-            season_episodes = {info.get('season'): info.get('episodes')
-                               for info in no_exists.get(mediainfo.tmdb_id)}
+            season_episodes = {sea: info.episodes
+                               for sea, info in no_exists[mediainfo.tmdb_id].items()}
         else:
             season_episodes = None
         # 执行搜索

@@ -291,7 +291,7 @@ class SubscribeChain(ChainBase):
                             })
 
     @staticmethod
-    def __get_subscribe_no_exits(no_exists: Dict[int, List[NotExistMediaInfo]],
+    def __get_subscribe_no_exits(no_exists: Dict[int, Dict[int, NotExistMediaInfo]],
                                  tmdb_id: int,
                                  begin_season: int,
                                  total_episode: int,
