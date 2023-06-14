@@ -125,9 +125,13 @@ class TheMovieDbModule(_ModuleBase):
             # 赋值TMDB信息并返回
             mediainfo = MediaInfo(tmdb_info=info)
             mediainfo.set_category(cat)
-            logger.info(f"{meta.name} 识别结果：{mediainfo.type.value} "
-                        f"{mediainfo.title_year} "
-                        f"{mediainfo.tmdb_id}")
+            if meta:
+                logger.info(f"{meta.name} 识别结果：{mediainfo.type.value} "
+                            f"{mediainfo.title_year} "
+                            f"{mediainfo.tmdb_id}")
+            else:
+                logger.info(f"{tmdbid} 识别结果：{mediainfo.type.value} "
+                            f"{mediainfo.title_year}")
             return mediainfo
         else:
             logger.info(f"{meta.name} 未匹配到媒体信息")
