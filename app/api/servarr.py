@@ -1,6 +1,6 @@
 from typing import Any, List
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from requests import Session
 
 from app import schemas
@@ -534,7 +534,7 @@ async def arr_serie(apikey: str, tid: int, db: Session = Depends(get_db)) -> Any
 
 
 @arr_router.post("/series")
-async def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
+async def arr_add_series(request: Request, apikey: str, tv: schemas.SonarrSeries) -> Any:
     """
     新增Sonarr剧集订阅
     """
@@ -543,6 +543,7 @@ async def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
             status_code=403,
             detail="认证失败！",
         )
+    logger.info(await request.body())
     logger.info(tv.dict())
     sid = 0
     for season in tv.seasons:
