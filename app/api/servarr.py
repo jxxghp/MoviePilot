@@ -555,7 +555,7 @@ async def arr_add_series(request: Request, apikey: str, tv: schemas.SonarrSeries
     for season in tv.seasons:
         sid = SubscribeChain().process(title=tv.title,
                                        year=str(tv.year) if tv.year else None,
-                                       season=season.seasonNumber,
+                                       season=season.get("seasonNumber"),
                                        mtype=MediaType.TV,
                                        userid="Seerr")
 
