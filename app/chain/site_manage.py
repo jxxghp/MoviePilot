@@ -24,13 +24,13 @@ class SiteManageChain(ChainBase):
         messages = []
         for site in site_list:
             if site.render:
-                render_str = "【仿真】"
+                render_str = "🧭"
             else:
                 render_str = ""
             if site.is_active:
                 messages.append(f"{site.id}. [{site.name}]({site.url}){render_str}")
             else:
-                messages.append(f"{site.id}. ~~{site.name}~~")
+                messages.append(f"{site.id}. {site.name} 🈲️")
         # 发送列表
         self.post_message(title=title, text="\n".join(messages))
 
