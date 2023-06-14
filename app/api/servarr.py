@@ -563,10 +563,14 @@ async def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
             status_code=403,
             detail="认证失败！",
         )
-    sid = SubscribeChain().process(title=tv.title,
-                                   year=str(tv.year) if tv.year else None,
-                                   mtype=MediaType.TV,
-                                   userid="Seerr")
+    sid = 0
+    for season in tv.seasons:
+        sid = SubscribeChain().process(title=tv.title,
+                                       year=str(tv.year) if tv.year else None,
+                                       season=season.seasonNumber,
+                                       mtype=MediaType.TV,
+                                       userid="Seerr")
+
     if sid:
         return {
             "id": sid
