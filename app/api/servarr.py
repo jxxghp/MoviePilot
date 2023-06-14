@@ -8,6 +8,7 @@ from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
+from app.log import logger
 from app.schemas import RadarrMovie, SonarrSeries
 from app.utils.types import MediaType
 from version import APP_VERSION
@@ -542,6 +543,7 @@ async def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
             status_code=403,
             detail="认证失败！",
         )
+    logger.info(tv.dict())
     sid = 0
     for season in tv.seasons:
         sid = SubscribeChain().process(title=tv.title,
