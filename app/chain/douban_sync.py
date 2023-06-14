@@ -87,7 +87,7 @@ class DoubanSyncChain(ChainBase):
                     logger.warn(f'{mediainfo.title_year} 未搜索到资源')
                     continue
                 # 自动下载
-                downloads, lefts = self.downloadchain.batch_download(contexts=contexts, need_tvs=no_exists)
+                downloads, lefts = self.downloadchain.batch_download(contexts=contexts, no_exists=no_exists)
                 if downloads and not lefts:
                     # 全部下载完成
                     logger.info(f'{mediainfo.title_year} 下载完成')

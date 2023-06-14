@@ -203,7 +203,7 @@ async def arr_movies(apikey: str, db: Session = Depends(get_db)) -> Any:
     result = []
     subscribes = Subscribe.list(db)
     for subscribe in subscribes:
-        if subscribe.type != "电影":
+        if subscribe.type != MediaType.MOVIE.value:
             continue
         result.append(RadarrMovie(
             id=subscribe.id,
@@ -465,7 +465,7 @@ async def arr_series(apikey: str, db: Session = Depends(get_db)) -> Any:
     result = []
     subscribes = Subscribe.list(db)
     for subscribe in subscribes:
-        if subscribe.type != "电视剧":
+        if subscribe.type != MediaType.TV.value:
             continue
         result.append(SonarrSeries(
             id=subscribe.id,

@@ -155,7 +155,7 @@ class SubscribeChain(ChainBase):
                 logger.warn(f'{subscribe.keyword or subscribe.name} 未搜索到资源')
                 continue
             # 自动下载
-            downloads, lefts = self.downloadchain.batch_download(contexts=contexts, need_tvs=no_exists)
+            downloads, lefts = self.downloadchain.batch_download(contexts=contexts, no_exists=no_exists)
             if downloads and not lefts:
                 # 全部下载完成
                 logger.info(f'{mediainfo.title_year} 下载完成，完成订阅')
@@ -268,7 +268,7 @@ class SubscribeChain(ChainBase):
             logger.info(f'{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源')
             if _match_context:
                 # 批量择优下载
-                downloads, lefts = self.downloadchain.batch_download(contexts=_match_context, need_tvs=no_exists)
+                downloads, lefts = self.downloadchain.batch_download(contexts=_match_context, no_exists=no_exists)
                 if downloads and not lefts:
                     # 全部下载完成
                     logger.info(f'{mediainfo.title_year} 下载完成，完成订阅')
@@ -288,6 +288,43 @@ class SubscribeChain(ChainBase):
                             self.subscribes.update(subscribe.id, {
                                 "lack_episode": len(left_episodes)
                             })
+
+    def list(self):
+        """
+        查询订阅并发送消息
+        """
+        subscribes = self.subscribes.list()
+        if not subscribes:
+            self.post_message(title='没有任何订阅！')
+            return
+        title = f"共有 {len(subscribes)} 个订阅，回复```/subscribe_delete [id]```删除订阅："
+        messages = []
+        for subscribe in subscribes:
+            if subscribe.type == MediaType.MOVIE.value:
+                messages.append(f"{subscribe.id}. {subscribe.name}（{subscribe.year}）")
+            else:
+                messages.append(f"{subscribe.id}. {subscribe.name}（{subscribe.year}）第{subscribe.season}季")
+        # 发送列表
+        self.post_message(title=title, text='\n'.join(messages))
+
+    def delete(self, arg_str: str):
+        """
+        删除订阅
+        """
+        if not arg_str:
+            return
+        arg_str = arg_str.strip()
+        if not arg_str.isdigit():
+            return
+        subscribe_id = int(arg_str)
+        subscribe = self.subscribes.get(subscribe_id)
+        if not subscribe:
+            self.post_message(title=f"订阅编号 {subscribe_id} 不存在！")
+            return
+        # 删除订阅
+        self.subscribes.delete(subscribe_id)
+        # 重新发送消息
+        self.list()
 
     @staticmethod
     def __get_subscribe_no_exits(no_exists: Dict[int, Dict[int, NotExistMediaInfo]],

@@ -5,7 +5,6 @@ from typing import List, Optional, Tuple, Set, Dict
 from app.chain import ChainBase
 from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.meta import MetaBase
-from app.core.metainfo import MetaInfo
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas.context import ExistMediaInfo, NotExistMediaInfo

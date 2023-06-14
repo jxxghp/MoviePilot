@@ -63,6 +63,16 @@ class Command(metaclass=Singleton):
                     'state': 'R',
                 }
             },
+            "/subscribes": {
+                "func": SubscribeChain().list,
+                "description": "查询订阅",
+                "data": {}
+            },
+            "/subscribe_delete": {
+                "func": SubscribeChain().delete,
+                "description": "删除订阅",
+                "data": {}
+            },
             "/transfer": {
                 "func": TransferChain().process,
                 "description": "下载文件整理",
@@ -142,14 +152,17 @@ class Command(metaclass=Singleton):
         """
         command = self.get(cmd)
         if command:
-            logger.info(f"开始执行：{command.get('description')} ...")
-            cmd_data = command['data'] if command.get('data') else {}
-            if cmd_data:
-                command['func'](**cmd_data)
-            elif data_str:
-                command['func'](data_str)
-            else:
-                command['func']()
+            try:
+                logger.info(f"开始执行：{command.get('description')} ...")
+                cmd_data = command['data'] if command.get('data') else {}
+                if cmd_data:
+                    command['func'](**cmd_data)
+                elif data_str:
+                    command['func'](data_str)
+                else:
+                    command['func']()
+            except Exception as err:
+                logger.error(f"执行命令 {cmd} 出错：{str(err)}")
 
     @staticmethod
     def send_plugin_event(etype: EventType, data: dict) -> None:
