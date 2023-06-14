@@ -1,15 +1,12 @@
-import json
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
 from typing import Any
 
 from app.chain import ChainBase
 from app.core.config import settings
-from app.db import SessionLocal
 from app.db.models import Base
-from app.db.models.plugin import PluginData
-from app.db.systemconfigs import SystemConfigs
-from app.utils.object import ObjectUtils
+from app.db.plugindata_oper import PluginDataOper
+from app.db.systemconfig_oper import SystemConfigOper
 
 
 class PluginChian(ChainBase):
@@ -39,8 +36,9 @@ class _PluginBase(metaclass=ABCMeta):
     plugin_desc: str = ""
     
     def __init__(self):
-        self.db = SessionLocal()
+        self.plugindata = PluginDataOper()
         self.chain = PluginChian()
+        self.systemconfig = SystemConfigOper()
 
     @abstractmethod
     def init_plugin(self, config: dict = None):
@@ -65,7 +63,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
-        return SystemConfigs().set(f"plugin.{plugin_id}", config)
+        return self.systemconfig.set(f"plugin.{plugin_id}", config)
 
     def get_config(self, plugin_id: str = None) -> Any:
         """
@@ -74,7 +72,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
-        return SystemConfigs().get(f"plugin.{plugin_id}")
+        return self.systemconfig.get(f"plugin.{plugin_id}")
 
     def get_data_path(self, plugin_id: str = None) -> Path:
         """
@@ -93,17 +91,11 @@ class _PluginBase(metaclass=ABCMeta):
         :param key: 数据key
         :param value: 数据值
         """
-        if ObjectUtils.is_obj(value):
-            value = json.dumps(value)
-        plugin = PluginData(plugin_id=self.__class__.__name__, key=key, value=value)
-        return plugin.create(self.db)
+        return self.plugindata.save(self.__class__.__name__, key, value)
 
     def get_data(self, key: str) -> Any:
         """
         获取插件数据
         :param key: 数据key
         """
-        data = PluginData.get_plugin_data_by_key(self.db, self.__class__.__name__, key)
-        if ObjectUtils.is_obj(data):
-            return json.load(data)
-        return data
+        return self.plugindata.get_data(key)

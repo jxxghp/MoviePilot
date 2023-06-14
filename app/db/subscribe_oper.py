@@ -1,20 +1,14 @@
 from typing import Tuple, List
 
-from sqlalchemy.orm import Session
-
 from app.core.context import MediaInfo
-from app.db import SessionLocal
+from app.db import DbOper
 from app.db.models.subscribe import Subscribe
 
 
-class Subscribes:
+class SubscribeOper(DbOper):
     """
     订阅管理
     """
-    _db: Session = None
-
-    def __init__(self, _db=SessionLocal()):
-        self._db = _db
 
     def add(self, mediainfo: MediaInfo, **kwargs) -> Tuple[int, str]:
         """

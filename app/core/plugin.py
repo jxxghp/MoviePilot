@@ -1,7 +1,7 @@
 import traceback
 from typing import List, Any
 
-from app.db.systemconfigs import SystemConfigs
+from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.module import ModuleHelper
 from app.log import logger
 from app.utils.singleton import Singleton
@@ -11,7 +11,7 @@ class PluginManager(metaclass=Singleton):
     """
     插件管理器
     """
-    systemconfigs: SystemConfigs = None
+    systemconfigs: SystemConfigOper = None
 
     # 插件列表
     _plugins: dict = {}
@@ -24,7 +24,7 @@ class PluginManager(metaclass=Singleton):
         self.init_config()
 
     def init_config(self):
-        self.systemconfigs = SystemConfigs()
+        self.systemconfigs = SystemConfigOper()
         # 停止已有插件
         self.stop()
         # 启动插件

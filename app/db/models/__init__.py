@@ -11,7 +11,6 @@ class Base:
     def create(self, db):
         db.add(self)
         db.commit()
-        db.refresh(self)
         return self
 
     @classmethod

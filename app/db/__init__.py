@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine, QueuePool
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 
 from app.core.config import settings
 
@@ -27,3 +27,15 @@ def get_db():
     finally:
         if db:
             db.close()
+
+
+class DbOper:
+
+    _db: Session = None
+
+    def __init__(self, _db=SessionLocal()):
+        self._db = _db
+
+    def __del__(self):
+        if self._db:
+            self._db.close()

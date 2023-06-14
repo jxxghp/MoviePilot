@@ -1,5 +1,5 @@
 from app.chain import ChainBase
-from app.db.sites import Sites
+from app.db.site_oper import SiteOper
 
 
 class SiteManageChain(ChainBase):
@@ -7,17 +7,17 @@ class SiteManageChain(ChainBase):
     站点远程管理处理链
     """
 
-    _sites: Sites = None
+    _sites: SiteOper = None
 
     def __init__(self):
         super().__init__()
-        self._sites = Sites()
+        self._siteoper = SiteOper()
 
     def process(self):
         """
         查询所有站点，发送消息
         """
-        site_list = self._sites.list()
+        site_list = self._siteoper.list()
         if not site_list:
             self.post_message(title="没有维护任何站点信息！")
         title = f"共有 {len(site_list)} 个站点，回复 `/site_disable` `[id]` 禁用站点，回复 `/site_enable` `[id]` 启用站点："
@@ -44,12 +44,12 @@ class SiteManageChain(ChainBase):
         if not arg_str.isdigit():
             return
         site_id = int(arg_str)
-        site = self._sites.get(site_id)
+        site = self._siteoper.get(site_id)
         if not site:
             self.post_message(title=f"站点编号 {site_id} 不存在！")
             return
         # 禁用站点
-        self._sites.update(site_id, {
+        self._siteoper.update(site_id, {
             "is_active": False
         })
         # 重新发送消息
@@ -65,12 +65,12 @@ class SiteManageChain(ChainBase):
         if not arg_str.isdigit():
             return
         site_id = int(arg_str)
-        site = self._sites.get(site_id)
+        site = self._siteoper.get(site_id)
         if not site:
             self.post_message(title=f"站点编号 {site_id} 不存在！")
             return
         # 禁用站点
-        self._sites.update(site_id, {
+        self._siteoper.update(site_id, {
             "is_active": True
         })
         # 重新发送消息

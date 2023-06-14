@@ -6,8 +6,8 @@ from lxml import etree
 
 from app.chain import ChainBase
 from app.core.config import settings
-from app.db.siteicons import SiteIcons
-from app.db.sites import Sites
+from app.db.siteicon_oper import SiteIconOper
+from app.db.site_oper import SiteOper
 from app.helper.cookiecloud import CookieCloudHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -21,8 +21,8 @@ class CookieCloudChain(ChainBase):
 
     def __init__(self):
         super().__init__()
-        self.sites = Sites()
-        self.siteicons = SiteIcons()
+        self.siteoper = SiteOper()
+        self.siteiconoper = SiteIconOper()
         self.siteshelper = SitesHelper()
         self.cookiecloud = CookieCloudHelper(
             server=settings.COOKIECLOUD_HOST,
@@ -45,16 +45,16 @@ class CookieCloudChain(ChainBase):
         for domain, cookie in cookies.items():
             # 获取站点信息
             indexer = self.siteshelper.get_indexer(domain)
-            if self.sites.exists(domain):
+            if self.siteoper.exists(domain):
                 # 更新站点Cookie
-                self.sites.update_cookie(domain=domain, cookies=cookie)
+                self.siteoper.update_cookie(domain=domain, cookies=cookie)
                 _update_count += 1
             elif indexer:
                 # 新增站点
-                self.sites.add(name=indexer.get("name"),
-                               url=indexer.get("domain"),
-                               domain=domain,
-                               cookie=cookie)
+                self.siteoper.add(name=indexer.get("name"),
+                                  url=indexer.get("domain"),
+                                  domain=domain,
+                                  cookie=cookie)
                 _add_count += 1
             # 保存站点图标
             if indexer:
@@ -62,10 +62,10 @@ class CookieCloudChain(ChainBase):
                                                              cookie=cookie,
                                                              ua=settings.USER_AGENT)
                 if icon_url:
-                    self.siteicons.update_icon(name=indexer.get("name"),
-                                               domain=domain,
-                                               icon_url=icon_url,
-                                               icon_base64=icon_base64)
+                    self.siteiconoper.update_icon(name=indexer.get("name"),
+                                                  domain=domain,
+                                                  icon_url=icon_url,
+                                                  icon_base64=icon_base64)
         # 处理完成
         ret_msg = f"更新了{_update_count}个站点，新增了{_add_count}个站点"
         logger.info(f"CookieCloud同步成功：{ret_msg}")

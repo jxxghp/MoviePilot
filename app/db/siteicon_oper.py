@@ -1,19 +1,13 @@
 from typing import List
 
-from sqlalchemy.orm import Session
-
-from app.db import SessionLocal
+from app.db import DbOper
 from app.db.models.siteicon import SiteIcon
 
 
-class SiteIcons:
+class SiteIconOper(DbOper):
     """
     站点管理
     """
-    _db: Session = None
-
-    def __init__(self, _db=SessionLocal()):
-        self._db = _db
 
     def list(self) -> List[SiteIcon]:
         """

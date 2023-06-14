@@ -1,19 +1,13 @@
 from typing import Tuple, List
 
-from sqlalchemy.orm import Session
-
-from app.db import SessionLocal
+from app.db import DbOper
 from app.db.models.site import Site
 
 
-class Sites:
+class SiteOper(DbOper):
     """
     站点管理
     """
-    _db: Session = None
-
-    def __init__(self, _db=SessionLocal()):
-        self._db = _db
 
     def add(self, **kwargs) -> Tuple[bool, str]:
         """
