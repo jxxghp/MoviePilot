@@ -49,6 +49,14 @@ class Sites:
         """
         return Site.delete(self._db, sid)
 
+    def update(self, sid: int, payload: dict):
+        """
+        更新站点
+        """
+        site = Site.get(self._db, sid)
+        site.update(self._db, payload)
+        return site
+
     def get_by_domain(self, domain: str) -> Site:
         """
         按域名获取站点

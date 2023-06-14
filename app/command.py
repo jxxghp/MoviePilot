@@ -84,6 +84,11 @@ class Command(metaclass=Singleton):
                 "description": "查询站点",
                 "data": {}
             },
+            "/site_enable": {
+                "func": SiteManageChain().enable,
+                "description": "启用站点",
+                "data": {}
+            },
             "/site_disable": {
                 "func": SiteManageChain().disable,
                 "description": "禁用站点",
