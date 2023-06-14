@@ -25,6 +25,12 @@ class Sites:
             return True, "新增站点成功"
         return False, "站点已存在"
 
+    def get(self, sid: int):
+        """
+        查询单个站点
+        """
+        return Site.get(self._db, sid)
+
     def list(self) -> List[Site]:
         """
         获取站点列表
@@ -36,6 +42,12 @@ class Sites:
         按状态获取站点列表
         """
         return Site.get_actives(self._db)
+
+    def delete(self, sid: int):
+        """
+        删除站点
+        """
+        return Site.delete(self._db, sid)
 
     def get_by_domain(self, domain: str) -> Site:
         """

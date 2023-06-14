@@ -64,6 +64,7 @@ class SubscribeChain(ChainBase):
         if mediainfo.type == MediaType.TV:
             if not season:
                 season = 1
+            # 总集数
             if not kwargs.get('total_episode'):
                 if not mediainfo.seasons:
                     # 补充媒体信息
@@ -81,6 +82,11 @@ class SubscribeChain(ChainBase):
                     return False
                 kwargs.update({
                     'total_episode': total_episode
+                })
+            # 缺失集
+            if not kwargs.get('lack_episode'):
+                kwargs.update({
+                    'lack_episode': kwargs.get('total_episode')
                 })
         # 添加订阅
         sid, err_msg = self.subscribes.add(mediainfo, season=season, **kwargs)
@@ -297,13 +303,15 @@ class SubscribeChain(ChainBase):
         if not subscribes:
             self.post_message(title='没有任何订阅！')
             return
-        title = f"共有 {len(subscribes)} 个订阅，回复```/subscribe_delete [id]```删除订阅："
+        title = f"共有 {len(subscribes)} 个订阅，回复 `/subscribe_delete` `[id]` 删除订阅："
         messages = []
         for subscribe in subscribes:
             if subscribe.type == MediaType.MOVIE.value:
                 messages.append(f"{subscribe.id}. {subscribe.name}（{subscribe.year}）")
             else:
-                messages.append(f"{subscribe.id}. {subscribe.name}（{subscribe.year}）第{subscribe.season}季")
+                messages.append(f"{subscribe.id}. {subscribe.name}（{subscribe.year}）第{subscribe.season}季 "
+                                f"[{subscribe.total_episode - (subscribe.lack_episode or subscribe.total_episode)}"
+                                f"/{subscribe.total_episode}]")
         # 发送列表
         self.post_message(title=title, text='\n'.join(messages))
 

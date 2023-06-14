@@ -5,6 +5,7 @@ from typing import Any
 from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.douban_sync import DoubanSyncChain
+from app.chain.site_manage import SiteManageChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.core.event import eventmanager, EventManager
@@ -76,6 +77,16 @@ class Command(metaclass=Singleton):
             "/transfer": {
                 "func": TransferChain().process,
                 "description": "下载文件整理",
+                "data": {}
+            },
+            "/sites": {
+                "func": SiteManageChain().process,
+                "description": "查询站点",
+                "data": {}
+            },
+            "/site_disable": {
+                "func": SiteManageChain().disable,
+                "description": "禁用站点",
                 "data": {}
             }
         }
