@@ -182,6 +182,7 @@ class Command(metaclass=Singleton):
                     command['func'](data_str)
                 else:
                     command['func']()
+                logger.info(f"{command.get('description')} 执行完成")
             except Exception as err:
                 logger.error(f"执行命令 {cmd} 出错：{str(err)}")
                 traceback.print_exc()

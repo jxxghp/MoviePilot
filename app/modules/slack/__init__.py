@@ -56,6 +56,22 @@ class SlackModule(_ModuleBase):
             'event_ts': '1670143568.444289',
             'channel_type': 'im'
         }
+        # 命令
+        {
+          "token": "",
+          "team_id": "",
+          "team_domain": "",
+          "channel_id": "",
+          "channel_name": "directmessage",
+          "user_id": "",
+          "user_name": "",
+          "command": "/subscribes",
+          "text": "",
+          "api_app_id": "",
+          "is_enterprise_install": "false",
+          "response_url": "",
+          "trigger_id": ""
+        }
         # 快捷方式
         {
           "type": "shortcut",
@@ -151,6 +167,10 @@ class SlackModule(_ModuleBase):
                 userid = msg_json.get("user", {}).get("id")
                 text = msg_json.get("callback_id")
                 username = msg_json.get("user", {}).get("username")
+            elif msg_json.get("command"):
+                userid = msg_json.get("user_id")
+                text = msg_json.get("command")
+                username = msg_json.get("user_name")
             else:
                 return None
             logger.info(f"收到Slack消息：userid={userid}, username={username}, text={text}")

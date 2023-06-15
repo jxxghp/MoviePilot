@@ -62,6 +62,12 @@ class Slack:
             local_res = requests.post(self._ds_url, json=body, timeout=10)
             logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
 
+        @slack_app.command(re.compile(r"/*"))
+        def slack_command(ack, body):
+            ack()
+            local_res = requests.post(self._ds_url, json=body, timeout=10)
+            logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
+
         # 启动服务
         try:
             self._service = SocketModeHandler(
@@ -101,44 +107,46 @@ class Slack:
             else:
                 # 消息广播
                 channel = self.__find_public_channel()
-            # 拼装消息内容
-            block = {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*{title}*\n{text or ''}"
-                }
-            }
-            # 消息图片
-            if image:
-                block['accessory'] = {
-                    "type": "image",
-                    "image_url": f"{image}",
-                    "alt_text": f"{title}"
-                }
-            blocks = [block]
-            # 链接
-            if image and url:
-                blocks.append({
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "查看详情",
-                                "emoji": True
-                            },
-                            "value": "click_me_url",
-                            "url": f"{url}",
-                            "action_id": "actionId-url"
-                        }
-                    ]
-                })
+            # 消息文本
+            message_text = ""
+            # 结构体
+            blocks = []
+            if not image:
+                message_text = f"*{title}*\n{text or ''}"
+            else:
+                # 消息图片
+                if image:
+                    # 拼装消息内容
+                    blocks.append({"type": "section", "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{title}*\n{text or ''}"
+                    }, 'accessory': {
+                        "type": "image",
+                        "image_url": f"{image}",
+                        "alt_text": f"{title}"
+                    }})
+                # 链接
+                if url:
+                    blocks.append({
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "查看详情",
+                                    "emoji": True
+                                },
+                                "value": "click_me_url",
+                                "url": f"{url}",
+                                "action_id": "actionId-url"
+                            }
+                        ]
+                    })
             # 发送
             result = self._client.chat_postMessage(
                 channel=channel,
-                text=f"*{title}*\n{text or ''}",
+                text=message_text,
                 blocks=blocks
             )
             return True, result
