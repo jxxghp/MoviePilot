@@ -145,7 +145,7 @@ class CookieHelper:
                         cookie = self.parse_cookies(page.context.cookies())
                         ua = page.evaluate("() => window.navigator.userAgent")
                         # 自动OCR识别验证码
-                        captcha = self.get_captcha_text(cookie=cookie, ua=ua, code_url=code_url)
+                        captcha = self.__get_captcha_text(cookie=cookie, ua=ua, code_url=code_url)
                         if captcha:
                             logger.info("验证码地址为：%s，识别结果：%s" % (code_url, captcha))
                         else:
@@ -189,27 +189,21 @@ class CookieHelper:
                                          proxies=proxies)
 
     @staticmethod
-    def get_captcha_base64(cookie: str, ua: str, image_url: str) -> str:
-        """
-        根据图片地址，使用浏览器获取验证码图片base64编码
-        """
-        if not image_url:
-            return ""
-        ret = RequestUtils(ua=ua, cookies=cookie).get_res(image_url)
-        if ret:
-            return base64.b64encode(ret.content).decode()
-        return ""
-
-    def get_captcha_text(self, cookie: str, ua: str, code_url: str) -> str:
+    def __get_captcha_text(cookie: str, ua: str, code_url: str) -> str:
         """
         识别验证码图片的内容
         """
-        code_b64 = self.get_captcha_base64(cookie=cookie,
-                                           ua=ua,
-                                           image_url=code_url)
-        if not code_b64:
+        if not code_url:
             return ""
-        return OcrHelper().get_captcha_text(image_b64=code_b64)
+        ret = RequestUtils(ua=ua, cookies=cookie).get_res(code_url)
+        if ret:
+            if not ret.content:
+                return ""
+            return OcrHelper().get_captcha_text(
+                image_b64=base64.b64encode(ret.content).decode()
+            )
+        else:
+            return ""
 
     @staticmethod
     def __get_captcha_url(siteurl: str, imageurl: str) -> str:
