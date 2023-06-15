@@ -50,7 +50,7 @@ class SiteMessageChain(ChainBase):
         """
         if not arg_str:
             return
-        arg_str = arg_str.strip()
+        arg_str = str(arg_str).strip()
         if not arg_str.isdigit():
             return
         site_id = int(arg_str)
@@ -71,7 +71,7 @@ class SiteMessageChain(ChainBase):
         """
         if not arg_str:
             return
-        arg_str = arg_str.strip()
+        arg_str = str(arg_str).strip()
         if not arg_str.isdigit():
             return
         site_id = int(arg_str)
@@ -95,7 +95,7 @@ class SiteMessageChain(ChainBase):
         if not arg_str:
             self.post_message(title=err_title, userid=userid)
             return
-        arg_str = arg_str.strip()
+        arg_str = str(arg_str).strip()
         args = arg_str.split()
         if len(args) != 3:
             self.post_message(title=err_title, userid=userid)
