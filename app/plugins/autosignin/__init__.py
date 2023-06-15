@@ -96,7 +96,7 @@ class AutoSignIn(_PluginBase):
         if status:
             logger.info("站点签到任务完成！")
             # 发送通知
-            self.chain.post_message(title="站点自动签到", text="\n".join(status))
+            self.chain.post_message(title="站点自动签到", text="\n".join([s for s in status if s]))
         else:
             logger.error("站点签到任务失败！")
 
