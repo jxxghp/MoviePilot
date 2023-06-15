@@ -488,5 +488,5 @@ class DownloadChain(ChainBase):
         for torrent in torrents:
             messages.append(f"{torrent.title} "
                             f"{StringUtils.str_filesize(torrent.size)} "
-                            f"{round(torrent.progress) * 100}%")
+                            f"{round(torrent.progress * 100, 1)}%")
         self.post_message(title=title, text="\n".join(messages))
