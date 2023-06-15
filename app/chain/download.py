@@ -485,8 +485,10 @@ class DownloadChain(ChainBase):
         # 发送消息
         title = f"共 {len(torrents)} 个任务正在下载："
         messages = []
+        index = 1
         for torrent in torrents:
-            messages.append(f"{torrent.title} "
+            messages.append(f"{index}. {torrent.title} "
                             f"{StringUtils.str_filesize(torrent.size)} "
                             f"{round(torrent.progress * 100, 1)}%")
+            index += 1
         self.post_message(title=title, text="\n".join(messages))
