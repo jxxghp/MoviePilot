@@ -10,7 +10,7 @@ from app.log import logger
 from app.schemas.context import TransferInfo, TransferTorrent
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
-from app.utils.types import TorrentStatus
+from app.schemas.types import TorrentStatus, EventType
 
 
 class TransferChain(ChainBase):
@@ -114,6 +114,12 @@ class TransferChain(ChainBase):
             self.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
             # 发送通知
             self.__send_transfer_message(meta=meta, mediainfo=mediainfo, transferinfo=transferinfo)
+            # 广播事件
+            self.eventmanager.send_event(EventType.TransferComplete, {
+                'meta': meta,
+                'mediainfo': mediainfo,
+                'transferinfo': transferinfo
+            })
 
         logger.info("下载器文件转移执行完成")
         return True

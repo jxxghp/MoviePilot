@@ -6,13 +6,14 @@ from typing import Optional, Any, Tuple, List, Set, Union, Dict
 from ruamel.yaml import CommentedMap
 
 from app.core.context import Context
+from app.core.event import EventManager
 from app.core.module import ModuleManager
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
 from app.log import logger
 from app.schemas.context import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent
 from app.utils.singleton import AbstractSingleton, Singleton
-from app.utils.types import TorrentStatus, MediaType
+from app.schemas.types import TorrentStatus, MediaType
 
 
 class ChainBase(AbstractSingleton, metaclass=Singleton):
@@ -25,6 +26,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         公共初始化
         """
         self.modulemanager = ModuleManager()
+        self.eventmanager = EventManager()
 
     @abstractmethod
     def process(self, *args, **kwargs) -> Optional[Context]:

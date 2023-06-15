@@ -7,7 +7,7 @@ from lxml import etree
 from app.log import logger
 from app.plugins.sitestatistic.siteuserinfo import ISiteUserInfo, SITE_BASE_ORDER
 from app.utils.string import StringUtils
-from app.utils.types import SiteSchema
+from app.schemas.types import SiteSchema
 
 
 class NexusPhpSiteUserInfo(ISiteUserInfo):

@@ -15,7 +15,7 @@ from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.utils.dom import DomUtils
 from app.utils.http import RequestUtils
 from app.utils.system import SystemUtils
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class TheMovieDbModule(_ModuleBase):

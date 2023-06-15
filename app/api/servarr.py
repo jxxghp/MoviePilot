@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any, List
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -12,7 +11,7 @@ from app.core.metainfo import MetaInfo
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
 from app.schemas import RadarrMovie, SonarrSeries
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 from version import APP_VERSION
 
 arr_router = APIRouter()

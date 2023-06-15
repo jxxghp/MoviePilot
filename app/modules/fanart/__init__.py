@@ -6,7 +6,7 @@ from app.core.context import MediaInfo, settings
 from app.log import logger
 from app.modules import _ModuleBase
 from app.utils.http import RequestUtils
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class FanartModule(_ModuleBase):

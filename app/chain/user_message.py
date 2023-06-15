@@ -7,7 +7,7 @@ from app.core.context import MediaInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.core.event import EventManager
 from app.log import logger
-from app.utils.types import EventType
+from app.schemas.types import EventType
 
 
 class UserMessageChain(ChainBase):

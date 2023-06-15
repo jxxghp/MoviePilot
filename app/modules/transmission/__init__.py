@@ -7,7 +7,7 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.transmission.transmission import Transmission
 from app.schemas.context import TransferInfo, TransferTorrent, DownloadingTorrent
-from app.utils.types import TorrentStatus
+from app.schemas.types import TorrentStatus
 
 
 class TransmissionModule(_ModuleBase):

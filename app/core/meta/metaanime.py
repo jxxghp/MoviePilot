@@ -4,7 +4,7 @@ import anitopy
 from app.core.meta.metabase import MetaBase
 from app.core.meta.release_groups import ReleaseGroupsMatcher
 from app.utils.string import StringUtils
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class MetaAnime(MetaBase):

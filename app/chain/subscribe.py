@@ -11,7 +11,7 @@ from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas.context import NotExistMediaInfo
 from app.utils.string import StringUtils
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class SubscribeChain(ChainBase):

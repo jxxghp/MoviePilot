@@ -13,7 +13,7 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.schemas.context import TransferInfo
 from app.utils.system import SystemUtils
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 lock = Lock()
 

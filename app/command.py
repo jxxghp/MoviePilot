@@ -1,4 +1,3 @@
-import inspect
 import traceback
 from threading import Thread, Event
 from typing import Any, Union
@@ -16,7 +15,7 @@ from app.core.event import Event as ManagerEvent
 from app.log import logger
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
-from app.utils.types import EventType
+from app.schemas.types import EventType
 
 
 class CommandChian(ChainBase):

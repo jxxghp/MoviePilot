@@ -10,7 +10,7 @@ import cn2an
 import dateparser
 import dateutil.parser
 
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class StringUtils:

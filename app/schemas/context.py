@@ -3,7 +3,7 @@ from typing import Optional, Dict
 
 from pydantic import BaseModel
 
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class MetaInfo(BaseModel):

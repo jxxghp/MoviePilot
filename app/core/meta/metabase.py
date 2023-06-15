@@ -4,7 +4,7 @@ import cn2an
 import regex as re
 
 from app.utils.string import StringUtils
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class MetaBase(object):

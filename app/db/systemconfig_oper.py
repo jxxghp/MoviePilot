@@ -5,7 +5,7 @@ from app.db import DbOper
 from app.db.models.systemconfig import SystemConfig
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
-from app.utils.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey
 
 
 class SystemConfigOper(DbOper, metaclass=Singleton):

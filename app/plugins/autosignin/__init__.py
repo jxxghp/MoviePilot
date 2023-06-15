@@ -18,7 +18,7 @@ from app.plugins import _PluginBase
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
 from app.utils.timer import TimerUtils
-from app.utils.types import EventType
+from app.schemas.types import EventType
 
 
 class AutoSignIn(_PluginBase):

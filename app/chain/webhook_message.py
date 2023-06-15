@@ -3,6 +3,7 @@ from typing import Any
 
 from app.chain import ChainBase
 from app.utils.http import WebUtils
+from app.schemas.types import EventType
 
 
 class WebhookMessageChain(ChainBase):
@@ -18,6 +19,8 @@ class WebhookMessageChain(ChainBase):
         event_info: dict = self.webhook_parser(body=body, form=form, args=args)
         if not event_info:
             return
+        # 广播事件
+        self.eventmanager.send_event(EventType.WebhookMessage, event_info)
         # 拼装消息内容
         _webhook_actions = {
             "library.new": "新入库",

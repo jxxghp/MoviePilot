@@ -8,7 +8,7 @@ from app.modules import _ModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.schemas.context import TransferInfo, TransferTorrent, DownloadingTorrent
 from app.utils.string import StringUtils
-from app.utils.types import TorrentStatus
+from app.schemas.types import TorrentStatus
 
 
 class QbittorrentModule(_ModuleBase):

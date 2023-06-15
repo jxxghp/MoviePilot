@@ -11,7 +11,7 @@ from app.modules.indexer.spider import TorrentSpider
 from app.modules.indexer.tnode import TNodeSpider
 from app.modules.indexer.torrentleech import TorrentLeech
 from app.utils.string import StringUtils
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class IndexerModule(_ModuleBase):

@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class TmdbHelper:

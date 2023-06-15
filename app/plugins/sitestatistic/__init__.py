@@ -22,7 +22,7 @@ from app.utils.timer import TimerUtils
 
 import warnings
 
-from app.utils.types import EventType
+from app.schemas.types import EventType
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 

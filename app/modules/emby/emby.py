@@ -9,7 +9,7 @@ from app.schemas.context import RefreshMediaItem
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class Emby(metaclass=Singleton):

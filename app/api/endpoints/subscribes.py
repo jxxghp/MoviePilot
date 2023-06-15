@@ -10,7 +10,7 @@ from app.db import get_db
 from app.db.models.subscribe import Subscribe
 from app.db.models.user import User
 from app.db.userauth import get_current_active_superuser
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 router = APIRouter()
 

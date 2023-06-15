@@ -13,7 +13,7 @@ from app.modules.douban.apiv2 import DoubanApi
 from app.utils.dom import DomUtils
 from app.utils.http import RequestUtils
 from app.utils.system import SystemUtils
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class DoubanModule(_ModuleBase):

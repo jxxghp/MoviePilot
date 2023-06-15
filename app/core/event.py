@@ -2,7 +2,7 @@ from queue import Queue, Empty
 
 from app.log import logger
 from app.utils.singleton import Singleton
-from app.utils.types import EventType
+from app.schemas.types import EventType
 
 
 class EventManager(metaclass=Singleton):

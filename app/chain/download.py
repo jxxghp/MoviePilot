@@ -9,7 +9,7 @@ from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas.context import ExistMediaInfo, NotExistMediaInfo
 from app.utils.string import StringUtils
-from app.utils.types import MediaType, TorrentStatus
+from app.schemas.types import MediaType, TorrentStatus, EventType
 
 
 class DownloadChain(ChainBase):
@@ -115,6 +115,12 @@ class DownloadChain(ChainBase):
                 self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, userid=userid)
                 # 下载成功后处理
                 self.download_added(context=_context, torrent_path=_torrent_file)
+                # 广播事件
+                self.eventmanager.send_event(EventType.DownloadAdded, {
+                    "hash": _hash,
+                    "torrent_file": _torrent_file,
+                    "context": _context
+                })
             else:
                 # 下载失败
                 logger.error(f"{_media.title_year} 添加下载任务失败："

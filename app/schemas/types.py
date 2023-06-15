@@ -22,6 +22,12 @@ class EventType(Enum):
     SiteSignin = "site.signin"
     # 站点数据统计
     SiteStatistic = "site.statistic"
+    # Webhook消息
+    WebhookMessage = "webhook.message"
+    # 转移完成
+    TransferComplete = "transfer.complete"
+    # 添加下载
+    DownloadAdded = "download.added"
 
 
 # 系统配置Key字典

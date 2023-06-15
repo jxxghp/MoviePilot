@@ -6,7 +6,7 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.plex.plex import Plex
 from app.schemas.context import ExistMediaInfo, RefreshMediaItem
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class PlexModule(_ModuleBase):

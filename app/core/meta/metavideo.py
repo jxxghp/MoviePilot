@@ -6,7 +6,7 @@ from app.core.meta.metabase import MetaBase
 from app.core.meta.release_groups import ReleaseGroupsMatcher
 from app.utils.string import StringUtils
 from app.utils.tokens import Tokens
-from app.utils.types import MediaType
+from app.schemas.types import MediaType
 
 
 class MetaVideo(MetaBase):

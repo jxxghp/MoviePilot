@@ -13,7 +13,7 @@ from app.helper.cloudflare import under_challenge
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
-from app.utils.types import SiteSchema
+from app.schemas.types import SiteSchema
 
 SITE_BASE_ORDER = 1000
 
