@@ -114,7 +114,7 @@ class TorrentHelper:
             # 返回失败
             return None, None, "", [], ""
         elif req is None:
-            return None, None, "", [], "无法打开链接：%s" % url
+            return None, None, "", [], f"无法打开链接：{url}"
         elif req.status_code == 429:
             return None, None, "", [], "触发站点流控，请稍后重试"
         else:
@@ -139,6 +139,7 @@ class TorrentHelper:
                 file_list = [torrentinfo.name]
             else:
                 file_list = [fileinfo.name for fileinfo in torrentinfo.files]
+            logger.info(f"{torrent_path.stem} -> 目录：{folder_name}，文件清单：{file_list}")
             return folder_name, file_list
         except Exception as err:
             logger.error(f"种子文件解析失败：{err}")
@@ -225,6 +226,8 @@ class TorrentHelper:
         """
         episodes = []
         for file in files:
+            if not file:
+                continue
             if Path(file).suffix not in settings.RMT_MEDIAEXT:
                 continue
             meta = MetaInfo(file)

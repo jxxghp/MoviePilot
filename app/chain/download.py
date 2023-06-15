@@ -177,10 +177,10 @@ class DownloadChain(ChainBase):
             """
             if not no_exists.get(tmdbid):
                 return 0
-            for nt in no_exists.get(tmdbid):
-                if season == nt.get("season"):
-                    return nt.get("total_episodes")
-            return 0
+            no_exist = no_exists.get(tmdbid)
+            if not no_exist.get(season):
+                return 0
+            return no_exist[season].total_episodes
 
         # 分组排序
         contexts = TorrentHelper().sort_group_torrents(contexts)
@@ -192,110 +192,157 @@ class DownloadChain(ChainBase):
 
         # 电视剧整季匹配
         if no_exists:
-            # 先把整季缺失的拿出来，看是否刚好有所有季都满足的种子
+            # 先把整季缺失的拿出来，看是否刚好有所有季都满足的种子 {tmdbid: [seasons]}
             need_seasons: Dict[int, list] = {}
             for need_tmdbid, need_tv in no_exists.items():
                 for tv in need_tv.values():
                     if not tv:
                         continue
+                    # 季列表为空的，代表全季缺失
                     if not tv.episodes:
                         if not need_seasons.get(need_tmdbid):
                             need_seasons[need_tmdbid] = []
                         need_seasons[need_tmdbid].append(tv.season or 1)
             # 查找整季包含的种子，只处理整季没集的种子或者是集数超过季的种子
             for need_tmdbid, need_season in need_seasons.items():
+                # 循环种子
                 for context in contexts:
+                    # 媒体信息
                     media = context.media_info
+                    # 识别元数据
                     meta = context.meta_info
+                    # 种子信息
                     torrent = context.torrent_info
+                    # 排除电视剧
                     if media.type != MediaType.TV:
                         continue
-                    item_season = meta.season_list
+                    # 种子的季清单
+                    torrent_season = meta.season_list
+                    # 种子有集的不要
                     if meta.episode_list:
                         continue
+                    # 匹配TMDBID
                     if need_tmdbid == media.tmdb_id:
-                        if set(item_season).issubset(set(need_season)):
-                            if len(item_season) == 1:
+                        # 种子季是需要季或者子集
+                        if set(torrent_season).issubset(set(need_season)):
+                            if len(torrent_season) == 1:
                                 # 只有一季的可能是命名错误，需要打开种子鉴别，只有实际集数大于等于总集数才下载
                                 torrent_path, torrent_files = __download_torrent(torrent)
                                 if not torrent_path:
                                     continue
                                 torrent_episodes = self.torrent.get_torrent_episodes(torrent_files)
                                 if not torrent_episodes \
-                                        or len(torrent_episodes) >= __get_season_episodes(need_tmdbid, item_season[0]):
+                                        or len(torrent_episodes) >= __get_season_episodes(need_tmdbid,
+                                                                                          torrent_season[0]):
+                                    # 下载
                                     download_id = __download(_context=context, _torrent_file=torrent_path)
                                 else:
                                     logger.info(
-                                        f"种子 {meta.org_string} 未含集数信息，解析文件数为 {len(torrent_episodes)}")
+                                        f"{meta.org_string} 解析文件集数为 {len(torrent_episodes)}，未含所需集数")
                                     continue
                             else:
+                                # 下载
                                 download_id = __download(context)
 
                             if download_id:
                                 # 更新仍需季集
                                 need_season = __update_seasons(_tmdbid=need_tmdbid,
                                                                _need=need_season,
-                                                               _current=item_season)
+                                                               _current=torrent_season)
         # 电视剧季内的集匹配
         if no_exists:
+            # TMDBID列表
             need_tv_list = list(no_exists)
             for need_tmdbid in need_tv_list:
+                # dict[season, [NotExistMediaInfo]]
                 need_tv = no_exists.get(need_tmdbid)
                 if not need_tv:
                     continue
+                # 循环每一季
                 for sea, tv in need_tv.items():
-                    need_season = tv.season or 1
+                    # 当前需要季
+                    need_season = sea
+                    # 当前需要集
                     need_episodes = tv.episodes
+                    # TMDB总集数
                     total_episodes = tv.total_episodes
+                    # 需要开始集
                     start_episode = tv.start_episode or 1
                     # 缺失整季的转化为缺失集进行比较
                     if not need_episodes:
-                        need_episodes = list(range(start_episode, total_episodes + start_episode))
+                        need_episodes = list(range(start_episode, total_episodes))
+                    # 循环种子
                     for context in contexts:
+                        # 媒体信息
                         media = context.media_info
+                        # 识别元数据
                         meta = context.meta_info
+                        # 非剧集不处理
                         if media.type != MediaType.TV:
                             continue
+                        # 匹配TMDB
                         if media.tmdb_id == need_tmdbid:
+                            # 不重复添加
                             if context in downloaded_list:
                                 continue
+                            # 种子季
+                            torrent_season = meta.season_list
                             # 只处理单季含集的种子
-                            item_season = meta.season_list
-                            if len(item_season) != 1 or item_season[0] != need_season:
+                            if len(torrent_season) != 1 or torrent_season[0] != need_season:
                                 continue
-                            item_episodes = meta.episode_list
-                            if not item_episodes:
+                            # 种子集列表
+                            torrent_episodes = meta.episode_list
+                            # 整季的不处理
+                            if not torrent_episodes:
                                 continue
                             # 为需要集的子集则下载
-                            if set(item_episodes).issubset(set(need_episodes)):
+                            if set(torrent_episodes).issubset(set(need_episodes)):
+                                # 下载
                                 download_id = __download(context)
                                 if download_id:
                                     # 更新仍需集数
                                     need_episodes = __update_episodes(_tmdbid=need_tmdbid,
                                                                       _need=need_episodes,
                                                                       _sea=need_season,
-                                                                      _current=item_episodes)
+                                                                      _current=torrent_episodes)
 
         # 仍然缺失的剧集，从整季中选择需要的集数文件下载，仅支持QB和TR
         if no_exists:
-            need_tv_list = list(no_exists)
-            for need_tmdbid in need_tv_list:
+            # TMDBID列表
+            no_exists_list = list(no_exists)
+            for need_tmdbid in no_exists_list:
+                # dict[season, [NotExistMediaInfo]]
                 need_tv = no_exists.get(need_tmdbid)
                 if not need_tv:
                     continue
-                for sea, tv in need_tv.items():
-                    need_season = tv.season or 1
+                # 需要季列表
+                need_tv_list = list(need_tv)
+                # 循环需要季
+                for sea in need_tv_list:
+                    # NotExistMediaInfo
+                    tv = need_tv.get(sea)
+                    # 当前需要季
+                    need_season = sea
+                    # 当前需要集
                     need_episodes = tv.episodes
+                    # 没有集的不处理
                     if not need_episodes:
                         continue
+                    # 循环种子
                     for context in contexts:
+                        # 媒体信息
                         media = context.media_info
+                        # 识别元数据
                         meta = context.meta_info
+                        # 种子信息
                         torrent = context.torrent_info
+                        # 非剧集不处理
                         if media.type != MediaType.TV:
                             continue
+                        # 不重复添加
                         if context in downloaded_list:
                             continue
+                        # 没有需要集后退出
                         if not need_episodes:
                             break
                         # 选中一个单季整季的或单季包括需要的所有集的
