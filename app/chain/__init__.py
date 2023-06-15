@@ -10,7 +10,7 @@ from app.core.module import ModuleManager
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.meta import MetaBase
 from app.log import logger
-from app.schemas.context import TransferInfo, TransferTorrent, ExistMediaInfo
+from app.schemas.context import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent
 from app.utils.singleton import AbstractSingleton, Singleton
 from app.utils.types import TorrentStatus, MediaType
 
@@ -111,7 +111,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         return self.run_module("download_added", context=context, torrent_path=torrent_path)
 
     def list_torrents(self, status: TorrentStatus = None,
-                      hashs: Union[list, str] = None) -> Optional[List[TransferTorrent]]:
+                      hashs: Union[list, str] = None) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
         return self.run_module("list_torrents", status=status, hashs=hashs)
 
     def transfer(self, path: Path, mediainfo: MediaInfo) -> Optional[TransferInfo]:

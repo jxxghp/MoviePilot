@@ -5,6 +5,7 @@ from typing import Any
 from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.douban_sync import DoubanSyncChain
+from app.chain.download import DownloadChain
 from app.chain.site_message import SiteMessageChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
@@ -92,6 +93,11 @@ class Command(metaclass=Singleton):
             "/subscribe_delete": {
                 "func": SubscribeChain().delete,
                 "description": "删除订阅",
+                "data": {}
+            },
+            "/downloading": {
+                "func": DownloadChain().get_downloading,
+                "description": "正在下载",
                 "data": {}
             },
             "/transfer": {

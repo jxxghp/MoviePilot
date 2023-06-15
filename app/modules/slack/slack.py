@@ -147,7 +147,8 @@ class Slack:
             result = self._client.chat_postMessage(
                 channel=channel,
                 text=message_text,
-                blocks=blocks
+                blocks=blocks,
+                mrkdwn=True
             )
             return True, result
         except Exception as msg_e:

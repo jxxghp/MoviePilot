@@ -6,7 +6,7 @@ from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.transmission.transmission import Transmission
-from app.schemas.context import TransferInfo, TransferTorrent
+from app.schemas.context import TransferInfo, TransferTorrent, DownloadingTorrent
 from app.utils.types import TorrentStatus
 
 
@@ -73,7 +73,7 @@ class TransmissionModule(_ModuleBase):
                 return torrent_hash, "添加下载任务成功"
 
     def list_torrents(self, status: TorrentStatus = None,
-                      hashs: Union[list, str] = None) -> Optional[List[TransferTorrent]]:
+                      hashs: Union[list, str] = None) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
         """
         获取下载器种子列表
         :param status:  种子状态
@@ -109,6 +109,19 @@ class TransmissionModule(_ModuleBase):
                     path=Path(torrent.download_dir) / torrent.name,
                     hash=torrent.hashString,
                     tags=torrent.labels
+                ))
+        elif status == TorrentStatus.DOWNLOADING:
+            # 获取正在下载的任务
+            torrents = self.transmission.get_downloading_torrents(tags=settings.TORRENT_TAG)
+            for torrent in torrents:
+                meta = MetaInfo(torrent.name)
+                ret_torrents.append(DownloadingTorrent(
+                    title=torrent.name,
+                    name=meta.name,
+                    year=meta.year,
+                    season_episode=meta.season_episode,
+                    progress=torrent.progress,
+                    size=torrent.total_size
                 ))
         else:
             return None

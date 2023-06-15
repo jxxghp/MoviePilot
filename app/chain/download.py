@@ -9,7 +9,7 @@ from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas.context import ExistMediaInfo, NotExistMediaInfo
 from app.utils.string import StringUtils
-from app.utils.types import MediaType
+from app.utils.types import MediaType, TorrentStatus
 
 
 class DownloadChain(ChainBase):
@@ -473,3 +473,20 @@ class DownloadChain(ChainBase):
                 return False, no_exists
             # 全部存在
             return True, no_exists
+
+    def get_downloading(self):
+        """
+        查询正在下载的任务，并发送消息
+        """
+        torrents = self.list_torrents(status=TorrentStatus.DOWNLOADING)
+        if not torrents:
+            self.post_message(title="没有正在下载的任务！")
+            return
+        # 发送消息
+        title = f"共 {len(torrents)} 个任务正在下载："
+        messages = []
+        for torrent in torrents:
+            messages.append(f"{torrent.title} "
+                            f"{StringUtils.str_filesize(torrent.size)} "
+                            f"{round(torrent.progress) * 100}%")
+        self.post_message(title=title, text="\n".join(messages))

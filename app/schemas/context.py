@@ -96,6 +96,15 @@ class TransferTorrent(BaseModel):
     tags: Optional[str] = None
 
 
+class DownloadingTorrent(BaseModel):
+    title: Optional[str] = None
+    name: Optional[str] = None
+    year: Optional[str] = None
+    season_episode: Optional[str] = None
+    size: Optional[float] = 0
+    progress: Optional[float] = 0
+
+
 class TransferInfo(BaseModel):
     # 转移⼁路径
     path: Optional[Path] = None

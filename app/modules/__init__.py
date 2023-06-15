@@ -6,7 +6,7 @@ from ruamel.yaml import CommentedMap
 
 from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.meta import MetaBase
-from app.schemas.context import TransferInfo, TransferTorrent, ExistMediaInfo
+from app.schemas.context import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent
 from app.utils.types import TorrentStatus, MediaType
 
 
@@ -165,7 +165,7 @@ class _ModuleBase(metaclass=ABCMeta):
         pass
 
     def list_torrents(self, status: TorrentStatus = None,
-                      hashs: Union[list, str] = None) -> Optional[List[TransferTorrent]]:
+                      hashs: Union[list, str] = None) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
         """
         获取下载器种子列表
         :param status:  种子状态

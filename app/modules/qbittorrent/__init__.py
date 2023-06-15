@@ -6,7 +6,7 @@ from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
-from app.schemas.context import TransferInfo, TransferTorrent
+from app.schemas.context import TransferInfo, TransferTorrent, DownloadingTorrent
 from app.utils.string import StringUtils
 from app.utils.types import TorrentStatus
 
@@ -86,7 +86,7 @@ class QbittorrentModule(_ModuleBase):
                     return torrent_hash, "添加下载成功"
 
     def list_torrents(self, status: TorrentStatus = None,
-                      hashs: Union[list, str] = None) -> Optional[List[TransferTorrent]]:
+                      hashs: Union[list, str] = None) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
         """
         获取下载器种子列表
         :param status:  种子状态
@@ -127,6 +127,19 @@ class QbittorrentModule(_ModuleBase):
                     path=torrent_path,
                     hash=torrent.get('hash'),
                     tags=torrent.get('tags')
+                ))
+        elif status == TorrentStatus.DOWNLOADING:
+            # 获取正在下载的任务
+            torrents = self.qbittorrent.get_downloading_torrents(tags=settings.TORRENT_TAG)
+            for torrent in torrents:
+                meta = MetaInfo(torrent.get('name'))
+                ret_torrents.append(DownloadingTorrent(
+                    title=torrent.get('name'),
+                    name=meta.name,
+                    year=meta.year,
+                    season_episode=meta.season_episode,
+                    progress=torrent.get('progress'),
+                    size=torrent.get('total_size')
                 ))
         else:
             return None
