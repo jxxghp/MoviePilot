@@ -1,5 +1,5 @@
 import inspect
-from typing import Any
+from typing import Any, Callable
 
 
 class ObjectUtils:
@@ -12,9 +12,9 @@ class ObjectUtils:
             return str(obj).startswith("{") or str(obj).startswith("[")
 
     @staticmethod
-    def has_arguments(func):
+    def has_arguments(func: Callable) -> int:
         """
-        判断函数是否有参数
+        返回函数的参数个数
         """
         signature = inspect.signature(func)
         parameters = signature.parameters
@@ -24,4 +24,4 @@ class ObjectUtils:
         if parameter_names and parameter_names[0] == 'self':
             parameter_names = parameter_names[1:]
 
-        return len(parameter_names) > 0
+        return len(parameter_names)
