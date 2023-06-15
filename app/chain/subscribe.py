@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
@@ -295,13 +295,13 @@ class SubscribeChain(ChainBase):
                                 "lack_episode": len(left_episodes)
                             })
 
-    def list(self):
+    def list(self, userid: Union[str, int] = None):
         """
         查询订阅并发送消息
         """
         subscribes = self.subscribehelper.list()
         if not subscribes:
-            self.post_message(title='没有任何订阅！')
+            self.post_message(title='没有任何订阅！', userid=userid)
             return
         title = f"共有 {len(subscribes)} 个订阅，回复对应指令操作： " \
                 f"\n- 删除订阅：/subscribe_delete [id]"
@@ -317,9 +317,9 @@ class SubscribeChain(ChainBase):
                                 f"_{subscribe.total_episode - (subscribe.lack_episode or subscribe.total_episode)}"
                                 f"/{subscribe.total_episode}_")
         # 发送列表
-        self.post_message(title=title, text='\n'.join(messages))
+        self.post_message(title=title, text='\n'.join(messages), userid=userid)
 
-    def delete(self, arg_str: str):
+    def delete(self, arg_str: str, userid: Union[str, int] = None):
         """
         删除订阅
         """
@@ -331,7 +331,7 @@ class SubscribeChain(ChainBase):
         subscribe_id = int(arg_str)
         subscribe = self.subscribehelper.get(subscribe_id)
         if not subscribe:
-            self.post_message(title=f"订阅编号 {subscribe_id} 不存在！")
+            self.post_message(title=f"订阅编号 {subscribe_id} 不存在！", userid=userid)
             return
         # 删除订阅
         self.subscribehelper.delete(subscribe_id)

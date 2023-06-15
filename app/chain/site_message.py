@@ -1,3 +1,5 @@
+from typing import Union
+
 from app.chain import ChainBase
 from app.core.config import settings
 from app.db.site_oper import SiteOper
@@ -18,7 +20,7 @@ class SiteMessageChain(ChainBase):
         self._siteoper = SiteOper()
         self._cookiehelper = CookieHelper()
 
-    def process(self):
+    def process(self, userid: Union[str, int] = None):
         """
         查询所有站点，发送消息
         """
@@ -40,9 +42,9 @@ class SiteMessageChain(ChainBase):
             else:
                 messages.append(f"{site.id}. {site.name}")
         # 发送列表
-        self.post_message(title=title, text="\n".join(messages))
+        self.post_message(title=title, text="\n".join(messages), userid=userid)
 
-    def disable(self, arg_str):
+    def disable(self, arg_str, userid: Union[str, int] = None):
         """
         禁用站点
         """
@@ -54,7 +56,7 @@ class SiteMessageChain(ChainBase):
         site_id = int(arg_str)
         site = self._siteoper.get(site_id)
         if not site:
-            self.post_message(title=f"站点编号 {site_id} 不存在！")
+            self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
             return
         # 禁用站点
         self._siteoper.update(site_id, {
@@ -63,7 +65,7 @@ class SiteMessageChain(ChainBase):
         # 重新发送消息
         self.process()
 
-    def enable(self, arg_str):
+    def enable(self, arg_str, userid: Union[str, int] = None):
         """
         启用站点
         """
@@ -75,7 +77,7 @@ class SiteMessageChain(ChainBase):
         site_id = int(arg_str)
         site = self._siteoper.get(site_id)
         if not site:
-            self.post_message(title=f"站点编号 {site_id} 不存在！")
+            self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
             return
         # 禁用站点
         self._siteoper.update(site_id, {
@@ -84,30 +86,30 @@ class SiteMessageChain(ChainBase):
         # 重新发送消息
         self.process()
 
-    def get_cookie(self, arg_str: str):
+    def get_cookie(self, arg_str: str, userid: Union[str, int] = None):
         """
         使用用户名密码更新站点Cookie
         """
         err_title = "请输入正确的命令格式：/site_cookie [id] [username] [password]，" \
                     "[id]为站点编号，[uername]为站点用户名，[password]为站点密码"
         if not arg_str:
-            self.post_message(title=err_title)
+            self.post_message(title=err_title, userid=userid)
             return
         arg_str = arg_str.strip()
         args = arg_str.split()
         if len(args) != 3:
-            self.post_message(title=err_title)
+            self.post_message(title=err_title, userid=userid)
             return
         site_id = args[0]
         if not site_id.isdigit():
-            self.post_message(title=err_title)
+            self.post_message(title=err_title, userid=userid)
             return
         # 站点ID
         site_id = int(site_id)
         # 站点信息
         site_info = self._siteoper.get(site_id)
         if not site_info:
-            self.post_message(title=f"站点编号 {site_id} 不存在！")
+            self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
             return
         # 用户名
         username = args[1]
@@ -125,10 +127,12 @@ class SiteMessageChain(ChainBase):
             if not cookie:
                 logger.error(msg)
                 self.post_message(title=f"【{site_info.name}】 Cookie&UA更新失败！",
-                                  text=f"错误原因：{msg}")
+                                  text=f"错误原因：{msg}",
+                                  userid=userid)
                 return
             self._siteoper.update(site_id, {
                 "cookie": cookie,
                 "ua": ua
             })
-            self.post_message(title=f"【{site_info.name}】 Cookie&UA更新成功")
+            self.post_message(title=f"【{site_info.name}】 Cookie&UA更新成功",
+                              userid=userid)

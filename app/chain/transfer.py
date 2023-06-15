@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from app.chain import ChainBase
 from app.core.context import MediaInfo
@@ -18,7 +18,7 @@ class TransferChain(ChainBase):
     文件转移处理链
     """
 
-    def process(self, arg_str: str = None) -> bool:
+    def process(self, arg_str: str = None, userid: Union[str, int] = None) -> bool:
         """
         获取下载器中的种子列表，并执行转移
         """
@@ -87,7 +87,8 @@ class TransferChain(ChainBase):
                 if not mediainfo:
                     logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
                     self.post_message(title=f"{torrent.title} 未识别到媒体信息，无法入库！\n"
-                                            f"回复：```\n/transfer {torrent.hash} [tmdbid]\n``` 手动识别转移。")
+                                            f"回复：```\n/transfer {torrent.hash} [tmdbid]\n``` 手动识别转移。",
+                                      userid=userid)
                     continue
             else:
                 mediainfo = arg_mediainfo
@@ -101,7 +102,8 @@ class TransferChain(ChainBase):
                 self.post_message(
                     title=f"{mediainfo.title_year}{meta.season_episode} 入库失败！",
                     text=f"原因：{transferinfo.message if transferinfo else '未知'}",
-                    image=mediainfo.get_message_image()
+                    image=mediainfo.get_message_image(),
+                    userid=userid
                 ),
                 continue
             # 转移完成

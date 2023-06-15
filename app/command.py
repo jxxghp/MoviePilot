@@ -1,6 +1,7 @@
+import inspect
 import traceback
 from threading import Thread, Event
-from typing import Any
+from typing import Any, Union
 
 from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
@@ -13,6 +14,7 @@ from app.core.event import eventmanager, EventManager
 from app.core.plugin import PluginManager
 from app.core.event import Event as ManagerEvent
 from app.log import logger
+from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
 from app.utils.types import EventType
 
@@ -173,22 +175,29 @@ class Command(metaclass=Singleton):
         """
         return self._commands.get(cmd, {})
 
-    def execute(self, cmd: str, data_str: str = "") -> None:
+    def execute(self, cmd: str, data_str: str = "", userid: Union[str, int] = None) -> None:
         """
         执行命令
         """
         command = self.get(cmd)
         if command:
             try:
-                logger.info(f"开始执行：{command.get('description')} ...")
+                logger.info(f"用户 {userid} 开始执行：{command.get('description')} ...")
                 cmd_data = command['data'] if command.get('data') else {}
-                if cmd_data:
-                    command['func'](**cmd_data)
-                elif data_str:
-                    command['func'](data_str)
+                if ObjectUtils.has_arguments(command['func']):
+                    if cmd_data:
+                        # 使用内置参数
+                        command['func'](**cmd_data)
+                    elif data_str:
+                        # 使用用户输入参数
+                        command['func'](data_str, userid)
+                    else:
+                        # 没有用户输入参数
+                        command['func'](userid)
                 else:
+                    # 没有参数
                     command['func']()
-                logger.info(f"{command.get('description')} 执行完成")
+                logger.info(f"用户 {userid} {command.get('description')} 执行完成")
             except Exception as err:
                 logger.error(f"执行命令 {cmd} 出错：{str(err)}")
                 traceback.print_exc()
@@ -208,9 +217,12 @@ class Command(metaclass=Singleton):
             "cmd": "/xxx args"
         }
         """
+        # 命令参数
         event_str = event.event_data.get('cmd')
+        # 消息用户
+        event_user = event.event_data.get('user')
         if event_str:
             cmd = event_str.split()[0]
             args = " ".join(event_str.split()[1:])
             if self.get(cmd):
-                self.execute(cmd, args)
+                self.execute(cmd, args, event_user)

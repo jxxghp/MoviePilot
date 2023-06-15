@@ -58,7 +58,8 @@ class UserMessageChain(ChainBase):
             self.eventmanager.send_event(
                 EventType.CommandExcute,
                 {
-                    "cmd": text
+                    "cmd": text,
+                    "user": userid
                 }
             )
             self.post_message(title=f"正在运行，请稍候 ...", userid=userid)

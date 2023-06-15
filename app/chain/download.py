@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import List, Optional, Tuple, Set, Dict
+from typing import List, Optional, Tuple, Set, Dict, Union
 
 from app.chain import ChainBase
 from app.core.context import MediaInfo, TorrentInfo, Context
@@ -474,7 +474,7 @@ class DownloadChain(ChainBase):
             # 全部存在
             return True, no_exists
 
-    def get_downloading(self):
+    def get_downloading(self, userid: Union[str, int] = None):
         """
         查询正在下载的任务，并发送消息
         """
@@ -491,4 +491,4 @@ class DownloadChain(ChainBase):
                             f"{StringUtils.str_filesize(torrent.size)} "
                             f"{round(torrent.progress * 100, 1)}%")
             index += 1
-        self.post_message(title=title, text="\n".join(messages))
+        self.post_message(title=title, text="\n".join(messages), userid=userid)
