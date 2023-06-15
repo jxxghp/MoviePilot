@@ -9,6 +9,7 @@ ENV LANG="C.UTF-8" \
     API_TOKEN="moviepilot" \
     SUPERUSER="admin" \
     SUPERUSER_PASSWORD="password" \
+    AUTH_SITE="iyuu" \
     LIBRARY_PATH="" \
     DOWNLOAD_PATH="/downloads" \
     TORRENT_TAG="MOVIEPILOT" \

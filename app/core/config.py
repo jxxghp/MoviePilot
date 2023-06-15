@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     INDEXER: str = "builtin"
     # 索引站点，站点域名关键字使用,分隔
     INDEXER_SITES: str = ""
+    # 用户认证站点 hhclub/audiences/hddolby/zmpt/freefarm/hdfans/wintersakura/leaves/1ptba/icc2022/iyuu
+    AUTH_SITE: str = ""
     # 消息通知渠道 telegram/wechat/slack
     MESSAGER: str = "telegram"
     # WeChat企业ID

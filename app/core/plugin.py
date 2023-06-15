@@ -11,7 +11,7 @@ class PluginManager(metaclass=Singleton):
     """
     插件管理器
     """
-    systemconfigs: SystemConfigOper = None
+    systemconfig: SystemConfigOper = None
 
     # 插件列表
     _plugins: dict = {}
@@ -24,7 +24,7 @@ class PluginManager(metaclass=Singleton):
         self.init_config()
 
     def init_config(self):
-        self.systemconfigs = SystemConfigOper()
+        self.systemconfig = SystemConfigOper()
         # 停止已有插件
         self.stop()
         # 启动插件
@@ -95,7 +95,7 @@ class PluginManager(metaclass=Singleton):
         """
         if not self._plugins.get(pid):
             return {}
-        return self.systemconfigs.get(self._config_key % pid) or {}
+        return self.systemconfig.get(self._config_key % pid) or {}
 
     def save_plugin_config(self, pid: str, conf: dict) -> bool:
         """
@@ -103,7 +103,7 @@ class PluginManager(metaclass=Singleton):
         """
         if not self._plugins.get(pid):
             return False
-        return self.systemconfigs.set(self._config_key % pid, conf)
+        return self.systemconfig.set(self._config_key % pid, conf)
 
     def get_plugin_commands(self) -> List[dict]:
         """
