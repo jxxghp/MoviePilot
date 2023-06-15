@@ -128,10 +128,10 @@ class SiteStatistic(_PluginBase):
                     i = html_text.find("window.location")
                     if i == -1:
                         return None
-                    tmp_url = url + html_text[i:html_text.find(";")]\
-                        .replace("\"", "")\
-                        .replace("+", "")\
-                        .replace(" ", "")\
+                    tmp_url = url + html_text[i:html_text.find(";")] \
+                        .replace("\"", "") \
+                        .replace("+", "") \
+                        .replace(" ", "") \
                         .replace("window.location=", "")
                     res = RequestUtils(cookies=site_cookie,
                                        session=session,
@@ -244,11 +244,10 @@ class SiteStatistic(_PluginBase):
             for head, date, content in site_user_info.message_unread_contents:
                 msg_title = f"【站点 {site_user_info.site_name} 消息】"
                 msg_text = f"时间：{date}\n标题：{head}\n内容：\n{content}"
-                self.chain.run_module("post_message", title=msg_title, text=msg_text)
+                self.chain.post_message(title=msg_title, text=msg_text)
         else:
-            self.chain.run_module("post_message",
-                                  title=f"站点 {site_user_info.site_name} 收到 "
-                                        f"{site_user_info.message_unread} 条新消息，请登陆查看")
+            self.chain.post_message(title=f"站点 {site_user_info.site_name} 收到 "
+                                          f"{site_user_info.message_unread} 条新消息，请登陆查看")
 
     @eventmanager.register(EventType.SiteStatistic)
     def refresh(self, event: Event):
@@ -330,6 +329,6 @@ class SiteStatistic(_PluginBase):
                                    f"总上传：{StringUtils.str_filesize(incUploads)}\n"
                                    f"总下载：{StringUtils.str_filesize(incDownloads)}\n"
                                    f"————————————")
-            self.chain.run_module("post_message", title="站点数据统计", text="\n".join(messages))
+            self.chain.post_message(title="站点数据统计", text="\n".join(messages))
 
         logger.info("站点数据刷新完成")

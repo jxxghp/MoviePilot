@@ -96,7 +96,7 @@ class AutoSignIn(_PluginBase):
         if status:
             logger.info("站点签到任务完成！")
             # 发送通知
-            self.chain.run_module("post_message", title="站点自动签到", text="\n".join(status))
+            self.chain.post_message(title="站点自动签到", text="\n".join(status))
         else:
             logger.error("站点签到任务失败！")
 
@@ -118,7 +118,7 @@ class AutoSignIn(_PluginBase):
             try:
                 status, msg = site_module().signin(site_info)
                 # 特殊站点直接返回签到信息，防止仿真签到、模拟登陆有歧义
-                return msg
+                return msg or ""
             except Exception as e:
                 return f"【{site_info.get('name')}】签到失败：{str(e)}"
         else:
