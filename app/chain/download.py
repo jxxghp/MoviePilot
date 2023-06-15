@@ -121,7 +121,7 @@ class DownloadChain(ChainBase):
                              f"{_torrent.title} - {_torrent.enclosure}，{error_msg}")
                 self.post_message(
                     title="添加下载任务失败：%s %s"
-                          % (_media.title_year, _meta.get_season_episode_string()),
+                          % (_media.title_year, _meta.season_episode),
                     text=f"站点：{_torrent.site_name}\n"
                          f"种子名称：{_meta.org_string}\n"
                          f"种子链接：{_torrent.enclosure}\n"

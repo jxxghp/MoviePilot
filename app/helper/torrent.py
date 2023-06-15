@@ -209,7 +209,7 @@ class TorrentHelper:
             media = context.media_info
             if media.type == MediaType.TV:
                 media_name = "%s%s" % (media.title_year,
-                                       meta.get_season_episode_string())
+                                       meta.season_episode)
             else:
                 media_name = media.title_year
             if media_name not in _added:

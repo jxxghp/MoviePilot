@@ -5,7 +5,7 @@ from typing import Any
 from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.douban_sync import DoubanSyncChain
-from app.chain.site_manage import SiteManageChain
+from app.chain.site_message import SiteMessageChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.core.event import eventmanager, EventManager
@@ -44,12 +44,37 @@ class Command(metaclass=Singleton):
         self._commands = {
             "/cookiecloud": {
                 "func": CookieCloudChain().process,
-                "description": "同步站点Cookie",
+                "description": "同步站点",
+                "data": {}
+            },
+            "/sites": {
+                "func": SiteMessageChain().process,
+                "description": "查询站点",
+                "data": {}
+            },
+            "/site_cookie": {
+                "func": SiteMessageChain().get_cookie,
+                "description": "更新站点Cookie",
+                "data": {}
+            },
+            "/site_enable": {
+                "func": SiteMessageChain().enable,
+                "description": "启用站点",
+                "data": {}
+            },
+            "/site_disable": {
+                "func": SiteMessageChain().disable,
+                "description": "禁用站点",
                 "data": {}
             },
             "/douban_sync": {
                 "func": DoubanSyncChain().process,
                 "description": "同步豆瓣想看",
+                "data": {}
+            },
+            "/subscribes": {
+                "func": SubscribeChain().list,
+                "description": "查询订阅",
                 "data": {}
             },
             "/subscribe_refresh": {
@@ -64,11 +89,6 @@ class Command(metaclass=Singleton):
                     'state': 'R',
                 }
             },
-            "/subscribes": {
-                "func": SubscribeChain().list,
-                "description": "查询订阅",
-                "data": {}
-            },
             "/subscribe_delete": {
                 "func": SubscribeChain().delete,
                 "description": "删除订阅",
@@ -77,21 +97,6 @@ class Command(metaclass=Singleton):
             "/transfer": {
                 "func": TransferChain().process,
                 "description": "下载文件整理",
-                "data": {}
-            },
-            "/sites": {
-                "func": SiteManageChain().process,
-                "description": "查询站点",
-                "data": {}
-            },
-            "/site_enable": {
-                "func": SiteManageChain().enable,
-                "description": "启用站点",
-                "data": {}
-            },
-            "/site_disable": {
-                "func": SiteManageChain().disable,
-                "description": "禁用站点",
                 "data": {}
             }
         }
@@ -179,6 +184,7 @@ class Command(metaclass=Singleton):
                     command['func']()
             except Exception as err:
                 logger.error(f"执行命令 {cmd} 出错：{str(err)}")
+                traceback.print_exc()
 
     @staticmethod
     def send_plugin_event(etype: EventType, data: dict) -> None:

@@ -248,7 +248,7 @@ class Slack:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"**{title}**"
+                    "text": f"*{title}*"
                 }
             }
             blocks = [title_section, {

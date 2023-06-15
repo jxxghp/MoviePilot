@@ -79,9 +79,9 @@ class Telegram(metaclass=Singleton):
 
         try:
             if text:
-                caption = f"**{title}**\n{text}"
+                caption = f"*{title}*\n{text}"
             else:
-                caption = f"**{title}**"
+                caption = f"*{title}*"
 
             if userid:
                 chat_id = userid

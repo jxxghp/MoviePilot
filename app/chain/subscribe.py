@@ -303,7 +303,8 @@ class SubscribeChain(ChainBase):
         if not subscribes:
             self.post_message(title='没有任何订阅！')
             return
-        title = f"共有 {len(subscribes)} 个订阅，回复 `/subscribe_delete` `[id]` 删除订阅："
+        title = f"共有 {len(subscribes)} 个订阅，回复对应指令操作： " \
+                f"\n- 删除订阅：/subscribe_delete [id]"
         messages = []
         for subscribe in subscribes:
             if subscribe.type == MediaType.MOVIE.value:
@@ -313,8 +314,8 @@ class SubscribeChain(ChainBase):
                 tmdb_link = f"https://www.themoviedb.org/tv/{subscribe.tmdbid}"
                 messages.append(f"{subscribe.id}. [{subscribe.name}（{subscribe.year}）]({tmdb_link}) "
                                 f"第{subscribe.season}季 "
-                                f"【{subscribe.total_episode - (subscribe.lack_episode or subscribe.total_episode)}"
-                                f"/{subscribe.total_episode}】")
+                                f"_{subscribe.total_episode - (subscribe.lack_episode or subscribe.total_episode)}"
+                                f"/{subscribe.total_episode}_")
         # 发送列表
         self.post_message(title=title, text='\n'.join(messages))
 
