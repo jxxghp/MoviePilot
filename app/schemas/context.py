@@ -110,6 +110,12 @@ class TransferInfo(BaseModel):
     path: Optional[Path] = None
     # 转移后路径
     target_path: Optional[Path] = None
+    # 处理文件数
+    file_count: int = 0
+    # 总文件大小
+    total_size: float = 0
+    # 失败清单
+    fail_list: list = []
     # 错误信息
     message: Optional[str] = None
 

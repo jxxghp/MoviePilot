@@ -10,9 +10,8 @@ from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory
 from app.log import logger
 from app.schemas.context import TransferInfo, TransferTorrent
-from app.utils.string import StringUtils
-from app.utils.system import SystemUtils
 from app.schemas.types import TorrentStatus, EventType, MediaType
+from app.utils.string import StringUtils
 
 
 class TransferChain(ChainBase):
@@ -102,6 +101,7 @@ class TransferChain(ChainBase):
             # 转移
             transferinfo: TransferInfo = self.transfer(mediainfo=mediainfo, path=Path(torrent.path))
             if not transferinfo or not transferinfo.target_path:
+                # 转移失败
                 logger.warn(f"{torrent.title} 入库失败")
                 self.post_message(
                     title=f"{mediainfo.title_year}{meta.season_episode} 入库失败！",
@@ -132,12 +132,6 @@ class TransferChain(ChainBase):
         """
         发送入库成功的消息
         """
-        # 文件大小
-        file_size = StringUtils.str_filesize(
-            SystemUtils.get_directory_size(
-                transferinfo.target_path
-            )
-        )
         msg_title = f"{mediainfo.title_year} 已入库"
         if mediainfo.vote_average:
             msg_str = f"评分：{mediainfo.vote_average}，类型：{mediainfo.type.value}"
@@ -147,6 +141,9 @@ class TransferChain(ChainBase):
             msg_str = f"{msg_str}，类别：{mediainfo.category}"
         if meta.resource_term:
             msg_str = f"{msg_str}，质量：{meta.resource_term}"
-        msg_str = f"{msg_str}， 大小：{file_size}"
+        msg_str = f"{msg_str}，共{transferinfo.file_count}个文件，" \
+                  f"大小：{StringUtils.str_filesize(transferinfo.total_size)}"
+        if transferinfo.message:
+            msg_str = f"{msg_str}，以下文件处理失败：\n{transferinfo.message}"
         # 发送
         self.post_message(title=msg_title, text=msg_str, image=mediainfo.get_message_image())
