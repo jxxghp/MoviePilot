@@ -38,13 +38,15 @@ class BTSchool(_ISiteSigninHandler):
         ua = site_info.get("ua")
         render = site_info.get("render")
         proxies = settings.PROXY if site_info.get("proxy") else None
+        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
+        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
 
         logger.info(f"{site} 开始签到")
         # 判断今日是否已签到
         html_text = self.get_page_source(url='https://pt.btschool.club',
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxies,
+                                         proxies=proxy_server,
                                          render=render)
 
         if not html_text:
@@ -63,7 +65,7 @@ class BTSchool(_ISiteSigninHandler):
         html_text = self.get_page_source(url='https://pt.btschool.club/index.php?action=addbonus',
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxies,
+                                         proxies=proxy_server,
                                          render=render)
 
         if not html_text:

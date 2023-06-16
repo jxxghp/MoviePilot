@@ -39,13 +39,14 @@ class Hares(_ISiteSigninHandler):
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
         proxies = settings.PROXY if site_info.get("proxy") else None
+        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
         render = site_info.get("render")
 
         # 获取页面html
         html_text = self.get_page_source(url='https://club.hares.top',
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxies,
+                                         proxies=proxy_server,
                                          render=render)
 
         if not html_text:

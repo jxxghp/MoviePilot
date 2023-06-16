@@ -56,6 +56,7 @@ class Tjupt(_ISiteSigninHandler):
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
         proxies = settings.PROXY if site_info.get("proxy") else None
+        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
         render = site_info.get("render")
 
         # 创建正确答案存储目录
@@ -66,7 +67,7 @@ class Tjupt(_ISiteSigninHandler):
         html_text = self.get_page_source(url=self._sign_in_url,
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxies,
+                                         proxies=proxy_server,
                                          render=render)
 
         # 获取签到后返回html，判断是否签到成功

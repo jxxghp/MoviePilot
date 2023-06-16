@@ -31,8 +31,10 @@ class TorrentSpider:
     cookie: str = None
     # 站点UA
     ua: str = None
-    # 代理
+    # Requests 代理
     proxies: dict = None
+    # playwright 代理
+    proxy_server: dict = None
     # 是否渲染
     render: bool = False
     # Referer
@@ -99,6 +101,7 @@ class TorrentSpider:
             self.ua = settings.USER_AGENT
         if indexer.get('proxy'):
             self.proxies = settings.PROXY
+            self.proxy_server = settings.PROXY_SERVER
         if indexer.get('cookie'):
             self.cookie = indexer.get('cookie')
         if referer:
@@ -222,7 +225,7 @@ class TorrentSpider:
                 url=searchurl,
                 cookies=self.cookie,
                 ua=self.ua,
-                proxies=self.proxies
+                proxies=self.proxy_server
             )
         else:
             # requests请求

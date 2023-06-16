@@ -49,6 +49,50 @@ async def create_user(
     return user
 
 
+@router.put("/", response_model=schemas.User)
+async def update_user(
+    *,
+    db: Session = Depends(get_db),
+    user_in: schemas.UserCreate,
+    current_user: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    更新用户
+    """
+    user = current_user.get_by_email(db, email=user_in.email)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="用户不存在",
+        )
+    user_info = user_in.dict()
+    if user_info.get("password"):
+        user_info["hashed_password"] = get_password_hash(user_info["password"])
+        user_info.pop("password")
+    user.update(db, **user_info)
+    return user
+
+
+@router.delete("/", response_model=schemas.Response)
+async def delete_user(
+    *,
+    db: Session = Depends(get_db),
+    user_in: schemas.UserCreate,
+    current_user: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    删除用户
+    """
+    user = current_user.get_by_email(db, email=user_in.email)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="用户不存在",
+        )
+    user.delete_by_email(db, user_in.email)
+    return {"success": True}
+
+
 @router.get("/{user_id}", response_model=schemas.User)
 async def read_user_by_id(
     user_id: int,

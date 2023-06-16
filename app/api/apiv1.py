@@ -1,13 +1,13 @@
 from fastapi import APIRouter
 
-from app.api.endpoints import login, users, sites, messages, webhooks, subscribes, media, douban
+from app.api.endpoints import login, user, site, message, webhook, subscribe, media, douban
 
 api_router = APIRouter()
 api_router.include_router(login.router, tags=["login"])
-api_router.include_router(users.router, prefix="/users", tags=["users"])
-api_router.include_router(sites.router, prefix="/sites", tags=["sites"])
-api_router.include_router(messages.router, prefix="/messages", tags=["messages"])
-api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
-api_router.include_router(subscribes.router, prefix="/subscribes", tags=["subscribes"])
+api_router.include_router(user.router, prefix="/user", tags=["user"])
+api_router.include_router(site.router, prefix="/site", tags=["site"])
+api_router.include_router(message.router, prefix="/message", tags=["message"])
+api_router.include_router(webhook.router, prefix="/webhook", tags=["webhook"])
+api_router.include_router(subscribe.router, prefix="/subscribe", tags=["subscribe"])
 api_router.include_router(media.router, prefix="/media", tags=["media"])
 api_router.include_router(douban.router, prefix="/douban", tags=["douban"])

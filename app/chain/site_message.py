@@ -120,7 +120,7 @@ class SiteMessageChain(ChainBase):
             url=site_info.url,
             username=username,
             password=password,
-            proxies=settings.PROXY if site_info.proxy else None
+            proxies=settings.PROXY_HOST if site_info.proxy else None
         )
         if result:
             cookie, ua, msg = result

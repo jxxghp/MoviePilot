@@ -42,13 +42,14 @@ class Opencd(_ISiteSigninHandler):
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
         proxies = settings.PROXY if site_info.get("proxy") else None
+        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
         render = site_info.get("render")
 
         # 判断今日是否已签到
         html_text = self.get_page_source(url='https://www.open.cd',
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxies,
+                                         proxies=proxy_server,
                                          render=render)
         if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
@@ -66,7 +67,7 @@ class Opencd(_ISiteSigninHandler):
         html_text = self.get_page_source(url='https://www.open.cd/plugin_sign-in.php',
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxies,
+                                         proxies=proxy_server,
                                          render=render)
         if not html_text:
             logger.error(f"签到失败，请检查站点连通性")

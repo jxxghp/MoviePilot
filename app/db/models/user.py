@@ -28,3 +28,7 @@ class User(Base):
     @staticmethod
     def get_by_email(db: Session, email: str):
         return db.query(User).filter(User.email == email).first()
+
+    @staticmethod
+    def delete_by_email(db: Session, email: str):
+        return db.query(User).filter(User.email == email).delete()

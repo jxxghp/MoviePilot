@@ -46,12 +46,13 @@ class Pt52(_ISiteSigninHandler):
         ua = site_info.get("ua")
         render = site_info.get("render")
         proxies = settings.PROXY if site_info.get("proxy") else None
+        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
 
         # 判断今日是否已签到
         html_text = self.get_page_source(url='https://52pt.site/bakatest.php',
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxies,
+                                         proxies=proxy_server,
                                          render=render)
         
         if not html_text:

@@ -139,6 +139,7 @@ class AutoSignIn(_PluginBase):
         ua = site_info.get("ua")
         render = site_info.get("render")
         proxies = settings.PROXY if site_info.get("proxy") else None
+        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
         if not site_url or not site_cookie:
             logger.warn(f"未配置 {site} 的站点地址或Cookie，无法签到")
             return ""
@@ -154,7 +155,7 @@ class AutoSignIn(_PluginBase):
                 page_source = PlaywrightHelper().get_page_source(url=checkin_url,
                                                                  cookies=site_cookie,
                                                                  ua=ua,
-                                                                 proxies=proxies)
+                                                                 proxies=proxy_server)
                 if not SiteUtils.is_logged_in(page_source):
                     if under_challenge(page_source):
                         return f"【{site}】无法通过Cloudflare！"

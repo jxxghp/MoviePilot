@@ -101,6 +101,7 @@ class SiteStatistic(_PluginBase):
         ua = site_info.get("ua")
         session = requests.Session()
         proxies = settings.PROXY if proxy else None
+        proxy_server = settings.PROXY_SERVER if proxy else None
         render = site_info.get("render")
 
         logger.debug(f"站点 {site_name} url={url} site_cookie={site_cookie} ua={ua}")
@@ -109,7 +110,7 @@ class SiteStatistic(_PluginBase):
             html_text = PlaywrightHelper().get_page_source(url=url,
                                                            cookies=site_cookie,
                                                            ua=ua,
-                                                           proxies=proxies)
+                                                           proxies=proxy_server)
         else:
             # 普通模式
             res = RequestUtils(cookies=site_cookie,

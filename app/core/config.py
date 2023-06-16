@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     SUPERUSER_PASSWORD: str = "password"
     # API密钥，需要更换
     API_TOKEN: str = "moviepilot"
-    # 网络代理
+    # 网络代理 IP:PORT
     PROXY_HOST: str = None
     # 媒体信息搜索来源
     SEARCH_SOURCE: str = "themoviedb"
@@ -183,10 +183,17 @@ class Settings(BaseSettings):
     def PROXY(self):
         if self.PROXY_HOST:
             return {
-                "http": self.PROXY_HOST,
-                "https": self.PROXY_HOST
+                "http": f"http://{self.PROXY_HOST}",
+                "https": f"https://{self.PROXY_HOST}"
             }
         return None
+
+    @property
+    def PROXY_SERVER(self):
+        if self.PROXY_HOST:
+            return {
+                "server": self.PROXY_HOST
+            }
 
     def __init__(self):
         super().__init__()

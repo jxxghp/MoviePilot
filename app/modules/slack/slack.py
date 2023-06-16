@@ -22,7 +22,7 @@ class Slack:
     _client: WebClient = None
     _service: SocketModeHandler = None
 
-    _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/messages?token={settings.API_TOKEN}"
+    _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
 
     def __init__(self):
 
