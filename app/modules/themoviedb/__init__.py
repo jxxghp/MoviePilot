@@ -267,7 +267,7 @@ class TheMovieDbModule(_ModuleBase):
                                                                        f"{str(meta.begin_season).rjust(2, '0')}-") \
                                          + Path(attr_value).suffix
                             self.__save_image(url=attr_value,
-                                              file_path=file_path.parent.with_name(image_name))
+                                              file_path=file_path.parent.with_name(f"season{image_name}"))
                 # 查询集详情
                 episodeinfo = __get_episode_detail(seasoninfo, meta.begin_episode)
                 if episodeinfo:
