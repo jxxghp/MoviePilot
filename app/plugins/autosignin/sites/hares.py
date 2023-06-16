@@ -38,15 +38,14 @@ class Hares(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxies = settings.PROXY if site_info.get("proxy") else None
-        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
+        proxy = site_info.get("proxy")
         render = site_info.get("render")
 
         # 获取页面html
         html_text = self.get_page_source(url='https://club.hares.top',
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxy_server,
+                                         proxy=proxy,
                                          render=render)
 
         if not html_text:
@@ -67,7 +66,7 @@ class Hares(_ISiteSigninHandler):
         }
         sign_res = RequestUtils(cookies=site_cookie,
                                 headers=headers,
-                                proxies=proxies
+                                proxies=settings.PROXY if proxy else None
                                 ).get_res(url="https://club.hares.top/attendance.php?action=sign")
         if not sign_res or sign_res.status_code != 200:
             logger.error(f"签到失败，签到接口请求失败")

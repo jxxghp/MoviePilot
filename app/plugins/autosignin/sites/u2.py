@@ -48,8 +48,7 @@ class U2(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxies = settings.PROXY if site_info.get("proxy") else None
-        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
+        proxy = site_info.get("proxy")
         render = site_info.get("render")
 
         now = datetime.datetime.now()
@@ -62,7 +61,7 @@ class U2(_ISiteSigninHandler):
         html_text = self.get_page_source(url="https://u2.dmhy.org/showup.php",
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxy_server,
+                                         proxy=proxy,
                                          render=render)
         if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
@@ -107,7 +106,7 @@ class U2(_ISiteSigninHandler):
         # 签到
         sign_res = RequestUtils(cookies=site_cookie,
                                 headers=ua,
-                                proxies=proxies
+                                proxies=settings.PROXY if proxy else None
                                 ).post_res(url="https://u2.dmhy.org/showup.php?action=show",
                                            data=data)
         if not sign_res or sign_res.status_code != 200:

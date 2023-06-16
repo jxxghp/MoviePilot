@@ -40,15 +40,14 @@ class HDSky(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxies = settings.PROXY if site_info.get("proxy") else None
-        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
+        proxy = site_info.get("proxy")
         render = site_info.get("render")
 
         # 判断今日是否已签到
         html_text = self.get_page_source(url='https://hdsky.me',
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxy_server,
+                                         proxy=proxy,
                                          render=render)
         if not html_text:
             logger.error(f"签到失败，请检查站点连通性")
@@ -70,7 +69,7 @@ class HDSky(_ISiteSigninHandler):
         while not img_hash and res_times <= 3:
             image_res = RequestUtils(cookies=site_cookie,
                                      headers=ua,
-                                     proxies=proxies
+                                     proxies=settings.PROXY if proxy else None
                                      ).post_res(url='https://hdsky.me/image_code_ajax.php',
                                                 data={'action': 'new'})
             if image_res and image_res.status_code == 200:
@@ -115,7 +114,7 @@ class HDSky(_ISiteSigninHandler):
                 # 访问签到链接
                 res = RequestUtils(cookies=site_cookie,
                                    headers=ua,
-                                   proxies=proxies
+                                   proxies=settings.PROXY if proxy else None
                                    ).post_res(url='https://hdsky.me/showup.php', data=data)
                 if res and res.status_code == 200:
                     if json.loads(res.text)["success"]:

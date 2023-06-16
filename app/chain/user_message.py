@@ -3,9 +3,9 @@ from typing import Any
 from app.chain.download import *
 from app.chain.search import SearchChain
 from app.chain.subscribe import SubscribeChain
-from app.core.context import MediaInfo, TorrentInfo
-from app.core.metainfo import MetaInfo
+from app.core.context import MediaInfo
 from app.core.event import EventManager
+from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.schemas.types import EventType
 
@@ -168,46 +168,8 @@ class UserMessageChain(ChainBase):
                 else:
                     # 下载种子
                     context: Context = cache_list[int(text) - 1]
-                    torrent: TorrentInfo = context.torrent_info
-                    logger.info(f"开始下载种子：{torrent.title} - {torrent.enclosure}")
-                    # 识别前预处理
-                    result: Optional[tuple] = self.prepare_recognize(title=torrent.title,
-                                                                     subtitle=torrent.description)
-                    if result:
-                        title, subtitle = result
-                    else:
-                        title, subtitle = torrent.title, torrent.description
-                    # 识别
-                    meta = MetaInfo(title=title, subtitle=subtitle)
-                    torrent_file, _, _, _, error_msg = self.torrent.download_torrent(
-                        url=torrent.enclosure,
-                        cookie=torrent.site_cookie,
-                        ua=torrent.site_ua,
-                        proxy=torrent.site_proxy)
-                    if not torrent_file:
-                        logger.error(f"下载种子文件失败：{torrent.title} - {torrent.enclosure}")
-                        self.post_message(title=f"{torrent.title} 种子下载失败！",
-                                          text=f"错误信息：{error_msg}\n种子链接：{torrent.enclosure}",
-                                          userid=userid)
-                        return
-                    # 添加下载
-                    result: Optional[tuple] = self.download(torrent_path=torrent_file,
-                                                            cookie=torrent.site_cookie)
-                    if result:
-                        state, msg = result
-                    else:
-                        state, msg = False, "未知错误"
-                    # 发送消息
-                    if not state:
-                        # 下载失败
-                        self.post_message(title=f"{torrent.title} 添加下载失败！",
-                                          text=f"错误信息：{msg}",
-                                          userid=userid)
-                        return
-                    # 下载成功，发送通知
-                    self.downloadchain.post_download_message(meta=meta, mediainfo=self._current_media, torrent=torrent)
-                    # 下载成功后处理
-                    self.download_added(context=context, torrent_path=torrent_file)
+                    # 下载
+                    self.downloadchain.download_single(context, userid=userid)
 
         elif text.lower() == "p":
             # 上一页

@@ -55,8 +55,7 @@ class Tjupt(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxies = settings.PROXY if site_info.get("proxy") else None
-        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
+        proxy = site_info.get("proxy")
         render = site_info.get("render")
 
         # 创建正确答案存储目录
@@ -67,7 +66,7 @@ class Tjupt(_ISiteSigninHandler):
         html_text = self.get_page_source(url=self._sign_in_url,
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxy_server,
+                                         proxy=proxy,
                                          render=render)
 
         # 获取签到后返回html，判断是否签到成功
@@ -101,7 +100,7 @@ class Tjupt(_ISiteSigninHandler):
         # 获取签到图片hash
         captcha_img_res = RequestUtils(cookies=site_cookie,
                                        headers=ua,
-                                       proxies=proxies
+                                       proxies=settings.PROXY if proxy else None
                                        ).get_res(url=img_url)
         if not captcha_img_res or captcha_img_res.status_code != 200:
             logger.error(f"签到图片 {img_url} 请求失败")
@@ -139,7 +138,7 @@ class Tjupt(_ISiteSigninHandler):
                         return self.__signin(answer=value,
                                              site_cookie=site_cookie,
                                              ua=ua,
-                                             proxies=proxies,
+                                             proxy=proxy,
                                              site=site)
         except (FileNotFoundError, IOError, OSError) as e:
             logger.debug(f"查询本地已知答案失败：{e}，继续请求豆瓣查询")
@@ -182,7 +181,7 @@ class Tjupt(_ISiteSigninHandler):
                         return self.__signin(answer=value,
                                              site_cookie=site_cookie,
                                              ua=ua,
-                                             proxies=proxies,
+                                             proxy=proxy,
                                              site=site,
                                              exits_answers=exits_answers,
                                              captcha_img_hash=captcha_img_hash)
@@ -194,7 +193,7 @@ class Tjupt(_ISiteSigninHandler):
         # 没有匹配签到成功，则签到失败
         return False, f'【{site}】签到失败，未获取到匹配答案'
 
-    def __signin(self, answer, site_cookie, ua, proxies, site, exits_answers=None, captcha_img_hash=None):
+    def __signin(self, answer, site_cookie, ua, proxy, site, exits_answers=None, captcha_img_hash=None):
         """
         签到请求
         """
@@ -205,7 +204,7 @@ class Tjupt(_ISiteSigninHandler):
         logger.debug(f"提交data {data}")
         sign_in_res = RequestUtils(cookies=site_cookie,
                                    headers=ua,
-                                   proxies=proxies
+                                   proxies=settings.PROXY if proxy else None
                                    ).post_res(url=self._sign_in_url, data=data)
         if not sign_in_res or sign_in_res.status_code != 200:
             logger.error(f"签到失败，签到接口请求失败")

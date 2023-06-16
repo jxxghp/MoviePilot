@@ -6,6 +6,7 @@ from typing import Tuple
 import chardet
 from ruamel.yaml import CommentedMap
 
+from app.core.config import settings
 from app.helper.browser import PlaywrightHelper
 from app.log import logger
 from app.utils.http import RequestUtils
@@ -39,13 +40,13 @@ class _ISiteSigninHandler(metaclass=ABCMeta):
         pass
 
     @staticmethod
-    def get_page_source(url: str, cookie: str, ua: str, proxies: dict, render: bool) -> str:
+    def get_page_source(url: str, cookie: str, ua: str, proxy: bool, render: bool) -> str:
         """
         获取页面源码
         :param url: Url地址
         :param cookie: Cookie
         :param ua: UA
-        :param proxies: 代理
+        :param proxy: 是否使用代理
         :param render: 是否渲染
         :return: 页面源码，错误信息
         """
@@ -53,11 +54,11 @@ class _ISiteSigninHandler(metaclass=ABCMeta):
             return PlaywrightHelper().get_page_source(url=url,
                                                       cookies=cookie,
                                                       ua=ua,
-                                                      proxies=proxies)
+                                                      proxies=settings.PROXY_SERVER if proxy else None)
         else:
             res = RequestUtils(cookies=cookie,
                                ua=ua,
-                               proxies=proxies
+                               proxies=settings.PROXY if proxy else None
                                ).get_res(url=url)
             if res is not None:
                 # 使用chardet检测字符编码

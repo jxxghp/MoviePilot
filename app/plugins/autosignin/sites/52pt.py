@@ -45,14 +45,13 @@ class Pt52(_ISiteSigninHandler):
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
         render = site_info.get("render")
-        proxies = settings.PROXY if site_info.get("proxy") else None
-        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
+        proxy = site_info.get("proxy")
 
         # 判断今日是否已签到
         html_text = self.get_page_source(url='https://52pt.site/bakatest.php',
                                          cookie=site_cookie,
                                          ua=ua,
-                                         proxies=proxy_server,
+                                         proxy=proxy,
                                          render=render)
         
         if not html_text:
@@ -97,7 +96,7 @@ class Pt52(_ISiteSigninHandler):
                              choice=choice,
                              site_cookie=site_cookie,
                              ua=ua,
-                             proxies=proxies,
+                             proxy=proxy,
                              site=site)
 
     def __signin(self, questionid: str,
@@ -105,7 +104,7 @@ class Pt52(_ISiteSigninHandler):
                  site: str,
                  site_cookie: str,
                  ua: str,
-                 proxies: dict) -> Tuple[bool, str]:
+                 proxy: bool) -> Tuple[bool, str]:
         """
         签到请求
         questionid: 450
@@ -125,7 +124,7 @@ class Pt52(_ISiteSigninHandler):
 
         sign_res = RequestUtils(cookies=site_cookie,
                                 ua=ua,
-                                proxies=proxies
+                                proxies=settings.PROXY if proxy else None
                                 ).post_res(url='https://52pt.site/bakatest.php', data=data)
         if not sign_res or sign_res.status_code != 200:
             logger.error(f"签到失败，签到接口请求失败")

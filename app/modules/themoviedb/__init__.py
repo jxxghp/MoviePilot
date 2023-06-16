@@ -303,8 +303,8 @@ class TheMovieDbModule(_ModuleBase):
         uniqueid_tmdb.setAttribute("default", "true")
         # TVDB
         if mediainfo.tvdb_id:
-            DomUtils.add_node(doc, root, "tvdbid", mediainfo.tvdb_id)
-            uniqueid_tvdb = DomUtils.add_node(doc, root, "uniqueid", mediainfo.tvdb_id)
+            DomUtils.add_node(doc, root, "tvdbid", str(mediainfo.tvdb_id))
+            uniqueid_tvdb = DomUtils.add_node(doc, root, "uniqueid", str(mediainfo.tvdb_id))
             uniqueid_tvdb.setAttribute("type", "tvdb")
         # IMDB
         if mediainfo.imdb_id:
