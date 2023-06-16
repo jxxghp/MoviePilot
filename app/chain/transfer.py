@@ -6,17 +6,23 @@ from app.chain import ChainBase
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
+from app.db.downloadhistory_oper import DownloadHistoryOper
+from app.db.models.downloadhistory import DownloadHistory
 from app.log import logger
 from app.schemas.context import TransferInfo, TransferTorrent
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
-from app.schemas.types import TorrentStatus, EventType
+from app.schemas.types import TorrentStatus, EventType, MediaType
 
 
 class TransferChain(ChainBase):
     """
     文件转移处理链
     """
+
+    def __init__(self):
+        super().__init__()
+        self.downloadhis = DownloadHistoryOper()
 
     def process(self, arg_str: str = None, userid: Union[str, int] = None) -> bool:
         """
@@ -48,16 +54,8 @@ class TransferChain(ChainBase):
             if not torrents:
                 logger.error(f"没有获取到种子，参数：{arg_str}")
                 return False
-            # 识别前预处理
-            result: Optional[tuple] = self.prepare_recognize(title=torrents[0].title)
-            if result:
-                title, subtitle = result
-            else:
-                title, subtitle = torrents[0].title, None
-            # 识别
-            meta = MetaInfo(title=title, subtitle=subtitle)
             # 查询媒体信息
-            arg_mediainfo = self.recognize_media(meta=meta)
+            arg_mediainfo = self.recognize_media(tmdbid=tmdbid)
         else:
             arg_mediainfo = None
             logger.info("开始执行下载器文件转移 ...")
@@ -82,8 +80,14 @@ class TransferChain(ChainBase):
                 logger.warn(f'未识别到元数据，标题：{title}')
                 continue
             if not arg_mediainfo:
-                # 识别媒体信息
-                mediainfo: MediaInfo = self.recognize_media(meta=meta)
+                # 查询下载记录识别情况
+                downloadhis: DownloadHistory = self.downloadhis.get_by_hash(torrent.hash)
+                if downloadhis:
+                    mtype = MediaType.TV if downloadhis.type == MediaType.TV.value else MediaType.MOVIE
+                    mediainfo = self.recognize_media(mtype=mtype, tmdbid=downloadhis.tmdbid)
+                else:
+                    # 使用标题识别媒体信息
+                    mediainfo: MediaInfo = self.recognize_media(meta=meta)
                 if not mediainfo:
                     logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
                     self.post_message(title=f"{torrent.title} 未识别到媒体信息，无法入库！\n"
