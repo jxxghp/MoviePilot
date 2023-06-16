@@ -150,7 +150,7 @@ class Telegram(metaclass=Singleton):
                 link = torrent.page_url
                 title = f"{meta.season_episode} " \
                         f"{meta.resource_term} " \
-                        f"{meta.release_team}"
+                        f"{meta.release_group}"
                 title = re.sub(r"\s+", " ", title).strip()
                 free = torrent.get_volume_factor_string()
                 seeder = f"{torrent.seeders}↑"

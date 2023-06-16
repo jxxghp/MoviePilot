@@ -342,7 +342,7 @@ class MetaBase(object):
         return ret_string.strip()
 
     @property
-    def release_team(self) -> str:
+    def release_group(self) -> str:
         """
         返回发布组/字幕组字符串
         """
