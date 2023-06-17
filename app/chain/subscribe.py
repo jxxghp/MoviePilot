@@ -387,6 +387,8 @@ class SubscribeChain(ChainBase):
         删除订阅
         """
         if not arg_str:
+            self.post_message(title="请输入正确的命令格式：/subscribe_delete [id]，"
+                                    "[id]为订阅编号", userid=userid)
             return
         arg_str = arg_str.strip()
         if not arg_str.isdigit():
