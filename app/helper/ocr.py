@@ -16,7 +16,7 @@ class OcrHelper:
         :param ua: 下载图片使用的ua
         """
         if image_url:
-            ret = RequestUtils(headers=ua,
+            ret = RequestUtils(ua=ua,
                                cookies=cookie).get_res(image_url)
             if ret is not None:
                 image_bin = ret.content

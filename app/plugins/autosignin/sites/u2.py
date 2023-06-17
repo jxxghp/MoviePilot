@@ -105,7 +105,7 @@ class U2(_ISiteSigninHandler):
         }
         # 签到
         sign_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
+                                ua=ua,
                                 proxies=settings.PROXY if proxy else None
                                 ).post_res(url="https://u2.dmhy.org/showup.php?action=show",
                                            data=data)

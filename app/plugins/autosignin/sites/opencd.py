@@ -114,7 +114,7 @@ class Opencd(_ISiteSigninHandler):
             }
             # 访问签到链接
             sign_res = RequestUtils(cookies=site_cookie,
-                                    headers=ua,
+                                    ua=ua,
                                     proxies=settings.PROXY if proxy else None
                                     ).post_res(url='https://www.open.cd/plugin_sign-in.php?cmd=signin', data=data)
             if sign_res and sign_res.status_code == 200:

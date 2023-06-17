@@ -46,7 +46,7 @@ class HDArea(_ISiteSigninHandler):
             'action': 'sign_in'
         }
         html_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
+                                ua=ua,
                                 proxies=proxies
                                 ).post_res(url="https://www.hdarea.co/sign_in.php", data=data)
         if not html_res or html_res.status_code != 200:

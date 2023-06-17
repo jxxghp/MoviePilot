@@ -77,7 +77,7 @@ class TTG(_ISiteSigninHandler):
         }
         # 签到
         sign_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
+                                ua=ua,
                                 proxies=settings.PROXY if proxy else None
                                 ).post_res(url="https://totheglory.im/signed.php",
                                            data=data)

@@ -58,7 +58,7 @@ class HDChina(_ISiteSigninHandler):
         site_cookie = cookie
         # 获取页面html
         html_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
+                                ua=ua,
                                 proxies=proxies
                                 ).get_res(url="https://hdchina.org/index.php")
         if not html_res or html_res.status_code != 200:
@@ -98,7 +98,7 @@ class HDChina(_ISiteSigninHandler):
             'csrf': x_csrf
         }
         sign_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
+                                ua=ua,
                                 proxies=proxies
                                 ).post_res(url="https://hdchina.org/plugin_sign-in.php?cmd=signin", data=data)
         if not sign_res or sign_res.status_code != 200:

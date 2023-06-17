@@ -99,7 +99,7 @@ class Tjupt(_ISiteSigninHandler):
         logger.info(f"获取到签到图片 {img_url}")
         # 获取签到图片hash
         captcha_img_res = RequestUtils(cookies=site_cookie,
-                                       headers=ua,
+                                       ua=ua,
                                        proxies=settings.PROXY if proxy else None
                                        ).get_res(url=img_url)
         if not captcha_img_res or captcha_img_res.status_code != 200:
@@ -203,7 +203,7 @@ class Tjupt(_ISiteSigninHandler):
         }
         logger.debug(f"提交data {data}")
         sign_in_res = RequestUtils(cookies=site_cookie,
-                                   headers=ua,
+                                   ua=ua,
                                    proxies=settings.PROXY if proxy else None
                                    ).post_res(url=self._sign_in_url, data=data)
         if not sign_in_res or sign_in_res.status_code != 200:

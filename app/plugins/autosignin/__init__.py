@@ -1,3 +1,4 @@
+import traceback
 from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing.pool import ThreadPool
 from threading import Event
@@ -120,6 +121,7 @@ class AutoSignIn(_PluginBase):
                 # 特殊站点直接返回签到信息，防止仿真签到、模拟登陆有歧义
                 return msg or ""
             except Exception as e:
+                traceback.print_exc()
                 return f"【{site_info.get('name')}】签到失败：{str(e)}"
         else:
             return self.__signin_base(site_info)
@@ -162,14 +164,14 @@ class AutoSignIn(_PluginBase):
                     return f"【{site}】仿真登录失败，Cookie已失效！"
             else:
                 res = RequestUtils(cookies=site_cookie,
-                                   headers=ua,
+                                   ua=ua,
                                    proxies=proxies
                                    ).get_res(url=checkin_url)
                 if not res and site_url != checkin_url:
                     logger.info(f"开始站点模拟登录：{site}，地址：{site_url}...")
                     res = RequestUtils(cookies=site_cookie,
-                                       headers=ua,
-                                       proxies=settings.PROXY if site_info.get("proxy") else None
+                                       ua=ua,
+                                       proxies=proxies
                                        ).get_res(url=site_url)
                 # 判断登录状态
                 if res and res.status_code in [200, 500, 403]:
@@ -193,6 +195,7 @@ class AutoSignIn(_PluginBase):
                     return f"【{site}】签到失败，无法打开网站！"
         except Exception as e:
             logger.warn("%s 签到失败：%s" % (site, str(e)))
+            traceback.print_exc()
             return f"【{site}】签到失败：{str(e)}！"
 
     def stop_service(self):
