@@ -8,7 +8,7 @@ from app.core.meta import MetaBase
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas.context import ExistMediaInfo, NotExistMediaInfo
+from app.schemas import ExistMediaInfo, NotExistMediaInfo
 from app.schemas.types import MediaType, TorrentStatus, EventType
 from app.utils.string import StringUtils
 
@@ -19,9 +19,6 @@ class DownloadChain(ChainBase):
         super().__init__()
         self.torrent = TorrentHelper()
         self.downloadhis = DownloadHistoryOper()
-
-    def process(self, *args, **kwargs) -> Optional[Context]:
-        pass
 
     def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo, userid: str = None):
         """

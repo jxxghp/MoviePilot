@@ -3,13 +3,12 @@ from typing import Optional, List, Dict
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.context import Context, MediaInfo, TorrentInfo
-from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.helper.sites import SitesHelper
 from app.log import logger
-from app.schemas.context import NotExistMediaInfo
-from app.utils.string import StringUtils
+from app.schemas import NotExistMediaInfo
 from app.schemas.types import MediaType
+from app.utils.string import StringUtils
 
 
 class SearchChain(ChainBase):
@@ -21,12 +20,23 @@ class SearchChain(ChainBase):
         super().__init__()
         self.siteshelper = SitesHelper()
 
-    def process(self, meta: MetaBase, mediainfo: MediaInfo,
+    def search_by_tmdbid(self, tmdbid: int, mtype: str = None) -> Optional[List[Context]]:
+        """
+        根据TMDB ID搜索资源，不过滤本地存在的内容
+        :param tmdbid: TMDB ID
+        :param mtype: 媒体，电影 or 电视剧
+        """
+        mediainfo = self.recognize_media(tmdbid=tmdbid, mtype=mtype)
+        if not mediainfo:
+            logger.error(f'{tmdbid} 媒体信息识别失败！')
+            return None
+        return self.process(mediainfo=mediainfo)
+
+    def process(self, mediainfo: MediaInfo,
                 keyword: str = None,
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None) -> Optional[List[Context]]:
         """
-        根据媒体信息，执行搜索
-        :param meta: 元数据
+        根据媒体信息，搜索种子资源
         :param mediainfo: 媒体信息
         :param keyword: 搜索关键词
         :param no_exists: 缺失的媒体信息
@@ -124,6 +134,6 @@ class SearchChain(ChainBase):
             _match_torrents = torrents
         logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
         # 组装上下文返回
-        return [Context(meta=MetaInfo(torrent.title),
+        return [Context(meta=MetaInfo(title=torrent.title, subtitle=torrent.description),
                         mediainfo=mediainfo,
                         torrentinfo=torrent) for torrent in _match_torrents]

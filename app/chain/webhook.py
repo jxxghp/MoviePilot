@@ -6,12 +6,12 @@ from app.utils.http import WebUtils
 from app.schemas.types import EventType
 
 
-class WebhookMessageChain(ChainBase):
+class WebhookChain(ChainBase):
     """
     响应Webhook事件
     """
 
-    def process(self, body: Any, form: Any, args: Any) -> None:
+    def message(self, body: Any, form: Any, args: Any) -> None:
         """
         处理Webhook报文并发送消息
         """

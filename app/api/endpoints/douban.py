@@ -1,7 +1,9 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, BackgroundTasks
 
 from app import schemas
-from app.chain.douban_sync import DoubanSyncChain
+from app.chain.douban import DoubanChain
 from app.db.models.user import User
 from app.db.userauth import get_current_active_superuser
 
@@ -12,15 +14,15 @@ def start_douban_chain():
     """
     启动链式任务
     """
-    DoubanSyncChain().process()
+    DoubanChain().sync()
 
 
 @router.get("/sync", response_model=schemas.Response)
 async def sync_douban(
         background_tasks: BackgroundTasks,
-        _: User = Depends(get_current_active_superuser)):
+        _: User = Depends(get_current_active_superuser)) -> Any:
     """
-    查询所有订阅
+    同步豆瓣想看
     """
     background_tasks.add_task(start_douban_chain)
     return {"success": True}

@@ -7,7 +7,7 @@ from app.helper.cookie import CookieHelper
 from app.log import logger
 
 
-class SiteMessageChain(ChainBase):
+class SiteChain(ChainBase):
     """
     站点远程管理处理链
     """
@@ -20,7 +20,7 @@ class SiteMessageChain(ChainBase):
         self._siteoper = SiteOper()
         self._cookiehelper = CookieHelper()
 
-    def process(self, userid: Union[str, int] = None):
+    def list(self, userid: Union[str, int] = None):
         """
         查询所有站点，发送消息
         """
@@ -63,7 +63,7 @@ class SiteMessageChain(ChainBase):
             "is_active": False
         })
         # 重新发送消息
-        self.process()
+        self.list()
 
     def enable(self, arg_str, userid: Union[str, int] = None):
         """
@@ -84,7 +84,7 @@ class SiteMessageChain(ChainBase):
             "is_active": True
         })
         # 重新发送消息
-        self.process()
+        self.list()
 
     def get_cookie(self, arg_str: str, userid: Union[str, int] = None):
         """

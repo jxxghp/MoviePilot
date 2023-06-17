@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.db.subscribe_oper import SubscribeOper
 from app.helper.sites import SitesHelper
 from app.log import logger
-from app.schemas.context import NotExistMediaInfo
+from app.schemas import NotExistMediaInfo
 from app.utils.string import StringUtils
 from app.schemas.types import MediaType
 
@@ -29,13 +29,13 @@ class SubscribeChain(ChainBase):
         self.subscribehelper = SubscribeOper()
         self.siteshelper = SitesHelper()
 
-    def process(self, title: str, year: str,
-                mtype: MediaType = None,
-                tmdbid: int = None,
-                season: int = None,
-                userid: str = None,
-                username: str = None,
-                **kwargs) -> Optional[int]:
+    def add(self, title: str, year: str,
+            mtype: MediaType = None,
+            tmdbid: int = None,
+            season: int = None,
+            userid: str = None,
+            username: str = None,
+            **kwargs) -> Optional[int]:
         """
         识别媒体信息并添加订阅
         """
@@ -153,8 +153,7 @@ class SubscribeChain(ChainBase):
 
             )
             # 搜索
-            contexts = self.searchchain.process(meta=meta,
-                                                mediainfo=mediainfo,
+            contexts = self.searchchain.process(mediainfo=mediainfo,
                                                 keyword=subscribe.keyword,
                                                 no_exists=no_exists)
             if not contexts:

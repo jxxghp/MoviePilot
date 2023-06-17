@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.meta import MetaBase
 from app.log import logger
 from app.modules import _ModuleBase
-from app.schemas.context import TransferInfo
+from app.schemas import TransferInfo
 from app.utils.system import SystemUtils
 from app.schemas.types import MediaType
 

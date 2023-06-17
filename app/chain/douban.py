@@ -12,7 +12,7 @@ from app.helper.rss import RssHelper
 from app.log import logger
 
 
-class DoubanSyncChain(ChainBase):
+class DoubanChain(ChainBase):
     """
     同步豆瓣想看数据
     """
@@ -28,7 +28,7 @@ class DoubanSyncChain(ChainBase):
         self.searchchain = SearchChain()
         self.subscribechain = SubscribeChain()
 
-    def process(self):
+    def sync(self):
         """
         通过用户RSS同步豆瓣想看数据
         """
@@ -80,8 +80,7 @@ class DoubanSyncChain(ChainBase):
                     continue
                 logger.info(f'{mediainfo.title_year} 媒体库中不存在，开始搜索 ...')
                 # 搜索
-                contexts = self.searchchain.process(meta=meta,
-                                                    mediainfo=mediainfo,
+                contexts = self.searchchain.process(mediainfo=mediainfo,
                                                     no_exists=no_exists)
                 if not contexts:
                     logger.warn(f'{mediainfo.title_year} 未搜索到资源')
@@ -95,12 +94,12 @@ class DoubanSyncChain(ChainBase):
                     # 未完成下载
                     logger.info(f'{mediainfo.title_year} 未下载未完整，添加订阅 ...')
                     # 添加订阅
-                    self.subscribechain.process(title=mediainfo.title,
-                                                year=mediainfo.year,
-                                                mtype=mediainfo.type,
-                                                tmdbid=mediainfo.tmdb_id,
-                                                season=meta.begin_season,
-                                                username="豆瓣想看")
+                    self.subscribechain.add(title=mediainfo.title,
+                                            year=mediainfo.year,
+                                            mtype=mediainfo.type,
+                                            tmdbid=mediainfo.tmdb_id,
+                                            season=meta.begin_season,
+                                            username="豆瓣想看")
 
             logger.info(f"用户 {user_id} 豆瓣想看同步完成")
         # 保存缓存

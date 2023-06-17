@@ -1,16 +1,16 @@
 from typing import Any
 
 from app.chain.download import *
+from app.chain.media import MediaChain
 from app.chain.search import SearchChain
 from app.chain.subscribe import SubscribeChain
 from app.core.context import MediaInfo
 from app.core.event import EventManager
-from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.schemas.types import EventType
 
 
-class UserMessageChain(ChainBase):
+class MessageChain(ChainBase):
     """
     外来消息处理链
     """
@@ -30,6 +30,7 @@ class UserMessageChain(ChainBase):
         self.downloadchain = DownloadChain()
         self.subscribechain = SubscribeChain()
         self.searchchain = SearchChain()
+        self.medtachain = MediaChain()
         self.torrent = TorrentHelper()
         self.eventmanager = EventManager()
 
@@ -93,16 +94,16 @@ class UserMessageChain(ChainBase):
                 # 发送缺失的媒体信息
                 if no_exists:
                     # 发送消息
-                    messages = [f"第 {no_exist.get('season')} 季缺失 {len(no_exist.get('episodes')) or no_exist.get('total_episodes')} 集"
-                                for no_exist in no_exists.get(mediainfo.tmdb_id)]
+                    messages = [
+                        f"第 {no_exist.get('season')} 季缺失 {len(no_exist.get('episodes')) or no_exist.get('total_episodes')} 集"
+                        for no_exist in no_exists.get(mediainfo.tmdb_id)]
                     self.post_message(title=f"{mediainfo.title_year}：\n" + "\n".join(messages))
                 # 搜索种子，过滤掉不需要的剧集，以便选择
                 logger.info(f"{mediainfo.title_year} 媒体库中不存在，开始搜索 ...")
                 self.post_message(
                     title=f"开始搜索 {mediainfo.type.value} {mediainfo.title_year} ...", userid=userid)
                 # 开始搜索
-                contexts = self.searchchain.process(meta=self._current_meta,
-                                                    mediainfo=mediainfo,
+                contexts = self.searchchain.process(mediainfo=mediainfo,
                                                     no_exists=no_exists)
                 if not contexts:
                     # 没有数据
@@ -129,13 +130,13 @@ class UserMessageChain(ChainBase):
             elif cache_type == "Subscribe":
                 # 订阅媒体
                 mediainfo: MediaInfo = cache_list[int(text) - 1]
-                self.subscribechain.process(title=mediainfo.title,
-                                            year=mediainfo.year,
-                                            mtype=mediainfo.type,
-                                            tmdbid=mediainfo.tmdb_id,
-                                            season=self._current_meta.begin_season,
-                                            userid=userid,
-                                            username=username)
+                self.subscribechain.add(title=mediainfo.title,
+                                        year=mediainfo.year,
+                                        mtype=mediainfo.type,
+                                        tmdbid=mediainfo.tmdb_id,
+                                        season=self._current_meta.begin_season,
+                                        userid=userid,
+                                        username=username)
             elif cache_type == "Torrent":
                 if int(text) == 0:
                     # 自动选择下载
@@ -158,13 +159,13 @@ class UserMessageChain(ChainBase):
                         # 未完成下载
                         logger.info(f'{self._current_media.title_year} 未下载未完整，添加订阅 ...')
                         # 添加订阅
-                        self.subscribechain.process(title=self._current_media.title,
-                                                    year=self._current_media.year,
-                                                    mtype=self._current_media.type,
-                                                    tmdbid=self._current_media.tmdb_id,
-                                                    season=self._current_meta.begin_season,
-                                                    userid=userid,
-                                                    username=username)
+                        self.subscribechain.add(title=self._current_media.title,
+                                                year=self._current_media.year,
+                                                mtype=self._current_media.type,
+                                                tmdbid=self._current_media.tmdb_id,
+                                                season=self._current_meta.begin_season,
+                                                userid=userid,
+                                                username=username)
                 else:
                     # 下载种子
                     context: Context = cache_list[int(text) - 1]
@@ -245,31 +246,19 @@ class UserMessageChain(ChainBase):
                 # 搜索
                 content = re.sub(r"(搜索|下载)[:：\s]*", "", text)
                 action = "Search"
-            # 提取要素
-            mtype, key_word, season_num, episode_num, year, title = StringUtils.get_keyword(content)
+            # 搜索
+            meta, medias = self.medtachain.search(content)
             # 识别
-            meta = MetaInfo(title)
             if not meta.name:
                 self.post_message(title="无法识别输入内容！", userid=userid)
                 return
-            # 合并信息
-            if mtype:
-                meta.type = mtype
-            if season_num:
-                meta.begin_season = season_num
-            if episode_num:
-                meta.begin_episode = episode_num
-            if year:
-                meta.year = year
-            # 记录当前状态
-            self._current_meta = meta
             # 开始搜索
-            logger.info(f"开始搜索：{meta.name}")
-            medias: Optional[List[MediaInfo]] = self.search_medias(meta=meta)
             if not medias:
                 self.post_message(title=f"{meta.name} 没有找到对应的媒体信息！", userid=userid)
                 return
             logger.info(f"搜索到 {len(medias)} 条相关媒体信息")
+            # 记录当前状态
+            self._current_meta = meta
             self._user_cache[userid] = {
                 'type': action,
                 'items': medias

@@ -539,13 +539,13 @@ class TmdbHelper:
             if tmdb_info:
                 tmdb_info['media_type'] = MediaType.TV
         else:
-            tmdb_info = self.__get_movie_detail(tmdbid)
+            tmdb_info = self.__get_tv_detail(tmdbid)
             if tmdb_info:
-                tmdb_info['media_type'] = MediaType.MOVIE
+                tmdb_info['media_type'] = MediaType.TV
             else:
-                tmdb_info = self.__get_tv_detail(tmdbid)
+                tmdb_info = self.__get_movie_detail(tmdbid)
                 if tmdb_info:
-                    tmdb_info['media_type'] = MediaType.TV
+                    tmdb_info['media_type'] = MediaType.MOVIE
 
         if tmdb_info:
             # 转换genreid

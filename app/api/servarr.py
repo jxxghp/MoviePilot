@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from requests import Session
 
 from app import schemas
-from app.chain.identify import IdentifyChain
+from app.chain.media import MediaChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
@@ -232,11 +232,11 @@ async def arr_movie_lookup(apikey: str, term: str, db: Session = Depends(get_db)
         )
     tmdbid = term.replace("tmdb:", "")
     # 查询媒体信息
-    mediainfo = IdentifyChain().recognize_media(mtype=MediaType.MOVIE, tmdbid=int(tmdbid))
+    mediainfo = MediaChain().recognize_media(mtype=MediaType.MOVIE, tmdbid=int(tmdbid))
     if not mediainfo:
         return [RadarrMovie()]
     # 查询是否已存在
-    exists = IdentifyChain().media_exists(mediainfo=mediainfo)
+    exists = MediaChain().media_exists(mediainfo=mediainfo)
     if not exists:
         # 文件不存在
         hasfile = False
@@ -311,11 +311,11 @@ async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
             status_code=403,
             detail="认证失败！",
         )
-    sid = SubscribeChain().process(title=movie.title,
-                                   year=movie.year,
-                                   mtype=MediaType.MOVIE,
-                                   tmdbid=movie.tmdbId,
-                                   userid="Seerr")
+    sid = SubscribeChain().add(title=movie.title,
+                               year=movie.year,
+                               mtype=MediaType.MOVIE,
+                               tmdbid=movie.tmdbId,
+                               userid="Seerr")
     if sid:
         return {
             "id": sid
@@ -501,29 +501,29 @@ async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db
         )
     # 查询TMDB媒体信息
     if not term.startswith("tvdb:"):
-        mediainfo = IdentifyChain().recognize_media(meta=MetaInfo(term),
-                                                    mtype=MediaType.MOVIE)
+        mediainfo = MediaChain().recognize_media(meta=MetaInfo(term),
+                                                 mtype=MediaType.MOVIE)
         if not mediainfo:
             return [SonarrSeries()]
         tvdbid = mediainfo.tvdb_id
         tmdbid = mediainfo.tmdb_id
     else:
         tvdbid = int(term.replace("tvdb:", ""))
-        mediainfo = IdentifyChain().recognize_media(mtype=MediaType.MOVIE,
-                                                    tmdbid=tvdbid)
+        mediainfo = MediaChain().recognize_media(mtype=MediaType.MOVIE,
+                                                 tmdbid=tvdbid)
         if not mediainfo:
             return [SonarrSeries()]
         tmdbid = mediainfo.tmdb_id
     # 查询TVDB季信息
     seas: List[int] = []
     if tvdbid:
-        tvdbinfo = IdentifyChain().tvdb_info(tvdbid=tvdbid)
+        tvdbinfo = MediaChain().tvdb_info(tvdbid=tvdbid)
         if tvdbinfo:
             sea_num = tvdbinfo.get('season')
             if sea_num:
                 seas = list(range(1, int(sea_num) + 1))
     # 查询是否存在
-    exists = IdentifyChain().media_exists(mediainfo)
+    exists = MediaChain().media_exists(mediainfo)
     if exists:
         hasfile = True
     else:
@@ -629,12 +629,12 @@ async def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
     for season in tv.seasons:
         if not season.get("monitored"):
             continue
-        sid = SubscribeChain().process(title=tv.title,
-                                       year=tv.year,
-                                       season=season.get("seasonNumber"),
-                                       tmdbid=tv.tmdbId,
-                                       mtype=MediaType.TV,
-                                       userid="Seerr")
+        sid = SubscribeChain().add(title=tv.title,
+                                   year=tv.year,
+                                   season=season.get("seasonNumber"),
+                                   tmdbid=tv.tmdbId,
+                                   mtype=MediaType.TV,
+                                   userid="Seerr")
 
     if sid:
         return {

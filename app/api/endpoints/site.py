@@ -43,7 +43,7 @@ async def update_site(
 
 
 @router.get("/cookiecloud", response_model=schemas.Response)
-async def cookie_cloud_sync(_: User = Depends(get_current_active_user)) -> dict:
+async def cookie_cloud_sync(_: User = Depends(get_current_active_user)) -> Any:
     """
     运行CookieCloud同步站点信息
     """

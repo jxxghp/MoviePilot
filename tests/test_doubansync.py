@@ -2,7 +2,7 @@
 
 from unittest import TestCase
 
-from app.chain.douban_sync import DoubanSyncChain
+from app.chain.douban import DoubanChain
 
 
 class DoubanSyncTest(TestCase):
@@ -14,4 +14,4 @@ class DoubanSyncTest(TestCase):
 
     @staticmethod
     def test_doubansync():
-        DoubanSyncChain().process()
+        DoubanChain().sync()

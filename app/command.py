@@ -4,9 +4,9 @@ from typing import Any, Union
 
 from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
-from app.chain.douban_sync import DoubanSyncChain
+from app.chain.douban import DoubanChain
 from app.chain.download import DownloadChain
-from app.chain.site_message import SiteMessageChain
+from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.core.event import eventmanager, EventManager
@@ -50,27 +50,27 @@ class Command(metaclass=Singleton):
                 "data": {}
             },
             "/sites": {
-                "func": SiteMessageChain().process,
+                "func": SiteChain().list,
                 "description": "查询站点",
                 "data": {}
             },
             "/site_cookie": {
-                "func": SiteMessageChain().get_cookie,
+                "func": SiteChain().get_cookie,
                 "description": "更新站点Cookie",
                 "data": {}
             },
             "/site_enable": {
-                "func": SiteMessageChain().enable,
+                "func": SiteChain().enable,
                 "description": "启用站点",
                 "data": {}
             },
             "/site_disable": {
-                "func": SiteMessageChain().disable,
+                "func": SiteChain().disable,
                 "description": "禁用站点",
                 "data": {}
             },
             "/douban_sync": {
-                "func": DoubanSyncChain().process,
+                "func": DoubanChain().sync,
                 "description": "同步豆瓣想看",
                 "data": {}
             },

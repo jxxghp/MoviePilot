@@ -80,6 +80,57 @@ class MediaInfo(BaseModel):
     overview: Optional[str] = None
     # 二级分类
     category: str = ""
+    # 季集
+    seasons: Dict[int, list] = {}
+    # 别名和译名
+    names: list = []
+
+
+class TorrentInfo(BaseModel):
+    # 站点ID
+    site: int = None
+    # 站点名称
+    site_name: Optional[str] = None
+    # 站点Cookie
+    site_cookie: Optional[str] = None
+    # 站点UA
+    site_ua: Optional[str] = None
+    # 站点是否使用代理
+    site_proxy: bool = False
+    # 站点优先级
+    site_order: int = 0
+    # 种子名称
+    title: Optional[str] = None
+    # 种子副标题
+    description: Optional[str] = None
+    # IMDB ID
+    imdbid: str = None
+    # 种子链接
+    enclosure: Optional[str] = None
+    # 详情页面
+    page_url: Optional[str] = None
+    # 种子大小
+    size: float = 0
+    # 做种者
+    seeders: int = 0
+    # 下载者
+    peers: int = 0
+    # 完成者
+    grabs: int = 0
+    # 发布时间
+    pubdate: Optional[str] = None
+    # 已过时间
+    date_elapsed: Optional[str] = None
+    # 上传因子
+    uploadvolumefactor: Optional[float] = None
+    # 下载因子
+    downloadvolumefactor: Optional[float] = None
+    # HR
+    hit_and_run: bool = False
+    # 种子标签
+    labels: Optional[list] = []
+    # 种子优先级
+    pri_order: int = 0
 
 
 class Context(BaseModel):
@@ -87,6 +138,8 @@ class Context(BaseModel):
     meta_info: Optional[MetaInfo]
     # 媒体信息
     media_info: Optional[MediaInfo]
+    # 种子信息
+    torrent_info: Optional[TorrentInfo]
 
 
 class TransferTorrent(BaseModel):
@@ -124,7 +177,7 @@ class ExistMediaInfo(BaseModel):
     # 类型 电影、电视剧
     type: MediaType
     # 季
-    seasons: Optional[Dict[int, list]] = None
+    seasons: Dict[int, list] = {}
 
 
 class NotExistMediaInfo(BaseModel):

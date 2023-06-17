@@ -6,7 +6,7 @@ from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
-from app.schemas.context import TransferInfo, TransferTorrent, DownloadingTorrent
+from app.schemas import TransferInfo, TransferTorrent, DownloadingTorrent
 from app.utils.string import StringUtils
 from app.schemas.types import TorrentStatus
 

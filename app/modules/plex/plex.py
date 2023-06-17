@@ -8,7 +8,7 @@ from plexapi.server import PlexServer
 
 from app.core.config import settings
 from app.log import logger
-from app.schemas.context import RefreshMediaItem
+from app.schemas import RefreshMediaItem
 from app.utils.singleton import Singleton
 
 

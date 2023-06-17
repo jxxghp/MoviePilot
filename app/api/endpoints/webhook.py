@@ -3,7 +3,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Request
 
 from app import schemas
-from app.chain.webhook_message import WebhookMessageChain
+from app.chain.webhook import WebhookChain
 from app.core.config import settings
 
 router = APIRouter()
@@ -13,11 +13,12 @@ def start_webhook_chain(body: Any, form: Any, args: Any):
     """
     启动链式任务
     """
-    WebhookMessageChain().process(body=body, form=form, args=args)
+    WebhookChain().message(body=body, form=form, args=args)
 
 
 @router.post("/", response_model=schemas.Response)
-async def webhook_message(background_tasks: BackgroundTasks, token: str, request: Request):
+async def webhook_message(background_tasks: BackgroundTasks,
+                          token: str, request: Request) -> Any:
     """
     Webhook响应
     """

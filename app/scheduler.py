@@ -6,7 +6,7 @@ from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.chain.cookiecloud import CookieCloudChain
-from app.chain.douban_sync import DoubanSyncChain
+from app.chain.douban import DoubanChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
@@ -51,7 +51,7 @@ class Scheduler(metaclass=Singleton):
             self._scheduler.add_job(SubscribeChain().refresh, "cron", hour=trigger.hour, minute=trigger.minute)
 
         # 豆瓣同步（每30分钟）
-        self._scheduler.add_job(DoubanSyncChain().process, "interval", minutes=30)
+        self._scheduler.add_job(DoubanChain().sync, "interval", minutes=30)
 
         # 下载器文件转移（每5分钟）
         self._scheduler.add_job(TransferChain().process, "interval", minutes=5)

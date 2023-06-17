@@ -1,4 +1,5 @@
-from typing import Optional, Any, List
+import re
+from typing import Optional, Any, List, Dict
 
 from app.core.config import settings
 from app.core.meta import MetaBase
@@ -121,7 +122,7 @@ class MediaInfo:
     # 所有别名和译名
     names: Optional[list] = []
     # 各季的剧集清单信息
-    seasons: Optional[dict] = {}
+    seasons: Optional[Dict[int, list]] = {}
     # 各季的年份
     season_years: Optional[dict] = {}
     # 二级分类
@@ -302,44 +303,61 @@ class MediaInfo:
         self.douban_info = info
         # 豆瓣ID
         self.douban_id = str(info.get("id"))
+        # 类型
+        if not self.type:
+            self.type = MediaType.MOVIE if info.get("type") == "movie" else MediaType.TV
+        # 标题
+        if not self.title:
+            self.title = MetaInfo(info.get("title")).name
+        # 原语种标题
+        if not self.original_title:
+            self.original_title = info.get("original_title")
+        # 年份
+        if not self.year:
+            self.year = info.get("year")[:4] if info.get("year") else None
         # 评分
         if not self.vote_average:
-            rating = info.get('rating')
+            rating = info.get("rating")
             if rating:
                 vote_average = float(rating.get("value"))
             else:
                 vote_average = 0
             self.vote_average = vote_average
-        # 标题
-        if not self.title:
-            self.title = info.get('title')
-        # 年份
-        if not self.year:
-            self.year = info.get('year')[:4] if info.get('year') else None
-        # 原语种标题
-        if not self.original_title:
-            self.original_title = info.get("original_title")
-        # 类型
-        if not self.type:
-            self.type = MediaType.MOVIE if info.get("type") == "movie" else MediaType.TV
+        # 发行日期
+        if not self.release_date:
+            if info.get("release_date"):
+                self.release_date = info.get("release_date")
+            elif info.get("pubdate") and isinstance(info.get("pubdate"), list):
+                release_date = info.get("pubdate")[0]
+                if release_date:
+                    match = re.search(r'\d{4}-\d{2}-\d{2}', release_date)
+                    if match:
+                        self.release_date = match.group()
+        # 海报
         if not self.poster_path:
-            if self.type == MediaType.MOVIE:
-                # 海报
-                poster_path = info.get('cover', {}).get("url")
-                if not poster_path:
-                    poster_path = info.get('cover_url')
-                if not poster_path:
-                    poster_path = info.get('pic', {}).get("large")
-            else:
-                # 海报
-                poster_path = info.get('pic', {}).get("normal")
-            self.poster_path = poster_path
+            self.poster_path = info.get("pic", {}).get("large")
+            if not self.poster_path and info.get("cover_url"):
+                self.poster_path = info.get("cover_url")
+            if self.poster_path:
+                self.poster_path = self.poster_path.replace("m_ratio_poster", "l_ratio_poster")
         # 简介
         if not self.overview:
-            overview = info.get("card_subtitle") or ""
-            if not self.year and overview:
-                if overview.split("/")[0].strip().isdigit():
-                    self.year = overview.split("/")[0].strip()
+            self.overview = info.get("intro") or info.get("card_subtitle") or ""
+        # 导演和演员
+        if not self.directors:
+            self.directors = info.get("directors") or []
+        if not self.actors:
+            self.actors = info.get("actors") or []
+        # 别名
+        if not self.names:
+            self.names = info.get("aka") or []
+        # 剧集
+        if self.type == MediaType.TV and not self.seasons:
+            meta = MetaInfo(info.get("title"))
+            if meta.begin_season:
+                episodes_count = info.get("episodes_count")
+                if episodes_count:
+                    self.seasons[meta.begin_season] = list(range(1, episodes_count + 1))
 
     @property
     def title_year(self):
@@ -419,6 +437,20 @@ class MediaInfo:
         if not self.seasons:
             return []
         return self.seasons.get(sea) or []
+
+    def to_dict(self):
+        """
+        返回字典
+        """
+        attributes = [
+            attr for attr in dir(self)
+            if not callable(getattr(self, attr)) and not attr.startswith("_")
+        ]
+        return {
+            attr: getattr(self, attr).value
+            if isinstance(getattr(self, attr), MediaType)
+            else getattr(self, attr) for attr in attributes
+        }
 
 
 class Context:
@@ -505,5 +537,6 @@ class Context:
 
         return {
             "meta_info": object_to_dict(self.meta_info),
-            "media_info": object_to_dict(self.media_info)
+            "media_info": object_to_dict(self.media_info),
+            "torrent_info": object_to_dict(self.torrent_info)
         }

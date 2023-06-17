@@ -5,7 +5,7 @@ from fastapi import Request
 from starlette.responses import PlainTextResponse
 
 from app import schemas
-from app.chain.user_message import UserMessageChain
+from app.chain.message import MessageChain
 from app.core.config import settings
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
@@ -17,7 +17,7 @@ def start_message_chain(body: Any, form: Any, args: Any):
     """
     启动链式任务
     """
-    UserMessageChain().process(body=body, form=form, args=args)
+    MessageChain().process(body=body, form=form, args=args)
 
 
 @router.post("/", response_model=schemas.Response)
@@ -33,7 +33,8 @@ async def user_message(background_tasks: BackgroundTasks, request: Request):
 
 
 @router.get("/")
-async def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, int], nonce: str):
+async def wechat_verify(echostr: str, msg_signature: str,
+                        timestamp: Union[str, int], nonce: str) -> Any:
     """
     用户消息响应
     """

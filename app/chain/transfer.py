@@ -9,7 +9,7 @@ from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory
 from app.log import logger
-from app.schemas.context import TransferInfo, TransferTorrent
+from app.schemas import TransferInfo, TransferTorrent
 from app.schemas.types import TorrentStatus, EventType, MediaType
 from app.utils.string import StringUtils
 

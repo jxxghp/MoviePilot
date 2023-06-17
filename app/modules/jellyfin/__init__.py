@@ -6,7 +6,7 @@ from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.jellyfin.jellyfin import Jellyfin
-from app.schemas.context import ExistMediaInfo
+from app.schemas import ExistMediaInfo
 from app.schemas.types import MediaType
 
 

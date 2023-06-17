@@ -20,14 +20,14 @@ def start_subscribe_chain(title: str, year: str,
     """
     启动订阅链式任务
     """
-    SubscribeChain().process(title=title, year=year,
-                             mtype=mtype, tmdbid=tmdbid, season=season, username=username)
+    SubscribeChain().add(title=title, year=year,
+                         mtype=mtype, tmdbid=tmdbid, season=season, username=username)
 
 
 @router.get("/", response_model=List[schemas.Subscribe])
 async def read_subscribes(
         db: Session = Depends(get_db),
-        _: User = Depends(get_current_active_superuser)):
+        _: User = Depends(get_current_active_superuser)) -> Any:
     """
     查询所有订阅
     """
@@ -43,7 +43,7 @@ async def create_subscribe(
     """
     新增订阅
     """
-    result = SubscribeChain().process(**subscribe_in.dict())
+    result = SubscribeChain().add(**subscribe_in.dict())
     return {"success": result}
 
 
@@ -83,7 +83,7 @@ async def delete_subscribe(
 
 @router.post("/seerr", response_model=schemas.Response)
 async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
-                          authorization: str = Header(None)):
+                          authorization: str = Header(None)) -> Any:
     """
     Jellyseerr/Overseerr订阅
     """
@@ -136,7 +136,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
 
 @router.get("/refresh", response_model=schemas.Response)
 async def refresh_subscribes(
-        _: User = Depends(get_current_active_superuser)):
+        _: User = Depends(get_current_active_superuser)) -> Any:
     """
     刷新所有订阅
     """
@@ -146,7 +146,7 @@ async def refresh_subscribes(
 
 @router.get("/search", response_model=schemas.Response)
 async def search_subscribes(
-        _: User = Depends(get_current_active_superuser)):
+        _: User = Depends(get_current_active_superuser)) -> Any:
     """
     搜索所有订阅
     """

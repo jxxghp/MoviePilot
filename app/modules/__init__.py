@@ -6,7 +6,7 @@ from ruamel.yaml import CommentedMap
 
 from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.meta import MetaBase
-from app.schemas.context import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent
+from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent
 from app.schemas.types import TorrentStatus, MediaType
 
 

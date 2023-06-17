@@ -5,7 +5,7 @@ from typing import List, Optional, Union, Dict
 
 from app.core.config import settings
 from app.log import logger
-from app.schemas.context import RefreshMediaItem
+from app.schemas import RefreshMediaItem
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
