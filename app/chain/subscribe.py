@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List, Optional, Union
 
 from app.chain import ChainBase
@@ -157,10 +158,29 @@ class SubscribeChain(ChainBase):
                                                 keyword=subscribe.keyword,
                                                 no_exists=no_exists)
             if not contexts:
-                logger.warn(f'{subscribe.keyword or subscribe.name} 未搜索到资源')
+                logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
+                continue
+            # 过滤
+            matched_contexts = []
+            for context in contexts:
+                torrent_info = context.torrent_info
+                # 包含
+                if subscribe.include:
+                    if not re.search(r"%s" % subscribe.include,
+                                     f"{torrent_info.title} {torrent_info.description}", re.I):
+                        continue
+                # 排除
+                if subscribe.exclude:
+                    if re.search(r"%s" % subscribe.exclude,
+                                 f"{torrent_info.title} {torrent_info.description}", re.I):
+                        continue
+                matched_contexts.append(context)
+            if not matched_contexts:
+                logger.warn(f'订阅 {subscribe.name} 没有符合过滤条件的资源')
                 continue
             # 自动下载
-            downloads, lefts = self.downloadchain.batch_download(contexts=contexts, no_exists=no_exists)
+            downloads, lefts = self.downloadchain.batch_download(contexts=matched_contexts,
+                                                                 no_exists=no_exists)
             if downloads and not lefts:
                 # 全部下载完成
                 logger.info(f'{mediainfo.title_year} 下载完成，完成订阅')
@@ -263,6 +283,17 @@ class SubscribeChain(ChainBase):
                     torrent_meta = context.meta_info
                     torrent_mediainfo = context.media_info
                     torrent_info = context.torrent_info
+                    # 包含
+                    if subscribe.include:
+                        if not re.search(r"%s" % subscribe.include,
+                                         f"{torrent_info.title} {torrent_info.description}", re.I):
+                            continue
+                    # 排除
+                    if subscribe.exclude:
+                        if re.search(r"%s" % subscribe.exclude,
+                                     f"{torrent_info.title} {torrent_info.description}", re.I):
+                            continue
+                    # 比对TMDB
                     if torrent_mediainfo.tmdb_id == mediainfo.tmdb_id \
                             and torrent_mediainfo.type == mediainfo.type:
                         if meta.begin_season and meta.begin_season != torrent_meta.begin_season:

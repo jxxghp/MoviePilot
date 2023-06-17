@@ -53,6 +53,7 @@ class IndexerModule(_ModuleBase):
             result = future.result()
             if result:
                 results += result
+            logger.info(f"站点搜索进度：{finish_count} / {len(all_task)}")
         # 计算耗时
         end_time = datetime.now()
         logger.info(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
