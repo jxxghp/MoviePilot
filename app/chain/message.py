@@ -63,7 +63,6 @@ class MessageChain(ChainBase):
                     "user": userid
                 }
             )
-            self.post_message(title=f"正在运行，请稍候 ...", userid=userid)
 
         elif text.isdigit():
             # 缓存

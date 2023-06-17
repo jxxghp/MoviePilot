@@ -42,62 +42,60 @@ class Command(metaclass=Singleton):
         self.eventmanager = EventManager()
         # 插件管理器
         self.pluginmanager = PluginManager()
-        # 汇总插件命令
+        # 内置命令
         self._commands = {
             "/cookiecloud": {
-                "func": CookieCloudChain().process,
+                "func": CookieCloudChain().remote_sync,
                 "description": "同步站点",
                 "data": {}
             },
             "/sites": {
-                "func": SiteChain().list,
+                "func": SiteChain().remote_list,
                 "description": "查询站点",
                 "data": {}
             },
             "/site_cookie": {
-                "func": SiteChain().get_cookie,
+                "func": SiteChain().remote_cookie,
                 "description": "更新站点Cookie",
                 "data": {}
             },
             "/site_enable": {
-                "func": SiteChain().enable,
+                "func": SiteChain().remote_enable,
                 "description": "启用站点",
                 "data": {}
             },
             "/site_disable": {
-                "func": SiteChain().disable,
+                "func": SiteChain().remote_disable,
                 "description": "禁用站点",
                 "data": {}
             },
             "/douban_sync": {
-                "func": DoubanChain().sync,
+                "func": DoubanChain().remote_sync,
                 "description": "同步豆瓣想看",
                 "data": {}
             },
             "/subscribes": {
-                "func": SubscribeChain().list,
+                "func": SubscribeChain().remote_list,
                 "description": "查询订阅",
                 "data": {}
             },
             "/subscribe_refresh": {
-                "func": SubscribeChain().refresh,
+                "func": SubscribeChain().remote_refresh,
                 "description": "刷新订阅",
                 "data": {}
             },
             "/subscribe_search": {
-                "func": SubscribeChain().search,
+                "func": SubscribeChain().remote_search,
                 "description": "搜索订阅",
-                "data": {
-                    'state': 'R',
-                }
+                "data": {}
             },
             "/subscribe_delete": {
-                "func": SubscribeChain().delete,
+                "func": SubscribeChain().remote_delete,
                 "description": "删除订阅",
                 "data": {}
             },
             "/downloading": {
-                "func": DownloadChain().get_downloading,
+                "func": DownloadChain().remote_downloading,
                 "description": "正在下载",
                 "data": {}
             },
@@ -107,6 +105,7 @@ class Command(metaclass=Singleton):
                 "data": {}
             }
         }
+        # 汇总插件命令
         plugin_commands = self.pluginmanager.get_plugin_commands()
         for command in plugin_commands:
             self.register(
@@ -120,7 +119,7 @@ class Command(metaclass=Singleton):
             )
         # 处理链
         self.chain = CommandChian()
-        # 广播注册命令
+        # 广播注册命令菜单
         self.chain.register_commands(commands=self.get_commands())
         # 消息处理线程
         self._thread = Thread(target=self.__run)
@@ -184,16 +183,16 @@ class Command(metaclass=Singleton):
                 logger.info(f"用户 {userid} 开始执行：{command.get('description')} ...")
                 cmd_data = command['data'] if command.get('data') else {}
                 args_num = ObjectUtils.has_arguments(command['func'])
-                if args_num:
+                if args_num > 0:
                     if cmd_data:
-                        # 使用内置参数
+                        # 有内置参数直接使用内置参数
                         command['func'](**cmd_data)
-                    elif args_num > 1:
-                        # 使用用户输入参数
-                        command['func'](data_str, userid)
-                    else:
+                    elif args_num == 1:
                         # 没有用户输入参数
-                        command['func'](data_str)
+                        command['func'](userid)
+                    else:
+                        # 多个输入参数：用户输入、用户ID
+                        command['func'](data_str, userid)
                 else:
                     # 没有参数
                     command['func']()

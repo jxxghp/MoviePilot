@@ -1,5 +1,5 @@
 import base64
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 from urllib.parse import urljoin
 
 from lxml import etree
@@ -29,6 +29,18 @@ class CookieCloudChain(ChainBase):
             key=settings.COOKIECLOUD_KEY,
             password=settings.COOKIECLOUD_PASSWORD
         )
+
+    def remote_sync(self, userid: Union[int, str]):
+        """
+        远程触发同步站点，发送消息
+        """
+        self.post_message(title="开始同步CookieCloud站点 ...", userid=userid)
+        # 开始同步
+        success, msg = self.process()
+        if success:
+            self.post_message(title=f"同步站点成功，{msg}", userid=userid)
+        else:
+            self.post_message(title=f"同步站点失败：{msg}", userid=userid)
 
     def process(self) -> Tuple[bool, str]:
         """

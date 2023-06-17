@@ -108,6 +108,37 @@ class SubscribeChain(ChainBase):
         # 返回结果
         return sid
 
+    def remote_refresh(self, userid: Union[str, int] = None):
+        """
+        远程刷新订阅，发送消息
+        """
+        self.post_message(title=f"开始刷新订阅 ...", userid=userid)
+        self.refresh()
+        self.post_message(title=f"订阅刷新完成！", userid=userid)
+
+    def remote_search(self, arg_str: str, userid: Union[str, int] = None):
+        """
+        远程搜索订阅，发送消息
+        """
+        if arg_str and not str(arg_str).isdigit():
+            self.post_message(title="请输入正确的命令格式：/subscribe_search [id]，"
+                                    "[id]为订阅编号，不输入订阅编号时搜索所有订阅", userid=userid)
+            return
+        if arg_str:
+            sid = int(arg_str)
+            subscribe = self.subscribehelper.get(sid)
+            if not subscribe:
+                self.post_message(title=f"订阅编号 {sid} 不存在！", userid=userid)
+                return
+            self.post_message(title=f"开始搜索 {subscribe.name} ...", userid=userid)
+            # 搜索订阅
+            self.search(sid=int(arg_str))
+            self.post_message(title=f"{subscribe.name} 搜索完成！", userid=userid)
+        else:
+            self.post_message(title=f"开始搜索所有订阅 ...", userid=userid)
+            self.search(state='R')
+            self.post_message(title=f"订阅搜索完成！", userid=userid)
+
     def search(self, sid: int = None, state: str = 'N'):
         """
         订阅搜索
@@ -325,7 +356,7 @@ class SubscribeChain(ChainBase):
                                 "lack_episode": len(left_episodes)
                             })
 
-    def list(self, userid: Union[str, int] = None):
+    def remote_list(self, userid: Union[str, int] = None):
         """
         查询订阅并发送消息
         """
@@ -334,7 +365,9 @@ class SubscribeChain(ChainBase):
             self.post_message(title='没有任何订阅！', userid=userid)
             return
         title = f"共有 {len(subscribes)} 个订阅，回复对应指令操作： " \
-                f"\n- 删除订阅：/subscribe_delete [id]"
+                f"\n- 删除订阅：/subscribe_delete [id]" \
+                f"\n- 搜索订阅：/subscribe_search [id]" \
+                f"\n- 刷新订阅：/subscribe_refresh"
         messages = []
         for subscribe in subscribes:
             if subscribe.type == MediaType.MOVIE.value:
@@ -349,7 +382,7 @@ class SubscribeChain(ChainBase):
         # 发送列表
         self.post_message(title=title, text='\n'.join(messages), userid=userid)
 
-    def delete(self, arg_str: str, userid: Union[str, int] = None):
+    def remote_delete(self, arg_str: str, userid: Union[str, int] = None):
         """
         删除订阅
         """
@@ -366,7 +399,7 @@ class SubscribeChain(ChainBase):
         # 删除订阅
         self.subscribehelper.delete(subscribe_id)
         # 重新发送消息
-        self.list()
+        self.remote_list()
 
     @staticmethod
     def __get_subscribe_no_exits(no_exists: Dict[int, Dict[int, NotExistMediaInfo]],

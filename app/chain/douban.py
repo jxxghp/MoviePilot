@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
@@ -27,6 +27,14 @@ class DoubanChain(ChainBase):
         self.downloadchain = DownloadChain()
         self.searchchain = SearchChain()
         self.subscribechain = SubscribeChain()
+
+    def remote_sync(self, userid: Union[int, str]):
+        """
+        同步豆瓣想看数据，发送消息
+        """
+        self.post_message(title="开始同步豆瓣想看 ...", userid=userid)
+        self.sync()
+        self.post_message(title="同步豆瓣想看数据完成！", userid=userid)
 
     def sync(self):
         """

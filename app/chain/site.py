@@ -1,7 +1,8 @@
-from typing import Union
+from typing import Union, Tuple
 
 from app.chain import ChainBase
 from app.core.config import settings
+from app.db.models.site import Site
 from app.db.site_oper import SiteOper
 from app.helper.cookie import CookieHelper
 from app.log import logger
@@ -20,7 +21,7 @@ class SiteChain(ChainBase):
         self._siteoper = SiteOper()
         self._cookiehelper = CookieHelper()
 
-    def list(self, userid: Union[str, int] = None):
+    def remote_list(self, userid: Union[str, int] = None):
         """
         查询所有站点，发送消息
         """
@@ -44,7 +45,7 @@ class SiteChain(ChainBase):
         # 发送列表
         self.post_message(title=title, text="\n".join(messages), userid=userid)
 
-    def disable(self, arg_str, userid: Union[str, int] = None):
+    def remote_disable(self, arg_str, userid: Union[str, int] = None):
         """
         禁用站点
         """
@@ -63,9 +64,9 @@ class SiteChain(ChainBase):
             "is_active": False
         })
         # 重新发送消息
-        self.list()
+        self.remote_list()
 
-    def enable(self, arg_str, userid: Union[str, int] = None):
+    def remote_enable(self, arg_str, userid: Union[str, int] = None):
         """
         启用站点
         """
@@ -84,9 +85,36 @@ class SiteChain(ChainBase):
             "is_active": True
         })
         # 重新发送消息
-        self.list()
+        self.remote_list()
 
-    def get_cookie(self, arg_str: str, userid: Union[str, int] = None):
+    def update_cookie(self, site_info: Site,
+                      username: str, password: str) -> Tuple[bool, str]:
+        """
+        根据用户名密码更新站点Cookie
+        :param site_info: 站点信息
+        :param username: 用户名
+        :param password: 密码
+        :return: (是否成功, 错误信息)
+        """
+        # 更新站点Cookie
+        result = self._cookiehelper.get_site_cookie_ua(
+            url=site_info.url,
+            username=username,
+            password=password,
+            proxies=settings.PROXY_HOST if site_info.proxy else None
+        )
+        if result:
+            cookie, ua, msg = result
+            if not cookie:
+                return False, msg
+            self._siteoper.update(site_info.id, {
+                "cookie": cookie,
+                "ua": ua
+            })
+            return True, msg
+        return False, "未知错误"
+
+    def remote_cookie(self, arg_str: str, userid: Union[str, int] = None):
         """
         使用用户名密码更新站点Cookie
         """
@@ -111,28 +139,20 @@ class SiteChain(ChainBase):
         if not site_info:
             self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
             return
+        self.post_message(title=f"开始更新【{site_info.name}】Cookie&UA ...", userid=userid)
         # 用户名
         username = args[1]
         # 密码
         password = args[2]
-        # 更新站点Cookie
-        result = self._cookiehelper.get_site_cookie_ua(
-            url=site_info.url,
-            username=username,
-            password=password,
-            proxies=settings.PROXY_HOST if site_info.proxy else None
-        )
-        if result:
-            cookie, ua, msg = result
-            if not cookie:
-                logger.error(msg)
-                self.post_message(title=f"【{site_info.name}】 Cookie&UA更新失败！",
-                                  text=f"错误原因：{msg}",
-                                  userid=userid)
-                return
-            self._siteoper.update(site_id, {
-                "cookie": cookie,
-                "ua": ua
-            })
+        # 更新Cookie
+        status, msg = self.update_cookie(site_info=site_info,
+                                         username=username,
+                                         password=password)
+        if not status:
+            logger.error(msg)
+            self.post_message(title=f"【{site_info.name}】 Cookie&UA更新失败！",
+                              text=f"错误原因：{msg}",
+                              userid=userid)
+        else:
             self.post_message(title=f"【{site_info.name}】 Cookie&UA更新成功",
                               userid=userid)

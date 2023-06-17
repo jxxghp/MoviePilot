@@ -112,7 +112,7 @@ class Slack:
             # 结构体
             blocks = []
             if not image:
-                message_text = f"*{title}*\n{text or ''}"
+                message_text = f"{title}\n{text or ''}"
             else:
                 # 消息图片
                 if image:
