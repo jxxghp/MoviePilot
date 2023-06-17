@@ -14,7 +14,7 @@ from app.schemas import RadarrMovie, SonarrSeries
 from app.schemas.types import MediaType
 from version import APP_VERSION
 
-arr_router = APIRouter()
+arr_router = APIRouter(tags=['servarr'])
 
 
 @arr_router.get("/system/status")
