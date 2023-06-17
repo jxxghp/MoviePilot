@@ -132,9 +132,9 @@ class MessageChain(ChainBase):
                 mediainfo: MediaInfo = cache_list[int(text) - 1]
                 # 查询缺失的媒体信息
                 exist_flag, _ = self.downloadchain.get_no_exists_info(meta=self._current_meta,
-                                                                      mediainfo=self._current_media)
+                                                                      mediainfo=mediainfo)
                 if exist_flag:
-                    self.post_message(title=f"{self._current_media.title_year}"
+                    self.post_message(title=f"{mediainfo.title_year}"
                                             f"{self._current_meta.sea} 媒体库中已存在",
                                       userid=userid)
                     return
