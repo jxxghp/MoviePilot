@@ -1,4 +1,5 @@
 import shutil
+import time
 from pathlib import Path
 from typing import Tuple, Union
 
@@ -49,10 +50,17 @@ class SubtitleModule(_ModuleBase):
         # 获取种子信息
         folder_name, _ = TorrentHelper.get_torrent_info(torrent_path)
         download_dir = Path(settings.DOWNLOAD_PATH) / folder_name
-        if not download_dir.is_dir():
-            logger.warn(f"下载目录不正确：{download_dir}")
+        # 等待文件或者目录存在
+        for _ in range(10):
+            if download_dir.exists():
+                break
+            time.sleep(1)
+        # 不是目录说明是单文件种子，直接使用下载目录
+        if not download_dir.exists():
+            logger.error(f"字幕下载位置不存在：{download_dir}")
             return
-
+        if download_dir.is_file():
+            download_dir = download_dir.parent
         # 读取网站代码
         request = RequestUtils(cookies=torrent.site_cookie, headers=torrent.site_ua)
         res = request.get_res(torrent.page_url)
@@ -82,7 +90,7 @@ class SubtitleModule(_ModuleBase):
                 ret = request.get_res(sublink)
                 if ret and ret.status_code == 200:
                     # 创建目录
-                    if download_dir.is_dir() and not download_dir.exists():
+                    if not download_dir.exists():
                         download_dir.mkdir(parents=True, exist_ok=True)
                     # 保存ZIP
                     file_name = TorrentHelper.get_url_filename(ret, sublink)
@@ -100,10 +108,7 @@ class SubtitleModule(_ModuleBase):
                         shutil.unpack_archive(zip_file, zip_path, format='zip')
                         # 遍历转移文件
                         for sub_file in SystemUtils.list_files_with_extensions(zip_path, settings.RMT_SUBEXT):
-                            if download_dir.is_dir():
-                                target_sub_file = download_dir / sub_file.name
-                            else:
-                                target_sub_file = download_dir.with_name(sub_file.name)
+                            target_sub_file = download_dir / sub_file.name
                             if target_sub_file.exists():
                                 logger.info(f"字幕文件已存在：{target_sub_file}")
                                 continue
@@ -119,10 +124,7 @@ class SubtitleModule(_ModuleBase):
                         sub_file = settings.TEMP_PATH / file_name
                         # 保存
                         sub_file.write_bytes(ret.content)
-                        if download_dir.is_dir():
-                            target_sub_file = download_dir / sub_file.name
-                        else:
-                            target_sub_file = download_dir.with_name(sub_file.name)
+                        target_sub_file = download_dir / sub_file.name
                         logger.info(f"转移字幕 {sub_file} 到 {target_sub_file}")
                         SystemUtils.copy(sub_file, target_sub_file)
                 else:
