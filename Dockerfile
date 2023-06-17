@@ -45,4 +45,4 @@ RUN apt-get update \
     && rm -rf /root/.cache/
 EXPOSE 3001
 VOLUME ["/config"]
-ENTRYPOINT [ "chmod a+x /MoviePilot/start.sh && /MoviePilot/start.sh" ]
+ENTRYPOINT [ "sh", "/MoviePilot/start.sh" ]
