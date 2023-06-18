@@ -171,14 +171,11 @@ class TheMovieDbModule(_ModuleBase):
 
         return [MediaInfo(tmdb_info=info) for info in results]
 
-    def scrape_metadata(self, path: Path, mediainfo: MediaInfo,
-                        force_nfo: bool = False, force_pic: bool = False) -> None:
+    def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径
         :param mediainfo:  识别的媒体信息
-        :param force_nfo:  强制刮削nfo
-        :param force_pic:  强制刮削图片
         :return: 成功或失败
         """
         if settings.SCRAP_SOURCE != "themoviedb":
