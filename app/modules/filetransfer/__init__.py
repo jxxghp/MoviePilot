@@ -385,7 +385,7 @@ class FileTransferModule(_ModuleBase):
                 return f"{retcode}，蓝光原盘转移失败"
             else:
                 # 计算文件数
-                total_filesize += 1
+                total_num += 1
                 # 计算大小
                 total_filesize += in_path.stat().st_size
                 # 返回转移后的路径
@@ -452,7 +452,7 @@ class FileTransferModule(_ModuleBase):
                         fail_list.append(transfer_file)
                         continue
                     # 计算文件数
-                    total_filesize += 1
+                    total_num += 1
                     # 计算大小
                     total_filesize += transfer_file.stat().st_size
                 except Exception as err:
