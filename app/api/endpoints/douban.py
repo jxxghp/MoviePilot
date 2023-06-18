@@ -25,4 +25,4 @@ async def sync_douban(
     同步豆瓣想看
     """
     background_tasks.add_task(start_douban_chain)
-    return {"success": True}
+    return schemas.Response(success=True, message="任务已启动")

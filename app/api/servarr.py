@@ -340,7 +340,7 @@ async def arr_remove_movie(apikey: str, mid: int, db: Session = Depends(get_db))
     subscribe = Subscribe.get(db, mid)
     if subscribe:
         subscribe.delete(db, mid)
-        return {"success": True}
+        return schemas.Response(success=True)
     else:
         raise HTTPException(
             status_code=404,
@@ -660,7 +660,7 @@ async def arr_remove_series(apikey: str, tid: int, db: Session = Depends(get_db)
     subscribe = Subscribe.get(db, tid)
     if subscribe:
         subscribe.delete(db, tid)
-        return {"success": True}
+        return schemas.Response(success=True)
     else:
         raise HTTPException(
             status_code=404,

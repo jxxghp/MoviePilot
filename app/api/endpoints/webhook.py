@@ -23,9 +23,9 @@ async def webhook_message(background_tasks: BackgroundTasks,
     Webhook响应
     """
     if token != settings.API_TOKEN:
-        return {"success": False, "message": "token认证不通过"}
+        return schemas.Response(success=False, message="token认证不通过")
     body = await request.body()
     form = await request.form()
     args = request.query_params
     background_tasks.add_task(start_webhook_chain, body, form, args)
-    return {"success": True}
+    return schemas.Response(success=True)

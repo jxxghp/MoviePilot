@@ -1,12 +1,13 @@
 from datetime import datetime
 from multiprocessing.dummy import Pool as ThreadPool
 from threading import Lock
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Dict
 
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from ruamel.yaml import CommentedMap
 
+from app import schemas
 from app.core.config import settings
 from app.core.event import eventmanager
 from app.core.event import Event
@@ -64,17 +65,17 @@ class SiteStatistic(_PluginBase):
             self._scheduler.start()
 
     @staticmethod
-    def get_command() -> dict:
+    def get_command() -> List[Dict[str, Any]]:
         """
         定义远程控制命令
         :return: 命令关键字、事件、描述、附带数据
         """
-        return {
+        return [{
             "cmd": "/site_statistic",
             "event": EventType.SiteStatistic,
             "desc": "站点数据统计",
             "data": {}
-        }
+        }]
 
     def stop_service(self):
         pass
@@ -180,6 +181,28 @@ class SiteStatistic(_PluginBase):
                 return None
             return site_schema(site_name, url, site_cookie, html_text, session=session, ua=ua, proxy=proxy)
         return None
+
+    def refresh_by_domain(self, domain: str) -> schemas.Response:
+        """
+        刷新一个站点数据，可由API调用
+        """
+        site_info = self.sites.get_indexer(domain)
+        if site_info:
+            site_data = self.__refresh_site_data(site_info)
+            if site_data:
+                return schemas.Response(
+                    success=True,
+                    message=f"站点 {domain} 刷新成功",
+                    data=site_data.to_dict()
+                )
+            return schemas.Response(
+                success=False,
+                message=f"站点 {domain} 刷新数据失败，未获取到数据"
+            )
+        return schemas.Response(
+            success=False,
+            message=f"站点 {domain} 不存在"
+        )
 
     def __refresh_site_data(self, site_info: CommentedMap) -> Optional[ISiteUserInfo]:
         """

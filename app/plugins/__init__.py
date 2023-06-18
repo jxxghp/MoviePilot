@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Dict
 
 from app.chain import ChainBase
 from app.core.config import settings
@@ -27,8 +27,6 @@ class _PluginBase(metaclass=ABCMeta):
     - update_config() 更新配置信息
     - init_plugin() 生效配置信息
     - get_data_path() 获取插件数据保存目录
-    - get_command() 获取插件命令，使用消息机制通过远程控制
-
     """
     # 插件名称
     plugin_name: str = ""
@@ -45,6 +43,20 @@ class _PluginBase(metaclass=ABCMeta):
         """
         生效配置信息
         :param config: 配置信息字典
+        """
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def get_command() -> List[Dict[str, Any]]:
+        """
+        获取插件命令
+        [{
+            "cmd": "/xx",
+            "event": EventType.xx,
+            "desc": "xxxx",
+            "data": {}
+        }]
         """
         pass
 

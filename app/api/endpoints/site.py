@@ -68,8 +68,8 @@ async def cookie_cloud_sync(_: User = Depends(get_current_active_user)) -> Any:
     """
     status, error_msg = CookieCloudChain().process()
     if not status:
-        return {"success": False, "message": error_msg}
-    return {"success": True, "message": error_msg}
+        schemas.Response(success=True, message=error_msg)
+    return schemas.Response(success=True, message="同步成功！")
 
 
 @router.get("/cookie", response_model=schemas.Response)
@@ -94,6 +94,6 @@ async def update_cookie(
                                             username=username,
                                             password=password)
     if not status:
-        return {"success": False, "message": msg}
+        return schemas.Response(success=False, message=msg)
     else:
-        return {"success": True, "message": msg}
+        return schemas.Response(success=True, message=msg)

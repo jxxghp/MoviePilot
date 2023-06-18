@@ -2,12 +2,13 @@ import traceback
 from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing.pool import ThreadPool
 from threading import Event
-from typing import Any
+from typing import Any, List, Dict
 from urllib.parse import urljoin
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from ruamel.yaml import CommentedMap
 
+from app import schemas
 from app.core.event import EventManager, eventmanager
 from app.core.config import settings
 from app.helper.browser import PlaywrightHelper
@@ -18,6 +19,7 @@ from app.log import logger
 from app.plugins import _PluginBase
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
+from app.utils.string import StringUtils
 from app.utils.timer import TimerUtils
 from app.schemas.types import EventType
 
@@ -64,17 +66,17 @@ class AutoSignIn(_PluginBase):
             self._scheduler.start()
 
     @staticmethod
-    def get_command() -> dict:
+    def get_command() -> List[Dict[str, Any]]:
         """
         定义远程控制命令
         :return: 命令关键字、事件、描述、附带数据
         """
-        return {
+        return [{
             "cmd": "/site_signin",
             "event": EventType.SiteSignin,
             "desc": "站点签到",
             "data": {}
-        }
+        }]
 
     @eventmanager.register(EventType.SiteSignin)
     def sign_in(self, event: Event = None):
@@ -109,6 +111,23 @@ class AutoSignIn(_PluginBase):
             except Exception as e:
                 logger.error("站点模块加载失败：%s" % str(e))
         return None
+
+    def signin_by_domain(self, url: str) -> schemas.Response:
+        """
+        签到一个站点，可由API调用
+        """
+        domain = StringUtils.get_url_domain(url)
+        site_info = self.sites.get_indexer(domain)
+        if site_info:
+            return schemas.Response(
+                success=True,
+                message=f"站点【{url}】不存在"
+            )
+        else:
+            return schemas.Response(
+                success=True,
+                message=self.signin_site(site_info)
+            )
 
     def signin_site(self, site_info: CommentedMap) -> str:
         """

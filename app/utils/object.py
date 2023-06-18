@@ -1,4 +1,5 @@
 import inspect
+from types import FunctionType
 from typing import Any, Callable
 
 
@@ -25,3 +26,10 @@ class ObjectUtils:
             parameter_names = parameter_names[1:]
 
         return len(parameter_names)
+
+    @staticmethod
+    def check_method(func: FunctionType) -> bool:
+        """
+        检查函数是否已实现
+        """
+        return func.__code__.co_code != b'd\x01S\x00'

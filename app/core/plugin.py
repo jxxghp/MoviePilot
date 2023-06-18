@@ -1,9 +1,10 @@
 import traceback
-from typing import List, Any
+from typing import List, Any, Dict
 
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.module import ModuleHelper
 from app.log import logger
+from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
 
 
@@ -24,6 +25,7 @@ class PluginManager(metaclass=Singleton):
         self.init_config()
 
     def init_config(self):
+        # 配置管理
         self.systemconfig = SystemConfigOper()
         # 停止已有插件
         self.stop()
@@ -32,21 +34,7 @@ class PluginManager(metaclass=Singleton):
 
     def start(self):
         """
-        启动
-        """
-        # 加载插件
-        self.__load_plugins()
-
-    def stop(self):
-        """
-        停止
-        """
-        # 停止所有插件
-        self.__stop_plugins()
-
-    def __load_plugins(self):
-        """
-        加载所有插件
+        启动加载插件
         """
         # 扫描插件目录
         plugins = ModuleHelper.load(
@@ -59,32 +47,24 @@ class PluginManager(metaclass=Singleton):
         self._plugins = {}
         for plugin in plugins:
             plugin_id = plugin.__name__
-            self._plugins[plugin_id] = plugin
-            # 生成实例
-            self._running_plugins[plugin_id] = plugin()
-            # 初始化配置
-            self.reload_plugin(plugin_id)
-            logger.info(f"Plugin Loaded：{plugin.__name__}")
-
-    def reload_plugin(self, pid: str):
-        """
-        生效插件配置
-        """
-        if not pid:
-            return
-        if not self._running_plugins.get(pid):
-            return
-        if hasattr(self._running_plugins[pid], "init_plugin"):
             try:
-                self._running_plugins[pid].init_plugin(self.get_plugin_config(pid))
-                logger.debug(f"生效插件配置：{pid}")
+                # 存储Class
+                self._plugins[plugin_id] = plugin
+                # 生成实例
+                plugin_obj = plugin()
+                # 生效插件配置
+                plugin_obj.init_plugin(self.get_plugin_config(plugin_id))
+                # 存储运行实例
+                self._running_plugins[plugin_id] = plugin_obj
+                logger.info(f"Plugin Loaded：{plugin_id}")
             except Exception as err:
-                logger.error(f"加载插件 {pid} 出错：{err} - {traceback.format_exc()}")
+                logger.error(f"加载插件 {plugin_id} 出错：{err} - {traceback.format_exc()}")
 
-    def __stop_plugins(self):
+    def stop(self):
         """
-        停止所有插件
+        停止
         """
+        # 停止所有插件
         for plugin in self._running_plugins.values():
             if hasattr(plugin, "stop"):
                 plugin.stop()
@@ -105,7 +85,7 @@ class PluginManager(metaclass=Singleton):
             return False
         return self.systemconfig.set(self._config_key % pid, conf)
 
-    def get_plugin_commands(self) -> List[dict]:
+    def get_plugin_commands(self) -> List[Dict[str, Any]]:
         """
         获取插件命令
         [{
@@ -117,8 +97,9 @@ class PluginManager(metaclass=Singleton):
         """
         ret_commands = []
         for _, plugin in self._running_plugins.items():
-            if hasattr(plugin, "get_command"):
-                ret_commands.append(plugin.get_command())
+            if hasattr(plugin, "get_command") \
+                    and ObjectUtils.check_method(plugin.get_command):
+                ret_commands += plugin.get_command()
         return ret_commands
 
     def run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:

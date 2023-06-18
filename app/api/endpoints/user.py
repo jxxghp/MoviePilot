@@ -90,7 +90,7 @@ async def delete_user(
             detail="用户不存在",
         )
     user.delete_by_email(db, user_in.email)
-    return {"success": True}
+    return schemas.Response(success=True)
 
 
 @router.get("/{user_id}", response_model=schemas.User)

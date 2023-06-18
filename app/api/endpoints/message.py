@@ -29,7 +29,7 @@ async def user_message(background_tasks: BackgroundTasks, request: Request):
     form = await request.form()
     args = request.query_params
     background_tasks.add_task(start_message_chain, body, form, args)
-    return {"success": True}
+    return schemas.Response(success=True)
 
 
 @router.get("/")

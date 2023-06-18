@@ -44,7 +44,7 @@ async def create_subscribe(
     新增订阅
     """
     result = SubscribeChain().add(**subscribe_in.dict())
-    return {"success": result}
+    return schemas.Response(success=result)
 
 
 @router.put("/", response_model=schemas.Subscribe)
@@ -78,7 +78,7 @@ async def delete_subscribe(
     删除订阅信息
     """
     Subscribe.delete(db, subscribe_in.id)
-    return {"success": True}
+    return schemas.Response(success=True)
 
 
 @router.post("/seerr", response_model=schemas.Response)
@@ -100,12 +100,12 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
         )
     notification_type = req_json.get("notification_type")
     if notification_type not in ["MEDIA_APPROVED", "MEDIA_AUTO_APPROVED"]:
-        return {"success": False, "message": "不支持的通知类型"}
+        return schemas.Response(success=False, message="不支持的通知类型")
     subject = req_json.get("subject")
     media_type = MediaType.MOVIE if req_json.get("media", {}).get("media_type") == "movie" else MediaType.TV
     tmdbId = req_json.get("media", {}).get("tmdbId")
     if not media_type or not tmdbId or not subject:
-        return {"success": False, "message": "请求参数不正确"}
+        return schemas.Response(success=False, message="请求参数不正确")
     user_name = req_json.get("request", {}).get("requestedBy_username")
     # 添加订阅
     if media_type == MediaType.MOVIE:
@@ -131,7 +131,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
                                       season=season,
                                       username=user_name)
 
-    return {"success": True}
+    return schemas.Response(success=True)
 
 
 @router.get("/refresh", response_model=schemas.Response)
@@ -141,7 +141,7 @@ async def refresh_subscribes(
     刷新所有订阅
     """
     SubscribeChain().refresh()
-    return {"success": True}
+    return schemas.Response(success=True)
 
 
 @router.get("/search", response_model=schemas.Response)
@@ -151,4 +151,4 @@ async def search_subscribes(
     搜索所有订阅
     """
     SubscribeChain().search(state='R')
-    return {"success": True}
+    return schemas.Response(success=True)
