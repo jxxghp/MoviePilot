@@ -68,6 +68,31 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
+    def douban_discover(self, mtype: MediaType, sort: str, tags: str,
+                        start: int = 0, count: int = 30) -> Optional[List[dict]]:
+        """
+        发现豆瓣电影、剧集
+        :param mtype:  媒体类型
+        :param sort:  排序方式
+        :param tags:  标签
+        :param start:  起始位置
+        :param count:  数量
+        :return: 媒体信息列表
+        """
+        pass
+
+    def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,
+                      page: int = 1) -> Optional[List[dict]]:
+        """
+        :param mtype:  媒体类型
+        :param sort_by:  排序方式
+        :param with_genres:  类型
+        :param with_original_language:  语言
+        :param page:  页码
+        :return: 媒体信息列表
+        """
+        pass
+
     def tvdb_info(self, tvdbid: int) -> Optional[dict]:
         """
         获取TVDB信息

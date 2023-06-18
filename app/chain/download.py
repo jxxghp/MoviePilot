@@ -14,6 +14,9 @@ from app.utils.string import StringUtils
 
 
 class DownloadChain(ChainBase):
+    """
+    下载处理链
+    """
 
     def __init__(self):
         super().__init__()
@@ -84,8 +87,8 @@ class DownloadChain(ChainBase):
         _folder_name = ""
         if not torrent_file:
             # 下载种子文件
-            _torrent_file, _folder_name, _ = self.download_torrent(_torrent, userid=userid)
-            if not _torrent_file:
+            torrent_file, _folder_name, _ = self.download_torrent(_torrent, userid=userid)
+            if not torrent_file:
                 return
         # 添加下载
         result: Optional[tuple] = self.download(torrent_path=torrent_file,

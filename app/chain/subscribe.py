@@ -17,7 +17,7 @@ from app.schemas.types import MediaType
 
 class SubscribeChain(ChainBase):
     """
-    订阅处理链
+    订阅管理处理链
     """
 
     # 站点最新种子缓存 {站点域名: 种子上下文}

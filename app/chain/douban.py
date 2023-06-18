@@ -14,7 +14,7 @@ from app.log import logger
 
 class DoubanChain(ChainBase):
     """
-    同步豆瓣想看数据
+    豆瓣处理链
     """
 
     _interests_url: str = "https://www.douban.com/feed/people/%s/interests"

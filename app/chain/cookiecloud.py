@@ -16,7 +16,7 @@ from app.utils.http import RequestUtils
 
 class CookieCloudChain(ChainBase):
     """
-    同步站点Cookie
+    CookieCloud处理链
     """
 
     def __init__(self):

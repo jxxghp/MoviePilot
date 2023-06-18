@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 import zhconv
 from lxml import etree
-from tmdbv3api import TMDb, Search, Movie, TV, Season, Episode
+from tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover
 from tmdbv3api.exceptions import TMDbException
 
 from app.core.config import settings
@@ -48,6 +48,7 @@ class TmdbHelper:
         self.tv = TV()
         self.season = Season()
         self.episode = Episode()
+        self.discover = Discover()
 
     def search_multiis(self, title: str) -> List[dict]:
         """
@@ -979,3 +980,41 @@ class TmdbHelper:
         except Exception as e:
             print(str(e))
             return {}
+
+    def discover_movies(self, **kwargs):
+        """
+        发现电影
+        :param kwargs:
+        :return:
+        """
+        if not self.discover:
+            return []
+        try:
+            logger.info(f"正在发现电影：{kwargs}...")
+            tmdbinfo = self.discover.discover_movies(kwargs)
+            if tmdbinfo:
+                for info in tmdbinfo:
+                    info['media_type'] = MediaType.MOVIE
+            return tmdbinfo or []
+        except Exception as e:
+            print(str(e))
+            return []
+
+    def discover_tvs(self, **kwargs):
+        """
+        发现电视剧
+        :param kwargs:
+        :return:
+        """
+        if not self.discover:
+            return []
+        try:
+            logger.info(f"正在发现电视剧：{kwargs}...")
+            tmdbinfo = self.discover.discover_tv_shows(kwargs)
+            if tmdbinfo:
+                for info in tmdbinfo:
+                    info['media_type'] = MediaType.TV
+            return tmdbinfo or []
+        except Exception as e:
+            print(str(e))
+            return []

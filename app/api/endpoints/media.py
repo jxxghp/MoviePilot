@@ -24,10 +24,31 @@ async def recognize(title: str,
     return context.to_dict()
 
 
-@router.get("/tmdb", response_model=schemas.MediaInfo)
+@router.get("/search", response_model=List[schemas.MediaInfo])
+async def search_by_title(title: str,
+                          _: User = Depends(get_current_active_user)) -> Any:
+    """
+    模糊搜索媒体信息列表
+    """
+    _, medias = MediaChain().search(title=title)
+    return [media.to_dict() for media in medias]
+
+
+@router.get("/doubanid", response_model=schemas.Context)
+async def recognize_doubanid(doubanid: str,
+                             _: User = Depends(get_current_active_user)) -> Any:
+    """
+    根据豆瓣ID识别媒体信息
+    """
+    # 识别媒体信息
+    context = MediaChain().recognize_by_doubanid(doubanid=doubanid)
+    return context.to_dict()
+
+
+@router.get("/tmdbinfo", response_model=schemas.MediaInfo)
 async def tmdb_info(tmdbid: int, type_name: str) -> Any:
     """
-    根据TMDBID查询媒体信息
+    根据TMDBID查询themoviedb媒体信息
     """
     mtype = MediaType.MOVIE if type_name == MediaType.MOVIE.value else MediaType.TV
     media = MediaChain().recognize_media(tmdbid=tmdbid, mtype=mtype)
@@ -37,7 +58,7 @@ async def tmdb_info(tmdbid: int, type_name: str) -> Any:
         return schemas.MediaInfo()
 
 
-@router.get("/douban", response_model=schemas.MediaInfo)
+@router.get("/doubaninfo", response_model=schemas.MediaInfo)
 async def douban_info(doubanid: str) -> Any:
     """
     根据豆瓣ID查询豆瓣媒体信息
@@ -49,11 +70,59 @@ async def douban_info(doubanid: str) -> Any:
         return schemas.MediaInfo()
 
 
-@router.get("/search", response_model=List[schemas.MediaInfo])
-async def search_by_title(title: str,
-                          _: User = Depends(get_current_active_user)) -> Any:
+@router.get("/tmdbmovies", response_model=List[schemas.MediaInfo])
+async def tmdb_movies(sort_by: str = "popularity.desc",
+                      with_genres: str = "",
+                      with_original_language: str = "",
+                      page: int = 1,
+                      _: User = Depends(get_current_active_user)) -> Any:
     """
-    搜索媒体信息
+    浏览TMDB电影信息
     """
-    _, medias = MediaChain().search(title=title)
-    return [media.to_dict() for media in medias]
+    movies = MediaChain().tmdb_movies(sort_by=sort_by,
+                                      with_genres=with_genres,
+                                      with_original_language=with_original_language,
+                                      page=page)
+    return [movie.to_dict() for movie in movies]
+
+
+@router.get("/tmdbtvs", response_model=List[schemas.MediaInfo])
+async def tmdb_tvs(sort_by: str = "popularity.desc",
+                   with_genres: str = "",
+                   with_original_language: str = "",
+                   page: int = 1,
+                   _: User = Depends(get_current_active_user)) -> Any:
+    """
+    浏览TMDB剧集信息
+    """
+    tvs = MediaChain().tmdb_tvs(sort_by=sort_by,
+                                with_genres=with_genres,
+                                with_original_language=with_original_language,
+                                page=page)
+    return [tv.to_dict() for tv in tvs]
+
+
+@router.get("/doubanmovies", response_model=List[schemas.MediaInfo])
+async def douban_movies(sort: str = "R",
+                        tags: str = "",
+                        start: int = 0,
+                        count: int = 30,
+                        _: User = Depends(get_current_active_user)) -> Any:
+    """
+    浏览豆瓣电影信息
+    """
+    movies = MediaChain().douban_movies(sort=sort, tags=tags, start=start, count=count)
+    return [movie.to_dict() for movie in movies]
+
+
+@router.get("/doubantvs", response_model=List[schemas.MediaInfo])
+async def douban_tvs(sort: str = "R",
+                     tags: str = "",
+                     start: int = 0,
+                     count: int = 30,
+                     _: User = Depends(get_current_active_user)) -> Any:
+    """
+    浏览豆瓣剧集信息
+    """
+    tvs = MediaChain().douban_tvs(sort=sort, tags=tags, start=start, count=count)
+    return [tv.to_dict() for tv in tvs]

@@ -10,7 +10,7 @@ from app.log import logger
 
 class SiteChain(ChainBase):
     """
-    站点远程管理处理链
+    站点管理处理链
     """
 
     _siteoper: SiteOper = None

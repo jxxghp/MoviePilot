@@ -32,7 +32,7 @@ class QbittorrentModule(_ModuleBase):
         :param episodes:  需要下载的集数
         :return: 种子Hash，错误信息
         """
-        if not torrent_path.exists():
+        if not torrent_path or not torrent_path.exists():
             return None, f"种子文件不存在：{torrent_path}"
         # 生成随机Tag
         tag = StringUtils.generate_random_str(10)

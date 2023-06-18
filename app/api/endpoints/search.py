@@ -16,9 +16,19 @@ async def search_by_tmdbid(tmdbid: int,
                            mtype: str = None,
                            _: User = Depends(get_current_active_user)) -> Any:
     """
-    根据TMDBID搜索资源
+    根据TMDBID精确搜索站点资源
     """
     if mtype:
         mtype = MediaType.TV if mtype == MediaType.TV.value else MediaType.MOVIE
     torrents = SearchChain().search_by_tmdbid(tmdbid=tmdbid, mtype=mtype)
+    return [torrent.to_dict() for torrent in torrents]
+
+
+@router.get("/title", response_model=List[schemas.TorrentInfo])
+async def search_by_title(title: str,
+                          _: User = Depends(get_current_active_user)) -> Any:
+    """
+    根据名称模糊搜索站点资源
+    """
+    torrents = SearchChain().search_by_title(title=title)
     return [torrent.to_dict() for torrent in torrents]

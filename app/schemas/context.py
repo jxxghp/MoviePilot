@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from pydantic import BaseModel
 
@@ -80,10 +80,39 @@ class MediaInfo(BaseModel):
     overview: Optional[str] = None
     # 二级分类
     category: str = ""
-    # 季集
+    # 季季集清单
     seasons: Dict[int, list] = {}
+    # 季详情
+    season_info: List[dict] = []
     # 别名和译名
     names: list = []
+    # 演员
+    actors: list = []
+    # 导演
+    directors: list = []
+    # 其它TMDB属性
+    adult: bool = False
+    created_by: list = []
+    episode_run_time: list = []
+    genres: list = []
+    first_air_date: Optional[str] = None
+    homepage: Optional[str] = None
+    languages: list = []
+    last_air_date: Optional[str] = None
+    networks: list = []
+    number_of_episodes: int = 0
+    number_of_seasons: int = 0
+    origin_country: list = []
+    original_name: Optional[str] = None
+    production_companies: list = []
+    production_countries: list = []
+    spoken_languages: list = []
+    status: Optional[str] = None
+    tagline: Optional[str] = None
+    vote_count: int = 0
+    popularity: int = 0
+    runtime: Optional[int] = None
+    next_episode_to_air: Optional[str] = None
 
 
 class TorrentInfo(BaseModel):

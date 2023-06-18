@@ -8,7 +8,7 @@ from app.schemas.types import EventType
 
 class WebhookChain(ChainBase):
     """
-    响应Webhook事件
+    Webhook处理链
     """
 
     def message(self, body: Any, form: Any, args: Any) -> None:

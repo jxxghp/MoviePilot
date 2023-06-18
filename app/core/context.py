@@ -89,6 +89,18 @@ class TorrentInfo:
         """
         return self.get_free_string(self.uploadvolumefactor, self.downloadvolumefactor)
 
+    def to_dict(self):
+        """
+        返回字典
+        """
+        attributes = [
+            attr for attr in dir(self)
+            if not callable(getattr(self, attr)) and not attr.startswith("_")
+        ]
+        return {
+            attr: getattr(self, attr) for attr in attributes
+        }
+
 
 class MediaInfo:
     # 类型 电影、电视剧
@@ -123,6 +135,8 @@ class MediaInfo:
     names: Optional[list] = []
     # 各季的剧集清单信息
     seasons: Optional[Dict[int, list]] = {}
+    # 各季详情
+    season_info: List[dict] = []
     # 各季的年份
     season_years: Optional[dict] = {}
     # 二级分类
@@ -233,7 +247,10 @@ class MediaInfo:
         # 本体
         self.tmdb_info = info
         # 类型
-        self.type = info.get('media_type')
+        if isinstance(info.get('media_type'), MediaType):
+            self.type = info.get('media_type')
+        else:
+            self.type = MediaType.MOVIE if info.get("media_type") == "movie" else MediaType.TV
         # TMDBID
         self.tmdb_id = info.get('id')
         if not self.tmdb_id:
@@ -270,16 +287,17 @@ class MediaInfo:
                 self.year = self.release_date[:4]
             # 季集信息
             if info.get('seasons'):
-                for season_info in info.get('seasons'):
+                self.season_info = info.get('seasons')
+                for seainfo in info.get('seasons'):
                     # 季
-                    season = season_info.get("season_number")
+                    season = seainfo.get("season_number")
                     if not season:
                         continue
                     # 集
-                    episode_count = season_info.get("episode_count")
+                    episode_count = seainfo.get("episode_count")
                     self.seasons[season] = list(range(1, episode_count + 1))
                     # 年份
-                    air_date = season_info.get("air_date")
+                    air_date = seainfo.get("air_date")
                     if air_date:
                         self.season_years[season] = air_date[:4]
         # 海报
@@ -292,6 +310,10 @@ class MediaInfo:
         self.directors, self.actors = __directors_actors(info)
         # 别名和译名
         self.names = info.get('names') or []
+        # 剩余属性赋值
+        for key, value in info.items():
+            if not hasattr(self.__class__, key):
+                setattr(self, key, value)
 
     def set_douban_info(self, info: dict):
         """
@@ -304,8 +326,12 @@ class MediaInfo:
         # 豆瓣ID
         self.douban_id = str(info.get("id"))
         # 类型
+
         if not self.type:
-            self.type = MediaType.MOVIE if info.get("type") == "movie" else MediaType.TV
+            if isinstance(info.get('media_type'), MediaType):
+                self.type = info.get('media_type')
+            else:
+                self.type = MediaType.MOVIE if info.get("type") == "movie" else MediaType.TV
         # 标题
         if not self.title:
             self.title = MetaInfo(info.get("title")).name
@@ -358,6 +384,10 @@ class MediaInfo:
                 episodes_count = info.get("episodes_count")
                 if episodes_count:
                     self.seasons[meta.begin_season] = list(range(1, episodes_count + 1))
+        # 剩余属性赋值
+        for key, value in info.items():
+            if not hasattr(self.__class__, key):
+                setattr(self, key, value)
 
     @property
     def title_year(self):
@@ -457,16 +487,6 @@ class Context:
     """
     上下文对象
     """
-    # 识别前的信息
-    title: Optional[str] = None
-    subtitle: Optional[str] = None
-
-    # 用户信息
-    userid: Optional[str] = None
-    username: Optional[str] = None
-
-    # 操作类型
-    action: Optional[str] = None
 
     # 识别信息
     _meta_info: Optional[MetaBase] = None

@@ -142,3 +142,15 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
 
     def register_commands(self, commands: dict) -> None:
         return self.__run_module("register_commands", commands=commands)
+
+    def douban_discover(self, mtype: MediaType, sort: str, tags: str,
+                        start: int = 0, count: int = 30) -> Optional[List[dict]]:
+        return self.__run_module("douban_discover", mtype=mtype, sort=sort, tags=tags,
+                                 start=start, count=count)
+
+    def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str,
+                      with_original_language: str, page: int = 1) -> Optional[List[dict]]:
+        return self.__run_module("tmdb_discover", mtype=mtype,
+                                 sort_by=sort_by, with_genres=with_genres,
+                                 with_original_language=with_original_language,
+                                 page=page)

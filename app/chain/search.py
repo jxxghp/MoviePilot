@@ -22,7 +22,7 @@ class SearchChain(ChainBase):
 
     def search_by_tmdbid(self, tmdbid: int, mtype: str = None) -> Optional[List[Context]]:
         """
-        根据TMDB ID搜索资源，不过滤本地存在的内容
+        根据TMDB ID搜索资源，精确匹配，但不不过滤本地存在的资源
         :param tmdbid: TMDB ID
         :param mtype: 媒体，电影 or 电视剧
         """
@@ -32,11 +32,30 @@ class SearchChain(ChainBase):
             return None
         return self.process(mediainfo=mediainfo)
 
+    def search_by_title(self, title: str, site_ids: List[int] = None) -> List[TorrentInfo]:
+        """
+        根据标题搜索资源，不识别不过滤，直接返回站点内容
+        """
+        logger.info(f'开始搜索资源，关键词：{title} ...')
+        # 未开启的站点不搜索
+        indexer_sites = []
+        for indexer in self.siteshelper.get_indexers():
+            if not settings.INDEXER_SITES \
+                    or any([s in indexer.get("domain") for s in settings.INDEXER_SITES.split(',')]):
+                if site_ids and indexer.get("id") not in site_ids:
+                    continue
+                indexer_sites.append(indexer)
+        if not indexer_sites:
+            logger.warn('未开启任何有效站点，无法搜索资源')
+            return []
+        # 搜索
+        return self.search_torrents(mediainfo=None, sites=indexer_sites, keyword=title)
+
     def process(self, mediainfo: MediaInfo,
                 keyword: str = None,
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None) -> Optional[List[Context]]:
         """
-        根据媒体信息，搜索种子资源
+        根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
         :param mediainfo: 媒体信息
         :param keyword: 搜索关键词
         :param no_exists: 缺失的媒体信息

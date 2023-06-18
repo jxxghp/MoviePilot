@@ -192,6 +192,29 @@ class TheMovieDbModule(_ModuleBase):
                                    file_path=file)
             logger.info(f"{file} 刮削完成")
 
+    def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,
+                      page: int = 1) -> Optional[List[dict]]:
+        """
+        :param mtype:  媒体类型
+        :param sort_by:  排序方式
+        :param with_genres:  类型
+        :param with_original_language:  语言
+        :param page:  页码
+        :return: 媒体信息列表
+        """
+        if mtype == MediaType.MOVIE:
+            return self.tmdb.discover_movies(sort_by=sort_by,
+                                             with_genres=with_genres,
+                                             with_original_language=with_original_language,
+                                             page=page)
+        elif mtype == MediaType.TV:
+            return self.tmdb.discover_tvs(sort_by=sort_by,
+                                          with_genres=with_genres,
+                                          with_original_language=with_original_language,
+                                          page=page)
+        else:
+            return None
+
     def gen_scraper_files(self, mediainfo: MediaInfo, file_path: Path):
         """
         生成刮削文件

@@ -50,44 +50,29 @@ class DoubanModule(_ModuleBase):
             if douban_info and celebrities:
                 douban_info["directors"] = celebrities.get("directors")
                 douban_info["actors"] = celebrities.get("actors")
-        return self.__extend_doubaninfo(douban_info)
+        return douban_info
 
-    @staticmethod
-    def __extend_doubaninfo(doubaninfo: dict):
+    def douban_discover(self, mtype: MediaType, sort: str, tags: str,
+                        start: int = 0, count: int = 30) -> Optional[List[dict]]:
         """
-        补充添加豆瓣信息
+        发现豆瓣电影、剧集
+        :param mtype:  媒体类型
+        :param sort:  排序方式
+        :param tags:  标签
+        :param start:  起始位置
+        :param count:  数量
+        :return: 媒体信息列表
         """
-        # 类型
-        if doubaninfo.get("type") == "movie":
-            doubaninfo['media_type'] = MediaType.MOVIE
-        elif doubaninfo.get("type") == "tv":
-            doubaninfo['media_type'] = MediaType.TV
+        logger.info(f"开始发现豆瓣 {mtype.value} ...")
+        if mtype == MediaType.MOVIE:
+            infos = self.doubanapi.movie_recommend(start=start, count=count,
+                                                   sort=sort, tags=tags)
         else:
-            return doubaninfo
-        # 评分
-        rating = doubaninfo.get('rating')
-        if rating:
-            doubaninfo['vote_average'] = float(rating.get("value"))
-        else:
-            doubaninfo['vote_average'] = 0
-
-        # 海报
-        if doubaninfo.get("type") == "movie":
-            poster_path = doubaninfo.get('cover', {}).get("url")
-            if not poster_path:
-                poster_path = doubaninfo.get('cover_url')
-            if not poster_path:
-                poster_path = doubaninfo.get('pic', {}).get("large")
-        else:
-            poster_path = doubaninfo.get('pic', {}).get("normal")
-        if poster_path:
-            poster_path = poster_path.replace("s_ratio_poster", "m_ratio_poster")
-        doubaninfo['poster_path'] = poster_path
-
-        # 简介
-        doubaninfo['overview'] = doubaninfo.get("card_subtitle") or ""
-
-        return doubaninfo
+            infos = self.doubanapi.tv_recommend(start=start, count=count,
+                                                sort=sort, tags=tags)
+        if not infos:
+            return []
+        return infos.get("items") or []
 
     def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
         """
@@ -156,67 +141,66 @@ class DoubanModule(_ModuleBase):
                 if not doubaninfo:
                     logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
                     break
-                doubaninfo = self.__extend_doubaninfo(doubaninfo)
                 # 刮削
-                self.gen_scraper_files(meta, doubaninfo, file)
+                self.gen_scraper_files(meta, MediaInfo(douban_info=doubaninfo), file)
             except Exception as e:
                 logger.error(f"刮削文件 {file} 失败，原因：{e}")
             logger.info(f"{file} 刮削完成")
 
-    def gen_scraper_files(self, meta: MetaBase, doubaninfo: dict, file_path: Path):
+    def gen_scraper_files(self, meta: MetaBase, mediainfo: MediaInfo, file_path: Path):
         """
         生成刮削文件
         :param meta: 元数据
-        :param doubaninfo: 豆瓣信息
+        :param mediainfo: 媒体信息
         :param file_path: 文件路径
         """
 
         try:
             # 电影
-            if meta.type == MediaType.MOVIE:
+            if mediainfo.type == MediaType.MOVIE:
                 # 强制或者不已存在时才处理
                 if not file_path.with_name("movie.nfo").exists() \
                         and not file_path.with_suffix(".nfo").exists():
                     #  生成电影描述文件
-                    self.__gen_movie_nfo_file(doubaninfo=doubaninfo,
+                    self.__gen_movie_nfo_file(mediainfo=mediainfo,
                                               file_path=file_path)
                 # 生成电影图片
-                self.__save_image(url=doubaninfo.get('poster_path'),
-                                  file_path=file_path.with_name(f"poster{Path(doubaninfo.get('poster_path')).suffix}"))
+                self.__save_image(url=mediainfo.poster_path,
+                                  file_path=file_path.with_name(f"poster{Path(mediainfo.poster_path).suffix}"))
             # 电视剧
             else:
                 # 不存在时才处理
                 if not file_path.parent.with_name("tvshow.nfo").exists():
                     # 根目录描述文件
-                    self.__gen_tv_nfo_file(doubaninfo=doubaninfo,
+                    self.__gen_tv_nfo_file(mediainfo=mediainfo,
                                            dir_path=file_path.parents[1])
                 # 生成根目录图片
-                self.__save_image(url=doubaninfo.get('poster_path'),
-                                  file_path=file_path.with_name(f"poster{Path(doubaninfo.get('poster_path')).suffix}"))
+                self.__save_image(url=mediainfo.poster_path,
+                                  file_path=file_path.with_name(f"poster{Path(mediainfo.poster_path).suffix}"))
                 # 季目录NFO
                 if not file_path.with_name("season.nfo").exists():
-                    self.__gen_tv_season_nfo_file(seasoninfo=doubaninfo,
+                    self.__gen_tv_season_nfo_file(mediainfo=mediainfo,
                                                   season=meta.begin_season,
                                                   season_path=file_path.parent)
         except Exception as e:
             logger.error(f"{file_path} 刮削失败：{e}")
 
     @staticmethod
-    def __gen_common_nfo(doubaninfo: dict, doc, root):
+    def __gen_common_nfo(mediainfo: MediaInfo, doc, root):
         # 添加时间
         DomUtils.add_node(doc, root, "dateadded",
                           time.strftime('%Y-%m-%d %H:%M:%S',
                                         time.localtime(time.time())))
         # 简介
         xplot = DomUtils.add_node(doc, root, "plot")
-        xplot.appendChild(doc.createCDATASection(doubaninfo.get('overview') or ""))
+        xplot.appendChild(doc.createCDATASection(mediainfo.overview or ""))
         xoutline = DomUtils.add_node(doc, root, "outline")
-        xoutline.appendChild(doc.createCDATASection(doubaninfo.get('.overview') or ""))
+        xoutline.appendChild(doc.createCDATASection(mediainfo.overview or ""))
         # 导演
-        for director in doubaninfo.get('directors'):
+        for director in mediainfo.directors:
             DomUtils.add_node(doc, root, "director", director.get("name") or "")
         # 演员
-        for actor in doubaninfo.get('actors'):
+        for actor in mediainfo.actors:
             xactor = DomUtils.add_node(doc, root, "actor")
             DomUtils.add_node(doc, xactor, "name", actor.get("name") or "")
             DomUtils.add_node(doc, xactor, "type", "Actor")
@@ -224,16 +208,16 @@ class DoubanModule(_ModuleBase):
             DomUtils.add_node(doc, xactor, "thumb", actor.get('avatar', {}).get('normal'))
             DomUtils.add_node(doc, xactor, "profile", actor.get('url'))
         # 评分
-        DomUtils.add_node(doc, root, "rating", doubaninfo.get('vote_average') or "0")
+        DomUtils.add_node(doc, root, "rating", mediainfo.vote_average or "0")
 
         return doc
 
     def __gen_movie_nfo_file(self,
-                             doubaninfo: dict,
+                             mediainfo: MediaInfo,
                              file_path: Path):
         """
         生成电影的NFO描述文件
-        :param doubaninfo: 豆瓣信息
+        :param mediainfo: 豆瓣信息
         :param file_path: 电影文件路径
         """
         # 开始生成XML
@@ -241,22 +225,22 @@ class DoubanModule(_ModuleBase):
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "movie")
         # 公共部分
-        doc = self.__gen_common_nfo(doubaninfo=doubaninfo,
+        doc = self.__gen_common_nfo(mediainfo=mediainfo,
                                     doc=doc,
                                     root=root)
         # 标题
-        DomUtils.add_node(doc, root, "title", doubaninfo.get('title') or "")
+        DomUtils.add_node(doc, root, "title", mediainfo.title or "")
         # 年份
-        DomUtils.add_node(doc, root, "year", doubaninfo.get('year') or "")
+        DomUtils.add_node(doc, root, "year", mediainfo.year or "")
         # 保存
         self.__save_nfo(doc, file_path.with_suffix(".nfo"))
 
     def __gen_tv_nfo_file(self,
-                          doubaninfo: dict,
+                          mediainfo: MediaInfo,
                           dir_path: Path):
         """
         生成电视剧的NFO描述文件
-        :param doubaninfo: 媒体信息
+        :param mediainfo: 媒体信息
         :param dir_path: 电视剧根目录
         """
         # 开始生成XML
@@ -264,22 +248,22 @@ class DoubanModule(_ModuleBase):
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "tvshow")
         # 公共部分
-        doc = self.__gen_common_nfo(doubaninfo=doubaninfo,
+        doc = self.__gen_common_nfo(mediainfo=mediainfo,
                                     doc=doc,
                                     root=root)
         # 标题
-        DomUtils.add_node(doc, root, "title", doubaninfo.get('title') or "")
+        DomUtils.add_node(doc, root, "title", mediainfo.title or "")
         # 年份
-        DomUtils.add_node(doc, root, "year", doubaninfo.get('year') or "")
+        DomUtils.add_node(doc, root, "year", mediainfo.year or "")
         DomUtils.add_node(doc, root, "season", "-1")
         DomUtils.add_node(doc, root, "episode", "-1")
         # 保存
         self.__save_nfo(doc, dir_path.joinpath("tvshow.nfo"))
 
-    def __gen_tv_season_nfo_file(self, seasoninfo: dict, season: int, season_path: Path):
+    def __gen_tv_season_nfo_file(self, mediainfo: MediaInfo, season: int, season_path: Path):
         """
         生成电视剧季的NFO描述文件
-        :param seasoninfo: TMDB季媒体信息
+        :param mediainfo: 媒体信息
         :param season: 季号
         :param season_path: 电视剧季的目录
         """
@@ -290,83 +274,20 @@ class DoubanModule(_ModuleBase):
         DomUtils.add_node(doc, root, "dateadded", time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
         # 简介
         xplot = DomUtils.add_node(doc, root, "plot")
-        xplot.appendChild(doc.createCDATASection(seasoninfo.get("overview") or ""))
+        xplot.appendChild(doc.createCDATASection(mediainfo.overview or ""))
         xoutline = DomUtils.add_node(doc, root, "outline")
-        xoutline.appendChild(doc.createCDATASection(seasoninfo.get("overview") or ""))
+        xoutline.appendChild(doc.createCDATASection(mediainfo.overview or ""))
         # 标题
         DomUtils.add_node(doc, root, "title", "季 %s" % season)
         # 发行日期
-        DomUtils.add_node(doc, root, "premiered", seasoninfo.get("air_date") or "")
-        DomUtils.add_node(doc, root, "releasedate", seasoninfo.get("air_date") or "")
+        DomUtils.add_node(doc, root, "premiered", mediainfo.release_date or "")
+        DomUtils.add_node(doc, root, "releasedate", mediainfo.release_date or "")
         # 发行年份
-        DomUtils.add_node(doc, root, "year", seasoninfo.get("air_date")[:4] if seasoninfo.get("air_date") else "")
+        DomUtils.add_node(doc, root, "year", mediainfo.release_date[:4] if mediainfo.release_date else "")
         # seasonnumber
         DomUtils.add_node(doc, root, "seasonnumber", str(season))
         # 保存
         self.__save_nfo(doc, season_path.joinpath("season.nfo"))
-
-    def __gen_tv_episode_nfo_file(self,
-                                  episodeinfo: dict,
-                                  season: int,
-                                  episode: int,
-                                  file_path: Path,
-                                  force_nfo: bool = False):
-        """
-        生成电视剧集的NFO描述文件
-        :param episodeinfo: 集TMDB元数据
-        :param season: 季号
-        :param episode: 集号
-        :param file_path: 集文件的路径
-        :param force_nfo: 是否强制生成NFO文件
-        """
-        if not force_nfo and file_path.with_suffix(".nfo").exists():
-            return
-        # 开始生成集的信息
-        logger.info(f"正在生成剧集NFO文件：{file_path.name}")
-        doc = minidom.Document()
-        root = DomUtils.add_node(doc, doc, "episodedetails")
-        # 添加时间
-        DomUtils.add_node(doc, root, "dateadded", time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
-        # TMDBID
-        uniqueid = DomUtils.add_node(doc, root, "uniqueid", episodeinfo.get("id") or "")
-        uniqueid.setAttribute("type", "tmdb")
-        uniqueid.setAttribute("default", "true")
-        # tmdbid
-        DomUtils.add_node(doc, root, "tmdbid", episodeinfo.get("id") or "")
-        # 标题
-        DomUtils.add_node(doc, root, "title", episodeinfo.get("name") or "第 %s 集" % episode)
-        # 简介
-        xplot = DomUtils.add_node(doc, root, "plot")
-        xplot.appendChild(doc.createCDATASection(episodeinfo.get("overview") or ""))
-        xoutline = DomUtils.add_node(doc, root, "outline")
-        xoutline.appendChild(doc.createCDATASection(episodeinfo.get("overview") or ""))
-        # 发布日期
-        DomUtils.add_node(doc, root, "aired", episodeinfo.get("air_date") or "")
-        # 年份
-        DomUtils.add_node(doc, root, "year",
-                          episodeinfo.get("air_date")[:4] if episodeinfo.get("air_date") else "")
-        # 季
-        DomUtils.add_node(doc, root, "season", str(season))
-        # 集
-        DomUtils.add_node(doc, root, "episode", str(episode))
-        # 评分
-        DomUtils.add_node(doc, root, "rating", episodeinfo.get("vote_average") or "0")
-        # 导演
-        directors = episodeinfo.get("crew") or []
-        for director in directors:
-            if director.get("known_for_department") == "Directing":
-                xdirector = DomUtils.add_node(doc, root, "director", director.get("name") or "")
-                xdirector.setAttribute("tmdbid", str(director.get("id") or ""))
-        # 演员
-        actors = episodeinfo.get("guest_stars") or []
-        for actor in actors:
-            if actor.get("known_for_department") == "Acting":
-                xactor = DomUtils.add_node(doc, root, "actor")
-                DomUtils.add_node(doc, xactor, "name", actor.get("name") or "")
-                DomUtils.add_node(doc, xactor, "type", "Actor")
-                DomUtils.add_node(doc, xactor, "tmdbid", actor.get("id") or "")
-        # 保存文件
-        self.__save_nfo(doc, file_path.with_suffix(".nfo"))
 
     @staticmethod
     def __save_image(url: str, file_path: Path):
