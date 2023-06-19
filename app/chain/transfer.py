@@ -3,11 +3,13 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 from app.chain import ChainBase
+from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory
+from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent
 from app.schemas.types import TorrentStatus, EventType, MediaType
@@ -22,6 +24,7 @@ class TransferChain(ChainBase):
     def __init__(self):
         super().__init__()
         self.downloadhis = DownloadHistoryOper()
+        self.transferhis = TransferHistoryOper()
 
     def process(self, arg_str: str = None, userid: Union[str, int] = None) -> bool:
         """
@@ -99,7 +102,7 @@ class TransferChain(ChainBase):
             # 更新媒体图片
             self.obtain_image(mediainfo=mediainfo)
             # 转移
-            transferinfo: TransferInfo = self.transfer(mediainfo=mediainfo, path=Path(torrent.path))
+            transferinfo: TransferInfo = self.transfer(mediainfo=mediainfo, path=torrent.path)
             if not transferinfo or not transferinfo.target_path:
                 # 转移失败
                 logger.warn(f"{torrent.title} 入库失败")
@@ -110,6 +113,24 @@ class TransferChain(ChainBase):
                     userid=userid
                 ),
                 continue
+            # 新增转移历史记录
+            self.transferhis.add(
+                src=str(torrent.path),
+                dest=str(transferinfo.target_path),
+                mode=settings.TRANSFER_TYPE,
+                type=mediainfo.type.value,
+                category=mediainfo.category,
+                title=mediainfo.title,
+                year=mediainfo.year,
+                tmdbid=mediainfo.tmdb_id,
+                imdbid=mediainfo.imdb_id,
+                tvdbid=mediainfo.tvdb_id,
+                doubanid=mediainfo.douban_id,
+                seasons=meta.season,
+                episodes=meta.episode,
+                image=mediainfo.get_poster_image(),
+                download_hash=torrent.hash
+            )
             # 转移完成
             self.transfer_completed(hashs=torrent.hash, transinfo=transferinfo)
             # 刮剥

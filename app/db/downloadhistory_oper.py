@@ -7,7 +7,7 @@ from app.db.models.downloadhistory import DownloadHistory
 
 class DownloadHistoryOper(DbOper):
     """
-    插件数据管理
+    下载历史管理
     """
 
     def get_by_path(self, path: Path) -> Any:
