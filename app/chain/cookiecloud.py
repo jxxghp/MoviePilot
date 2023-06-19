@@ -5,6 +5,7 @@ from urllib.parse import urljoin
 from lxml import etree
 
 from app.chain import ChainBase
+from app.chain.site import SiteChain
 from app.core.config import settings
 from app.db.siteicon_oper import SiteIconOper
 from app.db.site_oper import SiteOper
@@ -24,6 +25,7 @@ class CookieCloudChain(ChainBase):
         self.siteoper = SiteOper()
         self.siteiconoper = SiteIconOper()
         self.siteshelper = SitesHelper()
+        self.sitechain = SiteChain()
         self.cookiecloud = CookieCloudHelper(
             server=settings.COOKIECLOUD_HOST,
             key=settings.COOKIECLOUD_KEY,
@@ -58,6 +60,11 @@ class CookieCloudChain(ChainBase):
             # 获取站点信息
             indexer = self.siteshelper.get_indexer(domain)
             if self.siteoper.exists(domain):
+                # 检查站点连通性
+                status, msg = self.sitechain.test(domain)
+                if status:
+                    logger.info(f"站点【{indexer.get('name')}】连通性正常，不同步CookieCloud数据")
+                    continue
                 # 更新站点Cookie
                 self.siteoper.update_cookie(domain=domain, cookies=cookie)
                 _update_count += 1
@@ -70,14 +77,17 @@ class CookieCloudChain(ChainBase):
                 _add_count += 1
             # 保存站点图标
             if indexer:
-                icon_url, icon_base64 = self.__parse_favicon(url=indexer.get("domain"),
-                                                             cookie=cookie,
-                                                             ua=settings.USER_AGENT)
-                if icon_url:
-                    self.siteiconoper.update_icon(name=indexer.get("name"),
-                                                  domain=domain,
-                                                  icon_url=icon_url,
-                                                  icon_base64=icon_base64)
+                site_icon = self.siteiconoper.get_by_domain(domain)
+                if not site_icon or not site_icon.base64:
+                    logger.info(f"开始缓存站点 {indexer.get('name')} 图标 ...")
+                    icon_url, icon_base64 = self.__parse_favicon(url=indexer.get("domain"),
+                                                                 cookie=cookie,
+                                                                 ua=settings.USER_AGENT)
+                    if icon_url:
+                        self.siteiconoper.update_icon(name=indexer.get("name"),
+                                                      domain=domain,
+                                                      icon_url=icon_url,
+                                                      icon_base64=icon_base64)
         # 处理完成
         ret_msg = f"更新了{_update_count}个站点，新增了{_add_count}个站点"
         logger.info(f"CookieCloud同步成功：{ret_msg}")

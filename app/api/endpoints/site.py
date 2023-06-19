@@ -9,6 +9,7 @@ from app.chain.site import SiteChain
 from app.db import get_db
 from app.db.models.site import Site
 from app.db.models.user import User
+from app.db.siteicon_oper import SiteIconOper
 from app.db.userauth import get_current_active_user, get_current_active_superuser
 
 router = APIRouter()
@@ -97,3 +98,25 @@ async def update_cookie(
         return schemas.Response(success=False, message=msg)
     else:
         return schemas.Response(success=True, message=msg)
+
+
+@router.get("/test", summary="连接测试", response_model=schemas.Response)
+async def test_site(domain: str, _: User = Depends(get_current_active_user)) -> Any:
+    """
+    测试站点是否可用
+    """
+    status, message = SiteChain().test(domain)
+    return schemas.Response(success=status, message=message)
+
+
+@router.get("/icon", summary="站点图标", response_model=schemas.Response)
+async def site_icon(domain: str, _: User = Depends(get_current_active_user)) -> Any:
+    """
+    获取站点图标：base64或者url
+    """
+    icon = SiteIconOper().get_by_domain(domain)
+    if not icon:
+        return schemas.Response(success=False, message="站点图标不存在！")
+    return schemas.Response(success=True, data={
+        "icon": icon.base64 if icon.base64 else icon.url
+    })

@@ -4,8 +4,13 @@ from app.chain import ChainBase
 from app.core.config import settings
 from app.db.models.site import Site
 from app.db.site_oper import SiteOper
+from app.helper.browser import PlaywrightHelper
+from app.helper.cloudflare import under_challenge
 from app.helper.cookie import CookieHelper
 from app.log import logger
+from app.utils.http import RequestUtils
+from app.utils.site import SiteUtils
+from app.utils.string import StringUtils
 
 
 class SiteChain(ChainBase):
@@ -20,6 +25,60 @@ class SiteChain(ChainBase):
         super().__init__()
         self._siteoper = SiteOper()
         self._cookiehelper = CookieHelper()
+
+    def test(self, url: str) -> Tuple[bool, str]:
+        """
+        测试站点是否可用
+        :param url: 站点域名
+        :return: (是否可用, 错误信息)
+        """
+        # 检查域名是否可用
+        domain = StringUtils.get_url_domain(url)
+        site_info = self._siteoper.get_by_domain(domain)
+        if not site_info:
+            return False, f"站点【{url}】不存在"
+        site_url = site_info.url
+        site_cookie = site_info.cookie
+        ua = site_info.ua
+        render = site_info.render
+        proxies = settings.PROXY if site_info.proxy else None
+        proxy_server = settings.PROXY_SERVER if site_info.proxy else None
+        # 模拟登录
+        try:
+            # 访问链接
+            if render:
+                page_source = PlaywrightHelper().get_page_source(url=site_url,
+                                                                 cookies=site_cookie,
+                                                                 ua=ua,
+                                                                 proxies=proxy_server)
+                if not SiteUtils.is_logged_in(page_source):
+                    if under_challenge(page_source):
+                        return False, f"无法通过Cloudflare！"
+                    return False, f"仿真登录失败，Cookie已失效！"
+            else:
+                res = RequestUtils(cookies=site_cookie,
+                                   ua=ua,
+                                   proxies=proxies
+                                   ).get_res(url=site_url)
+                # 判断登录状态
+                if res and res.status_code in [200, 500, 403]:
+                    if not SiteUtils.is_logged_in(res.text):
+                        if under_challenge(res.text):
+                            msg = "站点被Cloudflare防护，请打开站点浏览器仿真"
+                        elif res.status_code == 200:
+                            msg = "Cookie已失效"
+                        else:
+                            msg = f"状态码：{res.status_code}"
+                        return False, f"连接失败，{msg}！"
+                    else:
+                        return True, f"连接成功"
+                elif res is not None:
+                    return False, f"连接失败，状态码：{res.status_code}！"
+                else:
+                    return False, f"连接失败，无法打开网站！"
+        except Exception as e:
+            return False, f"连接失败：{str(e)}！"
+        return True, "连接成功"
 
     def remote_list(self, userid: Union[str, int] = None):
         """
