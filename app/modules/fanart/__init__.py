@@ -31,7 +31,7 @@ class FanartModule(_ModuleBase):
         """
         获取图片
         :param mediainfo:  识别的媒体信息
-        :return: 更新后的媒体信息，注意如果返回None，有可能是没有对应的处理模块，应无视结果
+        :return: 更新后的媒体信息
         """
         if mediainfo.type == MediaType.MOVIE:
             result = self.__request_fanart(mediainfo.type, mediainfo.tmdb_id)

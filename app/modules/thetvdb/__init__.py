@@ -24,7 +24,7 @@ class TheTvDbModule(_ModuleBase):
         """
         获取TVDB信息
         :param tvdbid: int
-        :return: 识别的媒体信息，包括剧集信息
+        :return: TVDB信息
         """
         try:
             logger.info(f"开始获取TVDB信息: {tvdbid} ...")

@@ -33,7 +33,7 @@ class DoubanModule(_ModuleBase):
         """
         获取豆瓣信息
         :param doubanid: 豆瓣ID
-        :return: 识别的媒体信息，包括剧集信息
+        :return: 豆瓣信息
         """
         if not doubanid:
             return None

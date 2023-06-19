@@ -45,12 +45,12 @@ class TheMovieDbModule(_ModuleBase):
                         mtype: MediaType = None,
                         tmdbid: int = None) -> Optional[MediaInfo]:
         """
-       识别媒体信息
-       :param meta:     识别的元数据
-       :param mtype:    识别的媒体类型，与tmdbid配套
-       :param tmdbid:   tmdbid
-       :return: 识别的媒体信息，包括剧集信息
-       """
+        识别媒体信息
+        :param meta:     识别的元数据
+        :param mtype:    识别的媒体类型，与tmdbid配套
+        :param tmdbid:   tmdbid
+        :return: 识别的媒体信息，包括剧集信息
+        """
         if not meta:
             cache_info = {}
         else:
@@ -142,7 +142,7 @@ class TheMovieDbModule(_ModuleBase):
         """
         搜索媒体信息
         :param meta:  识别的元数据
-        :reutrn: 媒体信息
+        :reutrn: 媒体信息列表
         """
         # 未启用时返回None
         if settings.SEARCH_SOURCE != "themoviedb":
