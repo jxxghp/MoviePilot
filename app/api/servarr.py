@@ -17,7 +17,7 @@ from version import APP_VERSION
 arr_router = APIRouter(tags=['servarr'])
 
 
-@arr_router.get("/system/status")
+@arr_router.get("/system/status", summary="系统状态")
 async def arr_system_status(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr系统状态
@@ -35,7 +35,7 @@ async def arr_system_status(apikey: str) -> Any:
     }
 
 
-@arr_router.get("/qualityProfile")
+@arr_router.get("/qualityProfile", summary="质量配置")
 async def arr_qualityProfile(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr质量配置
@@ -53,7 +53,7 @@ async def arr_qualityProfile(apikey: str) -> Any:
     ]
 
 
-@arr_router.get("/rootfolder")
+@arr_router.get("/rootfolder", summary="根目录")
 async def arr_rootfolder(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr根目录
@@ -74,7 +74,7 @@ async def arr_rootfolder(apikey: str) -> Any:
     ]
 
 
-@arr_router.get("/tag")
+@arr_router.get("/tag", summary="标签")
 async def arr_tag(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr标签
@@ -92,7 +92,7 @@ async def arr_tag(apikey: str) -> Any:
     ]
 
 
-@arr_router.get("/languageprofile")
+@arr_router.get("/languageprofile", summary="语言")
 async def arr_languageprofile(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr语言
@@ -123,7 +123,7 @@ async def arr_languageprofile(apikey: str) -> Any:
     }]
 
 
-@arr_router.get("/movie", response_model=List[schemas.RadarrMovie])
+@arr_router.get("/movie", summary="所有订阅电影", response_model=List[schemas.RadarrMovie])
 async def arr_movies(apikey: str, db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影
@@ -219,7 +219,7 @@ async def arr_movies(apikey: str, db: Session = Depends(get_db)) -> Any:
     return result
 
 
-@arr_router.get("/movie/lookup", response_model=List[schemas.RadarrMovie])
+@arr_router.get("/movie/lookup", summary="查询电影", response_model=List[schemas.RadarrMovie])
 async def arr_movie_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影 term: `tmdb:${id}`
@@ -270,7 +270,7 @@ async def arr_movie_lookup(apikey: str, term: str, db: Session = Depends(get_db)
     )]
 
 
-@arr_router.get("/movie/{mid}", response_model=schemas.RadarrMovie)
+@arr_router.get("/movie/{mid}", summary="电影订阅详情", response_model=schemas.RadarrMovie)
 async def arr_movie(apikey: str, mid: int, db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影订阅
@@ -301,7 +301,7 @@ async def arr_movie(apikey: str, mid: int, db: Session = Depends(get_db)) -> Any
         )
 
 
-@arr_router.post("/movie")
+@arr_router.post("/movie", summary="新增电影订阅")
 async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
     """
     新增Rardar电影订阅
@@ -327,7 +327,7 @@ async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
         )
 
 
-@arr_router.delete("/movie/{mid}", response_model=schemas.Response)
+@arr_router.delete("/movie/{mid}", summary="删除电影订阅", response_model=schemas.Response)
 async def arr_remove_movie(apikey: str, mid: int, db: Session = Depends(get_db)) -> Any:
     """
     删除Rardar电影订阅
@@ -348,7 +348,7 @@ async def arr_remove_movie(apikey: str, mid: int, db: Session = Depends(get_db))
         )
 
 
-@arr_router.get("/series", response_model=List[schemas.SonarrSeries])
+@arr_router.get("/series", summary="所有剧集", response_model=List[schemas.SonarrSeries])
 async def arr_series(apikey: str, db: Session = Depends(get_db)) -> Any:
     """
     查询Sonarr剧集
@@ -489,7 +489,7 @@ async def arr_series(apikey: str, db: Session = Depends(get_db)) -> Any:
     return result
 
 
-@arr_router.get("/series/lookup")
+@arr_router.get("/series/lookup", summary="查询剧集")
 async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> Any:
     """
     查询Sonarr剧集 term: `tvdb:${id}` title
@@ -576,7 +576,7 @@ async def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db
     )]
 
 
-@arr_router.get("/series/{tid}")
+@arr_router.get("/series/{tid}", summary="剧集详情")
 async def arr_serie(apikey: str, tid: int, db: Session = Depends(get_db)) -> Any:
     """
     查询Sonarr剧集
@@ -615,7 +615,7 @@ async def arr_serie(apikey: str, tid: int, db: Session = Depends(get_db)) -> Any
         )
 
 
-@arr_router.post("/series")
+@arr_router.post("/series", summary="新增剧集订阅")
 async def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
     """
     新增Sonarr剧集订阅
@@ -647,7 +647,7 @@ async def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
         )
 
 
-@arr_router.delete("/series/{tid}")
+@arr_router.delete("/series/{tid}", summary="删除剧集订阅")
 async def arr_remove_series(apikey: str, tid: int, db: Session = Depends(get_db)) -> Any:
     """
     删除Sonarr剧集订阅
