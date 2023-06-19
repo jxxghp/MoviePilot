@@ -13,7 +13,7 @@ from app.db.userauth import get_current_active_user
 router = APIRouter()
 
 
-@router.get("/download", summary="下载历史记录", response_model=List[schemas.Context])
+@router.get("/download", summary="下载历史记录", response_model=List[schemas.DownloadHistory])
 async def download_history(page: int = 1,
                            count: int = 30,
                            db: Session = Depends(get_db),
@@ -24,7 +24,7 @@ async def download_history(page: int = 1,
     return DownloadHistory.list_by_page(db, page, count)
 
 
-@router.get("/transfer", summary="转移历史记录", response_model=List[schemas.TorrentInfo])
+@router.get("/transfer", summary="转移历史记录", response_model=List[schemas.TransferHistory])
 async def transfer_history(title: str = None,
                            page: int = 1,
                            count: int = 30,

@@ -6,3 +6,4 @@ from .subscribe import *
 from .context import *
 from .servarr import *
 from .plugin import *
+from .history import *

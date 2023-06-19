@@ -46,6 +46,41 @@ async def set_plugin_config(plugin_id: str, conf: dict,
     return schemas.Response(success=True)
 
 
+@router.post("/{plugin_id}/install", summary="安装插件", response_model=schemas.Response)
+async def install_plugin(plugin_id: str,
+                         _: User = Depends(get_current_active_user)) -> Any:
+    """
+    安装插件
+    """
+    # 已安装插件
+    install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+    # 安装插件
+    install_plugins.append(plugin_id)
+    # 保存设置
+    SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+    # 重载插件管理器
+    PluginManager().init_config()
+    return schemas.Response(success=True)
+
+
+@router.delete("/{plugin_id}", summary="卸载插件", response_model=schemas.Response)
+async def uninstall_plugin(plugin_id: str, _: User = Depends(get_current_active_user)) -> Any:
+    """
+    卸载插件
+    """
+    # 删除已安装信息
+    install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+    for plugin in install_plugins:
+        if plugin == plugin_id:
+            install_plugins.remove(plugin)
+            break
+    # 保存
+    SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+    # 重载插件管理器
+    PluginManager().init_config()
+    return schemas.Response(success=True)
+
+
 # 注册插件API
 for api in PluginManager().get_plugin_apis():
     router.add_api_route(**api)
