@@ -77,6 +77,24 @@ class SiteStatistic(_PluginBase):
             "data": {}
         }]
 
+    def get_api(self) -> List[Dict[str, Any]]:
+        """
+        获取插件API
+        [{
+            "path": "/xx",
+            "endpoint": self.xxx,
+            "methods": ["GET", "POST"],
+            "summary": "API说明"
+        }]
+        """
+        return [{
+            "path": "/refresh_by_domain",
+            "endpoint": self.refresh_by_domain,
+            "methods": ["GET"],
+            "summary": "刷新站点数据",
+            "description": "刷新对应域名的站点数据",
+        }]
+
     def stop_service(self):
         pass
 

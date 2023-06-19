@@ -25,6 +25,7 @@ from app.schemas.types import EventType
 
 
 class AutoSignIn(_PluginBase):
+
     # 插件名称
     plugin_name = "站点自动签到"
     # 插件描述
@@ -76,6 +77,24 @@ class AutoSignIn(_PluginBase):
             "event": EventType.SiteSignin,
             "desc": "站点签到",
             "data": {}
+        }]
+
+    def get_api(self) -> List[Dict[str, Any]]:
+        """
+        获取插件API
+        [{
+            "path": "/xx",
+            "endpoint": self.xxx,
+            "methods": ["GET", "POST"],
+            "summary": "API说明"
+        }]
+        """
+        return [{
+            "path": "/signin_by_domain",
+            "endpoint": self.signin_by_domain,
+            "methods": ["GET"],
+            "summary": "站点签到",
+            "description": "使用站点域名签到站点",
         }]
 
     @eventmanager.register(EventType.SiteSignin)

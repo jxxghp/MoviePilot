@@ -11,7 +11,7 @@ from app.schemas.types import MediaType
 router = APIRouter()
 
 
-@router.get("/tmdbid", response_model=List[schemas.Context])
+@router.get("/tmdbid", summary="精确搜索资源", response_model=List[schemas.Context])
 async def search_by_tmdbid(tmdbid: int,
                            mtype: str = None,
                            _: User = Depends(get_current_active_user)) -> Any:
@@ -24,7 +24,7 @@ async def search_by_tmdbid(tmdbid: int,
     return [torrent.to_dict() for torrent in torrents]
 
 
-@router.get("/title", response_model=List[schemas.TorrentInfo])
+@router.get("/title", summary="模糊搜索资源", response_model=List[schemas.TorrentInfo])
 async def search_by_title(title: str,
                           _: User = Depends(get_current_active_user)) -> Any:
     """

@@ -102,6 +102,27 @@ class PluginManager(metaclass=Singleton):
                 ret_commands += plugin.get_command()
         return ret_commands
 
+    def get_plugin_apis(self) -> List[Dict[str, Any]]:
+        """
+        获取插件API
+        [{
+            "path": "/xx",
+            "endpoint": self.xxx,
+            "methods": ["GET", "POST"],
+            "summary": "API名称",
+            "description": "API说明"
+        }]
+        """
+        ret_apis = []
+        for pid, plugin in self._running_plugins.items():
+            if hasattr(plugin, "get_api") \
+                    and ObjectUtils.check_method(plugin.get_api):
+                apis = plugin.get_api()
+                for api in apis:
+                    api["path"] = f"/{pid}{api['path']}"
+                ret_apis.extend(apis)
+        return ret_apis
+
     def run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
         """
         运行插件方法

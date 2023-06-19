@@ -24,7 +24,7 @@ def start_subscribe_chain(title: str, year: str,
                          mtype=mtype, tmdbid=tmdbid, season=season, username=username)
 
 
-@router.get("/", response_model=List[schemas.Subscribe])
+@router.get("/", summary="所有订阅", response_model=List[schemas.Subscribe])
 async def read_subscribes(
         db: Session = Depends(get_db),
         _: User = Depends(get_current_active_superuser)) -> Any:
@@ -34,7 +34,7 @@ async def read_subscribes(
     return Subscribe.list(db)
 
 
-@router.post("/", response_model=schemas.Response)
+@router.post("/", summary="新增订阅", response_model=schemas.Response)
 async def create_subscribe(
         *,
         subscribe_in: schemas.Subscribe,
@@ -47,7 +47,7 @@ async def create_subscribe(
     return schemas.Response(success=result)
 
 
-@router.put("/", response_model=schemas.Subscribe)
+@router.put("/", summary="更新订阅", response_model=schemas.Subscribe)
 async def update_subscribe(
         *,
         db: Session = Depends(get_db),
@@ -67,7 +67,7 @@ async def update_subscribe(
     return subscribe
 
 
-@router.delete("/", response_model=schemas.Response)
+@router.delete("/", summary="删除订阅", response_model=schemas.Response)
 async def delete_subscribe(
         *,
         db: Session = Depends(get_db),
@@ -81,7 +81,7 @@ async def delete_subscribe(
     return schemas.Response(success=True)
 
 
-@router.post("/seerr", response_model=schemas.Response)
+@router.post("/seerr", summary="OverSeerr/JellySeerr通知订阅", response_model=schemas.Response)
 async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
                           authorization: str = Header(None)) -> Any:
     """
@@ -134,7 +134,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
     return schemas.Response(success=True)
 
 
-@router.get("/refresh", response_model=schemas.Response)
+@router.get("/refresh", summary="刷新订阅", response_model=schemas.Response)
 async def refresh_subscribes(
         _: User = Depends(get_current_active_superuser)) -> Any:
     """
@@ -144,7 +144,7 @@ async def refresh_subscribes(
     return schemas.Response(success=True)
 
 
-@router.get("/search", response_model=schemas.Response)
+@router.get("/search", summary="搜索订阅", response_model=schemas.Response)
 async def search_subscribes(
         _: User = Depends(get_current_active_superuser)) -> Any:
     """

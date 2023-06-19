@@ -16,7 +16,7 @@ def start_webhook_chain(body: Any, form: Any, args: Any):
     WebhookChain().message(body=body, form=form, args=args)
 
 
-@router.post("/", response_model=schemas.Response)
+@router.post("/", summary="Webhook消息响应", response_model=schemas.Response)
 async def webhook_message(background_tasks: BackgroundTasks,
                           token: str, request: Request) -> Any:
     """

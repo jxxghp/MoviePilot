@@ -10,19 +10,19 @@ from app.db.userauth import get_current_active_user
 router = APIRouter()
 
 
-@router.get("/recognize", response_model=schemas.Context)
+@router.get("/recognize", summary="识别媒体信息", response_model=schemas.Context)
 async def recognize(title: str,
                     subtitle: str = None,
                     _: User = Depends(get_current_active_user)) -> Any:
     """
-    识别媒体信息
+    根据标题、副标题识别媒体信息
     """
     # 识别媒体信息
     context = MediaChain().recognize_by_title(title=title, subtitle=subtitle)
     return context.to_dict()
 
 
-@router.get("/search", response_model=List[schemas.MediaInfo])
+@router.get("/search", summary="搜索媒体信息", response_model=List[schemas.MediaInfo])
 async def search_by_title(title: str,
                           _: User = Depends(get_current_active_user)) -> Any:
     """

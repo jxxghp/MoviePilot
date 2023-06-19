@@ -14,7 +14,7 @@ from app.db.userauth import get_current_active_user, get_current_active_superuse
 router = APIRouter()
 
 
-@router.get("/", response_model=List[schemas.Site])
+@router.get("/", summary="所有站点", response_model=List[schemas.Site])
 async def read_sites(db: Session = Depends(get_db),
                      _: User = Depends(get_current_active_user)) -> List[dict]:
     """
@@ -23,7 +23,7 @@ async def read_sites(db: Session = Depends(get_db),
     return Site.list(db)
 
 
-@router.put("/", response_model=schemas.Site)
+@router.put("/", summary="更新站点", response_model=schemas.Site)
 async def update_site(
         *,
         db: Session = Depends(get_db),
@@ -43,7 +43,7 @@ async def update_site(
     return site
 
 
-@router.get("/{site_id}", response_model=schemas.Site)
+@router.get("/{site_id}", summary="站点详情", response_model=schemas.Site)
 async def read_site(
         site_id: int,
         db: Session = Depends(get_db),
@@ -61,7 +61,7 @@ async def read_site(
     return site
 
 
-@router.get("/cookiecloud", response_model=schemas.Response)
+@router.get("/cookiecloud", summary="CookieCloud同步", response_model=schemas.Response)
 async def cookie_cloud_sync(_: User = Depends(get_current_active_user)) -> Any:
     """
     运行CookieCloud同步站点信息
@@ -72,7 +72,7 @@ async def cookie_cloud_sync(_: User = Depends(get_current_active_user)) -> Any:
     return schemas.Response(success=True, message="同步成功！")
 
 
-@router.get("/cookie", response_model=schemas.Response)
+@router.get("/cookie", summary="更新站点Cookie&UA", response_model=schemas.Response)
 async def update_cookie(
         site_id: int,
         username: str,

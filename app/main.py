@@ -3,8 +3,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from uvicorn import Config
 
-from app.api.apiv1 import api_router
-from app.api.servarr import arr_router
 from app.command import Command
 from app.core.config import settings
 from app.core.module import ModuleManager
@@ -27,14 +25,20 @@ App.add_middleware(
     allow_headers=["*"],
 )
 
-# API路由
-App.include_router(api_router, prefix=settings.API_V1_STR)
-
-# Radarr、Sonarr路由
-App.include_router(arr_router, prefix="/api/v3")
-
 # uvicorn服务
 Server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT, reload=settings.RELOAD))
+
+
+def init_routers():
+    """
+    初始化路由
+    """
+    from app.api.apiv1 import api_router
+    from app.api.servarr import arr_router
+    # API路由
+    App.include_router(api_router, prefix=settings.API_V1_STR)
+    # Radarr、Sonarr路由
+    App.include_router(arr_router, prefix="/api/v3")
 
 
 @App.on_event("shutdown")
@@ -71,6 +75,8 @@ def start_module():
     Command()
     # 站点管理
     SitesHelper()
+    # 初始化路由
+    init_routers()
 
 
 if __name__ == '__main__':

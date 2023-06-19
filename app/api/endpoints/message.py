@@ -20,7 +20,7 @@ def start_message_chain(body: Any, form: Any, args: Any):
     MessageChain().process(body=body, form=form, args=args)
 
 
-@router.post("/", response_model=schemas.Response)
+@router.post("/", summary="接收用户消息", response_model=schemas.Response)
 async def user_message(background_tasks: BackgroundTasks, request: Request):
     """
     用户消息响应
@@ -32,7 +32,7 @@ async def user_message(background_tasks: BackgroundTasks, request: Request):
     return schemas.Response(success=True)
 
 
-@router.get("/")
+@router.get("/", summary="微信验证")
 async def wechat_verify(echostr: str, msg_signature: str,
                         timestamp: Union[str, int], nonce: str) -> Any:
     """

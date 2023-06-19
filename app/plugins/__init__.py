@@ -61,6 +61,20 @@ class _PluginBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def get_api(self) -> List[Dict[str, Any]]:
+        """
+        获取插件API
+        [{
+            "path": "/xx",
+            "endpoint": self.xxx,
+            "methods": ["GET", "POST"],
+            "summary": "API名称",
+            "description": "API说明"
+        }]
+        """
+        pass
+
+    @abstractmethod
     def stop_service(self):
         """
         停止插件

@@ -12,7 +12,7 @@ from app.db.userauth import get_current_active_superuser, get_current_active_use
 router = APIRouter()
 
 
-@router.get("/", response_model=List[schemas.User])
+@router.get("/", summary="所有用户", response_model=List[schemas.User])
 async def read_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
@@ -24,7 +24,7 @@ async def read_users(
     return users
 
 
-@router.post("/", response_model=schemas.User)
+@router.post("/", summary="新增用户", response_model=schemas.User)
 async def create_user(
     *,
     db: Session = Depends(get_db),
@@ -49,7 +49,7 @@ async def create_user(
     return user
 
 
-@router.put("/", response_model=schemas.User)
+@router.put("/", summary="更新用户", response_model=schemas.User)
 async def update_user(
     *,
     db: Session = Depends(get_db),
@@ -73,7 +73,7 @@ async def update_user(
     return user
 
 
-@router.delete("/", response_model=schemas.Response)
+@router.delete("/", summary="删除用户", response_model=schemas.Response)
 async def delete_user(
     *,
     db: Session = Depends(get_db),
@@ -93,7 +93,7 @@ async def delete_user(
     return schemas.Response(success=True)
 
 
-@router.get("/{user_id}", response_model=schemas.User)
+@router.get("/{user_id}", summary="用户详情", response_model=schemas.User)
 async def read_user_by_id(
     user_id: int,
     current_user: User = Depends(get_current_active_user),
