@@ -30,3 +30,9 @@ class DownloadHistoryOper(DbOper):
         """
         downloadhistory = DownloadHistory(**kwargs)
         return downloadhistory.create(self._db)
+
+    def list_by_page(self, page: int = 1, count: int = 30):
+        """
+        分页查询下载历史
+        """
+        return DownloadHistory.list_by_page(self._db, page, count)

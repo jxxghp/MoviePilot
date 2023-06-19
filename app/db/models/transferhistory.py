@@ -29,5 +29,10 @@ class TransferHistory(Base):
     date = Column(String, index=True, default=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
 
     @staticmethod
-    def search_by_title(db: Session, title: str):
-        return db.query(TransferHistory).filter(TransferHistory.title == title).all()
+    def list_by_title(db: Session, title: str, page: int = 1, count: int = 30):
+        return db.query(TransferHistory).filter(TransferHistory.title == title).offset((page - 1) * count).limit(
+            count).all()
+
+    @staticmethod
+    def list_by_page(db: Session, page: int = 1, count: int = 30):
+        return db.query(TransferHistory).offset((page - 1) * count).limit(count).all()
