@@ -118,7 +118,7 @@ class SearchChain(ChainBase):
                 # 识别
                 torrent_meta = MetaInfo(title=title, subtitle=subtitle)
                 # 比对年份
-                if torrent_meta.year and mediainfo.year:
+                if mediainfo.year:
                     if mediainfo.type == MediaType.TV:
                         # 剧集
                         if torrent_meta.year not in [year for year in mediainfo.season_years.values()]:
