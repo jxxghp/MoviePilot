@@ -32,7 +32,7 @@ async def sync_douban(
     return schemas.Response(success=True, message="任务已启动")
 
 
-@router.get("/doubanid", response_model=schemas.Context)
+@router.get("/id", response_model=schemas.Context)
 async def recognize_doubanid(doubanid: str,
                              _: User = Depends(get_current_active_user)) -> Any:
     """
@@ -43,7 +43,7 @@ async def recognize_doubanid(doubanid: str,
     return context.to_dict()
 
 
-@router.get("/doubaninfo", response_model=schemas.MediaInfo)
+@router.get("/info", response_model=schemas.MediaInfo)
 async def douban_info(doubanid: str) -> Any:
     """
     根据豆瓣ID查询豆瓣媒体信息
@@ -55,7 +55,7 @@ async def douban_info(doubanid: str) -> Any:
         return schemas.MediaInfo()
 
 
-@router.get("/doubanmovies", response_model=List[schemas.MediaInfo])
+@router.get("/movies", response_model=List[schemas.MediaInfo])
 async def douban_movies(sort: str = "R",
                         tags: str = "",
                         start: int = 0,
@@ -71,7 +71,7 @@ async def douban_movies(sort: str = "R",
     return [MediaInfo(douban_info=movie).to_dict() for movie in movies]
 
 
-@router.get("/doubantvs", response_model=List[schemas.MediaInfo])
+@router.get("/tvs", response_model=List[schemas.MediaInfo])
 async def douban_tvs(sort: str = "R",
                      tags: str = "",
                      start: int = 0,
@@ -87,7 +87,7 @@ async def douban_tvs(sort: str = "R",
     return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
 
 
-@router.get("/top250", response_model=List[schemas.MediaInfo])
+@router.get("/movie_top250", response_model=List[schemas.MediaInfo])
 async def movie_top250(page: int = 1,
                        count: int = 30,
                        _: User = Depends(get_current_active_user)) -> Any:
@@ -96,3 +96,25 @@ async def movie_top250(page: int = 1,
     """
     movies = DoubanChain().movie_top250(page=page, count=count)
     return [MediaInfo(douban_info=movie).to_dict() for movie in movies]
+
+
+@router.get("/tv_weekly_chinese", response_model=List[schemas.MediaInfo])
+async def tv_weekly_chinese(page: int = 1,
+                            count: int = 30,
+                            _: User = Depends(get_current_active_user)) -> Any:
+    """
+    中国每周剧集口碑榜
+    """
+    tvs = DoubanChain().tv_weekly_chinese(page=page, count=count)
+    return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
+
+
+@router.get("/tv_weekly_global", response_model=List[schemas.MediaInfo])
+async def tv_weekly_global(page: int = 1,
+                           count: int = 30,
+                           _: User = Depends(get_current_active_user)) -> Any:
+    """
+    全球每周剧集口碑榜
+    """
+    tvs = DoubanChain().tv_weekly_global(page=page, count=count)
+    return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]

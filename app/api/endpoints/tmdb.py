@@ -12,7 +12,7 @@ from app.schemas.types import MediaType
 router = APIRouter()
 
 
-@router.get("/tmdbinfo", response_model=schemas.MediaInfo)
+@router.get("/info", response_model=schemas.MediaInfo)
 async def tmdb_info(tmdbid: int, type_name: str) -> Any:
     """
     根据TMDBID查询themoviedb媒体信息
@@ -25,7 +25,7 @@ async def tmdb_info(tmdbid: int, type_name: str) -> Any:
         return MediaInfo(tmdb_info=tmdbinfo).to_dict()
 
 
-@router.get("/tmdbmovies", response_model=List[schemas.MediaInfo])
+@router.get("/movies", response_model=List[schemas.MediaInfo])
 async def tmdb_movies(sort_by: str = "popularity.desc",
                       with_genres: str = "",
                       with_original_language: str = "",
@@ -44,7 +44,7 @@ async def tmdb_movies(sort_by: str = "popularity.desc",
     return [MediaInfo(tmdb_info=movie).to_dict() for movie in movies]
 
 
-@router.get("/tmdbtvs", response_model=List[schemas.MediaInfo])
+@router.get("/tvs", response_model=List[schemas.MediaInfo])
 async def tmdb_tvs(sort_by: str = "popularity.desc",
                    with_genres: str = "",
                    with_original_language: str = "",
@@ -61,3 +61,15 @@ async def tmdb_tvs(sort_by: str = "popularity.desc",
     if not tvs:
         return []
     return [MediaInfo(tmdb_info=tv).to_dict() for tv in tvs]
+
+
+@router.get("/trending", response_model=List[schemas.MediaInfo])
+async def tmdb_trending(page: int = 1,
+                        _: User = Depends(get_current_active_user)) -> Any:
+    """
+    浏览TMDB剧集信息
+    """
+    infos = TmdbChain().tmdb_trending(page=page)
+    if not infos:
+        return []
+    return [MediaInfo(tmdb_info=info).to_dict() for info in infos]

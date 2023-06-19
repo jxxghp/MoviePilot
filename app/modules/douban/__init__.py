@@ -74,6 +74,36 @@ class DoubanModule(_ModuleBase):
             return []
         return infos.get("items") or []
 
+    def movie_showing(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取正在上映的电影
+        """
+        infos = self.doubanapi.movie_showing(start=(page - 1) * count,
+                                             count=count)
+        if not infos:
+            return []
+        return infos.get("subject_collection_items")
+
+    def tv_weekly_chinese(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取豆瓣本周口碑国产剧
+        """
+        infos = self.doubanapi.tv_chinese_best_weekly(start=(page - 1) * count,
+                                                      count=count)
+        if not infos:
+            return []
+        return infos.get("subject_collection_items")
+
+    def tv_weekly_global(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取豆瓣本周口碑外国剧
+        """
+        infos = self.doubanapi.tv_global_best_weekly(start=(page - 1) * count,
+                                                     count=count)
+        if not infos:
+            return []
+        return infos.get("subject_collection_items")
+
     def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息

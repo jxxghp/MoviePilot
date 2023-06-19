@@ -221,6 +221,14 @@ class TheMovieDbModule(_ModuleBase):
         else:
             return None
 
+    def tmdb_trending(self, page: int = 1) -> List[dict]:
+        """
+        TMDB流行趋势
+        :param page: 第几页
+        :return: TMDB信息列表
+        """
+        return self.tmdb.trending.all_week(page=page)
+
     def gen_scraper_files(self, mediainfo: MediaInfo, file_path: Path):
         """
         生成刮削文件

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from typing import Union
 
 from app.chain import ChainBase
@@ -12,6 +12,7 @@ from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.helper.rss import RssHelper
 from app.log import logger
+from app.schemas import MediaType
 
 
 class DoubanChain(ChainBase):
@@ -49,6 +50,46 @@ class DoubanChain(ChainBase):
         logger.info(f'{doubanid} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}{meta.season}')
         mediainfo.set_douban_info(doubaninfo)
         return Context(meta=meta, mediainfo=mediainfo)
+
+    def movie_top250(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取豆瓣电影TOP250
+        :param page:  页码
+        :param count:  每页数量
+        """
+        return self.run_module("movie_top250", page=page, count=count)
+
+    def movie_showing(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取正在上映的电影
+        """
+        return self.run_module("movie_showing", page=page, count=count)
+
+    def tv_weekly_chinese(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取本周中国剧集榜
+        """
+        return self.run_module("tv_weekly_chinese", page=page, count=count)
+
+    def tv_weekly_global(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取本周全球剧集榜
+        """
+        return self.run_module("tv_weekly_global", page=page, count=count)
+
+    def douban_discover(self, mtype: MediaType, sort: str, tags: str,
+                        start: int = 0, count: int = 30) -> Optional[List[dict]]:
+        """
+        发现豆瓣电影、剧集
+        :param mtype:  媒体类型
+        :param sort:  排序方式
+        :param tags:  标签
+        :param start:  起始位置
+        :param count:  数量
+        :return: 媒体信息列表
+        """
+        return self.run_module("douban_discover", mtype=mtype, sort=sort, tags=tags,
+                                 start=start, count=count)
 
     def remote_sync(self, userid: Union[int, str]):
         """

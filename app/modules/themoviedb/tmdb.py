@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 import zhconv
 from lxml import etree
-from tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover
+from tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending
 from tmdbv3api.exceptions import TMDbException
 
 from app.core.config import settings
@@ -42,13 +42,14 @@ class TmdbHelper:
         self.tmdb.proxies = settings.PROXY
         # 调试模式
         self.tmdb.debug = False
-        # 查询对象
+        # TMDB查询对象
         self.search = Search()
         self.movie = Movie()
         self.tv = TV()
         self.season = Season()
         self.episode = Episode()
         self.discover = Discover()
+        self.trending = Trending()
 
     def search_multiis(self, title: str) -> List[dict]:
         """
