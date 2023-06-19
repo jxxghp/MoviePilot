@@ -28,6 +28,24 @@ async def installed_plugins(_: User = Depends(get_current_active_user)) -> Any:
     return SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
 
 
+@router.get("/{plugin_id}", summary="获取插件配置")
+async def plugin_config(plugin_id: str, _: User = Depends(get_current_active_user)) -> dict:
+    """
+    根据插件ID获取插件配置信息
+    """
+    return PluginManager().get_plugin_config(plugin_id)
+
+
+@router.put("/{plugin_id}", summary="更新插件配置", response_model=schemas.Response)
+async def set_plugin_config(plugin_id: str, conf: dict,
+                            _: User = Depends(get_current_active_user)) -> Any:
+    """
+    根据插件ID获取插件配置信息
+    """
+    PluginManager().save_plugin_config(plugin_id, conf)
+    return schemas.Response(success=True)
+
+
 # 注册插件API
 for api in PluginManager().get_plugin_apis():
     router.add_api_route(**api)
