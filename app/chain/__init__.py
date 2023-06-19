@@ -47,14 +47,17 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         for module in modules:
             try:
                 if is_result_empty(result):
+                    # 返回None，第一次执行或者需继续执行下一模块
                     result = getattr(module, method)(*args, **kwargs)
                 else:
-                    if isinstance(result, tuple):
-                        temp = getattr(module, method)(*result)
+                    if isinstance(result, list):
+                        # 返回为列表，有多个模块运行结果时进行合并（不能多个模块同时运行的需要通过开关控制）
+                        temp = getattr(module, method)(*args, **kwargs)
+                        if isinstance(temp, list):
+                            result.extend(temp)
                     else:
-                        temp = getattr(module, method)(result)
-                    if temp:
-                        result = temp
+                        # 返回结果非列表也非空，则执行一次后跳出
+                        break
             except Exception as err:
                 logger.error(f"运行模块 {method} 出错：{module.__class__.__name__} - {err}\n{traceback.print_exc()}")
         return result

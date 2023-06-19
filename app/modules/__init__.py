@@ -19,6 +19,7 @@ class _ModuleBase(metaclass=ABCMeta):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         """
         模块开关设置，返回开关名和开关值，开关值为True时代表有值即打开，不实现该方法或返回None代表不使用开关
+        部分模块支持同时开启多个，此时设置项以,分隔，开关值使用in判断
         """
         pass
 

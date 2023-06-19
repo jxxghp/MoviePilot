@@ -3,7 +3,7 @@ from typing import Tuple, Union
 from app.modules import _ModuleBase
 
 
-class WordseModule(_ModuleBase):
+class WordsModule(_ModuleBase):
     """
     字幕下载模块
     """

@@ -38,6 +38,7 @@ class ModuleManager(metaclass=Singleton):
             _module = module()
             # 初始化模块
             if self.check_setting(_module.init_setting()):
+                # 通过模板开关控制加载
                 _module.init_module()
                 self._running_modules[module_id] = _module
                 logger.info(f"Moudle Loaded：{module_id}")
@@ -53,20 +54,20 @@ class ModuleManager(metaclass=Singleton):
     @staticmethod
     def check_setting(setting: Optional[tuple]) -> bool:
         """
-        检查开关是否己打开
+        检查开关是否己打开，开关使用,分隔多个值，符合其中即代表开启
         """
         if not setting:
             return True
         switch, value = setting
         if getattr(settings, switch) and value is True:
             return True
-        if getattr(settings, switch) == value:
+        if value in getattr(settings, switch):
             return True
         return False
 
     def get_modules(self, method: str) -> Generator:
         """
-        获取模块列表
+        获取实现了同一方法的模块列表
         """
         if not self._running_modules:
             return []
