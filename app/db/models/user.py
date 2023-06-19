@@ -10,15 +10,16 @@ class User(Base):
     用户表
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
-    full_name = Column(String, index=True)
-    email = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, index=True, nullable=False)
+    email = Column(String, unique=True, index=True)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean(), default=True)
     is_superuser = Column(Boolean(), default=False)
+    avatar = Column(String)
 
     @staticmethod
-    def authenticate(db: Session, email: str, password: str):
-        user = db.query(User).filter(User.email == email).first()
+    def authenticate(db: Session, name: str, password: str):
+        user = db.query(User).filter(User.name == name).first()
         if not user:
             return None
         if not verify_password(password, str(user.hashed_password)):
@@ -26,9 +27,9 @@ class User(Base):
         return user
 
     @staticmethod
-    def get_by_email(db: Session, email: str):
-        return db.query(User).filter(User.email == email).first()
+    def get_by_name(db: Session, name: str):
+        return db.query(User).filter(User.name == name).first()
 
     @staticmethod
-    def delete_by_email(db: Session, email: str):
-        return db.query(User).filter(User.email == email).delete()
+    def delete_by_name(db: Session, name: str):
+        return db.query(User).filter(User.name == name).delete()

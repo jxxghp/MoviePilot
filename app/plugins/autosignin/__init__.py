@@ -29,7 +29,23 @@ class AutoSignIn(_PluginBase):
     # 插件名称
     plugin_name = "站点自动签到"
     # 插件描述
-    plugin_desc = "站点每日自动模拟登录或签到，避免长期未登录封号。"
+    plugin_desc = "站点每日自动模拟登录或签到。"
+    # 插件图标
+    plugin_icon = ""
+    # 主题色
+    plugin_color = ""
+    # 插件版本
+    plugin_version = "1.0"
+    # 插件作者
+    plugin_author = "thsrite"
+    # 作者主页
+    author_url = "https://github.com/thsrite"
+    # 插件配置项ID前缀
+    plugin_config_prefix = "autosignin_"
+    # 加载顺序
+    plugin_order = 0
+    # 可使用的用户级别
+    auth_level = 2
 
     # 私有属性
     sites: SitesHelper = None

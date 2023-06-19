@@ -23,7 +23,7 @@ async def login_access_token(
     """
     user = User.authenticate(
         db=db,
-        email=form_data.username,
+        name=form_data.username,
         password=form_data.password
     )
     if not user:

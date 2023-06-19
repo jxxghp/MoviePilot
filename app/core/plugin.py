@@ -4,6 +4,7 @@ from typing import List, Any, Dict
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.module import ModuleHelper
 from app.log import logger
+from app.schemas.types import SystemConfigKey
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
 
@@ -132,3 +133,46 @@ class PluginManager(metaclass=Singleton):
         if not hasattr(self._running_plugins[pid], method):
             return None
         return getattr(self._running_plugins[pid], method)(*args, **kwargs)
+
+    def get_plugin_apps(self) -> List[dict]:
+        """
+        获取所有插件信息
+        """
+        # 返回值
+        all_confs = []
+        # 已安装插件
+        installed_apps = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
+        for pid, plugin in self._plugins.items():
+            # 基本属性
+            conf = {}
+            # ID
+            conf.update({"id": pid})
+            # 安装状态
+            if pid in installed_apps:
+                conf.update({"installed": True})
+            else:
+                conf.update({"installed": False})
+            # 名称
+            if hasattr(plugin, "plugin_name"):
+                conf.update({"name": plugin.plugin_name})
+            # 描述
+            if hasattr(plugin, "plugin_desc"):
+                conf.update({"desc": plugin.plugin_desc})
+            # 版本
+            if hasattr(plugin, "plugin_version"):
+                conf.update({"version": plugin.plugin_version})
+            # 图标
+            if hasattr(plugin, "plugin_icon"):
+                conf.update({"icon": plugin.plugin_icon})
+            # 主题色
+            if hasattr(plugin, "plugin_color"):
+                conf.update({"color": plugin.plugin_color})
+            # 作者
+            if hasattr(plugin, "plugin_author"):
+                conf.update({"author": plugin.plugin_author})
+            # 作者链接
+            if hasattr(plugin, "author_url"):
+                conf.update({"author_url": plugin.author_url})
+            # 汇总
+            all_confs.append(conf)
+        return all_confs

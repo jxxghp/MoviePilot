@@ -23,11 +23,10 @@ def init_db():
     Base.metadata.create_all(bind=Engine)
     # 初始化超级管理员
     _db = SessionLocal()
-    user = User.get_by_email(db=_db, email=settings.SUPERUSER)
+    user = User.get_by_name(db=_db, name=settings.SUPERUSER)
     if not user:
         user = User(
-            full_name="Admin",
-            email=settings.SUPERUSER,
+            name=settings.SUPERUSER,
             hashed_password=get_password_hash(settings.SUPERUSER_PASSWORD),
             is_superuser=True,
         )

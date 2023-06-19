@@ -34,7 +34,7 @@ async def create_user(
     """
     新增用户
     """
-    user = current_user.get_by_email(db, email=user_in.email)
+    user = current_user.get_by_name(db, name=user_in.name)
     if user:
         raise HTTPException(
             status_code=400,
@@ -59,7 +59,7 @@ async def update_user(
     """
     更新用户
     """
-    user = current_user.get_by_email(db, email=user_in.email)
+    user = current_user.get_by_name(db, name=user_in.name)
     if not user:
         raise HTTPException(
             status_code=404,
@@ -83,13 +83,13 @@ async def delete_user(
     """
     删除用户
     """
-    user = current_user.get_by_email(db, email=user_in.email)
+    user = current_user.get_by_name(db, name=user_in.name)
     if not user:
         raise HTTPException(
             status_code=404,
             detail="用户不存在",
         )
-    user.delete_by_email(db, user_in.email)
+    user.delete_by_name(db, user_in.name)
     return schemas.Response(success=True)
 
 

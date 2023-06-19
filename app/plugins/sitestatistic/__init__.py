@@ -31,6 +31,29 @@ lock = Lock()
 
 
 class SiteStatistic(_PluginBase):
+
+    # 插件名称
+    plugin_name = "站点数据统计"
+    # 插件描述
+    plugin_desc = "统计和展示站点数据。"
+    # 插件图标
+    module_icon = ""
+    # 主题色
+    module_color = ""
+    # 插件版本
+    module_version = "1.0"
+    # 插件作者
+    module_author = "lightolly"
+    # 作者主页
+    author_url = "https://github.com/lightolly"
+    # 插件配置项ID前缀
+    module_config_prefix = "sitestatistic_"
+    # 加载顺序
+    module_order = 1
+    # 可使用的用户级别
+    auth_level = 2
+
+    # 私有属性
     sites = None
     _scheduler: BackgroundScheduler = None
     _MAX_CONCURRENCY: int = 10
