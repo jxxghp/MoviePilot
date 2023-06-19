@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     # 密钥
     SECRET_KEY: str = secrets.token_urlsafe(32)
+    # 允许的域名
+    ALLOWED_HOSTS: list = ["*"]
     # TOKEN过期时间
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     # 时区

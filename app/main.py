@@ -1,5 +1,6 @@
 import uvicorn as uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from uvicorn import Config
 
 from app.api.apiv1 import api_router
@@ -16,6 +17,15 @@ from app.scheduler import Scheduler
 # App
 App = FastAPI(title=settings.PROJECT_NAME,
               openapi_url=f"{settings.API_V1_STR}/openapi.json")
+
+# 跨域
+App.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_HOSTS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # API路由
 App.include_router(api_router, prefix=settings.API_V1_STR)
