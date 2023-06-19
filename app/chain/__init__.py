@@ -108,6 +108,15 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         """
         return self.__run_module("tvdb_info", tvdbid=tvdbid)
 
+    def tmdb_info(self, tmdbid: int, mtype: MediaType) -> Optional[dict]:
+        """
+        获取TMDB信息
+        :param tmdbid: int
+        :param mtype:  媒体类型
+        :return: TVDB信息
+        """
+        return self.__run_module("tmdb_info", tmdbid=tmdbid, mtype=mtype)
+
     def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
         """
         解析消息内容，返回字典，注意以下约定值：

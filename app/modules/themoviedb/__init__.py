@@ -138,6 +138,15 @@ class TheMovieDbModule(_ModuleBase):
 
         return None
 
+    def tmdb_info(self, tmdbid: int, mtype: MediaType) -> Optional[dict]:
+        """
+        获取TMDB信息
+        :param tmdbid: int
+        :param mtype:  媒体类型
+        :return: TVDB信息
+        """
+        return self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
+
     def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息

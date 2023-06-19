@@ -9,6 +9,7 @@ from app.core.context import MediaInfo
 from app.db.models.user import User
 from app.db.userauth import get_current_active_superuser
 from app.db.userauth import get_current_active_user
+from app.schemas import MediaType
 
 router = APIRouter()
 
@@ -63,8 +64,11 @@ async def douban_movies(sort: str = "R",
     """
     浏览豆瓣电影信息
     """
-    movies = DoubanChain().douban_movies(sort=sort, tags=tags, start=start, count=count)
-    return [movie.to_dict() for movie in movies]
+    movies = DoubanChain().douban_discover(mtype=MediaType.MOVIE,
+                                           sort=sort, tags=tags, start=start, count=count)
+    if not movies:
+        return []
+    return [MediaInfo(douban_info=movie).to_dict() for movie in movies]
 
 
 @router.get("/doubantvs", response_model=List[schemas.MediaInfo])
@@ -76,8 +80,11 @@ async def douban_tvs(sort: str = "R",
     """
     浏览豆瓣剧集信息
     """
-    tvs = DoubanChain().douban_tvs(sort=sort, tags=tags, start=start, count=count)
-    return [tv.to_dict() for tv in tvs]
+    tvs = DoubanChain().douban_discover(mtype=MediaType.TV,
+                                        sort=sort, tags=tags, start=start, count=count)
+    if not tvs:
+        return []
+    return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
 
 
 @router.get("/top250", response_model=List[schemas.MediaInfo])
@@ -88,4 +95,4 @@ async def movie_top250(page: int = 1,
     浏览豆瓣剧集信息
     """
     movies = DoubanChain().movie_top250(page=page, count=count)
-    return [movie.to_dict() for movie in movies]
+    return [MediaInfo(douban_info=movie).to_dict() for movie in movies]

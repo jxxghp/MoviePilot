@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 from typing import Union
 
 from app.chain import ChainBase
@@ -12,7 +12,6 @@ from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.helper.rss import RssHelper
 from app.log import logger
-from app.schemas import MediaType
 
 
 class DoubanChain(ChainBase):
@@ -50,28 +49,6 @@ class DoubanChain(ChainBase):
         logger.info(f'{doubanid} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}{meta.season}')
         mediainfo.set_douban_info(doubaninfo)
         return Context(meta=meta, mediainfo=mediainfo)
-
-    def douban_movies(self, sort: str, tags: str, start: int = 0, count: int = 30) -> List[MediaInfo]:
-        """
-        浏览豆瓣电影列表
-        """
-        logger.info(f'开始获取豆瓣电影列表，排序：{sort}，标签：{tags}')
-        movies = self.douban_discover(mtype=MediaType.MOVIE, sort=sort, tags=tags, start=start, count=count)
-        if not movies:
-            logger.warn(f'豆瓣电影列表为空，排序：{sort}，标签：{tags}')
-            return []
-        return [MediaInfo(douban_info=movie) for movie in movies]
-
-    def douban_tvs(self, sort: str, tags: str, start: int = 0, count: int = 30) -> List[MediaInfo]:
-        """
-        浏览豆瓣剧集列表
-        """
-        logger.info(f'开始获取豆瓣剧集列表，排序：{sort}，标签：{tags}')
-        tvs = self.douban_discover(mtype=MediaType.TV, sort=sort, tags=tags, start=start, count=count)
-        if not tvs:
-            logger.warn(f'豆瓣剧集列表为空，排序：{sort}，标签：{tags}')
-            return []
-        return [MediaInfo(douban_info=tv) for tv in tvs]
 
     def remote_sync(self, userid: Union[int, str]):
         """
