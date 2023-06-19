@@ -1,5 +1,4 @@
 import re
-from pathlib import Path
 from typing import List, Optional, Union
 
 from app.chain import ChainBase
@@ -10,9 +9,10 @@ from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.transferhistory_oper import TransferHistoryOper
+from app.helper.progress import ProgressHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent
-from app.schemas.types import TorrentStatus, EventType, MediaType
+from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey
 from app.utils.string import StringUtils
 
 
@@ -25,6 +25,7 @@ class TransferChain(ChainBase):
         super().__init__()
         self.downloadhis = DownloadHistoryOper()
         self.transferhis = TransferHistoryOper()
+        self.progress = ProgressHelper()
 
     def process(self, arg_str: str = None, userid: Union[str, int] = None) -> bool:
         """
@@ -68,8 +69,20 @@ class TransferChain(ChainBase):
                 return False
 
         logger.info(f"获取到 {len(torrents)} 个已完成的下载任务")
-        # 识别
+        # 开始进度
+        self.progress.start(ProgressKey.FileTransfer)
+        # 总数
+        total_num = len(torrents)
+        # 已处理数量
+        processed_num = 0
+        self.progress.update(value=0,
+                             text=f"开始转移下载任务文件，共 {total_num} 个任务 ...",
+                             key=ProgressKey.FileTransfer)
         for torrent in torrents:
+            # 更新进度
+            self.progress.update(value=processed_num / total_num * 100,
+                                 text=f"正在转移 {torrent.title} ...",
+                                 key=ProgressKey.FileTransfer)
             # 识别前预处理
             result: Optional[tuple] = self.prepare_recognize(title=torrent.title)
             if result:
@@ -145,7 +158,14 @@ class TransferChain(ChainBase):
                 'mediainfo': mediainfo,
                 'transferinfo': transferinfo
             })
-
+            # 计数
+            processed_num += 1
+            # 更新进度
+            self.progress.update(value=processed_num / total_num * 100,
+                                 text=f"{torrent.title} 转移完成",
+                                 key=ProgressKey.FileTransfer)
+        # 结束进度
+        self.progress.end(ProgressKey.FileTransfer)
         logger.info("下载器文件转移执行完成")
         return True
 

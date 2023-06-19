@@ -148,24 +148,24 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         """
         return self.run_module("search_medias", meta=meta)
 
-    def search_torrents(self, mediainfo: Optional[MediaInfo], sites: List[CommentedMap],
-                        keyword: str = None) -> Optional[List[TorrentInfo]]:
+    def search_torrents(self, mediainfo: Optional[MediaInfo], site: CommentedMap,
+                        keyword: str = None) -> List[TorrentInfo]:
         """
-        搜索站点，多个站点需要多线程处理
+        搜索一个站点的种子资源
         :param mediainfo:  识别的媒体信息
-        :param sites:  站点列表
+        :param site:  站点
         :param keyword:  搜索关键词，如有按关键词搜索，否则按媒体信息名称搜索
         :reutrn: 资源列表
         """
-        return self.run_module("search_torrents", mediainfo=mediainfo, sites=sites, keyword=keyword)
+        return self.run_module("search_torrents", mediainfo=mediainfo, site=site, keyword=keyword)
 
-    def refresh_torrents(self, sites: List[CommentedMap]) -> Optional[List[TorrentInfo]]:
+    def refresh_torrents(self, site: CommentedMap) -> List[TorrentInfo]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
-        :param sites:  站点列表
+        :param site:  站点
         :reutrn: 种子资源列表
         """
-        return self.run_module("refresh_torrents", sites=sites)
+        return self.run_module("refresh_torrents", site=site)
 
     def filter_torrents(self, torrent_list: List[TorrentInfo],
                         season_episodes: Dict[int, list] = None) -> List[TorrentInfo]:
@@ -284,7 +284,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         :return: 成功或失败
         """
         return self.run_module("post_torrents_message", title=title, mediainfo=mediainfo,
-                                 items=items, userid=userid)
+                               items=items, userid=userid)
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
         """

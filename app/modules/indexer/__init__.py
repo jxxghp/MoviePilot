@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
@@ -10,8 +9,8 @@ from app.modules import _ModuleBase
 from app.modules.indexer.spider import TorrentSpider
 from app.modules.indexer.tnode import TNodeSpider
 from app.modules.indexer.torrentleech import TorrentLeech
-from app.utils.string import StringUtils
 from app.schemas.types import MediaType
+from app.utils.string import StringUtils
 
 
 class IndexerModule(_ModuleBase):
@@ -28,40 +27,8 @@ class IndexerModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "INDEXER", "builtin"
 
-    def search_torrents(self, mediainfo: Optional[MediaInfo], sites: List[CommentedMap],
-                        keyword: str = None) -> Optional[List[TorrentInfo]]:
-        """
-        搜索站点，多个站点需要多线程处理
-        :param mediainfo:  识别的媒体信息
-        :param sites:  站点列表
-        :param keyword:  搜索关键词，如有按关键词搜索，否则按媒体信息名称搜索
-        :reutrn: 资源列表
-        """
-        # 开始计时
-        start_time = datetime.now()
-        # 多线程
-        executor = ThreadPoolExecutor(max_workers=len(sites))
-        all_task = []
-        for site in sites:
-            task = executor.submit(self.__search, mediainfo=mediainfo,
-                                   site=site, keyword=keyword)
-            all_task.append(task)
-        results = []
-        finish_count = 0
-        for future in as_completed(all_task):
-            finish_count += 1
-            result = future.result()
-            if result:
-                results += result
-            logger.info(f"站点搜索进度：{finish_count} / {len(all_task)}")
-        # 计算耗时
-        end_time = datetime.now()
-        logger.info(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {(end_time - start_time).seconds} 秒")
-        # 返回
-        return results
-
-    def __search(self, mediainfo: MediaInfo, site: CommentedMap,
-                 keyword: str = None) -> Optional[List[TorrentInfo]]:
+    def search_torrents(self, site: CommentedMap, mediainfo: MediaInfo = None,
+                        keyword: str = None) -> List[TorrentInfo]:
         """
         搜索一个站点
         :param mediainfo:  识别的媒体信息
@@ -140,10 +107,10 @@ class IndexerModule(_ModuleBase):
 
         return _spider.is_error, _spider.get_torrents()
 
-    def refresh_torrents(self, sites: List[CommentedMap]) -> Optional[List[TorrentInfo]]:
+    def refresh_torrents(self, site: CommentedMap) -> Optional[List[TorrentInfo]]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
-        :param sites:  站点列表
+        :param site:  站点
         :reutrn: 种子资源列表
         """
-        return self.search_torrents(mediainfo=None, sites=sites, keyword=None)
+        return self.search_torrents(site=site)

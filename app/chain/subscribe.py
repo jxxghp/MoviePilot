@@ -237,7 +237,7 @@ class SubscribeChain(ChainBase):
                 continue
             logger.info(f'开始刷新站点资源，站点：{indexer.get("name")} ...')
             domain = StringUtils.get_url_domain(indexer.get("domain"))
-            torrents: List[TorrentInfo] = self.refresh_torrents(sites=[indexer])
+            torrents: List[TorrentInfo] = self.refresh_torrents(site=indexer)
             if torrents:
                 self._torrents_cache[domain] = []
                 # 过滤种子

@@ -49,3 +49,11 @@ class SiteSchema(Enum):
     TorrentLeech = "TorrentLeech"
     FileList = "FileList"
     TNode = "TNode"
+
+
+# 处理进度Key字典
+class ProgressKey(Enum):
+    # 搜索
+    Search = "search"
+    # 转移
+    FileTransfer = "filetransfer"
