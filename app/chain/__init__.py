@@ -317,3 +317,11 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
                                  sort_by=sort_by, with_genres=with_genres,
                                  with_original_language=with_original_language,
                                  page=page)
+
+    def movie_top250(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取豆瓣电影TOP250
+        :param page:  页码
+        :param count:  每页数量
+        """
+        return self.__run_module("movie_top250", page=page, count=count)

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.media import MediaChain
-from app.core.context import MediaInfo
+from app.chain.tmdb import TmdbChain
 from app.db.models.user import User
 from app.db.userauth import get_current_active_user
 from app.schemas.types import MediaType
@@ -34,10 +34,10 @@ async def tmdb_movies(sort_by: str = "popularity.desc",
     """
     浏览TMDB电影信息
     """
-    movies = MediaChain().tmdb_movies(sort_by=sort_by,
-                                      with_genres=with_genres,
-                                      with_original_language=with_original_language,
-                                      page=page)
+    movies = TmdbChain().tmdb_movies(sort_by=sort_by,
+                                     with_genres=with_genres,
+                                     with_original_language=with_original_language,
+                                     page=page)
     return [movie.to_dict() for movie in movies]
 
 
@@ -50,8 +50,8 @@ async def tmdb_tvs(sort_by: str = "popularity.desc",
     """
     浏览TMDB剧集信息
     """
-    tvs = MediaChain().tmdb_tvs(sort_by=sort_by,
-                                with_genres=with_genres,
-                                with_original_language=with_original_language,
-                                page=page)
+    tvs = TmdbChain().tmdb_tvs(sort_by=sort_by,
+                               with_genres=with_genres,
+                               with_original_language=with_original_language,
+                               page=page)
     return [tv.to_dict() for tv in tvs]

@@ -5,7 +5,6 @@ from fastapi import BackgroundTasks
 
 from app import schemas
 from app.chain.douban import DoubanChain
-from app.chain.media import MediaChain
 from app.core.context import MediaInfo
 from app.db.models.user import User
 from app.db.userauth import get_current_active_superuser
@@ -39,7 +38,7 @@ async def recognize_doubanid(doubanid: str,
     根据豆瓣ID识别媒体信息
     """
     # 识别媒体信息
-    context = MediaChain().recognize_by_doubanid(doubanid=doubanid)
+    context = DoubanChain().recognize_by_doubanid(doubanid=doubanid)
     return context.to_dict()
 
 
@@ -48,7 +47,7 @@ async def douban_info(doubanid: str) -> Any:
     """
     根据豆瓣ID查询豆瓣媒体信息
     """
-    doubaninfo = MediaChain().douban_info(doubanid=doubanid)
+    doubaninfo = DoubanChain().douban_info(doubanid=doubanid)
     if doubaninfo:
         return MediaInfo(douban_info=doubaninfo).to_dict()
     else:
@@ -64,7 +63,7 @@ async def douban_movies(sort: str = "R",
     """
     浏览豆瓣电影信息
     """
-    movies = MediaChain().douban_movies(sort=sort, tags=tags, start=start, count=count)
+    movies = DoubanChain().douban_movies(sort=sort, tags=tags, start=start, count=count)
     return [movie.to_dict() for movie in movies]
 
 
@@ -77,5 +76,16 @@ async def douban_tvs(sort: str = "R",
     """
     浏览豆瓣剧集信息
     """
-    tvs = MediaChain().douban_tvs(sort=sort, tags=tags, start=start, count=count)
+    tvs = DoubanChain().douban_tvs(sort=sort, tags=tags, start=start, count=count)
     return [tv.to_dict() for tv in tvs]
+
+
+@router.get("/top250", response_model=List[schemas.MediaInfo])
+async def movie_top250(page: int = 1,
+                       count: int = 30,
+                       _: User = Depends(get_current_active_user)) -> Any:
+    """
+    浏览豆瓣剧集信息
+    """
+    movies = DoubanChain().movie_top250(page=page, count=count)
+    return [movie.to_dict() for movie in movies]

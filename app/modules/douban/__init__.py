@@ -118,6 +118,16 @@ class DoubanModule(_ModuleBase):
                 return item_obj
         return {}
 
+    def movie_top250(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取豆瓣电影TOP250
+        """
+        infos = self.doubanapi.movie_top250(start=(page - 1) * count,
+                                            count=count)
+        if not infos:
+            return []
+        return infos.get("subject_collection_items")
+
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
         """
         刮削元数据
