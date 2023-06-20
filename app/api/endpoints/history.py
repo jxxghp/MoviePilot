@@ -52,7 +52,7 @@ async def transfer_history(title: str = None,
 
 
 @router.delete("/transfer", summary="删除转移历史记录", response_model=schemas.Response)
-async def delete_transfer_history(history_in=schemas.TransferHistory,
+async def delete_transfer_history(history_in: schemas.TransferHistory,
                                   delete_file: bool = False,
                                   db: Session = Depends(get_db),
                                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
