@@ -61,6 +61,19 @@ async def read_site(
     return site
 
 
+@router.delete("/", summary="删除站点", response_model=schemas.Response)
+async def delete_site(
+        site_in: schemas.Site,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)
+) -> Any:
+    """
+    删除站点
+    """
+    Site.delete(db, site_in.id)
+    return schemas.Response(success=True)
+
+
 @router.get("/cookiecloud", summary="CookieCloud同步", response_model=schemas.Response)
 async def cookie_cloud_sync(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """

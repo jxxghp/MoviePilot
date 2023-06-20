@@ -1,4 +1,6 @@
 import re
+import shutil
+from pathlib import Path
 from typing import List, Optional, Union
 
 from app.chain import ChainBase
@@ -14,6 +16,7 @@ from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent
 from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey
 from app.utils.string import StringUtils
+from app.utils.system import SystemUtils
 
 
 class TransferChain(ChainBase):
@@ -188,3 +191,30 @@ class TransferChain(ChainBase):
             msg_str = f"{msg_str}，以下文件处理失败：\n{transferinfo.message}"
         # 发送
         self.post_message(title=msg_title, text=msg_str, image=mediainfo.get_message_image())
+
+    @staticmethod
+    def delete_files(path: Path):
+        """
+        删除转移后的文件以及空目录
+        """
+        logger.info(f"开始删除文件以及空目录：{path} ...")
+        if not path.exists():
+            logger.error(f"{path} 不存在")
+            return
+        elif path.is_file():
+            # 删除文件
+            path.unlink()
+            logger.warn(f"文件 {path} 已删除")
+            # 判断目录是否为空, 为空则删除
+            if str(path.parent.parent) != str(path.root):
+                # 父父目录非根目录，才删除父目录
+                files = SystemUtils.list_files_with_extensions(path.parent, settings.RMT_MEDIAEXT)
+                if not files:
+                    shutil.rmtree(path.parent)
+                    logger.warn(f"目录 {path.parent} 已删除")
+        else:
+            if str(path.parent) != str(path.root):
+                # 父目录非根目录，才删除目录
+                shutil.rmtree(path)
+                # 删除目录
+                logger.warn(f"目录 {path} 已删除")

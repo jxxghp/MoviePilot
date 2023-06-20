@@ -68,9 +68,8 @@ async def update_subscribe(
 
 @router.delete("/", summary="删除订阅", response_model=schemas.Response)
 async def delete_subscribe(
-        *,
-        db: Session = Depends(get_db),
         subscribe_in: schemas.Subscribe,
+        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
     """
