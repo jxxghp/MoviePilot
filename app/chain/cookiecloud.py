@@ -88,6 +88,9 @@ class CookieCloudChain(ChainBase):
                                                       domain=domain,
                                                       icon_url=icon_url,
                                                       icon_base64=icon_base64)
+                        logger.info(f"缓存站点 {indexer.get('name')} 图标成功")
+                    else:
+                        logger.warn(f"缓存站点 {indexer.get('name')} 图标失败")
         # 处理完成
         ret_msg = f"更新了{_update_count}个站点，新增了{_add_count}个站点"
         logger.info(f"CookieCloud同步成功：{ret_msg}")
