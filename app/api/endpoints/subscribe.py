@@ -6,10 +6,9 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
+from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
-from app.db.models.user import User
-from app.db.userauth import get_current_active_superuser
 from app.schemas.types import MediaType
 
 router = APIRouter()
@@ -27,7 +26,7 @@ def start_subscribe_chain(title: str, year: str,
 @router.get("/", summary="所有订阅", response_model=List[schemas.Subscribe])
 async def read_subscribes(
         db: Session = Depends(get_db),
-        _: User = Depends(get_current_active_superuser)) -> Any:
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询所有订阅
     """
@@ -38,7 +37,7 @@ async def read_subscribes(
 async def create_subscribe(
         *,
         subscribe_in: schemas.Subscribe,
-        _: User = Depends(get_current_active_superuser),
+        _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
     """
     新增订阅
@@ -52,7 +51,7 @@ async def update_subscribe(
         *,
         db: Session = Depends(get_db),
         subscribe_in: schemas.Subscribe,
-        _: User = Depends(get_current_active_superuser),
+        _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
     """
     更新订阅信息
@@ -72,7 +71,7 @@ async def delete_subscribe(
         *,
         db: Session = Depends(get_db),
         subscribe_in: schemas.Subscribe,
-        _: User = Depends(get_current_active_superuser),
+        _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
     """
     删除订阅信息
@@ -136,7 +135,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
 
 @router.get("/refresh", summary="刷新订阅", response_model=schemas.Response)
 async def refresh_subscribes(
-        _: User = Depends(get_current_active_superuser)) -> Any:
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     刷新所有订阅
     """
@@ -146,7 +145,7 @@ async def refresh_subscribes(
 
 @router.get("/search", summary="搜索订阅", response_model=schemas.Response)
 async def search_subscribes(
-        _: User = Depends(get_current_active_superuser)) -> Any:
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     搜索所有订阅
     """

@@ -84,15 +84,26 @@ class Jellyfin(metaclass=Singleton):
             logger.error(f"连接Users出错：" + str(e))
         return None
 
-    def authenticate(self, username: str, password: str) -> Optional[bool]:
+    def authenticate(self, username: str, password: str) -> Optional[str]:
         """
         用户认证
+        :param username: 用户名
+        :param password: 密码
+        :return: 认证成功返回token，否则返回None
         """
         if not self._host or not self._apikey:
             return None
         req_url = "%sUsers/authenticatebyname" % self._host
         try:
-            res = RequestUtils(content_type="application/json").post_res(
+            res = RequestUtils(headers={
+                'X-Emby-Authorization': f'MediaBrowser Client="MoviePilot", '
+                                        f'Device="Axios", '
+                                        f'DeviceId="1", '
+                                        f'Version="10.8.0", '
+                                        f'Token="{self._apikey}"',
+                'Content-Type': 'application/json',
+                "Accept": "application/json"
+            }).post_res(
                 url=req_url,
                 data=json.dumps({
                     "Username": username,
@@ -103,7 +114,7 @@ class Jellyfin(metaclass=Singleton):
                 auth_token = res.json().get("AccessToken")
                 if auth_token:
                     logger.info(f"用户 {username} Jellyfin认证成功")
-                    return True
+                    return auth_token
             else:
                 logger.error(f"Users/AuthenticateByName 未获取到返回数据")
         except Exception as e:

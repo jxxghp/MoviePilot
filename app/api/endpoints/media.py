@@ -4,8 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.media import MediaChain
-from app.db.models.user import User
-from app.db.userauth import get_current_active_user
+from app.core.security import verify_token
 
 router = APIRouter()
 
@@ -13,7 +12,7 @@ router = APIRouter()
 @router.get("/recognize", summary="识别媒体信息", response_model=schemas.Context)
 async def recognize(title: str,
                     subtitle: str = None,
-                    _: User = Depends(get_current_active_user)) -> Any:
+                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据标题、副标题识别媒体信息
     """
@@ -24,7 +23,7 @@ async def recognize(title: str,
 
 @router.get("/search", summary="搜索媒体信息", response_model=List[schemas.MediaInfo])
 async def search_by_title(title: str,
-                          _: User = Depends(get_current_active_user)) -> Any:
+                          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     模糊搜索媒体信息列表
     """

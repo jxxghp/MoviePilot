@@ -8,8 +8,11 @@ from typing import Any, Union, Optional
 import jwt
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+from fastapi import HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
+
+from app import schemas
 from app.core.config import settings
 from cryptography.fernet import Fernet
 
@@ -34,6 +37,19 @@ def create_access_token(
     to_encode = {"exp": expire, "sub": str(subject)}
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+
+def verify_token(token: str = Depends(reusable_oauth2)) -> schemas.TokenPayload:
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[ALGORITHM]
+        )
+        return schemas.TokenPayload(**payload)
+    except (jwt.DecodeError, jwt.InvalidTokenError, jwt.ImmatureSignatureError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="token校验不通过",
+        )
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

@@ -5,8 +5,7 @@ from fastapi import APIRouter, Depends
 from app import schemas
 from app.chain.tmdb import TmdbChain
 from app.core.context import MediaInfo
-from app.db.models.user import User
-from app.db.userauth import get_current_active_user
+from app.core.security import verify_token
 from app.schemas.types import MediaType
 
 router = APIRouter()
@@ -30,7 +29,7 @@ async def tmdb_movies(sort_by: str = "popularity.desc",
                       with_genres: str = "",
                       with_original_language: str = "",
                       page: int = 1,
-                      _: User = Depends(get_current_active_user)) -> Any:
+                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览TMDB电影信息
     """
@@ -49,7 +48,7 @@ async def tmdb_tvs(sort_by: str = "popularity.desc",
                    with_genres: str = "",
                    with_original_language: str = "",
                    page: int = 1,
-                   _: User = Depends(get_current_active_user)) -> Any:
+                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览TMDB剧集信息
     """
@@ -65,7 +64,7 @@ async def tmdb_tvs(sort_by: str = "popularity.desc",
 
 @router.get("/trending", summary="TMDB流行趋势", response_model=List[schemas.MediaInfo])
 async def tmdb_trending(page: int = 1,
-                        _: User = Depends(get_current_active_user)) -> Any:
+                        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览TMDB剧集信息
     """

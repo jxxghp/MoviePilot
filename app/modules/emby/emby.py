@@ -6,10 +6,10 @@ from typing import List, Optional, Union, Dict
 from app.core.config import settings
 from app.log import logger
 from app.schemas import RefreshMediaItem
+from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
-from app.schemas.types import MediaType
 
 
 class Emby(metaclass=Singleton):
@@ -87,27 +87,37 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接Users出错：" + str(e))
         return None
 
-    def authenticate(self, username: str, password: str) -> Optional[bool]:
+    def authenticate(self, username: str, password: str) -> Optional[str]:
         """
         用户认证
+        :param username: 用户名
+        :param password: 密码
+        :return: 认证token
         """
         if not self._host or not self._apikey:
             return None
         req_url = "%semby/Users/AuthenticateByName" % self._host
         try:
-            res = RequestUtils(content_type="application/json").post_res(
+            res = RequestUtils(headers={
+                'X-Emby-Authorization': f'MediaBrowser Client="MoviePilot", '
+                                        f'Device="Axios", '
+                                        f'DeviceId="1", '
+                                        f'Version="10.8.0", '
+                                        f'Token="{self._apikey}"',
+                'Content-Type': 'application/json',
+                "Accept": "application/json"
+            }).post_res(
                 url=req_url,
                 data=json.dumps({
                     "Username": username,
-                    "Pw": password,
-                    "KeepMeLoggedIn": False
+                    "Pw": password
                 })
             )
             if res:
                 auth_token = res.json().get("AccessToken")
                 if auth_token:
                     logger.info(f"用户 {username} Emby认证成功")
-                    return True
+                    return auth_token
             else:
                 logger.error(f"Users/AuthenticateByName 未获取到返回数据")
         except Exception as e:

@@ -22,13 +22,14 @@ class JellyfinModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "jellyfin"
 
-    def user_authenticate(self, name, password) -> Optional[bool]:
+    def user_authenticate(self, name: str, password: str) -> Optional[str]:
         """
         使用Emby用户辅助完成用户认证
         :param name: 用户名
         :param password: 密码
-        :return: bool
+        :return: Token or None
         """
+        # Jellyfin认证
         return self.jellyfin.authenticate(name, password)
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:

@@ -4,16 +4,15 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.core.plugin import PluginManager
-from app.db.models.user import User
+from app.core.security import verify_token
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.userauth import get_current_active_user
 from app.schemas.types import SystemConfigKey
 
 router = APIRouter()
 
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
-async def all_plugins(_: User = Depends(get_current_active_user)) -> Any:
+async def all_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询所有插件清单
     """
@@ -21,7 +20,7 @@ async def all_plugins(_: User = Depends(get_current_active_user)) -> Any:
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
-async def installed_plugins(_: User = Depends(get_current_active_user)) -> Any:
+async def installed_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询用户已安装插件清单
     """
@@ -29,7 +28,7 @@ async def installed_plugins(_: User = Depends(get_current_active_user)) -> Any:
 
 
 @router.get("/{plugin_id}", summary="获取插件配置")
-async def plugin_config(plugin_id: str, _: User = Depends(get_current_active_user)) -> dict:
+async def plugin_config(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> dict:
     """
     根据插件ID获取插件配置信息
     """
@@ -38,7 +37,7 @@ async def plugin_config(plugin_id: str, _: User = Depends(get_current_active_use
 
 @router.put("/{plugin_id}", summary="更新插件配置", response_model=schemas.Response)
 async def set_plugin_config(plugin_id: str, conf: dict,
-                            _: User = Depends(get_current_active_user)) -> Any:
+                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据插件ID获取插件配置信息
     """
@@ -48,7 +47,7 @@ async def set_plugin_config(plugin_id: str, conf: dict,
 
 @router.post("/{plugin_id}/install", summary="安装插件", response_model=schemas.Response)
 async def install_plugin(plugin_id: str,
-                         _: User = Depends(get_current_active_user)) -> Any:
+                         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     安装插件
     """
@@ -64,7 +63,7 @@ async def install_plugin(plugin_id: str,
 
 
 @router.delete("/{plugin_id}", summary="卸载插件", response_model=schemas.Response)
-async def uninstall_plugin(plugin_id: str, _: User = Depends(get_current_active_user)) -> Any:
+async def uninstall_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     卸载插件
     """

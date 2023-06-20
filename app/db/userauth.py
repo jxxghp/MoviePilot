@@ -1,28 +1,16 @@
-import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import schemas
-from app.core.config import settings
-from app.core import security
-from app.core.security import reusable_oauth2
+from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.user import User
 
 
 def get_current_user(
-        db: Session = Depends(get_db), token: str = Depends(reusable_oauth2)
+        db: Session = Depends(get_db),
+        token_data: schemas.TokenPayload = Depends(verify_token)
 ) -> User:
-    try:
-        payload = jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
-        )
-        token_data = schemas.TokenPayload(**payload)
-    except (jwt.DecodeError, jwt.InvalidTokenError, jwt.ImmatureSignatureError):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="token校验不通过",
-        )
     user = User.get(db, rid=token_data.sub)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
