@@ -9,7 +9,7 @@ from app.core.config import settings
 router = APIRouter()
 
 
-def start_webhook_chain(body: Any, form: Any, args: Any):
+async def start_webhook_chain(body: Any, form: Any, args: Any):
     """
     启动链式任务
     """

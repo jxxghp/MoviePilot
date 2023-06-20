@@ -13,7 +13,7 @@ from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 router = APIRouter()
 
 
-def start_message_chain(body: Any, form: Any, args: Any):
+async def start_message_chain(body: Any, form: Any, args: Any):
     """
     启动链式任务
     """
