@@ -97,9 +97,9 @@ class Jellyfin(metaclass=Singleton):
         try:
             res = RequestUtils(headers={
                 'X-Emby-Authorization': f'MediaBrowser Client="MoviePilot", '
-                                        f'Device="Axios", '
+                                        f'Device="requests", '
                                         f'DeviceId="1", '
-                                        f'Version="10.8.0", '
+                                        f'Version="1.0.0", '
                                         f'Token="{self._apikey}"',
                 'Content-Type': 'application/json',
                 "Accept": "application/json"

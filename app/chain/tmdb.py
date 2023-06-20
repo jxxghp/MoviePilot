@@ -20,9 +20,9 @@ class TmdbChain(ChainBase):
         :return: 媒体信息列表
         """
         return self.run_module("tmdb_discover", mtype=mtype,
-                                 sort_by=sort_by, with_genres=with_genres,
-                                 with_original_language=with_original_language,
-                                 page=page)
+                               sort_by=sort_by, with_genres=with_genres,
+                               with_original_language=with_original_language,
+                               page=page)
 
     def tmdb_trending(self, page: int = 1) -> List[dict]:
         """

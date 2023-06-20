@@ -89,7 +89,7 @@ class DoubanChain(ChainBase):
         :return: 媒体信息列表
         """
         return self.run_module("douban_discover", mtype=mtype, sort=sort, tags=tags,
-                                 start=start, count=count)
+                               start=start, count=count)
 
     def remote_sync(self, userid: Union[int, str]):
         """
