@@ -27,7 +27,7 @@ class SubscribeOper(DbOper):
             subscribe.create(self._db)
             return subscribe.id, "新增订阅成功"
         else:
-            return subscribe.id, "订阅已存在"
+            return 0, "订阅已存在"
 
     def get(self, sid: int) -> Subscribe:
         """

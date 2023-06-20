@@ -161,6 +161,7 @@ class DoubanChain(ChainBase):
                                             mtype=mediainfo.type,
                                             tmdbid=mediainfo.tmdb_id,
                                             season=meta.begin_season,
+                                            exist_ok=True,
                                             username="豆瓣想看")
                     continue
                 # 自动下载
@@ -177,6 +178,7 @@ class DoubanChain(ChainBase):
                                             mtype=mediainfo.type,
                                             tmdbid=mediainfo.tmdb_id,
                                             season=meta.begin_season,
+                                            exist_ok=True,
                                             username="豆瓣想看")
 
             logger.info(f"用户 {user_id} 豆瓣想看同步完成")

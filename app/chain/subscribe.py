@@ -36,6 +36,7 @@ class SubscribeChain(ChainBase):
             season: int = None,
             userid: str = None,
             username: str = None,
+            exist_ok: bool = False,
             **kwargs) -> Optional[int]:
         """
         识别媒体信息并添加订阅
@@ -93,12 +94,13 @@ class SubscribeChain(ChainBase):
         sid, err_msg = self.subscribehelper.add(mediainfo, season=season, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
-            # 发回原用户
-            self.post_message(title=f"{mediainfo.title_year}{metainfo.season} "
-                                    f"添加订阅失败！",
-                              text=f"{err_msg}",
-                              image=mediainfo.get_message_image(),
-                              userid=userid)
+            if not exist_ok:
+                # 发回原用户
+                self.post_message(title=f"{mediainfo.title_year}{metainfo.season} "
+                                        f"添加订阅失败！",
+                                  text=f"{err_msg}",
+                                  image=mediainfo.get_message_image(),
+                                  userid=userid)
         else:
             logger.info(f'{mediainfo.title_year}{metainfo.season} 添加订阅成功')
             # 广而告之
