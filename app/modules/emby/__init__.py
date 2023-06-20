@@ -10,7 +10,6 @@ from app.schemas.types import MediaType
 
 
 class EmbyModule(_ModuleBase):
-
     emby: Emby = None
 
     def init_module(self) -> None:
@@ -21,6 +20,15 @@ class EmbyModule(_ModuleBase):
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "emby"
+
+    def user_authenticate(self, name, password) -> Optional[bool]:
+        """
+        使用Emby用户辅助完成用户认证
+        :param name: 用户名
+        :param password: 密码
+        :return: bool
+        """
+        return self.emby.authenticate(name, password)
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
         """

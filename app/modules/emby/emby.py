@@ -87,6 +87,33 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接Users出错：" + str(e))
         return None
 
+    def authenticate(self, username: str, password: str) -> Optional[bool]:
+        """
+        用户认证
+        """
+        if not self._host or not self._apikey:
+            return None
+        req_url = "%semby/Users/AuthenticateByName" % self._host
+        try:
+            res = RequestUtils(content_type="application/json").post_res(
+                url=req_url,
+                data=json.dumps({
+                    "Username": username,
+                    "Pw": password,
+                    "KeepMeLoggedIn": False
+                })
+            )
+            if res:
+                auth_token = res.json().get("AccessToken")
+                if auth_token:
+                    logger.info(f"用户 {username} Emby认证成功")
+                    return True
+            else:
+                logger.error(f"Users/AuthenticateByName 未获取到返回数据")
+        except Exception as e:
+            logger.error(f"连接Users/AuthenticateByName出错：" + str(e))
+        return None
+
     def get_server_id(self) -> Optional[str]:
         """
         获得服务器信息
