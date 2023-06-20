@@ -155,6 +155,13 @@ class DoubanChain(ChainBase):
                                                     no_exists=no_exists)
                 if not contexts:
                     logger.warn(f'{mediainfo.title_year} 未搜索到资源')
+                    # 添加订阅
+                    self.subscribechain.add(title=mediainfo.title,
+                                            year=mediainfo.year,
+                                            mtype=mediainfo.type,
+                                            tmdbid=mediainfo.tmdb_id,
+                                            season=meta.begin_season,
+                                            username="豆瓣想看")
                     continue
                 # 自动下载
                 downloads, lefts = self.downloadchain.batch_download(contexts=contexts, no_exists=no_exists)
