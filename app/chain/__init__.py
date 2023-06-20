@@ -300,3 +300,9 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         注册菜单命令
         """
         return self.run_module("register_commands", commands=commands)
+
+    def scheduler_job(self) -> None:
+        """
+        定时任务，每10分钟调用一次，模块实现该接口以实现定时服务
+        """
+        return self.run_module("scheduler_job")

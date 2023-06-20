@@ -557,3 +557,9 @@ class TheMovieDbModule(_ModuleBase):
         xml_str = doc.toprettyxml(indent="  ", encoding="utf-8")
         file_path.write_bytes(xml_str)
         logger.info(f"NFO文件已保存：{file_path}")
+
+    def scheduler_job(self) -> None:
+        """
+        定时任务，每10分钟调用一次
+        """
+        self.cache.save()

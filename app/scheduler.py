@@ -5,6 +5,7 @@ import pytz
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.douban import DoubanChain
 from app.chain.subscribe import SubscribeChain
@@ -19,6 +20,10 @@ scheduler_logger = logging.getLogger('apscheduler')
 
 # 设置日志级别为 WARNING
 scheduler_logger.setLevel(logging.WARNING)
+
+
+class SchedulerChain(ChainBase):
+    pass
 
 
 class Scheduler(metaclass=Singleton):
@@ -55,6 +60,9 @@ class Scheduler(metaclass=Singleton):
 
         # 下载器文件转移（每5分钟）
         self._scheduler.add_job(TransferChain().process, "interval", minutes=5)
+
+        # 公共定时服务
+        self._scheduler.add_job(SchedulerChain().scheduler_job, "interval", minutes=10)
 
         # 打印服务
         logger.debug(self._scheduler.print_jobs())
