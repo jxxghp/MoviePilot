@@ -148,12 +148,13 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         """
         return self.run_module("search_medias", meta=meta)
 
-    def search_torrents(self, mediainfo: Optional[MediaInfo], site: CommentedMap,
+    def search_torrents(self, site: CommentedMap,
+                        mediainfo: Optional[MediaInfo] = None,
                         keyword: str = None) -> List[TorrentInfo]:
         """
         搜索一个站点的种子资源
-        :param mediainfo:  识别的媒体信息
         :param site:  站点
+        :param mediainfo:  识别的媒体信息
         :param keyword:  搜索关键词，如有按关键词搜索，否则按媒体信息名称搜索
         :reutrn: 资源列表
         """

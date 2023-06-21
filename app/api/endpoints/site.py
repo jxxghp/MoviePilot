@@ -5,10 +5,12 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.cookiecloud import CookieCloudChain
+from app.chain.search import SearchChain
 from app.chain.site import SiteChain
 from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.site import Site
+from app.db.models.siteicon import SiteIcon
 from app.db.siteicon_oper import SiteIconOper
 
 router = APIRouter()
@@ -85,7 +87,7 @@ async def cookie_cloud_sync(_: schemas.TokenPayload = Depends(verify_token)) -> 
     return schemas.Response(success=True, message="同步成功！")
 
 
-@router.get("/cookie", summary="更新站点Cookie&UA", response_model=schemas.Response)
+@router.get("/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response)
 async def update_cookie(
         site_id: int,
         username: str,
@@ -112,23 +114,58 @@ async def update_cookie(
         return schemas.Response(success=True, message=msg)
 
 
-@router.get("/test", summary="连接测试", response_model=schemas.Response)
-async def test_site(domain: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.get("/test/{site_id}", summary="连接测试", response_model=schemas.Response)
+async def test_site(site_id: int,
+                    db: Session = Depends(get_db),
+                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     测试站点是否可用
     """
-    status, message = SiteChain().test(domain)
+    site = Site.get(db, site_id)
+    if not site:
+        raise HTTPException(
+            status_code=404,
+            detail=f"站点 {site_id} 不存在",
+        )
+    status, message = SiteChain().test(site.domain)
     return schemas.Response(success=status, message=message)
 
 
-@router.get("/icon", summary="站点图标", response_model=schemas.Response)
-async def site_icon(domain: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.get("/icon/{site_id}", summary="站点图标", response_model=schemas.Response)
+async def site_icon(site_id: int,
+                    db: Session = Depends(get_db),
+                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取站点图标：base64或者url
     """
-    icon = SiteIconOper().get_by_domain(domain)
+    site = Site.get(db, site_id)
+    if not site:
+        raise HTTPException(
+            status_code=404,
+            detail=f"站点 {site_id} 不存在",
+        )
+    icon = SiteIcon.get_by_domain(db, site.domain)
     if not icon:
         return schemas.Response(success=False, message="站点图标不存在！")
     return schemas.Response(success=True, data={
         "icon": icon.base64 if icon.base64 else icon.url
     })
+
+
+@router.get("/resource/{site_id}", summary="站点资源", response_model=List[schemas.TorrentInfo])
+async def site_resource(site_id: int, keyword: str = None,
+                        db: Session = Depends(get_db),
+                        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    浏览站点资源
+    """
+    site = Site.get(db, site_id)
+    if not site:
+        raise HTTPException(
+            status_code=404,
+            detail=f"站点 {site_id} 不存在",
+        )
+    torrents = SearchChain().browse(site.domain, keyword)
+    if not torrents:
+        return []
+    return [torrent.to_dict() for torrent in torrents]
