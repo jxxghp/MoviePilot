@@ -62,7 +62,7 @@ class SubtitleModule(_ModuleBase):
         if download_dir.is_file():
             download_dir = download_dir.parent
         # 读取网站代码
-        request = RequestUtils(cookies=torrent.site_cookie, headers=torrent.site_ua)
+        request = RequestUtils(cookies=torrent.site_cookie, ua=torrent.site_ua)
         res = request.get_res(torrent.page_url)
         if res and res.status_code == 200:
             if not res.text:
