@@ -46,16 +46,16 @@ def shutdown_server():
     """
     服务关闭
     """
-    # 停止定时服务
-    Scheduler().stop()
-    # 停止插件
-    PluginManager().stop()
     # 停止模块
     ModuleManager().stop()
+    # 停止插件
+    PluginManager().stop()
     # 停止事件消费
     Command().stop()
     # 停止虚拟显示
     DisplayHelper().stop()
+    # 停止定时服务
+    Scheduler().stop()
 
 
 @App.on_event("startup")
