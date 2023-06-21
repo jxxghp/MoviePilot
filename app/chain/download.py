@@ -395,7 +395,7 @@ class DownloadChain(ChainBase):
                             # 选中的集
                             selected_episodes = set(torrent_episodes).intersection(set(need_episodes))
                             if not selected_episodes:
-                                logger.info(f"{meta.org_string} 没有需要的集，跳过...")
+                                logger.info(f"{torrent.site_name} - {torrent.title} 没有需要的集，跳过...")
                                 continue
                             # 添加下载
                             download_id = self.download_single(context=context,

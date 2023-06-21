@@ -107,7 +107,7 @@ class MessageChain(ChainBase):
                 if not contexts:
                     # 没有数据
                     self.post_message(title=f"{mediainfo.title}"
-                                            f"{self._current_meta.sea} 未搜索到资源！",
+                                            f"{self._current_meta.sea} 未搜索到需要的资源！",
                                       userid=userid)
                     return
                 # 搜索结果排序

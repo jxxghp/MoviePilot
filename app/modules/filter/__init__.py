@@ -123,7 +123,7 @@ class FilterModule(_ModuleBase):
             if need_episodes \
                     and not set(torrent_seasons).intersection(set(need_episodes)):
                 # 单季集没有交集的不要
-                logger.info(f"种子 {torrent.title} 集 {torrent_episodes} 没有需要的集")
+                logger.info(f"种子 {torrent.site_name} - {torrent.title} 集 {torrent_episodes} 没有需要的集")
                 return False
         return True
 
