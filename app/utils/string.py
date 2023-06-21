@@ -552,3 +552,35 @@ class StringUtils:
             # 端口号不是整数，返回 None 表示无效
             return None, None
         return domain, port
+
+    @staticmethod
+    def str_series(array: List[int]) -> str:
+        """
+        将季集列表转化为字符串简写
+        """
+
+        # 确保数组按照升序排列
+        array.sort()
+
+        result = []
+        start = array[0]
+        end = array[0]
+
+        for i in range(1, len(array)):
+            if array[i] == end + 1:
+                end = array[i]
+            else:
+                if start == end:
+                    result.append(str(start))
+                else:
+                    result.append(f"{start}-{end}")
+                start = array[i]
+                end = array[i]
+
+        # 处理最后一个序列
+        if start == end:
+            result.append(str(start))
+        else:
+            result.append(f"{start}-{end}")
+
+        return ",".join(result)

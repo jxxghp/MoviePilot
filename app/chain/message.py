@@ -94,7 +94,7 @@ class MessageChain(ChainBase):
                 if no_exists:
                     # 发送消息
                     messages = [
-                        f"第 {sea} 季缺失 {len(no_exist.episodes) or no_exist.total_episodes} 集"
+                        f"第 {sea} 季缺失 {StringUtils.str_series(no_exist.episodes) if no_exist.episodes else no_exist.total_episodes} 集"
                         for sea, no_exist in no_exists.get(mediainfo.tmdb_id).items()]
                     self.post_message(title=f"{mediainfo.title_year}：\n" + "\n".join(messages))
                 # 搜索种子，过滤掉不需要的剧集，以便选择
