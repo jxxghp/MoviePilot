@@ -54,7 +54,7 @@ class FileTransferModule(_ModuleBase):
                             target_path=target_path,
                             message=msg,
                             file_count=file_count,
-                            file_size=file_size,
+                            total_size=file_size,
                             fail_list=fail_list)
 
     @staticmethod
@@ -389,7 +389,7 @@ class FileTransferModule(_ModuleBase):
                 # 计算大小
                 total_filesize += in_path.stat().st_size
                 # 返回转移后的路径
-                return new_path, total_filesize, total_filesize, [], ""
+                return new_path, total_num, total_filesize, [], ""
         else:
             # 获取文件清单
             transfer_files: List[Path] = SystemUtils.list_files_with_extensions(in_path, settings.RMT_MEDIAEXT)
@@ -454,7 +454,7 @@ class FileTransferModule(_ModuleBase):
                     # 计算文件数
                     total_num += 1
                     # 计算大小
-                    total_filesize += transfer_file.stat().st_size
+                    total_filesize += new_file.stat().st_size
                 except Exception as err:
                     err_msgs.append(f"{transfer_file.name}：{err}")
                     logger.error(f"{transfer_file}转移失败：{err}")
