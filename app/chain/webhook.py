@@ -3,7 +3,7 @@ from typing import Any
 
 from app.chain import ChainBase
 from app.utils.http import WebUtils
-from app.schemas.types import EventType
+from app.schemas.types import EventType, MediaImageType, MediaType
 
 
 class WebhookChain(ChainBase):
@@ -69,14 +69,27 @@ class WebhookChain(ChainBase):
             message_texts.append(f"剧情：{event_info.get('overview')}")
         message_texts.append(f"时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}")
 
-        # 消息图片
-        if not event_info.get("image_url"):
-            image_url = _webhook_images.get(event_info.get("channel"))
-        else:
-            image_url = event_info.get("image_url")
-
         # 消息内容
         message_content = "\n".join(message_texts)
+
+        # 消息图片
+        image_url = event_info.get("image_url")
+        # 查询剧集图片
+        if event_info.get("tmdb_id") \
+                and event_info.get("season_id"):
+            mtype = MediaType.TV if event_info.get("item_type") == "TV" else MediaType.MOVIE
+            specific_image = self.obtain_specific_image(
+                mediaid=event_info.get("tmdb_id"),
+                mtype=mtype,
+                image_type=MediaImageType.Backdrop,
+                season=event_info.get("season_id"),
+                episode=event_info.get("episode_id")
+            )
+            if specific_image:
+                image_url = specific_image
+        # 使用默认图片
+        if not image_url:
+            image_url = _webhook_images.get(event_info.get("channel"))
 
         # 发送消息
         self.post_message(title=message_title, text=message_content, image=image_url)

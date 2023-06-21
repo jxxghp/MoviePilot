@@ -61,7 +61,7 @@ class SubscribeChain(ChainBase):
             logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}')
             return False
         # 更新媒体图片
-        self.obtain_image(mediainfo=mediainfo)
+        self.obtain_images(mediainfo=mediainfo)
         # 总集数
         if mediainfo.type == MediaType.TV:
             if not season:

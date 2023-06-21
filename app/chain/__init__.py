@@ -11,7 +11,7 @@ from app.core.meta import MetaBase
 from app.core.module import ModuleManager
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent
-from app.schemas.types import TorrentStatus, MediaType
+from app.schemas.types import TorrentStatus, MediaType, MediaImageType
 from app.utils.singleton import AbstractSingleton, Singleton
 
 
@@ -84,13 +84,28 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         """
         return self.run_module("recognize_media", meta=meta, mtype=mtype, tmdbid=tmdbid)
 
-    def obtain_image(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
+    def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """
-        获取图片
+        补充抓取媒体信息图片
         :param mediainfo:  识别的媒体信息
         :return: 更新后的媒体信息
         """
-        return self.run_module("obtain_image", mediainfo=mediainfo)
+        return self.run_module("obtain_images", mediainfo=mediainfo)
+
+    def obtain_specific_image(self, mediaid: Union[str, int], mtype: MediaType,
+                              image_type: MediaImageType, image_prefix: str = None,
+                              season: int = None, episode: int = None) -> Optional[str]:
+        """
+        获取指定媒体信息图片，返回图片地址
+        :param mediaid:     媒体ID
+        :param mtype:       媒体类型
+        :param image_type:  图片类型
+        :param image_prefix: 图片前缀
+        :param season:      季
+        :param episode:     集
+        """
+        return self.run_module("obtain_specific_image", mediaid=mediaid, mtype=mtype,
+                               image_type=image_type, season=season, episode=episode)
 
     def douban_info(self, doubanid: str) -> Optional[dict]:
         """

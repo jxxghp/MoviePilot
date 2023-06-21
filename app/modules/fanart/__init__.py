@@ -27,7 +27,7 @@ class FanartModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "FANART_API_KEY", True
 
-    def obtain_image(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
+    def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """
         获取图片
         :param mediainfo:  识别的媒体信息
@@ -69,7 +69,7 @@ class FanartModule(_ModuleBase):
         else:
             image_url = cls._tv_url % queryid
         try:
-            ret = RequestUtils(proxies=cls._proxies, timeout=5).get_res(image_url)
+            ret = RequestUtils(proxies=cls._proxies, timeout=10).get_res(image_url)
             if ret:
                 return ret.json()
         except Exception as err:

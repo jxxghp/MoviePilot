@@ -57,3 +57,9 @@ class ProgressKey(Enum):
     Search = "search"
     # 转移
     FileTransfer = "filetransfer"
+
+
+# 媒体图片类型
+class MediaImageType(Enum):
+    Poster = "poster"
+    Backdrop = "backdrop"

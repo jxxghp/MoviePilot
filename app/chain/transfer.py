@@ -116,7 +116,7 @@ class TransferChain(ChainBase):
                 mediainfo = arg_mediainfo
             logger.info(f"{torrent.title} 识别为：{mediainfo.type.value} {mediainfo.title_year}")
             # 更新媒体图片
-            self.obtain_image(mediainfo=mediainfo)
+            self.obtain_images(mediainfo=mediainfo)
             # 转移
             transferinfo: TransferInfo = self.transfer(mediainfo=mediainfo, path=torrent.path)
             if not transferinfo or not transferinfo.target_path:

@@ -15,7 +15,7 @@ from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.utils.dom import DomUtils
 from app.utils.http import RequestUtils
 from app.utils.system import SystemUtils
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, MediaImageType
 
 
 class TheMovieDbModule(_ModuleBase):
@@ -563,3 +563,37 @@ class TheMovieDbModule(_ModuleBase):
         定时任务，每10分钟调用一次
         """
         self.cache.save()
+
+    def obtain_specific_image(self, mediaid: Union[str, int], mtype: MediaType,
+                              image_type: MediaImageType, image_prefix: str = "w500",
+                              season: int = None, episode: int = None) -> Optional[str]:
+        """
+        获取指定媒体信息图片，返回图片地址
+        :param mediaid:     媒体ID
+        :param mtype:       媒体类型
+        :param image_type:  图片类型
+        :param image_prefix: 图片前缀
+        :param season:      季
+        :param episode:     集
+        """
+        if not str(mediaid).isdigit():
+            return None
+        # 图片相对路径
+        image_path = None
+        image_prefix = image_prefix or "w500"
+        if not season and not episode:
+            tmdbinfo = self.tmdb.get_info(mtype=mtype, tmdbid=int(mediaid))
+            if tmdbinfo:
+                image_path = tmdbinfo.get(image_type.value)
+        elif season and episode:
+            episodeinfo = self.tmdb.get_tv_episode_detail(tmdbid=int(mediaid), season=season, episode=episode)
+            if episodeinfo:
+                image_path = episodeinfo.get("still_path")
+        elif season:
+            seasoninfo = self.tmdb.get_tv_season_detail(tmdbid=int(mediaid), season=season)
+            if seasoninfo:
+                image_path = seasoninfo.get(image_type.value)
+
+        if image_path:
+            return f"https://image.tmdb.org/t/p/{image_prefix}{image_path}"
+        return None
