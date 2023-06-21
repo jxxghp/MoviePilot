@@ -12,6 +12,7 @@ from app.core.module import ModuleManager
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent
 from app.schemas.types import TorrentStatus, MediaType, MediaImageType
+from app.utils.object import ObjectUtils
 from app.utils.singleton import AbstractSingleton, Singleton
 
 
@@ -46,18 +47,21 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         modules = self.modulemanager.get_modules(method)
         for module in modules:
             try:
+                func = getattr(module, method)
                 if is_result_empty(result):
                     # 返回None，第一次执行或者需继续执行下一模块
-                    result = getattr(module, method)(*args, **kwargs)
+                    result = func(*args, **kwargs)
+                elif ObjectUtils.check_signature(func, result):
+                    # 返回结果与方法签名一致，将结果传入（不能多个模块同时运行的需要通过开关控制）
+                    result = func(result)
+                elif isinstance(result, list):
+                    # 返回为列表，有多个模块运行结果时进行合并（不能多个模块同时运行的需要通过开关控制）
+                    temp = func(*args, **kwargs)
+                    if isinstance(temp, list):
+                        result.extend(temp)
                 else:
-                    if isinstance(result, list):
-                        # 返回为列表，有多个模块运行结果时进行合并（不能多个模块同时运行的需要通过开关控制）
-                        temp = getattr(module, method)(*args, **kwargs)
-                        if isinstance(temp, list):
-                            result.extend(temp)
-                    else:
-                        # 返回结果非列表也非空，则执行一次后跳出
-                        break
+                    # 返回结果非列表也非空，则执行一次后跳出
+                    break
             except Exception as err:
                 logger.error(f"运行模块 {method} 出错：{module.__class__.__name__} - {err}\n{traceback.print_exc()}")
         return result
@@ -105,7 +109,8 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         :param episode:     集
         """
         return self.run_module("obtain_specific_image", mediaid=mediaid, mtype=mtype,
-                               image_type=image_type, season=season, episode=episode)
+                               image_prefix=image_prefix, image_type=image_type,
+                               season=season, episode=episode)
 
     def douban_info(self, doubanid: str) -> Optional[dict]:
         """

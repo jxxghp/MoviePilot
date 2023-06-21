@@ -77,5 +77,5 @@ class IpUtils:
         try:
             return ipaddress.ip_address(ip_str.strip()).is_private
         except Exception as e:
-            print(e)
+            print(str(e))
             return False

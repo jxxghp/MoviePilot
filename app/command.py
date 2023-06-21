@@ -182,7 +182,7 @@ class Command(metaclass=Singleton):
             try:
                 logger.info(f"用户 {userid} 开始执行：{command.get('description')} ...")
                 cmd_data = command['data'] if command.get('data') else {}
-                args_num = ObjectUtils.has_arguments(command['func'])
+                args_num = ObjectUtils.arguments(command['func'])
                 if args_num > 0:
                     if cmd_data:
                         # 有内置参数直接使用内置参数

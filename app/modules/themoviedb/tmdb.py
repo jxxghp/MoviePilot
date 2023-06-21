@@ -1019,3 +1019,29 @@ class TmdbHelper:
         except Exception as e:
             print(str(e))
             return []
+
+    def get_movie_images(self, tmdbid: int) -> dict:
+        """
+        获取电影的图片
+        """
+        if not self.movie:
+            return {}
+        try:
+            logger.info(f"正在获取电影图片：{tmdbid}...")
+            return self.movie.images(tmdbid) or {}
+        except Exception as e:
+            print(str(e))
+            return {}
+
+    def get_tv_images(self, tmdbid: int, season: int) -> dict:
+        """
+        获取电视剧的图片
+        """
+        if not self.tv:
+            return {}
+        try:
+            logger.info(f"正在获取电视剧图片：{tmdbid}...")
+            return self.season.images(tv_id=tmdbid, season_num=season) or {}
+        except Exception as e:
+            print(str(e))
+            return {}

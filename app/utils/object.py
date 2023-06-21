@@ -13,19 +13,14 @@ class ObjectUtils:
             return str(obj).startswith("{") or str(obj).startswith("[")
 
     @staticmethod
-    def has_arguments(func: Callable) -> int:
+    def arguments(func: Callable) -> int:
         """
         返回函数的参数个数
         """
         signature = inspect.signature(func)
         parameters = signature.parameters
-        parameter_names = list(parameters.keys())
 
-        # 排除 self 参数
-        if parameter_names and parameter_names[0] == 'self':
-            parameter_names = parameter_names[1:]
-
-        return len(parameter_names)
+        return len(list(parameters.keys()))
 
     @staticmethod
     def check_method(func: FunctionType) -> bool:
@@ -33,3 +28,20 @@ class ObjectUtils:
         检查函数是否已实现
         """
         return func.__code__.co_code != b'd\x01S\x00'
+
+    @staticmethod
+    def check_signature(func: FunctionType, *args) -> bool:
+        """
+        检查输出与函数的参数类型是否一致
+        """
+        # 获取函数的参数信息
+        signature = inspect.signature(func)
+        parameters = signature.parameters
+
+        # 检查输入参数个数和类型是否一致
+        if len(args) != len(parameters):
+            return False
+        for arg, param in zip(args, parameters.values()):
+            if not isinstance(arg, param.annotation):
+                return False
+        return True

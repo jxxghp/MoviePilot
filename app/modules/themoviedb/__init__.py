@@ -564,6 +564,45 @@ class TheMovieDbModule(_ModuleBase):
         """
         self.cache.save()
 
+    def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
+        """
+        补充抓取媒体信息图片
+        :param mediainfo:  识别的媒体信息
+        :return: 更新后的媒体信息
+        """
+        if mediainfo.logo_path \
+                and mediainfo.poster_path \
+                and mediainfo.backdrop_path:
+            # 没有图片缺失
+            return mediainfo
+        # 调用TMDB图片接口
+        if mediainfo.type == MediaType.MOVIE:
+            images = self.tmdb.get_movie_images(mediainfo.tmdb_id)
+        else:
+            # FIXME tmdbv3api库没有tv.images接口，只能取第1季的
+            images = self.tmdb.get_tv_images(mediainfo.tmdb_id, season=1)
+        if not images:
+            return mediainfo
+        # 背景图
+        if not mediainfo.backdrop_path:
+            backdrops = images.get("backdrops")
+            if backdrops:
+                backdrops = sorted(backdrops, key=lambda x: x.get("vote_average"), reverse=True)
+                mediainfo.backdrop_path = backdrops[0].get("file_path")
+        # 标志
+        if not mediainfo.logo_path:
+            logos = images.get("logos")
+            if logos:
+                logos = sorted(logos, key=lambda x: x.get("vote_average"), reverse=True)
+                mediainfo.logo_path = logos[0].get("file_path")
+        # 海报
+        if not mediainfo.poster_path:
+            posters = images.get("posters")
+            if posters:
+                posters = sorted(posters, key=lambda x: x.get("vote_average"), reverse=True)
+                mediainfo.poster_path = posters[0].get("file_path")
+        return mediainfo
+
     def obtain_specific_image(self, mediaid: Union[str, int], mtype: MediaType,
                               image_type: MediaImageType, image_prefix: str = "w500",
                               season: int = None, episode: int = None) -> Optional[str]:
