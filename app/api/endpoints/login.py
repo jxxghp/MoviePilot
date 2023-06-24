@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.db import get_db
 from app.db.models.user import User
 from app.log import logger
+from app.utils.http import RequestUtils
 
 router = APIRouter()
 
@@ -47,3 +48,26 @@ async def login_access_token(
         ),
         token_type="bearer",
     )
+
+
+@router.get("/login/wallpaper", summary="Bing每日壁纸", response_model=schemas.Response)
+async def bing_wallpaper() -> Any:
+    """
+    获取Bing每日壁纸
+    """
+    url = "https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1"
+    try:
+        resp = RequestUtils(timeout=5).get_res(url)
+    except Exception as err:
+        print(str(err))
+        return schemas.Response(success=False)
+    if resp and resp.status_code == 200:
+        try:
+            result = resp.json()
+            if isinstance(result, dict):
+                for image in result.get('images') or []:
+                    return schemas.Response(success=False,
+                                            message=f"https://cn.bing.com{image.get('url')}" if 'url' in image else '')
+        except Exception as err:
+            print(str(err))
+    return schemas.Response(success=False)

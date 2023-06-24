@@ -84,7 +84,7 @@ class TransmissionModule(_ModuleBase):
         if hashs:
             # 按Hash获取
             torrents, _ = self.transmission.get_torrents(ids=hashs, tags=settings.TORRENT_TAG)
-            for torrent in torrents:
+            for torrent in torrents or []:
                 ret_torrents.append(TransferTorrent(
                     title=torrent.name,
                     path=Path(torrent.download_dir) / torrent.name,
@@ -94,7 +94,7 @@ class TransmissionModule(_ModuleBase):
         elif status == TorrentStatus.TRANSFER:
             # 获取已完成且未整理的
             torrents = self.transmission.get_completed_torrents(tags=settings.TORRENT_TAG)
-            for torrent in torrents:
+            for torrent in torrents or []:
                 # 含"已整理"tag的不处理
                 if "已整理" in torrent.labels or []:
                     continue
@@ -113,7 +113,7 @@ class TransmissionModule(_ModuleBase):
         elif status == TorrentStatus.DOWNLOADING:
             # 获取正在下载的任务
             torrents = self.transmission.get_downloading_torrents(tags=settings.TORRENT_TAG)
-            for torrent in torrents:
+            for torrent in torrents or []:
                 meta = MetaInfo(torrent.name)
                 ret_torrents.append(DownloadingTorrent(
                     title=torrent.name,

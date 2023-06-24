@@ -97,7 +97,7 @@ class QbittorrentModule(_ModuleBase):
         if hashs:
             # 按Hash获取
             torrents, _ = self.qbittorrent.get_torrents(ids=hashs, tags=settings.TORRENT_TAG)
-            for torrent in torrents:
+            for torrent in torrents or []:
                 content_path = torrent.get("content_path")
                 if content_path:
                     torrent_path = Path(content_path)
@@ -112,7 +112,7 @@ class QbittorrentModule(_ModuleBase):
         elif status == TorrentStatus.TRANSFER:
             # 获取已完成且未整理的
             torrents = self.qbittorrent.get_completed_torrents(tags=settings.TORRENT_TAG)
-            for torrent in torrents:
+            for torrent in torrents or []:
                 tags = torrent.get("tags") or []
                 if "已整理" in tags:
                     continue
@@ -131,7 +131,7 @@ class QbittorrentModule(_ModuleBase):
         elif status == TorrentStatus.DOWNLOADING:
             # 获取正在下载的任务
             torrents = self.qbittorrent.get_downloading_torrents(tags=settings.TORRENT_TAG)
-            for torrent in torrents:
+            for torrent in torrents or []:
                 meta = MetaInfo(torrent.get('name'))
                 ret_torrents.append(DownloadingTorrent(
                     title=torrent.get('name'),
