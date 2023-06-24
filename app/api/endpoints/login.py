@@ -39,7 +39,7 @@ async def login_access_token(
             logger.info(f"辅助认证成功，用户信息: {token}")
             user = schemas.User(id=-1, name=form_data.username, is_active=True, is_superuser=False)
     elif not user.is_active:
-        raise HTTPException(status_code=401, detail="用户未启用")
+        raise HTTPException(status_code=403, detail="用户未启用")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return schemas.Token(
         access_token=security.create_access_token(
