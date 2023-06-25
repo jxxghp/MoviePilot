@@ -135,14 +135,16 @@ class SearchChain(ChainBase):
                 # 识别
                 torrent_meta = MetaInfo(title=title, subtitle=subtitle)
                 # 比对年份
-                if mediainfo.year:
+                if mediainfo.year and torrent_meta.year:
                     if mediainfo.type == MediaType.TV:
                         # 剧集
                         if torrent_meta.year not in [year for year in mediainfo.season_years.values()]:
+                            logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
                             continue
                     else:
                         # 没有季的剧集或者电影
                         if torrent_meta.year != mediainfo.year:
+                            logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
                             continue
                 # 比对标题
                 if torrent_meta.name in [mediainfo.title, mediainfo.original_title]:
@@ -156,6 +158,8 @@ class SearchChain(ChainBase):
                         logger.info(f'{mediainfo.title} 匹配到资源：{torrent.site_name} - {torrent.title}')
                         _match_torrents.append(torrent)
                         break
+                else:
+                    logger.warn(f'{torrent.site_name} - {torrent.title} 标题不匹配')
             self.progress.update(value=100,
                                  text=f'匹配完成，共匹配到 {len(_match_torrents)} 个资源',
                                  key=ProgressKey.Search)
