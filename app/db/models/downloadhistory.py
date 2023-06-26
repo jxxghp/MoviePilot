@@ -9,21 +9,33 @@ class DownloadHistory(Base):
     下载历史记录
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    # 保存路径
     path = Column(String, nullable=False, index=True)
+    # 类型 电影/电视剧
     type = Column(String, nullable=False)
+    # 标题
     title = Column(String, nullable=False)
+    # 年份
     year = Column(String)
     tmdbid = Column(Integer, index=True)
     imdbid = Column(String)
     tvdbid = Column(Integer)
     doubanid = Column(String)
+    # Sxx
     seasons = Column(Integer)
+    # Exx
     episodes = Column(String)
+    # 海报
     image = Column(String)
+    # 下载任务Hash
     download_hash = Column(String, index=True)
+    # 种子名称
     torrent_name = Column(String)
+    # 种子描述
     torrent_description = Column(String)
+    # 种子站点
     torrent_site = Column(String)
+    # 附加信息
     note = Column(String)
 
     @staticmethod

@@ -11,21 +11,37 @@ class Site(Base):
     站点表
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    # 站点名
     name = Column(String, nullable=False)
+    # 域名Key
     domain = Column(String, index=True)
+    # 站点地址
     url = Column(String, nullable=False)
+    # 站点优先级
     pri = Column(Integer)
+    # RSS地址，未启用
     rss = Column(String)
+    # Cookie
     cookie = Column(String)
+    # User-Agent
     ua = Column(String)
+    # 是否使用代理 0-否，1-是
     proxy = Column(Integer)
+    # 过滤规则
     filter = Column(String)
+    # 是否渲染
     render = Column(Integer)
+    # 附加信息
     note = Column(String)
+    # 流控单位周期
     limit_interval = Column(Integer, default=0)
+    # 流控次数
     limit_count = Column(Integer, default=0)
+    # 流控间隔
     limit_seconds = Column(Integer, default=0)
+    # 是否启用
     is_active = Column(Boolean(), default=True)
+    # 创建时间
     lst_mod_date = Column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     @staticmethod

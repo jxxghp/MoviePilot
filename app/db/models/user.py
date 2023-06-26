@@ -9,12 +9,19 @@ class User(Base):
     """
     用户表
     """
+    # ID
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    # 用户名
     name = Column(String, index=True, nullable=False)
+    # 邮箱，未启用
     email = Column(String, unique=True, index=True)
+    # 加密后密码
     hashed_password = Column(String, nullable=False)
+    # 是否启用
     is_active = Column(Boolean(), default=True)
+    # 是否管理员
     is_superuser = Column(Boolean(), default=False)
+    # 头像
     avatar = Column(String)
 
     @staticmethod

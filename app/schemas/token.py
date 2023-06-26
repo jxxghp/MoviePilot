@@ -9,4 +9,5 @@ class Token(BaseModel):
 
 
 class TokenPayload(BaseModel):
+    # 用户ID
     sub: Optional[int] = None

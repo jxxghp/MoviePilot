@@ -9,9 +9,13 @@ class SiteIcon(Base):
     站点图标表
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    # 站点名称
     name = Column(String, nullable=False)
+    # 域名Key
     domain = Column(String, index=True)
+    # 图标地址
     url = Column(String, nullable=False)
+    # 图标Base64
     base64 = Column(String)
 
     @staticmethod

@@ -9,24 +9,39 @@ class Subscribe(Base):
     订阅表
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    # 标题
     name = Column(String, nullable=False, index=True)
+    # 年份
     year = Column(String)
+    # 类型
     type = Column(String)
+    # 搜索关键字
     keyword = Column(String)
     tmdbid = Column(Integer, index=True)
     imdbid = Column(String)
     tvdbid = Column(Integer, index=True)
     doubanid = Column(String)
+    # 季号
     season = Column(Integer)
+    # 海报
     image = Column(String)
+    # 简介
     description = Column(String)
+    # 过滤规则
     filter = Column(String)
+    # 包含
     include = Column(String)
+    # 排除
     exclude = Column(String)
+    # 总集数
     total_episode = Column(Integer)
+    # 开始集数
     start_episode = Column(Integer)
+    # 缺失集数
     lack_episode = Column(Integer)
+    # 附加信息
     note = Column(String)
+    # 状态：N-新建， R-订阅中
     state = Column(String, nullable=False, index=True, default='N')
 
     @staticmethod

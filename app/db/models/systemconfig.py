@@ -9,7 +9,9 @@ class SystemConfig(Base):
     配置表
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    # 主键
     key = Column(String, index=True)
+    # 值
     value = Column(String, nullable=True)
 
     @staticmethod
