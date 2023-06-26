@@ -20,5 +20,8 @@ class TransferHistoryOper(DbOper):
         """
         新增转移历史
         """
-        transferhistory = TransferHistory(**kwargs)
-        return transferhistory.create(self._db)
+        if kwargs.get("download_hash"):
+            transferhistory = TransferHistory.get_by_hash(self._db, kwargs.get("download_hash"))
+            if transferhistory:
+                transferhistory.delete(self._db, transferhistory.id)
+        return TransferHistory(**kwargs).create(self._db)

@@ -36,7 +36,7 @@ class TransferHistory(Base):
     # 海报
     image = Column(String)
     # 下载器hash
-    download_hash = Column(String)
+    download_hash = Column(String, index=True)
     # 转移成功状态
     status = Column(Boolean(), default=True)
     # 转移失败信息
@@ -52,3 +52,7 @@ class TransferHistory(Base):
     @staticmethod
     def list_by_page(db: Session, page: int = 1, count: int = 30):
         return db.query(TransferHistory).offset((page - 1) * count).limit(count).all()
+
+    @staticmethod
+    def get_by_hash(db: Session, download_hash: str):
+        return db.query(TransferHistory).filter(TransferHistory.download_hash == download_hash).first()

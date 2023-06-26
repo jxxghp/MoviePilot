@@ -95,7 +95,7 @@ class TransferChain(ChainBase):
             # 识别元数据
             meta: MetaBase = MetaInfo(title=title, subtitle=subtitle)
             if not meta.name:
-                logger.warn(f'未识别到元数据，标题：{title}')
+                logger.error(f'未识别到元数据，标题：{title}')
                 continue
             if not arg_mediainfo:
                 # 查询下载记录识别情况
@@ -111,6 +111,16 @@ class TransferChain(ChainBase):
                     self.post_message(title=f"{torrent.title} 未识别到媒体信息，无法入库！\n"
                                             f"回复：```\n/transfer {torrent.hash} [tmdbid]\n``` 手动识别转移。",
                                       userid=userid)
+                    # 新增转移失败历史记录
+                    self.transferhis.add(
+                        src=str(torrent.path),
+                        mode=settings.TRANSFER_TYPE,
+                        seasons=meta.season,
+                        episodes=meta.episode,
+                        download_hash=torrent.hash,
+                        status=0,
+                        errmsg="未识别到媒体信息"
+                    )
                     continue
             else:
                 mediainfo = arg_mediainfo
@@ -127,9 +137,29 @@ class TransferChain(ChainBase):
                     text=f"原因：{transferinfo.message if transferinfo else '未知'}",
                     image=mediainfo.get_message_image(),
                     userid=userid
-                ),
+                )
+                # 新增转移失败历史记录
+                self.transferhis.add(
+                    src=str(torrent.path),
+                    dest=str(transferinfo.target_path),
+                    mode=settings.TRANSFER_TYPE,
+                    type=mediainfo.type.value,
+                    category=mediainfo.category,
+                    title=mediainfo.title,
+                    year=mediainfo.year,
+                    tmdbid=mediainfo.tmdb_id,
+                    imdbid=mediainfo.imdb_id,
+                    tvdbid=mediainfo.tvdb_id,
+                    doubanid=mediainfo.douban_id,
+                    seasons=meta.season,
+                    episodes=meta.episode,
+                    image=mediainfo.get_poster_image(),
+                    download_hash=torrent.hash,
+                    status=0,
+                    errmsg=transferinfo.message
+                )
                 continue
-            # 新增转移历史记录
+            # 新增转移成功历史记录
             self.transferhis.add(
                 src=str(torrent.path),
                 dest=str(transferinfo.target_path),
@@ -145,7 +175,8 @@ class TransferChain(ChainBase):
                 seasons=meta.season,
                 episodes=meta.episode,
                 image=mediainfo.get_poster_image(),
-                download_hash=torrent.hash
+                download_hash=torrent.hash,
+                status=1
             )
             # 转移完成
             self.transfer_completed(hashs=torrent.hash, transinfo=transferinfo)
