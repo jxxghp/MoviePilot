@@ -146,7 +146,7 @@ class DownloadChain(ChainBase):
     def batch_download(self,
                        contexts: List[Context],
                        no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
-                       userid: str = None) -> Tuple[List[Context], dict]:
+                       userid: str = None) -> Tuple[List[Context], Dict[int, Dict[int, NotExistMediaInfo]]]:
         """
         根据缺失数据，自动种子列表中组合择优下载
         :param contexts:  资源上下文列表

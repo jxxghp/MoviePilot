@@ -7,6 +7,7 @@ from app.chain.search import SearchChain
 from app.core.metainfo import MetaInfo
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.config import settings
+from app.db.models.subscribe import Subscribe
 from app.db.subscribe_oper import SubscribeOper
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -210,6 +211,8 @@ class SubscribeChain(ChainBase):
                 matched_contexts.append(context)
             if not matched_contexts:
                 logger.warn(f'订阅 {subscribe.name} 没有符合过滤条件的资源')
+                # 未搜索到资源，但本地缺失可能有变化，更新订阅剩余集数
+                self.__upate_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
                 continue
             # 自动下载
             downloads, lefts = self.downloadchain.batch_download(contexts=matched_contexts,
@@ -224,6 +227,8 @@ class SubscribeChain(ChainBase):
             else:
                 # 未完成下载
                 logger.info(f'{mediainfo.title_year} 未下载未完整，继续订阅 ...')
+                # 更新订阅剩余集数
+                self.__upate_lack_episodes(lefts=lefts, subscribe=subscribe, mediainfo=mediainfo)
 
     def refresh(self):
         """
@@ -347,16 +352,27 @@ class SubscribeChain(ChainBase):
                                       image=mediainfo.get_message_image())
                 else:
                     # 未完成下载，计算剩余集数
-                    left_seasons = lefts.get(mediainfo.tmdb_id) or []
-                    for season_info in left_seasons:
-                        season = season_info.get('season')
-                        if season == subscribe.season:
-                            left_episodes = season_info.get('episodes')
-                            logger.info(f'{mediainfo.title_year} 季 {season} 未下载完整，'
-                                        f'更新缺失集数为{len(left_episodes)} ...')
-                            self.subscribehelper.update(subscribe.id, {
-                                "lack_episode": len(left_episodes)
-                            })
+                    self.__upate_lack_episodes(lefts=lefts, subscribe=subscribe, mediainfo=mediainfo)
+            else:
+                # 未搜索到资源，但本地缺失可能有变化，更新订阅剩余集数
+                self.__upate_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
+
+    def __upate_lack_episodes(self, lefts: Dict[int, Dict[int, NotExistMediaInfo]],
+                              subscribe: Subscribe,
+                              mediainfo: MediaInfo):
+        """
+        更新订阅剩余集数
+        """
+        left_seasons = lefts.get(mediainfo.tmdb_id) or {}
+        for season_info in left_seasons.values():
+            season = season_info.season
+            if season == subscribe.season:
+                left_episodes = season_info.episodes
+                logger.info(f'{mediainfo.title_year} 季 {season} 未搜索到资源，'
+                            f'更新缺失集数为{len(left_episodes)} ...')
+                self.subscribehelper.update(subscribe.id, {
+                    "lack_episode": len(left_episodes)
+                })
 
     def remote_list(self, userid: Union[str, int] = None):
         """
