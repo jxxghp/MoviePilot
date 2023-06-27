@@ -20,7 +20,9 @@ class SubscribeOper(DbOper):
                               tmdbid=mediainfo.tmdb_id,
                               imdbid=mediainfo.imdb_id,
                               tvdbid=mediainfo.tvdb_id,
-                              image=mediainfo.get_poster_image(),
+                              poster=mediainfo.get_poster_image(),
+                              backdrop=mediainfo.get_backdrop_image(),
+                              vote=mediainfo.vote_average,
                               description=mediainfo.overview,
                               **kwargs)
         if not subscribe.exists(self._db, tmdbid=mediainfo.tmdb_id, season=kwargs.get('season')):

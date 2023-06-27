@@ -24,7 +24,11 @@ class Subscribe(Base):
     # 季号
     season = Column(Integer)
     # 海报
-    image = Column(String)
+    poster = Column(String)
+    # 背景图
+    backdrop = Column(String)
+    # 评分
+    vote = Column(Integer)
     # 简介
     description = Column(String)
     # 过滤规则

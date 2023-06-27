@@ -18,7 +18,11 @@ class Subscribe(BaseModel):
     # 季号
     season: Optional[int]
     # 海报
-    image: Optional[str]
+    poster: Optional[str]
+    # 背景图
+    backdrop: Optional[str]
+    # 评分
+    vote: int = 0
     # 描述
     description: Optional[str]
     # 过滤规则
