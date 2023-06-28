@@ -42,7 +42,7 @@ class TransferHistory(Base):
     # 转移失败信息
     errmsg = Column(String)
     # 时间
-    date = Column(String, index=True, default=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    date = Column(String, index=True)
 
     @staticmethod
     def list_by_title(db: Session, title: str, page: int = 1, count: int = 30):

@@ -1,3 +1,4 @@
+import time
 from typing import Any
 
 from app.db import DbOper
@@ -24,4 +25,7 @@ class TransferHistoryOper(DbOper):
             transferhistory = TransferHistory.get_by_hash(self._db, kwargs.get("download_hash"))
             if transferhistory:
                 transferhistory.delete(self._db, transferhistory.id)
+        kwargs.update({
+            "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        })
         return TransferHistory(**kwargs).create(self._db)
