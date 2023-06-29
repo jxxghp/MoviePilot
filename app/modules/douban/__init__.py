@@ -53,22 +53,22 @@ class DoubanModule(_ModuleBase):
         return douban_info
 
     def douban_discover(self, mtype: MediaType, sort: str, tags: str,
-                        start: int = 0, count: int = 30) -> Optional[List[dict]]:
+                        page: int = 1, count: int = 30) -> Optional[List[dict]]:
         """
         发现豆瓣电影、剧集
         :param mtype:  媒体类型
         :param sort:  排序方式
         :param tags:  标签
-        :param start:  起始位置
+        :param page:  页码
         :param count:  数量
         :return: 媒体信息列表
         """
         logger.info(f"开始发现豆瓣 {mtype.value} ...")
         if mtype == MediaType.MOVIE:
-            infos = self.doubanapi.movie_recommend(start=start, count=count,
+            infos = self.doubanapi.movie_recommend(start=(page - 1) * count, count=count,
                                                    sort=sort, tags=tags)
         else:
-            infos = self.doubanapi.tv_recommend(start=start, count=count,
+            infos = self.doubanapi.tv_recommend(start=(page - 1) * count, count=count,
                                                 sort=sort, tags=tags)
         if not infos:
             return []

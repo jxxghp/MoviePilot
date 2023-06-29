@@ -56,33 +56,35 @@ async def douban_info(doubanid: str, _: schemas.TokenPayload = Depends(verify_to
 @router.get("/movies", summary="豆瓣电影", response_model=List[schemas.MediaInfo])
 async def douban_movies(sort: str = "R",
                         tags: str = "",
-                        start: int = 0,
+                        page: int = 1,
                         count: int = 30,
                         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览豆瓣电影信息
     """
     movies = DoubanChain().douban_discover(mtype=MediaType.MOVIE,
-                                           sort=sort, tags=tags, start=start, count=count)
+                                           sort=sort, tags=tags, page=page, count=count)
     if not movies:
         return []
-    return [MediaInfo(douban_info=movie).to_dict() for movie in movies]
+    medias = [MediaInfo(douban_info=movie) for movie in movies]
+    return [media.to_dict() for media in medias if media.poster_path]
 
 
 @router.get("/tvs", summary="豆瓣剧集", response_model=List[schemas.MediaInfo])
 async def douban_tvs(sort: str = "R",
                      tags: str = "",
-                     start: int = 0,
+                     page: int = 1,
                      count: int = 30,
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览豆瓣剧集信息
     """
     tvs = DoubanChain().douban_discover(mtype=MediaType.TV,
-                                        sort=sort, tags=tags, start=start, count=count)
+                                        sort=sort, tags=tags, page=page, count=count)
     if not tvs:
         return []
-    return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
+    medias = [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
+    return [media.to_dict() for media in medias if media.poster_path]
 
 
 @router.get("/movie_top250", summary="豆瓣电影TOP250", response_model=List[schemas.MediaInfo])
