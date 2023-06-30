@@ -45,6 +45,6 @@ RUN apt-get update \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && playwright install-deps chromium \
     && rm -rf /root/.cache/
-EXPOSE 3001
+EXPOSE 3000
 VOLUME ["/config"]
 ENTRYPOINT [ "bash", "-c", "/app/start.sh & nginx -g 'daemon off;'" ]

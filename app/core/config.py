@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     TZ: str = "Asia/Shanghai"
     # 监听地址，ipv6改为::
     HOST: str = "0.0.0.0"
-    # 监听端口
+    # API监听端口
     PORT: int = 3001
     # 是否自动重载
     RELOAD: bool = False
