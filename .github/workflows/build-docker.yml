@@ -32,7 +32,7 @@ jobs:
           yarn && yarn build
           cd ..
           mkdir -p public
-          cp -f ./MoviePilot-Frontend/dist/* ./public/
+          cp -rf ./MoviePilot-Frontend/dist/* ./public/
           rm -rf MoviePilot-Frontend
 
       -

@@ -36,6 +36,7 @@ WORKDIR ${WORKDIR}
 COPY . .
 RUN apt-get update \
     && apt-get -y install musl-dev nginx \
+    && mkdir -p /etc/nginx \
     && cp -f nginx.conf /etc/nginx/nginx.conf \
     && pip install -r requirements.txt \
     && python_ver=$(python3 -V | awk '{print $2}') \
