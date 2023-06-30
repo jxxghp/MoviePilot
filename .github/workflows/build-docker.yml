@@ -19,6 +19,26 @@ jobs:
           echo "app_version=$app_version" >> $GITHUB_ENV
 
       -
+        name: Build frontend
+        id: build_brontend
+        run: |
+          curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+          curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
+          echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+          apt update
+          apt-get install -y nodejs yarn
+          node -v
+          yarn --version
+          git clone https://github.com/jxxghp/MoviePilot-Frontend
+          cd MoviePilot-Frontend
+          yarn
+          yarn build
+          cd ..
+          mkdir -p public
+          cp -f ./MoviePilot-Frontend/dist/* ./public/
+          rm -rf MoviePilot-Frontend
+
+      -
         name: Set Up QEMU
         uses: docker/setup-qemu-action@v1
 

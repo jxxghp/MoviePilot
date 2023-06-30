@@ -4,7 +4,7 @@ ENV LANG="C.UTF-8" \
     PUID=0 \
     PGID=0 \
     UMASK=000 \
-    WORKDIR="/MoviePilot" \
+    WORKDIR="/app" \
     CONFIG_DIR="/config" \
     API_TOKEN="moviepilot" \
     SUPERUSER="admin" \
@@ -35,7 +35,8 @@ ENV LANG="C.UTF-8" \
 WORKDIR ${WORKDIR}
 COPY . .
 RUN apt-get update \
-    && apt-get -y install musl-dev \
+    && apt-get -y install musl-dev nginx \
+    && cp -f nginx.conf /etc/nginx/nginx.conf \
     && pip install -r requirements.txt \
     && python_ver=$(python3 -V | awk '{print $2}') \
     && echo "${WORKDIR}/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \
@@ -45,4 +46,4 @@ RUN apt-get update \
     && rm -rf /root/.cache/
 EXPOSE 3001
 VOLUME ["/config"]
-ENTRYPOINT [ "sh", "/MoviePilot/start.sh" ]
+ENTRYPOINT [ "bash", "-c", "/app/start.sh & nginx -g 'daemon off;'" ]
