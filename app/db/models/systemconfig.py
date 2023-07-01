@@ -18,7 +18,8 @@ class SystemConfig(Base):
     def get_by_key(db: Session, key: str):
         return db.query(SystemConfig).filter(SystemConfig.key == key).first()
 
-    @staticmethod
-    def delete_by_key(db: Session, key: str):
-        db.query(SystemConfig).filter(SystemConfig.key == key).delete()
-        db.commit()
+    def delete_by_key(self, db: Session, key: str):
+        systemconfig = self.get_by_key(db, key)
+        if systemconfig:
+            systemconfig.delete(db, systemconfig.id)
+        return True

@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List, Any, Union
 
 from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
@@ -33,6 +33,25 @@ async def read_subscribes(
     return Subscribe.list(db)
 
 
+@router.get("/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
+async def subscribe_info_by_id(
+        mediaid: str,
+        season: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据TMDBID或豆瓣ID查询订阅 tmdb:/douban:
+    """
+    if mediaid.startswith("tmdb:"):
+        result = Subscribe.exists(db, int(mediaid[5:]), season)
+    elif mediaid.startswith("douban:"):
+        result = Subscribe.get_by_doubanid(db, mediaid[7:])
+    else:
+        result = None
+
+    return result if result else Subscribe()
+
+
 @router.post("/", summary="新增订阅", response_model=schemas.Response)
 async def create_subscribe(
         *,
@@ -42,8 +61,24 @@ async def create_subscribe(
     """
     新增订阅
     """
-    result = SubscribeChain().add(**subscribe_in.dict())
-    return schemas.Response(success=result)
+    # 类型转换
+    if subscribe_in.type:
+        mtype = MediaType.TV if subscribe_in.type == "电视剧" else MediaType.MOVIE
+    else:
+        mtype = None
+    # 标题转换
+    if subscribe_in.name:
+        title = subscribe_in.name
+    else:
+        title = None
+    result = SubscribeChain().add(mtype=mtype,
+                                  title=title,
+                                  year=subscribe_in.year,
+                                  tmdbid=subscribe_in.tmdbid,
+                                  season=subscribe_in.season,
+                                  doubanid=subscribe_in.doubanid,
+                                  exist_ok=True)
+    return schemas.Response(success=True if result else False, message=result)
 
 
 @router.put("/", summary="更新订阅", response_model=schemas.Subscribe)
@@ -76,6 +111,24 @@ async def delete_subscribe(
     删除订阅信息
     """
     Subscribe.delete(db, subscribe_in.id)
+    return schemas.Response(success=True)
+
+
+@router.delete("/{mediaid}", summary="删除订阅", response_model=schemas.Response)
+async def delete_subscribe_by_id(
+        mediaid: str,
+        season: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)
+) -> Any:
+    """
+    根据TMDBID或豆瓣ID删除订阅 tmdb:/douban:
+    """
+    if mediaid.startswith("tmdb:"):
+        Subscribe().delete_by_tmdbid(db, int(mediaid[5:]), season)
+    elif mediaid.startswith("douban:"):
+        Subscribe().delete_by_doubanid(db, mediaid[7:])
+
     return schemas.Response(success=True)
 
 

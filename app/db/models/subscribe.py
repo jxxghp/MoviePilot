@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
 from app.db.models import Base
+from app.schemas import MediaType
 
 
 class Subscribe(Base):
@@ -19,8 +20,8 @@ class Subscribe(Base):
     keyword = Column(String)
     tmdbid = Column(Integer, index=True)
     imdbid = Column(String)
-    tvdbid = Column(Integer, index=True)
-    doubanid = Column(String)
+    tvdbid = Column(Integer)
+    doubanid = Column(String, index=True)
     # 季号
     season = Column(Integer)
     # 海报
@@ -60,7 +61,10 @@ class Subscribe(Base):
         return db.query(Subscribe).filter(Subscribe.state == state).all()
 
     @staticmethod
-    def get_by_tmdbid(db: Session, tmdbid: int):
+    def get_by_tmdbid(db: Session, tmdbid: int, season: int = None):
+        if season:
+            return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid,
+                                              Subscribe.season == season).all()
         return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid).all()
 
     @staticmethod
@@ -68,5 +72,17 @@ class Subscribe(Base):
         return db.query(Subscribe).filter(Subscribe.name == title).first()
 
     @staticmethod
-    def get_by_tvdbid(db: Session, tvdbid: int):
-        return db.query(Subscribe).filter(Subscribe.tvdbid == tvdbid).first()
+    def get_by_doubanid(db: Session, doubanid: str):
+        return db.query(Subscribe).filter(Subscribe.doubanid == doubanid).first()
+
+    def delete_by_tmdbid(self, db: Session, tmdbid: int, season: int):
+        subscrbies = self.get_by_tmdbid(db, tmdbid, season)
+        for subscrbie in subscrbies:
+            subscrbie.delete(db, subscrbie.id)
+        return True
+
+    def delete_by_doubanid(self, db: Session, doubanid: str):
+        subscribe = self.get_by_doubanid(db, doubanid)
+        if subscribe:
+            subscribe.delete(db, subscribe.id)
+        return True

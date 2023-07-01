@@ -109,6 +109,8 @@ class MediaInfo:
     title: Optional[str] = None
     # 年份
     year: Optional[str] = None
+    # 季
+    season: Optional[int] = None
     # TMDB ID
     tmdb_id: Optional[int] = None
     # IMDB ID
@@ -334,7 +336,10 @@ class MediaInfo:
                 self.type = MediaType.MOVIE if info.get("type") == "movie" else MediaType.TV
         # 标题
         if not self.title:
-            self.title = MetaInfo(info.get("title")).name
+            self.title = info.get("title")
+            # 识别标题中的季
+            meta = MetaInfo(self.title)
+            self.season = meta.begin_season
         # 原语种标题
         if not self.original_title:
             self.original_title = info.get("original_title")

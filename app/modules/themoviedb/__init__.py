@@ -583,6 +583,8 @@ class TheMovieDbModule(_ModuleBase):
             images = self.tmdb.get_tv_images(mediainfo.tmdb_id, season=1)
         if not images:
             return mediainfo
+        if isinstance(images, list):
+            images = images[0]
         # 背景图
         if not mediainfo.backdrop_path:
             backdrops = images.get("backdrops")

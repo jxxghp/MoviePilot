@@ -34,6 +34,7 @@ class SubscribeChain(ChainBase):
     def add(self, title: str, year: str,
             mtype: MediaType = None,
             tmdbid: int = None,
+            doubanid: str = None,
             season: int = None,
             userid: str = None,
             username: str = None,
@@ -60,7 +61,7 @@ class SubscribeChain(ChainBase):
         mediainfo: MediaInfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid)
         if not mediainfo:
             logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}')
-            return False
+            return 0
         # 更新媒体图片
         self.obtain_images(mediainfo=mediainfo)
         # 总集数
@@ -75,14 +76,14 @@ class SubscribeChain(ChainBase):
                                                                 tmdbid=mediainfo.tmdb_id)
                     if not mediainfo:
                         logger.error(f"媒体信息识别失败！")
-                        return False
+                        return 0
                     if not mediainfo.seasons:
                         logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}")
-                        return False
+                        return 0
                 total_episode = len(mediainfo.seasons.get(season) or [])
                 if not total_episode:
                     logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}')
-                    return False
+                    return 0
                 kwargs.update({
                     'total_episode': total_episode
                 })
@@ -92,7 +93,7 @@ class SubscribeChain(ChainBase):
                     'lack_episode': kwargs.get('total_episode')
                 })
         # 添加订阅
-        sid, err_msg = self.subscribehelper.add(mediainfo, season=season, **kwargs)
+        sid, err_msg = self.subscribehelper.add(mediainfo, doubanid=doubanid, season=season, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok:

@@ -4,43 +4,43 @@ from pydantic import BaseModel
 
 
 class Subscribe(BaseModel):
-    id: Optional[int]
+    id: Optional[int] = None
     # 订阅名称
-    name: Optional[str]
+    name: Optional[str] = None
     # 订阅年份
-    year: Optional[str]
+    year: Optional[str] = None
     # 订阅类型 电影/电视剧
-    type: Optional[str]
+    type: Optional[str] = None
     # 搜索关键字
-    keyword: Optional[str]
-    tmdbid: Optional[int]
-    doubanid: Optional[str]
+    keyword: Optional[str] = None
+    tmdbid: Optional[int] = None
+    doubanid: Optional[str] = None
     # 季号
-    season: Optional[int]
+    season: Optional[int] = None
     # 海报
-    poster: Optional[str]
+    poster: Optional[str] = None
     # 背景图
-    backdrop: Optional[str]
+    backdrop: Optional[str] = None
     # 评分
-    vote: Optional[int]
+    vote: Optional[int] = 0
     # 描述
-    description: Optional[str]
+    description: Optional[str] = None
     # 过滤规则
-    filter: Optional[str]
+    filter: Optional[str] = None
     # 包含
-    include: Optional[str]
+    include: Optional[str] = None
     # 排除
-    exclude: Optional[str]
+    exclude: Optional[str] = None
     # 总集数
-    total_episode: Optional[int]
+    total_episode: Optional[int] = 0
     # 开始集数
-    start_episode: Optional[int]
+    start_episode: Optional[int] = 0
     # 缺失集数
-    lack_episode: Optional[int]
+    lack_episode: Optional[int] = 0
     # 附加信息
-    note: Optional[str]
+    note: Optional[str] = None
     # 状态：N-新建， R-订阅中
-    state: Optional[str]
+    state: Optional[str] = None
 
     class Config:
         orm_mode = True
