@@ -36,7 +36,7 @@ async def read_subscribes(
 @router.get("/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
 async def subscribe_info_by_id(
         mediaid: str,
-        season: int,
+        season: int = None,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -117,7 +117,7 @@ async def delete_subscribe(
 @router.delete("/{mediaid}", summary="删除订阅", response_model=schemas.Response)
 async def delete_subscribe_by_id(
         mediaid: str,
-        season: int,
+        season: int = None,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
