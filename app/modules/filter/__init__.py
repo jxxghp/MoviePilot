@@ -60,6 +60,10 @@ class FilterModule(_ModuleBase):
         "REMUX": {
             "include": [r'REMUX'],
             "exclude": []
+        },
+        # 免费
+        "FREE": {
+            "downloadvolumefactor": 0
         }
     }
 
@@ -180,9 +184,11 @@ class FilterModule(_ModuleBase):
             # 规则不存在
             return False
         # 包含规则项
-        includes = self.rule_set[rule_name].get("include")
+        includes = self.rule_set[rule_name].get("include") or []
         # 排除规则项
-        excludes = self.rule_set[rule_name].get("exclude")
+        excludes = self.rule_set[rule_name].get("exclude") or []
+        # FREE规则
+        downloadvolumefactor = self.rule_set[rule_name].get("downloadvolumefactor")
         # 匹配项
         content = f"{torrent.title} {torrent.description}"
         for include in includes:
@@ -192,5 +198,9 @@ class FilterModule(_ModuleBase):
         for exclude in excludes:
             if re.search(r"%s" % exclude, content, re.IGNORECASE):
                 # 发现排除项
+                return False
+        if downloadvolumefactor is not None:
+            if torrent.downloadvolumefactor != downloadvolumefactor:
+                # FREE规则不匹配
                 return False
         return True
