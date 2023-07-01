@@ -23,9 +23,13 @@ async def recognize(title: str,
 
 @router.get("/search", summary="搜索媒体信息", response_model=List[schemas.MediaInfo])
 async def search_by_title(title: str,
+                          page: int = 1,
+                          count: int = 8,
                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     模糊搜索媒体信息列表
     """
     _, medias = MediaChain().search(title=title)
-    return [media.to_dict() for media in medias]
+    if medias:
+        return [media.to_dict() for media in medias[(page-1) * count: page * count]]
+    return []
