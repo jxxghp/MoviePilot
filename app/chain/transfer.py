@@ -207,7 +207,7 @@ class TransferChain(ChainBase):
         """
         发送入库成功的消息
         """
-        msg_title = f"{mediainfo.title_year} 已入库"
+        msg_title = f"{mediainfo.title_year}{meta.season_episode} 已入库"
         if mediainfo.vote_average:
             msg_str = f"评分：{mediainfo.vote_average}，类型：{mediainfo.type.value}"
         else:
