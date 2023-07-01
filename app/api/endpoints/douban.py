@@ -90,7 +90,8 @@ async def douban_tvs(sort: str = "R",
     return [media.to_dict() for media in medias
             if media.poster_path
             and "movie_large.jpg" not in media.poster_path
-            and "tv_normal.png" not in media.poster_path]
+            and "tv_normal.jpg" not in media.poster_path
+            and "tv_large.jpg" not in media.poster_path]
 
 
 @router.get("/movie_top250", summary="豆瓣电影TOP250", response_model=List[schemas.MediaInfo])
