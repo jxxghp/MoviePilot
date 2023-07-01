@@ -117,7 +117,7 @@ class MediaInfo(BaseModel):
 
 class TorrentInfo(BaseModel):
     # 站点ID
-    site: int = None
+    site: Optional[int] = None
     # 站点名称
     site_name: Optional[str] = None
     # 站点Cookie

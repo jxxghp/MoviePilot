@@ -4,16 +4,16 @@ from pydantic import BaseModel
 
 
 class Subscribe(BaseModel):
-    id: int
+    id: Optional[int]
     # 订阅名称
-    name: str
+    name: Optional[str]
     # 订阅年份
-    year: str
+    year: Optional[str]
     # 订阅类型 电影/电视剧
-    type: str
+    type: Optional[str]
     # 搜索关键字
     keyword: Optional[str]
-    tmdbid: int
+    tmdbid: Optional[int]
     doubanid: Optional[str]
     # 季号
     season: Optional[int]
@@ -22,7 +22,7 @@ class Subscribe(BaseModel):
     # 背景图
     backdrop: Optional[str]
     # 评分
-    vote: int = 0
+    vote: Optional[int]
     # 描述
     description: Optional[str]
     # 过滤规则
@@ -40,7 +40,7 @@ class Subscribe(BaseModel):
     # 附加信息
     note: Optional[str]
     # 状态：N-新建， R-订阅中
-    state: str
+    state: Optional[str]
 
     class Config:
         orm_mode = True

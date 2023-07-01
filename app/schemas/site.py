@@ -5,13 +5,13 @@ from pydantic import BaseModel
 
 class Site(BaseModel):
     # ID
-    id: int
+    id: Optional[int]
     # 站点名称
-    name: str
+    name: Optional[str]
     # 站点主域名Key
-    domain: str
+    domain: Optional[str]
     # 站点地址
-    url: str
+    url: Optional[str]
     # 站点优先级
     pri: Optional[int] = 0
     # RSS地址

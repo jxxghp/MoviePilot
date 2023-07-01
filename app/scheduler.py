@@ -37,6 +37,7 @@ class Scheduler(metaclass=Singleton):
                                      })
 
     def __init__(self):
+        return
         # CookieCloud定时同步
         if settings.COOKIECLOUD_INTERVAL:
             self._scheduler.add_job(CookieCloudChain().process,
