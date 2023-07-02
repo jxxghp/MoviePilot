@@ -188,6 +188,7 @@ class DownloadingTorrent(BaseModel):
     season_episode: Optional[str] = None
     size: Optional[float] = 0
     progress: Optional[float] = 0
+    state: Optional[str] = 'downloading'
     media: Optional[dict] = {}
 
 
