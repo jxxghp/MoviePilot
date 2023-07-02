@@ -103,7 +103,7 @@ class Transmission(metaclass=Singleton):
             return None
         try:
             torrents, error = self.get_torrents(ids=ids,
-                                                status=["downloading", "download_pending"],
+                                                status=["downloading", "download_pending", "stopped"],
                                                 tags=tags)
             return None if error else torrents or []
         except Exception as err:
