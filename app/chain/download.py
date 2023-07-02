@@ -8,7 +8,7 @@ from app.core.meta import MetaBase
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import ExistMediaInfo, NotExistMediaInfo
+from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent
 from app.schemas.types import MediaType, TorrentStatus, EventType
 from app.utils.string import StringUtils
 
@@ -530,3 +530,9 @@ class DownloadChain(ChainBase):
                             f"{round(torrent.progress * 100, 1)}%")
             index += 1
         self.post_message(title=title, text="\n".join(messages), userid=userid)
+
+    def downloading(self) -> List[DownloadingTorrent]:
+        """
+        查询正在下载的任务
+        """
+        return self.list_torrents(status=TorrentStatus.DOWNLOADING) or []
