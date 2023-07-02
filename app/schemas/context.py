@@ -181,6 +181,7 @@ class TransferTorrent(BaseModel):
 
 
 class DownloadingTorrent(BaseModel):
+    hash: Optional[str] = None
     title: Optional[str] = None
     name: Optional[str] = None
     year: Optional[str] = None

@@ -116,6 +116,7 @@ class TransmissionModule(_ModuleBase):
             for torrent in torrents or []:
                 meta = MetaInfo(torrent.name)
                 ret_torrents.append(DownloadingTorrent(
+                    hash=torrent.hashString,
                     title=torrent.name,
                     name=meta.name,
                     year=meta.year,

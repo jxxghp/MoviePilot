@@ -134,6 +134,7 @@ class QbittorrentModule(_ModuleBase):
             for torrent in torrents or []:
                 meta = MetaInfo(torrent.get('name'))
                 ret_torrents.append(DownloadingTorrent(
+                    hash=torrent.get('hash'),
                     title=torrent.get('name'),
                     name=meta.name,
                     year=meta.year,
