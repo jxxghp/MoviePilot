@@ -104,21 +104,8 @@ async def update_subscribe(
     return subscribe
 
 
-@router.delete("/", summary="删除订阅", response_model=schemas.Response)
-async def delete_subscribe(
-        subscribe_in: schemas.Subscribe,
-        db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)
-) -> Any:
-    """
-    删除订阅信息
-    """
-    Subscribe.delete(db, subscribe_in.id)
-    return schemas.Response(success=True)
-
-
-@router.delete("/{mediaid}", summary="删除订阅", response_model=schemas.Response)
-async def delete_subscribe_by_id(
+@router.delete("/media/{mediaid}", summary="删除订阅", response_model=schemas.Response)
+async def delete_subscribe_by_mediaid(
         mediaid: str,
         season: int = None,
         db: Session = Depends(get_db),
@@ -132,6 +119,19 @@ async def delete_subscribe_by_id(
     elif mediaid.startswith("douban:"):
         Subscribe().delete_by_doubanid(db, mediaid[7:])
 
+    return schemas.Response(success=True)
+
+
+@router.delete("/{subscribe_id}", summary="删除订阅", response_model=schemas.Response)
+async def delete_subscribe(
+        subscribe_id: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)
+) -> Any:
+    """
+    删除订阅信息
+    """
+    Subscribe.delete(db, subscribe_id)
     return schemas.Response(success=True)
 
 
