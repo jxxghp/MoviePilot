@@ -9,6 +9,8 @@ from app.core.config import settings
 from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
+from app.db.models.user import User
+from app.db.userauth import get_current_active_user
 from app.schemas.types import MediaType
 
 router = APIRouter()
@@ -56,7 +58,7 @@ async def subscribe_info_by_id(
 async def create_subscribe(
         *,
         subscribe_in: schemas.Subscribe,
-        _: schemas.TokenPayload = Depends(verify_token)
+        current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """
     新增订阅
@@ -77,6 +79,7 @@ async def create_subscribe(
                                   tmdbid=subscribe_in.tmdbid,
                                   season=subscribe_in.season,
                                   doubanid=subscribe_in.doubanid,
+                                  username=current_user.name,
                                   exist_ok=True)
     return schemas.Response(success=True if result else False, message=result)
 
