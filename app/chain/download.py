@@ -535,4 +535,20 @@ class DownloadChain(ChainBase):
         """
         查询正在下载的任务
         """
-        return self.list_torrents(status=TorrentStatus.DOWNLOADING) or []
+        torrents = self.list_torrents(status=TorrentStatus.DOWNLOADING)
+        if not torrents:
+            return []
+        ret_torrents = []
+        for torrent in torrents:
+            history = self.downloadhis.get_by_hash(torrent.hash)
+            if history:
+                torrent.media = {
+                    "tmdbid": history.tmdbid,
+                    "type": history.type,
+                    "title": history.title,
+                    "season": history.seasons,
+                    "episode": history.episodes,
+                    "image": history.image,
+                }
+            ret_torrents.append(torrent)
+        return ret_torrents

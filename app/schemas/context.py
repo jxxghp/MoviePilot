@@ -178,6 +178,7 @@ class TransferTorrent(BaseModel):
     path: Optional[Path] = None
     hash: Optional[str] = None
     tags: Optional[str] = None
+    media: Optional[dict] = {}
 
 
 class DownloadingTorrent(BaseModel):
