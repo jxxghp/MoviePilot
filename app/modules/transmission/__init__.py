@@ -8,6 +8,7 @@ from app.modules import _ModuleBase
 from app.modules.transmission.transmission import Transmission
 from app.schemas import TransferInfo, TransferTorrent, DownloadingTorrent
 from app.schemas.types import TorrentStatus
+from app.utils.string import StringUtils
 
 
 class TransmissionModule(_ModuleBase):
@@ -122,7 +123,9 @@ class TransmissionModule(_ModuleBase):
                     year=meta.year,
                     season_episode=meta.season_episode,
                     progress=torrent.progress,
-                    size=torrent.total_size
+                    size=torrent.total_size,
+                    dlspeed=StringUtils.str_filesize(torrent.download_speed),
+                    ulspeed=StringUtils.str_filesize(torrent.upload_speed),
                 ))
         else:
             return None

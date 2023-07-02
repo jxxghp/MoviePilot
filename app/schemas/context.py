@@ -189,6 +189,8 @@ class DownloadingTorrent(BaseModel):
     size: Optional[float] = 0
     progress: Optional[float] = 0
     state: Optional[str] = 'downloading'
+    upspeed: Optional[str] = None
+    dlspeed: Optional[str] = None
     media: Optional[dict] = {}
 
 

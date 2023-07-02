@@ -140,7 +140,9 @@ class QbittorrentModule(_ModuleBase):
                     year=meta.year,
                     season_episode=meta.season_episode,
                     progress=torrent.get('progress'),
-                    size=torrent.get('total_size')
+                    size=torrent.get('total_size'),
+                    dlspeed=StringUtils.str_filesize(torrent.get('dlspeed')),
+                    upspeed=StringUtils.str_filesize(torrent.get('upspeed')),
                 ))
         else:
             return None
