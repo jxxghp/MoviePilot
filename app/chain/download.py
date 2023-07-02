@@ -552,3 +552,19 @@ class DownloadChain(ChainBase):
                 }
             ret_torrents.append(torrent)
         return ret_torrents
+
+    def set_downloading(self, hash_str, oper: str) -> bool:
+        """
+        控制下载任务 start/pause
+        """
+        if oper == "start":
+            return self.start_torrents(hashs=[hash_str])
+        elif oper == "pause":
+            return self.stop_torrents(hashs=[hash_str])
+        return False
+
+    def remove_downloading(self, hash_str: str) -> bool:
+        """
+        删除下载任务
+        """
+        return self.remove_torrents(hashs=[hash_str])

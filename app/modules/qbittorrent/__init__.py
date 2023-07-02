@@ -141,6 +141,7 @@ class QbittorrentModule(_ModuleBase):
                     season_episode=meta.season_episode,
                     progress=torrent.get('progress'),
                     size=torrent.get('total_size'),
+                    state="downloading" if torrent.get('state') == "downloading" else "paused",
                     dlspeed=StringUtils.str_filesize(torrent.get('dlspeed')),
                     upspeed=StringUtils.str_filesize(torrent.get('upspeed')),
                 ))
@@ -167,3 +168,19 @@ class QbittorrentModule(_ModuleBase):
         :return: bool
         """
         return self.qbittorrent.delete_torrents(delete_file=True, ids=hashs)
+
+    def start_torrents(self, hashs: Union[list, str]) -> bool:
+        """
+        开始下载
+        :param hashs:  种子Hash
+        :return: bool
+        """
+        return self.qbittorrent.start_torrents(ids=hashs)
+
+    def stop_torrents(self, hashs: Union[list, str]) -> bool:
+        """
+        停止下载
+        :param hashs:  种子Hash
+        :return: bool
+        """
+        return self.qbittorrent.start_torrents(ids=hashs)

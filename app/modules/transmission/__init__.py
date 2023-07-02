@@ -124,6 +124,7 @@ class TransmissionModule(_ModuleBase):
                     season_episode=meta.season_episode,
                     progress=torrent.progress,
                     size=torrent.total_size,
+                    state="paused" if torrent.status == "stopped" else "downloading",
                     dlspeed=StringUtils.str_filesize(torrent.download_speed),
                     ulspeed=StringUtils.str_filesize(torrent.upload_speed),
                 ))
@@ -151,3 +152,19 @@ class TransmissionModule(_ModuleBase):
         :return: bool
         """
         return self.transmission.delete_torrents(delete_file=True, ids=hashs)
+
+    def start_torrents(self, hashs: Union[list, str]) -> bool:
+        """
+        开始下载
+        :param hashs:  种子Hash
+        :return: bool
+        """
+        return self.transmission.start_torrents(ids=hashs)
+
+    def stop_torrents(self, hashs: Union[list, str]) -> bool:
+        """
+        停止下载
+        :param hashs:  种子Hash
+        :return: bool
+        """
+        return self.transmission.start_torrents(ids=hashs)

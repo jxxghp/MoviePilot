@@ -253,6 +253,22 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         """
         return self.run_module("remove_torrents", hashs=hashs)
 
+    def start_torrents(self, hashs: Union[list, str]) -> bool:
+        """
+        开始下载
+        :param hashs:  种子Hash
+        :return: bool
+        """
+        return self.run_module("start_torrent", hash_str=hashs)
+
+    def stop_torrents(self, hashs: Union[list, str]) -> bool:
+        """
+        停止下载
+        :param hashs:  种子Hash
+        :return: bool
+        """
+        return self.run_module("stop_torrent", hashs=hashs)
+
     def media_exists(self, mediainfo: MediaInfo) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
