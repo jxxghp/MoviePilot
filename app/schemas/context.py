@@ -178,7 +178,6 @@ class TransferTorrent(BaseModel):
     path: Optional[Path] = None
     hash: Optional[str] = None
     tags: Optional[str] = None
-    media: Optional[dict] = {}
 
 
 class DownloadingTorrent(BaseModel):
@@ -188,6 +187,7 @@ class DownloadingTorrent(BaseModel):
     season_episode: Optional[str] = None
     size: Optional[float] = 0
     progress: Optional[float] = 0
+    media: Optional[dict] = {}
 
 
 class TransferInfo(BaseModel):
