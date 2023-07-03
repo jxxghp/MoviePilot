@@ -48,6 +48,8 @@ class Subscribe(Base):
     note = Column(String)
     # 状态：N-新建， R-订阅中
     state = Column(String, nullable=False, index=True, default='N')
+    # 最后更新时间
+    last_update = Column(String)
 
     @staticmethod
     def exists(db: Session, tmdbid: int, season: int = None):

@@ -1,5 +1,6 @@
 import re
-from typing import Dict, List, Optional, Union
+from datetime import datetime
+from typing import Dict, List, Optional, Union, Tuple
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
@@ -38,8 +39,9 @@ class SubscribeChain(ChainBase):
             season: int = None,
             userid: str = None,
             username: str = None,
+            message: bool = True,
             exist_ok: bool = False,
-            **kwargs) -> Optional[int]:
+            **kwargs) -> Tuple[Optional[int], str]:
         """
         识别媒体信息并添加订阅
         """
@@ -61,7 +63,7 @@ class SubscribeChain(ChainBase):
         mediainfo: MediaInfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid)
         if not mediainfo:
             logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}')
-            return 0
+            return None, "未识别到媒体信息"
         # 更新媒体图片
         self.obtain_images(mediainfo=mediainfo)
         # 总集数
@@ -76,14 +78,14 @@ class SubscribeChain(ChainBase):
                                                                 tmdbid=mediainfo.tmdb_id)
                     if not mediainfo:
                         logger.error(f"媒体信息识别失败！")
-                        return 0
+                        return None, "媒体信息识别失败"
                     if not mediainfo.seasons:
                         logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}")
-                        return 0
+                        return None, "媒体信息中没有季集信息"
                 total_episode = len(mediainfo.seasons.get(season) or [])
                 if not total_episode:
                     logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}')
-                    return 0
+                    return None, "未获取到总集数"
                 kwargs.update({
                     'total_episode': total_episode
                 })
@@ -96,21 +98,21 @@ class SubscribeChain(ChainBase):
         sid, err_msg = self.subscribehelper.add(mediainfo, doubanid=doubanid, season=season, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
-            if not exist_ok:
+            if not exist_ok and message:
                 # 发回原用户
                 self.post_message(title=f"{mediainfo.title_year}{metainfo.season} "
                                         f"添加订阅失败！",
                                   text=f"{err_msg}",
                                   image=mediainfo.get_message_image(),
                                   userid=userid)
-        else:
+        elif message:
             logger.info(f'{mediainfo.title_year}{metainfo.season} 添加订阅成功')
             # 广而告之
             self.post_message(title=f"{mediainfo.title_year}{metainfo.season} 已添加订阅",
                               text=f"评分：{mediainfo.vote_average}，来自用户：{username or userid}",
                               image=mediainfo.get_message_image())
         # 返回结果
-        return sid
+        return sid, ""
 
     def remote_refresh(self, userid: Union[str, int] = None):
         """
@@ -228,8 +230,10 @@ class SubscribeChain(ChainBase):
             else:
                 # 未完成下载
                 logger.info(f'{mediainfo.title_year} 未下载未完整，继续订阅 ...')
-                # 更新订阅剩余集数
-                self.__upate_lack_episodes(lefts=lefts, subscribe=subscribe, mediainfo=mediainfo)
+                # 更新订阅剩余集数和时间
+                update_date = True if downloads else False
+                self.__upate_lack_episodes(lefts=lefts, subscribe=subscribe,
+                                           mediainfo=mediainfo, update_date=update_date)
 
     def refresh(self):
         """
@@ -352,15 +356,18 @@ class SubscribeChain(ChainBase):
                     self.post_message(title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
                                       image=mediainfo.get_message_image())
                 else:
+                    update_date = True if downloads else False
                     # 未完成下载，计算剩余集数
-                    self.__upate_lack_episodes(lefts=lefts, subscribe=subscribe, mediainfo=mediainfo)
+                    self.__upate_lack_episodes(lefts=lefts, subscribe=subscribe,
+                                               mediainfo=mediainfo, update_date=update_date)
             else:
                 # 未搜索到资源，但本地缺失可能有变化，更新订阅剩余集数
                 self.__upate_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
 
     def __upate_lack_episodes(self, lefts: Dict[int, Dict[int, NotExistMediaInfo]],
                               subscribe: Subscribe,
-                              mediainfo: MediaInfo):
+                              mediainfo: MediaInfo,
+                              update_date: bool = False):
         """
         更新订阅剩余集数
         """
@@ -371,9 +378,16 @@ class SubscribeChain(ChainBase):
                 left_episodes = season_info.episodes
                 logger.info(f'{mediainfo.title_year} 季 {season} 未搜索到资源，'
                             f'更新缺失集数为{len(left_episodes)} ...')
-                self.subscribehelper.update(subscribe.id, {
-                    "lack_episode": len(left_episodes)
-                })
+                if update_date:
+                    # 同时更新最后时间
+                    self.subscribehelper.update(subscribe.id, {
+                        "lack_episode": len(left_episodes),
+                        "last_update": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    })
+                else:
+                    self.subscribehelper.update(subscribe.id, {
+                        "lack_episode": len(left_episodes)
+                    })
 
     def remote_list(self, userid: Union[str, int] = None):
         """

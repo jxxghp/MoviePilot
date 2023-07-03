@@ -311,11 +311,11 @@ async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
             status_code=403,
             detail="认证失败！",
         )
-    sid = SubscribeChain().add(title=movie.title,
-                               year=movie.year,
-                               mtype=MediaType.MOVIE,
-                               tmdbid=movie.tmdbId,
-                               userid="Seerr")
+    sid, message = SubscribeChain().add(title=movie.title,
+                                        year=movie.year,
+                                        mtype=MediaType.MOVIE,
+                                        tmdbid=movie.tmdbId,
+                                        userid="Seerr")
     if sid:
         return {
             "id": sid
@@ -323,7 +323,7 @@ async def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
     else:
         raise HTTPException(
             status_code=500,
-            detail="添加订阅失败！"
+            detail=f"添加订阅失败：{message}"
         )
 
 
@@ -626,15 +626,16 @@ async def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
             detail="认证失败！",
         )
     sid = 0
+    message = ""
     for season in tv.seasons:
         if not season.get("monitored"):
             continue
-        sid = SubscribeChain().add(title=tv.title,
-                                   year=tv.year,
-                                   season=season.get("seasonNumber"),
-                                   tmdbid=tv.tmdbId,
-                                   mtype=MediaType.TV,
-                                   userid="Seerr")
+        sid, message = SubscribeChain().add(title=tv.title,
+                                            year=tv.year,
+                                            season=season.get("seasonNumber"),
+                                            tmdbid=tv.tmdbId,
+                                            mtype=MediaType.TV,
+                                            userid="Seerr")
 
     if sid:
         return {
@@ -643,7 +644,7 @@ async def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
     else:
         raise HTTPException(
             status_code=500,
-            detail="添加订阅失败！"
+            detail=f"添加订阅失败：{message}"
         )
 
 

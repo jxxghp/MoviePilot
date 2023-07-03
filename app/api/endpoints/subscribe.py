@@ -1,4 +1,4 @@
-from typing import List, Any, Union
+from typing import List, Any
 
 from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
@@ -35,8 +35,8 @@ async def read_subscribes(
     return Subscribe.list(db)
 
 
-@router.get("/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
-async def subscribe_info_by_id(
+@router.get("/media/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
+async def subscribe_mediaid(
         mediaid: str,
         season: int = None,
         db: Session = Depends(get_db),
@@ -52,6 +52,17 @@ async def subscribe_info_by_id(
         result = None
 
     return result if result else Subscribe()
+
+
+@router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
+async def read_subscribe(
+        subscribe_id: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据订阅编号查询订阅信息
+    """
+    return Subscribe.get(db, subscribe_id)
 
 
 @router.post("/", summary="新增订阅", response_model=schemas.Response)
@@ -73,15 +84,17 @@ async def create_subscribe(
         title = subscribe_in.name
     else:
         title = None
-    result = SubscribeChain().add(mtype=mtype,
-                                  title=title,
-                                  year=subscribe_in.year,
-                                  tmdbid=subscribe_in.tmdbid,
-                                  season=subscribe_in.season,
-                                  doubanid=subscribe_in.doubanid,
-                                  username=current_user.name,
-                                  exist_ok=True)
-    return schemas.Response(success=True if result else False, message=result)
+    sid, message = SubscribeChain().add(mtype=mtype,
+                                        title=title,
+                                        year=subscribe_in.year,
+                                        tmdbid=subscribe_in.tmdbid,
+                                        season=subscribe_in.season,
+                                        doubanid=subscribe_in.doubanid,
+                                        username=current_user.name,
+                                        exist_ok=True)
+    return schemas.Response(success=True if sid else False, message=message, data={
+        "id": sid
+    })
 
 
 @router.put("/", summary="更新订阅", response_model=schemas.Subscribe)
