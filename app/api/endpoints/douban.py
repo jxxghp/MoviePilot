@@ -41,18 +41,6 @@ async def recognize_doubanid(doubanid: str,
     return context.to_dict()
 
 
-@router.get("/{doubanid}", summary="查询豆瓣详情", response_model=schemas.MediaInfo)
-async def douban_info(doubanid: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    根据豆瓣ID查询豆瓣媒体信息
-    """
-    doubaninfo = DoubanChain().douban_info(doubanid=doubanid)
-    if doubaninfo:
-        return MediaInfo(douban_info=doubaninfo).to_dict()
-    else:
-        return schemas.MediaInfo()
-
-
 @router.get("/movies", summary="豆瓣电影", response_model=List[schemas.MediaInfo])
 async def douban_movies(sort: str = "R",
                         tags: str = "",
@@ -125,3 +113,16 @@ async def tv_weekly_global(page: int = 1,
     """
     tvs = DoubanChain().tv_weekly_global(page=page, count=count)
     return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
+
+
+@router.get("/{doubanid}", summary="查询豆瓣详情", response_model=schemas.MediaInfo)
+async def douban_info(doubanid: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据豆瓣ID查询豆瓣媒体信息
+    """
+    doubaninfo = DoubanChain().douban_info(doubanid=doubanid)
+    if doubaninfo:
+        return MediaInfo(douban_info=doubaninfo).to_dict()
+    else:
+        return schemas.MediaInfo()
+
