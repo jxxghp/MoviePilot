@@ -259,7 +259,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         :param hashs:  种子Hash
         :return: bool
         """
-        return self.run_module("start_torrent", hash_str=hashs)
+        return self.run_module("start_torrents", hashs=hashs)
 
     def stop_torrents(self, hashs: Union[list, str]) -> bool:
         """
@@ -267,7 +267,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         :param hashs:  种子Hash
         :return: bool
         """
-        return self.run_module("stop_torrent", hashs=hashs)
+        return self.run_module("stop_torrents", hashs=hashs)
 
     def media_exists(self, mediainfo: MediaInfo) -> Optional[ExistMediaInfo]:
         """

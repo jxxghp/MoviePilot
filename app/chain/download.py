@@ -555,11 +555,11 @@ class DownloadChain(ChainBase):
 
     def set_downloading(self, hash_str, oper: str) -> bool:
         """
-        控制下载任务 start/pause
+        控制下载任务 start/stop
         """
         if oper == "start":
             return self.start_torrents(hashs=[hash_str])
-        elif oper == "pause":
+        elif oper == "stop":
             return self.stop_torrents(hashs=[hash_str])
         return False
 
