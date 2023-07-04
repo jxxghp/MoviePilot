@@ -7,6 +7,7 @@ from app.db.site_oper import SiteOper
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.cookie import CookieHelper
+from app.helper.message import MessageHelper
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
@@ -18,13 +19,11 @@ class SiteChain(ChainBase):
     站点管理处理链
     """
 
-    _siteoper: SiteOper = None
-    _cookiehelper: CookieHelper = None
-
     def __init__(self):
         super().__init__()
-        self._siteoper = SiteOper()
-        self._cookiehelper = CookieHelper()
+        self.siteoper = SiteOper()
+        self.cookiehelper = CookieHelper()
+        self.message = MessageHelper()
 
     def test(self, url: str) -> Tuple[bool, str]:
         """
@@ -34,7 +33,7 @@ class SiteChain(ChainBase):
         """
         # 检查域名是否可用
         domain = StringUtils.get_url_domain(url)
-        site_info = self._siteoper.get_by_domain(domain)
+        site_info = self.siteoper.get_by_domain(domain)
         if not site_info:
             return False, f"站点【{url}】不存在"
         site_url = site_info.url
@@ -84,7 +83,7 @@ class SiteChain(ChainBase):
         """
         查询所有站点，发送消息
         """
-        site_list = self._siteoper.list()
+        site_list = self.siteoper.list()
         if not site_list:
             self.post_message(title="没有维护任何站点信息！")
         title = f"共有 {len(site_list)} 个站点，回复对应指令操作：" \
@@ -114,12 +113,12 @@ class SiteChain(ChainBase):
         if not arg_str.isdigit():
             return
         site_id = int(arg_str)
-        site = self._siteoper.get(site_id)
+        site = self.siteoper.get(site_id)
         if not site:
             self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
             return
         # 禁用站点
-        self._siteoper.update(site_id, {
+        self.siteoper.update(site_id, {
             "is_active": False
         })
         # 重新发送消息
@@ -135,28 +134,30 @@ class SiteChain(ChainBase):
         if not arg_str.isdigit():
             return
         site_id = int(arg_str)
-        site = self._siteoper.get(site_id)
+        site = self.siteoper.get(site_id)
         if not site:
             self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
             return
         # 禁用站点
-        self._siteoper.update(site_id, {
+        self.siteoper.update(site_id, {
             "is_active": True
         })
         # 重新发送消息
         self.remote_list()
 
     def update_cookie(self, site_info: Site,
-                      username: str, password: str) -> Tuple[bool, str]:
+                      username: str, password: str,
+                      manual=False) -> Tuple[bool, str]:
         """
         根据用户名密码更新站点Cookie
         :param site_info: 站点信息
         :param username: 用户名
         :param password: 密码
+        :param manual: 是否手动更新
         :return: (是否成功, 错误信息)
         """
         # 更新站点Cookie
-        result = self._cookiehelper.get_site_cookie_ua(
+        result = self.cookiehelper.get_site_cookie_ua(
             url=site_info.url,
             username=username,
             password=password,
@@ -165,11 +166,15 @@ class SiteChain(ChainBase):
         if result:
             cookie, ua, msg = result
             if not cookie:
+                if manual:
+                    self.message.put(f"站点 {site_info.name} Cookie更新失败：{msg}！")
                 return False, msg
-            self._siteoper.update(site_info.id, {
+            self.siteoper.update(site_info.id, {
                 "cookie": cookie,
                 "ua": ua
             })
+            if manual:
+                self.message.put(f"站点 {site_info.name} Cookie更新成功！")
             return True, msg
         return False, "未知错误"
 
@@ -194,7 +199,7 @@ class SiteChain(ChainBase):
         # 站点ID
         site_id = int(site_id)
         # 站点信息
-        site_info = self._siteoper.get(site_id)
+        site_info = self.siteoper.get(site_id)
         if not site_info:
             self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
             return

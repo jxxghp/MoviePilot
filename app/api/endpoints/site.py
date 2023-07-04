@@ -2,6 +2,7 @@ from typing import List, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTasks
 
 from app import schemas
 from app.chain.cookiecloud import CookieCloudChain
@@ -11,9 +12,25 @@ from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
-from app.db.siteicon_oper import SiteIconOper
 
 router = APIRouter()
+
+
+def start_cookiecloud_sync():
+    """
+    后台启动CookieCloud站点同步
+    """
+    CookieCloudChain().process(manual=True)
+
+
+def start_site_cookie(site_info: Site, username: str, password: str):
+    """
+    后台启动站点Cookie更新
+    """
+    SiteChain().update_cookie(site_info=site_info,
+                              username=username,
+                              password=password,
+                              manual=True)
 
 
 @router.get("/", summary="所有站点", response_model=List[schemas.Site])
@@ -77,14 +94,13 @@ async def delete_site(
 
 
 @router.get("/cookiecloud", summary="CookieCloud同步", response_model=schemas.Response)
-async def cookie_cloud_sync(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+async def cookie_cloud_sync(background_tasks: BackgroundTasks,
+                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     运行CookieCloud同步站点信息
     """
-    status, error_msg = CookieCloudChain().process()
-    if not status:
-        schemas.Response(success=True, message=error_msg)
-    return schemas.Response(success=True, message="同步成功！")
+    background_tasks.add_task(start_cookiecloud_sync)
+    return schemas.Response(success=True, message="CookieCloud同步任务已启动！")
 
 
 @router.get("/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response)
@@ -92,6 +108,7 @@ async def update_cookie(
         site_id: int,
         username: str,
         password: str,
+        background_tasks: BackgroundTasks,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -105,13 +122,11 @@ async def update_cookie(
             detail=f"站点 {site_id} 不存在！",
         )
     # 更新Cookie
-    status, msg = SiteChain().update_cookie(site_info=site_info,
-                                            username=username,
-                                            password=password)
-    if not status:
-        return schemas.Response(success=False, message=msg)
-    else:
-        return schemas.Response(success=True, message=msg)
+    background_tasks.add_task(start_site_cookie,
+                              site_info=site_info,
+                              username=username,
+                              password=password)
+    return schemas.Response(success=True, message="站点Cookie更新任务已启动！")
 
 
 @router.get("/test/{site_id}", summary="连接测试", response_model=schemas.Response)

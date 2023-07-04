@@ -29,7 +29,7 @@ def start_subscribe_search(sid: Optional[int], state: Optional[str]):
     """
     启动订阅搜索任务
     """
-    SubscribeChain().search(sid=sid, state=state)
+    SubscribeChain().search(sid=sid, state=state, manul=True)
 
 
 @router.get("/", summary="所有订阅", response_model=List[schemas.Subscribe])

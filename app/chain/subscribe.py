@@ -10,6 +10,7 @@ from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.config import settings
 from app.db.models.subscribe import Subscribe
 from app.db.subscribe_oper import SubscribeOper
+from app.helper.message import MessageHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
@@ -31,6 +32,7 @@ class SubscribeChain(ChainBase):
         self.searchchain = SearchChain()
         self.subscribehelper = SubscribeOper()
         self.siteshelper = SitesHelper()
+        self.message = MessageHelper()
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,
@@ -150,11 +152,12 @@ class SubscribeChain(ChainBase):
             self.search(state='R')
             self.post_message(title=f"订阅搜索完成！", userid=userid)
 
-    def search(self, sid: int = None, state: str = 'N'):
+    def search(self, sid: int = None, state: str = 'N', manul: bool = False):
         """
         订阅搜索
         :param sid: 订阅ID，有值时只处理该订阅
         :param state: 订阅状态 N:未搜索 R:已搜索
+        :param manul: 是否手动搜索
         :return: 更新订阅状态为R或删除订阅
         """
         if sid:
@@ -239,6 +242,12 @@ class SubscribeChain(ChainBase):
                 update_date = True if downloads else False
                 self.__upate_lack_episodes(lefts=lefts, subscribe=subscribe,
                                            mediainfo=mediainfo, update_date=update_date)
+        # 手动触发时发送系统消息
+        if manul:
+            if sid:
+                self.message.put(f'订阅 {subscribes[0].name} 搜索完成！')
+            else:
+                self.message.put(f'所有订阅搜索完成！')
 
     def refresh(self):
         """

@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.db.siteicon_oper import SiteIconOper
 from app.db.site_oper import SiteOper
 from app.helper.cookiecloud import CookieCloudHelper
+from app.helper.message import MessageHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.utils.http import RequestUtils
@@ -26,6 +27,7 @@ class CookieCloudChain(ChainBase):
         self.siteiconoper = SiteIconOper()
         self.siteshelper = SitesHelper()
         self.sitechain = SiteChain()
+        self.message = MessageHelper()
         self.cookiecloud = CookieCloudHelper(
             server=settings.COOKIECLOUD_HOST,
             key=settings.COOKIECLOUD_KEY,
@@ -44,7 +46,7 @@ class CookieCloudChain(ChainBase):
         else:
             self.post_message(title=f"同步站点失败：{msg}", userid=userid)
 
-    def process(self) -> Tuple[bool, str]:
+    def process(self, manual=False) -> Tuple[bool, str]:
         """
         通过CookieCloud同步站点Cookie
         """
@@ -93,6 +95,8 @@ class CookieCloudChain(ChainBase):
                         logger.warn(f"缓存站点 {indexer.get('name')} 图标失败")
         # 处理完成
         ret_msg = f"更新了{_update_count}个站点，新增了{_add_count}个站点"
+        if manual:
+            self.message.put(f"CookieCloud同步成功, {ret_msg}")
         logger.info(f"CookieCloud同步成功：{ret_msg}")
         return True, ret_msg
 
