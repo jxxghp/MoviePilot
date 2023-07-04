@@ -50,6 +50,8 @@ class Subscribe(Base):
     state = Column(String, nullable=False, index=True, default='N')
     # 最后更新时间
     last_update = Column(String)
+    # 订阅用户
+    username = Column(String)
 
     @staticmethod
     def exists(db: Session, tmdbid: int, season: int = None):

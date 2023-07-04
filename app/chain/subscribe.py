@@ -95,7 +95,8 @@ class SubscribeChain(ChainBase):
                     'lack_episode': kwargs.get('total_episode')
                 })
         # 添加订阅
-        sid, err_msg = self.subscribehelper.add(mediainfo, doubanid=doubanid, season=season, **kwargs)
+        sid, err_msg = self.subscribehelper.add(mediainfo, doubanid=doubanid,
+                                                season=season, username=username, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
@@ -107,9 +108,13 @@ class SubscribeChain(ChainBase):
                                   userid=userid)
         elif message:
             logger.info(f'{mediainfo.title_year}{metainfo.season} 添加订阅成功')
+            if username or userid:
+                text = f"评分：{mediainfo.vote_average}，来自用户：{username or userid}"
+            else:
+                text = f"评分：{mediainfo.vote_average}"
             # 广而告之
             self.post_message(title=f"{mediainfo.title_year}{metainfo.season} 已添加订阅",
-                              text=f"评分：{mediainfo.vote_average}，来自用户：{username or userid}",
+                              text=text,
                               image=mediainfo.get_message_image())
         # 返回结果
         return sid, ""

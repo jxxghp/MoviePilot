@@ -43,6 +43,8 @@ class Subscribe(BaseModel):
     state: Optional[str] = None
     # 最后更新时间
     last_update: Optional[str] = None
+    # 订阅用户
+    username: Optional[str] = None
 
     class Config:
         orm_mode = True
