@@ -12,7 +12,4 @@ class MessageHelper:
         self.queue.put(message)
 
     def get(self):
-        if not self.queue.empty():
-            return self.queue.get(block=True)
-        else:
-            return None
+        return self.queue.get(block=True)
