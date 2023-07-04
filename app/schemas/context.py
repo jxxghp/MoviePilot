@@ -7,6 +7,9 @@ from app.schemas.types import MediaType
 
 
 class MetaInfo(BaseModel):
+    """
+    识别元数据
+    """
     # 是否处理的文件
     isfile: bool = False
     # 原字符串
@@ -50,6 +53,9 @@ class MetaInfo(BaseModel):
 
 
 class MediaInfo(BaseModel):
+    """
+    识别媒体信息
+    """
     # 类型 电影、电视剧
     type: Optional[str] = None
     # 媒体标题
@@ -118,6 +124,9 @@ class MediaInfo(BaseModel):
 
 
 class TorrentInfo(BaseModel):
+    """
+    搜索种子信息
+    """
     # 站点ID
     site: Optional[int] = None
     # 站点名称
@@ -165,6 +174,9 @@ class TorrentInfo(BaseModel):
 
 
 class Context(BaseModel):
+    """
+    上下文
+    """
     # 元数据
     meta_info: Optional[MetaInfo]
     # 媒体信息
@@ -174,6 +186,9 @@ class Context(BaseModel):
 
 
 class TransferTorrent(BaseModel):
+    """
+    待转移任务信息
+    """
     title: Optional[str] = None
     path: Optional[Path] = None
     hash: Optional[str] = None
@@ -181,6 +196,9 @@ class TransferTorrent(BaseModel):
 
 
 class DownloadingTorrent(BaseModel):
+    """
+    下载中任务信息
+    """
     hash: Optional[str] = None
     title: Optional[str] = None
     name: Optional[str] = None
@@ -195,6 +213,9 @@ class DownloadingTorrent(BaseModel):
 
 
 class TransferInfo(BaseModel):
+    """
+    文件转移结果信息
+    """
     # 转移⼁路径
     path: Optional[Path] = None
     # 转移后路径
@@ -210,6 +231,9 @@ class TransferInfo(BaseModel):
 
 
 class ExistMediaInfo(BaseModel):
+    """
+    媒体服务器存在媒体信息
+    """
     # 类型 电影、电视剧
     type: MediaType
     # 季
@@ -217,6 +241,9 @@ class ExistMediaInfo(BaseModel):
 
 
 class NotExistMediaInfo(BaseModel):
+    """
+    媒体服务器不存在媒体信息
+    """
     # 季
     season: int
     # 剧集列表
@@ -228,6 +255,9 @@ class NotExistMediaInfo(BaseModel):
 
 
 class RefreshMediaItem(BaseModel):
+    """
+    媒体库刷新信息
+    """
     # 标题
     title: str
     # 年份
@@ -238,3 +268,32 @@ class RefreshMediaItem(BaseModel):
     category: Optional[str] = None
     # 目录
     target_path: Optional[Path] = None
+
+
+class TmdbSeason(BaseModel):
+    """
+    TMDB季信息
+    """
+    air_date: Optional[str] = None
+    episode_count: Optional[int] = None
+    name: Optional[str] = None
+    overview: Optional[str] = None
+    poster_path: Optional[str] = None
+    season_number: Optional[int] = None
+    vote_average: Optional[float] = None
+
+
+class TmdbEpisode(BaseModel):
+    """
+    TMDB集信息
+    """
+    air_date: Optional[str] = None
+    episode_number: Optional[int] = None
+    name: Optional[str] = None
+    overview: Optional[str] = None
+    runtime: Optional[int] = None
+    season_number: Optional[int] = None
+    still_path: Optional[str] = None
+    vote_average: Optional[float] = None
+    crew: Optional[list] = []
+    guest_stars: Optional[list] = []

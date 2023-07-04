@@ -11,8 +11,34 @@ from app.schemas.types import MediaType
 router = APIRouter()
 
 
-@router.get("/info", summary="TMDB详情", response_model=schemas.MediaInfo)
-async def tmdb_info(tmdbid: int, type_name: str) -> Any:
+@router.get("/{tmdbid}/seasons", summary="TMDB所有季", response_model=List[schemas.TmdbSeason])
+async def tmdb_seasons(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据TMDBID查询themoviedb所有季信息，type_name: 电影/电视剧
+    """
+    seasons_info = TmdbChain().tmdb_seasons(tmdbid=tmdbid)
+    if not seasons_info:
+        return []
+    else:
+        return seasons_info
+
+
+@router.get("/{tmdbid}/{season}", summary="TMDB季所有集", response_model=List[schemas.TmdbEpisode])
+async def tmdb_season_episodes(tmdbid: int, season: int,
+                               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据TMDBID查询某季的所有信信息
+    """
+    episodes_info = TmdbChain().tmdb_episodes(tmdbid=tmdbid, season=season)
+    if not episodes_info:
+        return []
+    else:
+        return episodes_info
+
+
+@router.get("/{tmdbid}", summary="TMDB详情", response_model=schemas.MediaInfo)
+async def tmdb_info(tmdbid: int, type_name: str,
+                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID查询themoviedb媒体信息，type_name: 电影/电视剧
     """

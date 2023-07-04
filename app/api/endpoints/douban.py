@@ -30,7 +30,7 @@ async def sync_douban(
     return schemas.Response(success=True, message="任务已启动")
 
 
-@router.get("/id", summary="豆瓣ID识别", response_model=schemas.Context)
+@router.get("/recognize/{doubanid}", summary="豆瓣ID识别", response_model=schemas.Context)
 async def recognize_doubanid(doubanid: str,
                              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -41,7 +41,7 @@ async def recognize_doubanid(doubanid: str,
     return context.to_dict()
 
 
-@router.get("/info", summary="查询豆瓣详情", response_model=schemas.MediaInfo)
+@router.get("/{doubanid}", summary="查询豆瓣详情", response_model=schemas.MediaInfo)
 async def douban_info(doubanid: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据豆瓣ID查询豆瓣媒体信息

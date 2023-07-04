@@ -1,5 +1,6 @@
 from typing import Optional, List
 
+from app import schemas
 from app.chain import ChainBase
 from app.schemas import MediaType
 
@@ -31,3 +32,18 @@ class TmdbChain(ChainBase):
         :return: TMDB信息列表
         """
         return self.run_module("tmdb_trending", page=page)
+
+    def tmdb_seasons(self, tmdbid: int) -> List[schemas.TmdbSeason]:
+        """
+        根据TMDBID查询themoviedb所有季信息
+        :param tmdbid:  TMDBID
+        """
+        return self.run_module("tmdb_seasons", tmdbid=tmdbid)
+
+    def tmdb_episodes(self, tmdbid: int, season: int) -> List[schemas.TmdbEpisode]:
+        """
+        根据TMDBID查询某季的所有信信息
+        :param tmdbid:  TMDBID
+        :param season:  季
+        """
+        return self.run_module("tmdb_episodes", tmdbid=tmdbid, season=season)
