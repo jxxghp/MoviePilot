@@ -14,4 +14,6 @@ class MessageHelper(metaclass=Singleton):
         self.queue.put(message)
 
     def get(self):
-        return self.queue.get(block=False)
+        if not self.queue.empty():
+            return self.queue.get(block=False)
+        return None

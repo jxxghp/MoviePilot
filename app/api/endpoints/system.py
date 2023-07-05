@@ -51,7 +51,7 @@ async def get_progress(token: str):
     async def event_generator():
         while True:
             detail = message.get()
-            yield 'data: %s\n\n' % detail
-            await asyncio.sleep(1)
+            yield 'data: %s\n\n' % (detail or '')
+            await asyncio.sleep(3)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

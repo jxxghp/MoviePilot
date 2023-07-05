@@ -23,16 +23,6 @@ def start_cookiecloud_sync():
     CookieCloudChain().process(manual=True)
 
 
-def start_site_cookie(site_info: Site, username: str, password: str):
-    """
-    后台启动站点Cookie更新
-    """
-    SiteChain().update_cookie(site_info=site_info,
-                              username=username,
-                              password=password,
-                              manual=True)
-
-
 @router.get("/", summary="所有站点", response_model=List[schemas.Site])
 async def read_sites(db: Session = Depends(get_db),
                      _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
@@ -103,7 +93,7 @@ async def cookie_cloud_sync(background_tasks: BackgroundTasks,
     return schemas.Response(success=True, message="CookieCloud同步任务已启动！")
 
 
-@router.get("/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response)
+@router.put("/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response)
 async def update_cookie(
         site_id: int,
         username: str,
@@ -122,11 +112,11 @@ async def update_cookie(
             detail=f"站点 {site_id} 不存在！",
         )
     # 更新Cookie
-    background_tasks.add_task(start_site_cookie,
-                              site_info=site_info,
-                              username=username,
-                              password=password)
-    return schemas.Response(success=True, message="站点Cookie更新任务已启动！")
+    state, message = SiteChain().update_cookie(site_info=site_info,
+                                               username=username,
+                                               password=password,
+                                               manual=True)
+    return schemas.Response(success=state, message=message)
 
 
 @router.get("/test/{site_id}", summary="连接测试", response_model=schemas.Response)
