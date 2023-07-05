@@ -152,7 +152,7 @@ class SubscribeChain(ChainBase):
             self.search(state='R')
             self.post_message(title=f"订阅搜索完成！", userid=userid)
 
-    def search(self, sid: int = None, state: str = 'N', manul: bool = False):
+    def search(self, sid: int = None, state: str = 'N', manual: bool = False):
         """
         订阅搜索
         :param sid: 订阅ID，有值时只处理该订阅
@@ -204,6 +204,8 @@ class SubscribeChain(ChainBase):
                                                 no_exists=no_exists)
             if not contexts:
                 logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
+                # 未搜索到资源，但本地缺失可能有变化，更新订阅剩余集数
+                self.__upate_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
                 continue
             # 过滤
             matched_contexts = []
@@ -243,7 +245,7 @@ class SubscribeChain(ChainBase):
                 self.__upate_lack_episodes(lefts=lefts, subscribe=subscribe,
                                            mediainfo=mediainfo, update_date=update_date)
         # 手动触发时发送系统消息
-        if manul:
+        if manual:
             if sid:
                 self.message.put(f'订阅 {subscribes[0].name} 搜索完成！')
             else:
