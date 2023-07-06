@@ -141,7 +141,7 @@ class QbittorrentModule(_ModuleBase):
                     season_episode=meta.season_episode,
                     progress=torrent.get('progress'),
                     size=torrent.get('total_size'),
-                    state="downloading" if torrent.get('state') == "downloading" else "paused",
+                    state="paused" if torrent.get('state') == "paused" else "downloading",
                     dlspeed=StringUtils.str_filesize(torrent.get('dlspeed')),
                     upspeed=StringUtils.str_filesize(torrent.get('upspeed')),
                 ))
