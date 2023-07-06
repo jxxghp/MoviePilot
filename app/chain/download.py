@@ -404,6 +404,9 @@ class DownloadChain(ChainBase):
                                                                userid=userid)
                             if not download_id:
                                 continue
+                            # 把识别的集更新到上下文
+                            context.meta_info.begin_episode = min(selected_episodes)
+                            context.meta_info.end_episode = max(selected_episodes)
                             # 下载成功
                             downloaded_list.append(context)
                             # 更新仍需集数

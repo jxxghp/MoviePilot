@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
@@ -157,7 +158,7 @@ class SubscribeChain(ChainBase):
         订阅搜索
         :param sid: 订阅ID，有值时只处理该订阅
         :param state: 订阅状态 N:未搜索 R:已搜索
-        :param manul: 是否手动搜索
+        :param manual: 是否手动搜索
         :return: 更新订阅状态为R或删除订阅
         """
         if sid:
@@ -210,7 +211,9 @@ class SubscribeChain(ChainBase):
             # 过滤
             matched_contexts = []
             for context in contexts:
+                torrent_meta = context.meta_info
                 torrent_info = context.torrent_info
+                torrent_mediainfo = context.media_info
                 # 包含
                 if subscribe.include:
                     if not re.search(r"%s" % subscribe.include,
@@ -221,6 +224,11 @@ class SubscribeChain(ChainBase):
                     if re.search(r"%s" % subscribe.exclude,
                                  f"{torrent_info.title} {torrent_info.description}", re.I):
                         continue
+                # 如果是电视剧过滤掉已经下载的集数
+                if torrent_mediainfo.type == MediaType.TV:
+                    if self.__check_subscribe_note(subscribe, torrent_meta.episodes):
+                        logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episodes} 已下载过')
+                        continue
                 matched_contexts.append(context)
             if not matched_contexts:
                 logger.warn(f'订阅 {subscribe.name} 没有符合过滤条件的资源')
@@ -230,6 +238,10 @@ class SubscribeChain(ChainBase):
             # 自动下载
             downloads, lefts = self.downloadchain.batch_download(contexts=matched_contexts,
                                                                  no_exists=no_exists)
+            # 更新已经下载的集数
+            if downloads:
+                self.__update_subscribe_note(subscribe, downloads)
+
             if downloads and not lefts:
                 # 全部下载完成
                 logger.info(f'{mediainfo.title_year} 下载完成，完成订阅')
@@ -342,6 +354,11 @@ class SubscribeChain(ChainBase):
                     torrent_meta = context.meta_info
                     torrent_mediainfo = context.media_info
                     torrent_info = context.torrent_info
+                    # 如果是电视剧过滤掉已经下载的集数
+                    if torrent_mediainfo.type == MediaType.TV:
+                        if self.__check_subscribe_note(subscribe, torrent_meta.episodes):
+                            logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episodes} 已下载过')
+                            continue
                     # 包含
                     if subscribe.include:
                         if not re.search(r"%s" % subscribe.include,
@@ -364,6 +381,10 @@ class SubscribeChain(ChainBase):
             if _match_context:
                 # 批量择优下载
                 downloads, lefts = self.downloadchain.batch_download(contexts=_match_context, no_exists=no_exists)
+                # 更新已经下载的集数
+                if downloads:
+                    self.__update_subscribe_note(subscribe, downloads)
+
                 if downloads and not lefts:
                     # 全部下载完成
                     logger.info(f'{mediainfo.title_year} 下载完成，完成订阅')
@@ -379,6 +400,47 @@ class SubscribeChain(ChainBase):
             else:
                 # 未搜索到资源，但本地缺失可能有变化，更新订阅剩余集数
                 self.__upate_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
+
+    def __update_subscribe_note(self, subscribe: Subscribe, downloads: List[Context]):
+        """
+        更新已下载集数到note字段
+        """
+        # 查询现有Note
+        if not downloads:
+            return
+        note = []
+        if subscribe.note:
+            note = json.loads(subscribe.note)
+        for context in downloads:
+            meta = context.meta_info
+            mediainfo = context.media_info
+            if mediainfo.type != MediaType.TV:
+                continue
+            if mediainfo.tmdb_id != subscribe.tmdbid:
+                continue
+            episodes = meta.episodes
+            if not episodes:
+                continue
+            # 合并已下载集
+            note = list(set(note).union(set(episodes)))
+            # 更新订阅
+            self.subscribehelper.update(subscribe.id, {
+                "note": json.dumps(note)
+            })
+
+    @staticmethod
+    def __check_subscribe_note(subscribe: Subscribe, episodes: List[int]) -> bool:
+        """
+        检查当前集是否已下载过
+        """
+        if not subscribe.note:
+            return False
+        if not episodes:
+            return False
+        note = json.loads(subscribe.note)
+        if set(episodes).issubset(set(note)):
+            return True
+        return False
 
     def __upate_lack_episodes(self, lefts: Dict[int, Dict[int, NotExistMediaInfo]],
                               subscribe: Subscribe,
