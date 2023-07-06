@@ -31,6 +31,8 @@ class Site(Base):
     filter = Column(String)
     # 是否渲染
     render = Column(Integer)
+    # 是否公开站点
+    public = Column(Integer)
     # 附加信息
     note = Column(String)
     # 流控单位周期

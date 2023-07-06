@@ -26,6 +26,8 @@ class Site(BaseModel):
     filter: Optional[str] = None
     # 是否演染
     render: Optional[int] = 0
+    # 是否公开站点
+    public: Optional[int] = 0
     # 备注
     note: Optional[str] = None
     # 流控单位周期

@@ -75,7 +75,8 @@ class CookieCloudChain(ChainBase):
                 self.siteoper.add(name=indexer.get("name"),
                                   url=indexer.get("domain"),
                                   domain=domain,
-                                  cookie=cookie)
+                                  cookie=cookie,
+                                  public=1 if indexer.get("public") else 0)
                 _add_count += 1
             # 保存站点图标
             if indexer:

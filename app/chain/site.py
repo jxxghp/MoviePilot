@@ -40,6 +40,7 @@ class SiteChain(ChainBase):
         site_cookie = site_info.cookie
         ua = site_info.ua
         render = site_info.render
+        public = site_info.public
         proxies = settings.PROXY if site_info.proxy else None
         proxy_server = settings.PROXY_SERVER if site_info.proxy else None
         # 模拟登录
@@ -50,7 +51,7 @@ class SiteChain(ChainBase):
                                                                  cookies=site_cookie,
                                                                  ua=ua,
                                                                  proxies=proxy_server)
-                if not SiteUtils.is_logged_in(page_source):
+                if not public and not SiteUtils.is_logged_in(page_source):
                     if under_challenge(page_source):
                         return False, f"无法通过Cloudflare！"
                     return False, f"仿真登录失败，Cookie已失效！"
@@ -61,22 +62,22 @@ class SiteChain(ChainBase):
                                    ).get_res(url=site_url)
                 # 判断登录状态
                 if res and res.status_code in [200, 500, 403]:
-                    if not SiteUtils.is_logged_in(res.text):
+                    if not public and not SiteUtils.is_logged_in(res.text):
                         if under_challenge(res.text):
                             msg = "站点被Cloudflare防护，请打开站点浏览器仿真"
                         elif res.status_code == 200:
                             msg = "Cookie已失效"
                         else:
                             msg = f"状态码：{res.status_code}"
-                        return False, f"连接失败，{msg}！"
-                    else:
-                        return True, f"连接成功"
+                        return False, f"{msg}！"
+                    elif public and res.status_code != 200:
+                        return False, f"状态码：{res.status_code}！"
                 elif res is not None:
-                    return False, f"连接失败，状态码：{res.status_code}！"
+                    return False, f"状态码：{res.status_code}！"
                 else:
-                    return False, f"连接失败，无法打开网站！"
+                    return False, f"无法打开网站！"
         except Exception as e:
-            return False, f"连接失败：{str(e)}！"
+            return False, f"{str(e)}！"
         return True, "连接成功"
 
     def remote_list(self, userid: Union[str, int] = None):
