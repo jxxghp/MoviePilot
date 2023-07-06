@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     # API监听端口
     PORT: int = 3001
-    # 是否自动重载
-    RELOAD: bool = False
+    # 是否调试模式
+    DEBUG: bool = False
     # 配置文件目录
     CONFIG_DIR: str = None
     # 超级管理员

@@ -245,13 +245,13 @@ class NotExistMediaInfo(BaseModel):
     媒体服务器不存在媒体信息
     """
     # 季
-    season: int
+    season: Optional[int] = None
     # 剧集列表
-    episodes: list = []
+    episodes: Optional[list] = []
     # 总集数
-    total_episodes: int = 0
+    total_episodes: Optional[int] = 0
     # 开始集
-    start_episode: int = 0
+    start_episode: Optional[int] = 0
 
 
 class RefreshMediaItem(BaseModel):

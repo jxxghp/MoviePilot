@@ -31,5 +31,5 @@ async def search_by_title(title: str,
     """
     _, medias = MediaChain().search(title=title)
     if medias:
-        return [media.to_dict() for media in medias[(page-1) * count: page * count]]
+        return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
     return []

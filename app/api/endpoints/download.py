@@ -4,7 +4,10 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.download import DownloadChain
+from app.core.context import MediaInfo
+from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
+from app.schemas import NotExistMediaInfo, MediaType
 
 router = APIRouter()
 
@@ -16,6 +19,28 @@ async def read_downloading(
     查询正在下载的任务
     """
     return DownloadChain().downloading()
+
+
+@router.post("/notexists", summary="查询电视剧缺失的剧集", response_model=List[NotExistMediaInfo])
+async def exists(media_in: schemas.MediaInfo,
+                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询已存在的媒体信息
+    """
+    # 媒体信息
+    mediainfo = MediaInfo()
+    mediainfo.from_dict(media_in.dict())
+    # 元数据
+    meta = MetaInfo(title=mediainfo.title)
+    # 查询缺失信息
+    exist_flag, no_exists = DownloadChain().get_no_exists_info(meta=meta, mediainfo=mediainfo)
+    if mediainfo.type == MediaType.MOVIE:
+        # 电影已存在时返回空列表，存在时返回空对像列表
+        return [] if exist_flag else [NotExistMediaInfo()]
+    elif no_exists and no_exists.get(mediainfo.tmdb_id):
+        # 电视剧返回缺失的剧集
+        return list(no_exists.get(mediainfo.tmdb_id).values())
+    return []
 
 
 @router.put("/{hashString}/start", summary="开始任务", response_model=schemas.Response)

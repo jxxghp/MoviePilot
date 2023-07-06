@@ -173,6 +173,19 @@ class MediaInfo:
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value
 
+    def from_dict(self, data: dict):
+        """
+        从字典中初始化
+        """
+        for key, value in data.items():
+            if key == "type":
+                if value == MediaType.MOVIE.value:
+                    setattr(self, key, MediaType.MOVIE)
+                elif value == MediaType.TV.value:
+                    setattr(self, key, MediaType.TV)
+                continue
+            setattr(self, key, value)
+
     def set_image(self, name: str, image: str):
         """
         设置图片地址

@@ -26,7 +26,7 @@ App.add_middleware(
 )
 
 # uvicorn服务
-Server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT, reload=settings.RELOAD))
+Server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT, reload=settings.DEBUG))
 
 
 def init_routers():
