@@ -237,7 +237,8 @@ class TheMovieDbModule(_ModuleBase):
         tmdb_info = self.tmdb.get_info(tmdbid=tmdbid, mtype=MediaType.TV)
         if not tmdb_info:
             return []
-        return [schemas.TmdbSeason(**season) for season in tmdb_info.get("seasons", [])]
+        return [schemas.TmdbSeason(**season)
+                for season in tmdb_info.get("seasons", []) if season.get("season_number")]
 
     def tmdb_episodes(self, tmdbid: int, season: int) -> List[schemas.TmdbEpisode]:
         """
