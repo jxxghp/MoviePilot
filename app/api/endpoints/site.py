@@ -75,8 +75,8 @@ async def cookie_cloud_sync(background_tasks: BackgroundTasks,
     return schemas.Response(success=True, message="CookieCloud同步任务已启动！")
 
 
-@router.put("/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response)
-async def update_cookie(
+@router.get("/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response)
+def update_cookie(
         site_id: int,
         username: str,
         password: str,
