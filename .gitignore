@@ -3,3 +3,4 @@
 build/
 test.py
 app/helper/sites.py
+config/user.db

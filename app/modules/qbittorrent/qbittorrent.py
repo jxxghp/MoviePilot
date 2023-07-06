@@ -95,7 +95,7 @@ class Qbittorrent(metaclass=Singleton):
         if not self.qbc:
             return None
         torrents, error = self.get_torrents(ids=ids,
-                                            status=["downloading", 'paused'],
+                                            status=["downloading", 'paused', 'stalled_downloading'],
                                             tags=tags)
         return None if error else torrents or []
 

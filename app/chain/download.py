@@ -102,7 +102,7 @@ class DownloadChain(ChainBase):
         if _hash:
             # 登记下载记录
             self.downloadhis.add(
-                path=_folder_name,
+                path=_folder_name or _torrent.title,
                 type=_media.type.value,
                 title=_media.title,
                 year=_media.year,
