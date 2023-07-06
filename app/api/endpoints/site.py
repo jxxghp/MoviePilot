@@ -52,24 +52,6 @@ async def update_site(
     return site
 
 
-@router.get("/{site_id}", summary="站点详情", response_model=schemas.Site)
-async def read_site(
-        site_id: int,
-        db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)
-) -> Any:
-    """
-    获取站点信息
-    """
-    site = Site.get(db, site_id)
-    if not site:
-        raise HTTPException(
-            status_code=404,
-            detail=f"站点 {site_id} 不存在",
-        )
-    return site
-
-
 @router.delete("/", summary="删除站点", response_model=schemas.Response)
 async def delete_site(
         site_in: schemas.Site,
@@ -98,7 +80,6 @@ async def update_cookie(
         site_id: int,
         username: str,
         password: str,
-        background_tasks: BackgroundTasks,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -174,3 +155,21 @@ async def site_resource(site_id: int, keyword: str = None,
     if not torrents:
         return []
     return [torrent.to_dict() for torrent in torrents]
+
+
+@router.get("/{site_id}", summary="站点详情", response_model=schemas.Site)
+async def read_site(
+        site_id: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)
+) -> Any:
+    """
+    获取站点信息
+    """
+    site = Site.get(db, site_id)
+    if not site:
+        raise HTTPException(
+            status_code=404,
+            detail=f"站点 {site_id} 不存在",
+        )
+    return site
