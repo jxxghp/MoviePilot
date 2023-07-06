@@ -18,7 +18,9 @@ async def recognize(title: str,
     """
     # 识别媒体信息
     context = MediaChain().recognize_by_title(title=title, subtitle=subtitle)
-    return context.to_dict()
+    if context:
+        return context.to_dict()
+    return schemas.Context()
 
 
 @router.get("/search", summary="搜索媒体信息", response_model=List[schemas.MediaInfo])

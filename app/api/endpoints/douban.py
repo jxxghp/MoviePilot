@@ -38,7 +38,10 @@ async def recognize_doubanid(doubanid: str,
     """
     # 识别媒体信息
     context = DoubanChain().recognize_by_doubanid(doubanid=doubanid)
-    return context.to_dict()
+    if context:
+        return context.to_dict()
+    else:
+        return schemas.Context()
 
 
 @router.get("/movies", summary="豆瓣电影", response_model=List[schemas.MediaInfo])
