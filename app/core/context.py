@@ -502,4 +502,8 @@ class Context:
         """
         转换为字典
         """
-        return asdict(self)
+        return {
+            "meta_info": self.meta_info.to_dict() if self.meta_info else None,
+            "torrent_info": self.torrent_info.to_dict() if self.torrent_info else None,
+            "media_info": self.media_info.to_dict() if self.media_info else None
+        }

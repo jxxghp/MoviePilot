@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Union, Optional, List
 
 import cn2an
@@ -439,3 +439,11 @@ class MetaBase(object):
         elif str(ep).isdigit():
             self.begin_episode = int(ep)
             self.end_episode = None
+
+    def to_dict(self):
+        """
+        转为字典
+        """
+        dicts = asdict(self)
+        dicts["type"] = self.type.value if self.type else None
+        return dicts

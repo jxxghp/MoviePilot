@@ -11,7 +11,7 @@ class MetaInfo(BaseModel):
     识别元数据
     """
     # 是否处理的文件
-    isfile: bool = False
+    isfile: Optional[bool] = False
     # 原字符串
     org_string: Optional[str] = None
     # 副标题
@@ -25,13 +25,13 @@ class MetaInfo(BaseModel):
     # 年份
     year: Optional[str] = None
     # 总季数
-    total_seasons: int = 0
+    total_seasons: Optional[int] = 0
     # 识别的开始季 数字
     begin_season: Optional[int] = None
     # 识别的结束季 数字
     end_season: Optional[int] = None
     # 总集数
-    total_episodes: int = 0
+    total_episodes: Optional[int] = 0
     # 识别的开始集
     begin_episode: Optional[int] = None
     # 识别的结束集
@@ -89,9 +89,9 @@ class MediaInfo(BaseModel):
     # 二级分类
     category: Optional[str] = ""
     # 季季集清单
-    seasons: Dict[int, list] = {}
+    seasons: Optional[Dict[int, list]] = {}
     # 季详情
-    season_info: List[dict] = []
+    season_info: Optional[List[dict]] = []
     # 别名和译名
     names: Optional[list] = []
     # 演员
