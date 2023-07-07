@@ -26,3 +26,5 @@ class Plugin(BaseModel):
     plugin_order: int = 0
     # 可使用的用户级别
     auth_level: int = 0
+    # 是否已安装
+    installed: bool = False

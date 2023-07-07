@@ -154,22 +154,22 @@ class PluginManager(metaclass=Singleton):
                 conf.update({"installed": False})
             # 名称
             if hasattr(plugin, "plugin_name"):
-                conf.update({"name": plugin.plugin_name})
+                conf.update({"plugin_name": plugin.plugin_name})
             # 描述
             if hasattr(plugin, "plugin_desc"):
-                conf.update({"desc": plugin.plugin_desc})
+                conf.update({"plugin_desc": plugin.plugin_desc})
             # 版本
             if hasattr(plugin, "plugin_version"):
-                conf.update({"version": plugin.plugin_version})
+                conf.update({"plugin_version": plugin.plugin_version})
             # 图标
             if hasattr(plugin, "plugin_icon"):
-                conf.update({"icon": plugin.plugin_icon})
+                conf.update({"plugin_icon": plugin.plugin_icon})
             # 主题色
             if hasattr(plugin, "plugin_color"):
-                conf.update({"color": plugin.plugin_color})
+                conf.update({"plugin_color": plugin.plugin_color})
             # 作者
             if hasattr(plugin, "plugin_author"):
-                conf.update({"author": plugin.plugin_author})
+                conf.update({"plugin_author": plugin.plugin_author})
             # 作者链接
             if hasattr(plugin, "author_url"):
                 conf.update({"author_url": plugin.author_url})
