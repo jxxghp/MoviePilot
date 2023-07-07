@@ -31,11 +31,11 @@ class Site(BaseModel):
     # 备注
     note: Optional[str] = None
     # 流控单位周期
-    limit_interval: Optional[int] = 0
+    limit_interval: Optional[int] = None
     # 流控次数
-    limit_count: Optional[int] = 0
+    limit_count: Optional[int] = None
     # 流控间隔
-    limit_seconds: Optional[int] = 0
+    limit_seconds: Optional[int] = None
     # 是否启用
     is_active: Optional[bool] = True
 
