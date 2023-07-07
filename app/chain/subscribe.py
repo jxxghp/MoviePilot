@@ -226,7 +226,7 @@ class SubscribeChain(ChainBase):
                         continue
                 # 如果是电视剧过滤掉已经下载的集数
                 if torrent_mediainfo.type == MediaType.TV:
-                    if self.__check_subscribe_note(subscribe, torrent_meta.episodes):
+                    if self.__check_subscribe_note(subscribe, torrent_meta.episode_list):
                         logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episodes} 已下载过')
                         continue
                 matched_contexts.append(context)
@@ -356,7 +356,7 @@ class SubscribeChain(ChainBase):
                     torrent_info = context.torrent_info
                     # 如果是电视剧过滤掉已经下载的集数
                     if torrent_mediainfo.type == MediaType.TV:
-                        if self.__check_subscribe_note(subscribe, torrent_meta.episodes):
+                        if self.__check_subscribe_note(subscribe, torrent_meta.episode_list):
                             logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episodes} 已下载过')
                             continue
                     # 包含

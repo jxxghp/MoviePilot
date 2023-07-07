@@ -31,9 +31,9 @@ async def exists(media_in: schemas.MediaInfo,
     """
     # 媒体信息
     mediainfo = MediaInfo()
+    meta = MetaInfo(title=media_in.title)
     if media_in.tmdb_id:
         mediainfo.from_dict(media_in.dict())
-        meta = MetaInfo(title=mediainfo.title)
     elif media_in.douban_id:
         context = DoubanChain().recognize_by_doubanid(doubanid=media_in.douban_id)
         if context:
@@ -45,7 +45,7 @@ async def exists(media_in: schemas.MediaInfo,
             mediainfo = context.media_info
             meta = context.meta_info
     # 查询缺失信息
-    if not mediainfo.tmdb_id:
+    if not mediainfo or not mediainfo.tmdb_id:
         raise HTTPException(status_code=404, detail="媒体信息不存在")
     exist_flag, no_exists = DownloadChain().get_no_exists_info(meta=meta, mediainfo=mediainfo)
     if mediainfo.type == MediaType.MOVIE:
