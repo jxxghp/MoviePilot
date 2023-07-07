@@ -175,7 +175,7 @@ class SubscribeChain(ChainBase):
             meta = MetaInfo(subscribe.name)
             meta.year = subscribe.year
             meta.begin_season = subscribe.season or None
-            meta.type = MediaType.MOVIE if subscribe.type == MediaType.MOVIE.value else MediaType.TV
+            meta.type = MediaType(subscribe.type)
             # 识别媒体信息
             mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type, tmdbid=subscribe.tmdbid)
             if not mediainfo:
@@ -322,7 +322,7 @@ class SubscribeChain(ChainBase):
             meta = MetaInfo(subscribe.name)
             meta.year = subscribe.year
             meta.begin_season = subscribe.season or None
-            meta.type = MediaType.MOVIE if subscribe.type == MediaType.MOVIE.value else MediaType.TV
+            meta.type = MediaType(subscribe.type)
             # 识别媒体信息
             mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type, tmdbid=subscribe.tmdbid)
             if not mediainfo:

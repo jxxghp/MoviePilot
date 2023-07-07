@@ -53,7 +53,7 @@ async def create_subscribe(
     """
     # 类型转换
     if subscribe_in.type:
-        mtype = MediaType.TV if subscribe_in.type == "电视剧" else MediaType.MOVIE
+        mtype = MediaType(subscribe_in.type)
     else:
         mtype = None
     # 标题转换

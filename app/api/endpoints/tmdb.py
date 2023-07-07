@@ -92,7 +92,7 @@ async def tmdb_info(tmdbid: int, type_name: str,
     """
     根据TMDBID查询themoviedb媒体信息，type_name: 电影/电视剧
     """
-    mtype = MediaType.MOVIE if type_name == MediaType.MOVIE.value else MediaType.TV
+    mtype = MediaType(type_name)
     tmdbinfo = TmdbChain().tmdb_info(tmdbid=tmdbid, mtype=mtype)
     if not tmdbinfo:
         return schemas.MediaInfo()
