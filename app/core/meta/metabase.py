@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Union, Optional, List
 
 import cn2an
@@ -7,6 +8,7 @@ from app.utils.string import StringUtils
 from app.schemas.types import MediaType
 
 
+@dataclass
 class MetaBase(object):
     """
     媒体信息基类

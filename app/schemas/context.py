@@ -83,42 +83,42 @@ class MediaInfo(BaseModel):
     # 海报图片
     poster_path: Optional[str] = None
     # 评分
-    vote_average: int = 0
+    vote_average: Optional[int] = 0
     # 描述
     overview: Optional[str] = None
     # 二级分类
-    category: str = ""
+    category: Optional[str] = ""
     # 季季集清单
     seasons: Dict[int, list] = {}
     # 季详情
     season_info: List[dict] = []
     # 别名和译名
-    names: list = []
+    names: Optional[list] = []
     # 演员
-    actors: list = []
+    actors: Optional[list] = []
     # 导演
-    directors: list = []
+    directors: Optional[list] = []
     # 其它TMDB属性
-    adult: bool = False
-    created_by: list = []
-    episode_run_time: list = []
-    genres: list = []
+    adult: Optional[bool] = False
+    created_by: Optional[list] = []
+    episode_run_time: Optional[list] = []
+    genres: Optional[list] = []
     first_air_date: Optional[str] = None
     homepage: Optional[str] = None
-    languages: list = []
+    languages: Optional[list] = []
     last_air_date: Optional[str] = None
-    networks: list = []
-    number_of_episodes: int = 0
-    number_of_seasons: int = 0
-    origin_country: list = []
+    networks: Optional[list] = []
+    number_of_episodes: Optional[int] = 0
+    number_of_seasons: Optional[int] = 0
+    origin_country: Optional[list] = []
     original_name: Optional[str] = None
-    production_companies: list = []
-    production_countries: list = []
-    spoken_languages: list = []
+    production_companies: Optional[list] = []
+    production_countries: Optional[list] = []
+    spoken_languages: Optional[list] = []
     status: Optional[str] = None
     tagline: Optional[str] = None
-    vote_count: int = 0
-    popularity: int = 0
+    vote_count: Optional[int] = 0
+    popularity: Optional[int] = 0
     runtime: Optional[int] = None
     next_episode_to_air: Optional[str] = None
 
@@ -136,27 +136,27 @@ class TorrentInfo(BaseModel):
     # 站点UA
     site_ua: Optional[str] = None
     # 站点是否使用代理
-    site_proxy: bool = False
+    site_proxy: Optional[bool] = False
     # 站点优先级
-    site_order: int = 0
+    site_order: Optional[int] = 0
     # 种子名称
     title: Optional[str] = None
     # 种子副标题
     description: Optional[str] = None
     # IMDB ID
-    imdbid: str = None
+    imdbid: Optional[str] = None
     # 种子链接
     enclosure: Optional[str] = None
     # 详情页面
     page_url: Optional[str] = None
     # 种子大小
-    size: float = 0
+    size: Optional[float] = 0
     # 做种者
-    seeders: int = 0
+    seeders: Optional[int] = 0
     # 下载者
-    peers: int = 0
+    peers: Optional[int] = 0
     # 完成者
-    grabs: int = 0
+    grabs: Optional[int] = 0
     # 发布时间
     pubdate: Optional[str] = None
     # 已过时间
@@ -166,11 +166,11 @@ class TorrentInfo(BaseModel):
     # 下载因子
     downloadvolumefactor: Optional[float] = None
     # HR
-    hit_and_run: bool = False
+    hit_and_run: Optional[bool] = False
     # 种子标签
     labels: Optional[list] = []
     # 种子优先级
-    pri_order: int = 0
+    pri_order: Optional[int] = 0
 
 
 class Context(BaseModel):
@@ -178,11 +178,11 @@ class Context(BaseModel):
     上下文
     """
     # 元数据
-    meta_info: Optional[MetaInfo]
+    meta_info: Optional[MetaInfo] = None
     # 媒体信息
-    media_info: Optional[MediaInfo]
+    media_info: Optional[MediaInfo] = None
     # 种子信息
-    torrent_info: Optional[TorrentInfo]
+    torrent_info: Optional[TorrentInfo] = None
 
 
 class TransferTorrent(BaseModel):
@@ -221,11 +221,11 @@ class TransferInfo(BaseModel):
     # 转移后路径
     target_path: Optional[Path] = None
     # 处理文件数
-    file_count: int = 0
+    file_count: Optional[int] = 0
     # 总文件大小
-    total_size: float = 0
+    total_size: Optional[float] = 0
     # 失败清单
-    fail_list: list = []
+    fail_list: Optional[list] = []
     # 错误信息
     message: Optional[str] = None
 
@@ -235,9 +235,9 @@ class ExistMediaInfo(BaseModel):
     媒体服务器存在媒体信息
     """
     # 类型 电影、电视剧
-    type: MediaType
+    type: Optional[MediaType]
     # 季
-    seasons: Dict[int, list] = {}
+    seasons: Optional[Dict[int, list]] = {}
 
 
 class NotExistMediaInfo(BaseModel):
@@ -259,7 +259,7 @@ class RefreshMediaItem(BaseModel):
     媒体库刷新信息
     """
     # 标题
-    title: str
+    title: Optional[str] = None
     # 年份
     year: Optional[str] = None
     # 类型

@@ -26,7 +26,7 @@ class SearchChain(ChainBase):
         self.siteshelper = SitesHelper()
         self.progress = ProgressHelper()
 
-    def search_by_tmdbid(self, tmdbid: int, mtype: str = None) -> Optional[List[Context]]:
+    def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None) -> Optional[List[Context]]:
         """
         根据TMDB ID搜索资源，精确匹配，但不不过滤本地存在的资源
         :param tmdbid: TMDB ID

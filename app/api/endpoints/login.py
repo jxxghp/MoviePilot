@@ -38,7 +38,12 @@ async def login_access_token(
             raise HTTPException(status_code=401, detail="用户名或密码不正确")
         else:
             logger.info(f"辅助认证成功，用户信息: {token}")
-            user = schemas.User(id=-1, name=form_data.username, is_active=True, is_superuser=False)
+            # 加入用户信息表
+            user = User.get_by_name(db=db, name=form_data.username)
+            if not user:
+                logger.info(f"用户不存在，创建用户: {form_data.username}")
+                user = User(name=form_data.username, is_active=True, is_superuser=False)
+                user.create(db)
     elif not user.is_active:
         raise HTTPException(status_code=403, detail="用户未启用")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
