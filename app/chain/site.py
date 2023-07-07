@@ -147,14 +147,12 @@ class SiteChain(ChainBase):
         self.remote_list()
 
     def update_cookie(self, site_info: Site,
-                      username: str, password: str,
-                      manual=False) -> Tuple[bool, str]:
+                      username: str, password: str) -> Tuple[bool, str]:
         """
         根据用户名密码更新站点Cookie
         :param site_info: 站点信息
         :param username: 用户名
         :param password: 密码
-        :param manual: 是否手动更新
         :return: (是否成功, 错误信息)
         """
         # 更新站点Cookie
@@ -167,15 +165,11 @@ class SiteChain(ChainBase):
         if result:
             cookie, ua, msg = result
             if not cookie:
-                if manual:
-                    self.message.put(f"站点 {site_info.name} Cookie更新失败：{msg}！")
                 return False, msg
             self.siteoper.update(site_info.id, {
                 "cookie": cookie,
                 "ua": ua
             })
-            if manual:
-                self.message.put(f"站点 {site_info.name} Cookie更新成功！")
             return True, msg
         return False, "未知错误"
 

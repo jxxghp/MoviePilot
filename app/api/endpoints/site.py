@@ -95,8 +95,7 @@ def update_cookie(
     # 更新Cookie
     state, message = SiteChain().update_cookie(site_info=site_info,
                                                username=username,
-                                               password=password,
-                                               manual=True)
+                                               password=password)
     return schemas.Response(success=state, message=message)
 
 
