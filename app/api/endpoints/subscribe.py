@@ -42,36 +42,6 @@ async def read_subscribes(
     return Subscribe.list(db)
 
 
-@router.get("/media/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
-async def subscribe_mediaid(
-        mediaid: str,
-        season: int = None,
-        db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    根据TMDBID或豆瓣ID查询订阅 tmdb:/douban:
-    """
-    if mediaid.startswith("tmdb:"):
-        result = Subscribe.exists(db, int(mediaid[5:]), season)
-    elif mediaid.startswith("douban:"):
-        result = Subscribe.get_by_doubanid(db, mediaid[7:])
-    else:
-        result = None
-
-    return result if result else Subscribe()
-
-
-@router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
-async def read_subscribe(
-        subscribe_id: int,
-        db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    根据订阅编号查询订阅信息
-    """
-    return Subscribe.get(db, subscribe_id)
-
-
 @router.post("/", summary="新增订阅", response_model=schemas.Response)
 async def create_subscribe(
         *,
@@ -104,11 +74,11 @@ async def create_subscribe(
     })
 
 
-@router.put("/", summary="更新订阅", response_model=schemas.Subscribe)
+@router.put("/", summary="更新订阅", response_model=schemas.Response)
 async def update_subscribe(
         *,
-        db: Session = Depends(get_db),
         subscribe_in: schemas.Subscribe,
+        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
     """
@@ -116,12 +86,39 @@ async def update_subscribe(
     """
     subscribe = Subscribe.get(db, subscribe_in.id)
     if not subscribe:
-        raise HTTPException(
-            status_code=404,
-            detail=f"订阅 {subscribe_in.id} 不存在",
-        )
-    subscribe.update(db, **subscribe_in.dict())
-    return subscribe
+        return schemas.Response(success=False, message="订阅不存在")
+    subscribe.update(db, subscribe_in.dict())
+    return schemas.Response(success=True)
+
+
+@router.get("/media/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
+async def subscribe_mediaid(
+        mediaid: str,
+        season: int = None,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据TMDBID或豆瓣ID查询订阅 tmdb:/douban:
+    """
+    if mediaid.startswith("tmdb:"):
+        result = Subscribe.exists(db, int(mediaid[5:]), season)
+    elif mediaid.startswith("douban:"):
+        result = Subscribe.get_by_doubanid(db, mediaid[7:])
+    else:
+        result = None
+
+    return result if result else Subscribe()
+
+
+@router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
+async def read_subscribe(
+        subscribe_id: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据订阅编号查询订阅信息
+    """
+    return Subscribe.get(db, subscribe_id)
 
 
 @router.delete("/media/{mediaid}", summary="删除订阅", response_model=schemas.Response)
