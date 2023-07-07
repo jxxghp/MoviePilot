@@ -18,7 +18,7 @@ class Site(Base):
     # 站点地址
     url = Column(String, nullable=False)
     # 站点优先级
-    pri = Column(Integer)
+    pri = Column(Integer, default=1)
     # RSS地址，未启用
     rss = Column(String)
     # Cookie
@@ -53,3 +53,7 @@ class Site(Base):
     @staticmethod
     def get_actives(db: Session):
         return db.query(Site).filter(Site.is_active == 1).all()
+
+    @staticmethod
+    def list_order_by_pri(db: Session):
+        return db.query(Site).order_by(Site.pri).all()

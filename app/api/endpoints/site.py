@@ -29,10 +29,10 @@ async def read_sites(db: Session = Depends(get_db),
     """
     获取站点列表
     """
-    return Site.list(db)
+    return Site.list_order_by_pri(db)
 
 
-@router.put("/", summary="更新站点", response_model=schemas.Site)
+@router.put("/", summary="更新站点", response_model=schemas.Response)
 async def update_site(
         *,
         db: Session = Depends(get_db),
@@ -44,12 +44,9 @@ async def update_site(
     """
     site = Site.get(db, site_in.id)
     if not site:
-        raise HTTPException(
-            status_code=404,
-            detail=f"站点 {site_in.id} 不存在",
-        )
-    site.update(db, **site_in.dict())
-    return site
+        return schemas.Response(success=False, message="站点不存在")
+    site.update(db, site_in.dict())
+    return schemas.Response(success=True)
 
 
 @router.delete("/", summary="删除站点", response_model=schemas.Response)
