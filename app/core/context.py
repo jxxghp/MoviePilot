@@ -165,13 +165,9 @@ class MediaInfo:
         从字典中初始化
         """
         for key, value in data.items():
-            if key == "type":
-                if value == MediaType.MOVIE.value:
-                    setattr(self, key, MediaType.MOVIE)
-                elif value == MediaType.TV.value:
-                    setattr(self, key, MediaType.TV)
-                continue
             setattr(self, key, value)
+        if isinstance(self.type, str):
+            self.type = MediaType(self.type)
 
     def set_image(self, name: str, image: str):
         """
