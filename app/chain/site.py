@@ -131,18 +131,20 @@ class SiteChain(ChainBase):
         """
         if not arg_str:
             return
-        arg_str = str(arg_str).strip()
-        if not arg_str.isdigit():
-            return
-        site_id = int(arg_str)
-        site = self.siteoper.get(site_id)
-        if not site:
-            self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
-            return
-        # 禁用站点
-        self.siteoper.update(site_id, {
-            "is_active": True
-        })
+        arg_strs = str(arg_str).split()
+        for arg_str in arg_strs:
+            arg_str = arg_str.strip()
+            if not arg_str.isdigit():
+                continue
+            site_id = int(arg_str)
+            site = self.siteoper.get(site_id)
+            if not site:
+                self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
+                return
+            # 禁用站点
+            self.siteoper.update(site_id, {
+                "is_active": True
+            })
         # 重新发送消息
         self.remote_list()
 

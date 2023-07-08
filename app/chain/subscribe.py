@@ -501,16 +501,18 @@ class SubscribeChain(ChainBase):
             self.post_message(title="请输入正确的命令格式：/subscribe_delete [id]，"
                                     "[id]为订阅编号", userid=userid)
             return
-        arg_str = arg_str.strip()
-        if not arg_str.isdigit():
-            return
-        subscribe_id = int(arg_str)
-        subscribe = self.subscribehelper.get(subscribe_id)
-        if not subscribe:
-            self.post_message(title=f"订阅编号 {subscribe_id} 不存在！", userid=userid)
-            return
-        # 删除订阅
-        self.subscribehelper.delete(subscribe_id)
+        arg_strs = str(arg_str).split()
+        for arg_str in arg_strs:
+            arg_str = arg_str.strip()
+            if not arg_str.isdigit():
+                continue
+            subscribe_id = int(arg_str)
+            subscribe = self.subscribehelper.get(subscribe_id)
+            if not subscribe:
+                self.post_message(title=f"订阅编号 {subscribe_id} 不存在！", userid=userid)
+                return
+            # 删除订阅
+            self.subscribehelper.delete(subscribe_id)
         # 重新发送消息
         self.remote_list()
 

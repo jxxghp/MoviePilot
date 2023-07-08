@@ -1,3 +1,5 @@
+import multiprocessing
+
 import uvicorn as uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,7 +28,8 @@ App.add_middleware(
 )
 
 # uvicorn服务
-Server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT, reload=settings.DEBUG))
+Server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT,
+                               reload=settings.DEBUG, workers=multiprocessing.cpu_count()))
 
 
 def init_routers():
