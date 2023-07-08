@@ -18,7 +18,6 @@ from app.schemas.types import MediaType
 
 
 class TorrentSpider:
-
     # 是否出现错误
     is_error: bool = False
     # 索引器ID
@@ -393,10 +392,12 @@ class TorrentSpider:
         items = self.__attribute_or_text(size, selector)
         item = self.__index(items, selector)
         if item:
-            self.torrents_info['size'] = StringUtils.num_filesize(item.replace("\n", "").strip())
-            self.torrents_info['size'] = self.__filter_text(self.torrents_info.get('size'),
-                                                            selector.get('filters'))
-            self.torrents_info['size'] = StringUtils.num_filesize(self.torrents_info.get('size'))
+            size_val = item.replace("\n", "").strip()
+            size_val = self.__filter_text(size_val,
+                                          selector.get('filters'))
+            self.torrents_info['size'] = StringUtils.num_filesize(size_val)
+        else:
+            self.torrents_info['size'] = 0
 
     def __get_leechers(self, torrent):
         # torrent leechers
@@ -408,9 +409,10 @@ class TorrentSpider:
         items = self.__attribute_or_text(leechers, selector)
         item = self.__index(items, selector)
         if item:
-            self.torrents_info['peers'] = item.split("/")[0]
-            self.torrents_info['peers'] = self.__filter_text(self.torrents_info.get('peers'),
-                                                             selector.get('filters'))
+            peers_val = item.split("/")[0]
+            peers_val = self.__filter_text(peers_val,
+                                           selector.get('filters'))
+            self.torrents_info['peers'] = int(peers_val) if peers_val and peers_val.isdigit() else 0
         else:
             self.torrents_info['peers'] = 0
 
@@ -424,9 +426,10 @@ class TorrentSpider:
         items = self.__attribute_or_text(seeders, selector)
         item = self.__index(items, selector)
         if item:
-            self.torrents_info['seeders'] = item.split("/")[0]
-            self.torrents_info['seeders'] = self.__filter_text(self.torrents_info.get('seeders'),
-                                                               selector.get('filters'))
+            seeders_val = item.split("/")[0]
+            seeders_val = self.__filter_text(seeders_val,
+                                             selector.get('filters'))
+            self.torrents_info['seeders'] = int(seeders_val) if seeders_val and seeders_val.isdigit() else 0
         else:
             self.torrents_info['seeders'] = 0
 
@@ -440,9 +443,10 @@ class TorrentSpider:
         items = self.__attribute_or_text(grabs, selector)
         item = self.__index(items, selector)
         if item:
-            self.torrents_info['grabs'] = item.split("/")[0]
-            self.torrents_info['grabs'] = self.__filter_text(self.torrents_info.get('grabs'),
-                                                             selector.get('filters'))
+            grabs_val = item.split("/")[0]
+            grabs_val = self.__filter_text(grabs_val,
+                                           selector.get('filters'))
+            self.torrents_info['grabs'] = int(grabs_val) if grabs_val and grabs_val.isdigit() else 0
         else:
             self.torrents_info['grabs'] = 0
 
@@ -607,7 +611,7 @@ class TorrentSpider:
     @staticmethod
     def __index(items, selector):
         if not selector:
-            return items
+            return items[0] if isinstance(items, list) else items
         if not items:
             return items
         if "contents" in selector \
