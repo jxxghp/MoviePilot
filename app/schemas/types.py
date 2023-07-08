@@ -34,6 +34,8 @@ class EventType(Enum):
 class SystemConfigKey(Enum):
     # 用户已安装的插件
     UserInstalledPlugins = "UserInstalledPlugins"
+    # 搜索结果
+    SearchResults = "SearchResults"
 
 
 # 站点框架

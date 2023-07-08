@@ -478,25 +478,10 @@ class Context:
 
     # 识别信息
     meta_info: MetaBase = None
-    # 种子信息
-    torrent_info: TorrentInfo = None
     # 媒体信息
     media_info: MediaInfo = None
-
-    def __init__(self,
-                 meta: MetaBase = None,
-                 mediainfo: MediaInfo = None,
-                 torrentinfo: TorrentInfo = None,
-                 **kwargs):
-        if meta:
-            self.meta_info = meta
-        if mediainfo:
-            self.media_info = mediainfo
-        if torrentinfo:
-            self.torrent_info = torrentinfo
-        if kwargs:
-            for k, v in kwargs.items():
-                setattr(self, k, v)
+    # 种子信息
+    torrent_info: TorrentInfo = None
 
     def to_dict(self):
         """

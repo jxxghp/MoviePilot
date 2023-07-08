@@ -46,10 +46,10 @@ class DoubanChain(ChainBase):
         mediainfo: MediaInfo = self.recognize_media(meta=meta)
         if not mediainfo:
             logger.warn(f'{meta.name} 未识别到TMDB媒体信息')
-            return Context(meta=meta, mediainfo=MediaInfo(douban_info=doubaninfo))
+            return Context(meta_info=meta, media_info=MediaInfo(douban_info=doubaninfo))
         logger.info(f'{doubanid} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}{meta.season}')
         mediainfo.set_douban_info(doubaninfo)
-        return Context(meta=meta, mediainfo=mediainfo)
+        return Context(meta_info=meta, media_info=mediainfo)
 
     def movie_top250(self, page: int = 1, count: int = 30) -> List[dict]:
         """

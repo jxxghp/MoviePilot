@@ -1,3 +1,4 @@
+import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict
@@ -8,11 +9,12 @@ from app.core.config import settings
 from app.core.context import Context
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
+from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.progress import ProgressHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
-from app.schemas.types import MediaType, ProgressKey
+from app.schemas.types import MediaType, ProgressKey, SystemConfigKey
 from app.utils.string import StringUtils
 
 
@@ -25,6 +27,7 @@ class SearchChain(ChainBase):
         super().__init__()
         self.siteshelper = SitesHelper()
         self.progress = ProgressHelper()
+        self.systemconfig = SystemConfigOper()
 
     def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None) -> Optional[List[Context]]:
         """
@@ -36,7 +39,10 @@ class SearchChain(ChainBase):
         if not mediainfo:
             logger.error(f'{tmdbid} 媒体信息识别失败！')
             return None
-        return self.process(mediainfo=mediainfo)
+        results = self.process(mediainfo=mediainfo)
+        # 保存眲结果
+        self.systemconfig.set(SystemConfigKey.SearchResults, pickle.dumps(results))
+        return results
 
     def search_by_title(self, title: str) -> List[TorrentInfo]:
         """
@@ -46,6 +52,15 @@ class SearchChain(ChainBase):
         logger.info(f'开始搜索资源，关键词：{title} ...')
         # 搜索
         return self.__search_all_sites(keyword=title)
+
+    def last_search_results(self) -> List[Context]:
+        """
+        获取上次搜索结果
+        """
+        results = self.systemconfig.get(SystemConfigKey.SearchResults)
+        if not results:
+            return []
+        return pickle.loads(results)
 
     def browse(self, domain: str, keyword: str = None) -> List[TorrentInfo]:
         """
@@ -168,9 +183,9 @@ class SearchChain(ChainBase):
             _match_torrents = torrents
         logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
         # 组装上下文返回
-        return [Context(meta=MetaInfo(title=torrent.title, subtitle=torrent.description),
-                        mediainfo=mediainfo,
-                        torrentinfo=torrent) for torrent in _match_torrents]
+        return [Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+                        media_info=mediainfo,
+                        torrent_info=torrent) for torrent in _match_torrents]
 
     def __search_all_sites(self, mediainfo: Optional[MediaInfo] = None,
                            keyword: str = None) -> Optional[List[TorrentInfo]]:

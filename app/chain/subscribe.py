@@ -304,7 +304,7 @@ class SubscribeChain(ChainBase):
                         logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
                         continue
                     # 上下文
-                    context = Context(meta=meta, mediainfo=mediainfo, torrentinfo=torrent)
+                    context = Context(meta_info=meta, media_info=mediainfo, torrent_info=torrent)
                     self._torrents_cache[domain].append(context)
         # 从缓存中匹配订阅
         self.match()

@@ -28,12 +28,12 @@ class MediaChain(ChainBase):
         mediainfo: MediaInfo = self.recognize_media(meta=metainfo)
         if not mediainfo:
             logger.warn(f'{title} 未识别到媒体信息')
-            return Context(meta=metainfo)
+            return Context(meta_info=metainfo)
         logger.info(f'{title} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}')
         # 更新媒体图片
         self.obtain_images(mediainfo=mediainfo)
         # 返回上下文
-        return Context(meta=metainfo, mediainfo=mediainfo, title=title, subtitle=subtitle)
+        return Context(meta_info=metainfo, media_info=mediainfo)
 
     def search(self, title: str) -> Tuple[MetaBase, List[MediaInfo]]:
         """

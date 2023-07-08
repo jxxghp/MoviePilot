@@ -12,6 +12,15 @@ from app.schemas.types import MediaType
 router = APIRouter()
 
 
+@router.get("/last", summary="查询搜索结果", response_model=List[schemas.Context])
+async def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询搜索结果
+    """
+    torrents = SearchChain().last_search_results()
+    return [torrent.to_dict() for torrent in torrents]
+
+
 @router.get("/media/{mediaid}", summary="精确搜索资源", response_model=List[schemas.Context])
 async def search_by_tmdbid(mediaid: str,
                            mtype: str = None,
