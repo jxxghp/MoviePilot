@@ -147,21 +147,12 @@ class MediaInfo:
     # 演员
     actors: List[dict] = field(default_factory=dict)
 
-    def __init__(self, tmdb_info: dict = None, douban_info: dict = None):
-        # 初始化
-        self.seasons = {}
-        self.season_info = []
-        self.season_years = {}
-        self.names = []
-        self.directors = []
-        self.actors = []
-        self.tmdb_info = {}
-        self.douban_info = {}
+    def __post_init__(self):
         # 设置媒体信息
-        if tmdb_info:
-            self.set_tmdb_info(tmdb_info)
-        if douban_info:
-            self.set_douban_info(douban_info)
+        if self.tmdb_info:
+            self.set_tmdb_info(self.tmdb_info)
+        if self.douban_info:
+            self.set_douban_info(self.douban_info)
 
     def from_dict(self, data: dict):
         """
