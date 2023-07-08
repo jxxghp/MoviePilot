@@ -487,7 +487,7 @@ class FileTransferModule(_ModuleBase):
             # 年份
             "year": mediainfo.year,
             # 版本
-            "edition": meta.edtion,
+            "edition": meta.edition,
             # 分辨率
             "videoFormat": meta.resource_pix,
             # 制作组/字幕组

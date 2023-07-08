@@ -332,7 +332,7 @@ class MetaBase(object):
         return ret_string
 
     @property
-    def edtion(self) -> str:
+    def edition(self) -> str:
         """
         返回资源类型字符串，不含分辨率
         """
@@ -447,5 +447,5 @@ class MetaBase(object):
         dicts = asdict(self)
         dicts["type"] = self.type.value if self.type else None
         dicts["season_episode"] = self.season_episode
-        dicts["edtion"] = self.edtion
+        dicts["edition"] = self.edition
         return dicts
