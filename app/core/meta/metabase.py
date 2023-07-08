@@ -446,4 +446,5 @@ class MetaBase(object):
         """
         dicts = asdict(self)
         dicts["type"] = self.type.value if self.type else None
+        dicts["season_episode"] = self.season_episode
         return dicts

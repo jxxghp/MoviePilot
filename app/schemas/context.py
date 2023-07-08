@@ -36,6 +36,8 @@ class MetaInfo(BaseModel):
     begin_episode: Optional[int] = None
     # 识别的结束集
     end_episode: Optional[int] = None
+    # SxxExx
+    season_episode: Optional[str] = None
     # Partx Cd Dvd Disk Disc
     part: Optional[str] = None
     # 识别的资源类型
@@ -62,6 +64,8 @@ class MediaInfo(BaseModel):
     title: Optional[str] = None
     # 年份
     year: Optional[str] = None
+    # 标题（年份）
+    title_year: Optional[str] = None
     # 季
     season: Optional[int] = None
     # TMDB ID
@@ -98,6 +102,8 @@ class MediaInfo(BaseModel):
     actors: Optional[list] = []
     # 导演
     directors: Optional[list] = []
+    # 详情链接
+    detail_link: Optional[str] = None
     # 其它TMDB属性
     adult: Optional[bool] = False
     created_by: Optional[list] = []

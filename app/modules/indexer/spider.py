@@ -529,7 +529,9 @@ class TorrentSpider:
         self.__remove(labels, selector)
         items = self.__attribute_or_text(labels, selector)
         if items:
-            self.torrents_info['labels'] = items
+            self.torrents_info['labels'] = [item for item in items if item]
+        else:
+            self.torrents_info['labels'] = []
 
     def get_info(self, torrent) -> dict:
         """

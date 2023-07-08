@@ -467,6 +467,8 @@ class MediaInfo:
         """
         dicts = asdict(self)
         dicts["type"] = self.type.value if self.type else None
+        dicts["detail_link"] = self.detail_link
+        dicts["title_year"] = self.title_year
         return dicts
 
 
