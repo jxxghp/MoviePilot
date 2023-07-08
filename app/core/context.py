@@ -168,7 +168,9 @@ class MediaInfo:
         从字典中初始化
         """
         for key, value in data.items():
-            setattr(self, key, value)
+            attr = getattr(self, key, None)
+            if attr and not isinstance(attr, property):
+                setattr(self, key, value)
         if isinstance(self.type, str):
             self.type = MediaType(self.type)
 
