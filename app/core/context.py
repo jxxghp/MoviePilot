@@ -55,12 +55,24 @@ class TorrentInfo:
     # 种子优先级
     pri_order: int = 0
 
+    def __get_properties(self):
+        """
+        获取属性列表
+        """
+        property_names = []
+        for member_name in dir(self.__class__):
+            member = getattr(self.__class__, member_name)
+            if isinstance(member, property):
+                property_names.append(member_name)
+        return property_names
+
     def from_dict(self, data: dict):
         """
         从字典中初始化
         """
+        properties = self.__get_properties()
         for key, value in data.items():
-            if key in ['volume_factor']:
+            if key in properties:
                 continue
             setattr(self, key, value)
 
@@ -157,12 +169,24 @@ class MediaInfo:
         if self.douban_info:
             self.set_douban_info(self.douban_info)
 
+    def __get_properties(self):
+        """
+        获取属性列表
+        """
+        property_names = []
+        for member_name in dir(self.__class__):
+            member = getattr(self.__class__, member_name)
+            if isinstance(member, property):
+                property_names.append(member_name)
+        return property_names
+
     def from_dict(self, data: dict):
         """
         从字典中初始化
         """
+        properties = self.__get_properties()
         for key, value in data.items():
-            if key in ["title_year", "detail_link", "stars", "vote_star"]:
+            if key in properties:
                 continue
             setattr(self, key, value)
         if isinstance(self.type, str):
