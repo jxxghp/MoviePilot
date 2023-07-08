@@ -610,17 +610,16 @@ class TorrentSpider:
 
     @staticmethod
     def __index(items, selector):
-        if not selector:
-            return items[0] if isinstance(items, list) else items
         if not items:
             return items
-        if "contents" in selector \
-                and len(items) > int(selector.get("contents")):
-            items = items[0].split("\n")[selector.get("contents")]
-        elif "index" in selector \
-                and len(items) > int(selector.get("index")):
-            items = items[int(selector.get("index"))]
-        elif isinstance(items, list):
+        if selector:
+            if "contents" in selector \
+                    and len(items) > int(selector.get("contents")):
+                items = items[0].split("\n")[selector.get("contents")]
+            elif "index" in selector \
+                    and len(items) > int(selector.get("index")):
+                items = items[int(selector.get("index"))]
+        if isinstance(items, list):
             items = items[0]
         return items
 
