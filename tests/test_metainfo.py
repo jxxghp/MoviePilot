@@ -26,7 +26,7 @@ class MetaInfoTest(TestCase):
                 "part": meta_info.part or "",
                 "season": meta_info.season,
                 "episode": meta_info.episode,
-                "restype": meta_info.edtion,
+                "restype": meta_info.edition,
                 "pix": meta_info.resource_pix or "",
                 "video_codec": meta_info.video_encode or "",
                 "audio_codec": meta_info.audio_encode or ""

@@ -93,7 +93,7 @@ class TorrentInfo:
         """
         dicts = asdict(self)
         dicts["volume_factor"] = self.volume_factor
-        return asdict(self)
+        return dicts
 
 
 @dataclass

@@ -52,6 +52,8 @@ class MetaInfo(BaseModel):
     video_encode: Optional[str] = None
     # 音频编码
     audio_encode: Optional[str] = None
+    # 资源类型
+    edition: Optional[str] = None
 
 
 class MediaInfo(BaseModel):
