@@ -33,10 +33,19 @@ async def add_downloading(
     """
     添加下载任务
     """
+    # 元数据
+    metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
+    # 媒体信息
+    mediainfo = MediaInfo()
+    mediainfo.from_dict(media_in.dict())
+    # 种子信息
+    torrentinfo = TorrentInfo()
+    torrentinfo.from_dict(torrent_in.dict())
+    # 上下文
     context = Context(
-        meta_info=MetaInfo(title=torrent_in.title, subtitle=torrent_in.description),
-        media_info=MediaInfo().from_dict(media_in.dict()),
-        torrent_info=TorrentInfo(**torrent_in.dict())
+        meta_info=metainfo,
+        media_info=mediainfo,
+        torrent_info=torrentinfo
     )
     did = DownloadChain().download_single(context=context, userid=current_user.name)
     return schemas.Response(success=True if did else False, data={

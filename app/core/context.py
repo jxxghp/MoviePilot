@@ -55,11 +55,14 @@ class TorrentInfo:
     # 种子优先级
     pri_order: int = 0
 
-    def __init__(self, **kwargs):
-        self.labels = []
-        for key, value in kwargs.items():
-            if hasattr(self, key) and value is not None:
-                setattr(self, key, value)
+    def from_dict(self, data: dict):
+        """
+        从字典中初始化
+        """
+        for key, value in data.items():
+            if key in ['volume_factor']:
+                continue
+            setattr(self, key, value)
 
     @staticmethod
     def get_free_string(upload_volume_factor: float, download_volume_factor: float) -> str:
@@ -159,9 +162,9 @@ class MediaInfo:
         从字典中初始化
         """
         for key, value in data.items():
-            attr = getattr(self, key, None)
-            if attr and not isinstance(attr, property):
-                setattr(self, key, value)
+            if key in ["title_year", "detail_link", "stars", "vote_star"]:
+                continue
+            setattr(self, key, value)
         if isinstance(self.type, str):
             self.type = MediaType(self.type)
 
