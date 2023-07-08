@@ -537,7 +537,7 @@ class TorrentSpider:
         """
         解析单条种子数据
         """
-        self.torrents_info = {'indexer': self.indexerid}
+        self.torrents_info = {}
         try:
             self.__get_title(torrent)
             self.__get_description(torrent)
