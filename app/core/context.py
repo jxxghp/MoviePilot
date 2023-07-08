@@ -62,7 +62,7 @@ class TorrentInfo:
                 setattr(self, key, value)
 
     @staticmethod
-    def get_free_string(upload_volume_factor, download_volume_factor):
+    def get_free_string(upload_volume_factor: float, download_volume_factor: float) -> str:
         """
         计算促销类型
         """
@@ -80,7 +80,8 @@ class TorrentInfo:
         }
         return free_strs.get('%.1f %.1f' % (upload_volume_factor, download_volume_factor), "未知")
 
-    def get_volume_factor_string(self):
+    @property
+    def volume_factor(self):
         """
         返回促销信息
         """
@@ -90,6 +91,8 @@ class TorrentInfo:
         """
         返回字典
         """
+        dicts = asdict(self)
+        dicts["volume_factor"] = self.volume_factor
         return asdict(self)
 
 

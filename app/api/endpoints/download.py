@@ -6,9 +6,11 @@ from app import schemas
 from app.chain.douban import DoubanChain
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
-from app.core.context import MediaInfo
+from app.core.context import MediaInfo, Context, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
+from app.db.models.user import User
+from app.db.userauth import get_current_active_superuser
 from app.schemas import NotExistMediaInfo, MediaType
 
 router = APIRouter()
@@ -21,6 +23,25 @@ async def read_downloading(
     查询正在下载的任务
     """
     return DownloadChain().downloading()
+
+
+@router.post("/", summary="添加下载", response_model=schemas.Response)
+async def add_downloading(
+        media_in: schemas.MediaInfo,
+        torrent_in: schemas.TorrentInfo,
+        current_user: User = Depends(get_current_active_superuser)) -> Any:
+    """
+    添加下载任务
+    """
+    context = Context(
+        meta_info=MetaInfo(title=torrent_in.title, subtitle=torrent_in.description),
+        media_info=MediaInfo().from_dict(media_in.dict()),
+        torrent_info=TorrentInfo(**torrent_in.dict())
+    )
+    did = DownloadChain().download_single(context=context, userid=current_user.name)
+    return schemas.Response(success=True if did else False, data={
+        "download_id": did
+    })
 
 
 @router.post("/notexists", summary="查询缺失媒体信息", response_model=List[NotExistMediaInfo])

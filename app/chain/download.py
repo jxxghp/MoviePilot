@@ -42,7 +42,7 @@ class DownloadChain(ChainBase):
             msg_text = f"{msg_text}\n种子：{torrent.title}"
         if torrent.seeders:
             msg_text = f"{msg_text}\n做种数：{torrent.seeders}"
-        msg_text = f"{msg_text}\n促销：{torrent.get_volume_factor_string()}"
+        msg_text = f"{msg_text}\n促销：{torrent.volume_factor}"
         if torrent.hit_and_run:
             msg_text = f"{msg_text}\nHit&Run：是"
         if torrent.description:

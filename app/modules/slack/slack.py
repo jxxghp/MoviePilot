@@ -274,7 +274,7 @@ class Slack:
                         f"{meta.resource_term} " \
                         f"{meta.release_group}"
                 title = re.sub(r"\s+", " ", title).strip()
-                free = torrent.get_volume_factor_string()
+                free = torrent.volume_factor
                 seeder = f"{torrent.seeders}↑"
                 description = torrent.description
                 text = f"{index}. 【{site_name}】<{link}|{title}> " \

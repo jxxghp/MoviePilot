@@ -177,6 +177,8 @@ class TorrentInfo(BaseModel):
     labels: Optional[list] = []
     # 种子优先级
     pri_order: Optional[int] = 0
+    # 促销
+    volume_factor: Optional[str] = None
 
 
 class Context(BaseModel):

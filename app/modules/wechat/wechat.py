@@ -218,7 +218,7 @@ class WeChat(metaclass=Singleton):
                             f"{meta.resource_term} " \
                             f"{meta.release_group} " \
                             f"{StringUtils.str_filesize(torrent.size)} " \
-                            f"{torrent.get_volume_factor_string()} " \
+                            f"{torrent.volume_factor} " \
                             f"{torrent.seeders}↑"
             title = re.sub(r"\s+", " ", title).strip()
             articles.append({
