@@ -611,7 +611,7 @@ class TorrentSpider:
     @staticmethod
     def __index(items, selector):
         if not items:
-            return items
+            return None
         if selector:
             if "contents" in selector \
                     and len(items) > int(selector.get("contents")):
