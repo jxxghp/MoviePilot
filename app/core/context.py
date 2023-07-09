@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict
+from typing import List, Dict, Any
 
 from app.core.config import settings
 from app.core.meta import MetaBase
@@ -54,6 +54,12 @@ class TorrentInfo:
     labels: list = field(default_factory=list)
     # 种子优先级
     pri_order: int = 0
+
+    def __getattr__(self, attribute):
+        return None
+
+    def __setattr__(self, name: str, value: Any):
+        self.__dict__[name] = value
 
     def __get_properties(self):
         """
@@ -168,6 +174,12 @@ class MediaInfo:
             self.set_tmdb_info(self.tmdb_info)
         if self.douban_info:
             self.set_douban_info(self.douban_info)
+
+    def __getattr__(self, attribute):
+        return None
+
+    def __setattr__(self, name: str, value: Any):
+        self.__dict__[name] = value
 
     def __get_properties(self):
         """
@@ -507,6 +519,12 @@ class Context:
     media_info: MediaInfo = None
     # 种子信息
     torrent_info: TorrentInfo = None
+
+    def __getattr__(self, attribute):
+        return None
+
+    def __setattr__(self, name: str, value: Any):
+        self.__dict__[name] = value
 
     def to_dict(self):
         """
