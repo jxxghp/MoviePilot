@@ -11,12 +11,13 @@ from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.config import settings
 from app.db.models.subscribe import Subscribe
 from app.db.subscribe_oper import SubscribeOper
+from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
 from app.utils.string import StringUtils
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, SystemConfigKey
 
 
 class SubscribeChain(ChainBase):
@@ -34,6 +35,7 @@ class SubscribeChain(ChainBase):
         self.subscribehelper = SubscribeOper()
         self.siteshelper = SitesHelper()
         self.message = MessageHelper()
+        self.systemconfig = SystemConfigOper()
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,
@@ -269,11 +271,12 @@ class SubscribeChain(ChainBase):
         """
         # 所有站点索引
         indexers = self.siteshelper.get_indexers()
+        # 配置的索引站点
+        config_indexers = self.systemconfig.get(SystemConfigKey.IndexerSites) or []
         # 遍历站点缓存资源
         for indexer in indexers:
             # 未开启的站点不搜索
-            if settings.INDEXER_SITES \
-                    and not any([s in indexer.get("domain") for s in settings.INDEXER_SITES.split(',')]):
+            if config_indexers and indexer.get("id") not in config_indexers:
                 continue
             logger.info(f'开始刷新站点资源，站点：{indexer.get("name")} ...')
             domain = StringUtils.get_url_domain(indexer.get("domain"))

@@ -202,9 +202,11 @@ class SearchChain(ChainBase):
         """
         # 未开启的站点不搜索
         indexer_sites = []
+        # 配置的索引站点
+        config_indexers = self.systemconfig.get(SystemConfigKey.IndexerSites) or []
         for indexer in self.siteshelper.get_indexers():
-            if not settings.INDEXER_SITES \
-                    or any([s in indexer.get("domain") for s in settings.INDEXER_SITES.split(',')]):
+            # 检查站点索引开关
+            if not config_indexers or indexer.get("id") in config_indexers:
                 # 站点流控
                 state, msg = self.siteshelper.check(indexer.get("domain"))
                 if not state:

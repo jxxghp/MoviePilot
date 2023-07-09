@@ -36,6 +36,8 @@ class SystemConfigKey(Enum):
     UserInstalledPlugins = "UserInstalledPlugins"
     # 搜索结果
     SearchResults = "SearchResults"
+    # 索引站点范围
+    IndexerSites = "IndexerSites"
 
 
 # 站点框架
