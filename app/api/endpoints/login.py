@@ -56,7 +56,7 @@ async def login_access_token(
 
 
 @router.get("/login/wallpaper", summary="Bing每日壁纸", response_model=schemas.Response)
-async def bing_wallpaper() -> Any:
+def bing_wallpaper() -> Any:
     """
     获取Bing每日壁纸
     """

@@ -13,7 +13,7 @@ from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 router = APIRouter()
 
 
-async def start_message_chain(body: Any, form: Any, args: Any):
+def start_message_chain(body: Any, form: Any, args: Any):
     """
     启动链式任务
     """
@@ -21,20 +21,20 @@ async def start_message_chain(body: Any, form: Any, args: Any):
 
 
 @router.post("/", summary="接收用户消息", response_model=schemas.Response)
-async def user_message(background_tasks: BackgroundTasks, request: Request):
+def user_message(background_tasks: BackgroundTasks, request: Request):
     """
     用户消息响应
     """
-    body = await request.body()
-    form = await request.form()
+    body = request.body()
+    form = request.form()
     args = request.query_params
     background_tasks.add_task(start_message_chain, body, form, args)
     return schemas.Response(success=True)
 
 
 @router.get("/", summary="微信验证")
-async def wechat_verify(echostr: str, msg_signature: str,
-                        timestamp: Union[str, int], nonce: str) -> Any:
+def wechat_verify(echostr: str, msg_signature: str,
+                  timestamp: Union[str, int], nonce: str) -> Any:
     """
     用户消息响应
     """

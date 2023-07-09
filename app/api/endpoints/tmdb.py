@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.get("/{tmdbid}/seasons", summary="TMDB所有季", response_model=List[schemas.TmdbSeason])
-async def tmdb_seasons(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def tmdb_seasons(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID查询themoviedb所有季信息，type_name: 电影/电视剧
     """
@@ -24,8 +24,8 @@ async def tmdb_seasons(tmdbid: int, _: schemas.TokenPayload = Depends(verify_tok
 
 
 @router.get("/{tmdbid}/{season}", summary="TMDB季所有集", response_model=List[schemas.TmdbEpisode])
-async def tmdb_season_episodes(tmdbid: int, season: int,
-                               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def tmdb_season_episodes(tmdbid: int, season: int,
+                         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID查询某季的所有信信息
     """
@@ -37,11 +37,11 @@ async def tmdb_season_episodes(tmdbid: int, season: int,
 
 
 @router.get("/movies", summary="TMDB电影", response_model=List[schemas.MediaInfo])
-async def tmdb_movies(sort_by: str = "popularity.desc",
-                      with_genres: str = "",
-                      with_original_language: str = "",
-                      page: int = 1,
-                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def tmdb_movies(sort_by: str = "popularity.desc",
+                with_genres: str = "",
+                with_original_language: str = "",
+                page: int = 1,
+                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览TMDB电影信息
     """
@@ -56,11 +56,11 @@ async def tmdb_movies(sort_by: str = "popularity.desc",
 
 
 @router.get("/tvs", summary="TMDB剧集", response_model=List[schemas.MediaInfo])
-async def tmdb_tvs(sort_by: str = "popularity.desc",
-                   with_genres: str = "",
-                   with_original_language: str = "",
-                   page: int = 1,
-                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def tmdb_tvs(sort_by: str = "popularity.desc",
+             with_genres: str = "",
+             with_original_language: str = "",
+             page: int = 1,
+             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览TMDB剧集信息
     """
@@ -75,8 +75,8 @@ async def tmdb_tvs(sort_by: str = "popularity.desc",
 
 
 @router.get("/trending", summary="TMDB流行趋势", response_model=List[schemas.MediaInfo])
-async def tmdb_trending(page: int = 1,
-                        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def tmdb_trending(page: int = 1,
+                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览TMDB剧集信息
     """
@@ -87,8 +87,8 @@ async def tmdb_trending(page: int = 1,
 
 
 @router.get("/{tmdbid}", summary="TMDB详情", response_model=schemas.MediaInfo)
-async def tmdb_info(tmdbid: int, type_name: str,
-                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def tmdb_info(tmdbid: int, type_name: str,
+              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID查询themoviedb媒体信息，type_name: 电影/电视剧
     """

@@ -22,9 +22,9 @@ async def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/media/{mediaid}", summary="精确搜索资源", response_model=List[schemas.Context])
-async def search_by_tmdbid(mediaid: str,
-                           mtype: str = None,
-                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def search_by_tmdbid(mediaid: str,
+                     mtype: str = None,
+                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID/豆瓣ID精确搜索站点资源 tmdb:/douban:/
     """

@@ -15,10 +15,10 @@ router = APIRouter()
 
 
 @router.get("/download", summary="查询下载历史记录", response_model=List[schemas.DownloadHistory])
-async def download_history(page: int = 1,
-                           count: int = 30,
-                           db: Session = Depends(get_db),
-                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def download_history(page: int = 1,
+                     count: int = 30,
+                     db: Session = Depends(get_db),
+                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询下载历史记录
     """
@@ -26,9 +26,9 @@ async def download_history(page: int = 1,
 
 
 @router.delete("/download", summary="删除下载历史记录", response_model=schemas.Response)
-async def delete_download_history(history_in: schemas.DownloadHistory,
-                                  db: Session = Depends(get_db),
-                                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def delete_download_history(history_in: schemas.DownloadHistory,
+                            db: Session = Depends(get_db),
+                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     删除下载历史记录
     """
@@ -37,11 +37,11 @@ async def delete_download_history(history_in: schemas.DownloadHistory,
 
 
 @router.get("/transfer", summary="查询转移历史记录", response_model=List[schemas.TransferHistory])
-async def transfer_history(title: str = None,
-                           page: int = 1,
-                           count: int = 30,
-                           db: Session = Depends(get_db),
-                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def transfer_history(title: str = None,
+                     page: int = 1,
+                     count: int = 30,
+                     db: Session = Depends(get_db),
+                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询转移历史记录
     """
@@ -52,10 +52,10 @@ async def transfer_history(title: str = None,
 
 
 @router.delete("/transfer", summary="删除转移历史记录", response_model=schemas.Response)
-async def delete_transfer_history(history_in: schemas.TransferHistory,
-                                  delete_file: bool = False,
-                                  db: Session = Depends(get_db),
-                                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def delete_transfer_history(history_in: schemas.TransferHistory,
+                            delete_file: bool = False,
+                            db: Session = Depends(get_db),
+                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     删除转移历史记录
     """

@@ -13,7 +13,7 @@ router = APIRouter()
 
 
 @router.get("/", summary="所有用户", response_model=List[schemas.User])
-async def read_users(
+def read_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ) -> Any:
@@ -25,7 +25,7 @@ async def read_users(
 
 
 @router.post("/", summary="新增用户", response_model=schemas.User)
-async def create_user(
+def create_user(
     *,
     db: Session = Depends(get_db),
     user_in: schemas.UserCreate,
@@ -50,7 +50,7 @@ async def create_user(
 
 
 @router.put("/", summary="更新用户", response_model=schemas.User)
-async def update_user(
+def update_user(
     *,
     db: Session = Depends(get_db),
     user_in: schemas.UserCreate,
@@ -74,7 +74,7 @@ async def update_user(
 
 
 @router.delete("/", summary="删除用户", response_model=schemas.Response)
-async def delete_user(
+def delete_user(
     *,
     db: Session = Depends(get_db),
     user_in: schemas.UserCreate,
@@ -94,7 +94,7 @@ async def delete_user(
 
 
 @router.get("/{user_id}", summary="用户详情", response_model=schemas.User)
-async def read_user_by_id(
+def read_user_by_id(
     user_id: int,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),

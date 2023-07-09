@@ -33,7 +33,7 @@ def start_subscribe_search(sid: Optional[int], state: Optional[str]):
 
 
 @router.get("/", summary="所有订阅", response_model=List[schemas.Subscribe])
-async def read_subscribes(
+def read_subscribes(
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -43,7 +43,7 @@ async def read_subscribes(
 
 
 @router.post("/", summary="新增订阅", response_model=schemas.Response)
-async def create_subscribe(
+def create_subscribe(
         *,
         subscribe_in: schemas.Subscribe,
         current_user: User = Depends(get_current_active_user),
@@ -75,7 +75,7 @@ async def create_subscribe(
 
 
 @router.put("/", summary="更新订阅", response_model=schemas.Response)
-async def update_subscribe(
+def update_subscribe(
         *,
         subscribe_in: schemas.Subscribe,
         db: Session = Depends(get_db),
@@ -92,7 +92,7 @@ async def update_subscribe(
 
 
 @router.get("/media/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
-async def subscribe_mediaid(
+def subscribe_mediaid(
         mediaid: str,
         season: int = None,
         db: Session = Depends(get_db),
@@ -111,7 +111,7 @@ async def subscribe_mediaid(
 
 
 @router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
-async def read_subscribe(
+def read_subscribe(
         subscribe_id: int,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -122,7 +122,7 @@ async def read_subscribe(
 
 
 @router.delete("/media/{mediaid}", summary="删除订阅", response_model=schemas.Response)
-async def delete_subscribe_by_mediaid(
+def delete_subscribe_by_mediaid(
         mediaid: str,
         season: int = None,
         db: Session = Depends(get_db),
@@ -140,7 +140,7 @@ async def delete_subscribe_by_mediaid(
 
 
 @router.delete("/{subscribe_id}", summary="删除订阅", response_model=schemas.Response)
-async def delete_subscribe(
+def delete_subscribe(
         subscribe_id: int,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)
@@ -153,8 +153,8 @@ async def delete_subscribe(
 
 
 @router.post("/seerr", summary="OverSeerr/JellySeerr通知订阅", response_model=schemas.Response)
-async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
-                          authorization: str = Header(None)) -> Any:
+def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
+                    authorization: str = Header(None)) -> Any:
     """
     Jellyseerr/Overseerr订阅
     """
@@ -163,7 +163,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
             status_code=400,
             detail="授权失败",
         )
-    req_json = await request.json()
+    req_json = request.json()
     if not req_json:
         raise HTTPException(
             status_code=500,
@@ -206,7 +206,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
 
 
 @router.get("/refresh", summary="刷新订阅", response_model=schemas.Response)
-async def refresh_subscribes(
+def refresh_subscribes(
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     刷新所有订阅
@@ -216,7 +216,7 @@ async def refresh_subscribes(
 
 
 @router.get("/search/{subscribe_id}", summary="搜索订阅", response_model=schemas.Response)
-async def search_subscribe(
+def search_subscribe(
         subscribe_id: int,
         background_tasks: BackgroundTasks,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -228,7 +228,7 @@ async def search_subscribe(
 
 
 @router.get("/search", summary="搜索所有订阅", response_model=schemas.Response)
-async def search_subscribes(
+def search_subscribes(
         background_tasks: BackgroundTasks,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """

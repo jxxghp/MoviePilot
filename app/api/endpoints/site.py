@@ -24,8 +24,8 @@ def start_cookiecloud_sync():
 
 
 @router.get("/", summary="所有站点", response_model=List[schemas.Site])
-async def read_sites(db: Session = Depends(get_db),
-                     _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+def read_sites(db: Session = Depends(get_db),
+               _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
     """
     获取站点列表
     """
@@ -33,7 +33,7 @@ async def read_sites(db: Session = Depends(get_db),
 
 
 @router.put("/", summary="更新站点", response_model=schemas.Response)
-async def update_site(
+def update_site(
         *,
         db: Session = Depends(get_db),
         site_in: schemas.Site,
@@ -50,7 +50,7 @@ async def update_site(
 
 
 @router.delete("/", summary="删除站点", response_model=schemas.Response)
-async def delete_site(
+def delete_site(
         site_in: schemas.Site,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)
@@ -63,8 +63,8 @@ async def delete_site(
 
 
 @router.get("/cookiecloud", summary="CookieCloud同步", response_model=schemas.Response)
-async def cookie_cloud_sync(background_tasks: BackgroundTasks,
-                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def cookie_cloud_sync(background_tasks: BackgroundTasks,
+                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     运行CookieCloud同步站点信息
     """
@@ -97,9 +97,9 @@ def update_cookie(
 
 
 @router.get("/test/{site_id}", summary="连接测试", response_model=schemas.Response)
-async def test_site(site_id: int,
-                    db: Session = Depends(get_db),
-                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def test_site(site_id: int,
+              db: Session = Depends(get_db),
+              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     测试站点是否可用
     """
@@ -114,9 +114,9 @@ async def test_site(site_id: int,
 
 
 @router.get("/icon/{site_id}", summary="站点图标", response_model=schemas.Response)
-async def site_icon(site_id: int,
-                    db: Session = Depends(get_db),
-                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def site_icon(site_id: int,
+              db: Session = Depends(get_db),
+              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取站点图标：base64或者url
     """
@@ -135,9 +135,9 @@ async def site_icon(site_id: int,
 
 
 @router.get("/resource/{site_id}", summary="站点资源", response_model=List[schemas.TorrentInfo])
-async def site_resource(site_id: int, keyword: str = None,
-                        db: Session = Depends(get_db),
-                        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def site_resource(site_id: int, keyword: str = None,
+                  db: Session = Depends(get_db),
+                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览站点资源
     """
@@ -154,7 +154,7 @@ async def site_resource(site_id: int, keyword: str = None,
 
 
 @router.get("/{site_id}", summary="站点详情", response_model=schemas.Site)
-async def read_site(
+def read_site(
         site_id: int,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)

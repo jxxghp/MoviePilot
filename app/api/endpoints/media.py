@@ -10,9 +10,9 @@ router = APIRouter()
 
 
 @router.get("/recognize", summary="识别媒体信息", response_model=schemas.Context)
-async def recognize(title: str,
-                    subtitle: str = None,
-                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def recognize(title: str,
+              subtitle: str = None,
+              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据标题、副标题识别媒体信息
     """
@@ -24,10 +24,10 @@ async def recognize(title: str,
 
 
 @router.get("/search", summary="搜索媒体信息", response_model=List[schemas.MediaInfo])
-async def search_by_title(title: str,
-                          page: int = 1,
-                          count: int = 8,
-                          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def search_by_title(title: str,
+                    page: int = 1,
+                    count: int = 8,
+                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     模糊搜索媒体信息列表
     """

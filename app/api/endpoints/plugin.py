@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
-async def all_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def all_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询所有插件清单
     """
@@ -20,7 +20,7 @@ async def all_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
-async def installed_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def installed_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询用户已安装插件清单
     """
@@ -28,7 +28,7 @@ async def installed_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> 
 
 
 @router.get("/{plugin_id}", summary="获取插件配置")
-async def plugin_config(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> dict:
+def plugin_config(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> dict:
     """
     根据插件ID获取插件配置信息
     """
@@ -36,8 +36,8 @@ async def plugin_config(plugin_id: str, _: schemas.TokenPayload = Depends(verify
 
 
 @router.put("/{plugin_id}", summary="更新插件配置", response_model=schemas.Response)
-async def set_plugin_config(plugin_id: str, conf: dict,
-                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def set_plugin_config(plugin_id: str, conf: dict,
+                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据插件ID获取插件配置信息
     """
@@ -46,8 +46,8 @@ async def set_plugin_config(plugin_id: str, conf: dict,
 
 
 @router.post("/{plugin_id}/install", summary="安装插件", response_model=schemas.Response)
-async def install_plugin(plugin_id: str,
-                         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def install_plugin(plugin_id: str,
+                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     安装插件
     """
@@ -63,7 +63,7 @@ async def install_plugin(plugin_id: str,
 
 
 @router.delete("/{plugin_id}", summary="卸载插件", response_model=schemas.Response)
-async def uninstall_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def uninstall_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     卸载插件
     """

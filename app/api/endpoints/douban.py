@@ -20,7 +20,7 @@ def start_douban_chain():
 
 
 @router.get("/sync", summary="同步豆瓣想看", response_model=schemas.Response)
-async def sync_douban(
+def sync_douban(
         background_tasks: BackgroundTasks,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -31,8 +31,8 @@ async def sync_douban(
 
 
 @router.get("/recognize/{doubanid}", summary="豆瓣ID识别", response_model=schemas.Context)
-async def recognize_doubanid(doubanid: str,
-                             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def recognize_doubanid(doubanid: str,
+                       _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据豆瓣ID识别媒体信息
     """
@@ -45,11 +45,11 @@ async def recognize_doubanid(doubanid: str,
 
 
 @router.get("/movies", summary="豆瓣电影", response_model=List[schemas.MediaInfo])
-async def douban_movies(sort: str = "R",
-                        tags: str = "",
-                        page: int = 1,
-                        count: int = 30,
-                        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def douban_movies(sort: str = "R",
+                  tags: str = "",
+                  page: int = 1,
+                  count: int = 30,
+                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览豆瓣电影信息
     """
@@ -65,11 +65,11 @@ async def douban_movies(sort: str = "R",
 
 
 @router.get("/tvs", summary="豆瓣剧集", response_model=List[schemas.MediaInfo])
-async def douban_tvs(sort: str = "R",
-                     tags: str = "",
-                     page: int = 1,
-                     count: int = 30,
-                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def douban_tvs(sort: str = "R",
+               tags: str = "",
+               page: int = 1,
+               count: int = 30,
+               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览豆瓣剧集信息
     """
@@ -86,9 +86,9 @@ async def douban_tvs(sort: str = "R",
 
 
 @router.get("/movie_top250", summary="豆瓣电影TOP250", response_model=List[schemas.MediaInfo])
-async def movie_top250(page: int = 1,
-                       count: int = 30,
-                       _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def movie_top250(page: int = 1,
+                 count: int = 30,
+                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     浏览豆瓣剧集信息
     """
@@ -97,9 +97,9 @@ async def movie_top250(page: int = 1,
 
 
 @router.get("/tv_weekly_chinese", summary="豆瓣国产剧集周榜", response_model=List[schemas.MediaInfo])
-async def tv_weekly_chinese(page: int = 1,
-                            count: int = 30,
-                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def tv_weekly_chinese(page: int = 1,
+                      count: int = 30,
+                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     中国每周剧集口碑榜
     """
@@ -108,9 +108,9 @@ async def tv_weekly_chinese(page: int = 1,
 
 
 @router.get("/tv_weekly_global", summary="豆瓣全球剧集周榜", response_model=List[schemas.MediaInfo])
-async def tv_weekly_global(page: int = 1,
-                           count: int = 30,
-                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def tv_weekly_global(page: int = 1,
+                     count: int = 30,
+                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     全球每周剧集口碑榜
     """
@@ -119,7 +119,7 @@ async def tv_weekly_global(page: int = 1,
 
 
 @router.get("/{doubanid}", summary="查询豆瓣详情", response_model=schemas.MediaInfo)
-async def douban_info(doubanid: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def douban_info(doubanid: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据豆瓣ID查询豆瓣媒体信息
     """
@@ -128,4 +128,3 @@ async def douban_info(doubanid: str, _: schemas.TokenPayload = Depends(verify_to
         return MediaInfo(douban_info=doubaninfo).to_dict()
     else:
         return schemas.MediaInfo()
-

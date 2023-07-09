@@ -17,7 +17,7 @@ router = APIRouter()
 
 
 @router.get("/", summary="正在下载", response_model=List[schemas.DownloadingTorrent])
-async def read_downloading(
+def read_downloading(
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询正在下载的任务
@@ -26,7 +26,7 @@ async def read_downloading(
 
 
 @router.post("/", summary="添加下载", response_model=schemas.Response)
-async def add_downloading(
+def add_downloading(
         media_in: schemas.MediaInfo,
         torrent_in: schemas.TorrentInfo,
         current_user: User = Depends(get_current_active_superuser)) -> Any:
@@ -54,7 +54,7 @@ async def add_downloading(
 
 
 @router.post("/notexists", summary="查询缺失媒体信息", response_model=List[NotExistMediaInfo])
-async def exists(media_in: schemas.MediaInfo,
+def exists(media_in: schemas.MediaInfo,
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询缺失媒体信息
@@ -88,7 +88,7 @@ async def exists(media_in: schemas.MediaInfo,
 
 
 @router.put("/{hashString}/start", summary="开始任务", response_model=schemas.Response)
-async def start_downloading(
+def start_downloading(
         hashString: str,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -99,7 +99,7 @@ async def start_downloading(
 
 
 @router.put("/{hashString}/stop", summary="暂停任务", response_model=schemas.Response)
-async def stop_downloading(
+def stop_downloading(
         hashString: str,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -110,7 +110,7 @@ async def stop_downloading(
 
 
 @router.delete("/{hashString}", summary="删除下载任务", response_model=schemas.Response)
-async def remove_downloading(
+def remove_downloading(
         hashString: str,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
