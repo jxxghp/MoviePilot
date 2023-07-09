@@ -12,6 +12,7 @@ from app.core.metainfo import MetaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.progress import ProgressHelper
 from app.helper.sites import SitesHelper
+from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
 from app.schemas.types import MediaType, ProgressKey, SystemConfigKey
@@ -182,10 +183,14 @@ class SearchChain(ChainBase):
         else:
             _match_torrents = torrents
         logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
-        # 组装上下文返回
-        return [Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
-                        media_info=mediainfo,
-                        torrent_info=torrent) for torrent in _match_torrents]
+        # 组装上下文
+        contexts = [Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+                            media_info=mediainfo,
+                            torrent_info=torrent) for torrent in _match_torrents]
+        # 排序
+        contexts = TorrentHelper.sort_torrents(contexts)
+        # 返回
+        return contexts
 
     def __search_all_sites(self, mediainfo: Optional[MediaInfo] = None,
                            keyword: str = None) -> Optional[List[TorrentInfo]]:
