@@ -9,6 +9,7 @@ from app import schemas
 from app.chain.user import UserChain
 from app.core import security
 from app.core.config import settings
+from app.core.security import get_password_hash
 from app.db import get_db
 from app.db.models.user import User
 from app.log import logger
@@ -42,7 +43,8 @@ async def login_access_token(
             user = User.get_by_name(db=db, name=form_data.username)
             if not user:
                 logger.info(f"用户不存在，创建用户: {form_data.username}")
-                user = User(name=form_data.username, is_active=True, is_superuser=False)
+                user = User(name=form_data.username, is_active=True,
+                            is_superuser=False, hashed_password=get_password_hash(token))
                 user.create(db)
     elif not user.is_active:
         raise HTTPException(status_code=403, detail="用户未启用")

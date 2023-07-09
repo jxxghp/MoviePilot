@@ -24,7 +24,7 @@ def read_users(
     return users
 
 
-@router.post("/", summary="新增用户", response_model=schemas.User)
+@router.post("/", summary="新增用户", response_model=schemas.Response)
 def create_user(
     *,
     db: Session = Depends(get_db),
@@ -36,61 +36,62 @@ def create_user(
     """
     user = current_user.get_by_name(db, name=user_in.name)
     if user:
-        raise HTTPException(
-            status_code=400,
-            detail="用户已存在",
-        )
+        return schemas.Response(success=False, message="用户已存在")
     user_info = user_in.dict()
     if user_info.get("password"):
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
     user = User(**user_info)
     user = user.create(db)
-    return user
+    return schemas.Response(success=True)
 
 
-@router.put("/", summary="更新用户", response_model=schemas.User)
+@router.put("/", summary="更新用户", response_model=schemas.Response)
 def update_user(
     *,
     db: Session = Depends(get_db),
     user_in: schemas.UserCreate,
-    current_user: User = Depends(get_current_active_superuser),
+    _: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
     更新用户
     """
-    user = current_user.get_by_name(db, name=user_in.name)
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="用户不存在",
-        )
     user_info = user_in.dict()
     if user_info.get("password"):
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
-    user.update(db, **user_info)
-    return user
+    user = User.get_by_name(db, name=user_info["name"])
+    if not user:
+        return schemas.Response(success=False, message="用户不存在")
+    user.update(db, user_info)
+    return schemas.Response(success=True)
 
 
-@router.delete("/", summary="删除用户", response_model=schemas.Response)
+@router.delete("/{user_name}", summary="删除用户", response_model=schemas.Response)
 def delete_user(
     *,
     db: Session = Depends(get_db),
-    user_in: schemas.UserCreate,
+    user_name: str,
     current_user: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
     删除用户
     """
-    user = current_user.get_by_name(db, name=user_in.name)
+    user = current_user.get_by_name(db, name=user_name)
     if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="用户不存在",
-        )
-    user.delete_by_name(db, user_in.name)
+        return schemas.Response(success=False, message="用户不存在")
+    user.delete_by_name(db, user_name)
     return schemas.Response(success=True)
+
+
+@router.get("/current", summary="当前登录用户信息", response_model=schemas.User)
+def read_current_user(
+    current_user: User = Depends(get_current_active_user)
+) -> Any:
+    """
+    当前登录用户信息
+    """
+    return current_user
 
 
 @router.get("/{user_id}", summary="用户详情", response_model=schemas.User)

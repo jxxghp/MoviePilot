@@ -1,11 +1,14 @@
 import json
 import json
 import time
+from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 
+from app import schemas
 from app.core.security import verify_token
+from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 
@@ -32,6 +35,23 @@ def get_progress(process_type: str, token: str):
             time.sleep(0.2)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.get("/setting", summary="查询系统设置")
+def get_setting(key: str, _: schemas.TokenPayload = Depends(verify_token)):
+    """
+    查询系统设置
+    """
+    return schemas.Response(success=True, data=SystemConfigOper().get(key))
+
+
+@router.put("/setting", summary="更新系统设置")
+def set_setting(key: str, value: Any, _: schemas.TokenPayload = Depends(verify_token)):
+    """
+    更新系统设置
+    """
+    SystemConfigOper().set(key, value)
+    return schemas.Response(success=True)
 
 
 @router.get("/message", summary="实时消息")

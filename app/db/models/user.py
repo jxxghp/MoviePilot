@@ -14,9 +14,9 @@ class User(Base):
     # 用户名
     name = Column(String, index=True, nullable=False)
     # 邮箱，未启用
-    email = Column(String, unique=True, index=True)
+    email = Column(String)
     # 加密后密码
-    hashed_password = Column(String, nullable=False)
+    hashed_password = Column(String)
     # 是否启用
     is_active = Column(Boolean(), default=True)
     # 是否管理员
