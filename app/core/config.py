@@ -109,8 +109,6 @@ class Settings(BaseSettings):
     TORRENT_TAG: str = "MOVIEPILOT"
     # 下载保存目录，容器内映射路径需要一致
     DOWNLOAD_PATH: str = "/downloads"
-    # 择种优先级：site/seeder
-    TORRENT_PRI: str = "seeder"
     # 媒体服务器 emby/jellyfin/plex
     MEDIASERVER: str = "emby"
     # EMBY服务器地址
