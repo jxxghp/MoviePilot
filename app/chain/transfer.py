@@ -141,7 +141,7 @@ class TransferChain(ChainBase):
                 # 新增转移失败历史记录
                 self.transferhis.add(
                     src=str(torrent.path),
-                    dest=str(transferinfo.target_path),
+                    dest=str(transferinfo.target_path) if transferinfo else None,
                     mode=settings.TRANSFER_TYPE,
                     type=mediainfo.type.value,
                     category=mediainfo.category,
@@ -156,13 +156,13 @@ class TransferChain(ChainBase):
                     image=mediainfo.get_poster_image(),
                     download_hash=torrent.hash,
                     status=0,
-                    errmsg=transferinfo.message
+                    errmsg=transferinfo.message if transferinfo else '未知错误'
                 )
                 continue
             # 新增转移成功历史记录
             self.transferhis.add(
                 src=str(torrent.path),
-                dest=str(transferinfo.target_path),
+                dest=str(transferinfo.target_path) if transferinfo else None,
                 mode=settings.TRANSFER_TYPE,
                 type=mediainfo.type.value,
                 category=mediainfo.category,
