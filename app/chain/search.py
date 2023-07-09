@@ -29,6 +29,7 @@ class SearchChain(ChainBase):
         self.siteshelper = SitesHelper()
         self.progress = ProgressHelper()
         self.systemconfig = SystemConfigOper()
+        self.torrenthelper = TorrentHelper()
 
     def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None) -> Optional[List[Context]]:
         """
@@ -188,7 +189,7 @@ class SearchChain(ChainBase):
                             media_info=mediainfo,
                             torrent_info=torrent) for torrent in _match_torrents]
         # 排序
-        contexts = TorrentHelper.sort_torrents(contexts)
+        contexts = self.torrenthelper.sort_torrents(contexts)
         # 返回
         return contexts
 

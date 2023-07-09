@@ -1,7 +1,7 @@
 import json
 import json
 import time
-from typing import Any, List
+from typing import Any, List, Union
 
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
@@ -48,7 +48,8 @@ def get_setting(key: str, _: schemas.TokenPayload = Depends(verify_token)):
 
 
 @router.post("/setting/{key}", summary="更新系统设置")
-def set_setting(key: str, value: List[int], _: schemas.TokenPayload = Depends(verify_token)):
+def set_setting(key: str, value: Union[list, dict, str, int],
+                _: schemas.TokenPayload = Depends(verify_token)):
     """
     更新系统设置
     """

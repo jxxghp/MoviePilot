@@ -33,6 +33,7 @@ class MessageChain(ChainBase):
         self.medtachain = MediaChain()
         self.torrent = TorrentHelper()
         self.eventmanager = EventManager()
+        self.torrenthelper = TorrentHelper()
 
     def process(self, body: Any, form: Any, args: Any) -> None:
         """
@@ -111,7 +112,7 @@ class MessageChain(ChainBase):
                                       userid=userid)
                     return
                 # 搜索结果排序
-                contexts = TorrentHelper.sort_torrents(contexts)
+                contexts = self.torrenthelper.sort_torrents(contexts)
                 # 更新缓存
                 self._user_cache[userid] = {
                     "type": "Torrent",

@@ -10,15 +10,19 @@ from torrentool.api import Torrent
 from app.core.config import settings
 from app.core.context import Context
 from app.core.metainfo import MetaInfo
+from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.utils.http import RequestUtils
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, SystemConfigKey
 
 
 class TorrentHelper:
     """
     种子帮助类
     """
+
+    def __init__(self):
+        self.system_config = SystemConfigOper()
 
     def download_torrent(self, url: str,
                          cookie: str = None,
@@ -165,8 +169,7 @@ class TorrentHelper:
             file_name = str(datetime.datetime.now())
         return file_name
 
-    @staticmethod
-    def sort_torrents(torrent_list: List[Context]) -> List[Context]:
+    def sort_torrents(self, torrent_list: List[Context]) -> List[Context]:
         """
         对种子对行排序
         """
@@ -185,7 +188,9 @@ class TorrentHelper:
             _season_len = str(len(_meta.season_list)).rjust(2, '0')
             # 集数
             _episode_len = str(9999 - len(_meta.episode_list)).rjust(4, '0')
-            if settings.TORRENT_PRI != "site":
+            # 优先规则
+            priority = self.system_config.get(SystemConfigKey.TorrentsPriority)
+            if priority != "site":
                 # 排序：标题、资源类型、做种、季集
                 return "%s%s%s%s" % (str(_torrent.title).ljust(100, ' '),
                                      str(_torrent.pri_order).rjust(3, '0'),

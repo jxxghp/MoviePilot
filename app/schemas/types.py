@@ -38,6 +38,8 @@ class SystemConfigKey(Enum):
     SearchResults = "SearchResults"
     # 索引站点范围
     IndexerSites = "IndexerSites"
+    # 种子优先级规则
+    TorrentsPriority = "TorrentsPriority"
 
 
 # 站点框架
