@@ -82,11 +82,16 @@ def schedule(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
             continue
         if not StringUtils.is_chinese(job.name):
             continue
+        next_run = TimerUtils.time_difference(job.next_run_time)
+        if not next_run:
+            status = "已停止"
+        else:
+            status = "等待" if job.pending else "运行中"
         schedulers.append(schemas.ScheduleInfo(
             id=job.id,
             name=job.name,
-            status="等待" if job.pending else "运行中",
-            next_run=TimerUtils.time_difference(job.next_run_time) or "已停止"
+            status=status,
+            next_run=next_run
         ))
 
     return schedulers

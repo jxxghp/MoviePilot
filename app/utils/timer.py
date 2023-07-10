@@ -42,6 +42,8 @@ class TimerUtils:
 
     @staticmethod
     def time_difference(input_datetime: datetime) -> str:
+        if not input_datetime:
+            return ""
         current_datetime = datetime.datetime.now(datetime.timezone.utc).astimezone()
         time_difference = input_datetime - current_datetime
 

@@ -45,8 +45,8 @@ class SearchChain(ChainBase):
         results = self.process(mediainfo=mediainfo)
         # 保存眲结果
         self.systemconfig.set(SystemConfigKey.SearchResults,
-                              pickle.dumps(results or []))
-        return results or []
+                              pickle.dumps(results))
+        return results
 
     def search_by_title(self, title: str) -> List[TorrentInfo]:
         """
@@ -84,7 +84,7 @@ class SearchChain(ChainBase):
 
     def process(self, mediainfo: MediaInfo,
                 keyword: str = None,
-                no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None) -> Optional[List[Context]]:
+                no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None) -> List[Context]:
         """
         根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
         :param mediainfo: 媒体信息
