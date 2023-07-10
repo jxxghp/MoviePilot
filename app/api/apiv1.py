@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.endpoints import login, user, site, message, webhook, subscribe, \
-    media, douban, search, plugin, tmdb, history, system, download
+    media, douban, search, plugin, tmdb, history, system, download, dashboard
 
 api_router = APIRouter()
 api_router.include_router(login.router, tags=["login"])
@@ -18,3 +18,4 @@ api_router.include_router(history.router, prefix="/history", tags=["history"])
 api_router.include_router(system.router, prefix="/system", tags=["system"])
 api_router.include_router(plugin.router, prefix="/plugin", tags=["plugin"])
 api_router.include_router(download.router, prefix="/download", tags=["download"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
