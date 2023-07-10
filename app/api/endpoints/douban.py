@@ -1,13 +1,14 @@
 from typing import List, Any
 
-from fastapi import APIRouter, Depends
-from fastapi import BackgroundTasks
+from fastapi import APIRouter, Depends, Response, BackgroundTasks
 
 from app import schemas
 from app.chain.douban import DoubanChain
+from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.security import verify_token
 from app.schemas import MediaType
+from app.utils.http import RequestUtils
 
 router = APIRouter()
 
@@ -28,6 +29,21 @@ def sync_douban(
     """
     background_tasks.add_task(start_douban_chain)
     return schemas.Response(success=True, message="任务已启动")
+
+
+@router.get("/img/{imgurl:path}", summary="豆瓣图片代理")
+def douban_img(imgurl: str) -> Any:
+    """
+    豆瓣图片代理
+    """
+    if not imgurl:
+        return None
+    response = RequestUtils(headers={
+        'Referer': "https://movie.douban.com/"
+    }, ua=settings.USER_AGENT).get_res(url=imgurl)
+    if response:
+        return Response(content=response.content, media_type="image/jpeg")
+    return None
 
 
 @router.get("/recognize/{doubanid}", summary="豆瓣ID识别", response_model=schemas.Context)
