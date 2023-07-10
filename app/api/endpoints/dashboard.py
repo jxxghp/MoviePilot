@@ -31,16 +31,32 @@ def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询存储空间信息
     """
-    total_storage, used_storage = SystemUtils.space_usage(Path(settings.LIBRARY_PATH))
+    total_storage, free_storage = SystemUtils.space_usage(Path(settings.LIBRARY_PATH))
     return schemas.Storage(
         total_storage=total_storage,
-        used_storage=used_storage
+        used_storage=total_storage - free_storage
     )
 
 
 @router.get("/processes", summary="进程信息", response_model=List[schemas.ProcessInfo])
 def processes(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    进程信息
+    查询进程信息
     """
     return SystemUtils.processes()
+
+
+@router.get("/downloader", summary="下载器信息", response_model=schemas.DownloaderInfo)
+def downloader(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询下载器信息
+    """
+    transfer_info = DashboardChain().downloader_info()
+    free_space = SystemUtils.free_space(Path(settings.DOWNLOAD_PATH))
+    return schemas.DownloaderInfo(
+        download_speed=transfer_info.download_speed,
+        upload_speed=transfer_info.upload_speed,
+        download_size=transfer_info.download_size,
+        upload_size=transfer_info.upload_size,
+        free_space=free_space
+    )

@@ -1,14 +1,15 @@
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List
 
+from app import schemas
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.schemas import TransferInfo, TransferTorrent, DownloadingTorrent
-from app.utils.string import StringUtils
 from app.schemas.types import TorrentStatus
+from app.utils.string import StringUtils
 
 
 class QbittorrentModule(_ModuleBase):
@@ -184,3 +185,16 @@ class QbittorrentModule(_ModuleBase):
         :return: bool
         """
         return self.qbittorrent.start_torrents(ids=hashs)
+
+    def downloader_info(self) -> schemas.DownloaderInfo:
+        """
+        下载器信息
+        """
+        # 调用Qbittorrent API查询实时信息
+        info = self.qbittorrent.transfer_info()
+        return schemas.DownloaderInfo(
+            download_speed=info.get("dl_info_speed"),
+            upload_speed=info.get("up_info_speed"),
+            download_size=info.get("dl_info_data"),
+            upload_size=info.get("up_info_data")
+        )

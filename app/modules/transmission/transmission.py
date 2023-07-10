@@ -2,6 +2,7 @@ from typing import Optional, Union, Tuple, List
 
 import transmission_rpc
 from transmission_rpc import Client, Torrent, File
+from transmission_rpc.session import SessionStats
 
 from app.core.config import settings
 from app.log import logger
@@ -214,3 +215,13 @@ class Transmission(metaclass=Singleton):
         except Exception as err:
             logger.error(f"设置下载文件状态出错：{err}")
             return False
+
+    def transfer_info(self) -> Optional[SessionStats]:
+        """
+        获取传输信息
+        """
+        try:
+            return self.trc.session_stats()
+        except Exception as err:
+            logger.error(f"获取传输信息出错：{err}")
+            return None

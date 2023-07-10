@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List
 
+from app import schemas
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
 from app.log import logger
@@ -168,3 +169,15 @@ class TransmissionModule(_ModuleBase):
         :return: bool
         """
         return self.transmission.start_torrents(ids=hashs)
+
+    def downloader_info(self) -> schemas.DownloaderInfo:
+        """
+        下载器信息
+        """
+        info = self.transmission.transfer_info()
+        return schemas.DownloaderInfo(
+            download_speed=info.download_speed,
+            upload_speed=info.upload_speed,
+            download_size=info.current_stats.downloaded_bytes,
+            upload_size=info.current_stats.uploaded_bytes
+        )

@@ -36,3 +36,16 @@ class ProcessInfo(BaseModel):
     create_time: Optional[float] = 0.0
     # 进程运行时间 秒
     run_time: Optional[float] = 0.0
+
+
+class DownloaderInfo(BaseModel):
+    # 下载速度
+    download_speed: Optional[float] = 0.0
+    # 上传速度
+    upload_speed: Optional[float] = 0.0
+    # 下载量
+    download_size: Optional[float] = 0.0
+    # 上传量
+    upload_size: Optional[float] = 0.0
+    # 剩余空间
+    free_space: Optional[float] = 0.0

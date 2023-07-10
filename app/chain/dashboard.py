@@ -11,3 +11,9 @@ class DashboardChain(ChainBase):
         媒体数量统计
         """
         return self.run_module("media_statistic")
+
+    def downloader_info(self) -> schemas.DownloaderInfo:
+        """
+        下载器信息
+        """
+        return self.run_module("downloader_info")
