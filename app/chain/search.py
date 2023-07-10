@@ -32,7 +32,7 @@ class SearchChain(ChainBase):
         self.systemconfig = SystemConfigOper()
         self.torrenthelper = TorrentHelper()
 
-    def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None) -> Optional[List[Context]]:
+    def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None) -> List[Context]:
         """
         根据TMDB ID搜索资源，精确匹配，但不不过滤本地存在的资源
         :param tmdbid: TMDB ID
@@ -41,12 +41,12 @@ class SearchChain(ChainBase):
         mediainfo = self.recognize_media(tmdbid=tmdbid, mtype=mtype)
         if not mediainfo:
             logger.error(f'{tmdbid} 媒体信息识别失败！')
-            return None
+            return []
         results = self.process(mediainfo=mediainfo)
         # 保存眲结果
         self.systemconfig.set(SystemConfigKey.SearchResults,
                               pickle.dumps(results or []))
-        return results
+        return results or []
 
     def search_by_title(self, title: str) -> List[TorrentInfo]:
         """
@@ -55,7 +55,7 @@ class SearchChain(ChainBase):
         """
         logger.info(f'开始搜索资源，关键词：{title} ...')
         # 搜索
-        return self.__search_all_sites(keyword=title)
+        return self.__search_all_sites(keyword=title) or []
 
     def last_search_results(self) -> List[Context]:
         """
