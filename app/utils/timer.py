@@ -42,10 +42,16 @@ class TimerUtils:
 
     @staticmethod
     def time_difference(input_datetime: datetime) -> str:
+        """
+        判断输入时间与当前的时间差，如果输入时间大于当前时间则返回时间差，否则返回空字符串
+        """
         if not input_datetime:
             return ""
         current_datetime = datetime.datetime.now(datetime.timezone.utc).astimezone()
         time_difference = input_datetime - current_datetime
+
+        if time_difference.total_seconds() < 0:
+            return ""
 
         days = time_difference.days
         hours, remainder = divmod(time_difference.seconds, 3600)

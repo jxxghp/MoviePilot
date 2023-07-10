@@ -44,8 +44,8 @@ class SearchChain(ChainBase):
             return []
         results = self.process(mediainfo=mediainfo)
         # 保存眲结果
-        self.systemconfig.set(SystemConfigKey.SearchResults,
-                              pickle.dumps(results))
+        bytes_results = pickle.dumps(results)
+        self.systemconfig.set(SystemConfigKey.SearchResults, bytes_results)
         return results
 
     def search_by_title(self, title: str) -> List[TorrentInfo]:
@@ -206,10 +206,10 @@ class SearchChain(ChainBase):
         # 未开启的站点不搜索
         indexer_sites = []
         # 配置的索引站点
-        config_indexers = self.systemconfig.get(SystemConfigKey.IndexerSites) or []
+        config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.IndexerSites) or []]
         for indexer in self.siteshelper.get_indexers():
             # 检查站点索引开关
-            if not config_indexers or indexer.get("id") in config_indexers:
+            if not config_indexers or str(indexer.get("id")) in config_indexers:
                 # 站点流控
                 state, msg = self.siteshelper.check(indexer.get("domain"))
                 if not state:

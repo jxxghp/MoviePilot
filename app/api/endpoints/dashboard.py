@@ -34,7 +34,10 @@ def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询存储空间信息
     """
-    total_storage, free_storage = SystemUtils.space_usage(Path(settings.LIBRARY_PATH))
+    if settings.LIBRARY_PATH:
+        total_storage, free_storage = SystemUtils.space_usage(Path(settings.LIBRARY_PATH))
+    else:
+        total_storage, free_storage = 0, 0
     return schemas.Storage(
         total_storage=total_storage,
         used_storage=total_storage - free_storage
@@ -75,6 +78,8 @@ def schedule(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     # 去重
     added = []
     jobs = Scheduler().list()
+    # 按照下次运行时间排序
+    jobs.sort(key=lambda x: x.next_run_time)
     for job in jobs:
         if job.name not in added:
             added.append(job.name)
