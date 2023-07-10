@@ -49,3 +49,14 @@ class DownloaderInfo(BaseModel):
     upload_size: Optional[float] = 0.0
     # 剩余空间
     free_space: Optional[float] = 0.0
+
+
+class ScheduleInfo(BaseModel):
+    # ID
+    id: Optional[str] = None
+    # 名称
+    name: Optional[str] = None
+    # 状态
+    status: Optional[str] = None
+    # 下次执行时间
+    next_run: Optional[str] = None

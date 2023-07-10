@@ -7,7 +7,10 @@ from app import schemas
 from app.chain.dashboard import DashboardChain
 from app.core.config import settings
 from app.core.security import verify_token
+from app.scheduler import SchedulerChain, Scheduler
+from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
+from app.utils.timer import TimerUtils
 
 router = APIRouter()
 
@@ -60,3 +63,30 @@ def downloader(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
         upload_size=transfer_info.upload_size,
         free_space=free_space
     )
+
+
+@router.get("/schedule", summary="后台服务", response_model=List[schemas.ScheduleInfo])
+def schedule(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询后台服务信息
+    """
+    # 返回计时任务
+    schedulers = []
+    # 去重
+    added = []
+    jobs = Scheduler().list()
+    for job in jobs:
+        if job.name not in added:
+            added.append(job.name)
+        else:
+            continue
+        if not StringUtils.is_chinese(job.name):
+            continue
+        schedulers.append(schemas.ScheduleInfo(
+            id=job.id,
+            name=job.name,
+            status="等待" if job.pending else "运行中",
+            next_run=TimerUtils.time_difference(job.next_run_time) or "已停止"
+        ))
+
+    return schedulers

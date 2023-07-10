@@ -37,3 +37,24 @@ class TimerUtils:
             trigger.append(random_trigger)
 
         return trigger
+
+    from datetime import datetime, timedelta
+
+    @staticmethod
+    def time_difference(input_datetime: datetime) -> str:
+        current_datetime = datetime.datetime.now(datetime.timezone.utc).astimezone()
+        time_difference = input_datetime - current_datetime
+
+        days = time_difference.days
+        hours, remainder = divmod(time_difference.seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+
+        time_difference_string = ""
+        if days > 0:
+            time_difference_string += f"{days}天"
+        if hours > 0:
+            time_difference_string += f"{hours}小时"
+        if minutes > 0:
+            time_difference_string += f"{minutes}分钟"
+
+        return time_difference_string
