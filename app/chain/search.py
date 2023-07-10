@@ -16,6 +16,7 @@ from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
 from app.schemas.types import MediaType, ProgressKey, SystemConfigKey
+from app.utils.object import ObjectUtils
 from app.utils.string import StringUtils
 
 
@@ -43,7 +44,8 @@ class SearchChain(ChainBase):
             return None
         results = self.process(mediainfo=mediainfo)
         # 保存眲结果
-        self.systemconfig.set(SystemConfigKey.SearchResults, pickle.dumps(results))
+        self.systemconfig.set(SystemConfigKey.SearchResults,
+                              pickle.dumps(results or []))
         return results
 
     def search_by_title(self, title: str) -> List[TorrentInfo]:
@@ -60,7 +62,7 @@ class SearchChain(ChainBase):
         获取上次搜索结果
         """
         results = self.systemconfig.get(SystemConfigKey.SearchResults)
-        if not results:
+        if not results or not ObjectUtils.is_obj(results):
             return []
         return pickle.loads(results)
 
