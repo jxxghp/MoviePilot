@@ -2,12 +2,15 @@ from pathlib import Path
 from typing import Any, List
 
 from fastapi import APIRouter, Depends
+from requests import Session
 
 from app import schemas
 from app.chain.dashboard import DashboardChain
 from app.core.config import settings
 from app.core.security import verify_token
-from app.scheduler import SchedulerChain, Scheduler
+from app.db import get_db
+from app.db.models.transferhistory import TransferHistory
+from app.scheduler import Scheduler
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 from app.utils.timer import TimerUtils
@@ -100,3 +103,13 @@ def schedule(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
         ))
 
     return schedulers
+
+
+@router.get("/transfer", summary="文件整理统计", response_model=List[int])
+def transfer(days: int = 7, db: Session = Depends(get_db),
+             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询文件整理统计信息
+    """
+    transfer_stat = TransferHistory.statistic(db, days)
+    return [stat[1] for stat in transfer_stat]

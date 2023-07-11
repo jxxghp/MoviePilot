@@ -1,6 +1,6 @@
 import time
 
-from sqlalchemy import Column, Integer, String, Sequence, Boolean
+from sqlalchemy import Column, Integer, String, Sequence, Boolean, func
 from sqlalchemy.orm import Session
 
 from app.db.models import Base
@@ -58,3 +58,15 @@ class TransferHistory(Base):
     @staticmethod
     def get_by_hash(db: Session, download_hash: str):
         return db.query(TransferHistory).filter(TransferHistory.download_hash == download_hash).first()
+
+    @staticmethod
+    def statistic(db: Session, days: int = 7):
+        """
+        统计最近days天的下载历史数量，按日期分组返回每日数量
+        """
+        sub_query = db.query(func.substr(TransferHistory.date, 1, 10).label('date'),
+                             TransferHistory.id.label('id')).filter(
+            TransferHistory.date >= time.strftime("%Y-%m-%d %H:%M:%S",
+                                                  time.localtime(time.time() - 86400 * days))).subquery()
+        return db.query(sub_query.c.date, func.count(sub_query.c.id)).group_by(sub_query.c.date).all()
+
