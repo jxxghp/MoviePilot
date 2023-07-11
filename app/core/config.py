@@ -93,13 +93,13 @@ class Settings(BaseSettings):
     SLACK_CHANNEL: str = ""
     # 下载器 qbittorrent/transmission
     DOWNLOADER: str = "qbittorrent"
-    # Qbittorrent地址
+    # Qbittorrent地址，IP:PORT
     QB_HOST: str = None
     # Qbittorrent用户名
     QB_USER: str = None
     # Qbittorrent密码
     QB_PASSWORD: str = None
-    # Transmission地址
+    # Transmission地址，IP:PORT
     TR_HOST: str = None
     # Transmission用户名
     TR_USER: str = None
@@ -111,15 +111,15 @@ class Settings(BaseSettings):
     DOWNLOAD_PATH: str = "/downloads"
     # 媒体服务器 emby/jellyfin/plex
     MEDIASERVER: str = "emby"
-    # EMBY服务器地址
+    # EMBY服务器地址，IP:PORT
     EMBY_HOST: str = None
     # EMBY Api Key
     EMBY_API_KEY: str = None
-    # Jellyfin服务器地址
+    # Jellyfin服务器地址，IP:PORT
     JELLYFIN_HOST: str = None
     # Jellyfin Api Key
     JELLYFIN_API_KEY: str = None
-    # Plex服务器地址
+    # Plex服务器地址，IP:PORT
     PLEX_HOST: str = None
     # Plex Token
     PLEX_TOKEN: str = None
