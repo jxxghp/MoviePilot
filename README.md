@@ -168,7 +168,7 @@ docker pull jxxghp/moviepilot:latest
 > `audioCodec`： 音频编码  
 > `tmdbid`： TMDBID  
 > `imdbid`： IMDBID  
-> `part`：段/节
+> `part`：段/节  
 > `fileExt`：文件扩展名
 
 `MOVIE_RENAME_FORMAT`默认配置格式：
