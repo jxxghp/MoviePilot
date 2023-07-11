@@ -197,7 +197,7 @@ docker pull jxxghp/moviepilot:latest
 - 通过下载器监控实现资源下载后自动整理入库刮削。
 - 通过微信/Telegram/Slack远程搜索下载、订阅和管理设置，其中Telegram将会自动添加操作菜单。
 - 通过WEB进行管理，将WEB添加到手机桌面获得类App使用效果，管理界面地址：http://ip:3000。
-- 将MoviePilot做为Rardarr或Sonnarr服务器添加到Overseerr或Jellyseerr，选片后自动添加订阅。
+- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，选片后自动添加订阅。
 
 ## TODO
 - [ ] 插件管理，支持自定义插件功能界面
