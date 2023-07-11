@@ -46,7 +46,7 @@ class Scheduler(metaclass=Singleton):
                                     "interval",
                                     minutes=settings.COOKIECLOUD_INTERVAL,
                                     next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=1),
-                                    name="CookieCloud同步")
+                                    name="同步CookieCloud站点")
 
         # 新增订阅时搜索（5分钟检查一次）
         self._scheduler.add_job(SubscribeChain().search, "interval",
