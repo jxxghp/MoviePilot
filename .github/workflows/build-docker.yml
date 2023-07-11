@@ -11,6 +11,12 @@ jobs:
         name: Checkout
         uses: actions/checkout@master
 
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/moviepilot
+
       -
         name: Release version
         id: release_version
@@ -19,14 +25,15 @@ jobs:
           echo "app_version=$app_version" >> $GITHUB_ENV
 
       -
+        name: Setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      -
         name: Build frontend
         id: build_brontend
         run: |
-          curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-          curl -sL https://dl.yarnpkg.com/debian/pubkey.gpg | gpg --dearmor | sudo tee /usr/share/keyrings/yarnkey.gpg >/dev/null
-          echo "deb [signed-by=/usr/share/keyrings/yarnkey.gpg] https://dl.yarnpkg.com/debian stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
-          sudo apt-get update && sudo apt-get install -y nodejs yarn
-          node -v && yarn --version
           git clone https://github.com/jxxghp/MoviePilot-Frontend
           cd MoviePilot-Frontend
           yarn && yarn build
@@ -63,3 +70,4 @@ jobs:
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/moviepilot:latest
             ${{ secrets.DOCKER_USERNAME }}/moviepilot:${{ env.app_version }}
+          labels: ${{ steps.meta.outputs.labels }}
