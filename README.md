@@ -59,6 +59,7 @@ docker pull jxxghp/moviepilot:latest
 - **COOKIECLOUD_INTERVAL：** CookieCloud同步间隔（分钟）
 - **USER_AGENT：** CookieCloud对应的浏览器UA，可选，同步站点后可以在管理界面中修改
 
+
 - **MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
 
 `wechat`设置项：
@@ -122,19 +123,19 @@ docker pull jxxghp/moviepilot:latest
 
 `MoviePilot`为了控制用户数量，同样需要认证PT用户后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数。
 
-| 站点   | 参数                                    |
-|------|---------------------------------------|
-| iyuu | `IYUU_SIGN`：IYUU登录令牌                  |
-| hhclub  | `HHCLUB_USERNAME`：用户名<br/>`HHCLUB_PASSKEY`：密钥 |
-| audiences  | `AUDIENCES_UID`：用户ID<br/>`AUDIENCES_PASSKEY`：密钥 |
-| hddolby  | `HDDOLBY_ID`：用户名<br/>`HDDOLBY_PASSKEY`：密钥     |
-| zmpt  | `ZMPT_UID`：用户ID<br/>`ZMPT_PASSKEY`：密钥      |
-| freefarm  | `FREEFARM_UID`：用户ID<br/>`FREEFARM_PASSKEY`：密钥  |
-| hdfans  | `HDFANS_UID`：用户ID<br/>`HDFANS_PASSKEY`：密钥     |
-| wintersakura  | `WINTERSAKURA_UID`：用户ID<br/>`WINTERSAKURA_PASSKEY`：密钥 |
-| leaves  | `LEAVES_UID`：用户ID<br/>`LEAVES_UID`：密钥     |
-| 1ptba  | `PTBA_UID`：用户ID<br/>`PTBA_PASSKEY`：密钥       |
-| icc2022  | `ICC2022_UID`：用户ID<br/>`ICC2022_PASSKEY`：密钥    |
+| 站点 | 参数                                                    |
+|----|-------------------------------------------------------|
+| iyuu | `IYUU_SIGN`：IYUU登录令牌                                  |
+| hhclub | `HHCLUB_USERNAME`：用户名<br/>`HHCLUB_PASSKEY`：密钥         |
+| audiences | `AUDIENCES_UID`：用户ID<br/>`AUDIENCES_PASSKEY`：密钥       |
+| hddolby | `HDDOLBY_ID`：用户名<br/>`HDDOLBY_PASSKEY`：密钥             |
+| zmpt | `ZMPT_UID`：用户ID<br/>`ZMPT_PASSKEY`：密钥                 |
+| freefarm | `FREEFARM_UID`：用户ID<br/>`FREEFARM_PASSKEY`：密钥         |
+| hdfans | `HDFANS_UID`：用户ID<br/>`HDFANS_PASSKEY`：密钥             |
+| wintersakura | `WINTERSAKURA_UID`：用户ID<br/>`WINTERSAKURA_PASSKEY`：密钥 |
+| leaves | `LEAVES_UID`：用户ID<br/>`LEAVES_UID`：密钥                 |
+| 1ptba | `1PTBA_UID`：用户ID<br/>`1PTBA_PASSKEY`：密钥               |
+| icc2022 | `ICC2022_UID`：用户ID<br/>`ICC2022_PASSKEY`：密钥           |
 
 
 ### 3. **过滤规则**
@@ -154,40 +155,21 @@ docker pull jxxghp/moviepilot:latest
 
 `MOVIE_RENAME_FORMAT`支持的配置项：
 
-```python
-{
-    # 标题
-    "title": mediainfo.title,
-    # 原文件名
-    "original_name": meta.org_string,
-    # 原语种标题
-    "original_title": mediainfo.original_title,
-    # 识别名称
-    "name": meta.name,
-    # 年份
-    "year": mediainfo.year,
-    # 版本
-    "edition": meta.edition,
-    # 分辨率
-    "videoFormat": meta.resource_pix,
-    # 制作组/字幕组
-    "releaseGroup": meta.resource_team,
-    # 特效
-    "effect": meta.resource_effect,
-    # 视频编码
-    "videoCodec": meta.video_encode,
-    # 音频编码
-    "audioCodec": meta.audio_encode,
-    # TMDBID
-    "tmdbid": mediainfo.tmdb_id,
-    # IMDBID
-    "imdbid": mediainfo.imdb_id,
-    # 段/节
-    "part": meta.part,
-    # 文件后缀
-    "fileExt": file_ext
-}
-```
+> `title`： 标题  
+> `original_name`： 原文件名  
+> `original_title`： 原语种标题  
+> `name`： 识别名称  
+> `year`： 年份  
+> `edition`： 版本  
+> `videoFormat`： 分辨率  
+> `releaseGroup`： 制作组/字幕组  
+> `effect`： 特效  
+> `videoCodec`： 视频编码  
+> `audioCodec`： 音频编码  
+> `tmdbid`： TMDBID  
+> `imdbid`： IMDBID  
+> `part`：段/节
+> `fileExt`：文件扩展名
 
 `MOVIE_RENAME_FORMAT`默认配置格式：
 
@@ -199,16 +181,9 @@ docker pull jxxghp/moviepilot:latest
 
 `TV_RENAME_FORMAT`额外支持的配置项：
 
-```python
-{
-    # 季号
-    "season": meta.season_seq,
-    # 集号
-    "episode": meta.episode_seqs,
-    # 季集 SxxExx
-    "season_episode": "%s%s" % (meta.season, meta.episodes)
-}
-```
+> `season`： 季号  
+> `episode`： 集号  
+> `season_episode`： 季集 SxxExx  
 
 `TV_RENAME_FORMAT`默认配置格式：
 
