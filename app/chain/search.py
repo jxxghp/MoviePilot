@@ -62,7 +62,7 @@ class SearchChain(ChainBase):
         获取上次搜索结果
         """
         results = self.systemconfig.get(SystemConfigKey.SearchResults)
-        if not results or not ObjectUtils.is_obj(results):
+        if not results:
             return []
         return pickle.loads(results)
 
