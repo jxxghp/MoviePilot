@@ -153,7 +153,7 @@ class AutoSignIn(_PluginBase):
         """
         domain = StringUtils.get_url_domain(url)
         site_info = self.sites.get_indexer(domain)
-        if site_info:
+        if not site_info:
             return schemas.Response(
                 success=True,
                 message=f"站点【{url}】不存在"
