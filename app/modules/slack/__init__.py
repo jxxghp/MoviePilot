@@ -21,7 +21,8 @@ class SlackModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MESSAGER", "slack"
 
-    def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
+    @staticmethod
+    def message_parser(body: Any, form: Any, args: Any) -> Optional[dict]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
