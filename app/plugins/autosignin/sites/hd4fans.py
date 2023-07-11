@@ -70,7 +70,8 @@ class HDArea(_ISiteSigninHandler):
         if not sign_res or sign_res.status_code != 200:
             logger.error(f"签到失败，请检查站点连通性")
             return False, f'【{site}】签到失败，请检查站点连通性'
-        if not sign_res.text and int(sign_res.text) > 0:
+        # sign_res.text=本次签到魔力
+        if sign_res.text and int(sign_res.text) > 0:
             logger.info(f"签到成功")
             return True, f'【{site}】签到成功'
 
