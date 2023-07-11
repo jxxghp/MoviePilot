@@ -32,7 +32,7 @@ class SearchChain(ChainBase):
         self.systemconfig = SystemConfigOper()
         self.torrenthelper = TorrentHelper()
 
-    def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None) -> Optional[List[Context]]:
+    def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None) -> List[Context]:
         """
         根据TMDB ID搜索资源，精确匹配，但不不过滤本地存在的资源
         :param tmdbid: TMDB ID
@@ -41,11 +41,11 @@ class SearchChain(ChainBase):
         mediainfo = self.recognize_media(tmdbid=tmdbid, mtype=mtype)
         if not mediainfo:
             logger.error(f'{tmdbid} 媒体信息识别失败！')
-            return None
+            return []
         results = self.process(mediainfo=mediainfo)
         # 保存眲结果
-        self.systemconfig.set(SystemConfigKey.SearchResults,
-                              pickle.dumps(results or []))
+        bytes_results = pickle.dumps(results)
+        self.systemconfig.set(SystemConfigKey.SearchResults, bytes_results)
         return results
 
     def search_by_title(self, title: str) -> List[TorrentInfo]:
@@ -55,14 +55,14 @@ class SearchChain(ChainBase):
         """
         logger.info(f'开始搜索资源，关键词：{title} ...')
         # 搜索
-        return self.__search_all_sites(keyword=title)
+        return self.__search_all_sites(keyword=title) or []
 
     def last_search_results(self) -> List[Context]:
         """
         获取上次搜索结果
         """
         results = self.systemconfig.get(SystemConfigKey.SearchResults)
-        if not results or not ObjectUtils.is_obj(results):
+        if not results:
             return []
         return pickle.loads(results)
 
@@ -84,7 +84,7 @@ class SearchChain(ChainBase):
 
     def process(self, mediainfo: MediaInfo,
                 keyword: str = None,
-                no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None) -> Optional[List[Context]]:
+                no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None) -> List[Context]:
         """
         根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
         :param mediainfo: 媒体信息
@@ -206,10 +206,10 @@ class SearchChain(ChainBase):
         # 未开启的站点不搜索
         indexer_sites = []
         # 配置的索引站点
-        config_indexers = self.systemconfig.get(SystemConfigKey.IndexerSites) or []
+        config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.IndexerSites) or []]
         for indexer in self.siteshelper.get_indexers():
             # 检查站点索引开关
-            if not config_indexers or indexer.get("id") in config_indexers:
+            if not config_indexers or str(indexer.get("id")) in config_indexers:
                 # 站点流控
                 state, msg = self.siteshelper.check(indexer.get("domain"))
                 if not state:

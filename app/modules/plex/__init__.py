@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Optional, Tuple, Union, Any
 
+from app import schemas
 from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
@@ -73,3 +74,15 @@ class PlexModule(_ModuleBase):
             )
         ]
         return self.plex.refresh_library_by_items(items)
+
+    def media_statistic(self) -> schemas.Statistic:
+        """
+        媒体数量统计
+        """
+        media_statistic = self.plex.get_medias_count()
+        return schemas.Statistic(
+            movie_count=media_statistic.get("MovieCount") or 0,
+            tv_count=media_statistic.get("SeriesCount") or 0,
+            episode_count=media_statistic.get("EpisodeCount") or 0,
+            user_count=1
+        )

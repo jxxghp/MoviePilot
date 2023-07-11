@@ -4,6 +4,7 @@ from typing import Optional, Union, Tuple, List
 import qbittorrentapi
 from qbittorrentapi import TorrentFilesList, TorrentDictionary
 from qbittorrentapi.client import Client
+from qbittorrentapi.transfer import TransferInfoDictionary
 
 from app.core.config import settings
 from app.log import logger
@@ -285,3 +286,13 @@ class Qbittorrent(metaclass=Singleton):
         except Exception as err:
             logger.error(f"设置种子文件状态出错：{err}")
             return False
+
+    def transfer_info(self) -> Optional[TransferInfoDictionary]:
+        """
+        获取传输信息
+        """
+        try:
+            return self.qbc.transfer_info()
+        except Exception as err:
+            logger.error(f"获取传输信息出错：{err}")
+            return None

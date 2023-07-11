@@ -55,9 +55,6 @@ class TorrentInfo:
     # 种子优先级
     pri_order: int = 0
 
-    def __getattr__(self, attribute):
-        return None
-
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value
 
@@ -174,9 +171,6 @@ class MediaInfo:
             self.set_tmdb_info(self.tmdb_info)
         if self.douban_info:
             self.set_douban_info(self.douban_info)
-
-    def __getattr__(self, attribute):
-        return None
 
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value
@@ -517,9 +511,6 @@ class Context:
     media_info: MediaInfo = None
     # 种子信息
     torrent_info: TorrentInfo = None
-
-    def __getattr__(self, attribute):
-        return None
 
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value

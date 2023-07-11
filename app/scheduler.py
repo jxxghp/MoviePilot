@@ -45,24 +45,28 @@ class Scheduler(metaclass=Singleton):
             self._scheduler.add_job(CookieCloudChain().process,
                                     "interval",
                                     minutes=settings.COOKIECLOUD_INTERVAL,
-                                    next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=1))
+                                    next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=1),
+                                    name="同步CookieCloud站点")
 
         # 新增订阅时搜索（5分钟检查一次）
-        self._scheduler.add_job(SubscribeChain().search, "interval", minutes=5, kwargs={'state': 'N'})
+        self._scheduler.add_job(SubscribeChain().search, "interval",
+                                minutes=5, kwargs={'state': 'N'})
 
-        # 订阅状态每隔12小时刷新一次
-        self._scheduler.add_job(SubscribeChain().search, "interval", hours=12, kwargs={'state': 'R'})
+        # 订阅状态每隔12小时搜索一次
+        self._scheduler.add_job(SubscribeChain().search, "interval",
+                                hours=12, kwargs={'state': 'R'}, name="订阅搜索")
 
         # 站点首页种子定时刷新缓存并匹配订阅
         triggers = TimerUtils.random_scheduler(num_executions=20)
         for trigger in triggers:
-            self._scheduler.add_job(SubscribeChain().refresh, "cron", hour=trigger.hour, minute=trigger.minute)
+            self._scheduler.add_job(SubscribeChain().refresh, "cron",
+                                    hour=trigger.hour, minute=trigger.minute, name="订阅刷新")
 
         # 豆瓣同步（每30分钟）
-        self._scheduler.add_job(DoubanChain().sync, "interval", minutes=30)
+        self._scheduler.add_job(DoubanChain().sync, "interval", minutes=30, name="同步豆瓣想看")
 
         # 下载器文件转移（每5分钟）
-        self._scheduler.add_job(TransferChain().process, "interval", minutes=5)
+        self._scheduler.add_job(TransferChain().process, "interval", minutes=5, name="下载文件整理")
 
         # 公共定时服务
         self._scheduler.add_job(SchedulerChain().scheduler_job, "interval", minutes=10)
@@ -72,6 +76,12 @@ class Scheduler(metaclass=Singleton):
 
         # 启动定时服务
         self._scheduler.start()
+
+    def list(self):
+        """
+        当前所有任务
+        """
+        return self._scheduler.get_jobs()
 
     def stop(self):
         """

@@ -272,11 +272,11 @@ class SubscribeChain(ChainBase):
         # 所有站点索引
         indexers = self.siteshelper.get_indexers()
         # 配置的索引站点
-        config_indexers = self.systemconfig.get(SystemConfigKey.IndexerSites) or []
+        config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.IndexerSites) or []]
         # 遍历站点缓存资源
         for indexer in indexers:
             # 未开启的站点不搜索
-            if config_indexers and indexer.get("id") not in config_indexers:
+            if config_indexers and str(indexer.get("id")) not in config_indexers:
                 continue
             logger.info(f'开始刷新站点资源，站点：{indexer.get("name")} ...')
             domain = StringUtils.get_url_domain(indexer.get("domain"))

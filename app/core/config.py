@@ -134,7 +134,7 @@ class Settings(BaseSettings):
     # CookieCloud端对端加密密码
     COOKIECLOUD_PASSWORD: str = None
     # CookieCloud同步间隔（分钟）
-    COOKIECLOUD_INTERVAL: int = 3600 * 24
+    COOKIECLOUD_INTERVAL: int = 60 * 24
     # CookieCloud对应的浏览器UA
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.57"
     # 媒体库目录

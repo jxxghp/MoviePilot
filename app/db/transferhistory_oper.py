@@ -29,3 +29,10 @@ class TransferHistoryOper(DbOper):
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         })
         return TransferHistory(**kwargs).create(self._db)
+
+    def statistic(self, days: int = 7):
+        """
+        统计最近days天的下载历史数量
+        """
+        return TransferHistory.statistic(self._db, days)
+

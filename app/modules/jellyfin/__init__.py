@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Optional, Tuple, Union, Any
 
+from app import schemas
 from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
@@ -75,3 +76,16 @@ class JellyfinModule(_ModuleBase):
         :return: 成功或失败
         """
         return self.jellyfin.refresh_root_library()
+
+    def media_statistic(self) -> schemas.Statistic:
+        """
+        媒体数量统计
+        """
+        media_statistic = self.jellyfin.get_medias_count()
+        user_count = self.jellyfin.get_user_count()
+        return schemas.Statistic(
+            movie_count=media_statistic.get("MovieCount") or 0,
+            tv_count=media_statistic.get("SeriesCount") or 0,
+            episode_count=media_statistic.get("EpisodeCount") or 0,
+            user_count=user_count or 0
+        )
