@@ -37,7 +37,7 @@ def get_progress(process_type: str, token: str):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.get("/setting/{key}", summary="查询系统设置")
+@router.get("/setting/{key}", summary="查询系统设置", response_model=schemas.Response)
 def get_setting(key: str, _: schemas.TokenPayload = Depends(verify_token)):
     """
     查询系统设置
@@ -47,7 +47,7 @@ def get_setting(key: str, _: schemas.TokenPayload = Depends(verify_token)):
     })
 
 
-@router.post("/setting/{key}", summary="更新系统设置")
+@router.post("/setting/{key}", summary="更新系统设置", response_model=schemas.Response)
 def set_setting(key: str, value: Union[list, dict, str, int],
                 _: schemas.TokenPayload = Depends(verify_token)):
     """
