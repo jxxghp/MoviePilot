@@ -166,14 +166,17 @@ class SearchChain(ChainBase):
                             logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
                             continue
                 # 比对标题
-                if torrent_meta.name in [mediainfo.title, mediainfo.original_title]:
+                meta_name = StringUtils.clear_upper(torrent_meta.name)
+                if meta_name in [
+                    StringUtils.clear_upper(mediainfo.title),
+                    StringUtils.clear_upper(mediainfo.original_title)
+                ]:
                     logger.info(f'{mediainfo.title} 匹配到资源：{torrent.site_name} - {torrent.title}')
                     _match_torrents.append(torrent)
                     continue
                 # 比对别名和译名
                 for name in mediainfo.names:
-                    if StringUtils.clear(name).strip().upper() == \
-                            StringUtils.clear(torrent_meta.name).strip().upper():
+                    if StringUtils.clear_upper(name) == meta_name:
                         logger.info(f'{mediainfo.title} 匹配到资源：{torrent.site_name} - {torrent.title}')
                         _match_torrents.append(torrent)
                         break

@@ -170,6 +170,15 @@ class StringUtils:
             return [StringUtils.clear(x) for x in text]
 
     @staticmethod
+    def clear_upper(text: str) -> str:
+        """
+        去除特殊字符，同时大写
+        """
+        if not text:
+            return ""
+        return StringUtils.clear(text).upper().strip()
+
+    @staticmethod
     def str_filesize(size: Union[str, float, int], pre: int = 2) -> str:
         """
         将字节计算为文件大小描述（带单位的格式化后返回）
