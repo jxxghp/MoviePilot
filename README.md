@@ -202,8 +202,16 @@ docker pull jxxghp/moviepilot:latest
 
 ![image](https://github.com/jxxghp/MoviePilot/assets/51039935/bd617f86-abb7-480e-8cef-46066565aac1)
 
+![image](https://github.com/jxxghp/MoviePilot/assets/51039935/28219233-ec7d-479b-b184-9a901c947dd1)
+
+![image](https://github.com/jxxghp/MoviePilot/assets/51039935/f7ea77cd-0362-4c35-967c-7f1b22dbef05)
+
+
 
 ## TODO
+
+仍在开发中，当前功能并不完善。
+
 - [ ] 插件管理，支持自定义插件功能界面
 - [ ] 更易用的自定义识别词
 - [ ] 手动整理功能增强
