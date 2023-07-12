@@ -200,7 +200,7 @@ docker pull jxxghp/moviepilot:latest
 - 设置媒体服务器WEBHOOK，通过MoviePilot发送播放通知，以及后续播放限速等插件功能。WEBHOOK回调相对路径为`/api/v1/message?token=moviepilot`，`moviepilot`为设置的`API_TOKEN`。
 - 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，可使用Overseerr/Jellyseerr选片。
 
-![image](https://github.com/jxxghp/MoviePilot/assets/51039935/bd617f86-abb7-480e-8cef-46066565aac1)
+![image](https://github.com/jxxghp/MoviePilot/assets/51039935/b8f0238d-847f-4f9d-b210-e905837362b9)
 
 ![image](https://github.com/jxxghp/MoviePilot/assets/51039935/28219233-ec7d-479b-b184-9a901c947dd1)
 
