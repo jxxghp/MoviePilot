@@ -33,6 +33,8 @@ class TransferChain(ChainBase):
     def process(self, arg_str: str = None, userid: Union[str, int] = None) -> bool:
         """
         获取下载器中的种子列表，并执行转移
+        :param arg_str: 传入的参数 (种子hash和TMDB ID)
+        :param userid: 用户ID
         """
 
         def extract_hash_and_number(string: str):

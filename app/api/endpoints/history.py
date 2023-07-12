@@ -69,3 +69,18 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
     # 删除记录
     TransferHistory.delete(db, history_in.id)
     return schemas.Response(success=True)
+
+
+@router.post("/transfer", summary="历史记录重新转移", response_model=schemas.Response)
+def redo_transfer_history(history_in: schemas.TransferHistory,
+                          new_tmdbid: int,
+                          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    历史记录重新转移
+    """
+    hash_str = history_in.download_hash
+    result = TransferChain().process(f"{hash_str} {new_tmdbid}")
+    if result:
+        return schemas.Response(success=True)
+    else:
+        return schemas.Response(success=False, message="失败原因详见通知消息")
