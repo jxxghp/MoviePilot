@@ -70,7 +70,6 @@ docker pull jxxghp/moviepilot:latest
 - **WECHAT_TOKEN：** WeChat消息回调的Token
 - **WECHAT_ENCODING_AESKEY：** WeChat消息回调的EncodingAESKey
 - **WECHAT_ADMINS：** WeChat管理员列表，多个管理员用英文逗号分隔（可选）
-- 微信回调填入地址：/api/v1/message?token=moviepilot，moviepilot为设置的API_TOKEN
 
 `telegram`设置项：
 
@@ -115,7 +114,7 @@ docker pull jxxghp/moviepilot:latest
 `plex`设置项：
  
  - **PLEX_HOST：** Plex服务器地址，格式：`ip:port`，https需要添加`https://`前缀
- - **PLEX_TOKEN：** Plex网页Url中的`X-Plex-Token`，通过浏览器F12->网络从请求URL中获取 
+ - **PLEX_TOKEN：** Plex网页Url中的`X-Plex-Token`，通过浏览器F12->网络从请求URL中获取
 
 
 ### 2. **用户认证**
@@ -194,11 +193,15 @@ docker pull jxxghp/moviepilot:latest
 
 ## 使用
 
-- 通过CookieCloud同步快速同步站点。
+- 通过CookieCloud同步快速同步站点，不需要使用的站点可在WEB管理界面中禁用。
 - 通过下载器监控实现资源下载后自动整理入库刮削。
-- 通过微信/Telegram/Slack远程搜索下载、订阅和管理设置，其中Telegram将会自动添加操作菜单。
+- 通过微信/Telegram/Slack远程搜索下载、订阅和管理设置，其中Telegram将会自动添加操作菜单。微信回调相对路径为`/api/v1/message?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`。
 - 通过WEB进行管理，将WEB添加到手机桌面获得类App使用效果，管理界面地址：http://ip:3000。
-- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，选片后自动添加订阅。
+- 设置媒体服务器WEBHOOK，通过MoviePilot发送播放通知，以及后续播放限速等插件功能。WEBHOOK回调相对路径为`/api/v1/message?token=moviepilot`，`moviepilot`为设置的`API_TOKEN`。
+- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，可使用Overseerr/Jellyseerr选片。
+
+![image](https://github.com/jxxghp/MoviePilot/assets/51039935/bd617f86-abb7-480e-8cef-46066565aac1)
+
 
 ## TODO
 - [ ] 插件管理，支持自定义插件功能界面
