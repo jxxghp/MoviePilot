@@ -70,6 +70,7 @@ docker pull jxxghp/moviepilot:latest
 - **WECHAT_TOKEN：** WeChat消息回调的Token
 - **WECHAT_ENCODING_AESKEY：** WeChat消息回调的EncodingAESKey
 - **WECHAT_ADMINS：** WeChat管理员列表，多个管理员用英文逗号分隔（可选）
+- 微信回调填入地址：/api/v1/message?token=moviepilot，moviepilot为设置的API_TOKEN
 
 `telegram`设置项：
 
