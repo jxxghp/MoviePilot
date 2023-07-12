@@ -112,7 +112,7 @@ class DownloadChain(ChainBase):
                 doubanid=_media.douban_id,
                 seasons=_meta.season,
                 episodes=_meta.episode,
-                image=_media.poster_path,
+                image=_media.backdrop_path,
                 download_hash=_hash,
                 torrent_name=_torrent.title,
                 torrent_description=_torrent.description,
