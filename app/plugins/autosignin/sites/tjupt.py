@@ -147,7 +147,8 @@ class Tjupt(_ISiteSigninHandler):
         for value, answer in answers:
             if answer:
                 # 豆瓣检索
-                db_res = RequestUtils().get_res(url=f'https://movie.douban.com/j/subject_suggest?q={answer}')
+                db_res = RequestUtils(referer="https://movie.douban.com").get_res(
+                    url=f'https://movie.douban.com/j/subject_suggest?q={answer}')
                 if not db_res or db_res.status_code != 200:
                     logger.debug(f"签到选项 {answer} 未查询到豆瓣数据")
                     continue
@@ -164,7 +165,7 @@ class Tjupt(_ISiteSigninHandler):
                     answer_img_url = db_answer['img']
 
                     # 获取答案hash
-                    answer_img_res = RequestUtils().get_res(url=answer_img_url)
+                    answer_img_res = RequestUtils(referer="https://movie.douban.com").get_res(url=answer_img_url)
                     if not answer_img_res or answer_img_res.status_code != 200:
                         logger.debug(f"签到答案 {answer} {answer_img_url} 请求失败")
                         continue
