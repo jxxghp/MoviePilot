@@ -1,9 +1,9 @@
 from pathlib import Path
-from typing import Optional, Dict, List, Union
+from typing import Optional, Dict, List
 
 from pydantic import BaseModel
 
-from app.schemas.types import MediaType, NotificationType
+from app.schemas.types import MediaType, NotificationType, MessageChannel
 
 
 class MetaInfo(BaseModel):
@@ -313,18 +313,36 @@ class Notification(BaseModel):
     """
     消息
     """
+    # 消息渠道
+    channel: Optional[MessageChannel] = None
     # 消息类型
     mtype: Optional[NotificationType] = None
     # 标题
     title: Optional[str] = None
-    # 内容
-    content: Optional[str] = None
+    # 文本内容
+    text: Optional[str] = None
+    # 列表内容
+    items: Optional[list] = []
     # 图片
     image: Optional[str] = None
     # 链接
     link: Optional[str] = None
     # 用户ID
     user_id: Optional[str] = None
+
+
+class CommingMessage(BaseModel):
+    """
+    外来消息
+    """
+    # 用户ID
+    userid: Optional[str] = None
+    # 用户名称
+    username: Optional[str] = None
+    # 消息渠道
+    channel: Optional[MessageChannel] = None
+    # 消息体
+    text: Optional[str] = None
 
 
 class NotificationSwitch(BaseModel):

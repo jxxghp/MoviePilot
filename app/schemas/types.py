@@ -85,3 +85,12 @@ class NotificationType(Enum):
     SiteMessage = "站点消息"
     # 媒体服务器通知
     MediaServer = "媒体服务器通知"
+
+
+class MessageChannel(Enum):
+    """
+    消息渠道
+    """
+    Wechat = "微信"
+    Telegram = "Telegram"
+    Slack = "Slack"

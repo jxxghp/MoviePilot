@@ -7,11 +7,11 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.modules.wechat.wechat import WeChat
+from app.schemas import MessageChannel, CommingMessage
 from app.utils.dom import DomUtils
 
 
 class WechatModule(_ModuleBase):
-
     wechat: WeChat = None
 
     def init_module(self) -> None:
@@ -23,7 +23,8 @@ class WechatModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MESSAGER", "wechat"
 
-    def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
+    def message_parser(self, body: Any, form: Any,
+                       args: Any) -> Optional[CommingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
@@ -32,7 +33,7 @@ class WechatModule(_ModuleBase):
         :param body: 请求体
         :param form: 表单
         :param args: 参数
-        :return: 消息内容、用户ID
+        :return: 渠道、消息体
         """
         try:
             # URL参数
@@ -40,7 +41,7 @@ class WechatModule(_ModuleBase):
             sVerifyTimeStamp = args.get("timestamp")
             sVerifyNonce = args.get("nonce")
             if not sVerifyMsgSig or not sVerifyTimeStamp or not sVerifyNonce:
-                logger.error(f"微信请求参数错误：{args}")
+                logger.debug(f"微信请求参数错误：{args}")
                 return None
             # 解密模块
             wxcpt = WXBizMsgCrypt(sToken=settings.WECHAT_TOKEN,
@@ -48,7 +49,7 @@ class WechatModule(_ModuleBase):
                                   sReceiveId=settings.WECHAT_CORPID)
             # 报文数据
             if not body:
-                logger.error(f"微信请求数据为空")
+                logger.debug(f"微信请求数据为空")
                 return None
             logger.debug(f"收到微信请求：{body}")
             ret, sMsg = wxcpt.DecryptMsg(sPostData=body,
@@ -99,18 +100,16 @@ class WechatModule(_ModuleBase):
                 if wechat_admins and not any(
                         user_id == admin_user for admin_user in wechat_admins):
                     self.wechat.send_msg(title="用户无权限执行菜单命令", userid=user_id)
-                    return {}
+                    return CommingMessage(channel=MessageChannel.Wechat,
+                                          userid=user_id, username=user_id, text="")
             elif msg_type == "text":
                 # 文本消息
                 content = DomUtils.tag_value(root_node, "Content", default="")
                 if content:
                     logger.info(f"收到微信消息：userid={user_id}, text={content}")
                 # 处理消息内容
-                return {
-                    "userid": user_id,
-                    "username": user_id,
-                    "text": content
-                }
+                return CommingMessage(channel=MessageChannel.Wechat,
+                                      userid=user_id, username=user_id, text=content)
         except Exception as err:
             logger.error(f"微信消息处理发生错误：{err}")
         return None

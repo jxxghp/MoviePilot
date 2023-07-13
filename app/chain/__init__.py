@@ -10,8 +10,8 @@ from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.core.module import ModuleManager
 from app.log import logger
-from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent
-from app.schemas.types import TorrentStatus, MediaType, MediaImageType
+from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage
+from app.schemas.types import TorrentStatus, MediaType, MediaImageType, MessageChannel
 from app.utils.object import ObjectUtils
 from app.utils.singleton import AbstractSingleton, Singleton
 
@@ -137,7 +137,8 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         """
         return self.run_module("tmdb_info", tmdbid=tmdbid, mtype=mtype)
 
-    def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
+    def message_parser(self, body: Any, form: Any,
+                       args: Any) -> Optional[CommingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
@@ -146,7 +147,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         :param body: 请求体
         :param form: 表单
         :param args: 参数
-        :return: 消息内容、用户ID
+        :return: 消息渠道、消息内容
         """
         return self.run_module("message_parser", body=body, form=form, args=args)
 

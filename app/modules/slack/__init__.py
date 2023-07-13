@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.slack.slack import Slack
+from app.schemas import MessageChannel, CommingMessage
 
 
 class SlackModule(_ModuleBase):
@@ -22,7 +23,8 @@ class SlackModule(_ModuleBase):
         return "MESSAGER", "slack"
 
     @staticmethod
-    def message_parser(body: Any, form: Any, args: Any) -> Optional[dict]:
+    def message_parser(body: Any, form: Any,
+                       args: Any) -> Optional[CommingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
@@ -31,7 +33,7 @@ class SlackModule(_ModuleBase):
         :param body: 请求体
         :param form: 表单
         :param args: 参数
-        :return: 消息内容、用户ID
+        :return: 渠道、消息体
         """
         """
         # 消息
@@ -149,7 +151,7 @@ class SlackModule(_ModuleBase):
         try:
             msg_json: dict = json.loads(body)
         except Exception as err:
-            logger.error(f"解析Slack消息失败：{err}")
+            logger.debug(f"解析Slack消息失败：{err}")
             return None
         if msg_json:
             if msg_json.get("type") == "message":
@@ -175,11 +177,8 @@ class SlackModule(_ModuleBase):
             else:
                 return None
             logger.info(f"收到Slack消息：userid={userid}, username={username}, text={text}")
-            return {
-                "userid": userid,
-                "username": username,
-                "text": text
-            }
+            return CommingMessage(channel=MessageChannel.Slack,
+                                  userid=userid, username=username, text=text)
         return None
 
     def post_message(self, title: str,

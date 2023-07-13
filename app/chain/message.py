@@ -40,17 +40,20 @@ class MessageChain(ChainBase):
         识别消息内容，执行操作
         """
         # 获取消息内容
-        info: dict = self.message_parser(body=body, form=form, args=args)
+        info = self.message_parser(body=body, form=form, args=args)
         if not info:
             return
+        # 渠道
+        channel = info.channel
         # 用户ID
-        userid = info.get('userid')
-        username = info.get('username')
+        userid = info.userid
+        # 用户名
+        username = info.username
         if not userid:
             logger.debug(f'未识别到用户ID：{body}{form}{args}')
             return
         # 消息内容
-        text = str(info.get('text')).strip() if info.get('text') else None
+        text = str(info.text).strip() if info.text else None
         if not text:
             logger.debug(f'未识别到消息内容：：{body}{form}{args}')
             return

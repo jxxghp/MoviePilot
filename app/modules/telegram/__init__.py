@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.telegram.telegram import Telegram
+from app.schemas import MessageChannel, CommingMessage
 
 
 class TelegramModule(_ModuleBase):
@@ -20,7 +21,8 @@ class TelegramModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MESSAGER", "telegram"
 
-    def message_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
+    def message_parser(self, body: Any, form: Any,
+                       args: Any) -> Optional[CommingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
@@ -29,7 +31,7 @@ class TelegramModule(_ModuleBase):
         :param body: 请求体
         :param form: 表单
         :param args: 参数
-        :return: 消息内容、用户ID
+        :return: 渠道、消息体
         """
         """
             {
@@ -61,7 +63,7 @@ class TelegramModule(_ModuleBase):
         try:
             message: dict = json.loads(body)
         except Exception as err:
-            logger.error(f"解析Telegram消息失败：{err}")
+            logger.debug(f"解析Telegram消息失败：{err}")
             return None
         if message:
             text = message.get("text")
@@ -76,18 +78,17 @@ class TelegramModule(_ModuleBase):
                             and str(user_id) not in settings.TELEGRAM_ADMINS.split(',') \
                             and str(user_id) != settings.TELEGRAM_CHAT_ID:
                         self.telegram.send_msg(title="只有管理员才有权限执行此命令", userid=user_id)
-                        return {}
+                        return CommingMessage(channel=MessageChannel.Wechat,
+                                              userid=user_id, username=user_id, text="")
                 else:
                     if settings.TELEGRAM_USERS \
                             and not str(user_id) in settings.TELEGRAM_USERS.split(','):
                         logger.info(f"用户{user_id}不在用户白名单中，无法使用此机器人")
                         self.telegram.send_msg(title="你不在用户白名单中，无法使用此机器人", userid=user_id)
-                        return {}
-                return {
-                    "userid": user_id,
-                    "username": user_name,
-                    "text": text
-                }
+                        return CommingMessage(channel=MessageChannel.Wechat,
+                                              userid=user_id, username=user_id, text="")
+                return CommingMessage(channel=MessageChannel.Wechat,
+                                      userid=user_id, username=user_id, text=text)
         return None
 
     def post_message(self, title: str,
