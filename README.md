@@ -202,6 +202,8 @@ docker pull jxxghp/moviepilot:latest
 
 ![image](https://github.com/jxxghp/MoviePilot/assets/51039935/b8f0238d-847f-4f9d-b210-e905837362b9)
 
+![image](https://github.com/jxxghp/MoviePilot/assets/51039935/f7df0806-668d-4c8b-ad41-133bf8f0bf73)
+
 ![image](https://github.com/jxxghp/MoviePilot/assets/51039935/28219233-ec7d-479b-b184-9a901c947dd1)
 
 ![image](https://github.com/jxxghp/MoviePilot/assets/51039935/f7ea77cd-0362-4c35-967c-7f1b22dbef05)
