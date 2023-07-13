@@ -147,8 +147,7 @@ class Tjupt(_ISiteSigninHandler):
         for value, answer in answers:
             if answer:
                 # 豆瓣检索
-                db_res = RequestUtils(referer="https://movie.douban.com").get_res(
-                    url=f'https://movie.douban.com/j/subject_suggest?q={answer}')
+                db_res = RequestUtils().get_res(url=f'https://movie.douban.com/j/subject_suggest?q={answer}')
                 if not db_res or db_res.status_code != 200:
                     logger.debug(f"签到选项 {answer} 未查询到豆瓣数据")
                     continue
