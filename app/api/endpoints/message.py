@@ -13,7 +13,7 @@ from app.db import get_db
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
-from app.schemas import Notification
+from app.schemas import NotificationSwitch
 from app.schemas.types import SystemConfigKey, NotificationType
 
 router = APIRouter()
@@ -62,7 +62,7 @@ def wechat_verify(echostr: str, msg_signature: str,
     return PlainTextResponse(sEchoStr)
 
 
-@router.get("/switchs", summary="查询通知消息渠道开关", response_model=List[Notification])
+@router.get("/switchs", summary="查询通知消息渠道开关", response_model=List[NotificationSwitch])
 def read_switchs(db: Session = Depends(get_db),
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -73,13 +73,13 @@ def read_switchs(db: Session = Depends(get_db),
     switchs = SystemConfigOper(db).get(SystemConfigKey.NotificationChannels)
     if not switchs:
         for noti in NotificationType:
-            return_list.append(Notification(mtype=noti.value, switch=True))
+            return_list.append(NotificationSwitch(mtype=noti.value, wechat=True, telegram=True, slack=True))
 
     return return_list
 
 
 @router.put("/switchs", summary="设置通知消息渠道开关", response_model=schemas.Response)
-def set_switchs(switchs: List[Notification],
+def set_switchs(switchs: List[NotificationSwitch],
                 db: Session = Depends(get_db),
                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """

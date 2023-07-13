@@ -3,7 +3,7 @@ from typing import Optional, Dict, List, Union
 
 from pydantic import BaseModel
 
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, NotificationType
 
 
 class MetaInfo(BaseModel):
@@ -314,7 +314,7 @@ class Notification(BaseModel):
     消息
     """
     # 消息类型
-    mtype: Optional[str] = None
+    mtype: Optional[NotificationType] = None
     # 标题
     title: Optional[str] = None
     # 内容
@@ -325,5 +325,17 @@ class Notification(BaseModel):
     link: Optional[str] = None
     # 用户ID
     user_id: Optional[str] = None
-    # 开关
-    switch: Optional[bool] = True
+
+
+class NotificationSwitch(BaseModel):
+    """
+    消息开关
+    """
+    # 消息类型
+    mtype: Optional[str] = None
+    # 微信开关
+    wechat: Optional[bool] = False
+    # TG开关
+    telegram: Optional[bool] = False
+    # Slack开关
+    slack: Optional[bool] = False
