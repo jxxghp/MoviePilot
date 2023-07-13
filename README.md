@@ -128,7 +128,7 @@ docker pull jxxghp/moviepilot:latest
 | iyuu | `IYUU_SIGN`：IYUU登录令牌                                  |
 | hhclub | `HHCLUB_USERNAME`：用户名<br/>`HHCLUB_PASSKEY`：密钥         |
 | audiences | `AUDIENCES_UID`：用户ID<br/>`AUDIENCES_PASSKEY`：密钥       |
-| hddolby | `HDDOLBY_ID`：用户名<br/>`HDDOLBY_PASSKEY`：密钥             |
+| hddolby | `HDDOLBY_ID`：用户ID<br/>`HDDOLBY_PASSKEY`：密钥             |
 | zmpt | `ZMPT_UID`：用户ID<br/>`ZMPT_PASSKEY`：密钥                 |
 | freefarm | `FREEFARM_UID`：用户ID<br/>`FREEFARM_PASSKEY`：密钥         |
 | hdfans | `HDFANS_UID`：用户ID<br/>`HDFANS_PASSKEY`：密钥             |
