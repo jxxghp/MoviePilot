@@ -60,7 +60,7 @@ docker pull jxxghp/moviepilot:latest
 - **USER_AGENT：** CookieCloud对应的浏览器UA，可选，同步站点后可以在管理界面中修改
 
 
-- **MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
+- **MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
 
 `wechat`设置项：
 

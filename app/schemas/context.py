@@ -307,3 +307,23 @@ class TmdbEpisode(BaseModel):
     vote_average: Optional[float] = None
     crew: Optional[list] = []
     guest_stars: Optional[list] = []
+
+
+class Notification(BaseModel):
+    """
+    消息
+    """
+    # 消息类型
+    mtype: Optional[str] = None
+    # 标题
+    title: Optional[str] = None
+    # 内容
+    content: Optional[str] = None
+    # 图片
+    image: Optional[str] = None
+    # 链接
+    link: Optional[str] = None
+    # 用户ID
+    user_id: Optional[str] = None
+    # 开关
+    switch: Optional[bool] = True

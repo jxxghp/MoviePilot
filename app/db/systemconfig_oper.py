@@ -1,7 +1,7 @@
 import json
 from typing import Any, Union
 
-from app.db import DbOper
+from app.db import DbOper, SessionLocal
 from app.db.models.systemconfig import SystemConfig
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
@@ -12,11 +12,11 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
     # 配置对象
     __SYSTEMCONF: dict = {}
 
-    def __init__(self):
+    def __init__(self, _db=SessionLocal()):
         """
         加载配置到内存
         """
-        super().__init__()
+        super().__init__(_db)
         for item in SystemConfig.list(self._db):
             if ObjectUtils.is_obj(item.value):
                 self.__SYSTEMCONF[item.key] = json.loads(item.value)

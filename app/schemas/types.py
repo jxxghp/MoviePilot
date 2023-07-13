@@ -40,6 +40,8 @@ class SystemConfigKey(Enum):
     IndexerSites = "IndexerSites"
     # 种子优先级规则
     TorrentsPriority = "TorrentsPriority"
+    # 通知消息渠道设置
+    NotificationChannels = "NotificationChannels"
 
 
 # 站点框架
@@ -69,3 +71,17 @@ class ProgressKey(Enum):
 class MediaImageType(Enum):
     Poster = "poster"
     Backdrop = "backdrop"
+
+
+# 消息类型
+class NotificationType(Enum):
+    # 资源下载
+    Download = "资源下载"
+    # 整理入库
+    Organize = "整理入库"
+    # 订阅
+    Subscribe = "订阅"
+    # 站点消息
+    SiteMessage = "站点消息"
+    # 媒体服务器通知
+    MediaServer = "媒体服务器通知"

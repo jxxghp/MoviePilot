@@ -5,9 +5,11 @@ from typing import Any, List, Union
 
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
 from app import schemas
 from app.core.security import verify_token
+from app.db import get_db
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
@@ -38,22 +40,25 @@ def get_progress(process_type: str, token: str):
 
 
 @router.get("/setting/{key}", summary="查询系统设置", response_model=schemas.Response)
-def get_setting(key: str, _: schemas.TokenPayload = Depends(verify_token)):
+def get_setting(key: str,
+                db: Session = Depends(get_db),
+                _: schemas.TokenPayload = Depends(verify_token)):
     """
     查询系统设置
     """
     return schemas.Response(success=True, data={
-        "value": SystemConfigOper().get(key)
+        "value": SystemConfigOper(db).get(key)
     })
 
 
 @router.post("/setting/{key}", summary="更新系统设置", response_model=schemas.Response)
 def set_setting(key: str, value: Union[list, dict, str, int],
+                db: Session = Depends(get_db),
                 _: schemas.TokenPayload = Depends(verify_token)):
     """
     更新系统设置
     """
-    SystemConfigOper().set(key, value)
+    SystemConfigOper(db).set(key, value)
     return schemas.Response(success=True)
 
 

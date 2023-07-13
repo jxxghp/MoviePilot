@@ -1,10 +1,12 @@
 from typing import Any, List
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
 from app import schemas
 from app.core.plugin import PluginManager
 from app.core.security import verify_token
+from app.db import get_db
 from app.db.systemconfig_oper import SystemConfigOper
 from app.schemas.types import SystemConfigKey
 
@@ -20,11 +22,12 @@ def all_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
-def installed_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def installed_plugins(db: Session = Depends(get_db),
+                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询用户已安装插件清单
     """
-    return SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+    return SystemConfigOper(db).get(SystemConfigKey.UserInstalledPlugins) or []
 
 
 @router.get("/{plugin_id}", summary="获取插件配置")
@@ -47,34 +50,37 @@ def set_plugin_config(plugin_id: str, conf: dict,
 
 @router.post("/{plugin_id}/install", summary="安装插件", response_model=schemas.Response)
 def install_plugin(plugin_id: str,
+                   db: Session = Depends(get_db),
                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     安装插件
     """
     # 已安装插件
-    install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+    install_plugins = SystemConfigOper(db).get(SystemConfigKey.UserInstalledPlugins) or []
     # 安装插件
     install_plugins.append(plugin_id)
     # 保存设置
-    SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+    SystemConfigOper(db).set(SystemConfigKey.UserInstalledPlugins, install_plugins)
     # 重载插件管理器
     PluginManager().init_config()
     return schemas.Response(success=True)
 
 
 @router.delete("/{plugin_id}", summary="卸载插件", response_model=schemas.Response)
-def uninstall_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def uninstall_plugin(plugin_id: str,
+                     db: Session = Depends(get_db),
+                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     卸载插件
     """
     # 删除已安装信息
-    install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+    install_plugins = SystemConfigOper(db).get(SystemConfigKey.UserInstalledPlugins) or []
     for plugin in install_plugins:
         if plugin == plugin_id:
             install_plugins.remove(plugin)
             break
     # 保存
-    SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+    SystemConfigOper(db).set(SystemConfigKey.UserInstalledPlugins, install_plugins)
     # 重载插件管理器
     PluginManager().init_config()
     return schemas.Response(success=True)

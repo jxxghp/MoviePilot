@@ -60,8 +60,8 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
                     if isinstance(temp, list):
                         result.extend(temp)
                 else:
-                    # 返回结果非列表也非空，则执行一次后跳出
-                    break
+                    # 返回结果非列表也非空，则继续执行下一模块
+                    continue
             except Exception as err:
                 logger.error(f"运行模块 {method} 出错：{module.__class__.__name__} - {err}\n{traceback.print_exc()}")
         return result
