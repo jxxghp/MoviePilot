@@ -164,7 +164,7 @@ class Tjupt(_ISiteSigninHandler):
                     answer_img_url = db_answer['img']
 
                     # 获取答案hash
-                    answer_img_res = RequestUtils().get_res(url=answer_img_url)
+                    answer_img_res = RequestUtils(referer="https://movie.douban.com").get_res(url=answer_img_url)
                     if not answer_img_res or answer_img_res.status_code != 200:
                         logger.debug(f"签到答案 {answer} {answer_img_url} 请求失败")
                         continue
