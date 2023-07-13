@@ -84,12 +84,14 @@ class SearchChain(ChainBase):
 
     def process(self, mediainfo: MediaInfo,
                 keyword: str = None,
-                no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None) -> List[Context]:
+                no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
+                sites: List[int] = None) -> List[Context]:
         """
         根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
         :param mediainfo: 媒体信息
         :param keyword: 搜索关键词
         :param no_exists: 缺失的媒体信息
+        :param sites: 站点ID列表，为空时搜索所有站点
         """
         logger.info(f'开始搜索资源，关键词：{keyword or mediainfo.title} ...')
         # 补充媒体信息
@@ -109,7 +111,8 @@ class SearchChain(ChainBase):
         # 执行搜索
         torrents: List[TorrentInfo] = self.__search_all_sites(
             mediainfo=mediainfo,
-            keyword=keyword
+            keyword=keyword,
+            sites=sites
         )
         if not torrents:
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
@@ -199,17 +202,22 @@ class SearchChain(ChainBase):
         return contexts
 
     def __search_all_sites(self, mediainfo: Optional[MediaInfo] = None,
-                           keyword: str = None) -> Optional[List[TorrentInfo]]:
+                           keyword: str = None,
+                           sites: List[int] = None) -> Optional[List[TorrentInfo]]:
         """
         多线程搜索多个站点
         :param mediainfo:  识别的媒体信息
         :param keyword:  搜索关键词，如有按关键词搜索，否则按媒体信息名称搜索
+        :param sites:  指定站点ID列表，如有则只搜索指定站点，否则搜索所有站点
         :reutrn: 资源列表
         """
         # 未开启的站点不搜索
         indexer_sites = []
         # 配置的索引站点
-        config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.IndexerSites) or []]
+        if sites:
+            config_indexers = [str(sid) for sid in sites]
+        else:
+            config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.IndexerSites) or []]
         for indexer in self.siteshelper.get_indexers():
             # 检查站点索引开关
             if not config_indexers or str(indexer.get("id")) in config_indexers:

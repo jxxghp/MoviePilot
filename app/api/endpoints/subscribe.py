@@ -1,3 +1,4 @@
+import json
 from typing import List, Any, Optional
 
 from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Header
@@ -39,7 +40,11 @@ def read_subscribes(
     """
     查询所有订阅
     """
-    return Subscribe.list(db)
+    subscribes = Subscribe.list(db)
+    for subscribe in subscribes:
+        if subscribe.sites:
+            subscribe.sites = json.loads(subscribe.sites)
+    return subscribes
 
 
 @router.post("/", summary="新增订阅", response_model=schemas.Response)
@@ -87,6 +92,8 @@ def update_subscribe(
     subscribe = Subscribe.get(db, subscribe_in.id)
     if not subscribe:
         return schemas.Response(success=False, message="订阅不存在")
+    if subscribe_in.sites:
+        subscribe_in.sites = json.dumps(subscribe_in.sites)
     subscribe.update(db, subscribe_in.dict())
     return schemas.Response(success=True)
 
@@ -106,6 +113,8 @@ def subscribe_mediaid(
         result = Subscribe.get_by_doubanid(db, mediaid[7:])
     else:
         result = None
+    if result:
+        result.sites = json.loads(result.sites)
 
     return result if result else Subscribe()
 
@@ -118,7 +127,10 @@ def read_subscribe(
     """
     根据订阅编号查询订阅信息
     """
-    return Subscribe.get(db, subscribe_id)
+    subscribe = Subscribe.get(db, subscribe_id)
+    if subscribe.sites:
+        subscribe.sites = json.loads(subscribe.sites)
+    return subscribe
 
 
 @router.delete("/media/{mediaid}", summary="删除订阅", response_model=schemas.Response)
@@ -153,8 +165,8 @@ def delete_subscribe(
 
 
 @router.post("/seerr", summary="OverSeerr/JellySeerr通知订阅", response_model=schemas.Response)
-def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
-                    authorization: str = Header(None)) -> Any:
+async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
+                          authorization: str = Header(None)) -> Any:
     """
     Jellyseerr/Overseerr订阅
     """
@@ -163,7 +175,7 @@ def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
             status_code=400,
             detail="授权失败",
         )
-    req_json = request.json()
+    req_json = await request.json()
     if not req_json:
         raise HTTPException(
             status_code=500,

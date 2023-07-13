@@ -201,10 +201,16 @@ class SubscribeChain(ChainBase):
                 start_episode=subscribe.start_episode,
 
             )
+            # 站点范围
+            if subscribe.sites:
+                sites = json.loads(subscribe.sites)
+            else:
+                sites = None
             # 搜索
             contexts = self.searchchain.process(mediainfo=mediainfo,
                                                 keyword=subscribe.keyword,
-                                                no_exists=no_exists)
+                                                no_exists=no_exists,
+                                                sites=sites)
             if not contexts:
                 logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
                 # 未搜索到资源，但本地缺失可能有变化，更新订阅剩余集数
@@ -357,6 +363,11 @@ class SubscribeChain(ChainBase):
                     torrent_meta = context.meta_info
                     torrent_mediainfo = context.media_info
                     torrent_info = context.torrent_info
+                    # 不在订阅站点范围的不处理
+                    if subscribe.sites:
+                        sub_sites = json.loads(subscribe.sites)
+                        if sub_sites and torrent_info.site not in sub_sites:
+                            continue
                     # 如果是电视剧过滤掉已经下载的集数
                     if torrent_mediainfo.type == MediaType.TV:
                         if self.__check_subscribe_note(subscribe, torrent_meta.episode_list):

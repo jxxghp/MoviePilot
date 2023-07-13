@@ -2,7 +2,6 @@ from sqlalchemy import Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
 from app.db.models import Base
-from app.schemas import MediaType
 
 
 class Subscribe(Base):
@@ -52,6 +51,8 @@ class Subscribe(Base):
     last_update = Column(String)
     # 订阅用户
     username = Column(String)
+    # 订阅站点
+    sites = Column(String)
 
     @staticmethod
     def exists(db: Session, tmdbid: int, season: int = None):

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel
 
@@ -45,6 +45,8 @@ class Subscribe(BaseModel):
     last_update: Optional[str] = None
     # 订阅用户
     username: Optional[str] = None
+    # 订阅站点
+    sites: Optional[List[int]] = None
 
     class Config:
         orm_mode = True
