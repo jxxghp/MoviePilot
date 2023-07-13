@@ -78,7 +78,7 @@ def read_switchs(db: Session = Depends(get_db),
     return return_list
 
 
-@router.put("/switchs", summary="设置通知消息渠道开关", response_model=schemas.Response)
+@router.post("/switchs", summary="设置通知消息渠道开关", response_model=schemas.Response)
 def set_switchs(switchs: List[NotificationSwitch],
                 db: Session = Depends(get_db),
                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
