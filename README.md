@@ -25,7 +25,7 @@ docker pull easychen/cookiecloud:latest
 3. **安装配套管理软件**
 
 MoviePilot跟NAStool一样，需要配套下载器和媒体服务器使用。
-- 下载器支持：qBittorrent、Transmission，QB版本号要求>= 4.2.9，TR版本号要求>= 3.0，推荐使用QB。
+- 下载器支持：qBittorrent、Transmission，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，推荐使用QB。
 - 媒体服务器支持：Jellyfin、Emby、Plex，推荐使用Emby。
 
 4. **安装MoviePilot**
@@ -85,7 +85,7 @@ docker pull jxxghp/moviepilot:latest
 - **SLACK_CHANNEL：** Slack 频道名称，默认`全体`
 
 
-- **DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.2.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
+- **DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
 
 `qbittorrent`设置项：
 
