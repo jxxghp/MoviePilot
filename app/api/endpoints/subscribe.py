@@ -113,7 +113,7 @@ def subscribe_mediaid(
         result = Subscribe.get_by_doubanid(db, mediaid[7:])
     else:
         result = None
-    if result:
+    if result and result.sites:
         result.sites = json.loads(result.sites)
 
     return result if result else Subscribe()
