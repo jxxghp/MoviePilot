@@ -49,7 +49,7 @@ docker pull jxxghp/moviepilot:latest
 - **PROXY_HOST：** 网络代理（可选），访问themoviedb需要使用代理访问，格式为`ip:port`
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`或其它中转代理服务地址，能连通即可
 - **DOWNLOAD_PATH：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径与宿主机`真实路径`保持一致**，例如群晖中下载路程径为`/volume1/downloads`，则需要将`moviepilot`及`下载器`的映射路径均设置为`/volume1/downloads`，否则会导致下载文件无法转移
-- **LIBRARY_PATH：** 媒体库目录，**注意：需要将`moviepilot`的映射路径与宿主机`真实路径`保持一致**
+- **LIBRARY_PATH：** 媒体库目录，**注意：需要将`moviepilot`的映射路径与宿主机`真实路径`保持一致**，多个目录使用`,`分隔
 - **LIBRARY_CATEGORY：** 二级分类开关，`true`/`false`，开启后会根据配置自动在媒体库目录下建立二级目录分类
 - **DOUBAN_USER_IDS：** 豆瓣用户ID，用于同步豆瓣标记的`想看`数据，自动添加订阅，多个用户使用,分隔
 - **TRANSFER_TYPE：** 转移方式，支持`link`/`copy`/`move`/`softlink`
@@ -196,7 +196,7 @@ docker pull jxxghp/moviepilot:latest
 - 通过CookieCloud同步快速同步站点，不需要使用的站点可在WEB管理界面中禁用。
 - 通过下载器监控实现资源下载后自动整理入库刮削。
 - 通过微信/Telegram/Slack远程搜索下载、订阅和管理设置，其中Telegram将会自动添加操作菜单。微信回调相对路径为`/api/v1/message/`。
-- 通过WEB进行管理，将WEB添加到手机桌面获得类App使用效果，管理界面地址：http://ip:3000。
+- 通过WEB进行管理，将WEB添加到手机桌面获得类App使用效果，管理界面端口：`3000`。
 - 设置媒体服务器Webhook，通过MoviePilot发送播放通知，以及后续播放限速等插件功能。Webhook回调相对路径为`/api/v1/message?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`。
 - 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，可使用Overseerr/Jellyseerr选片。
 
@@ -216,7 +216,7 @@ docker pull jxxghp/moviepilot:latest
 
 - [x] 搜索结果过滤
 - [x] 多通知渠道支持
-- [ ] 多媒体库目录支持
+- [x] 多媒体库目录支持
 - [ ] 插件管理，支持自定义插件功能界面
 - [ ] 更易用的自定义识别词
 - [ ] 手动整理功能增强

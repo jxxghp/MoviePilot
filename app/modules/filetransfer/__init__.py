@@ -36,13 +36,16 @@ class FileTransferModule(_ModuleBase):
         :param mediainfo:  识别的媒体信息
         :return: {path, target_path, message}
         """
-        if not settings.LIBRARY_PATH:
-            logger.error("未设置媒体库目录，无法转移文件")
-            return None
+        # 获取目标路径
+        target_path = self.get_target_path(in_path=path)
+        if not target_path:
+            logger.error("未找到媒体库目录，无法转移文件")
+            return TransferInfo(message="未找到媒体库目录，无法转移文件")
+        # 转移
         result = self.transfer_media(in_path=path,
                                      meidainfo=mediainfo,
                                      rmt_mode=settings.TRANSFER_TYPE,
-                                     target_dir=Path(settings.LIBRARY_PATH))
+                                     target_dir=target_path)
         if not result:
             return TransferInfo()
         if isinstance(result, str):
@@ -514,20 +517,6 @@ class FileTransferModule(_ModuleBase):
             "fileExt": file_ext
         }
 
-    def get_movie_dest_path(self, meta: MetaBase, mediainfo: MediaInfo) -> Tuple[str, str]:
-        """
-        计算电影文件路径
-        :return: 电影目录、电影名称
-        """
-        pass
-
-    def get_tv_dest_path(self, meta: MetaBase, mediainfo: MediaInfo) -> Tuple[str, str, str]:
-        """
-        计算电视剧文件路径
-        :return: 电视剧目录、季目录、集名称
-        """
-        pass
-
     @staticmethod
     def get_rename_path(template_string: str, rename_dict: dict, path: Path = None) -> Path:
         """
@@ -542,3 +531,36 @@ class FileTransferModule(_ModuleBase):
             return path / render_str
         else:
             return Path(render_str)
+
+    @staticmethod
+    def get_target_path(in_path: Path = None) -> Optional[Path]:
+        """
+        计算一个最好的目的目录，有in_path时找与in_path同路径的，没有in_path时，顺序查找1个符合大小要求的，没有in_path和size时，返回第1个
+        :param in_path: 源目录
+        """
+        if not settings.LIBRARY_PATH:
+            return None
+        # 目的路径，多路径以,分隔
+        dest_paths = str(settings.LIBRARY_PATH).split(",")
+        # 只有一个路径，直接返回
+        if len(dest_paths) == 1:
+            return Path(dest_paths[0])
+        # 匹配有最长共同上级路径的目录
+        max_length = 0
+        target_path = None
+        if in_path:
+            for path in dest_paths:
+                relative = Path(path).relative_to(in_path).as_posix()
+                if relative.startswith("..") or len(relative) > max_length:
+                    max_length = len(relative)
+                    target_path = path
+            if target_path:
+                return Path(target_path)
+        # 顺序匹配第1个满足空间存储要求的目录
+        if in_path.exists():
+            file_size = in_path.stat().st_size
+            for path in dest_paths:
+                if SystemUtils.free_space(Path(path)) > file_size:
+                    return Path(path)
+        # 默认返回第1个
+        return Path(dest_paths[0])
