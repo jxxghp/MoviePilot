@@ -191,7 +191,7 @@ class Command(metaclass=Singleton):
                     elif args_num == 2:
                         # 没有输入参数，只输入渠道和用户ID
                         command['func'](channel, userid)
-                    else:
+                    elif args_num > 2:
                         # 多个输入参数：用户输入、用户ID
                         command['func'](data_str, channel, userid)
                 else:
@@ -219,10 +219,12 @@ class Command(metaclass=Singleton):
         """
         # 命令参数
         event_str = event.event_data.get('cmd')
+        # 消息渠道
+        event_channel = event.event_data.get('channel')
         # 消息用户
         event_user = event.event_data.get('user')
         if event_str:
             cmd = event_str.split()[0]
             args = " ".join(event_str.split()[1:])
             if self.get(cmd):
-                self.execute(cmd, args, event_user)
+                self.execute(cmd, args, event_channel, event_user)

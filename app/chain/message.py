@@ -65,7 +65,8 @@ class MessageChain(ChainBase):
                 EventType.CommandExcute,
                 {
                     "cmd": text,
-                    "user": userid
+                    "user": userid,
+                    "channel": channel
                 }
             )
 
@@ -230,7 +231,7 @@ class MessageChain(ChainBase):
             else:
                 # 发送媒体数据
                 self.__post_medias_message(channel=channel,
-                                           title=self._current_media.title,
+                                           title=self._current_meta.name,
                                            items=cache_list[start:end],
                                            userid=userid,
                                            total=len(cache_list))
@@ -263,7 +264,7 @@ class MessageChain(ChainBase):
                 else:
                     # 发送媒体数据
                     self.__post_medias_message(channel=channel,
-                                               title=self._current_media.title,
+                                               title=self._current_meta.name,
                                                items=cache_list, userid=userid, total=total)
 
         else:

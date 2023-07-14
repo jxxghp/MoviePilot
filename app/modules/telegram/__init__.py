@@ -87,7 +87,7 @@ class TelegramModule(_ModuleBase):
                         self.telegram.send_msg(title="你不在用户白名单中，无法使用此机器人", userid=user_id)
                         return CommingMessage(channel=MessageChannel.Wechat,
                                               userid=user_id, username=user_id, text="")
-                return CommingMessage(channel=MessageChannel.Wechat,
+                return CommingMessage(channel=MessageChannel.Telegram,
                                       userid=user_id, username=user_id, text=text)
         return None
 
