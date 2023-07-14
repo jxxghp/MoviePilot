@@ -74,7 +74,9 @@ def read_switchs(db: Session = Depends(get_db),
     if not switchs:
         for noti in NotificationType:
             return_list.append(NotificationSwitch(mtype=noti.value, wechat=True, telegram=True, slack=True))
-
+    else:
+        for switch in switchs:
+            return_list.append(NotificationSwitch(**switch))
     return return_list
 
 
