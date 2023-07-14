@@ -15,7 +15,7 @@ from app.core.event import Event as ManagerEvent
 from app.log import logger
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
-from app.schemas.types import EventType
+from app.schemas.types import EventType, MessageChannel
 
 
 class CommandChian(ChainBase):
@@ -173,7 +173,8 @@ class Command(metaclass=Singleton):
         """
         return self._commands.get(cmd, {})
 
-    def execute(self, cmd: str, data_str: str = "", userid: Union[str, int] = None) -> None:
+    def execute(self, cmd: str, data_str: str = "",
+                channel: MessageChannel = None, userid: Union[str, int] = None) -> None:
         """
         执行命令
         """
@@ -187,12 +188,12 @@ class Command(metaclass=Singleton):
                     if cmd_data:
                         # 有内置参数直接使用内置参数
                         command['func'](**cmd_data)
-                    elif args_num == 1:
-                        # 没有用户输入参数
-                        command['func'](userid)
+                    elif args_num == 2:
+                        # 没有输入参数，只输入渠道和用户ID
+                        command['func'](channel, userid)
                     else:
                         # 多个输入参数：用户输入、用户ID
-                        command['func'](data_str, userid)
+                        command['func'](data_str, channel, userid)
                 else:
                     # 没有参数
                     command['func']()

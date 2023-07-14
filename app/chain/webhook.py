@@ -2,8 +2,9 @@ import time
 from typing import Any
 
 from app.chain import ChainBase
+from app.schemas import Notification
 from app.utils.http import WebUtils
-from app.schemas.types import EventType, MediaImageType, MediaType
+from app.schemas.types import EventType, MediaImageType, MediaType, NotificationType
 
 
 class WebhookChain(ChainBase):
@@ -92,4 +93,5 @@ class WebhookChain(ChainBase):
             image_url = _webhook_images.get(event_info.get("channel"))
 
         # 发送消息
-        self.post_message(title=message_title, text=message_content, image=image_url)
+        self.post_message(Notification(mtype=NotificationType.MediaServer,
+                                       title=message_title, text=message_content, image=image_url))

@@ -8,8 +8,8 @@ from app.core.meta import MetaBase
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent
-from app.schemas.types import MediaType, TorrentStatus, EventType
+from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification
+from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType
 from app.utils.string import StringUtils
 
 
@@ -23,7 +23,9 @@ class DownloadChain(ChainBase):
         self.torrent = TorrentHelper()
         self.downloadhis = DownloadHistoryOper()
 
-    def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo, userid: str = None):
+    def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo,
+                              channel: MessageChannel = None,
+                              userid: str = None):
         """
         发送添加下载的消息
         """
@@ -51,13 +53,17 @@ class DownloadChain(ChainBase):
             torrent.description = re.sub(r'<[^>]+>', '', description)
             msg_text = f"{msg_text}\n描述：{torrent.description}"
 
-        self.post_message(title=f"{mediainfo.title_year}"
-                                f"{meta.season_episode} 开始下载",
-                          text=msg_text,
-                          image=mediainfo.get_message_image(),
-                          userid=userid)
+        self.post_message(Notification(
+            channel=channel,
+            mtype=NotificationType.Download,
+            title=f"{mediainfo.title_year}"
+                  f"{meta.season_episode} 开始下载",
+            text=msg_text,
+            image=mediainfo.get_message_image(),
+            userid=userid))
 
     def download_torrent(self, torrent: TorrentInfo,
+                         channel: MessageChannel = None,
                          userid: Union[str, int] = None) -> Tuple[Optional[Path], str, list]:
         """
         下载种子文件
@@ -70,14 +76,19 @@ class DownloadChain(ChainBase):
             proxy=torrent.site_proxy)
         if not torrent_file:
             logger.error(f"下载种子文件失败：{torrent.title} - {torrent.enclosure}")
-            self.post_message(title=f"{torrent.title} 种子下载失败！",
-                              text=f"错误信息：{error_msg}\n种子链接：{torrent.enclosure}",
-                              userid=userid)
+            self.post_message(Notification(
+                channel=channel,
+                mtype=NotificationType.Download,
+                title=f"{torrent.title} 种子下载失败！",
+                text=f"错误信息：{error_msg}\n种子链接：{torrent.enclosure}",
+                userid=userid))
             return None, "", []
         return torrent_file, download_folder, files
 
     def download_single(self, context: Context, torrent_file: Path = None,
-                        episodes: Set[int] = None, userid: Union[str, int] = None) -> Optional[str]:
+                        episodes: Set[int] = None,
+                        channel: MessageChannel = None,
+                        userid: Union[str, int] = None) -> Optional[str]:
         """
         下载及发送通知
         """
@@ -119,7 +130,8 @@ class DownloadChain(ChainBase):
                 torrent_site=_torrent.site_name
             )
             # 发送消息
-            self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, userid=userid)
+            self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent,
+                                       channel=channel, userid=userid)
             # 下载成功后处理
             self.download_added(context=context, torrent_path=torrent_file)
             # 广播事件
@@ -132,7 +144,9 @@ class DownloadChain(ChainBase):
             # 下载失败
             logger.error(f"{_media.title_year} 添加下载任务失败："
                          f"{_torrent.title} - {_torrent.enclosure}，{error_msg}")
-            self.post_message(
+            self.post_message(Notification(
+                channel=channel,
+                mtype=NotificationType.Download,
                 title="添加下载任务失败：%s %s"
                       % (_media.title_year, _meta.season_episode),
                 text=f"站点：{_torrent.site_name}\n"
@@ -140,7 +154,7 @@ class DownloadChain(ChainBase):
                      f"种子链接：{_torrent.enclosure}\n"
                      f"错误信息：{error_msg}",
                 image=_media.get_message_image(),
-                userid=userid)
+                userid=userid))
         return _hash
 
     def batch_download(self,
@@ -324,12 +338,12 @@ class DownloadChain(ChainBase):
                             if len(torrent_season) != 1 or torrent_season[0] != need_season:
                                 continue
                             # 种子集列表
-                            torrent_episodes = meta.episode_list
+                            torrent_episodes = set(meta.episode_list)
                             # 整季的不处理
                             if not torrent_episodes:
                                 continue
                             # 为需要集的子集则下载
-                            if set(torrent_episodes).issubset(set(need_episodes)):
+                            if torrent_episodes.issubset(set(need_episodes)):
                                 # 下载
                                 download_id = self.download_single(context, userid=userid)
                                 if download_id:
@@ -517,13 +531,16 @@ class DownloadChain(ChainBase):
             # 全部存在
             return True, no_exists
 
-    def remote_downloading(self, userid: Union[str, int] = None):
+    def remote_downloading(self, channel: MessageChannel, userid: Union[str, int] = None):
         """
         查询正在下载的任务，并发送消息
         """
         torrents = self.list_torrents(status=TorrentStatus.DOWNLOADING)
         if not torrents:
-            self.post_message(title="没有正在下载的任务！")
+            self.post_message(Notification(
+                channel=channel,
+                mtype=NotificationType.Download,
+                title="没有正在下载的任务！"))
             return
         # 发送消息
         title = f"共 {len(torrents)} 个任务正在下载："
@@ -534,7 +551,9 @@ class DownloadChain(ChainBase):
                             f"{StringUtils.str_filesize(torrent.size)} "
                             f"{round(torrent.progress * 100, 1)}%")
             index += 1
-        self.post_message(title=title, text="\n".join(messages), userid=userid)
+        self.post_message(Notification(
+            channel=channel, mtype=NotificationType.Download,
+            title=title, text="\n".join(messages), userid=userid))
 
     def downloading(self) -> List[DownloadingTorrent]:
         """

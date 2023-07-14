@@ -9,6 +9,7 @@ from app.helper.cloudflare import under_challenge
 from app.helper.cookie import CookieHelper
 from app.helper.message import MessageHelper
 from app.log import logger
+from app.schemas import MessageChannel, Notification
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
 from app.utils.string import StringUtils
@@ -80,13 +81,15 @@ class SiteChain(ChainBase):
             return False, f"{str(e)}！"
         return True, "连接成功"
 
-    def remote_list(self, userid: Union[str, int] = None):
+    def remote_list(self, channel: MessageChannel, userid: Union[str, int] = None):
         """
         查询所有站点，发送消息
         """
         site_list = self.siteoper.list()
         if not site_list:
-            self.post_message(title="没有维护任何站点信息！")
+            self.post_message(Notification(
+                channel=channel,
+                title="没有维护任何站点信息！"))
         title = f"共有 {len(site_list)} 个站点，回复对应指令操作：" \
                 f"\n- 禁用站点：/site_disable [id]" \
                 f"\n- 启用站点：/site_enable [id]" \
@@ -102,9 +105,11 @@ class SiteChain(ChainBase):
             else:
                 messages.append(f"{site.id}. {site.name}")
         # 发送列表
-        self.post_message(title=title, text="\n".join(messages), userid=userid)
+        self.post_message(Notification(
+            channel=channel,
+            title=title, text="\n".join(messages), userid=userid))
 
-    def remote_disable(self, arg_str, userid: Union[str, int] = None):
+    def remote_disable(self, arg_str, channel: MessageChannel, userid: Union[str, int] = None):
         """
         禁用站点
         """
@@ -116,16 +121,18 @@ class SiteChain(ChainBase):
         site_id = int(arg_str)
         site = self.siteoper.get(site_id)
         if not site:
-            self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
+            self.post_message(Notification(
+                channel=channel,
+                title=f"站点编号 {site_id} 不存在！", userid=userid))
             return
         # 禁用站点
         self.siteoper.update(site_id, {
             "is_active": False
         })
         # 重新发送消息
-        self.remote_list()
+        self.remote_list(channel, userid)
 
-    def remote_enable(self, arg_str, userid: Union[str, int] = None):
+    def remote_enable(self, arg_str, channel: MessageChannel, userid: Union[str, int] = None):
         """
         启用站点
         """
@@ -139,14 +146,16 @@ class SiteChain(ChainBase):
             site_id = int(arg_str)
             site = self.siteoper.get(site_id)
             if not site:
-                self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
+                self.post_message(Notification(
+                    channel=channel,
+                    title=f"站点编号 {site_id} 不存在！", userid=userid))
                 return
             # 禁用站点
             self.siteoper.update(site_id, {
                 "is_active": True
             })
         # 重新发送消息
-        self.remote_list()
+        self.remote_list(channel, userid)
 
     def update_cookie(self, site_info: Site,
                       username: str, password: str) -> Tuple[bool, str]:
@@ -175,32 +184,42 @@ class SiteChain(ChainBase):
             return True, msg
         return False, "未知错误"
 
-    def remote_cookie(self, arg_str: str, userid: Union[str, int] = None):
+    def remote_cookie(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
         """
         使用用户名密码更新站点Cookie
         """
         err_title = "请输入正确的命令格式：/site_cookie [id] [username] [password]，" \
                     "[id]为站点编号，[uername]为站点用户名，[password]为站点密码"
         if not arg_str:
-            self.post_message(title=err_title, userid=userid)
+            self.post_message(Notification(
+                channel=channel,
+                title=err_title, userid=userid))
             return
         arg_str = str(arg_str).strip()
         args = arg_str.split()
         if len(args) != 3:
-            self.post_message(title=err_title, userid=userid)
+            self.post_message(Notification(
+                channel=channel,
+                title=err_title, userid=userid))
             return
         site_id = args[0]
         if not site_id.isdigit():
-            self.post_message(title=err_title, userid=userid)
+            self.post_message(Notification(
+                channel=channel,
+                title=err_title, userid=userid))
             return
         # 站点ID
         site_id = int(site_id)
         # 站点信息
         site_info = self.siteoper.get(site_id)
         if not site_info:
-            self.post_message(title=f"站点编号 {site_id} 不存在！", userid=userid)
+            self.post_message(Notification(
+                channel=channel,
+                title=f"站点编号 {site_id} 不存在！", userid=userid))
             return
-        self.post_message(title=f"开始更新【{site_info.name}】Cookie&UA ...", userid=userid)
+        self.post_message(Notification(
+                channel=channel,
+                title=f"开始更新【{site_info.name}】Cookie&UA ...", userid=userid))
         # 用户名
         username = args[1]
         # 密码
@@ -211,9 +230,13 @@ class SiteChain(ChainBase):
                                          password=password)
         if not status:
             logger.error(msg)
-            self.post_message(title=f"【{site_info.name}】 Cookie&UA更新失败！",
-                              text=f"错误原因：{msg}",
-                              userid=userid)
+            self.post_message(Notification(
+                channel=channel,
+                title=f"【{site_info.name}】 Cookie&UA更新失败！",
+                text=f"错误原因：{msg}",
+                userid=userid))
         else:
-            self.post_message(title=f"【{site_info.name}】 Cookie&UA更新成功",
-                              userid=userid)
+            self.post_message(Notification(
+                channel=channel,
+                title=f"【{site_info.name}】 Cookie&UA更新成功",
+                userid=userid))

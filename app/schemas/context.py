@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
 
 from pydantic import BaseModel
 
@@ -321,14 +321,12 @@ class Notification(BaseModel):
     title: Optional[str] = None
     # 文本内容
     text: Optional[str] = None
-    # 列表内容
-    items: Optional[list] = []
     # 图片
     image: Optional[str] = None
     # 链接
     link: Optional[str] = None
     # 用户ID
-    user_id: Optional[str] = None
+    userid: Optional[Union[str, int]] = None
 
 
 class CommingMessage(BaseModel):
@@ -336,7 +334,7 @@ class CommingMessage(BaseModel):
     外来消息
     """
     # 用户ID
-    userid: Optional[str] = None
+    userid: Optional[Union[str, int]] = None
     # 用户名称
     username: Optional[str] = None
     # 消息渠道

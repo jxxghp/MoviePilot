@@ -133,7 +133,6 @@ class Telegram(metaclass=Singleton):
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
-                          mediainfo: MediaInfo = None,
                           userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表消息
@@ -141,8 +140,12 @@ class Telegram(metaclass=Singleton):
         if not self._telegram_token or not self._telegram_chat_id:
             return None
 
+        if not torrents:
+            return False
+
         try:
             index, caption = 1, "*%s*" % title
+            mediainfo = torrents[0].media_info
             for context in torrents:
                 torrent = context.torrent_info
                 site_name = torrent.site_name

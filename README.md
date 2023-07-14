@@ -222,5 +222,5 @@ docker pull jxxghp/moviepilot:latest
 - [x] 搜索结果过滤
 - [ ] 媒体详情页面
 - [ ] 洗版支持
-- [ ] 多通知渠道支持
+- [x] 多通知渠道支持
 

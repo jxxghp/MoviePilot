@@ -12,7 +12,7 @@ from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.helper.rss import RssHelper
 from app.log import logger
-from app.schemas import MediaType
+from app.schemas import MediaType, Notification, MessageChannel, NotificationType
 
 
 class DoubanChain(ChainBase):
@@ -91,13 +91,15 @@ class DoubanChain(ChainBase):
         return self.run_module("douban_discover", mtype=mtype, sort=sort, tags=tags,
                                page=page, count=count)
 
-    def remote_sync(self, userid: Union[int, str]):
+    def remote_sync(self, channel: MessageChannel, userid: Union[int, str]):
         """
         同步豆瓣想看数据，发送消息
         """
-        self.post_message(title="开始同步豆瓣想看 ...", userid=userid)
+        self.post_message(Notification(channel=channel, mtype=NotificationType.Subscribe,
+                                       title="开始同步豆瓣想看 ...", userid=userid))
         self.sync()
-        self.post_message(title="同步豆瓣想看数据完成！", userid=userid)
+        self.post_message(Notification(channel=channel, mtype=NotificationType.Subscribe,
+                                       title="同步豆瓣想看数据完成！", userid=userid))
 
     def sync(self):
         """

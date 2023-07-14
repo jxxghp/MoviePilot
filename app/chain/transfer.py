@@ -13,8 +13,8 @@ from app.db.models.downloadhistory import DownloadHistory
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.progress import ProgressHelper
 from app.log import logger
-from app.schemas import TransferInfo, TransferTorrent
-from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey
+from app.schemas import TransferInfo, TransferTorrent, Notification
+from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, MessageChannel, NotificationType
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
@@ -30,10 +30,11 @@ class TransferChain(ChainBase):
         self.transferhis = TransferHistoryOper()
         self.progress = ProgressHelper()
 
-    def process(self, arg_str: str = None, userid: Union[str, int] = None) -> bool:
+    def process(self, arg_str: str = None, channel: MessageChannel = None, userid: Union[str, int] = None) -> bool:
         """
         获取下载器中的种子列表，并执行转移
         :param arg_str: 传入的参数 (种子hash和TMDB ID)
+        :param channel: 消息通道
         :param userid: 用户ID
         """
 
@@ -110,9 +111,12 @@ class TransferChain(ChainBase):
                     mediainfo: MediaInfo = self.recognize_media(meta=meta)
                 if not mediainfo:
                     logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
-                    self.post_message(title=f"{torrent.title} 未识别到媒体信息，无法入库！\n"
-                                            f"回复：```\n/transfer {torrent.hash} [tmdbid]\n``` 手动识别转移。",
-                                      userid=userid)
+                    self.post_message(Notification(
+                        channel=channel,
+                        mtype=NotificationType.Organize,
+                        title=f"{torrent.title} 未识别到媒体信息，无法入库！\n"
+                              f"回复：```\n/transfer {torrent.hash} [tmdbid]\n``` 手动识别转移。",
+                        userid=userid))
                     # 新增转移失败历史记录
                     self.transferhis.add(
                         src=str(torrent.path),
@@ -134,12 +138,13 @@ class TransferChain(ChainBase):
             if not transferinfo or not transferinfo.target_path:
                 # 转移失败
                 logger.warn(f"{torrent.title} 入库失败")
-                self.post_message(
+                self.post_message(Notification(
+                    channel=channel,
                     title=f"{mediainfo.title_year}{meta.season_episode} 入库失败！",
                     text=f"原因：{transferinfo.message if transferinfo else '未知'}",
                     image=mediainfo.get_message_image(),
                     userid=userid
-                )
+                ))
                 # 新增转移失败历史记录
                 self.transferhis.add(
                     src=str(torrent.path),
@@ -223,7 +228,9 @@ class TransferChain(ChainBase):
         if transferinfo.message:
             msg_str = f"{msg_str}，以下文件处理失败：\n{transferinfo.message}"
         # 发送
-        self.post_message(title=msg_title, text=msg_str, image=mediainfo.get_message_image())
+        self.post_message(Notification(
+                    mtype=NotificationType.Organize,
+                    title=msg_title, text=msg_str, image=mediainfo.get_message_image()))
 
     @staticmethod
     def delete_files(path: Path):

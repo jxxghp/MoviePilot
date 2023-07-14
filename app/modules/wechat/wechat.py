@@ -191,7 +191,7 @@ class WeChat(metaclass=Singleton):
         }
         return self.__post_request(message_url, req_json)
 
-    def send_torrents_msg(self, torrents: List[Context], mediainfo: MediaInfo,
+    def send_torrents_msg(self, torrents: List[Context],
                           userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表消息
@@ -213,6 +213,7 @@ class WeChat(metaclass=Singleton):
         for context in torrents:
             torrent = context.torrent_info
             meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+            mediainfo = context.media_info
             torrent_title = f"{index}.【{torrent.site_name}】" \
                             f"{meta.season_episode} " \
                             f"{meta.resource_term} " \

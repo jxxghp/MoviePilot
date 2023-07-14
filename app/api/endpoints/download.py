@@ -55,7 +55,7 @@ def add_downloading(
 
 @router.post("/notexists", summary="查询缺失媒体信息", response_model=List[NotExistMediaInfo])
 def exists(media_in: schemas.MediaInfo,
-                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询缺失媒体信息
     """

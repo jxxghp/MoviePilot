@@ -7,7 +7,8 @@ from app.chain.subscribe import SubscribeChain
 from app.core.context import MediaInfo
 from app.core.event import EventManager
 from app.log import logger
-from app.schemas.types import EventType
+from app.schemas import Notification
+from app.schemas.types import EventType, MessageChannel
 
 
 class MessageChain(ChainBase):
@@ -76,7 +77,7 @@ class MessageChain(ChainBase):
                     or not cache_data.get('items') \
                     or len(cache_data.get('items')) < int(text):
                 # 发送消息
-                self.post_message(title="输入有误！", userid=userid)
+                self.post_message(Notification(channel=channel, title="输入有误！", userid=userid))
                 return
             # 缓存类型
             cache_type: str = cache_data.get('type')
@@ -90,9 +91,11 @@ class MessageChain(ChainBase):
                 exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=self._current_meta,
                                                                               mediainfo=self._current_media)
                 if exist_flag:
-                    self.post_message(title=f"{self._current_media.title_year}"
-                                            f"{self._current_meta.sea} 媒体库中已存在",
-                                      userid=userid)
+                    self.post_message(
+                        Notification(channel=channel,
+                                     title=f"{self._current_media.title_year}"
+                                           f"{self._current_meta.sea} 媒体库中已存在",
+                                     userid=userid))
                     return
                 # 发送缺失的媒体信息
                 if no_exists:
@@ -100,19 +103,23 @@ class MessageChain(ChainBase):
                     messages = [
                         f"第 {sea} 季缺失 {StringUtils.str_series(no_exist.episodes) if no_exist.episodes else no_exist.total_episodes} 集"
                         for sea, no_exist in no_exists.get(mediainfo.tmdb_id).items()]
-                    self.post_message(title=f"{mediainfo.title_year}：\n" + "\n".join(messages))
+                    self.post_message(Notification(channel=channel,
+                                                   title=f"{mediainfo.title_year}：\n" + "\n".join(messages)))
                 # 搜索种子，过滤掉不需要的剧集，以便选择
                 logger.info(f"{mediainfo.title_year} 媒体库中不存在，开始搜索 ...")
                 self.post_message(
-                    title=f"开始搜索 {mediainfo.type.value} {mediainfo.title_year} ...", userid=userid)
+                    Notification(channel=channel,
+                                 title=f"开始搜索 {mediainfo.type.value} {mediainfo.title_year} ...",
+                                 userid=userid))
                 # 开始搜索
                 contexts = self.searchchain.process(mediainfo=mediainfo,
                                                     no_exists=no_exists)
                 if not contexts:
                     # 没有数据
-                    self.post_message(title=f"{mediainfo.title}"
-                                            f"{self._current_meta.sea} 未搜索到需要的资源！",
-                                      userid=userid)
+                    self.post_message(Notification(
+                        channel=channel, title=f"{mediainfo.title}"
+                                               f"{self._current_meta.sea} 未搜索到需要的资源！",
+                        userid=userid))
                     return
                 # 搜索结果排序
                 contexts = self.torrenthelper.sort_torrents(contexts)
@@ -124,9 +131,9 @@ class MessageChain(ChainBase):
                 self._current_page = 0
                 # 发送种子数据
                 logger.info(f"搜索到 {len(contexts)} 条数据，开始发送选择消息 ...")
-                self.__post_torrents_message(title=mediainfo.title,
+                self.__post_torrents_message(channel=channel,
+                                             title=mediainfo.title,
                                              items=contexts[:self._page_size],
-                                             mediainfo=mediainfo,
                                              userid=userid,
                                              total=len(contexts))
 
@@ -137,15 +144,18 @@ class MessageChain(ChainBase):
                 exist_flag, _ = self.downloadchain.get_no_exists_info(meta=self._current_meta,
                                                                       mediainfo=mediainfo)
                 if exist_flag:
-                    self.post_message(title=f"{mediainfo.title_year}"
-                                            f"{self._current_meta.sea} 媒体库中已存在",
-                                      userid=userid)
+                    self.post_message(Notification(
+                        channel=channel,
+                        title=f"{mediainfo.title_year}"
+                              f"{self._current_meta.sea} 媒体库中已存在",
+                        userid=userid))
                     return
                 self.subscribechain.add(title=mediainfo.title,
                                         year=mediainfo.year,
                                         mtype=mediainfo.type,
                                         tmdbid=mediainfo.tmdb_id,
                                         season=self._current_meta.begin_season,
+                                        channel=channel,
                                         userid=userid,
                                         username=username)
             elif cache_type == "Torrent":
@@ -155,9 +165,11 @@ class MessageChain(ChainBase):
                     exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=self._current_meta,
                                                                                   mediainfo=self._current_media)
                     if exist_flag:
-                        self.post_message(title=f"{self._current_media.title_year}"
-                                                f"{self._current_meta.sea} 媒体库中已存在",
-                                          userid=userid)
+                        self.post_message(Notification(
+                            channel=channel,
+                            title=f"{self._current_media.title_year}"
+                                  f"{self._current_meta.sea} 媒体库中已存在",
+                            userid=userid))
                         return
                     # 批量下载
                     downloads, lefts = self.downloadchain.batch_download(contexts=cache_list,
@@ -175,6 +187,7 @@ class MessageChain(ChainBase):
                                                 mtype=self._current_media.type,
                                                 tmdbid=self._current_media.tmdb_id,
                                                 season=self._current_meta.begin_season,
+                                                channel=channel,
                                                 userid=userid,
                                                 username=username)
                 else:
@@ -188,12 +201,14 @@ class MessageChain(ChainBase):
             cache_data: dict = self._user_cache.get(userid)
             if not cache_data:
                 # 没有缓存
-                self.post_message(title="输入有误！", userid=userid)
+                self.post_message(Notification(
+                        channel=channel, title="输入有误！", userid=userid))
                 return
 
             if self._current_page == 0:
                 # 第一页
-                self.post_message(title="已经是第一页了！", userid=userid)
+                self.post_message(Notification(
+                        channel=channel, title="已经是第一页了！", userid=userid))
                 return
             cache_type: str = cache_data.get('type')
             cache_list: list = cache_data.get('items')
@@ -207,14 +222,15 @@ class MessageChain(ChainBase):
                 end = start + self._page_size
             if cache_type == "Torrent":
                 # 发送种子数据
-                self.__post_torrents_message(title=self._current_media.title,
+                self.__post_torrents_message(channel=channel,
+                                             title=self._current_media.title,
                                              items=cache_list[start:end],
-                                             mediainfo=self._current_media,
                                              userid=userid,
                                              total=len(cache_list))
             else:
                 # 发送媒体数据
-                self.__post_medias_message(title=self._current_media.title,
+                self.__post_medias_message(channel=channel,
+                                           title=self._current_media.title,
                                            items=cache_list[start:end],
                                            userid=userid,
                                            total=len(cache_list))
@@ -224,7 +240,8 @@ class MessageChain(ChainBase):
             cache_data: dict = self._user_cache.get(userid)
             if not cache_data:
                 # 没有缓存
-                self.post_message(title="输入有误！", userid=userid)
+                self.post_message(Notification(
+                        channel=channel, title="输入有误！", userid=userid))
                 return
             cache_type: str = cache_data.get('type')
             cache_list: list = cache_data.get('items')
@@ -234,17 +251,19 @@ class MessageChain(ChainBase):
             cache_list = cache_list[self._current_page * self._page_size:(self._current_page + 1) * self._page_size]
             if not cache_list:
                 # 没有数据
-                self.post_message(title="已经是最后一页了！", userid=userid)
+                self.post_message(Notification(
+                        channel=channel, title="已经是最后一页了！", userid=userid))
                 return
             else:
                 if cache_type == "Torrent":
                     # 发送种子数据
-                    self.__post_torrents_message(title=self._current_media.title,
-                                                 mediainfo=self._current_media,
+                    self.__post_torrents_message(channel=channel,
+                                                 title=self._current_media.title,
                                                  items=cache_list, userid=userid, total=total)
                 else:
                     # 发送媒体数据
-                    self.__post_medias_message(title=self._current_media.title,
+                    self.__post_medias_message(channel=channel,
+                                               title=self._current_media.title,
                                                items=cache_list, userid=userid, total=total)
 
         else:
@@ -261,11 +280,13 @@ class MessageChain(ChainBase):
             meta, medias = self.medtachain.search(content)
             # 识别
             if not meta.name:
-                self.post_message(title="无法识别输入内容！", userid=userid)
+                self.post_message(Notification(
+                        channel=channel, title="无法识别输入内容！", userid=userid))
                 return
             # 开始搜索
             if not medias:
-                self.post_message(title=f"{meta.name} 没有找到对应的媒体信息！", userid=userid)
+                self.post_message(Notification(
+                        channel=channel, title=f"{meta.name} 没有找到对应的媒体信息！", userid=userid))
                 return
             logger.info(f"搜索到 {len(medias)} 条相关媒体信息")
             # 记录当前状态
@@ -277,28 +298,30 @@ class MessageChain(ChainBase):
             self._current_page = 0
             self._current_media = None
             # 发送媒体列表
-            self.__post_medias_message(title=meta.name,
+            self.__post_medias_message(channel=channel,
+                                       title=meta.name,
                                        items=medias[:self._page_size],
                                        userid=userid, total=len(medias))
 
-    def __post_medias_message(self, title: str, items: list, userid: str, total: int):
+    def __post_medias_message(self, channel: MessageChannel,
+                              title: str, items: list, userid: str, total: int):
         """
         发送媒体列表消息
         """
-        self.post_medias_message(
+        self.post_medias_message(Notification(
+            channel=channel,
             title=f"【{title}】共找到{total}条相关信息，请回复对应数字选择（p: 上一页 n: 下一页）",
-            items=items,
             userid=userid
-        )
+        ), medias=items)
 
-    def __post_torrents_message(self, title: str, items: list,
-                                mediainfo: MediaInfo, userid: str, total: int):
+    def __post_torrents_message(self, channel: MessageChannel, title: str, items: list,
+                                userid: str, total: int):
         """
         发送种子列表消息
         """
-        self.post_torrents_message(
+        self.post_torrents_message(Notification(
+            channel=channel,
             title=f"【{title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择 p: 上一页 n: 下一页）",
             items=items,
-            mediainfo=mediainfo,
             userid=userid
-        )
+        ), torrents=items)

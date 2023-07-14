@@ -10,8 +10,8 @@ from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.core.module import ModuleManager
 from app.log import logger
-from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage
-from app.schemas.types import TorrentStatus, MediaType, MediaImageType, MessageChannel
+from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification
+from app.schemas.types import TorrentStatus, MediaType, MediaImageType
 from app.utils.object import ObjectUtils
 from app.utils.singleton import AbstractSingleton, Singleton
 
@@ -287,42 +287,31 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         """
         return self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
 
-    def post_message(self, title: str, text: str = None,
-                     image: str = None, userid: Union[str, int] = None) -> Optional[bool]:
+    def post_message(self, message: Notification) -> Optional[bool]:
         """
         发送消息
-        :param title:  标题
-        :param text: 内容
-        :param image: 图片
-        :param userid:  用户ID
+        :param message:  消息体
         :return: 成功或失败
         """
-        return self.run_module("post_message", title=title, text=text, image=image, userid=userid)
+        return self.run_module("post_message", message=message)
 
-    def post_medias_message(self, title: str, items: List[MediaInfo],
-                            userid: Union[str, int] = None) -> Optional[bool]:
+    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
         """
         发送媒体信息选择列表
-        :param title:  标题
-        :param items:  消息列表
-        :param userid:  用户ID
+        :param message:  消息体
+        :param medias:  媒体列表
         :return: 成功或失败
         """
-        return self.run_module("post_medias_message", title=title, items=items, userid=userid)
+        return self.run_module("post_medias_message", message=message, medias=medias)
 
-    def post_torrents_message(self, title: str, items: List[Context],
-                              mediainfo: MediaInfo,
-                              userid: Union[str, int] = None) -> Optional[bool]:
+    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
         """
         发送种子信息选择列表
-        :param title: 标题
-        :param items:  消息列表
-        :param mediainfo:  媒体信息
-        :param userid:  用户ID
+        :param message:  消息体
+        :param torrents:  种子列表
         :return: 成功或失败
         """
-        return self.run_module("post_torrents_message", title=title, mediainfo=mediainfo,
-                               items=items, userid=userid)
+        return self.run_module("post_torrents_message", message=message, torrents=torrents)
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
         """

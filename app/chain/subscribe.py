@@ -6,18 +6,17 @@ from typing import Dict, List, Optional, Union, Tuple
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.search import SearchChain
-from app.core.metainfo import MetaInfo
 from app.core.context import TorrentInfo, Context, MediaInfo
-from app.core.config import settings
+from app.core.metainfo import MetaInfo
 from app.db.models.subscribe import Subscribe
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
-from app.schemas import NotExistMediaInfo
+from app.schemas import NotExistMediaInfo, Notification
+from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType
 from app.utils.string import StringUtils
-from app.schemas.types import MediaType, SystemConfigKey
 
 
 class SubscribeChain(ChainBase):
@@ -42,6 +41,7 @@ class SubscribeChain(ChainBase):
             tmdbid: int = None,
             doubanid: str = None,
             season: int = None,
+            channel: MessageChannel = None,
             userid: str = None,
             username: str = None,
             message: bool = True,
@@ -106,11 +106,13 @@ class SubscribeChain(ChainBase):
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
                 # 发回原用户
-                self.post_message(title=f"{mediainfo.title_year}{metainfo.season} "
-                                        f"添加订阅失败！",
-                                  text=f"{err_msg}",
-                                  image=mediainfo.get_message_image(),
-                                  userid=userid)
+                self.post_message(Notification(channel=channel,
+                                               mtype=NotificationType.Subscribe,
+                                               title=f"{mediainfo.title_year}{metainfo.season} "
+                                                     f"添加订阅失败！",
+                                               text=f"{err_msg}",
+                                               image=mediainfo.get_message_image(),
+                                               userid=userid))
         elif message:
             logger.info(f'{mediainfo.title_year}{metainfo.season} 添加订阅成功')
             if username or userid:
@@ -118,42 +120,52 @@ class SubscribeChain(ChainBase):
             else:
                 text = f"评分：{mediainfo.vote_average}"
             # 广而告之
-            self.post_message(title=f"{mediainfo.title_year}{metainfo.season} 已添加订阅",
-                              text=text,
-                              image=mediainfo.get_message_image())
+            self.post_message(Notification(channel=channel,
+                                           mtype=NotificationType.Subscribe,
+                                           title=f"{mediainfo.title_year}{metainfo.season} 已添加订阅",
+                                           text=text,
+                                           image=mediainfo.get_message_image()))
         # 返回结果
         return sid, ""
 
-    def remote_refresh(self, userid: Union[str, int] = None):
+    def remote_refresh(self, channel: MessageChannel, userid: Union[str, int] = None):
         """
         远程刷新订阅，发送消息
         """
-        self.post_message(title=f"开始刷新订阅 ...", userid=userid)
+        self.post_message(Notification(channel=channel,
+                                       title=f"开始刷新订阅 ...", userid=userid))
         self.refresh()
-        self.post_message(title=f"订阅刷新完成！", userid=userid)
+        self.post_message(Notification(channel=channel,
+                                       title=f"订阅刷新完成！", userid=userid))
 
-    def remote_search(self, arg_str: str, userid: Union[str, int] = None):
+    def remote_search(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
         """
         远程搜索订阅，发送消息
         """
         if arg_str and not str(arg_str).isdigit():
-            self.post_message(title="请输入正确的命令格式：/subscribe_search [id]，"
-                                    "[id]为订阅编号，不输入订阅编号时搜索所有订阅", userid=userid)
+            self.post_message(Notification(channel=channel,
+                                           title="请输入正确的命令格式：/subscribe_search [id]，"
+                                                 "[id]为订阅编号，不输入订阅编号时搜索所有订阅", userid=userid))
             return
         if arg_str:
             sid = int(arg_str)
             subscribe = self.subscribehelper.get(sid)
             if not subscribe:
-                self.post_message(title=f"订阅编号 {sid} 不存在！", userid=userid)
+                self.post_message(Notification(channel=channel,
+                                               title=f"订阅编号 {sid} 不存在！", userid=userid))
                 return
-            self.post_message(title=f"开始搜索 {subscribe.name} ...", userid=userid)
+            self.post_message(Notification(channel=channel,
+                                           title=f"开始搜索 {subscribe.name} ...", userid=userid))
             # 搜索订阅
             self.search(sid=int(arg_str))
-            self.post_message(title=f"{subscribe.name} 搜索完成！", userid=userid)
+            self.post_message(Notification(channel=channel,
+                                           title=f"{subscribe.name} 搜索完成！", userid=userid))
         else:
-            self.post_message(title=f"开始搜索所有订阅 ...", userid=userid)
+            self.post_message(Notification(channel=channel,
+                                           title=f"开始搜索所有订阅 ...", userid=userid))
             self.search(state='R')
-            self.post_message(title=f"订阅搜索完成！", userid=userid)
+            self.post_message(Notification(channel=channel,
+                                           title=f"订阅搜索完成！", userid=userid))
 
     def search(self, sid: int = None, state: str = 'N', manual: bool = False):
         """
@@ -189,8 +201,9 @@ class SubscribeChain(ChainBase):
                 logger.info(f'{mediainfo.title_year} 媒体库中已存在，完成订阅')
                 self.subscribehelper.delete(subscribe.id)
                 # 发送通知
-                self.post_message(title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
-                                  image=mediainfo.get_message_image())
+                self.post_message(Notification(mtype=NotificationType.Subscribe,
+                                               title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
+                                               image=mediainfo.get_message_image()))
                 continue
             # 使用订阅的总集数和开始集数替换no_exists
             no_exists = self.__get_subscribe_no_exits(
@@ -255,8 +268,9 @@ class SubscribeChain(ChainBase):
                 logger.info(f'{mediainfo.title_year} 下载完成，完成订阅')
                 self.subscribehelper.delete(subscribe.id)
                 # 发送通知
-                self.post_message(title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
-                                  image=mediainfo.get_message_image())
+                self.post_message(Notification(mtype=NotificationType.Subscribe,
+                                               title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
+                                               image=mediainfo.get_message_image()))
             else:
                 # 未完成下载
                 logger.info(f'{mediainfo.title_year} 未下载未完整，继续订阅 ...')
@@ -343,8 +357,9 @@ class SubscribeChain(ChainBase):
                 logger.info(f'{mediainfo.title_year} 媒体库中已存在，完成订阅')
                 self.subscribehelper.delete(subscribe.id)
                 # 发送通知
-                self.post_message(title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
-                                  image=mediainfo.get_message_image())
+                self.post_message(Notification(mtype=NotificationType.Subscribe,
+                                               title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
+                                               image=mediainfo.get_message_image()))
                 continue
             # 使用订阅的总集数和开始集数替换no_exists
             no_exists = self.__get_subscribe_no_exits(
@@ -404,8 +419,9 @@ class SubscribeChain(ChainBase):
                     logger.info(f'{mediainfo.title_year} 下载完成，完成订阅')
                     self.subscribehelper.delete(subscribe.id)
                     # 发送通知
-                    self.post_message(title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
-                                      image=mediainfo.get_message_image())
+                    self.post_message(Notification(mtype=NotificationType.Subscribe,
+                                                   title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
+                                                   image=mediainfo.get_message_image()))
                 else:
                     update_date = True if downloads else False
                     # 未完成下载，计算剩余集数
@@ -481,13 +497,14 @@ class SubscribeChain(ChainBase):
                         "lack_episode": len(left_episodes)
                     })
 
-    def remote_list(self, userid: Union[str, int] = None):
+    def remote_list(self, channel: MessageChannel, userid: Union[str, int] = None):
         """
         查询订阅并发送消息
         """
         subscribes = self.subscribehelper.list()
         if not subscribes:
-            self.post_message(title='没有任何订阅！', userid=userid)
+            self.post_message(Notification(channel=channel,
+                                           title='没有任何订阅！', userid=userid))
             return
         title = f"共有 {len(subscribes)} 个订阅，回复对应指令操作： " \
                 f"\n- 删除订阅：/subscribe_delete [id]" \
@@ -505,15 +522,17 @@ class SubscribeChain(ChainBase):
                                 f"_{subscribe.total_episode - (subscribe.lack_episode or subscribe.total_episode)}"
                                 f"/{subscribe.total_episode}_")
         # 发送列表
-        self.post_message(title=title, text='\n'.join(messages), userid=userid)
+        self.post_message(Notification(channel=channel,
+                                       title=title, text='\n'.join(messages), userid=userid))
 
-    def remote_delete(self, arg_str: str, userid: Union[str, int] = None):
+    def remote_delete(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
         """
         删除订阅
         """
         if not arg_str:
-            self.post_message(title="请输入正确的命令格式：/subscribe_delete [id]，"
-                                    "[id]为订阅编号", userid=userid)
+            self.post_message(Notification(channel=channel,
+                                           title="请输入正确的命令格式：/subscribe_delete [id]，"
+                                                 "[id]为订阅编号", userid=userid))
             return
         arg_strs = str(arg_str).split()
         for arg_str in arg_strs:
@@ -523,12 +542,13 @@ class SubscribeChain(ChainBase):
             subscribe_id = int(arg_str)
             subscribe = self.subscribehelper.get(subscribe_id)
             if not subscribe:
-                self.post_message(title=f"订阅编号 {subscribe_id} 不存在！", userid=userid)
+                self.post_message(Notification(channel=channel,
+                                               title=f"订阅编号 {subscribe_id} 不存在！", userid=userid))
                 return
             # 删除订阅
             self.subscribehelper.delete(subscribe_id)
         # 重新发送消息
-        self.remote_list()
+        self.remote_list(channel, userid)
 
     @staticmethod
     def __get_subscribe_no_exits(no_exists: Dict[int, Dict[int, NotExistMediaInfo]],

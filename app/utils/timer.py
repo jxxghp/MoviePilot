@@ -1,6 +1,7 @@
 import datetime
 import random
 from typing import List
+from datetime import datetime
 
 
 class TimerUtils:
@@ -37,8 +38,6 @@ class TimerUtils:
             trigger.append(random_trigger)
 
         return trigger
-
-    from datetime import datetime, timedelta
 
     @staticmethod
     def time_difference(input_datetime: datetime) -> str:
