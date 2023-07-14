@@ -183,8 +183,8 @@ class Settings(BaseSettings):
     def PROXY(self):
         if self.PROXY_HOST:
             return {
-                "http": f"http://{self.PROXY_HOST}",
-                "https": f"https://{self.PROXY_HOST}"
+                "http": {self.PROXY_HOST},
+                "https": {self.PROXY_HOST},
             }
         return None
 
