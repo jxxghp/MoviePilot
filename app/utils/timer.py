@@ -1,7 +1,6 @@
-import datetime
 import random
 from typing import List
-from datetime import datetime
+import datetime
 
 
 class TimerUtils:
