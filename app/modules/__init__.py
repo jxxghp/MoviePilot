@@ -49,7 +49,7 @@ def checkMessage(channel_type: MessageChannel):
             else:
                 # 检查消息类型开关
                 if message.mtype:
-                    switchs = SystemConfigOper().get(SystemConfigKey.NotificationChannels)
+                    switchs = SystemConfigOper().get(SystemConfigKey.NotificationChannels) or []
                     for switch in switchs:
                         if switch.get("mtype") == message.mtype.value:
                             if channel_type == MessageChannel.Wechat and not switch.get("wechat"):
