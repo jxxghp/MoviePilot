@@ -58,6 +58,9 @@ class TorrentInfo:
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value
 
+    def __getattr__(self, name):
+        return None
+
     def __get_properties(self):
         """
         获取属性列表
@@ -174,6 +177,9 @@ class MediaInfo:
 
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value
+
+    def __getattr__(self, name):
+        return None
 
     def __get_properties(self):
         """
@@ -511,9 +517,6 @@ class Context:
     media_info: MediaInfo = None
     # 种子信息
     torrent_info: TorrentInfo = None
-
-    def __setattr__(self, name: str, value: Any):
-        self.__dict__[name] = value
 
     def to_dict(self):
         """
