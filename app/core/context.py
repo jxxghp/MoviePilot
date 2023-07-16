@@ -58,9 +58,6 @@ class TorrentInfo:
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value
 
-    def __getattr__(self, name):
-        return None
-
     def __get_properties(self):
         """
         获取属性列表
@@ -145,6 +142,8 @@ class MediaInfo:
     backdrop_path: str = None
     # 海报图片
     poster_path: str = None
+    # LOGO
+    logo_path: str = None
     # 评分
     vote_average: int = 0
     # 描述
@@ -177,9 +176,6 @@ class MediaInfo:
 
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value
-
-    def __getattr__(self, name):
-        return None
 
     def __get_properties(self):
         """
