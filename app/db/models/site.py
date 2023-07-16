@@ -57,3 +57,8 @@ class Site(Base):
     @staticmethod
     def list_order_by_pri(db: Session):
         return db.query(Site).order_by(Site.pri).all()
+
+    @staticmethod
+    def reset(db: Session):
+        db.query(Site).delete()
+        db.commit()

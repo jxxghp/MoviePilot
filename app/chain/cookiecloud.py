@@ -58,6 +58,8 @@ class CookieCloudChain(ChainBase):
         cookies, msg = self.cookiecloud.download()
         if not cookies:
             logger.error(f"CookieCloud同步失败：{msg}")
+            if manual:
+                self.message.put(f"CookieCloud同步失败： {msg}")
             return False, msg
         # 保存Cookie或新增站点
         _update_count = 0

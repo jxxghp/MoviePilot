@@ -72,6 +72,18 @@ def cookie_cloud_sync(background_tasks: BackgroundTasks,
     return schemas.Response(success=True, message="CookieCloud同步任务已启动！")
 
 
+@router.get("/reset", summary="重置站点", response_model=schemas.Response)
+def cookie_cloud_sync(background_tasks: BackgroundTasks,
+                      db: Session = Depends(get_db),
+                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    清空所有站点数据并重新同步CookieCloud站点信息
+    """
+    Site.reset(db)
+    CookieCloudChain().process(manual=True)
+    return schemas.Response(success=True, message="站点已重置！")
+
+
 @router.get("/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response)
 def update_cookie(
         site_id: int,
