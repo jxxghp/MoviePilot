@@ -12,6 +12,8 @@ from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
+from app.db.systemconfig_oper import SystemConfigOper
+from app.schemas.types import SystemConfigKey
 
 router = APIRouter()
 
@@ -80,6 +82,7 @@ def cookie_cloud_sync(background_tasks: BackgroundTasks,
     清空所有站点数据并重新同步CookieCloud站点信息
     """
     Site.reset(db)
+    SystemConfigOper(db).set(SystemConfigKey.IndexerSites, [])
     CookieCloudChain().process(manual=True)
     return schemas.Response(success=True, message="站点已重置！")
 
