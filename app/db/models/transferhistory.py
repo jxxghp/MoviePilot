@@ -70,3 +70,10 @@ class TransferHistory(Base):
                                                   time.localtime(time.time() - 86400 * days))).subquery()
         return db.query(sub_query.c.date, func.count(sub_query.c.id)).group_by(sub_query.c.date).all()
 
+    @staticmethod
+    def count(db: Session):
+        return db.query(func.count(TransferHistory.id)).first()[0]
+
+    @staticmethod
+    def count_by_title(db: Session, title: str):
+        return db.query(func.count(TransferHistory.id)).filter(TransferHistory.title == title).first()[0]
