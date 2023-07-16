@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     # API监听端口
     PORT: int = 3001
-    # 是否调试模式
-    DEBUG: bool = False
+    # 日志级别: 'critical', 'error', 'warning', 'info', 'debug', 'trace', 默认为error, 如需调试可以设置为debug
+    DEBUG_LEVEL: str = "error"
     # 配置文件目录
     CONFIG_DIR: str = None
     # 超级管理员

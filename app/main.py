@@ -29,7 +29,7 @@ App.add_middleware(
 
 # uvicorn服务
 Server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT,
-                               reload=settings.DEBUG, workers=multiprocessing.cpu_count()))
+                               log_level=settings.DEBUG, workers=multiprocessing.cpu_count()))
 
 
 def init_routers():
