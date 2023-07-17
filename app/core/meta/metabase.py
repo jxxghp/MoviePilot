@@ -15,7 +15,9 @@ class MetaBase(object):
     """
     # 是否处理的文件
     isfile: bool = False
-    # 原字符串
+    # 原标题字符串
+    title: str = ""
+    # 识别用字符串
     org_string: Optional[str] = None
     # 副标题
     subtitle: Optional[str] = None
@@ -53,6 +55,8 @@ class MetaBase(object):
     video_encode: Optional[str] = None
     # 音频编码
     audio_encode: Optional[str] = None
+    # 应用的识别词信息
+    apply_words: Optional[List[str]] = None
 
     # 副标题解析
     _subtitle_flag = False

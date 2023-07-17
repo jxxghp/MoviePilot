@@ -151,6 +151,7 @@ class MessageChain(ChainBase):
                               f"{self._current_meta.sea} 媒体库中已存在",
                         userid=userid))
                     return
+                # 添加订阅，状态为N
                 self.subscribechain.add(title=mediainfo.title,
                                         year=mediainfo.year,
                                         mtype=mediainfo.type,
@@ -182,7 +183,7 @@ class MessageChain(ChainBase):
                     else:
                         # 未完成下载
                         logger.info(f'{self._current_media.title_year} 未下载未完整，添加订阅 ...')
-                        # 添加订阅
+                        # 添加订阅，状态为R
                         self.subscribechain.add(title=self._current_media.title,
                                                 year=self._current_media.year,
                                                 mtype=self._current_media.type,
@@ -190,7 +191,8 @@ class MessageChain(ChainBase):
                                                 season=self._current_meta.begin_season,
                                                 channel=channel,
                                                 userid=userid,
-                                                username=username)
+                                                username=username,
+                                                state="R")
                 else:
                     # 下载种子
                     context: Context = cache_list[int(text) - 1]
@@ -203,13 +205,13 @@ class MessageChain(ChainBase):
             if not cache_data:
                 # 没有缓存
                 self.post_message(Notification(
-                        channel=channel, title="输入有误！", userid=userid))
+                    channel=channel, title="输入有误！", userid=userid))
                 return
 
             if self._current_page == 0:
                 # 第一页
                 self.post_message(Notification(
-                        channel=channel, title="已经是第一页了！", userid=userid))
+                    channel=channel, title="已经是第一页了！", userid=userid))
                 return
             cache_type: str = cache_data.get('type')
             cache_list: list = cache_data.get('items')
@@ -242,7 +244,7 @@ class MessageChain(ChainBase):
             if not cache_data:
                 # 没有缓存
                 self.post_message(Notification(
-                        channel=channel, title="输入有误！", userid=userid))
+                    channel=channel, title="输入有误！", userid=userid))
                 return
             cache_type: str = cache_data.get('type')
             cache_list: list = cache_data.get('items')
@@ -253,7 +255,7 @@ class MessageChain(ChainBase):
             if not cache_list:
                 # 没有数据
                 self.post_message(Notification(
-                        channel=channel, title="已经是最后一页了！", userid=userid))
+                    channel=channel, title="已经是最后一页了！", userid=userid))
                 return
             else:
                 if cache_type == "Torrent":
@@ -282,12 +284,12 @@ class MessageChain(ChainBase):
             # 识别
             if not meta.name:
                 self.post_message(Notification(
-                        channel=channel, title="无法识别输入内容！", userid=userid))
+                    channel=channel, title="无法识别输入内容！", userid=userid))
                 return
             # 开始搜索
             if not medias:
                 self.post_message(Notification(
-                        channel=channel, title=f"{meta.name} 没有找到对应的媒体信息！", userid=userid))
+                    channel=channel, title=f"{meta.name} 没有找到对应的媒体信息！", userid=userid))
                 return
             logger.info(f"搜索到 {len(medias)} 条相关媒体信息")
             # 记录当前状态

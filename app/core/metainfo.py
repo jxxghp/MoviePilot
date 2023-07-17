@@ -3,27 +3,37 @@ from pathlib import Path
 import regex as re
 
 from app.core.config import settings
-from app.core.meta import MetaAnime, MetaVideo
+from app.core.meta import MetaAnime, MetaVideo, MetaBase
+from app.core.meta.words import WordsMatcher
 
 
-def MetaInfo(title: str, subtitle: str = None):
+def MetaInfo(title: str, subtitle: str = None) -> MetaBase:
     """
     媒体整理入口，根据名称和副标题，判断是哪种类型的识别，返回对应对象
     :param title: 标题、种子名、文件名
     :param subtitle: 副标题、描述
     :return: MetaAnime、MetaVideo
     """
-
+    # 原标题
+    org_title = title
+    # 预处理标题
+    title, apply_words = WordsMatcher().prepare(title)
     # 判断是否处理文件
     if title and Path(title).suffix.lower() in settings.RMT_MEDIAEXT:
         isfile = True
     else:
         isfile = False
+    # 识别
+    meta = MetaAnime(title, subtitle, isfile) if is_anime(title) else MetaVideo(title, subtitle, isfile)
+    # 记录原标题
+    meta.title = org_title
+    #  记录使用的识别词
+    meta.apply_words = apply_words or []
 
-    return MetaAnime(title, subtitle, isfile) if is_anime(title) else MetaVideo(title, subtitle, isfile)
+    return meta
 
 
-def is_anime(name: str):
+def is_anime(name: str) -> bool:
     """
     判断是否为动漫
     :param name: 名称

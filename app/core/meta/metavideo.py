@@ -3,7 +3,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.core.meta.metabase import MetaBase
-from app.core.meta.release_groups import ReleaseGroupsMatcher
+from app.core.meta.releasegroup import ReleaseGroupsMatcher
 from app.utils.string import StringUtils
 from app.utils.tokens import Tokens
 from app.schemas.types import MediaType

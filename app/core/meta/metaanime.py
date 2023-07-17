@@ -2,7 +2,7 @@ import re
 import zhconv
 import anitopy
 from app.core.meta.metabase import MetaBase
-from app.core.meta.release_groups import ReleaseGroupsMatcher
+from app.core.meta.releasegroup import ReleaseGroupsMatcher
 from app.utils.string import StringUtils
 from app.schemas.types import MediaType
 

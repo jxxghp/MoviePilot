@@ -42,6 +42,10 @@ class SystemConfigKey(Enum):
     TorrentsPriority = "TorrentsPriority"
     # 通知消息渠道设置
     NotificationChannels = "NotificationChannels"
+    # 自定义制作组/字幕组
+    CustomReleaseGroups = "CustomReleaseGroups"
+    # 自定义识别词
+    CustomIdentifiers = "CustomIdentifiers"
 
 
 # 站点框架

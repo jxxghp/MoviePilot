@@ -1,5 +1,7 @@
 import regex as re
 
+from app.db.systemconfig_oper import SystemConfigOper
+from app.schemas.types import SystemConfigKey
 from app.utils.singleton import Singleton
 
 
@@ -8,8 +10,7 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
     识别制作组、字幕组
     """
     __release_groups: str = None
-    custom_release_groups: str = None
-    custom_separator: str = None
+    # 内置组
     RELEASE_GROUPS: dict = {
         "0ff": ['FF(?:(?:A|WE)B|CD|E(?:DU|B)|TV)'],
         "1pt": [],
@@ -74,6 +75,7 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
     }
 
     def __init__(self):
+        self.systemconfig = SystemConfigOper()
         release_groups = []
         for site_groups in self.RELEASE_GROUPS.values():
             for release_group in site_groups:
@@ -89,8 +91,10 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
         if not title:
             return ""
         if not groups:
-            if self.custom_release_groups:
-                groups = f"{self.__release_groups}|{self.custom_release_groups}"
+            # 自定义组
+            custom_release_groups = self.systemconfig.get(SystemConfigKey.CustomReleaseGroups)
+            if custom_release_groups:
+                groups = f"{self.__release_groups}|{custom_release_groups}"
             else:
                 groups = self.__release_groups
         title = f"{title} "
@@ -100,12 +104,4 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
         for item in re.findall(groups_re, title):
             if item not in unique_groups:
                 unique_groups.append(item)
-        separator = self.custom_separator or "@"
-        return separator.join(unique_groups)
-
-    def update_custom(self, release_groups: str = None, separator: str = None):
-        """
-        更新自定义制作组/字幕组，自定义分隔符
-        """
-        self.custom_release_groups = release_groups
-        self.custom_separator = separator
+        return "@".join(unique_groups)
