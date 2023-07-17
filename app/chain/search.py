@@ -155,6 +155,10 @@ class SearchChain(ChainBase):
                     title, subtitle = torrent.title, torrent.description
                 # 识别
                 torrent_meta = MetaInfo(title=title, subtitle=subtitle)
+                # 比对类型
+                if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
+                    logger.warn(f'{torrent.site_name} - {torrent.title} 类型不匹配')
+                    continue
                 # 比对年份
                 if mediainfo.year and torrent_meta.year:
                     if mediainfo.type == MediaType.TV:
