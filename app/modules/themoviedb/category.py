@@ -9,6 +9,12 @@ from app.utils.singleton import Singleton
 
 
 class CategoryHelper(metaclass=Singleton):
+    """
+    二级分类
+    """
+    _categorys = {}
+    _movie_categorys = {}
+    _tv_categorys = {}
 
     def __init__(self):
         self._category_path: Path = settings.CONFIG_PATH / "category.yaml"

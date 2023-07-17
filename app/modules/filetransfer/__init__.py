@@ -43,7 +43,7 @@ class FileTransferModule(_ModuleBase):
             return TransferInfo(message="未找到媒体库目录，无法转移文件")
         # 转移
         result = self.transfer_media(in_path=path,
-                                     meidainfo=mediainfo,
+                                     mediainfo=mediainfo,
                                      rmt_mode=settings.TRANSFER_TYPE,
                                      target_dir=target_path)
         if not result:
@@ -330,7 +330,7 @@ class FileTransferModule(_ModuleBase):
 
     def transfer_media(self,
                        in_path: Path,
-                       meidainfo: MediaInfo,
+                       mediainfo: MediaInfo,
                        rmt_mode: str = None,
                        target_dir: Path = None
                        ) -> Union[str, Tuple[Path, int, int, List[Path], str]]:
@@ -339,7 +339,7 @@ class FileTransferModule(_ModuleBase):
         :param in_path: 转移的路径，可能是一个文件也可以是一个目录
         :param target_dir: 目的文件夹，非空的转移到该文件夹，为空时则按类型转移到配置文件中的媒体库文件夹
         :param rmt_mode: 文件转移方式
-        :param meidainfo: 媒体信息
+        :param mediainfo: 媒体信息
         :return: 目的路径、处理文件数、总大小、失败文件列表、错误信息
         """
         # 检查目录路径
@@ -350,11 +350,11 @@ class FileTransferModule(_ModuleBase):
             return f"{target_dir} 目标路径不存在"
 
         # 目的目录加上类型和二级分类
-        target_dir = target_dir / meidainfo.type.value / meidainfo.category
+        target_dir = target_dir / mediainfo.type.value / mediainfo.category
 
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \
-            if meidainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+            if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
 
         # 总大小
         total_filesize = 0
@@ -378,7 +378,7 @@ class FileTransferModule(_ModuleBase):
                 path=target_dir,
                 template_string=rename_format,
                 rename_dict=self.__get_naming_dict(meta=meta,
-                                                   mediainfo=meidainfo)
+                                                   mediainfo=mediainfo)
             ).parent
             # 转移蓝光原盘
             retcode = self.__transfer_bluray_dir(file_path=in_path,
@@ -404,7 +404,7 @@ class FileTransferModule(_ModuleBase):
             new_path = target_dir / self.get_rename_path(
                 template_string=rename_format,
                 rename_dict=self.__get_naming_dict(meta=meta,
-                                                   mediainfo=meidainfo)
+                                                   mediainfo=mediainfo)
             ).parents[-2].name
             # 转移所有文件
             for transfer_file in transfer_files:
@@ -435,7 +435,7 @@ class FileTransferModule(_ModuleBase):
                         path=target_dir,
                         template_string=rename_format,
                         rename_dict=self.__get_naming_dict(meta=meta,
-                                                           mediainfo=meidainfo,
+                                                           mediainfo=mediainfo,
                                                            file_ext=transfer_file.suffix)
                     )
                     # 判断是否要覆盖

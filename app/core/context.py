@@ -210,7 +210,7 @@ class MediaInfo:
         """
         设置二级分类
         """
-        self.category = cat
+        self.category = cat or ""
 
     def set_tmdb_info(self, info: dict):
         """
