@@ -14,6 +14,8 @@ class MetaInfo(BaseModel):
     isfile: Optional[bool] = False
     # 原字符串
     org_string: Optional[str] = None
+    # 原标题
+    title: Optional[str] = None
     # 副标题
     subtitle: Optional[str] = None
     # 类型 电影、电视剧
@@ -54,6 +56,8 @@ class MetaInfo(BaseModel):
     audio_encode: Optional[str] = None
     # 资源类型
     edition: Optional[str] = None
+    # 应用的识别词信息
+    apply_words: Optional[List[str]] = None
 
 
 class MediaInfo(BaseModel):
