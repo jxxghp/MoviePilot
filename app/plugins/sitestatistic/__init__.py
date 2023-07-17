@@ -35,11 +35,11 @@ class SiteStatistic(_PluginBase):
     # 插件名称
     plugin_name = "站点数据统计"
     # 插件描述
-    plugin_desc = "统计和展示站点数据。"
+    plugin_desc = "统计和展示站点数据，每日凌晨随机时间自动运行一次。"
     # 插件图标
-    plugin_icon = ""
+    plugin_icon = "statistic.png"
     # 主题色
-    plugin_color = ""
+    plugin_color = "#324A5E"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者

@@ -29,11 +29,11 @@ class AutoSignIn(_PluginBase):
     # 插件名称
     plugin_name = "站点自动签到"
     # 插件描述
-    plugin_desc = "站点每日自动模拟登录或签到。"
+    plugin_desc = "自动模拟登录站点并签到，每日 9:00-23:00 随机时间自动运行两次。"
     # 插件图标
-    plugin_icon = ""
+    plugin_icon = "signin.png"
     # 主题色
-    plugin_color = ""
+    plugin_color = "#4179F4"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者
