@@ -46,7 +46,7 @@ class TransferHistory(Base):
 
     @staticmethod
     def list_by_title(db: Session, title: str, page: int = 1, count: int = 30):
-        return db.query(TransferHistory).filter(TransferHistory.title == title).order_by(
+        return db.query(TransferHistory).filter(TransferHistory.title.like(f'%{title}%')).order_by(
             TransferHistory.date.desc()).offset((page - 1) * count).limit(
             count).all()
 
@@ -76,4 +76,4 @@ class TransferHistory(Base):
 
     @staticmethod
     def count_by_title(db: Session, title: str):
-        return db.query(func.count(TransferHistory.id)).filter(TransferHistory.title == title).first()[0]
+        return db.query(func.count(TransferHistory.id)).filter(TransferHistory.title.like(f'%{title}%')).first()[0]

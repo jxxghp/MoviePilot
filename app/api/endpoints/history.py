@@ -40,23 +40,26 @@ def delete_download_history(history_in: schemas.DownloadHistory,
 def transfer_history(title: str = None,
                      page: int = 1,
                      count: int = 30,
+                     sort: dict = None,
                      db: Session = Depends(get_db),
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询转移历史记录
     """
     if title:
-        return schemas.Response(success=True,
-                                data={
-                                    "list": TransferHistory.list_by_title(db, title, page, count),
-                                    "total": TransferHistory.count_by_title(db, title),
-                                })
+        total = TransferHistory.count_by_title(db, title)
+        result = TransferHistory.list_by_title(db, title, page, count)
     else:
-        return schemas.Response(success=True,
-                                data={
-                                    "list": TransferHistory.list_by_page(db, page, count),
-                                    "total": TransferHistory.count(db),
-                                })
+        result = TransferHistory.list_by_page(db, page, count)
+        total = TransferHistory.count(db)
+    # 排序
+    if sort:
+        pass
+    return schemas.Response(success=True,
+                            data={
+                                "list": result,
+                                "total": total,
+                            })
 
 
 @router.delete("/transfer", summary="删除转移历史记录", response_model=schemas.Response)
