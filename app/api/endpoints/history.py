@@ -40,7 +40,6 @@ def delete_download_history(history_in: schemas.DownloadHistory,
 def transfer_history(title: str = None,
                      page: int = 1,
                      count: int = 30,
-                     sort: dict = None,
                      db: Session = Depends(get_db),
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -52,9 +51,7 @@ def transfer_history(title: str = None,
     else:
         result = TransferHistory.list_by_page(db, page, count)
         total = TransferHistory.count(db)
-    # 排序
-    if sort:
-        pass
+
     return schemas.Response(success=True,
                             data={
                                 "list": result,
