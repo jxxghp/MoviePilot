@@ -1,6 +1,7 @@
 import json
 import json
 import time
+from datetime import datetime
 from typing import Union
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -93,11 +94,19 @@ def nettest(url: str,
     """
     测试网络连通性
     """
+    # 记录开始的毫秒数
+    start_time = datetime.now()
     result = RequestUtils(proxies=settings.PROXY if proxy else None).get_res(url)
-
+    # 计时结束的毫秒数
+    end_time = datetime.now()
+    # 计算相关秒数
     if result and result.status_code == 200:
-        return schemas.Response(success=True)
+        return schemas.Response(success=True, data={
+            "time": round((end_time - start_time).microseconds / 1000)
+        })
     elif result:
-        return schemas.Response(success=False, message=f"错误码：{result.status_code}")
+        return schemas.Response(success=False, message=f"错误码：{result.status_code}", data={
+            "time": round((end_time - start_time).microseconds / 1000)
+        })
     else:
         return schemas.Response(success=False, message="网络连接失败！")

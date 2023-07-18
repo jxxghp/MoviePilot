@@ -61,6 +61,11 @@ class FilterModule(_ModuleBase):
             "include": [r'REMUX'],
             "exclude": []
         },
+        # WEB-DL
+        "WEB-DL": {
+            "include": [r'WEB-?DL|WEB-?RIP'],
+            "exclude": []
+        },
         # 免费
         "FREE": {
             "downloadvolumefactor": 0
