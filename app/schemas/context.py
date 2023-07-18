@@ -20,6 +20,8 @@ class MetaInfo(BaseModel):
     subtitle: Optional[str] = None
     # 类型 电影、电视剧
     type: Optional[str] = None
+    # 名称
+    name: Optional[str] = None
     # 识别的中文名
     cn_name: Optional[str] = None
     # 识别的英文名
