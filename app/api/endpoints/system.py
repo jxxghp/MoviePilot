@@ -96,7 +96,8 @@ def nettest(url: str,
     """
     # 记录开始的毫秒数
     start_time = datetime.now()
-    result = RequestUtils(proxies=settings.PROXY if proxy else None).get_res(url)
+    result = RequestUtils(proxies=settings.PROXY if proxy else None,
+                          ua=settings.USER_AGENT).get_res(url)
     # 计时结束的毫秒数
     end_time = datetime.now()
     # 计算相关秒数
