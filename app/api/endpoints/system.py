@@ -8,11 +8,13 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.core.config import settings
 from app.core.security import verify_token
 from app.db import get_db
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
+from app.utils.http import RequestUtils
 
 router = APIRouter()
 
@@ -82,3 +84,20 @@ def get_progress(token: str):
             time.sleep(3)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.get("/nettest", summary="测试网络连通性")
+def nettest(url: str,
+            proxy: bool,
+            _: schemas.TokenPayload = Depends(verify_token)):
+    """
+    测试网络连通性
+    """
+    result = RequestUtils(proxies=settings.PROXY if proxy else None).get_res(url)
+
+    if result and result.status_code == 200:
+        return schemas.Response(success=True)
+    elif result:
+        return schemas.Response(success=False, message=f"错误码：{result.status_code}")
+    else:
+        return schemas.Response(success=False, message="网络连接失败！")
