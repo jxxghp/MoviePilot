@@ -30,6 +30,11 @@ class FilterModule(_ModuleBase):
             "include": [r'1080[pi]|x1080'],
             "exclude": []
         },
+        # 720P
+        "720P": {
+            "include": [r'720[pi]|x720'],
+            "exclude": []
+        },
         # 中字
         "CNSUB": {
             "include": [r'[中国國繁简](/|\s|\\|\|)?[繁简英粤]|[英简繁](/|\s|\\|\|)?[中繁简]|繁體|简体|[中国國][字配]|国语|國語|中文|中字'],
