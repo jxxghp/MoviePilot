@@ -18,6 +18,7 @@ class FilterTest(TestCase):
                               description="狼的孩子雨和雪/狼之子雨与雪/Okami kodomo no ame to yuki")
         _filter = FilterModule()
         _filter.init_module()
-        result = _filter.filter_torrents(torrent_list=[torrent])
+        result = _filter.filter_torrents(rule_string="!BLU & 4K & CN > !BLU & 1080P & CN > !BLU & 4K > !BLU & 1080P",
+                                         torrent_list=[torrent])
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].pri_order, 97)

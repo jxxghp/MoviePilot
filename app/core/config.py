@@ -123,8 +123,6 @@ class Settings(BaseSettings):
     PLEX_HOST: str = None
     # Plex Token
     PLEX_TOKEN: str = None
-    # 过滤规则
-    FILTER_RULE: str = "!BLU & 4K & CN > !BLU & 1080P & CN > !BLU & 4K > !BLU & 1080P"
     # 转移方式 link/copy/move/softlink
     TRANSFER_TYPE: str = "copy"
     # CookieCloud服务器地址

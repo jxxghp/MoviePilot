@@ -5,7 +5,6 @@ from typing import Dict
 from typing import List, Optional
 
 from app.chain import ChainBase
-from app.core.config import settings
 from app.core.context import Context
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
@@ -117,8 +116,10 @@ class SearchChain(ChainBase):
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
             return []
         # 过滤种子
-        logger.info(f'开始过滤资源，当前规则：{settings.FILTER_RULE} ...')
-        result: List[TorrentInfo] = self.filter_torrents(torrent_list=torrents,
+        filter_rules = self.systemconfig.get(SystemConfigKey.FilterRules)
+        logger.info(f'开始过滤资源，当前规则：{filter_rules} ...')
+        result: List[TorrentInfo] = self.filter_torrents(rule_string=filter_rules,
+                                                         torrent_list=torrents,
                                                          season_episodes=season_episodes)
         if result is not None:
             torrents = result

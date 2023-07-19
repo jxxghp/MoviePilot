@@ -138,18 +138,7 @@ docker pull jxxghp/moviepilot:latest
 | icc2022 | `ICC2022_UID`：用户ID<br/>`ICC2022_PASSKEY`：密钥           |
 
 
-### 3. **过滤规则**
-
-- **FILTER_RULE：** 配置过规则，默认`!BLU & 4K & CN > !BLU & 1080P & CN > !BLU & 4K > !BLU & 1080P` 表示优先中文字幕非蓝光4K，然后中文字幕非蓝光1080P，然后非蓝光4K，最后非蓝光1080P
-
-`FILTER_RULE` 规则说明：
-
-- 仅支持使用内置规则进行排列组合，内置规则有：`BLU`、`4K`、`1080P`、`CN`、`H265`、`H264`、`DOLBY`、`HDR`、`REMUX`、`WEBDL`、`FREE`
-- `&`表示与，`｜`表示或，`!`表示非，`>`表示优先级层级
-- 符合任一层级规则的资源将被标识选中，匹配成功的层级做为该资源的优先级，排越前面优先级超高
-- 不符合过滤规则所有层级规则的资源将不会被选中
-
-### 3. **进阶配置**
+### 2. **进阶配置**
 
 - **MOVIE_RENAME_FORMAT：** 电影重命名格式
 
@@ -190,6 +179,19 @@ docker pull jxxghp/moviepilot:latest
 ```
 {{title}}{% if year %} ({{year}}){% endif %}/Season {{season}}/{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}{{fileExt}}
 ```
+
+
+### 3. **过滤规则**
+
+在`设定`-`规则`中设定，规则说明：
+
+- 仅支持使用内置规则进行排列组合，内置规则有：`BLU`、`4K`、`1080P`、`CNSUB`、`SPECSUB`、`H265`、`H264`、`DOLBY`、`HDR`、`REMUX`、`WEBDL`、`FREE`
+- `&`表示与，`｜`表示或，`!`表示非，`>`表示优先级层级
+- 符合任一层级规则的资源将被标识选中，匹配成功的层级做为该资源的优先级，排越前面优先级超高
+- 不符合过滤规则所有层级规则的资源将不会被选中
+
+`!BLU & 4K & CN > !BLU & 1080P & CN > !BLU & 4K > !BLU & 1080P` 表示优先中文字幕非蓝光4K，然后中文字幕非蓝光1080P，然后非蓝光4K，最后非蓝光1080P
+
 
 ## 使用
 

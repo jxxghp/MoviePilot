@@ -2,7 +2,6 @@ import re
 from typing import List, Tuple, Union, Dict, Optional
 
 from app.core.context import TorrentInfo
-from app.core.config import settings
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
@@ -32,8 +31,13 @@ class FilterModule(_ModuleBase):
             "exclude": []
         },
         # 中字
-        "CN": {
-            "include": [r'特效|[中国國繁简](/|\s|\\|\|)?[繁简英粤]|[英简繁](/|\s|\\|\|)?[中繁简]|繁體|简体|[中国國][字配]|国语|國語|中文'],
+        "CNSUB": {
+            "include": [r'[中国國繁简](/|\s|\\|\|)?[繁简英粤]|[英简繁](/|\s|\\|\|)?[中繁简]|繁體|简体|[中国國][字配]|国语|國語|中文'],
+            "exclude": []
+        },
+        # 特效字幕
+        "SPECSUB": {
+            "include": [r'特效'],
             "exclude": []
         },
         # H265
@@ -81,21 +85,23 @@ class FilterModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "FILTER_RULE", True
 
-    def filter_torrents(self, torrent_list: List[TorrentInfo],
+    def filter_torrents(self, rule_string: str,
+                        torrent_list: List[TorrentInfo],
                         season_episodes: Dict[int, list] = None) -> List[TorrentInfo]:
         """
         过滤种子资源
+        :param rule_string:  过滤规则
         :param torrent_list:  资源列表
         :param season_episodes:  季集数过滤 {season:[episodes]}
         :return: 过滤后的资源列表，添加资源优先级
         """
-        if not settings.FILTER_RULE:
+        if not rule_string:
             return torrent_list
         # 返回种子列表
         ret_torrents = []
         for torrent in torrent_list:
             # 能命中优先级的才返回
-            if not self.__get_order(torrent, settings.FILTER_RULE):
+            if not self.__get_order(torrent, rule_string):
                 continue
             # 季集数过滤
             if season_episodes \

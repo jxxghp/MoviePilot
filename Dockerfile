@@ -9,6 +9,7 @@ ENV LANG="C.UTF-8" \
     AUTH_SITE="iyuu" \
     LIBRARY_PATH="" \
     DOWNLOAD_PATH="/downloads" \
+    TRANSFER_TYPE="copy" \
     COOKIECLOUD_HOST="https://nastool.org/cookiecloud" \
     COOKIECLOUD_KEY="" \
     COOKIECLOUD_PASSWORD="" \
@@ -22,8 +23,6 @@ ENV LANG="C.UTF-8" \
     MEDIASERVER="emby" \
     EMBY_HOST="http://127.0.0.1:8096" \
     EMBY_API_KEY="" \
-    FILTER_RULE="!BLU & 4K & CN > !BLU & 1080P & CN > !BLU & 4K > !BLU & 1080P" \
-    TRANSFER_TYPE="copy" \
     DOUBAN_USER_IDS=""
 WORKDIR "/app"
 COPY . .

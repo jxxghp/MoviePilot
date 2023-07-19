@@ -304,7 +304,9 @@ class SubscribeChain(ChainBase):
             if torrents:
                 self._torrents_cache[domain] = []
                 # 过滤种子
-                result: List[TorrentInfo] = self.filter_torrents(torrent_list=torrents)
+                result: List[TorrentInfo] = self.filter_torrents(
+                    rule_string=self.systemconfig.get(SystemConfigKey.FilterRules),
+                    torrent_list=torrents)
                 if result is not None:
                     torrents = result
                 if not torrents:

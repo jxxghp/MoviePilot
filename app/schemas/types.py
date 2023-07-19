@@ -46,6 +46,8 @@ class SystemConfigKey(Enum):
     CustomReleaseGroups = "CustomReleaseGroups"
     # 自定义识别词
     CustomIdentifiers = "CustomIdentifiers"
+    # 过滤规则
+    FilterRules = "FilterRules"
 
 
 # 站点框架
