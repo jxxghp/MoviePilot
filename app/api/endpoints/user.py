@@ -1,6 +1,7 @@
+import base64
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app import schemas
@@ -67,6 +68,34 @@ def update_user(
     return schemas.Response(success=True)
 
 
+@router.get("/current", summary="当前登录用户信息", response_model=schemas.User)
+def read_current_user(
+    current_user: User = Depends(get_current_active_user)
+) -> Any:
+    """
+    当前登录用户信息
+    """
+    return current_user
+
+
+@router.post("/avatar/{user_id}", summary="上传用户头像", response_model=schemas.Response)
+async def upload_avatar(user_id: int, db: Session = Depends(get_db),
+                        file: UploadFile = File(...)):
+    """
+    上传用户头像
+    """
+    # 将文件转换为Base64
+    file_base64 = base64.b64encode(file.file.read())
+    # 更新到用户表
+    user = User.get(db, user_id)
+    if not user:
+        return schemas.Response(success=False, message="用户不存在")
+    user.update(db, {
+        "avatar": f"data:image/ico;base64,{file_base64}"
+    })
+    return schemas.Response(success=True, message=file.filename)
+
+
 @router.delete("/{user_name}", summary="删除用户", response_model=schemas.Response)
 def delete_user(
     *,
@@ -82,16 +111,6 @@ def delete_user(
         return schemas.Response(success=False, message="用户不存在")
     user.delete_by_name(db, user_name)
     return schemas.Response(success=True)
-
-
-@router.get("/current", summary="当前登录用户信息", response_model=schemas.User)
-def read_current_user(
-    current_user: User = Depends(get_current_active_user)
-) -> Any:
-    """
-    当前登录用户信息
-    """
-    return current_user
 
 
 @router.get("/{user_id}", summary="用户详情", response_model=schemas.User)
