@@ -62,7 +62,7 @@ class FilterModule(_ModuleBase):
             "exclude": []
         },
         # WEB-DL
-        "WEB-DL": {
+        "WEBDL": {
             "include": [r'WEB-?DL|WEB-?RIP'],
             "exclude": []
         },
