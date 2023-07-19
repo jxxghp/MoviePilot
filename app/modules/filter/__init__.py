@@ -83,7 +83,7 @@ class FilterModule(_ModuleBase):
         pass
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        return "FILTER_RULE", True
+        pass
 
     def filter_torrents(self, rule_string: str,
                         torrent_list: List[TorrentInfo],
