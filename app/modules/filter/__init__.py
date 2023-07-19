@@ -32,7 +32,7 @@ class FilterModule(_ModuleBase):
         },
         # 中字
         "CNSUB": {
-            "include": [r'[中国國繁简](/|\s|\\|\|)?[繁简英粤]|[英简繁](/|\s|\\|\|)?[中繁简]|繁體|简体|[中国國][字配]|国语|國語|中文'],
+            "include": [r'[中国國繁简](/|\s|\\|\|)?[繁简英粤]|[英简繁](/|\s|\\|\|)?[中繁简]|繁體|简体|[中国國][字配]|国语|國語|中文|中字'],
             "exclude": []
         },
         # 特效字幕
@@ -52,12 +52,12 @@ class FilterModule(_ModuleBase):
         },
         # 杜比
         "DOLBY": {
-            "include": [r"DOLBY|DOVI|\s+DV$|\s+DV\s+"],
+            "include": [r"DOLBY|DOVI|[\s.]+DV[\s.]+|杜比"],
             "exclude": []
         },
         # HDR
         "HDR": {
-            "include": [r"\s+HDR\s+|HDR10|HDR10\+"],
+            "include": [r"[\s.]+HDR[\s.]+|HDR10|HDR10\+"],
             "exclude": []
         },
         # 重编码
@@ -73,6 +73,11 @@ class FilterModule(_ModuleBase):
         # 免费
         "FREE": {
             "downloadvolumefactor": 0
+        },
+        # 国语配音
+        "CNVOI": {
+            "include": [r'国语配音|国配'],
+            "exclude": []
         }
     }
 
@@ -176,7 +181,7 @@ class FilterModule(_ModuleBase):
             return self.__match_rule(torrent, rule_group)
         elif isinstance(rule_group, list) and len(rule_group) == 1:
             # 只有一个规则项
-            return self.__match_rule(torrent, rule_group[0])
+            return self.__match_group(torrent, rule_group[0])
         elif rule_group[0] == "not":
             # 非操作
             return not self.__match_group(torrent, rule_group[1:])
@@ -201,7 +206,7 @@ class FilterModule(_ModuleBase):
         # FREE规则
         downloadvolumefactor = self.rule_set[rule_name].get("downloadvolumefactor")
         # 匹配项
-        content = f"{torrent.title} {torrent.description}"
+        content = f"{torrent.title} {torrent.description} {' '.join(torrent.labels or [])}"
         for include in includes:
             if not re.search(r"%s" % include, content, re.IGNORECASE):
                 # 未发现包含项

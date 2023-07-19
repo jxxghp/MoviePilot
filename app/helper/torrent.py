@@ -182,6 +182,7 @@ class TorrentHelper:
             """
             _meta = _context.meta_info
             _torrent = _context.torrent_info
+            _media = _context.media_info
             # 站点优先级
             _site_order = 999 - (_torrent.site_order or 0)
             # 季数
@@ -192,13 +193,13 @@ class TorrentHelper:
             priority = self.system_config.get(SystemConfigKey.TorrentsPriority)
             if priority != "site":
                 # 排序：标题、资源类型、做种、季集
-                return "%s%s%s%s" % (str(_torrent.title).ljust(100, ' '),
+                return "%s%s%s%s" % (str(_media.title).ljust(100, ' '),
                                      str(_torrent.pri_order).rjust(3, '0'),
                                      str(_torrent.seeders).rjust(10, '0'),
                                      "%s%s" % (_season_len, _episode_len))
             else:
                 # 排序：标题、资源类型、站点、做种、季集
-                return "%s%s%s%s%s" % (str(_torrent.title).ljust(100, ' '),
+                return "%s%s%s%s%s" % (str(_media.title).ljust(100, ' '),
                                        str(_torrent.pri_order).rjust(3, '0'),
                                        str(_site_order).rjust(3, '0'),
                                        str(_torrent.seeders).rjust(10, '0'),
