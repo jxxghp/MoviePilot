@@ -91,6 +91,8 @@ class NotificationType(Enum):
     SiteMessage = "站点消息"
     # 媒体服务器通知
     MediaServer = "媒体服务器通知"
+    # 处理失败需要人工干预
+    Manual = "手动处理通知"
 
 
 class MessageChannel(Enum):

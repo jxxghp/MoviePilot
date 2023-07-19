@@ -1,3 +1,4 @@
+import random
 from datetime import timedelta
 from typing import Any
 
@@ -6,6 +7,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.chain.tmdb import TmdbChain
 from app.chain.user import UserChain
 from app.core import security
 from app.core.config import settings
@@ -18,7 +20,7 @@ from app.utils.http import RequestUtils
 router = APIRouter()
 
 
-@router.post("/login/access-token", summary="获取token", response_model=schemas.Token)
+@router.post("/access-token", summary="获取token", response_model=schemas.Token)
 async def login_access_token(
         db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()
 ) -> Any:
@@ -57,7 +59,7 @@ async def login_access_token(
     )
 
 
-@router.get("/login/wallpaper", summary="Bing每日壁纸", response_model=schemas.Response)
+@router.get("/bing", summary="Bing每日壁纸", response_model=schemas.Response)
 def bing_wallpaper() -> Any:
     """
     获取Bing每日壁纸
@@ -77,4 +79,22 @@ def bing_wallpaper() -> Any:
                                             message=f"https://cn.bing.com{image.get('url')}" if 'url' in image else '')
         except Exception as err:
             print(str(err))
+    return schemas.Response(success=False)
+
+
+@router.get("/tmdb", summary="TMDB电影海报", response_model=schemas.Response)
+def tmdb_wallpaper() -> Any:
+    """
+    获取TMDB电影海报
+    """
+    infos = TmdbChain().tmdb_trending()
+    if infos:
+        # 随机一个电影
+        while True:
+            info = random.choice(infos)
+            if info and info.get("backdrop_path"):
+                return schemas.Response(
+                    success=True,
+                    message=f"https://image.tmdb.org/t/p/original{info.get('backdrop_path')}"
+                )
     return schemas.Response(success=False)

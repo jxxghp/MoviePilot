@@ -113,7 +113,7 @@ class TransferChain(ChainBase):
                     logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
                     self.post_message(Notification(
                         channel=channel,
-                        mtype=NotificationType.Organize,
+                        mtype=NotificationType.Manual,
                         title=f"{torrent.title} 未识别到媒体信息，无法入库！\n"
                               f"回复：```\n/transfer {torrent.hash} [tmdbid]\n``` 手动识别转移。",
                         userid=userid))
