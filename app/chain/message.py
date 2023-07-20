@@ -250,14 +250,16 @@ class MessageChain(ChainBase):
             cache_list: list = cache_data.get('items')
             total = len(cache_list)
             # 加一页
-            self._current_page += 1
-            cache_list = cache_list[self._current_page * self._page_size:(self._current_page + 1) * self._page_size]
+            cache_list = cache_list[
+                         (self._current_page + 1) * self._page_size:(self._current_page + 2) * self._page_size]
             if not cache_list:
                 # 没有数据
                 self.post_message(Notification(
                     channel=channel, title="已经是最后一页了！", userid=userid))
                 return
             else:
+                # 加一页
+                self._current_page += 1
                 if cache_type == "Torrent":
                     # 发送种子数据
                     self.__post_torrents_message(channel=channel,

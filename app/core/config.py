@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     # WeChat应用ID
     WECHAT_APP_ID: str = None
     # WeChat代理服务器
-    WECHAT_PROXY: str = None
+    WECHAT_PROXY: str = "https://qyapi.weixin.qq.com"
     # WeChat Token
     WECHAT_TOKEN: str = None
     # WeChat EncodingAESKey
