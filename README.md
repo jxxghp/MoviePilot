@@ -85,6 +85,7 @@ docker pull jxxghp/moviepilot:latest
 - **SLACK_CHANNEL：** Slack 频道名称，默认`全体`
 
 
+- **TORRENT_TAG：** 种子标签，默认为MOVIEPILOT，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
 - **DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
 
 `qbittorrent`设置项：
