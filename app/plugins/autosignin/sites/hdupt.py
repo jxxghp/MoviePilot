@@ -49,18 +49,18 @@ class HDUpt(_ISiteSigninHandler):
                                          proxy=proxy,
                                          render=render)
         if not html_text:
-            logger.error(f"签到失败，请检查站点连通性")
-            return False, f'【{site}】签到失败，请检查站点连通性'
+            logger.error(f"{site} 签到失败，请检查站点连通性")
+            return False, '签到失败，请检查站点连通性'
 
         if "login.php" in html_text:
-            logger.error(f"签到失败，Cookie失效")
-            return False, f'【{site}】签到失败，Cookie失效'
+            logger.error(f"{site} 签到失败，Cookie失效")
+            return False, '签到失败，Cookie失效'
 
         sign_status = self.sign_in_result(html_res=html_text,
                                           regexs=self._sign_regex)
         if sign_status:
-            logger.info(f"今日已签到")
-            return True, f'【{site}】今日已签到'
+            logger.info(f"{site} 今日已签到")
+            return True, '今日已签到'
 
         # 签到
         html_text = self.get_page_source(url='https://pt.hdupt.com/added.php?action=qiandao',
@@ -69,14 +69,14 @@ class HDUpt(_ISiteSigninHandler):
                                          proxy=proxy,
                                          render=render)
         if not html_text:
-            logger.error(f"签到失败，请检查站点连通性")
-            return False, f'【{site}】签到失败，请检查站点连通性'
+            logger.error(f"{site} 签到失败，请检查站点连通性")
+            return False, '签到失败，请检查站点连通性'
 
-        logger.debug(f"签到接口返回 {html_text}")
+        logger.debug(f"{site} 签到接口返回 {html_text}")
         # 判断是否已签到 sign_res.text = ".23"
         if len(list(map(int, re.findall(r"\d+", html_text)))) > 0:
-            logger.info(f"签到成功")
-            return True, f'【{site}】签到成功'
+            logger.info(f"{site} 签到成功")
+            return True, '签到成功'
 
-        logger.error(f"签到失败，签到接口返回 {html_text}")
-        return False, f'【{site}】签到失败'
+        logger.error(f"{site} 签到失败，签到接口返回 {html_text}")
+        return False, '签到失败'

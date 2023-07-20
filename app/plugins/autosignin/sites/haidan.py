@@ -45,18 +45,18 @@ class HaiDan(_ISiteSigninHandler):
                                          proxy=proxy,
                                          render=render)
         if not html_text:
-            logger.error(f"签到失败，请检查站点连通性")
-            return False, f'【{site}】签到失败，请检查站点连通性'
+            logger.error(f"{site} 签到失败，请检查站点连通性")
+            return False, '签到失败，请检查站点连通性'
 
         if "login.php" in html_text:
-            logger.error(f"签到失败，Cookie失效")
-            return False, f'【{site}】签到失败，Cookie失效'
+            logger.error(f"{site} 签到失败，Cookie失效")
+            return False, '签到失败，Cookie失效'
 
         sign_status = self.sign_in_result(html_res=html_text,
                                           regexs=self._succeed_regex)
         if sign_status:
-            logger.info(f"签到成功")
-            return True, f'【{site}】签到成功'
+            logger.info(f"{site} 签到成功")
+            return True, '签到成功'
 
-        logger.error(f"签到失败，签到接口返回 {html_text}")
-        return False, f'【{site}】签到失败'
+        logger.error(f"{site} 签到失败，签到接口返回 {html_text}")
+        return False, '签到失败'

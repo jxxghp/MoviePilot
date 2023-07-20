@@ -50,20 +50,20 @@ class HDArea(_ISiteSigninHandler):
                                 proxies=proxies
                                 ).post_res(url="https://www.hdarea.co/sign_in.php", data=data)
         if not html_res or html_res.status_code != 200:
-            logger.error(f"签到失败，请检查站点连通性")
-            return False, f'【{site}】签到失败，请检查站点连通性'
+            logger.error(f"{site} 签到失败，请检查站点连通性")
+            return False, '签到失败，请检查站点连通性'
 
         if "login.php" in html_res.text:
-            logger.error(f"签到失败，Cookie失效")
-            return False, f'【{site}】签到失败，Cookie失效'
+            logger.error(f"{site} 签到失败，Cookie失效")
+            return False, '签到失败，Cookie失效'
 
         # 判断是否已签到
         # '已连续签到278天，此次签到您获得了100魔力值奖励!'
         if self._success_text in html_res.text:
-            logger.info(f"签到成功")
-            return True, f'【{site}】签到成功'
+            logger.info(f"{site} 签到成功")
+            return True, '签到成功'
         if self._repeat_text in html_res.text:
-            logger.info(f"今日已签到")
-            return True, f'【{site}】今日已签到'
-        logger.error(f"签到失败，签到接口返回 {html_res.text}")
-        return False, f'【{site}】签到失败'
+            logger.info(f"{site} 今日已签到")
+            return True, '今日已签到'
+        logger.error(f"{site} 签到失败，签到接口返回 {html_res.text}")
+        return False, '签到失败'

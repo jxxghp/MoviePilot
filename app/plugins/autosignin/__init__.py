@@ -1,8 +1,9 @@
 import traceback
+from datetime import datetime
 from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing.pool import ThreadPool
 from threading import Event
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Tuple
 from urllib.parse import urljoin
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -133,8 +134,16 @@ class AutoSignIn(_PluginBase):
 
         if status:
             logger.info("站点签到任务完成！")
+            # 获取今天的日期
+            key = datetime.now().strftime('%Y-%m-%d')
+            # 保存数据
+            self.save_data(key, [{
+                "site": s[0],
+                "status": s[1]
+            } for s in status])
             # 发送通知
-            self.chain.post_message(title="站点自动签到", text="\n".join([s for s in status if s]))
+            self.chain.post_message(title="站点自动签到",
+                                    text="\n".join([f'【{s[0]}】{s[1]}' for s in status if s]))
         else:
             logger.error("站点签到任务失败！")
 
@@ -164,21 +173,21 @@ class AutoSignIn(_PluginBase):
                 message=self.signin_site(site_info)
             )
 
-    def signin_site(self, site_info: CommentedMap) -> str:
+    def signin_site(self, site_info: CommentedMap) -> Tuple[str, str]:
         """
         签到一个站点
         """
         site_module = self.__build_class(site_info.get("url"))
         if site_module and hasattr(site_module, "signin"):
             try:
-                status, msg = site_module().signin(site_info)
+                _, msg = site_module().signin(site_info)
                 # 特殊站点直接返回签到信息，防止仿真签到、模拟登陆有歧义
-                return msg or ""
+                return site_info.get("name"), msg or ""
             except Exception as e:
                 traceback.print_exc()
-                return f"【{site_info.get('name')}】签到失败：{str(e)}"
+                return site_info.get("name"), f"签到失败：{str(e)}"
         else:
-            return self.__signin_base(site_info)
+            return site_info.get("name"), self.__signin_base(site_info)
 
     @staticmethod
     def __signin_base(site_info: CommentedMap) -> str:
@@ -214,8 +223,8 @@ class AutoSignIn(_PluginBase):
                                                                  proxies=proxy_server)
                 if not SiteUtils.is_logged_in(page_source):
                     if under_challenge(page_source):
-                        return f"【{site}】无法通过Cloudflare！"
-                    return f"【{site}】仿真登录失败，Cookie已失效！"
+                        return f"无法通过Cloudflare！"
+                    return f"仿真登录失败，Cookie已失效！"
             else:
                 res = RequestUtils(cookies=site_cookie,
                                    ua=ua,
@@ -237,20 +246,20 @@ class AutoSignIn(_PluginBase):
                         else:
                             msg = f"状态码：{res.status_code}"
                         logger.warn(f"{site} 签到失败，{msg}")
-                        return f"【{site}】签到失败，{msg}！"
+                        return f"签到失败，{msg}！"
                     else:
                         logger.info(f"{site} 签到成功")
-                        return f"【{site}】签到成功"
+                        return f"签到成功"
                 elif res is not None:
                     logger.warn(f"{site} 签到失败，状态码：{res.status_code}")
-                    return f"【{site}】签到失败，状态码：{res.status_code}！"
+                    return f"签到失败，状态码：{res.status_code}！"
                 else:
                     logger.warn(f"{site} 签到失败，无法打开网站")
-                    return f"【{site}】签到失败，无法打开网站！"
+                    return f"签到失败，无法打开网站！"
         except Exception as e:
             logger.warn("%s 签到失败：%s" % (site, str(e)))
             traceback.print_exc()
-            return f"【{site}】签到失败：{str(e)}！"
+            return f"签到失败：{str(e)}！"
 
     def stop_service(self):
         """

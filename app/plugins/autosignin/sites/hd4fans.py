@@ -47,17 +47,17 @@ class HDArea(_ISiteSigninHandler):
                                 proxies=proxies
                                 ).get_res(url="https://pt.hd4fans.org/index.php")
         if not html_res or html_res.status_code != 200:
-            logger.error(f"签到失败，请检查站点连通性")
-            return False, f'【{site}】签到失败，请检查站点连通性'
+            logger.error(f"{site} 签到失败，请检查站点连通性")
+            return False, '签到失败，请检查站点连通性'
 
         if "login.php" in html_res.text:
-            logger.error(f"签到失败，cookie失效")
-            return False, f'【{site}】签到失败，cookie失效'
+            logger.error(f"{site} 签到失败，cookie失效")
+            return False, '签到失败，cookie失效'
 
         # 判断是否已签到
         if self._repeat_text in html_res.text:
-            logger.info(f"今日已签到")
-            return True, f'【{site}】今日已签到'
+            logger.info(f"{site} 今日已签到")
+            return True, '今日已签到'
 
         # 签到
         data = {
@@ -68,12 +68,12 @@ class HDArea(_ISiteSigninHandler):
                                 proxies=proxies
                                 ).post_res(url="https://pt.hd4fans.org/checkin.php", data=data)
         if not sign_res or sign_res.status_code != 200:
-            logger.error(f"签到失败，请检查站点连通性")
-            return False, f'【{site}】签到失败，请检查站点连通性'
+            logger.error(f"{site} 签到失败，请检查站点连通性")
+            return False, '签到失败，请检查站点连通性'
         # sign_res.text=本次签到魔力
         if sign_res.text and int(sign_res.text) > 0:
-            logger.info(f"签到成功")
-            return True, f'【{site}】签到成功'
+            logger.info(f"{site} 签到成功")
+            return True, '签到成功'
 
-        logger.error(f"签到失败，签到接口返回 {sign_res.text}")
-        return False, f'【{site}】签到失败'
+        logger.error(f"{site} 签到失败，签到接口返回 {sign_res.text}")
+        return False, '签到失败'

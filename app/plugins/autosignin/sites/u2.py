@@ -54,8 +54,8 @@ class U2(_ISiteSigninHandler):
         now = datetime.datetime.now()
         # 判断当前时间是否小于9点
         if now.hour < 9:
-            logger.error(f"签到失败，9点前不签到")
-            return False, f'【{site}】签到失败，9点前不签到'
+            logger.error(f"{site} 签到失败，9点前不签到")
+            return False, '签到失败，9点前不签到'
         
         # 获取页面html
         html_text = self.get_page_source(url="https://u2.dmhy.org/showup.php",
@@ -64,25 +64,25 @@ class U2(_ISiteSigninHandler):
                                          proxy=proxy,
                                          render=render)
         if not html_text:
-            logger.error(f"签到失败，请检查站点连通性")
-            return False, f'【{site}】签到失败，请检查站点连通性'
+            logger.error(f"{site} 签到失败，请检查站点连通性")
+            return False, '签到失败，请检查站点连通性'
 
         if "login.php" in html_text:
-            logger.error(f"签到失败，Cookie失效")
-            return False, f'【{site}】签到失败，Cookie失效'
+            logger.error(f"{site} 签到失败，Cookie失效")
+            return False, '签到失败，Cookie失效'
         
         # 判断是否已签到
         sign_status = self.sign_in_result(html_res=html_text,
                                           regexs=self._sign_regex)
         if sign_status:
-            logger.info(f"今日已签到")
-            return True, f'【{site}】今日已签到'
+            logger.info(f"{site} 今日已签到")
+            return True, '今日已签到'
 
         # 没有签到则解析html
         html = etree.HTML(html_text)
 
         if not html:
-            return False, f'【{site}】签到失败'
+            return False, '签到失败'
 
         # 获取签到参数
         req = html.xpath("//form//td/input[@name='req']/@value")[0]
@@ -91,8 +91,8 @@ class U2(_ISiteSigninHandler):
         submit_name = html.xpath("//form//td/input[@type='submit']/@name")
         submit_value = html.xpath("//form//td/input[@type='submit']/@value")
         if not re or not hash_str or not form or not submit_name or not submit_value:
-            logger.error("签到失败，未获取到相关签到参数")
-            return False, f'【{site}】签到失败'
+            logger.error("{site} 签到失败，未获取到相关签到参数")
+            return False, '签到失败'
 
         # 随机一个答案
         answer_num = random.randint(0, 3)
@@ -110,14 +110,14 @@ class U2(_ISiteSigninHandler):
                                 ).post_res(url="https://u2.dmhy.org/showup.php?action=show",
                                            data=data)
         if not sign_res or sign_res.status_code != 200:
-            logger.error(f"签到失败，签到接口请求失败")
-            return False, f'【{site}】签到失败，签到接口请求失败'
+            logger.error(f"{site} 签到失败，签到接口请求失败")
+            return False, '签到失败，签到接口请求失败'
 
         # 判断是否签到成功
         # sign_res.text = "<script type="text/javascript">window.location.href = 'showup.php';</script>"
         if self._success_text in sign_res.text:
-            logger.info(f"签到成功")
-            return True, f'【{site}】签到成功'
+            logger.info(f"{site} 签到成功")
+            return True, '签到成功'
         else:
-            logger.error(f"签到失败，未知原因")
-            return False, f'【{site}】签到失败，未知原因'
+            logger.error(f"{site} 签到失败，未知原因")
+            return False, '签到失败，未知原因'

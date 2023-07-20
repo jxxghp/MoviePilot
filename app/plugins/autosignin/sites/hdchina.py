@@ -52,8 +52,8 @@ class HDChina(_ISiteSigninHandler):
                 cookie += sub_str + ";"
 
         if "hdchina=" not in cookie:
-            logger.error(f"签到失败，Cookie失效")
-            return False, f'【{site}】签到失败，Cookie失效'
+            logger.error(f"{site} 签到失败，Cookie失效")
+            return False, '签到失败，Cookie失效'
 
         site_cookie = cookie
         # 获取页面html
@@ -62,12 +62,12 @@ class HDChina(_ISiteSigninHandler):
                                 proxies=proxies
                                 ).get_res(url="https://hdchina.org/index.php")
         if not html_res or html_res.status_code != 200:
-            logger.error(f"签到失败，请检查站点连通性")
-            return False, f'【{site}】签到失败，请检查站点连通性'
+            logger.error(f"{site} 签到失败，请检查站点连通性")
+            return False, '签到失败，请检查站点连通性'
 
         if "login.php" in html_res.text or "阻断页面" in html_res.text:
-            logger.error(f"签到失败，Cookie失效")
-            return False, f'【{site}】签到失败，Cookie失效'
+            logger.error(f"{site} 签到失败，Cookie失效")
+            return False, '签到失败，Cookie失效'
 
         # 获取新返回的cookie进行签到
         site_cookie = ';'.join(['{}={}'.format(k, v) for k, v in html_res.cookies.get_dict().items()])
@@ -77,20 +77,20 @@ class HDChina(_ISiteSigninHandler):
         sign_status = self.sign_in_result(html_res=html_res.text,
                                           regexs=self._sign_regex)
         if sign_status:
-            logger.info(f"今日已签到")
-            return True, f'【{site}】今日已签到'
+            logger.info(f"{site} 今日已签到")
+            return True, '今日已签到'
 
         # 没有签到则解析html
         html = etree.HTML(html_res.text)
 
         if not html:
-            return False, f'【{site}】签到失败'
+            return False, '签到失败'
 
         # x_csrf
         x_csrf = html.xpath("//meta[@name='x-csrf']/@content")[0]
         if not x_csrf:
-            logger.error("签到失败，获取x-csrf失败")
-            return False, f'【{site}】签到失败'
+            logger.error("{site} 签到失败，获取x-csrf失败")
+            return False, '签到失败'
         logger.debug(f"获取到x-csrf {x_csrf}")
 
         # 签到
@@ -102,16 +102,16 @@ class HDChina(_ISiteSigninHandler):
                                 proxies=proxies
                                 ).post_res(url="https://hdchina.org/plugin_sign-in.php?cmd=signin", data=data)
         if not sign_res or sign_res.status_code != 200:
-            logger.error(f"签到失败，签到接口请求失败")
-            return False, f'【{site}】签到失败，签到接口请求失败'
+            logger.error(f"{site} 签到失败，签到接口请求失败")
+            return False, '签到失败，签到接口请求失败'
 
         sign_dict = json.loads(sign_res.text)
         logger.debug(f"签到返回结果 {sign_dict}")
         if sign_dict['state']:
             # {'state': 'success', 'signindays': 10, 'integral': 20}
-            logger.info(f"签到成功")
-            return True, f'【{site}】签到成功'
+            logger.info(f"{site} 签到成功")
+            return True, '签到成功'
         else:
             # {'state': False, 'msg': '不正确的CSRF / Incorrect CSRF token'}
-            logger.error(f"签到失败，不正确的CSRF / Incorrect CSRF token")
-            return False, f'【{site}】签到失败'
+            logger.error(f"{site} 签到失败，不正确的CSRF / Incorrect CSRF token")
+            return False, '签到失败'
