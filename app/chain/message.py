@@ -258,6 +258,8 @@ class MessageChain(ChainBase):
                     channel=channel, title="已经是最后一页了！", userid=userid))
                 return
             else:
+                # 加一页
+                self._current_page += 1
                 if cache_type == "Torrent":
                     # 发送种子数据
                     self.__post_torrents_message(channel=channel,
