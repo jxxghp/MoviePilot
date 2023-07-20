@@ -19,7 +19,7 @@ class CHDBits(_ISiteSigninHandler):
     否则随机
     """
     # 匹配的站点Url，每一个实现类都需要设置为自己的站点Url
-    site_url = "chdbits.co"
+    site_url = "ptchdbits.co"
 
     # 已签到
     _sign_regex = ['今天已经签过到了']
@@ -49,7 +49,7 @@ class CHDBits(_ISiteSigninHandler):
         render = site_info.get("render")
 
         # 判断今日是否已签到
-        html_text = self.get_page_source(url='https://chdbits.co/bakatest.php',
+        html_text = self.get_page_source(url='https://ptchdbits.co/bakatest.php',
                                          cookie=site_cookie,
                                          ua=ua,
                                          proxy=proxy,
@@ -126,7 +126,7 @@ class CHDBits(_ISiteSigninHandler):
         sign_res = RequestUtils(cookies=site_cookie,
                                 ua=ua,
                                 proxies=settings.PROXY if proxy else None
-                                ).post_res(url='https://chdbits.co/bakatest.php', data=data)
+                                ).post_res(url='https://ptchdbits.co/bakatest.php', data=data)
         if not sign_res or sign_res.status_code != 200:
             logger.error(f"{site} 签到失败，签到接口请求失败")
             return False, '签到失败，签到接口请求失败'
