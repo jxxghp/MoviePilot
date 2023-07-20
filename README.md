@@ -49,6 +49,7 @@ docker pull jxxghp/moviepilot:latest
 - **PROXY_HOST：** 网络代理（可选），访问themoviedb需要使用代理访问，格式为`http(s)://ip:port`
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`或其它中转代理服务地址，能连通即可
 - **DOWNLOAD_PATH：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径与宿主机`真实路径`保持一致**，例如群晖中下载路程径为`/volume1/downloads`，则需要将`moviepilot`及`下载器`的映射路径均设置为`/volume1/downloads`，否则会导致下载文件无法转移
+- **TORRENT_TAG：** 种子标签，默认为`MOVIEPILOT`，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
 - **LIBRARY_PATH：** 媒体库目录，**注意：需要将`moviepilot`的映射路径与宿主机`真实路径`保持一致**，多个目录使用`,`分隔
 - **LIBRARY_CATEGORY：** 二级分类开关，`true`/`false`，开启后会根据配置自动在媒体库目录下建立二级目录分类
 - **DOUBAN_USER_IDS：** 豆瓣用户ID，用于同步豆瓣标记的`想看`数据，自动添加订阅，多个用户使用,分隔
@@ -85,7 +86,6 @@ docker pull jxxghp/moviepilot:latest
 - **SLACK_CHANNEL：** Slack 频道名称，默认`全体`
 
 
-- **TORRENT_TAG：** 种子标签，默认为MOVIEPILOT，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
 - **DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
 
 `qbittorrent`设置项：
