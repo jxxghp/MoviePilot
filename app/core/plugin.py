@@ -42,6 +42,8 @@ class PluginManager(metaclass=Singleton):
             "app.plugins",
             filter_func=lambda _, obj: hasattr(obj, 'init_plugin')
         )
+        # 已安装插件
+        installed_plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
         # 排序
         plugins.sort(key=lambda x: x.plugin_order if hasattr(x, "plugin_order") else 0)
         self._running_plugins = {}
@@ -51,6 +53,9 @@ class PluginManager(metaclass=Singleton):
             try:
                 # 存储Class
                 self._plugins[plugin_id] = plugin
+                # 未安装的不加载
+                if plugin_id not in installed_plugins:
+                    continue
                 # 生成实例
                 plugin_obj = plugin()
                 # 生效插件配置

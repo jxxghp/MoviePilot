@@ -30,6 +30,25 @@ def installed_plugins(db: Session = Depends(get_db),
     return SystemConfigOper(db).get(SystemConfigKey.UserInstalledPlugins) or []
 
 
+@router.get("/install/{plugin_id}", summary="安装插件", response_model=schemas.Response)
+def install_plugin(plugin_id: str,
+                   db: Session = Depends(get_db),
+                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    安装插件
+    """
+    # 已安装插件
+    install_plugins = SystemConfigOper(db).get(SystemConfigKey.UserInstalledPlugins) or []
+    # 安装插件
+    if plugin_id not in install_plugins:
+        install_plugins.append(plugin_id)
+        # 保存设置
+        SystemConfigOper(db).set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+        # 重载插件管理器
+        PluginManager().init_config()
+    return schemas.Response(success=True)
+
+
 @router.get("/{plugin_id}", summary="获取插件配置")
 def plugin_config(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> dict:
     """
@@ -45,24 +64,6 @@ def set_plugin_config(plugin_id: str, conf: dict,
     根据插件ID获取插件配置信息
     """
     PluginManager().save_plugin_config(plugin_id, conf)
-    return schemas.Response(success=True)
-
-
-@router.post("/{plugin_id}/install", summary="安装插件", response_model=schemas.Response)
-def install_plugin(plugin_id: str,
-                   db: Session = Depends(get_db),
-                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    安装插件
-    """
-    # 已安装插件
-    install_plugins = SystemConfigOper(db).get(SystemConfigKey.UserInstalledPlugins) or []
-    # 安装插件
-    install_plugins.append(plugin_id)
-    # 保存设置
-    SystemConfigOper(db).set(SystemConfigKey.UserInstalledPlugins, install_plugins)
-    # 重载插件管理器
-    PluginManager().init_config()
     return schemas.Response(success=True)
 
 
