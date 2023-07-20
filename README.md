@@ -60,7 +60,7 @@ docker pull jxxghp/moviepilot:latest
 - **USER_AGENT：** CookieCloud对应的浏览器UA，可选，同步站点后可以在管理界面中修改
 
 
-- **MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
+**MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
 
 `wechat`设置项：
 
@@ -70,6 +70,7 @@ docker pull jxxghp/moviepilot:latest
 - **WECHAT_TOKEN：** WeChat消息回调的Token
 - **WECHAT_ENCODING_AESKEY：** WeChat消息回调的EncodingAESKey
 - **WECHAT_ADMINS：** WeChat管理员列表，多个管理员用英文逗号分隔（可选）
+- **WECHAT_PROXY：** WeChat代理服务器（后面不要加/）
 
 `telegram`设置项：
 
@@ -85,7 +86,7 @@ docker pull jxxghp/moviepilot:latest
 - **SLACK_CHANNEL：** Slack 频道名称，默认`全体`
 
 
-- **DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
+**DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
 
 `qbittorrent`设置项：
 
@@ -99,7 +100,7 @@ docker pull jxxghp/moviepilot:latest
 - **TR_USER：** transmission用户名
 - **TR_PASSWORD：** transmission密码
 
-- **MEDIASERVER：** 媒体服务器，支持`emby`/`jellyfin`/`plex`，同时还需要配置对应媒体服务器的环境变量，非对应媒体服务器的变量可删除，推荐使用`emby`
+**MEDIASERVER：** 媒体服务器，支持`emby`/`jellyfin`/`plex`，同时还需要配置对应媒体服务器的环境变量，非对应媒体服务器的变量可删除，推荐使用`emby`
 
 `emby`设置项：
 

@@ -16,7 +16,6 @@ lock = threading.Lock()
 
 
 class WeChat(metaclass=Singleton):
-    
     # 企业微信Token
     _access_token = None
     # 企业微信Token过期时间
@@ -29,11 +28,11 @@ class WeChat(metaclass=Singleton):
     _appsecret = None
     # 企业微信AppID
     _appid = None
-    
+
     # 企业微信发送消息URL
-    _send_msg_url = "https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=%s"
+    _send_msg_url = f"{settings.WECHAT_PROXY}/cgi-bin/message/send?access_token=%s"
     # 企业微信获取TokenURL
-    _token_url = "https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=%s&corpsecret=%s"
+    _token_url = f"{settings.WECHAT_PROXY}/cgi-bin/gettoken?corpid=%s&corpsecret=%s"
 
     def __init__(self):
         """
