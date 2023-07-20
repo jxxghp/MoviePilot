@@ -109,6 +109,8 @@ class Settings(BaseSettings):
     TORRENT_TAG: str = "MOVIEPILOT"
     # 下载保存目录，容器内映射路径需要一致
     DOWNLOAD_PATH: str = "/downloads"
+    # 下载目录二级分类
+    DOWNLOAD_CATEGORY: bool = False
     # 媒体服务器 emby/jellyfin/plex
     MEDIASERVER: str = "emby"
     # EMBY服务器地址，IP:PORT

@@ -24,11 +24,12 @@ class QbittorrentModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "DOWNLOADER", "qbittorrent"
 
-    def download(self, torrent_path: Path, cookie: str,
+    def download(self, torrent_path: Path, download_dir: Path, cookie: str,
                  episodes: Set[int] = None) -> Optional[Tuple[Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param torrent_path:  种子文件地址
+        :param download_dir:  下载目录
         :param cookie:  cookie
         :param episodes:  需要下载的集数
         :return: 种子Hash，错误信息
@@ -45,7 +46,7 @@ class QbittorrentModule(_ModuleBase):
         is_paused = True if episodes else False
         # 添加任务
         state = self.qbittorrent.add_torrent(content=torrent_path.read_bytes(),
-                                             download_dir=settings.DOWNLOAD_PATH,
+                                             download_dir=str(download_dir),
                                              is_paused=is_paused,
                                              tag=tags,
                                              cookie=cookie)

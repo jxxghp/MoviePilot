@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Set, Dict, Union
 
 from app.chain import ChainBase
+from app.core.config import settings
 from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.meta import MetaBase
 from app.db.downloadhistory_oper import DownloadHistoryOper
@@ -101,10 +102,16 @@ class DownloadChain(ChainBase):
             torrent_file, _folder_name, _ = self.download_torrent(_torrent, userid=userid)
             if not torrent_file:
                 return
+        # 下载目录
+        if settings.DOWNLOAD_CATEGORY and _media and _media.category:
+            download_dir = Path(settings.DOWNLOAD_PATH) / _media.category
+        else:
+            download_dir = Path(settings.DOWNLOAD_PATH)
         # 添加下载
         result: Optional[tuple] = self.download(torrent_path=torrent_file,
                                                 cookie=_torrent.site_cookie,
-                                                episodes=episodes)
+                                                episodes=episodes,
+                                                download_dir=download_dir)
         if result:
             _hash, error_msg = result
         else:
@@ -133,7 +140,7 @@ class DownloadChain(ChainBase):
             self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent,
                                        channel=channel, userid=userid)
             # 下载成功后处理
-            self.download_added(context=context, torrent_path=torrent_file)
+            self.download_added(context=context, torrent_path=torrent_file, download_dir=download_dir)
             # 广播事件
             self.eventmanager.send_event(EventType.DownloadAdded, {
                 "hash": _hash,

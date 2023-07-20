@@ -34,11 +34,12 @@ class SubtitleModule(_ModuleBase):
     def stop(self) -> None:
         pass
 
-    def download_added(self, context: Context, torrent_path: Path) -> None:
+    def download_added(self, context: Context, torrent_path: Path, download_dir: Path) -> None:
         """
         添加下载任务成功后，从站点下载字幕，保存到下载目录
         :param context:  上下文，包括识别信息、媒体信息、种子信息
         :param torrent_path:  种子文件地址
+        :param download_dir:  下载目录
         :return: None，该方法可被多个模块同时处理
         """
         # 种子信息
@@ -49,7 +50,8 @@ class SubtitleModule(_ModuleBase):
         logger.info("开始从站点下载字幕：%s" % torrent.page_url)
         # 获取种子信息
         folder_name, _ = TorrentHelper.get_torrent_info(torrent_path)
-        download_dir = Path(settings.DOWNLOAD_PATH) / folder_name
+
+        download_dir = download_dir / (folder_name or "")
         # 等待文件或者目录存在
         for _ in range(10):
             if download_dir.exists():

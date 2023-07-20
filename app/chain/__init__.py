@@ -202,25 +202,30 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         return self.run_module("filter_torrents", rule_string=rule_string,
                                torrent_list=torrent_list, season_episodes=season_episodes)
 
-    def download(self, torrent_path: Path, cookie: str,
-                 episodes: Set[int] = None) -> Optional[Tuple[Optional[str], str]]:
+    def download(self, torrent_path: Path, download_dir: Path, cookie: str,
+                 episodes: Set[int] = None,
+                 ) -> Optional[Tuple[Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param torrent_path:  种子文件地址
+        :param download_dir:  下载目录
         :param cookie:  cookie
         :param episodes:  需要下载的集数
         :return: 种子Hash，错误信息
         """
-        return self.run_module("download", torrent_path=torrent_path, cookie=cookie, episodes=episodes)
+        return self.run_module("download", torrent_path=torrent_path, download_dir=download_dir,
+                               cookie=cookie, episodes=episodes, )
 
-    def download_added(self, context: Context, torrent_path: Path) -> None:
+    def download_added(self, context: Context, torrent_path: Path, download_dir: Path) -> None:
         """
         添加下载任务成功后，从站点下载字幕，保存到下载目录
         :param context:  上下文，包括识别信息、媒体信息、种子信息
         :param torrent_path:  种子文件地址
+        :param download_dir:  下载目录
         :return: None，该方法可被多个模块同时处理
         """
-        return self.run_module("download_added", context=context, torrent_path=torrent_path)
+        return self.run_module("download_added", context=context, torrent_path=torrent_path,
+                               download_dir=download_dir)
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:

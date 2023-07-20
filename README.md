@@ -49,16 +49,17 @@ docker pull jxxghp/moviepilot:latest
 - **PROXY_HOST：** 网络代理（可选），访问themoviedb需要使用代理访问，格式为`http(s)://ip:port`
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`或其它中转代理服务地址，能连通即可
 - **DOWNLOAD_PATH：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径与宿主机`真实路径`保持一致**，例如群晖中下载路程径为`/volume1/downloads`，则需要将`moviepilot`及`下载器`的映射路径均设置为`/volume1/downloads`，否则会导致下载文件无法转移
+- **DOWNLOAD_CATEGORY：** 下载二级分类开关，`true`/`false`，默认`false`，开启后会根据配置`category.yaml`自动在下载目录下建立二级目录分类
 - **TORRENT_TAG：** 种子标签，默认为`MOVIEPILOT`，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
 - **LIBRARY_PATH：** 媒体库目录，**注意：需要将`moviepilot`的映射路径与宿主机`真实路径`保持一致**，多个目录使用`,`分隔
-- **LIBRARY_CATEGORY：** 二级分类开关，`true`/`false`，开启后会根据配置自动在媒体库目录下建立二级目录分类
+- **LIBRARY_CATEGORY：** 媒体库二级分类开关，`true`/`false`，默认`false`，开启后会根据配置`category.yaml`自动在媒体库目录下建立二级目录分类
 - **DOUBAN_USER_IDS：** 豆瓣用户ID，用于同步豆瓣标记的`想看`数据，自动添加订阅，多个用户使用,分隔
 - **TRANSFER_TYPE：** 转移方式，支持`link`/`copy`/`move`/`softlink`
 - **COOKIECLOUD_HOST：** CookieCloud服务器地址，格式：`http://ip:port`，必须配置，否则无法添加站点
 - **COOKIECLOUD_KEY：** CookieCloud用户KEY
 - **COOKIECLOUD_PASSWORD：** CookieCloud端对端加密密码
 - **COOKIECLOUD_INTERVAL：** CookieCloud同步间隔（分钟）
-- **USER_AGENT：** CookieCloud对应的浏览器UA，可选，同步站点后可以在管理界面中修改
+- **USER_AGENT：** CookieCloud对应的浏览器UA，可选，设置后可增加连接站点的成功率，同步站点后可以在管理界面中修改
 
 
 **MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
@@ -188,11 +189,8 @@ docker pull jxxghp/moviepilot:latest
 在`设定`-`规则`中设定，规则说明：
 
 - 仅支持使用内置规则进行排列组合，内置规则有：`蓝光原盘`、`4K`、`1080P`、`中文字幕`、`特效字幕`、`H265`、`H264`、`杜比`、`HDR`、`REMUX`、`WEB-DL`、`免费`、`国语配音` 等
-- `&`表示与，`｜`表示或，`!`表示非，`>`表示优先级层级
 - 符合任一层级规则的资源将被标识选中，匹配成功的层级做为该资源的优先级，排越前面优先级超高
 - 不符合过滤规则所有层级规则的资源将不会被选中
-
-`!BLU & 4K & CNSUB > !BLU & 1080P & CNSUB > !BLU & 4K > !BLU & 1080P` 表示优先中文字幕非蓝光4K，然后中文字幕非蓝光1080P，然后非蓝光4K，最后非蓝光1080P
 
 
 ## 使用
