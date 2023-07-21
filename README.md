@@ -2,6 +2,8 @@
 
 基于 [NAStool](https://github.com/NAStool/nas-tools) 部分代码重新设计，聚焦自动化核心需求，减少问题同时更易于扩展和维护。
 
+# 仅用于学习交流使用，请勿在任何国内平台宣传该项目！
+
 Docker：https://hub.docker.com/r/jxxghp/moviepilot
 
 ## 主要特性
@@ -124,7 +126,7 @@ docker pull jxxghp/moviepilot:latest
 
 - **AUTH_SITE：** 认证站点，支持`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`iyuu`
 
-`MoviePilot`为了控制用户数量，同样需要认证PT用户后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数。
+`MoviePilot`需要认证后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数。
 
 | 站点 | 参数                                                    |
 |----|-------------------------------------------------------|
@@ -196,21 +198,11 @@ docker pull jxxghp/moviepilot:latest
 ## 使用
 
 - 通过CookieCloud同步快速同步站点，不需要使用的站点可在WEB管理界面中禁用。
-- 通过下载器监控实现资源下载后自动整理入库刮削。
-- 通过微信/Telegram/Slack远程搜索下载、订阅和管理设置，其中Telegram将会自动添加操作菜单。微信回调相对路径为`/api/v1/message/`。
+- 通过下载器监控实现自动整理入库刮削。
+- 通过微信/Telegram/Slack远程管理，其中Telegram将会自动添加操作菜单。微信回调相对路径为`/api/v1/message/`。
 - 通过WEB进行管理，将WEB添加到手机桌面获得类App使用效果，管理界面端口：`3000`。
-- 设置媒体服务器Webhook，通过MoviePilot发送播放通知，以及后续播放限速等插件功能。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`。
-- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，可使用Overseerr/Jellyseerr选片。
-
-![image](https://github.com/jxxghp/MoviePilot/assets/51039935/b8f0238d-847f-4f9d-b210-e905837362b9)
-
-![image](https://github.com/jxxghp/MoviePilot/assets/51039935/28219233-ec7d-479b-b184-9a901c947dd1)
-
-![image](https://github.com/jxxghp/MoviePilot/assets/51039935/f7df0806-668d-4c8b-ad41-133bf8f0bf73)
-
-![image](https://github.com/jxxghp/MoviePilot/assets/51039935/f7ea77cd-0362-4c35-967c-7f1b22dbef05)
-
-
+- 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`。
+- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，可使用Overseerr/Jellyseerr浏览订阅。
 
 ## TODO
 
