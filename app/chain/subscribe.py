@@ -450,7 +450,7 @@ class SubscribeChain(ChainBase):
                 continue
             if mediainfo.tmdb_id != subscribe.tmdbid:
                 continue
-            episodes = meta.episodes
+            episodes = meta.episode_list
             if not episodes:
                 continue
             # 合并已下载集
@@ -486,8 +486,7 @@ class SubscribeChain(ChainBase):
             season = season_info.season
             if season == subscribe.season:
                 left_episodes = season_info.episodes
-                logger.info(f'{mediainfo.title_year} 季 {season} 未搜索到资源，'
-                            f'更新缺失集数为{len(left_episodes)} ...')
+                logger.info(f'{mediainfo.title_year} 季 {season} 更新缺失集数为{len(left_episodes)} ...')
                 if update_date:
                     # 同时更新最后时间
                     self.subscribehelper.update(subscribe.id, {
