@@ -33,7 +33,7 @@ class TmdbHelper:
         # 开启缓存
         self.tmdb.cache = True
         # 缓存大小
-        self.tmdb.REQUEST_CACHE_MAXSIZE = 256
+        self.tmdb.REQUEST_CACHE_MAXSIZE = settings.CACHE_CONF.get('tmdb')
         # APIKEY
         self.tmdb.api_key = settings.TMDB_API_KEY
         # 语种
@@ -452,7 +452,7 @@ class TmdbHelper:
                         return multi
         return {}
 
-    @lru_cache(maxsize=128)
+    @lru_cache(maxsize=settings.CACHE_CONF.get('tmdb'))
     def match_web(self, name: str, mtype: MediaType) -> Optional[dict]:
         """
         搜索TMDB网站，直接抓取结果，结果只有一条时才返回

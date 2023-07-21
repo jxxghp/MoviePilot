@@ -33,8 +33,10 @@ class TmdbCache(metaclass=Singleton):
     _tmdb_cache_expire: bool = True
 
     def __init__(self):
+        global EXPIRE_TIMESTAMP
         self._meta_path = settings.TEMP_PATH / "__tmdb_cache__"
         self._meta_data = self.__load(self._meta_path)
+        EXPIRE_TIMESTAMP = settings.CACHE_CONF.get('meta')
 
     def clear(self):
         """

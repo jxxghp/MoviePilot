@@ -9,6 +9,7 @@ from urllib import parse
 
 import requests
 
+from app.core.config import settings
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 
@@ -158,7 +159,7 @@ class DoubanApi(metaclass=Singleton):
                                 ).decode()
 
     @classmethod
-    @lru_cache(maxsize=256)
+    @lru_cache(maxsize=settings.CACHE_CONF.get('douban'))
     def __invoke(cls, url, **kwargs):
         req_url = cls._base_url + url
 

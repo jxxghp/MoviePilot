@@ -152,6 +152,8 @@ class Settings(BaseSettings):
                             "/Season {{season}}" \
                             "/{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}" \
                             "{{fileExt}}"
+    # 大内存模式
+    BIG_MEMORY_MODE: bool = False
 
     @property
     def INNER_CONFIG_PATH(self):
@@ -178,6 +180,24 @@ class Settings(BaseSettings):
     @property
     def LOG_PATH(self):
         return self.CONFIG_PATH / "logs"
+
+    @property
+    def CACHE_CONF(self):
+        if self.BIG_MEMORY_MODE:
+            return {
+                "tmdb": 1024,
+                "torrents": 200,
+                "douban": 512,
+                "fanart": 512,
+                "meta": 15 * 24 * 3600
+            }
+        return {
+            "tmdb": 256,
+            "torrents": 100,
+            "douban": 256,
+            "fanart": 128,
+            "meta": 7 * 24 * 3600
+        }
 
     @property
     def PROXY(self):

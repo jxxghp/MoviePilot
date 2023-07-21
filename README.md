@@ -145,6 +145,8 @@ docker pull jxxghp/moviepilot:latest
 
 ### 2. **进阶配置**
 
+- **BIG_MEMORY_MODE：** 大内存模式，默认为`false`，开启后会占用更多的内存，但响应速度会更快
+
 - **MOVIE_RENAME_FORMAT：** 电影重命名格式
 
 `MOVIE_RENAME_FORMAT`支持的配置项：

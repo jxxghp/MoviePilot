@@ -361,7 +361,7 @@ class SubscribeChain(ChainBase):
                     else:
                         torrents_cache[domain].append(context)
                     # 如果超过了200条则移除最早的一条
-                    if len(torrents_cache[domain]) > 200:
+                    if len(torrents_cache[domain]) > settings.CACHE_CONF.get('torrents'):
                         torrents_cache[domain].pop(0)
             else:
                 logger.info(f'{indexer.get("name")} 获取到种子')
