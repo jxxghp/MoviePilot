@@ -134,7 +134,7 @@ class TheMovieDbModule(_ModuleBase):
                             f"{mediainfo.title_year}")
             return mediainfo
         else:
-            logger.info(f"{meta.name} 未匹配到媒体信息")
+            logger.info(f"{meta.name if meta else tmdbid} 未匹配到媒体信息")
 
         return None
 
