@@ -17,6 +17,7 @@ from app.helper.sites import SitesHelper
 from app.log import logger
 from app.plugins import _PluginBase
 from app.plugins.sitestatistic.siteuserinfo import ISiteUserInfo
+from app.schemas import Notification
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.timer import TimerUtils
@@ -31,7 +32,6 @@ lock = Lock()
 
 
 class SiteStatistic(_PluginBase):
-
     # 插件名称
     plugin_name = "站点数据统计"
     # 插件描述
@@ -309,10 +309,10 @@ class SiteStatistic(_PluginBase):
             for head, date, content in site_user_info.message_unread_contents:
                 msg_title = f"【站点 {site_user_info.site_name} 消息】"
                 msg_text = f"时间：{date}\n标题：{head}\n内容：\n{content}"
-                self.chain.post_message(title=msg_title, text=msg_text)
+                self.chain.post_message(Notification(title=msg_title, text=msg_text))
         else:
-            self.chain.post_message(title=f"站点 {site_user_info.site_name} 收到 "
-                                          f"{site_user_info.message_unread} 条新消息，请登陆查看")
+            self.chain.post_message(Notification(title=f"站点 {site_user_info.site_name} 收到 "
+                                                       f"{site_user_info.message_unread} 条新消息，请登陆查看"))
 
     @eventmanager.register(EventType.SiteStatistic)
     def refresh(self, event: Event):
@@ -394,6 +394,6 @@ class SiteStatistic(_PluginBase):
                                    f"总上传：{StringUtils.str_filesize(incUploads)}\n"
                                    f"总下载：{StringUtils.str_filesize(incDownloads)}\n"
                                    f"————————————")
-            self.chain.post_message(title="站点数据统计", text="\n".join(messages))
+            self.chain.post_message(Notification(title="站点数据统计", text="\n".join(messages)))
 
         logger.info("站点数据刷新完成")

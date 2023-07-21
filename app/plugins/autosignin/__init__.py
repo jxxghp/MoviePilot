@@ -18,6 +18,7 @@ from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.plugins import _PluginBase
+from app.schemas import Notification
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
 from app.utils.string import StringUtils
@@ -142,8 +143,8 @@ class AutoSignIn(_PluginBase):
                 "status": s[1]
             } for s in status])
             # 发送通知
-            self.chain.post_message(title="站点自动签到",
-                                    text="\n".join([f'【{s[0]}】{s[1]}' for s in status if s]))
+            self.chain.post_message(Notification(title="站点自动签到",
+                                    text="\n".join([f'【{s[0]}】{s[1]}' for s in status if s])))
         else:
             logger.error("站点签到任务失败！")
 
