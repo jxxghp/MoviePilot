@@ -96,6 +96,7 @@ def nettest(url: str,
     """
     # 记录开始的毫秒数
     start_time = datetime.now()
+    url = url.replace("{TMDBAPIKEY}", settings.TMDB_API_KEY)
     result = RequestUtils(proxies=settings.PROXY if proxy else None,
                           ua=settings.USER_AGENT).get_res(url)
     # 计时结束的毫秒数
