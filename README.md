@@ -204,6 +204,8 @@ docker pull jxxghp/moviepilot:latest
 - 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`。
 - 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，可使用Overseerr/Jellyseerr浏览订阅。
 
+**注意**：容器首次启动需要下载浏览器内核，根据网络情况可能需要较长时间，此时无法登录。可映射`/root`目录避免容器重置后重新触发浏览器内核下载。
+
 ## TODO
 
 仍在开发中，当前功能并不完善。
