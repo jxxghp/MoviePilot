@@ -201,7 +201,7 @@ class WeChat(metaclass=Singleton):
 
         # 先发送标题
         if title:
-            self.__send_message(title=title)
+            self.__send_message(title=title, userid=userid)
 
         # 发送列表
         message_url = self._send_msg_url % self.__get_access_token()
