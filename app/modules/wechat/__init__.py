@@ -133,7 +133,7 @@ class WechatModule(_ModuleBase):
         :return: 成功或失败
         """
         # 先发送标题
-        self.wechat.send_msg(title=message.title)
+        self.wechat.send_msg(title=message.title, userid=message.userid)
         # 再发送内容
         return self.wechat.send_medias_msg(medias=medias, userid=message.userid)
 
