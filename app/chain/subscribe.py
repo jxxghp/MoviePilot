@@ -1,11 +1,14 @@
 import json
+import pickle
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Union, Tuple
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.search import SearchChain
+from app.core.config import settings
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.db.models.subscribe import Subscribe
@@ -24,8 +27,7 @@ class SubscribeChain(ChainBase):
     订阅管理处理链
     """
 
-    # 站点最新种子缓存 {站点域名: 种子上下文}
-    _torrents_cache: Dict[str, List[Context]] = {}
+    __cache_path: Path = None
 
     def __init__(self):
         super().__init__()
@@ -35,6 +37,9 @@ class SubscribeChain(ChainBase):
         self.siteshelper = SitesHelper()
         self.message = MessageHelper()
         self.systemconfig = SystemConfigOper()
+
+        # 缓存路径
+        self.__cache_path = settings.TEMP_PATH / "__torrents_cache__"
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,
@@ -218,8 +223,9 @@ class SubscribeChain(ChainBase):
                 )
                 # 打印缺失集信息
                 if no_exists and no_exists.get(subscribe.tmdbid):
-                    no_exists_episodes = no_exists.get(subscribe.tmdbid).get(subscribe.season)
-                    logger.info(f'订阅 {mediainfo.title_year}{meta.season} 缺失集：{no_exists_episodes}')
+                    no_exists_info = no_exists.get(subscribe.tmdbid).get(subscribe.season)
+                    if no_exists_info:
+                        logger.info(f'订阅 {mediainfo.title_year}{meta.season} 缺失集：{no_exists_info.episodes}')
             # 站点范围
             if subscribe.sites:
                 sites = json.loads(subscribe.sites)
@@ -295,6 +301,9 @@ class SubscribeChain(ChainBase):
         """
         刷新站点最新资源
         """
+        # 读取缓存
+        torrents_cache: Dict[str, List[Context]] = self.__load_cache()
+
         # 所有站点索引
         indexers = self.siteshelper.get_indexers()
         # 配置的索引站点
@@ -304,11 +313,10 @@ class SubscribeChain(ChainBase):
             # 未开启的站点不搜索
             if config_indexers and str(indexer.get("id")) not in config_indexers:
                 continue
-            logger.info(f'开始刷新站点资源，站点：{indexer.get("name")} ...')
+            logger.info(f'开始刷新 {indexer.get("name")} 最新种子 ...')
             domain = StringUtils.get_url_domain(indexer.get("domain"))
             torrents: List[TorrentInfo] = self.refresh_torrents(site=indexer)
             if torrents:
-                self._torrents_cache[domain] = []
                 # 过滤种子
                 result: List[TorrentInfo] = self.filter_torrents(
                     rule_string=self.systemconfig.get(SystemConfigKey.FilterRules),
@@ -316,7 +324,17 @@ class SubscribeChain(ChainBase):
                 if result is not None:
                     torrents = result
                 if not torrents:
-                    logger.warn(f'{indexer.get("name")} 没有符合过滤条件的资源')
+                    logger.warn(f'{indexer.get("name")} 没有符合过滤条件的种子')
+                    continue
+                # 过滤出没有处理过的种子
+                torrents = [torrent for torrent in torrents
+                            if f'{torrent.title}{torrent.description}'
+                            not in [f'{t.torrent_info.title}{t.torrent_info.description}'
+                                    for t in torrents_cache.get(domain) or []]]
+                if torrents:
+                    logger.info(f'{indexer.get("name")} 有 {len(torrents)} 个新种子')
+                else:
+                    logger.info(f'{indexer.get("name")} 没有新种子')
                     continue
                 for torrent in torrents:
                     logger.info(f'处理资源：{torrent.title} ...')
@@ -333,17 +351,46 @@ class SubscribeChain(ChainBase):
                     mediainfo: MediaInfo = self.recognize_media(meta=meta)
                     if not mediainfo:
                         logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
-                        continue
+                        # 存储空的媒体信息
+                        mediainfo = MediaInfo()
                     # 上下文
                     context = Context(meta_info=meta, media_info=mediainfo, torrent_info=torrent)
-                    self._torrents_cache[domain].append(context)
+                    # 添加到缓存
+                    if not torrents_cache.get(domain):
+                        torrents_cache[domain] = [context]
+                    else:
+                        torrents_cache[domain].append(context)
+                    # 如果超过了200条则移除最早的一条
+                    if len(torrents_cache[domain]) > 200:
+                        torrents_cache[domain].pop(0)
+            else:
+                logger.info(f'{indexer.get("name")} 获取到种子')
         # 从缓存中匹配订阅
-        self.match()
+        self.__match(torrents_cache)
+        # 保存缓存到本地
+        self.__save_cache(torrents_cache)
 
-    def match(self):
+    def __load_cache(self) -> Dict[str, List[Context]]:
+        """
+        从本地加载缓存
+        """
+        if self.__cache_path.exists():
+            return pickle.load(self.__cache_path.open('rb')) or {}
+        return {}
+
+    def __save_cache(self, cache: Dict[str, List[Context]]):
+        """
+        保存缓存到本地
+        """
+        pickle.dump(cache, self.__cache_path.open('wb'))
+
+    def __match(self, torrents_cache: Dict[str, List[Context]]):
         """
         从缓存中匹配订阅，并自动下载
         """
+        if not torrents_cache:
+            logger.warn('没有缓存资源，无法匹配订阅')
+            return
         # 所有订阅
         subscribes = self.subscribehelper.list('R')
         # 遍历订阅
@@ -382,11 +429,12 @@ class SubscribeChain(ChainBase):
                 )
                 # 打印缺失集信息
                 if no_exists and no_exists.get(subscribe.tmdbid):
-                    no_exists_episodes = no_exists.get(subscribe.tmdbid).get(subscribe.season)
-                    logger.info(f'订阅 {mediainfo.title_year}{meta.season} 缺失集：{no_exists_episodes}')
+                    no_exists_info = no_exists.get(subscribe.tmdbid).get(subscribe.season)
+                    if no_exists_info:
+                        logger.info(f'订阅 {mediainfo.title_year}{meta.season} 缺失集：{no_exists_info.episodes}')
             # 遍历缓存种子
             _match_context = []
-            for domain, contexts in self._torrents_cache.items():
+            for domain, contexts in torrents_cache.items():
                 for context in contexts:
                     # 检查是否匹配
                     torrent_meta = context.meta_info
@@ -418,11 +466,12 @@ class SubscribeChain(ChainBase):
                         # 不是缺失的剧集不要
                         if no_exists and no_exists.get(subscribe.tmdbid):
                             # 缺失集
-                            no_exists_episodes = no_exists.get(subscribe.tmdbid).get(subscribe.season)
-                            # 是否有交集
-                            if not set(no_exists_episodes).intersection(set(torrent_meta.episode_list)):
-                                logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episodes} 未包含缺失的剧集')
-                                continue
+                            no_exists_info = no_exists.get(subscribe.tmdbid).get(subscribe.season)
+                            if no_exists_info:
+                                # 是否有交集
+                                if not set(no_exists_info.episodes).intersection(set(torrent_meta.episode_list)):
+                                    logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episodes} 未包含缺失的剧集')
+                                    continue
                         # 过滤掉已经下载的集数
                         if self.__check_subscribe_note(subscribe, torrent_meta.episode_list):
                             logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episodes} 已下载过')
