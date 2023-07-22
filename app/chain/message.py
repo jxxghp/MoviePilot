@@ -59,7 +59,7 @@ class MessageChain(ChainBase):
             logger.debug(f'未识别到消息内容：：{body}{form}{args}')
             return
         # 加载缓存
-        user_cache: Dict[str, dict] = self.__load_cache(self._cache_file) or {}
+        user_cache: Dict[str, dict] = self.load_cache(self._cache_file) or {}
         # 处理消息
         logger.info(f'收到用户消息内容，用户：{userid}，内容：{text}')
         if text.startswith('/'):
@@ -311,7 +311,7 @@ class MessageChain(ChainBase):
                                        items=medias[:self._page_size],
                                        userid=userid, total=len(medias))
         # 保存缓存
-        self.__save_cache(user_cache, self._cache_file)
+        self.save_cache(user_cache, self._cache_file)
 
     def __post_medias_message(self, channel: MessageChannel,
                               title: str, items: list, userid: str, total: int):

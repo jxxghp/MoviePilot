@@ -297,7 +297,7 @@ class SubscribeChain(ChainBase):
         刷新站点最新资源
         """
         # 读取缓存
-        torrents_cache: Dict[str, List[Context]] = self.__load_cache(self._cache_file) or {}
+        torrents_cache: Dict[str, List[Context]] = self.load_cache(self._cache_file) or {}
 
         # 所有站点索引
         indexers = self.siteshelper.get_indexers()
@@ -363,7 +363,7 @@ class SubscribeChain(ChainBase):
         # 从缓存中匹配订阅
         self.__match(torrents_cache)
         # 保存缓存到本地
-        self.__save_cache(torrents_cache, self._cache_file)
+        self.save_cache(torrents_cache, self._cache_file)
 
     def __match(self, torrents_cache: Dict[str, List[Context]]):
         """

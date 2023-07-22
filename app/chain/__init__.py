@@ -31,7 +31,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         self.eventmanager = EventManager()
 
     @staticmethod
-    def __load_cache(filename: str) -> Any:
+    def load_cache(filename: str) -> Any:
         """
         从本地加载缓存
         """
@@ -41,7 +41,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         return None
 
     @staticmethod
-    def __save_cache(cache: Any, filename: str) -> None:
+    def save_cache(cache: Any, filename: str) -> None:
         """
         保存缓存到本地
         """
