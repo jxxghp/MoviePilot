@@ -45,6 +45,16 @@ class FilterModule(_ModuleBase):
             "include": [r'特效'],
             "exclude": []
         },
+        # BluRay
+        "BLURAY": {
+            "include": [r'Blu-?Ray'],
+            "exclude": []
+        },
+        # UHD
+        "UHD": {
+            "include": [r'UHD|UltraHD'],
+            "exclude": []
+        },
         # H265
         "H265": {
             "include": [r'[Hx].?265'],
