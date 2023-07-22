@@ -1,0 +1,111 @@
+from pathlib import Path
+from typing import Optional, Dict, Union, List
+
+from pydantic import BaseModel
+
+from app.schemas.types import MediaType
+
+
+class ExistMediaInfo(BaseModel):
+    """
+    媒体服务器存在媒体信息
+    """
+    # 类型 电影、电视剧
+    type: Optional[MediaType]
+    # 季
+    seasons: Optional[Dict[int, list]] = {}
+
+
+class NotExistMediaInfo(BaseModel):
+    """
+    媒体服务器不存在媒体信息
+    """
+    # 季
+    season: Optional[int] = None
+    # 剧集列表
+    episodes: Optional[list] = []
+    # 总集数
+    total_episodes: Optional[int] = 0
+    # 开始集
+    start_episode: Optional[int] = 0
+
+
+class RefreshMediaItem(BaseModel):
+    """
+    媒体库刷新信息
+    """
+    # 标题
+    title: Optional[str] = None
+    # 年份
+    year: Optional[str] = None
+    # 类型
+    type: Optional[MediaType] = None
+    # 类别
+    category: Optional[str] = None
+    # 目录
+    target_path: Optional[Path] = None
+
+
+class MediaServerLibrary(BaseModel):
+    """
+    媒体服务器媒体库信息
+    """
+    # 服务器
+    server: Optional[str] = None
+    # ID
+    id: Optional[Union[str, int]] = None
+    # 名称
+    name: Optional[str] = None
+    # 路径
+    path: Optional[Union[str, list]] = None
+    # 类型
+    type: Optional[str] = None
+    # 封面图
+    image: Optional[str] = None
+
+
+class MediaServerItem(BaseModel):
+    """
+    媒体服务器媒体信息
+    """
+    # ID
+    id: Optional[Union[str, int]] = None
+    # 服务器
+    server: Optional[str] = None
+    # 媒体库ID
+    library: Optional[Union[str, int]] = None
+    # ID
+    item_id: Optional[str] = None
+    # 类型
+    item_type: Optional[str] = None
+    # 标题
+    title: Optional[str] = None
+    # 原标题
+    original_title: Optional[str] = None
+    # 年份
+    year: Optional[str] = None
+    # TMDBID
+    tmdbid: Optional[int] = None
+    # IMDBID
+    imdbid: Optional[str] = None
+    # TVDBID
+    tvdbid: Optional[str] = None
+    # 路径
+    path: Optional[str] = None
+    # 季集
+    seasoninfo: Optional[Dict[int, list]] = None
+    # 备注
+    note: Optional[str] = None
+    # 同步时间
+    lst_mod_date: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
+
+class MediaServerSeasonInfo(BaseModel):
+    """
+    媒体服务器媒体剧集信息
+    """
+    season: Optional[int] = None
+    episodes: Optional[List[int]] = []

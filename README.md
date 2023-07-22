@@ -106,6 +106,8 @@ docker pull jxxghp/moviepilot:latest
 
 **MEDIASERVER：** 媒体服务器，支持`emby`/`jellyfin`/`plex`，同时还需要配置对应媒体服务器的环境变量，非对应媒体服务器的变量可删除，推荐使用`emby`
 
+**MEDIASERVER_SYNC_INTERVAL:** 媒体服务器同步间隔（小时），默认`6`，留空则不同步
+
 `emby`设置项：
 
 - **EMBY_HOST：** Emby服务器地址，格式：`ip:port`，https需要添加`https://`前缀
@@ -218,10 +220,10 @@ docker pull jxxghp/moviepilot:latest
 - [x] 自定义识别词
 - [x] 便捷工具
 - [x] 过滤规则维护
+- [x] 本地存在标识
+- [ ] 插件管理
 - [ ] 手动整理功能增强
-- [ ] 本地存在标识
 - [ ] 媒体详情页面
 - [ ] 洗版支持
-- [ ] 插件管理
 
 

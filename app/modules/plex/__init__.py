@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple, Union, Any
+from typing import Optional, Tuple, Union, Any, List, Generator
 
 from app import schemas
 from app.core.context import MediaInfo
@@ -86,3 +86,50 @@ class PlexModule(_ModuleBase):
             episode_count=media_statistic.get("EpisodeCount") or 0,
             user_count=1
         )
+
+    def mediaserver_librarys(self) -> List[schemas.MediaServerLibrary]:
+        """
+        媒体库列表
+        """
+        librarys = self.plex.get_librarys()
+        if not librarys:
+            return []
+        return [schemas.MediaServerLibrary(
+            server="plex",
+            id=library.get("id"),
+            name=library.get("name"),
+            type=library.get("type"),
+            path=library.get("path")
+        ) for library in librarys]
+
+    def mediaserver_items(self, library_id: str) -> Generator:
+        """
+        媒体库项目列表
+        """
+        items = self.plex.get_items(library_id)
+        for item in items:
+            yield schemas.MediaServerItem(
+                server="plex",
+                library=item.get("library"),
+                item_id=item.get("id"),
+                item_type=item.get("type"),
+                title=item.get("title"),
+                original_title=item.get("original_title"),
+                year=item.get("year"),
+                tmdbid=item.get("tmdbid"),
+                imdbid=item.get("imdbid"),
+                tvdbid=item.get("tvdbid"),
+                path=item.get("path"),
+            )
+
+    def mediaserver_tv_episodes(self, item_id: Union[str, int]) -> List[schemas.MediaServerSeasonInfo]:
+        """
+        获取剧集信息
+        """
+        seasoninfo = self.plex.get_tv_episodes(item_id=item_id)
+        if not seasoninfo:
+            return []
+        return [schemas.MediaServerSeasonInfo(
+            season=season,
+            episodes=episodes
+        ) for season, episodes in seasoninfo.items()]

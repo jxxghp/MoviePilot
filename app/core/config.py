@@ -113,6 +113,8 @@ class Settings(BaseSettings):
     DOWNLOAD_CATEGORY: bool = False
     # 媒体服务器 emby/jellyfin/plex
     MEDIASERVER: str = "emby"
+    # 媒体服务器同步间隔（小时）
+    MEDIASERVER_SYNC_INTERVAL: int = 6
     # EMBY服务器地址，IP:PORT
     EMBY_HOST: str = None
     # EMBY Api Key

@@ -1,8 +1,6 @@
 import json
-import pickle
 import re
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, List, Optional, Union, Tuple
 
 from app.chain import ChainBase
@@ -27,7 +25,7 @@ class SubscribeChain(ChainBase):
     订阅管理处理链
     """
 
-    __cache_path: Path = None
+    _cache_file = "__torrents_cache__"
 
     def __init__(self):
         super().__init__()
@@ -37,9 +35,6 @@ class SubscribeChain(ChainBase):
         self.siteshelper = SitesHelper()
         self.message = MessageHelper()
         self.systemconfig = SystemConfigOper()
-
-        # 缓存路径
-        self.__cache_path = settings.TEMP_PATH / "__torrents_cache__"
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,
@@ -302,7 +297,7 @@ class SubscribeChain(ChainBase):
         刷新站点最新资源
         """
         # 读取缓存
-        torrents_cache: Dict[str, List[Context]] = self.__load_cache()
+        torrents_cache: Dict[str, List[Context]] = self.load_cache(self._cache_file) or {}
 
         # 所有站点索引
         indexers = self.siteshelper.get_indexers()
@@ -368,21 +363,7 @@ class SubscribeChain(ChainBase):
         # 从缓存中匹配订阅
         self.__match(torrents_cache)
         # 保存缓存到本地
-        self.__save_cache(torrents_cache)
-
-    def __load_cache(self) -> Dict[str, List[Context]]:
-        """
-        从本地加载缓存
-        """
-        if self.__cache_path.exists():
-            return pickle.load(self.__cache_path.open('rb')) or {}
-        return {}
-
-    def __save_cache(self, cache: Dict[str, List[Context]]):
-        """
-        保存缓存到本地
-        """
-        pickle.dump(cache, self.__cache_path.open('wb'))
+        self.save_cache(torrents_cache, self._cache_file)
 
     def __match(self, torrents_cache: Dict[str, List[Context]]):
         """

@@ -123,7 +123,8 @@ class SiteChain(ChainBase):
         if not site:
             self.post_message(Notification(
                 channel=channel,
-                title=f"站点编号 {site_id} 不存在！", userid=userid))
+                title=f"站点编号 {site_id} 不存在！",
+                userid=userid))
             return
         # 禁用站点
         self.siteoper.update(site_id, {

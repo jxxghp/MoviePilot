@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Generator
 from urllib.parse import quote_plus
 
 from plexapi import media
@@ -8,7 +8,7 @@ from plexapi.server import PlexServer
 
 from app.core.config import settings
 from app.log import logger
-from app.schemas import RefreshMediaItem
+from app.schemas import RefreshMediaItem, MediaType
 from app.utils.singleton import Singleton
 
 
@@ -29,6 +29,34 @@ class Plex(metaclass=Singleton):
             except Exception as e:
                 self._plex = None
                 logger.error(f"Plex服务器连接失败：{str(e)}")
+
+    def get_librarys(self):
+        """
+        获取媒体服务器所有媒体库列表
+        """
+        if not self._plex:
+            return []
+        try:
+            self._libraries = self._plex.library.sections()
+        except Exception as err:
+            logger.error(f"获取媒体服务器所有媒体库列表出错：{str(err)}")
+            return []
+        libraries = []
+        for library in self._libraries:
+            match library.type:
+                case "movie":
+                    library_type = MediaType.MOVIE.value
+                case "show":
+                    library_type = MediaType.TV.value
+                case _:
+                    continue
+            libraries.append({
+                "id": library.key,
+                "name": library.title,
+                "path": library.locations,
+                "type": library_type
+            })
+        return libraries
 
     def get_activity_log(self, num: int = 30) -> Optional[List[dict]]:
         """
@@ -111,11 +139,13 @@ class Plex(metaclass=Singleton):
         return ret_movies
 
     def get_tv_episodes(self,
+                        item_id: str = None,
                         title: str = None,
                         year: str = None,
-                        season: int = None) -> Optional[Dict[str, list]]:
+                        season: int = None) -> Optional[Dict[int, list]]:
         """
         根据标题、年份、季查询电视剧所有集信息
+        :param item_id: 媒体ID
         :param title: 标题
         :param year: 年份，可以为空，为空时不按年份过滤
         :param season: 季号，数字
@@ -123,7 +153,10 @@ class Plex(metaclass=Singleton):
         """
         if not self._plex:
             return {}
-        videos = self._plex.library.search(title=title, year=year, libtype="show")
+        if item_id:
+            videos = self._plex.library.sectionByID(item_id).all()
+        else:
+            videos = self._plex.library.search(title=title, year=year, libtype="show")
         if not videos:
             return {}
         episodes = videos[0].episodes()
@@ -251,6 +284,38 @@ class Plex(metaclass=Singleton):
                         ids[varname] = guid.id[len(prefix):]
                         break
         return ids
+
+    def get_items(self, parent: str) -> Generator:
+        """
+        获取媒体服务器所有媒体库列表
+        """
+        if not parent:
+            yield {}
+        if not self._plex:
+            yield {}
+        try:
+            section = self._plex.library.sectionByID(parent)
+            if section:
+                for item in section.all():
+                    if not item:
+                        continue
+                    ids = self.__get_ids(item.guids)
+                    path = None
+                    if item.locations:
+                        path = item.locations[0]
+                    yield {"id": item.key,
+                           "library": item.librarySectionID,
+                           "type": item.type,
+                           "title": item.title,
+                           "original_title": item.originalTitle,
+                           "year": item.year,
+                           "tmdbid": ids['tmdb_id'],
+                           "imdbid": ids['imdb_id'],
+                           "tvdbid": ids['tvdb_id'],
+                           "path": path}
+        except Exception as err:
+            logger.error(f"获取媒体库列表出错：{err}")
+        yield {}
 
     def get_webhook_message(self, message_str: str) -> dict:
         """

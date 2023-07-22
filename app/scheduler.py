@@ -8,6 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.douban import DoubanChain
+from app.chain.mediaserver import MediaServerChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
@@ -47,6 +48,13 @@ class Scheduler(metaclass=Singleton):
                                     minutes=settings.COOKIECLOUD_INTERVAL,
                                     next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=1),
                                     name="同步CookieCloud站点")
+
+        # 媒体服务器同步
+        if settings.MEDIASERVER_SYNC_INTERVAL:
+            self._scheduler.add_job(MediaServerChain().sync, "interval",
+                                    hours=settings.MEDIASERVER_SYNC_INTERVAL,
+                                    next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=5),
+                                    name="同步媒体服务器")
 
         # 新增订阅时搜索（5分钟检查一次）
         self._scheduler.add_job(SubscribeChain().search, "interval",

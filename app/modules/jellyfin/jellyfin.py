@@ -1,9 +1,10 @@
 import json
 import re
-from typing import List, Union, Optional, Dict
+from typing import List, Union, Optional, Dict, Generator
 
 from app.core.config import settings
 from app.log import logger
+from app.schemas import MediaType
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
@@ -22,7 +23,7 @@ class Jellyfin(metaclass=Singleton):
         self._user = self.get_user()
         self._serverid = self.get_server_id()
 
-    def get_jellyfin_librarys(self) -> List[dict]:
+    def __get_jellyfin_librarys(self) -> List[dict]:
         """
         获取Jellyfin媒体库的信息
         """
@@ -39,6 +40,29 @@ class Jellyfin(metaclass=Singleton):
         except Exception as e:
             logger.error(f"连接Users/Views 出错：" + str(e))
             return []
+
+    def get_librarys(self):
+        """
+        获取媒体服务器所有媒体库列表
+        """
+        if not self._host or not self._apikey:
+            return []
+        libraries = []
+        for library in self.__get_jellyfin_librarys() or []:
+            match library.get("CollectionType"):
+                case "movies":
+                    library_type = MediaType.MOVIE.value
+                case "tvshows":
+                    library_type = MediaType.TV.value
+                case _:
+                    continue
+            libraries.append({
+                "id": library.get("Id"),
+                "name": library.get("Name"),
+                "path": library.get("Path"),
+                "type": library_type
+            })
+        return libraries
 
     def get_user_count(self) -> int:
         """
@@ -243,12 +267,14 @@ class Jellyfin(metaclass=Singleton):
         return []
 
     def get_tv_episodes(self,
+                        item_id: str = None,
                         title: str = None,
                         year: str = None,
                         tmdb_id: int = None,
-                        season: int = None) -> Optional[Dict[str, list]]:
+                        season: int = None) -> Optional[Dict[int, list]]:
         """
         根据标题和年份和季，返回Jellyfin中的剧集列表
+        :param item_id: Jellyfin中的Id
         :param title: 标题
         :param year: 年份
         :param tmdb_id: TMDBID
@@ -258,16 +284,17 @@ class Jellyfin(metaclass=Singleton):
         if not self._host or not self._apikey or not self._user:
             return None
         # 查TVID
-        item_id = self.__get_jellyfin_series_id_by_name(title, year)
-        if item_id is None:
-            return None
         if not item_id:
-            return {}
-        # 验证tmdbid是否相同
-        item_tmdbid = self.get_iteminfo(item_id).get("ProviderIds", {}).get("Tmdb")
-        if tmdb_id and item_tmdbid:
-            if str(tmdb_id) != str(item_tmdbid):
+            item_id = self.__get_jellyfin_series_id_by_name(title, year)
+            if item_id is None:
+                return None
+            if not item_id:
                 return {}
+            # 验证tmdbid是否相同
+            item_tmdbid = self.get_iteminfo(item_id).get("ProviderIds", {}).get("Tmdb")
+            if tmdb_id and item_tmdbid:
+                if str(tmdb_id) != str(item_tmdbid):
+                    return {}
         if not season:
             season = ""
         try:
@@ -338,6 +365,24 @@ class Jellyfin(metaclass=Singleton):
             logger.error(f"连接Library/Refresh出错：" + str(e))
             return False
 
+    def get_webhook_message(self, message: dict) -> dict:
+        """
+        解析Jellyfin报文
+        """
+        eventItem = {'event': message.get('NotificationType', ''),
+                     'item_name': message.get('Name'),
+                     'user_name': message.get('NotificationUsername'),
+                     "channel": "jellyfin"
+                     }
+
+        # 获取消息图片
+        if eventItem.get("item_id"):
+            # 根据返回的item_id去调用媒体服务器获取
+            eventItem['image_url'] = self.get_remote_image_by_id(item_id=eventItem.get('item_id'),
+                                                                 image_type="Backdrop")
+
+        return eventItem
+
     def get_iteminfo(self, itemid: str) -> dict:
         """
         获取单个项目详情
@@ -356,20 +401,38 @@ class Jellyfin(metaclass=Singleton):
             logger.error(f"连接Users/Items出错：" + str(e))
             return {}
 
-    def get_webhook_message(self, message: dict) -> dict:
+    def get_items(self, parent: str) -> Generator:
         """
-        解析Jellyfin报文
+        获取媒体服务器所有媒体库列表
         """
-        eventItem = {'event': message.get('NotificationType', ''),
-                     'item_name': message.get('Name'),
-                     'user_name': message.get('NotificationUsername'),
-                     "channel": "jellyfin"
-                     }
-
-        # 获取消息图片
-        if eventItem.get("item_id"):
-            # 根据返回的item_id去调用媒体服务器获取
-            eventItem['image_url'] = self.get_remote_image_by_id(item_id=eventItem.get('item_id'),
-                                                                 image_type="Backdrop")
-
-        return eventItem
+        if not parent:
+            yield {}
+        if not self._host or not self._apikey:
+            yield {}
+        req_url = "%sUsers/%s/Items?parentId=%s&api_key=%s" % (self._host, self._user, parent, self._apikey)
+        try:
+            res = RequestUtils().get_res(req_url)
+            if res and res.status_code == 200:
+                results = res.json().get("Items") or []
+                for result in results:
+                    if not result:
+                        continue
+                    if result.get("Type") in ["Movie", "Series"]:
+                        item_info = self.get_iteminfo(result.get("Id"))
+                        yield {"id": result.get("Id"),
+                               "library": item_info.get("ParentId"),
+                               "type": item_info.get("Type"),
+                               "title": item_info.get("Name"),
+                               "original_title": item_info.get("OriginalTitle"),
+                               "year": item_info.get("ProductionYear"),
+                               "tmdbid": item_info.get("ProviderIds", {}).get("Tmdb"),
+                               "imdbid": item_info.get("ProviderIds", {}).get("Imdb"),
+                               "tvdbid": item_info.get("ProviderIds", {}).get("Tvdb"),
+                               "path": item_info.get("Path"),
+                               "json": str(item_info)}
+                    elif "Folder" in result.get("Type"):
+                        for item in self.get_items(result.get("Id")):
+                            yield item
+        except Exception as e:
+            logger.error(f"连接Users/Items出错：" + str(e))
+        yield {}

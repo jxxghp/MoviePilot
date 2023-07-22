@@ -16,7 +16,7 @@ class MessageChain(ChainBase):
     外来消息处理链
     """
     # 缓存的用户数据 {userid: {type: str, items: list}}
-    _user_cache: Dict[str, dict] = {}
+    _cache_file = "__user_messages__"
     # 每页数据量
     _page_size: int = 8
     # 当前页面
@@ -58,6 +58,9 @@ class MessageChain(ChainBase):
         if not text:
             logger.debug(f'未识别到消息内容：：{body}{form}{args}')
             return
+        # 加载缓存
+        user_cache: Dict[str, dict] = self.load_cache(self._cache_file) or {}
+        # 处理消息
         logger.info(f'收到用户消息内容，用户：{userid}，内容：{text}')
         if text.startswith('/'):
             # 执行命令
@@ -72,7 +75,7 @@ class MessageChain(ChainBase):
 
         elif text.isdigit():
             # 缓存
-            cache_data: dict = self._user_cache.get(userid)
+            cache_data: dict = user_cache.get(userid)
             # 选择项目
             if not cache_data \
                     or not cache_data.get('items') \
@@ -125,7 +128,7 @@ class MessageChain(ChainBase):
                 # 搜索结果排序
                 contexts = self.torrenthelper.sort_torrents(contexts)
                 # 更新缓存
-                self._user_cache[userid] = {
+                user_cache[userid] = {
                     "type": "Torrent",
                     "items": contexts
                 }
@@ -201,7 +204,7 @@ class MessageChain(ChainBase):
 
         elif text.lower() == "p":
             # 上一页
-            cache_data: dict = self._user_cache.get(userid)
+            cache_data: dict = user_cache.get(userid)
             if not cache_data:
                 # 没有缓存
                 self.post_message(Notification(
@@ -240,7 +243,7 @@ class MessageChain(ChainBase):
 
         elif text.lower() == "n":
             # 下一页
-            cache_data: dict = self._user_cache.get(userid)
+            cache_data: dict = user_cache.get(userid)
             if not cache_data:
                 # 没有缓存
                 self.post_message(Notification(
@@ -296,7 +299,7 @@ class MessageChain(ChainBase):
             logger.info(f"搜索到 {len(medias)} 条相关媒体信息")
             # 记录当前状态
             self._current_meta = meta
-            self._user_cache[userid] = {
+            user_cache[userid] = {
                 'type': action,
                 'items': medias
             }
@@ -307,6 +310,8 @@ class MessageChain(ChainBase):
                                        title=meta.name,
                                        items=medias[:self._page_size],
                                        userid=userid, total=len(medias))
+        # 保存缓存
+        self.save_cache(user_cache, self._cache_file)
 
     def __post_medias_message(self, channel: MessageChannel,
                               title: str, items: list, userid: str, total: int):

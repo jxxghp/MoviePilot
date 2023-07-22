@@ -1,7 +1,7 @@
 import json
 import re
 from pathlib import Path
-from typing import List, Optional, Union, Dict
+from typing import List, Optional, Union, Dict, Generator
 
 from app.core.config import settings
 from app.log import logger
@@ -43,7 +43,7 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接Library/SelectableMediaFolders 出错：" + str(e))
             return []
 
-    def get_emby_librarys(self) -> List[dict]:
+    def __get_emby_librarys(self) -> List[dict]:
         """
         获取Emby媒体库列表
         """
@@ -60,6 +60,29 @@ class Emby(metaclass=Singleton):
         except Exception as e:
             logger.error(f"连接User/Views 出错：" + str(e))
             return []
+
+    def get_librarys(self):
+        """
+        获取媒体服务器所有媒体库列表
+        """
+        if not self._host or not self._apikey:
+            return []
+        libraries = []
+        for library in self.__get_emby_librarys() or []:
+            match library.get("CollectionType"):
+                case "movies":
+                    library_type = MediaType.MOVIE.value
+                case "tvshows":
+                    library_type = MediaType.TV.value
+                case _:
+                    continue
+            libraries.append({
+                "id": library.get("Id"),
+                "name": library.get("Name"),
+                "path": library.get("Path"),
+                "type": library_type
+            })
+        return libraries
 
     def get_user(self, user_name: str = None) -> Optional[Union[str, int]]:
         """
@@ -269,12 +292,14 @@ class Emby(metaclass=Singleton):
         return []
 
     def get_tv_episodes(self,
+                        item_id: str = None,
                         title: str = None,
                         year: str = None,
                         tmdb_id: int = None,
                         season: int = None) -> Optional[Dict[int, list]]:
         """
         根据标题和年份和季，返回Emby中的剧集列表
+        :param item_id: Emby中的ID
         :param title: 标题
         :param year: 年份
         :param tmdb_id: TMDBID
@@ -284,16 +309,17 @@ class Emby(metaclass=Singleton):
         if not self._host or not self._apikey:
             return None
         # 电视剧
-        item_id = self.__get_emby_series_id_by_name(title, year)
-        if item_id is None:
-            return None
         if not item_id:
-            return {}
-        # 验证tmdbid是否相同
-        item_tmdbid = self.get_iteminfo(item_id).get("ProviderIds", {}).get("Tmdb")
-        if tmdb_id and item_tmdbid:
-            if str(tmdb_id) != str(item_tmdbid):
+            item_id = self.__get_emby_series_id_by_name(title, year)
+            if item_id is None:
+                return None
+            if not item_id:
                 return {}
+            # 验证tmdbid是否相同
+            item_tmdbid = self.get_iteminfo(item_id).get("ProviderIds", {}).get("Tmdb")
+            if tmdb_id and item_tmdbid:
+                if str(tmdb_id) != str(item_tmdbid):
+                    return {}
         # /Shows/Id/Episodes 查集的信息
         if not season:
             season = ""
@@ -474,6 +500,42 @@ class Emby(metaclass=Singleton):
         except Exception as e:
             logger.error(f"连接Items/Id出错：" + str(e))
             return {}
+
+    def get_items(self, parent: str) -> Generator:
+        """
+        获取媒体服务器所有媒体库列表
+        """
+        if not parent:
+            yield {}
+        if not self._host or not self._apikey:
+            yield {}
+        req_url = "%semby/Users/%s/Items?ParentId=%s&api_key=%s" % (self._host, self._user, parent, self._apikey)
+        try:
+            res = RequestUtils().get_res(req_url)
+            if res and res.status_code == 200:
+                results = res.json().get("Items") or []
+                for result in results:
+                    if not result:
+                        continue
+                    if result.get("Type") in ["Movie", "Series"]:
+                        item_info = self.get_iteminfo(result.get("Id"))
+                        yield {"id": result.get("Id"),
+                               "library": item_info.get("ParentId"),
+                               "type": item_info.get("Type"),
+                               "title": item_info.get("Name"),
+                               "original_title": item_info.get("OriginalTitle"),
+                               "year": item_info.get("ProductionYear"),
+                               "tmdbid": item_info.get("ProviderIds", {}).get("Tmdb"),
+                               "imdbid": item_info.get("ProviderIds", {}).get("Imdb"),
+                               "tvdbid": item_info.get("ProviderIds", {}).get("Tvdb"),
+                               "path": item_info.get("Path"),
+                               "json": str(item_info)}
+                    elif "Folder" in result.get("Type"):
+                        for item in self.get_items(parent=result.get('Id')):
+                            yield item
+        except Exception as e:
+            logger.error(f"连接Users/Items出错：" + str(e))
+        yield {}
 
     def get_webhook_message(self, message_str: str) -> dict:
         """

@@ -1,9 +1,11 @@
+import pickle
 import traceback
 from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
 from ruamel.yaml import CommentedMap
 
+from app.core.config import settings
 from app.core.context import Context
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.event import EventManager
@@ -27,6 +29,23 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         """
         self.modulemanager = ModuleManager()
         self.eventmanager = EventManager()
+
+    @staticmethod
+    def load_cache(filename: str) -> Any:
+        """
+        从本地加载缓存
+        """
+        cache_path = settings.TEMP_PATH / filename
+        if cache_path.exists():
+            return pickle.load(cache_path.open('rb'))
+        return None
+
+    @staticmethod
+    def save_cache(cache: Any, filename: str) -> None:
+        """
+        保存缓存到本地
+        """
+        pickle.dump(cache, (settings.TEMP_PATH / filename).open('wb'))
 
     def run_module(self, method: str, *args, **kwargs) -> Any:
         """

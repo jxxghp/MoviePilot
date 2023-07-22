@@ -8,3 +8,7 @@ from .servarr import *
 from .plugin import *
 from .history import *
 from .dashboard import *
+from .mediaserver import *
+from .message import *
+from .tmdb import *
+from .transfer import *
