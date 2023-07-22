@@ -6,6 +6,7 @@ from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.douban import DoubanChain
 from app.chain.download import DownloadChain
+from app.chain.mediaserver import MediaServerChain
 from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
@@ -72,6 +73,11 @@ class Command(metaclass=Singleton):
             "/douban_sync": {
                 "func": DoubanChain().remote_sync,
                 "description": "同步豆瓣想看",
+                "data": {}
+            },
+            "/mediaserver_sync": {
+                "func": MediaServerChain().remote_sync,
+                "description": "同步媒体服务器",
                 "data": {}
             },
             "/subscribes": {
