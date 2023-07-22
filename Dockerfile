@@ -4,6 +4,7 @@ ENV LANG="C.UTF-8" \
     PUID=0 \
     PGID=0 \
     UMASK=000 \
+    NGINX_PORT=3000 \
     CONFIG_DIR="/config" \
     API_TOKEN="moviepilot" \
     AUTH_SITE="iyuu" \

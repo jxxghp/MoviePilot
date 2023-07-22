@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     # 时区
     TZ: str = "Asia/Shanghai"
-    # 监听地址，ipv6改为::
+    # API监听地址
     HOST: str = "0.0.0.0"
     # API监听端口
     PORT: int = 3001

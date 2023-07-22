@@ -44,7 +44,7 @@ docker pull jxxghp/moviepilot:latest
 
 ### 1. **基础设置**
 
-- **HOST：** 监听地址，默认`0.0.0.0`，如需支持ipv6则需改为`::`
+- **NGINX_PORT：** WEB服务端口，默认`3000`，可自行修改，但不能为`3001`
 - **SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
 - **SUPERUSER_PASSWORD：** 超级管理员初始密码，默认`password`，建议修改为复杂密码
 - **API_TOKEN：** API密钥，默认`moviepilot`，在媒体服务器Webhook、微信回调等地址配置中需要加上`?token=`该值，建议修改为复杂字符串
