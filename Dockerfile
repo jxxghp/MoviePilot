@@ -31,7 +31,7 @@ ENV LANG="C.UTF-8" \
 WORKDIR "/app"
 COPY . .
 RUN apt-get update \
-    && apt-get -y install musl-dev nginx \
+    && apt-get -y install musl-dev nginx gettext-base \
     && mkdir -p /etc/nginx \
     && cp -f nginx.conf /etc/nginx/nginx.template.conf \
     && pip install -r requirements.txt \
