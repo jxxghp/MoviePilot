@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.media import MediaChain
+from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.db import get_db
 from app.db.mediaserver_oper import MediaServerOper
@@ -51,8 +52,11 @@ def exists(title: str = None,
     """
     判断本地是否存在
     """
+    meta = MetaInfo(title)
+    if not season:
+        season = meta.begin_season
     exist = MediaServerOper(db).exists(
-        title=title, year=year, mtype=mtype, tmdbid=tmdbid, season=season
+        title=meta.name, year=year, mtype=mtype, tmdbid=tmdbid, season=season
     )
     return schemas.Response(success=True if exist else False, data={
         "item": exist or {}

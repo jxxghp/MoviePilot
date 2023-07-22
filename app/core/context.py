@@ -399,6 +399,11 @@ class MediaInfo:
         # 简介
         if not self.overview:
             self.overview = info.get("intro") or info.get("card_subtitle") or ""
+        # 从简介中提取年份
+        if self.overview and not self.year:
+            match = re.search(r'\d{4}', self.overview)
+            if match:
+                self.year = match.group()
         # 导演和演员
         if not self.directors:
             self.directors = info.get("directors") or []
