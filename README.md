@@ -208,7 +208,19 @@ docker pull jxxghp/moviepilot:latest
 - 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`。
 - 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，可使用Overseerr/Jellyseerr浏览订阅。
 
-**注意**：容器首次启动需要下载浏览器内核，根据网络情况可能需要较长时间，此时无法登录。可映射`/root`目录避免容器重置后重新触发浏览器内核下载。
+**注意**
+
+1) 容器首次启动需要下载浏览器内核，根据网络情况可能需要较长时间，此时无法登录。可映射`/root`目录避免容器重置后重新触发浏览器内核下载。
+2) 使用反向代理时，需要添加以下配置，否则要能会导致部分功能无法访问（`ip:port`修改为实际值）：
+```nginx configuration
+location / {
+    proxy_pass http://ip:port;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
 
 ## TODO
 
