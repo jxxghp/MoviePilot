@@ -52,7 +52,9 @@ class Scheduler(metaclass=Singleton):
         # 媒体服务器同步
         if settings.MEDIASERVER_SYNC_INTERVAL:
             self._scheduler.add_job(MediaServerChain().sync, "interval",
-                                    hours=settings.MEDIASERVER_SYNC_INTERVAL, name="同步媒体服务器")
+                                    hours=settings.MEDIASERVER_SYNC_INTERVAL,
+                                    next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=5),
+                                    name="同步媒体服务器")
 
         # 新增订阅时搜索（5分钟检查一次）
         self._scheduler.add_job(SubscribeChain().search, "interval",
