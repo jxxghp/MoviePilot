@@ -49,6 +49,27 @@ def install_plugin(plugin_id: str,
     return schemas.Response(success=True)
 
 
+@router.get("/form/{plugin_id}", summary="获取插件表单页面")
+def plugin_form(plugin_id: str,
+                _: schemas.TokenPayload = Depends(verify_token)) -> dict:
+    """
+    根据插件ID获取插件配置表单
+    """
+    conf, model = PluginManager().get_plugin_form(plugin_id)
+    return {
+        "conf": conf,
+        "model": model
+    }
+
+
+@router.get("/page/{plugin_id}", summary="获取插件数据页面")
+def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+    """
+    根据插件ID获取插件配置信息
+    """
+    return PluginManager().get_plugin_page(plugin_id)
+
+
 @router.get("/{plugin_id}", summary="获取插件配置")
 def plugin_config(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> dict:
     """

@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Tuple
 
 from app.chain import ChainBase
 from app.core.config import settings
@@ -71,6 +71,20 @@ class _PluginBase(metaclass=ABCMeta):
             "summary": "API名称",
             "description": "API说明"
         }]
+        """
+        pass
+
+    @abstractmethod
+    def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+        """
+        拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
+        """
+        pass
+
+    @abstractmethod
+    def get_page(self) -> List[dict]:
+        """
+        拼装插件详情页面，需要返回页面配置，同时附带数据
         """
         pass
 

@@ -31,7 +31,7 @@ class AutoSignIn(_PluginBase):
     # 插件名称
     plugin_name = "站点自动签到"
     # 插件描述
-    plugin_desc = "自动模拟登录站点并签到，每日 9:00-23:00 随机时间自动运行两次。"
+    plugin_desc = "自动模拟登录站点并签到。"
     # 插件图标
     plugin_icon = "signin.png"
     # 主题色
@@ -114,6 +114,120 @@ class AutoSignIn(_PluginBase):
             "summary": "站点签到",
             "description": "使用站点域名签到站点",
         }]
+
+    def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+        """
+        拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
+        """
+        return [
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'model': 'enabled',
+                                        'label': '启用插件',
+                                    },
+                                    {
+                                        'component': 'VSwitch',
+                                        'model': 'notify',
+                                        'label': '签到通知',
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'cols': 12,
+                                        'md': 6,
+                                        'model': 'cron',
+                                        'label': '执行周期',
+                                        'placeholder': '0 9,18 * * *'
+                                    },
+                                    {
+                                        'component': 'VTextField',
+                                        'cols': 12,
+                                        'md': 6,
+                                        'model': 'queue_cnt',
+                                        'label': '队列数量'
+                                    },
+                                    {
+                                        'component': 'VTextField',
+                                        'cols': 12,
+                                        'md': 6,
+                                        'model': 'retry_keyword',
+                                        'label': '重试关键字'
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'chips': True,
+                                        'multiple': True,
+                                        'model': 'sign_sites',
+                                        'label': '签到站点',
+                                        'items': []
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'chips': True,
+                                        'multiple': True,
+                                        'model': 'sign_sites',
+                                        'label': '签到站点',
+                                        'items': []
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "notify": False,
+            "cron": "1 9,18 * * *",
+            "queue_cnt": 5,
+            "retry_keyword": "",
+            "sign_sites": [],
+            "special_sites": []
+        }
+
+    def get_page(self) -> List[dict]:
+        """
+        拼装插件详情页面，需要返回页面配置，同时附带数据
+        """
+        pass
 
     @eventmanager.register(EventType.SiteSignin)
     def sign_in(self, event: Event = None):

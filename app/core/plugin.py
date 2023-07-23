@@ -1,5 +1,5 @@
 import traceback
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Tuple
 
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.module import ModuleHelper
@@ -90,6 +90,26 @@ class PluginManager(metaclass=Singleton):
         if not self._plugins.get(pid):
             return False
         return self.systemconfig.set(self._config_key % pid, conf)
+
+    def get_plugin_form(self, pid: str) -> Tuple[List[dict], Dict[str, Any]]:
+        """
+        获取插件表单
+        """
+        if not self._running_plugins.get(pid):
+            return [], {}
+        if hasattr(self._running_plugins[pid], "get_form"):
+            return self._running_plugins[pid].get_form()
+        return [], {}
+
+    def get_plugin_page(self, pid: str) -> List[dict]:
+        """
+        获取插件页面
+        """
+        if not self._running_plugins.get(pid):
+            return []
+        if hasattr(self._running_plugins[pid], "get_page"):
+            return self._running_plugins[pid].get_page()
+        return []
 
     def get_plugin_commands(self) -> List[Dict[str, Any]]:
         """

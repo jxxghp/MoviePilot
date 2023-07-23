@@ -1,7 +1,7 @@
 from datetime import datetime
 from multiprocessing.dummy import Pool as ThreadPool
 from threading import Lock
-from typing import Optional, Any, List, Dict
+from typing import Optional, Any, List, Dict, Tuple
 
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -35,7 +35,7 @@ class SiteStatistic(_PluginBase):
     # 插件名称
     plugin_name = "站点数据统计"
     # 插件描述
-    plugin_desc = "统计和展示站点数据，每日凌晨随机时间自动运行一次。"
+    plugin_desc = "自动统计和展示站点数据。"
     # 插件图标
     plugin_icon = "statistic.png"
     # 主题色
@@ -117,6 +117,93 @@ class SiteStatistic(_PluginBase):
             "summary": "刷新站点数据",
             "description": "刷新对应域名的站点数据",
         }]
+
+    def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+        """
+        拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
+        """
+        return [
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'model': 'enabled',
+                                        'label': '启用插件',
+                                    },
+                                    {
+                                        'component': 'VSwitch',
+                                        'model': 'notify',
+                                        'label': '发送通知',
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'cols': 12,
+                                        'md': 6,
+                                        'model': 'cron',
+                                        'label': '执行周期',
+                                        'placeholder': '0 9,18 * * *'
+                                    },
+                                    {
+                                        'component': 'VTextField',
+                                        'cols': 12,
+                                        'md': 6,
+                                        'model': 'queue_cnt',
+                                        'label': '队列数量'
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'chips': True,
+                                        'multiple': True,
+                                        'model': 'statistic_sites',
+                                        'label': '统计站点',
+                                        'items': []
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "notify": False,
+            "cron": "5 1 * * *",
+            "queue_cnt": 5,
+            "statistic_sites": []
+        }
+
+    def get_page(self) -> List[dict]:
+        """
+        拼装插件详情页面，需要返回页面配置，同时附带数据
+        """
+        pass
 
     def stop_service(self):
         pass

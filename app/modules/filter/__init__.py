@@ -17,7 +17,7 @@ class FilterModule(_ModuleBase):
     rule_set: Dict[str, dict] = {
         # 蓝光
         "BLU": {
-            "include": [r'Blu-?Ray.+VC-?1|Blu-?Ray.+AVC|UHD.+blu-?ray.+HEVC'],
+            "include": [r'Blu-?Ray.+VC-?1|Blu-?Ray.+AVC|UHD.+blu-?ray.+HEVC|MiniBD'],
             "exclude": []
         },
         # 4K
