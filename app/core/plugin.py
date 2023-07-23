@@ -98,7 +98,7 @@ class PluginManager(metaclass=Singleton):
         if not self._running_plugins.get(pid):
             return [], {}
         if hasattr(self._running_plugins[pid], "get_form"):
-            return self._running_plugins[pid].get_form()
+            return self._running_plugins[pid].get_form() or ([], {})
         return [], {}
 
     def get_plugin_page(self, pid: str) -> List[dict]:
@@ -108,7 +108,7 @@ class PluginManager(metaclass=Singleton):
         if not self._running_plugins.get(pid):
             return []
         if hasattr(self._running_plugins[pid], "get_page"):
-            return self._running_plugins[pid].get_page()
+            return self._running_plugins[pid].get_page() or []
         return []
 
     def get_plugin_commands(self) -> List[Dict[str, Any]]:
