@@ -260,7 +260,7 @@ class AutoSignIn(_PluginBase):
             }
         ], {
             "enabled": False,
-            "notify": False,
+            "notify": True,
             "cron": "1 9,18 * * *",
             "queue_cnt": 5,
             "retry_keyword": "",

@@ -228,7 +228,7 @@ class SiteStatistic(_PluginBase):
             }
         ], {
             "enabled": False,
-            "notify": False,
+            "notify": True,
             "cron": "5 1 * * *",
             "queue_cnt": 5,
             "statistic_sites": []
