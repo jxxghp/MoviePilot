@@ -69,7 +69,7 @@ class SiteStatistic(_PluginBase):
     _statistic_sites: list = []
 
     def init_plugin(self, config: dict = None):
-
+        self.sites = SitesHelper()
         # 停止现有任务
         self.stop_service()
 
@@ -86,8 +86,6 @@ class SiteStatistic(_PluginBase):
             self._site_schema = ModuleHelper.load('app.plugins.sitestatistic.siteuserinfo',
                                                   filter_func=lambda _, obj: hasattr(obj, 'schema'))
             self._site_schema.sort(key=lambda x: x.order)
-            # 站点管理
-            self.sites = SitesHelper()
             # 站点上一次更新时间
             self._last_update_time = None
             # 站点数据
