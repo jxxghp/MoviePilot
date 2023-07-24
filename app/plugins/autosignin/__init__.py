@@ -27,7 +27,6 @@ from app.schemas.types import EventType
 
 
 class AutoSignIn(_PluginBase):
-
     # 插件名称
     plugin_name = "站点自动签到"
     # 插件描述
@@ -131,13 +130,17 @@ class AutoSignIn(_PluginBase):
                                 'content': [
                                     {
                                         'component': 'VSwitch',
-                                        'model': 'enabled',
-                                        'label': '启用插件',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
                                     },
                                     {
                                         'component': 'VSwitch',
-                                        'model': 'notify',
-                                        'label': '签到通知',
+                                        'props': {
+                                            'model': 'notify',
+                                            'label': '签到通知',
+                                        }
                                     }
                                 ]
                             }
@@ -151,25 +154,31 @@ class AutoSignIn(_PluginBase):
                                 'content': [
                                     {
                                         'component': 'VTextField',
-                                        'cols': 12,
-                                        'md': 6,
-                                        'model': 'cron',
-                                        'label': '执行周期',
-                                        'placeholder': '0 9,18 * * *'
+                                        'props': {
+                                            'cols': 12,
+                                            'md': 6,
+                                            'model': 'cron',
+                                            'label': '执行周期',
+                                            'placeholder': '0 9,18 * * *'
+                                        }
                                     },
                                     {
                                         'component': 'VTextField',
-                                        'cols': 12,
-                                        'md': 6,
-                                        'model': 'queue_cnt',
-                                        'label': '队列数量'
+                                        'props': {
+                                            'cols': 12,
+                                            'md': 6,
+                                            'model': 'queue_cnt',
+                                            'label': '队列数量'
+                                        }
                                     },
                                     {
                                         'component': 'VTextField',
-                                        'cols': 12,
-                                        'md': 6,
-                                        'model': 'retry_keyword',
-                                        'label': '重试关键字'
+                                        'props': {
+                                            'cols': 12,
+                                            'md': 6,
+                                            'model': 'retry_keyword',
+                                            'label': '重试关键字'
+                                        }
                                     }
                                 ]
                             }
@@ -183,11 +192,13 @@ class AutoSignIn(_PluginBase):
                                 'content': [
                                     {
                                         'component': 'VSelect',
-                                        'chips': True,
-                                        'multiple': True,
-                                        'model': 'sign_sites',
-                                        'label': '签到站点',
-                                        'items': []
+                                        'props': {
+                                            'chips': True,
+                                            'multiple': True,
+                                            'model': 'sign_sites',
+                                            'label': '签到站点',
+                                            'items': []
+                                        }
                                     }
                                 ]
                             }
@@ -201,11 +212,13 @@ class AutoSignIn(_PluginBase):
                                 'content': [
                                     {
                                         'component': 'VSelect',
-                                        'chips': True,
-                                        'multiple': True,
-                                        'model': 'sign_sites',
-                                        'label': '签到站点',
-                                        'items': []
+                                        'props': {
+                                            'chips': True,
+                                            'multiple': True,
+                                            'model': 'sign_sites',
+                                            'label': '签到站点',
+                                            'items': []
+                                        }
                                     }
                                 ]
                             }
@@ -258,7 +271,7 @@ class AutoSignIn(_PluginBase):
             } for s in status])
             # 发送通知
             self.chain.post_message(Notification(title="站点自动签到",
-                                    text="\n".join([f'【{s[0]}】{s[1]}' for s in status if s])))
+                                                 text="\n".join([f'【{s[0]}】{s[1]}' for s in status if s])))
         else:
             logger.error("站点签到任务失败！")
 

@@ -134,13 +134,17 @@ class SiteStatistic(_PluginBase):
                                 'content': [
                                     {
                                         'component': 'VSwitch',
-                                        'model': 'enabled',
-                                        'label': '启用插件',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
                                     },
                                     {
                                         'component': 'VSwitch',
-                                        'model': 'notify',
-                                        'label': '发送通知',
+                                        'props': {
+                                            'model': 'notify',
+                                            'label': '发送通知',
+                                        }
                                     }
                                 ]
                             }
@@ -154,18 +158,22 @@ class SiteStatistic(_PluginBase):
                                 'content': [
                                     {
                                         'component': 'VTextField',
-                                        'cols': 12,
-                                        'md': 6,
-                                        'model': 'cron',
-                                        'label': '执行周期',
-                                        'placeholder': '0 9,18 * * *'
+                                        'props': {
+                                            'cols': 12,
+                                            'md': 6,
+                                            'model': 'cron',
+                                            'label': '执行周期',
+                                            'placeholder': '0 9,18 * * *'
+                                        }
                                     },
                                     {
                                         'component': 'VTextField',
-                                        'cols': 12,
-                                        'md': 6,
-                                        'model': 'queue_cnt',
-                                        'label': '队列数量'
+                                        'props': {
+                                            'cols': 12,
+                                            'md': 6,
+                                            'model': 'queue_cnt',
+                                            'label': '队列数量'
+                                        }
                                     }
                                 ]
                             }
@@ -179,11 +187,13 @@ class SiteStatistic(_PluginBase):
                                 'content': [
                                     {
                                         'component': 'VSelect',
-                                        'chips': True,
-                                        'multiple': True,
-                                        'model': 'statistic_sites',
-                                        'label': '统计站点',
-                                        'items': []
+                                        'props': {
+                                            'chips': True,
+                                            'multiple': True,
+                                            'model': 'statistic_sites',
+                                            'label': '统计站点',
+                                            'items': []
+                                        }
                                     }
                                 ]
                             }
