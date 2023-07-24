@@ -9,7 +9,7 @@ from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
 
-class HDArea(_ISiteSigninHandler):
+class HD4fans(_ISiteSigninHandler):
     """
     兽签到
     """
@@ -39,23 +39,25 @@ class HDArea(_ISiteSigninHandler):
         site = site_info.get("name")
         site_cookie = site_info.get("cookie")
         ua = site_info.get("ua")
-        proxies = settings.PROXY if site_info.get("proxy") else None
+        proxy = site_info.get("proxy")
+        render = site_info.get("render")
 
         # 获取页面html
-        html_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
-                                proxies=proxies
-                                ).get_res(url="https://pt.hd4fans.org/index.php")
-        if not html_res or html_res.status_code != 200:
+        html_text = self.get_page_source(url='https://pt.hd4fans.org/index.php',
+                                         cookie=site_cookie,
+                                         ua=ua,
+                                         proxy=proxy,
+                                         render=render)
+        if not html_text:
             logger.error(f"{site} 签到失败，请检查站点连通性")
             return False, '签到失败，请检查站点连通性'
 
-        if "login.php" in html_res.text:
+        if "login.php" in html_text:
             logger.error(f"{site} 签到失败，cookie失效")
             return False, '签到失败，cookie失效'
 
         # 判断是否已签到
-        if self._repeat_text in html_res.text:
+        if self._repeat_text in html_text:
             logger.info(f"{site} 今日已签到")
             return True, '今日已签到'
 
@@ -65,13 +67,13 @@ class HDArea(_ISiteSigninHandler):
         }
         sign_res = RequestUtils(cookies=site_cookie,
                                 headers=ua,
-                                proxies=proxies
+                                proxies=settings.PROXY if proxy else None
                                 ).post_res(url="https://pt.hd4fans.org/checkin.php", data=data)
         if not sign_res or sign_res.status_code != 200:
             logger.error(f"{site} 签到失败，请检查站点连通性")
             return False, '签到失败，请检查站点连通性'
         # sign_res.text=本次签到魔力
-        if sign_res.text and int(sign_res.text) > 0:
+        if sign_res.text and sign_res.text.isdigit():
             logger.info(f"{site} 签到成功")
             return True, '签到成功'
 
