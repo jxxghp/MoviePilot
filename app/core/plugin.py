@@ -66,6 +66,14 @@ class PluginManager(metaclass=Singleton):
             except Exception as err:
                 logger.error(f"加载插件 {plugin_id} 出错：{err} - {traceback.format_exc()}")
 
+    def reload_plugin(self, plugin_id: str, conf: dict):
+        """
+        重新加载插件
+        """
+        if not self._running_plugins.get(plugin_id):
+            return
+        self._running_plugins[plugin_id].init_plugin(conf)
+
     def stop(self):
         """
         停止

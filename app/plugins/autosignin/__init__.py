@@ -7,6 +7,7 @@ from typing import Any, List, Dict, Tuple
 from urllib.parse import urljoin
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from ruamel.yaml import CommentedMap
 
 from app import schemas
@@ -57,6 +58,13 @@ class AutoSignIn(_PluginBase):
     # 加载的模块
     _site_schema: list = []
 
+    # 配置属性
+    _enabled: bool = False
+    _cron: str = ""
+    _notify: bool = False
+    _queue_cnt: int = 5
+    _sign_sites: list = []
+
     def init_plugin(self, config: dict = None):
         self.sites = SitesHelper()
         self.event = EventManager()
@@ -64,24 +72,44 @@ class AutoSignIn(_PluginBase):
         # 停止现有任务
         self.stop_service()
 
+        # 配置
+        if config:
+            self._enabled = config.get("enabled")
+            self._cron = config.get("cron")
+            self._notify = config.get("notify")
+            self._queue_cnt = config.get("queue_cnt")
+            self._sign_sites = config.get("sign_sites")
+
         # 加载模块
-        self._site_schema = ModuleHelper.load('app.plugins.autosignin.sites',
-                                              filter_func=lambda _, obj: hasattr(obj, 'match'))
+        if self._enabled:
 
-        # 定时服务
-        self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-        triggers = TimerUtils.random_scheduler(num_executions=2,
-                                               begin_hour=9,
-                                               end_hour=23,
-                                               max_interval=12 * 60,
-                                               min_interval=6 * 60)
-        for trigger in triggers:
-            self._scheduler.add_job(self.sign_in, "cron", hour=trigger.hour, minute=trigger.minute)
+            self._site_schema = ModuleHelper.load('app.plugins.autosignin.sites',
+                                                  filter_func=lambda _, obj: hasattr(obj, 'match'))
 
-        # 启动任务
-        if self._scheduler.get_jobs():
-            self._scheduler.print_jobs()
-            self._scheduler.start()
+            # 定时服务
+            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+
+            if self._cron:
+                try:
+                    self._scheduler.add_job(func=self.sign_in,
+                                            trigger=CronTrigger.from_crontab(self._cron))
+                except Exception as err:
+                    logger.error(f"定时任务配置错误：{err}")
+            else:
+                # 随机时间
+                triggers = TimerUtils.random_scheduler(num_executions=2,
+                                                       begin_hour=9,
+                                                       end_hour=23,
+                                                       max_interval=12 * 60,
+                                                       min_interval=6 * 60)
+                for trigger in triggers:
+                    self._scheduler.add_job(self.sign_in, "cron",
+                                            hour=trigger.hour, minute=trigger.minute)
+
+            # 启动任务
+            if self._scheduler.get_jobs():
+                self._scheduler.print_jobs()
+                self._scheduler.start()
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -197,22 +225,6 @@ class AutoSignIn(_PluginBase):
                                         }
                                     }
                                 ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'retry_keyword',
-                                            'label': '重试关键字'
-                                        }
-                                    }
-                                ]
                             }
                         ]
                     },
@@ -235,26 +247,6 @@ class AutoSignIn(_PluginBase):
                                 ]
                             }
                         ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'content': [
-                                    {
-                                        'component': 'VSelect',
-                                        'props': {
-                                            'chips': True,
-                                            'multiple': True,
-                                            'model': 'special_sites',
-                                            'label': '特殊站点',
-                                            'items': site_options
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
                     }
                 ]
             }
@@ -263,9 +255,7 @@ class AutoSignIn(_PluginBase):
             "notify": True,
             "cron": "1 9,18 * * *",
             "queue_cnt": 5,
-            "retry_keyword": "",
-            "sign_sites": [],
-            "special_sites": []
+            "sign_sites": []
         }
 
     def get_page(self) -> List[dict]:
@@ -283,13 +273,17 @@ class AutoSignIn(_PluginBase):
             logger.info("收到远程签到命令，开始执行签到任务 ...")
         # 查询签到站点
         sign_sites = [site for site in self.sites.get_indexers() if not site.get("public")]
+        # 过滤掉没有选中的站点
+        if self._sign_sites:
+            sign_sites = [site for site in sign_sites if site.get("id") in self._sign_sites]
+
         if not sign_sites:
             logger.info("没有需要签到的站点")
             return
 
         # 执行签到
         logger.info("开始执行签到任务 ...")
-        with ThreadPool(min(len(sign_sites), 5)) as p:
+        with ThreadPool(min(len(sign_sites), self._queue_cnt)) as p:
             status = p.map(self.signin_site, sign_sites)
 
         if status:
@@ -302,8 +296,9 @@ class AutoSignIn(_PluginBase):
                 "status": s[1]
             } for s in status])
             # 发送通知
-            self.chain.post_message(Notification(title="站点自动签到",
-                                                 text="\n".join([f'【{s[0]}】{s[1]}' for s in status if s])))
+            if self._notify:
+                self.chain.post_message(Notification(title="站点自动签到",
+                                                     text="\n".join([f'【{s[0]}】{s[1]}' for s in status if s])))
         else:
             logger.error("站点签到任务失败！")
 

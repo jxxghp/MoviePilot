@@ -5,6 +5,7 @@ from typing import Optional, Any, List, Dict, Tuple
 
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from ruamel.yaml import CommentedMap
 
 from app import schemas
@@ -55,37 +56,64 @@ class SiteStatistic(_PluginBase):
 
     # 私有属性
     sites = None
-    _scheduler: BackgroundScheduler = None
-    _MAX_CONCURRENCY: int = 10
+    _scheduler = None
     _last_update_time: Optional[datetime] = None
     _sites_data: dict = {}
     _site_schema: List[ISiteUserInfo] = None
 
-    def init_plugin(self, config: dict = None):
-        # 加载模块
-        self._site_schema = ModuleHelper.load('app.plugins.sitestatistic.siteuserinfo',
-                                              filter_func=lambda _, obj: hasattr(obj, 'schema'))
-        self._site_schema.sort(key=lambda x: x.order)
-        # 站点管理
-        self.sites = SitesHelper()
-        # 站点上一次更新时间
-        self._last_update_time = None
-        # 站点数据
-        self._sites_data = {}
-        # 定时服务
-        self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-        triggers = TimerUtils.random_scheduler(num_executions=1,
-                                               begin_hour=0,
-                                               end_hour=1,
-                                               min_interval=1,
-                                               max_interval=60)
-        for trigger in triggers:
-            self._scheduler.add_job(self.refresh_all_site_data, "cron", hour=trigger.hour, minute=trigger.minute)
+    # 配置属性
+    _enabled: bool = False
+    _cron: str = ""
+    _notify: bool = False
+    _queue_cnt: int = 5
+    _statistic_sites: list = []
 
-        # 启动任务
-        if self._scheduler.get_jobs():
-            self._scheduler.print_jobs()
-            self._scheduler.start()
+    def init_plugin(self, config: dict = None):
+
+        # 停止现有任务
+        self.stop_service()
+
+        # 配置
+        if config:
+            self._enabled = config.get("enabled")
+            self._cron = config.get("cron")
+            self._notify = config.get("notify")
+            self._queue_cnt = config.get("queue_cnt")
+            self._statistic_sites = config.get("statistic_sites")
+
+        if self._enabled:
+            # 加载模块
+            self._site_schema = ModuleHelper.load('app.plugins.sitestatistic.siteuserinfo',
+                                                  filter_func=lambda _, obj: hasattr(obj, 'schema'))
+            self._site_schema.sort(key=lambda x: x.order)
+            # 站点管理
+            self.sites = SitesHelper()
+            # 站点上一次更新时间
+            self._last_update_time = None
+            # 站点数据
+            self._sites_data = {}
+            # 定时服务
+            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+            if self._cron:
+                try:
+                    self._scheduler.add_job(func=self.refresh_all_site_data,
+                                            trigger=CronTrigger.from_crontab(self._cron))
+                except Exception as err:
+                    logger.error(f"定时任务配置错误：{err}")
+            else:
+                triggers = TimerUtils.random_scheduler(num_executions=1,
+                                                       begin_hour=0,
+                                                       end_hour=1,
+                                                       min_interval=1,
+                                                       max_interval=60)
+                for trigger in triggers:
+                    self._scheduler.add_job(self.refresh_all_site_data, "cron",
+                                            hour=trigger.hour, minute=trigger.minute)
+
+            # 启动任务
+            if self._scheduler.get_jobs():
+                self._scheduler.print_jobs()
+                self._scheduler.start()
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -241,7 +269,17 @@ class SiteStatistic(_PluginBase):
         pass
 
     def stop_service(self):
-        pass
+        """
+        退出插件
+        """
+        try:
+            if self._scheduler:
+                self._scheduler.remove_all_jobs()
+                if self._scheduler.running:
+                    self._scheduler.shutdown()
+                self._scheduler = None
+        except Exception as e:
+            logger.error("退出插件失败：%s" % str(e))
 
     def __build_class(self, html_text: str) -> Any:
         for site_schema in self._site_schema:
@@ -471,12 +509,14 @@ class SiteStatistic(_PluginBase):
             else:
                 refresh_sites = [site for site in self.sites.get_indexers() if
                                  site.get("name") in specify_sites]
+                # 过滤掉未选中的站点
+                refresh_sites = [site for site in refresh_sites if site.get("id") in self._statistic_sites]
 
             if not refresh_sites:
                 return
 
             # 并发刷新
-            with ThreadPool(min(len(refresh_sites), self._MAX_CONCURRENCY)) as p:
+            with ThreadPool(min(len(refresh_sites), self._queue_cnt)) as p:
                 p.map(self.__refresh_site_data, refresh_sites)
 
             # 获取今天的日期
@@ -487,35 +527,36 @@ class SiteStatistic(_PluginBase):
             self._last_update_time = datetime.now()
 
             # 通知刷新完成
-            messages = []
-            # 按照上传降序排序
-            sites = self._sites_data.keys()
-            uploads = [self._sites_data[site].get("upload") or 0 for site in sites]
-            downloads = [self._sites_data[site].get("download") or 0 for site in sites]
-            data_list = sorted(list(zip(sites, uploads, downloads)),
-                               key=lambda x: x[1],
-                               reverse=True)
-            # 总上传
-            incUploads = 0
-            # 总下载
-            incDownloads = 0
-            for data in data_list:
-                site = data[0]
-                upload = int(data[1])
-                download = int(data[2])
-                if upload > 0 or download > 0:
-                    incUploads += int(upload)
-                    incDownloads += int(download)
-                    messages.append(f"【{site}】\n"
-                                    f"上传量：{StringUtils.str_filesize(upload)}\n"
-                                    f"下载量：{StringUtils.str_filesize(download)}\n"
-                                    f"————————————")
+            if self._notify:
+                messages = []
+                # 按照上传降序排序
+                sites = self._sites_data.keys()
+                uploads = [self._sites_data[site].get("upload") or 0 for site in sites]
+                downloads = [self._sites_data[site].get("download") or 0 for site in sites]
+                data_list = sorted(list(zip(sites, uploads, downloads)),
+                                   key=lambda x: x[1],
+                                   reverse=True)
+                # 总上传
+                incUploads = 0
+                # 总下载
+                incDownloads = 0
+                for data in data_list:
+                    site = data[0]
+                    upload = int(data[1])
+                    download = int(data[2])
+                    if upload > 0 or download > 0:
+                        incUploads += int(upload)
+                        incDownloads += int(download)
+                        messages.append(f"【{site}】\n"
+                                        f"上传量：{StringUtils.str_filesize(upload)}\n"
+                                        f"下载量：{StringUtils.str_filesize(download)}\n"
+                                        f"————————————")
 
-            if incDownloads or incUploads:
-                messages.insert(0, f"【汇总】\n"
-                                   f"总上传：{StringUtils.str_filesize(incUploads)}\n"
-                                   f"总下载：{StringUtils.str_filesize(incDownloads)}\n"
-                                   f"————————————")
-            self.chain.post_message(Notification(title="站点数据统计", text="\n".join(messages)))
+                if incDownloads or incUploads:
+                    messages.insert(0, f"【汇总】\n"
+                                       f"总上传：{StringUtils.str_filesize(incUploads)}\n"
+                                       f"总下载：{StringUtils.str_filesize(incDownloads)}\n"
+                                       f"————————————")
+                self.chain.post_message(Notification(title="站点数据统计", text="\n".join(messages)))
 
         logger.info("站点数据刷新完成")

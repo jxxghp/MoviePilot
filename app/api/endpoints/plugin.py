@@ -84,7 +84,10 @@ def set_plugin_config(plugin_id: str, conf: dict,
     """
     根据插件ID获取插件配置信息
     """
+    # 保存配置
     PluginManager().save_plugin_config(plugin_id, conf)
+    # 重新生效插件
+    PluginManager().reload_plugin(plugin_id, conf)
     return schemas.Response(success=True)
 
 
