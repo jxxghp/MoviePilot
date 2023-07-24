@@ -122,6 +122,9 @@ class SiteStatistic(_PluginBase):
         """
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
+        # 站点的可选项
+        site_options = [{"title": site.get("name"), "value": site.get("id")}
+                        for site in self.sites.get_indexers()]
         return [
             {
                 'component': 'VForm',
@@ -131,6 +134,10 @@ class SiteStatistic(_PluginBase):
                         'content': [
                             {
                                 'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
                                 'content': [
                                     {
                                         'component': 'VSwitch',
@@ -138,7 +145,16 @@ class SiteStatistic(_PluginBase):
                                             'model': 'enabled',
                                             'label': '启用插件',
                                         }
-                                    },
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
                                     {
                                         'component': 'VSwitch',
                                         'props': {
@@ -155,22 +171,31 @@ class SiteStatistic(_PluginBase):
                         'content': [
                             {
                                 'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
                                 'content': [
                                     {
                                         'component': 'VTextField',
                                         'props': {
-                                            'cols': 12,
-                                            'md': 6,
                                             'model': 'cron',
                                             'label': '执行周期',
                                             'placeholder': '0 9,18 * * *'
                                         }
-                                    },
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
                                     {
                                         'component': 'VTextField',
                                         'props': {
-                                            'cols': 12,
-                                            'md': 6,
                                             'model': 'queue_cnt',
                                             'label': '队列数量'
                                         }
@@ -192,7 +217,7 @@ class SiteStatistic(_PluginBase):
                                             'multiple': True,
                                             'model': 'statistic_sites',
                                             'label': '统计站点',
-                                            'items': []
+                                            'items': site_options
                                         }
                                     }
                                 ]
