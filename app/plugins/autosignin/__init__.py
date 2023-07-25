@@ -309,6 +309,9 @@ class AutoSignIn(_PluginBase):
                                 'content': [
                                     {
                                         'component': 'td',
+                                        'props': {
+                                            'class': 'whitespace-nowrap break-keep'
+                                        },
                                         'text': current_day
                                     },
                                     {
