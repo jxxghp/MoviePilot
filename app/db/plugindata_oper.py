@@ -24,12 +24,15 @@ class PluginDataOper(DbOper):
         plugin = PluginData(plugin_id=plugin_id, key=key, value=value)
         return plugin.create(self._db)
 
-    def get_data(self, key: str) -> Any:
+    def get_data(self, plugin_id: str, key: str) -> Any:
         """
         获取插件数据
+        :param plugin_id: 插件id
         :param key: 数据key
         """
-        data = PluginData.get_plugin_data_by_key(self._db, self.__class__.__name__, key)
-        if ObjectUtils.is_obj(data):
-            return json.load(data)
-        return data
+        data = PluginData.get_plugin_data_by_key(self._db, plugin_id, key)
+        if not data:
+            return None
+        if ObjectUtils.is_obj(data.value):
+            return json.loads(data.value)
+        return data.value

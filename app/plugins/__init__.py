@@ -145,7 +145,7 @@ class _PluginBase(metaclass=ABCMeta):
         获取插件数据
         :param key: 数据key
         """
-        return self.plugindata.get_data(key)
+        return self.plugindata.get_data(self.__class__.__name__, key)
 
     def post_message(self, channel: MessageChannel = None, mtype: NotificationType = None, title: str = None,
                      text: str = None, image: str = None, link: str = None, userid: str = None):

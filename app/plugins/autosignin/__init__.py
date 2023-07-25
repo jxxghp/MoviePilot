@@ -1,5 +1,5 @@
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing.pool import ThreadPool
 from typing import Any, List, Dict, Tuple, Optional
@@ -264,7 +264,68 @@ class AutoSignIn(_PluginBase):
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
         """
-        pass
+        # 最近两天的日期数组
+        date_list = [str((datetime.now() - timedelta(days=i)).date()) for i in range(2)]
+        # 最近一天的签到数据
+        current_day = ""
+        sign_data = []
+        for day in date_list:
+            current_day = datetime.now().strftime('%Y-%m-%d')
+            sign_data = self.get_data(current_day)
+            if sign_data:
+                break
+        return [
+            {
+                'component': 'VTable',
+                'props': {
+                    'hover': True
+                },
+                'content': [
+                    {
+                        'component': 'thead',
+                        'content': [
+                            {
+                                'component': 'th',
+                                'text': '日期'
+                            },
+                            {
+                                'component': 'th',
+                                'text': '站点'
+                            },
+                            {
+                                'component': 'th',
+                                'text': '状态'
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'tbody',
+                        'content': [
+                            {
+                                'component': 'tr',
+                                'props': {
+                                    'class': 'text-sm'
+                                },
+                                'content': [
+                                    {
+                                        'component': 'td',
+                                        'text': current_day
+                                    },
+                                    {
+                                        'component': 'td',
+                                        'text': data.get("site")
+                                    },
+                                    {
+                                        'component': 'td',
+                                        'text': data.get("status")
+                                    }
+                                ]
+                            } for data in sign_data
+                        ]
+                    }
+                ]
+            }
+        ]
 
     @eventmanager.register(EventType.SiteSignin)
     def sign_in(self, event: Event = None):

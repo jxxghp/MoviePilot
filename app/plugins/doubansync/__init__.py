@@ -238,6 +238,7 @@ class DoubanSync(_PluginBase):
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
         """
+        # TODO 查询同步详情
         pass
 
     def stop_service(self):
@@ -286,6 +287,7 @@ class DoubanSync(_PluginBase):
                         logger.info(f'已超过同步天数，标题：{title}，发布时间：{pubdate}')
                         continue
                 douban_id = result.get("link", "").split("/")[-2]
+                # 检查缓存
                 if not douban_id or douban_id in caches:
                     continue
                 # 根据豆瓣ID获取豆瓣数据
@@ -323,12 +325,24 @@ class DoubanSync(_PluginBase):
                                             season=meta.begin_season,
                                             exist_ok=True,
                                             username="豆瓣想看")
+                    # 保存记录
+                    self.save_data('history', {
+                        "action": 'subscribe',
+                        "media": mediainfo.to_dict(),
+                        "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
                     continue
                 # 自动下载
                 downloads, lefts = self.downloadchain.batch_download(contexts=contexts, no_exists=no_exists)
                 if downloads and not lefts:
                     # 全部下载完成
                     logger.info(f'{mediainfo.title_year} 下载完成')
+                    # 保存记录
+                    self.save_data('history', {
+                        "action": 'download',
+                        "media": mediainfo.to_dict(),
+                        "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
                 else:
                     # 未完成下载
                     logger.info(f'{mediainfo.title_year} 未下载未完整，添加订阅 ...')
@@ -340,6 +354,12 @@ class DoubanSync(_PluginBase):
                                             season=meta.begin_season,
                                             exist_ok=True,
                                             username="豆瓣想看")
+                    # 保存记录
+                    self.save_data('history', {
+                        "action": 'subscribe',
+                        "media": mediainfo.to_dict(),
+                        "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
 
             logger.info(f"用户 {user_id} 豆瓣想看同步完成")
         # 保存缓存
