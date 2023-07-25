@@ -1,3 +1,4 @@
+import datetime
 from pathlib import Path
 from threading import Lock
 from typing import Optional, Any, List, Dict, Tuple
@@ -278,7 +279,12 @@ class DoubanSync(_PluginBase):
                     continue
                 if not result.get("link"):
                     continue
-                # TODO 判断是否在天数范围
+                # 判断是否在天数范围
+                pubdate: Optional[datetime.datetime] = result.get("pubdate")
+                if pubdate:
+                    if (datetime.datetime.now() - pubdate).days > self._days:
+                        logger.info(f'已超过同步天数，标题：{title}，发布时间：{pubdate}')
+                        continue
                 douban_id = result.get("link", "").split("/")[-2]
                 if not douban_id or douban_id in caches:
                     continue

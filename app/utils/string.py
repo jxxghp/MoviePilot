@@ -287,7 +287,7 @@ class StringUtils:
         return random_str
 
     @staticmethod
-    def get_time(date: Any) -> datetime:
+    def get_time(date: Any) -> Optional[datetime.datetime]:
         try:
             return dateutil.parser.parse(date)
         except dateutil.parser.ParserError:
