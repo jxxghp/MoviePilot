@@ -2,6 +2,7 @@
 import json
 import re
 from abc import ABCMeta, abstractmethod
+from enum import Enum
 from typing import Optional
 from urllib.parse import urljoin, urlsplit
 
@@ -13,9 +14,23 @@ from app.helper.cloudflare import under_challenge
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
-from app.schemas.types import SiteSchema
 
 SITE_BASE_ORDER = 1000
+
+
+# 站点框架
+class SiteSchema(Enum):
+    DiscuzX = "Discuz!"
+    Gazelle = "Gazelle"
+    Ipt = "IPTorrents"
+    NexusPhp = "NexusPhp"
+    NexusProject = "NexusProject"
+    NexusRabbit = "NexusRabbit"
+    SmallHorse = "Small Horse"
+    Unit3d = "Unit3d"
+    TorrentLeech = "TorrentLeech"
+    FileList = "FileList"
+    TNode = "TNode"
 
 
 class ISiteUserInfo(metaclass=ABCMeta):

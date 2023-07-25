@@ -54,21 +54,6 @@ class SystemConfigKey(Enum):
     FilterRules2 = "FilterRules2"
 
 
-# 站点框架
-class SiteSchema(Enum):
-    DiscuzX = "Discuz!"
-    Gazelle = "Gazelle"
-    Ipt = "IPTorrents"
-    NexusPhp = "NexusPhp"
-    NexusProject = "NexusProject"
-    NexusRabbit = "NexusRabbit"
-    SmallHorse = "Small Horse"
-    Unit3d = "Unit3d"
-    TorrentLeech = "TorrentLeech"
-    FileList = "FileList"
-    TNode = "TNode"
-
-
 # 处理进度Key字典
 class ProgressKey(Enum):
     # 搜索

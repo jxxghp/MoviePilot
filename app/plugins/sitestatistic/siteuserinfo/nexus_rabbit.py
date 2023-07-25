@@ -5,9 +5,8 @@ from typing import Optional
 from lxml import etree
 
 from app.log import logger
-from app.plugins.sitestatistic.siteuserinfo import SITE_BASE_ORDER
+from app.plugins.sitestatistic.siteuserinfo import SITE_BASE_ORDER, SiteSchema
 from app.plugins.sitestatistic.siteuserinfo.nexus_php import NexusPhpSiteUserInfo
-from app.schemas.types import SiteSchema
 
 
 class NexusRabbitSiteUserInfo(NexusPhpSiteUserInfo):

@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 import re
 
-from app.plugins.sitestatistic.siteuserinfo import SITE_BASE_ORDER
+from app.plugins.sitestatistic.siteuserinfo import SITE_BASE_ORDER, SiteSchema
 from app.plugins.sitestatistic.siteuserinfo.nexus_php import NexusPhpSiteUserInfo
-from app.schemas.types import SiteSchema
 
 
 class NexusProjectSiteUserInfo(NexusPhpSiteUserInfo):
