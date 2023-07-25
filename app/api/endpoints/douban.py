@@ -1,6 +1,6 @@
 from typing import List, Any
 
-from fastapi import APIRouter, Depends, Response, BackgroundTasks
+from fastapi import APIRouter, Depends, Response
 
 from app import schemas
 from app.chain.douban import DoubanChain
@@ -11,24 +11,6 @@ from app.schemas import MediaType
 from app.utils.http import RequestUtils
 
 router = APIRouter()
-
-
-def start_douban_chain():
-    """
-    启动链式任务
-    """
-    DoubanChain().sync()
-
-
-@router.get("/sync", summary="同步豆瓣想看", response_model=schemas.Response)
-def sync_douban(
-        background_tasks: BackgroundTasks,
-        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    同步豆瓣想看
-    """
-    background_tasks.add_task(start_douban_chain)
-    return schemas.Response(success=True, message="任务已启动")
 
 
 @router.get("/img/{imgurl:path}", summary="豆瓣图片代理")
