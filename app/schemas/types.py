@@ -50,6 +50,8 @@ class SystemConfigKey(Enum):
     CustomIdentifiers = "CustomIdentifiers"
     # 过滤规则
     FilterRules = "FilterRules"
+    # 洗版规则
+    FilterRules2 = "FilterRules2"
 
 
 # 站点框架
