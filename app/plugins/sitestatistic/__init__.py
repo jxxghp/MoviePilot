@@ -1,3 +1,4 @@
+import warnings
 from datetime import datetime
 from multiprocessing.dummy import Pool as ThreadPool
 from threading import Lock
@@ -10,22 +11,18 @@ from ruamel.yaml import CommentedMap
 
 from app import schemas
 from app.core.config import settings
-from app.core.event import eventmanager
 from app.core.event import Event
+from app.core.event import eventmanager
 from app.helper.browser import PlaywrightHelper
 from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.plugins import _PluginBase
 from app.plugins.sitestatistic.siteuserinfo import ISiteUserInfo
-from app.schemas import Notification
+from app.schemas.types import EventType, NotificationType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.timer import TimerUtils
-
-import warnings
-
-from app.schemas.types import EventType
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -56,7 +53,7 @@ class SiteStatistic(_PluginBase):
 
     # 私有属性
     sites = None
-    _scheduler = None
+    _scheduler: Optional[BackgroundScheduler] = None
     _last_update_time: Optional[datetime] = None
     _sites_data: dict = {}
     _site_schema: List[ISiteUserInfo] = None
@@ -95,9 +92,12 @@ class SiteStatistic(_PluginBase):
             if self._cron:
                 try:
                     self._scheduler.add_job(func=self.refresh_all_site_data,
-                                            trigger=CronTrigger.from_crontab(self._cron))
+                                            trigger=CronTrigger.from_crontab(self._cron),
+                                            name="站点数据统计")
                 except Exception as err:
                     logger.error(f"定时任务配置错误：{err}")
+                    # 推送实时消息
+                    self.systemmessage.put(f"执行周期配置错误：{err}")
             else:
                 triggers = TimerUtils.random_scheduler(num_executions=1,
                                                        begin_hour=0,
@@ -106,7 +106,8 @@ class SiteStatistic(_PluginBase):
                                                        max_interval=60)
                 for trigger in triggers:
                     self._scheduler.add_job(self.refresh_all_site_data, "cron",
-                                            hour=trigger.hour, minute=trigger.minute)
+                                            hour=trigger.hour, minute=trigger.minute,
+                                            name="站点数据统计")
 
             # 启动任务
             if self._scheduler.get_jobs():
@@ -207,7 +208,7 @@ class SiteStatistic(_PluginBase):
                                         'props': {
                                             'model': 'cron',
                                             'label': '执行周期',
-                                            'placeholder': '0 9,18 * * *'
+                                            'placeholder': '5位cron表达式，留空自动'
                                         }
                                     }
                                 ]
@@ -467,10 +468,11 @@ class SiteStatistic(_PluginBase):
             for head, date, content in site_user_info.message_unread_contents:
                 msg_title = f"【站点 {site_user_info.site_name} 消息】"
                 msg_text = f"时间：{date}\n标题：{head}\n内容：\n{content}"
-                self.chain.post_message(Notification(title=msg_title, text=msg_text))
+                self.post_message(mtype=NotificationType.SiteMessage, title=msg_title, text=msg_text)
         else:
-            self.chain.post_message(Notification(title=f"站点 {site_user_info.site_name} 收到 "
-                                                       f"{site_user_info.message_unread} 条新消息，请登陆查看"))
+            self.post_message(mtype=NotificationType.SiteMessage,
+                              title=f"站点 {site_user_info.site_name} 收到 "
+                                    f"{site_user_info.message_unread} 条新消息，请登陆查看")
 
     @eventmanager.register(EventType.SiteStatistic)
     def refresh(self, event: Event):
@@ -478,8 +480,14 @@ class SiteStatistic(_PluginBase):
         刷新站点数据
         """
         if event:
-            logger.info("收到命令，开始执行站点数据刷新 ...")
+            logger.info("收到命令，开始刷新站点数据 ...")
+            self.post_message(channel=event.event_data.get("channel"),
+                              title="开始刷新站点数据 ...",
+                              userid=event.event_data.get("user"))
         self.refresh_all_site_data(force=True)
+        if event:
+            self.post_message(channel=event.event_data.get("channel"),
+                              title="站点数据刷新完成！", userid=event.event_data.get("user"))
 
     def refresh_all_site_data(self, force: bool = False, specify_sites: list = None):
         """
@@ -555,6 +563,7 @@ class SiteStatistic(_PluginBase):
                                        f"总上传：{StringUtils.str_filesize(incUploads)}\n"
                                        f"总下载：{StringUtils.str_filesize(incDownloads)}\n"
                                        f"————————————")
-                self.chain.post_message(Notification(title="站点数据统计", text="\n".join(messages)))
+                self.post_message(mtype=NotificationType.SiteMessage,
+                                  title="站点数据统计", text="\n".join(messages))
 
         logger.info("站点数据刷新完成")

@@ -22,6 +22,8 @@ class EventType(Enum):
     SiteSignin = "site.signin"
     # 站点数据统计
     SiteStatistic = "site.statistic"
+    # 豆瓣想看
+    DoubanSync = "douban.sync"
     # Webhook消息
     WebhookMessage = "webhook.message"
     # 转移完成

@@ -26,8 +26,7 @@ ENV LANG="C.UTF-8" \
     QB_PASSWORD="adminadmin" \
     MEDIASERVER="emby" \
     EMBY_HOST="http://127.0.0.1:8096" \
-    EMBY_API_KEY="" \
-    DOUBAN_USER_IDS=""
+    EMBY_API_KEY=""
 WORKDIR "/app"
 COPY . .
 RUN apt-get update \

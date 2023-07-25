@@ -7,6 +7,8 @@ from app.core.config import settings
 from app.db.models import Base
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.message import MessageHelper
+from app.schemas import Notification, NotificationType, MessageChannel
 
 
 class PluginChian(ChainBase):
@@ -34,9 +36,14 @@ class _PluginBase(metaclass=ABCMeta):
     plugin_desc: str = ""
     
     def __init__(self):
+        # 插件数据
         self.plugindata = PluginDataOper()
+        # 处理链
         self.chain = PluginChian()
+        # 系统配置
         self.systemconfig = SystemConfigOper()
+        # 系统消息
+        self.systemmessage = MessageHelper()
 
     @abstractmethod
     def init_plugin(self, config: dict = None):
@@ -139,3 +146,13 @@ class _PluginBase(metaclass=ABCMeta):
         :param key: 数据key
         """
         return self.plugindata.get_data(key)
+
+    def post_message(self, channel: MessageChannel = None, mtype: NotificationType = None, title: str = None,
+                     text: str = None, image: str = None, link: str = None, userid: str = None):
+        """
+        发送消息
+        """
+        self.chain.post_message(Notification(
+            channel=channel, mtype=mtype, title=title, text=text,
+            image=image, link=link, userid=userid
+        ))

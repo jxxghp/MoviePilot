@@ -2,8 +2,7 @@ import traceback
 from datetime import datetime
 from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing.pool import ThreadPool
-from threading import Event
-from typing import Any, List, Dict, Tuple
+from typing import Any, List, Dict, Tuple, Optional
 from urllib.parse import urljoin
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -11,20 +10,19 @@ from apscheduler.triggers.cron import CronTrigger
 from ruamel.yaml import CommentedMap
 
 from app import schemas
-from app.core.event import EventManager, eventmanager
 from app.core.config import settings
+from app.core.event import EventManager, eventmanager, Event
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas import Notification
+from app.schemas.types import EventType, NotificationType
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
 from app.utils.string import StringUtils
 from app.utils.timer import TimerUtils
-from app.schemas.types import EventType
 
 
 class AutoSignIn(_PluginBase):
@@ -54,7 +52,7 @@ class AutoSignIn(_PluginBase):
     # 事件管理器
     event: EventManager = None
     # 定时器
-    _scheduler = None
+    _scheduler: Optional[BackgroundScheduler] = None
     # 加载的模块
     _site_schema: list = []
 
@@ -92,9 +90,12 @@ class AutoSignIn(_PluginBase):
             if self._cron:
                 try:
                     self._scheduler.add_job(func=self.sign_in,
-                                            trigger=CronTrigger.from_crontab(self._cron))
+                                            trigger=CronTrigger.from_crontab(self._cron),
+                                            name="站点自动签到")
                 except Exception as err:
                     logger.error(f"定时任务配置错误：{err}")
+                    # 推送实时消息
+                    self.systemmessage.put(f"执行周期配置错误：{err}")
             else:
                 # 随机时间
                 triggers = TimerUtils.random_scheduler(num_executions=2,
@@ -104,7 +105,8 @@ class AutoSignIn(_PluginBase):
                                                        min_interval=6 * 60)
                 for trigger in triggers:
                     self._scheduler.add_job(self.sign_in, "cron",
-                                            hour=trigger.hour, minute=trigger.minute)
+                                            hour=trigger.hour, minute=trigger.minute,
+                                            name="站点自动签到")
 
             # 启动任务
             if self._scheduler.get_jobs():
@@ -183,7 +185,7 @@ class AutoSignIn(_PluginBase):
                                         'component': 'VSwitch',
                                         'props': {
                                             'model': 'notify',
-                                            'label': '签到通知',
+                                            'label': '发送通知',
                                         }
                                     }
                                 ]
@@ -205,7 +207,7 @@ class AutoSignIn(_PluginBase):
                                         'props': {
                                             'model': 'cron',
                                             'label': '执行周期',
-                                            'placeholder': '0 9,18 * * *'
+                                            'placeholder': '5位cron表达式，留空自动'
                                         }
                                     }
                                 ]
@@ -253,7 +255,7 @@ class AutoSignIn(_PluginBase):
         ], {
             "enabled": False,
             "notify": True,
-            "cron": "1 9,18 * * *",
+            "cron": "",
             "queue_cnt": 5,
             "sign_sites": []
         }
@@ -270,7 +272,10 @@ class AutoSignIn(_PluginBase):
         自动签到
         """
         if event:
-            logger.info("收到远程签到命令，开始执行签到任务 ...")
+            logger.info("收到命令，开始站点签到 ...")
+            self.post_message(channel=event.event_data.get("channel"),
+                              title="开始站点签到 ...",
+                              userid=event.event_data.get("user"))
         # 查询签到站点
         sign_sites = [site for site in self.sites.get_indexers() if not site.get("public")]
         # 过滤掉没有选中的站点
@@ -297,10 +302,17 @@ class AutoSignIn(_PluginBase):
             } for s in status])
             # 发送通知
             if self._notify:
-                self.chain.post_message(Notification(title="站点自动签到",
-                                                     text="\n".join([f'【{s[0]}】{s[1]}' for s in status if s])))
+                self.post_message(title="站点自动签到",
+                                  mtype=NotificationType.SiteMessage,
+                                  text="\n".join([f'【{s[0]}】{s[1]}' for s in status if s]))
+            if event:
+                self.post_message(channel=event.event_data.get("channel"),
+                                  title="站点签到完成！", userid=event.event_data.get("user"))
         else:
             logger.error("站点签到任务失败！")
+            if event:
+                self.post_message(channel=event.event_data.get("channel"),
+                                  title="站点签到任务失败！", userid=event.event_data.get("user"))
 
     def __build_class(self, url) -> Any:
         for site_schema in self._site_schema:

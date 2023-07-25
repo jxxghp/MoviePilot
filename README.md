@@ -55,7 +55,6 @@ docker pull jxxghp/moviepilot:latest
 - **TORRENT_TAG：** 种子标签，默认为`MOVIEPILOT`，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
 - **LIBRARY_PATH：** 媒体库目录，**注意：需要将`moviepilot`的映射路径与宿主机`真实路径`保持一致**，多个目录使用`,`分隔
 - **LIBRARY_CATEGORY：** 媒体库二级分类开关，`true`/`false`，默认`false`，开启后会根据配置`category.yaml`自动在媒体库目录下建立二级目录分类
-- **DOUBAN_USER_IDS：** 豆瓣用户ID，用于同步豆瓣标记的`想看`数据，自动添加订阅，多个用户使用,分隔
 - **TRANSFER_TYPE：** 转移方式，支持`link`/`copy`/`move`/`softlink`
 - **COOKIECLOUD_HOST：** CookieCloud服务器地址，格式：`http://ip:port`，必须配置，否则无法添加站点
 - **COOKIECLOUD_KEY：** CookieCloud用户KEY

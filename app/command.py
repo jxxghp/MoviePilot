@@ -4,19 +4,18 @@ from typing import Any, Union
 
 from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
-from app.chain.douban import DoubanChain
 from app.chain.download import DownloadChain
 from app.chain.mediaserver import MediaServerChain
 from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
+from app.core.event import Event as ManagerEvent
 from app.core.event import eventmanager, EventManager
 from app.core.plugin import PluginManager
-from app.core.event import Event as ManagerEvent
 from app.log import logger
+from app.schemas.types import EventType, MessageChannel
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
-from app.schemas.types import EventType, MessageChannel
 
 
 class CommandChian(ChainBase):
@@ -68,11 +67,6 @@ class Command(metaclass=Singleton):
             "/site_disable": {
                 "func": SiteChain().remote_disable,
                 "description": "禁用站点",
-                "data": {}
-            },
-            "/douban_sync": {
-                "func": DoubanChain().remote_sync,
-                "description": "同步豆瓣想看",
                 "data": {}
             },
             "/mediaserver_sync": {
