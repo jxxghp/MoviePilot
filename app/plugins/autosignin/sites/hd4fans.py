@@ -57,7 +57,7 @@ class HD4fans(_ISiteSigninHandler):
             return False, '签到失败，cookie失效'
 
         # 判断是否已签到
-        if self._repeat_text in html_text:
+        if self._success_text in html_text:
             logger.info(f"{site} 今日已签到")
             return True, '今日已签到'
 
