@@ -66,7 +66,7 @@ class HD4fans(_ISiteSigninHandler):
             'action': 'checkin'
         }
         sign_res = RequestUtils(cookies=site_cookie,
-                                headers=ua,
+                                ua=ua,
                                 proxies=settings.PROXY if proxy else None
                                 ).post_res(url="https://pt.hd4fans.org/checkin.php", data=data)
         if not sign_res or sign_res.status_code != 200:
