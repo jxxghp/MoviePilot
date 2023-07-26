@@ -258,6 +258,7 @@ class DoubanSync(_PluginBase):
             mtype = history.get("type")
             time_str = history.get("time")
             overview = history.get("overview")
+            doubanid = history.get("doubanid")
             contents.append(
                 {
                     'component': 'VCard',
@@ -278,7 +279,7 @@ class DoubanSync(_PluginBase):
                                                 'height': 120,
                                                 'width': 80,
                                                 'aspect-ratio': '2/3',
-                                                'class': 'object-cover rounded shadow ring-gray-500',
+                                                'class': 'object-cover shadow ring-gray-500',
                                                 'cover': True
                                             }
                                         }
@@ -292,7 +293,16 @@ class DoubanSync(_PluginBase):
                                             'props': {
                                                 'class': 'pa-2 font-bold break-words whitespace-break-spaces'
                                             },
-                                            'text': title
+                                            'content': [
+                                                {
+                                                    'component': 'a',
+                                                    'props': {
+                                                        'href': f"https://movie.douban.com/subject/{doubanid}",
+                                                        'target': '_blank'
+                                                    },
+                                                    'text': title
+                                                }
+                                            ]
                                         },
                                         {
                                             'component': 'VCardText',

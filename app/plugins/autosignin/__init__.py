@@ -265,12 +265,12 @@ class AutoSignIn(_PluginBase):
         拼装插件详情页面，需要返回页面配置，同时附带数据
         """
         # 最近两天的日期数组
-        date_list = [str((datetime.now() - timedelta(days=i)).date()) for i in range(2)]
+        date_list = [(datetime.now() - timedelta(days=i)).date() for i in range(2)]
         # 最近一天的签到数据
         current_day = ""
         sign_data = []
         for day in date_list:
-            current_day = f"{datetime.now().month}月{datetime.now().day}日"
+            current_day = f"{day.month}月{day.day}日"
             sign_data = self.get_data(current_day)
             if sign_data:
                 break

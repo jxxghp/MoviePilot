@@ -24,12 +24,15 @@ def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     查询媒体数量统计信息
     """
     media_statistic = DashboardChain().media_statistic()
-    return schemas.Statistic(
-        movie_count=media_statistic.movie_count,
-        tv_count=media_statistic.tv_count,
-        episode_count=media_statistic.episode_count,
-        user_count=media_statistic.user_count
-    )
+    if media_statistic:
+        return schemas.Statistic(
+            movie_count=media_statistic.movie_count,
+            tv_count=media_statistic.tv_count,
+            episode_count=media_statistic.episode_count,
+            user_count=media_statistic.user_count
+        )
+    else:
+        return schemas.Statistic()
 
 
 @router.get("/storage", summary="存储空间", response_model=schemas.Storage)
