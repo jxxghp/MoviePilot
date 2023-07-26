@@ -398,32 +398,14 @@ class DoubanSync(_PluginBase):
                     exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
                     if exist_flag:
                         logger.info(f'{mediainfo.title_year} 媒体库中已存在')
-                        continue
-                    logger.info(f'{mediainfo.title_year} 媒体库中不存在，开始搜索 ...')
-                    # 搜索
-                    contexts = self.searchchain.process(mediainfo=mediainfo,
-                                                        no_exists=no_exists)
-                    if not contexts:
-                        logger.warn(f'{mediainfo.title_year} 未搜索到资源')
-                        # 添加订阅
-                        self.subscribechain.add(title=mediainfo.title,
-                                                year=mediainfo.year,
-                                                mtype=mediainfo.type,
-                                                tmdbid=mediainfo.tmdb_id,
-                                                season=meta.begin_season,
-                                                exist_ok=True,
-                                                username="豆瓣想看")
-                        action = "subscribe"
+                        action = "exist"
                     else:
-                        # 自动下载
-                        downloads, lefts = self.downloadchain.batch_download(contexts=contexts, no_exists=no_exists)
-                        if downloads and not lefts:
-                            # 全部下载完成
-                            logger.info(f'{mediainfo.title_year} 下载完成')
-                            action = "download"
-                        else:
-                            # 未完成下载
-                            logger.info(f'{mediainfo.title_year} 未下载未完整，添加订阅 ...')
+                        logger.info(f'{mediainfo.title_year} 媒体库中不存在，开始搜索 ...')
+                        # 搜索
+                        contexts = self.searchchain.process(mediainfo=mediainfo,
+                                                            no_exists=no_exists)
+                        if not contexts:
+                            logger.warn(f'{mediainfo.title_year} 未搜索到资源')
                             # 添加订阅
                             self.subscribechain.add(title=mediainfo.title,
                                                     year=mediainfo.year,
@@ -433,18 +415,38 @@ class DoubanSync(_PluginBase):
                                                     exist_ok=True,
                                                     username="豆瓣想看")
                             action = "subscribe"
+                        else:
+                            # 自动下载
+                            downloads, lefts = self.downloadchain.batch_download(contexts=contexts, no_exists=no_exists)
+                            if downloads and not lefts:
+                                # 全部下载完成
+                                logger.info(f'{mediainfo.title_year} 下载完成')
+                                action = "download"
+                            else:
+                                # 未完成下载
+                                logger.info(f'{mediainfo.title_year} 未下载未完整，添加订阅 ...')
+                                # 添加订阅
+                                self.subscribechain.add(title=mediainfo.title,
+                                                        year=mediainfo.year,
+                                                        mtype=mediainfo.type,
+                                                        tmdbid=mediainfo.tmdb_id,
+                                                        season=meta.begin_season,
+                                                        exist_ok=True,
+                                                        username="豆瓣想看")
+                                action = "subscribe"
                     # 存储历史记录
-                    history.append({
-                        "action": action,
-                        "title": doubaninfo.get("title") or mediainfo.title,
-                        "type": mediainfo.type.value,
-                        "year": mediainfo.year,
-                        "poster": mediainfo.poster_path,
-                        "overview": mediainfo.overview,
-                        "tmdbid": mediainfo.tmdb_id,
-                        "doubanid": douban_id,
-                        "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    })
+                    if douban_id not in [h.get("doubanid") for h in history]:
+                        history.append({
+                            "action": action,
+                            "title": doubaninfo.get("title") or mediainfo.title,
+                            "type": mediainfo.type.value,
+                            "year": mediainfo.year,
+                            "poster": mediainfo.poster_path,
+                            "overview": mediainfo.overview,
+                            "tmdbid": mediainfo.tmdb_id,
+                            "doubanid": douban_id,
+                            "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        })
                 except Exception as err:
                     logger.error(f'同步用户 {user_id} 豆瓣想看数据出错：{err}')
             logger.info(f"用户 {user_id} 豆瓣想看同步完成")
