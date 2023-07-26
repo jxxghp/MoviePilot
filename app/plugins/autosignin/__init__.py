@@ -270,7 +270,7 @@ class AutoSignIn(_PluginBase):
         current_day = ""
         sign_data = []
         for day in date_list:
-            current_day = datetime.now().strftime('%-m月%-d日')
+            current_day = f"{datetime.now().month}月{datetime.now().day}日"
             sign_data = self.get_data(current_day)
             if sign_data:
                 break
@@ -379,7 +379,7 @@ class AutoSignIn(_PluginBase):
         if status:
             logger.info("站点签到任务完成！")
             # 获取今天的日期
-            key = datetime.now().strftime('%-m月%-d日')
+            key = f"{datetime.now().month}月{datetime.now().day}日"
             # 保存数据
             self.save_data(key, [{
                 "site": s[0],
