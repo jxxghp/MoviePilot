@@ -270,10 +270,55 @@ class AutoSignIn(_PluginBase):
         current_day = ""
         sign_data = []
         for day in date_list:
-            current_day = datetime.now().strftime('%Y-%m-%d')
+            current_day = datetime.now().strftime('%-m月%-d日')
             sign_data = self.get_data(current_day)
             if sign_data:
                 break
+        if sign_data:
+            contents = [
+                            {
+                                'component': 'tr',
+                                'props': {
+                                    'class': 'text-sm'
+                                },
+                                'content': [
+                                    {
+                                        'component': 'td',
+                                        'props': {
+                                            'class': 'whitespace-nowrap break-keep'
+                                        },
+                                        'text': current_day
+                                    },
+                                    {
+                                        'component': 'td',
+                                        'text': data.get("site")
+                                    },
+                                    {
+                                        'component': 'td',
+                                        'text': data.get("status")
+                                    }
+                                ]
+                            } for data in sign_data
+                        ]
+        else:
+            contents = [
+                {
+                    'component': 'tr',
+                    'props': {
+                        'class': 'text-sm'
+                    },
+                    'content': [
+                        {
+                            'component': 'td',
+                            'props': {
+                                'colspan': 3,
+                                'class': 'text-center'
+                            },
+                            'text': '暂无数据'
+                        }
+                    ]
+                }
+            ]
         return [
             {
                 'component': 'VTable',
@@ -300,31 +345,7 @@ class AutoSignIn(_PluginBase):
                     },
                     {
                         'component': 'tbody',
-                        'content': [
-                            {
-                                'component': 'tr',
-                                'props': {
-                                    'class': 'text-sm'
-                                },
-                                'content': [
-                                    {
-                                        'component': 'td',
-                                        'props': {
-                                            'class': 'whitespace-nowrap break-keep'
-                                        },
-                                        'text': current_day
-                                    },
-                                    {
-                                        'component': 'td',
-                                        'text': data.get("site")
-                                    },
-                                    {
-                                        'component': 'td',
-                                        'text': data.get("status")
-                                    }
-                                ]
-                            } for data in sign_data
-                        ]
+                        'content': contents
                     }
                 ]
             }
@@ -358,7 +379,7 @@ class AutoSignIn(_PluginBase):
         if status:
             logger.info("站点签到任务完成！")
             # 获取今天的日期
-            key = datetime.now().strftime('%Y-%m-%d')
+            key = datetime.now().strftime('%-m月%-d日')
             # 保存数据
             self.save_data(key, [{
                 "site": s[0],
