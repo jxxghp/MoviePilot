@@ -250,6 +250,8 @@ class DoubanSync(_PluginBase):
                     }
                 }
             ]
+        # 数据按时间降序排序
+        historys = sorted(historys, key=lambda x: x.get('time'), reverse=True)
         # 拼装页面
         contents = []
         for history in historys:

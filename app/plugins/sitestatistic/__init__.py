@@ -285,7 +285,10 @@ class SiteStatistic(_PluginBase):
                     }
                 }
             ]
-
+        # 数据按时间降序排序
+        stattistic_data = dict(sorted(stattistic_data.items(),
+                                      key=lambda item: item[1].get('upload') or 0,
+                                      reverse=True))
         # 总上传量
         total_upload = sum([data.get("upload")
                             for data in stattistic_data.values() if data.get("upload")])
@@ -385,8 +388,10 @@ class SiteStatistic(_PluginBase):
                                                 },
                                                 'content': [
                                                     {
-                                                        'component': 'VIcon',
-                                                        'html': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>upload</title><path d="M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z" /></svg>'
+                                                        'component': 'VImg',
+                                                        'props': {
+                                                            'src': '/plugin/upload.png'
+                                                        }
                                                     }
                                                 ]
                                             },
@@ -453,8 +458,10 @@ class SiteStatistic(_PluginBase):
                                                 },
                                                 'content': [
                                                     {
-                                                        'component': 'VIcon',
-                                                        'html': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>download</title><path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z" /></svg>'
+                                                        'component': 'VImg',
+                                                        'props': {
+                                                            'src': '/plugin/download.png'
+                                                        }
                                                     }
                                                 ]
                                             },
@@ -521,8 +528,10 @@ class SiteStatistic(_PluginBase):
                                                 },
                                                 'content': [
                                                     {
-                                                        'component': 'VIcon',
-                                                        'html': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>seed</title><path d="M20.7,3.3C20.7,3.3 19.3,3 17.2,3C11.7,3 1.6,5.1 3.2,20.8C4.3,20.9 5.4,21 6.4,21C24.3,21 20.7,3.3 20.7,3.3M7,17C7,17 7,7 17,7C17,7 11,9 7,17Z" /></svg>'
+                                                        'component': 'VImg',
+                                                        'props': {
+                                                            'src': '/plugin/seed.png'
+                                                        }
                                                     }
                                                 ]
                                             },
@@ -589,8 +598,10 @@ class SiteStatistic(_PluginBase):
                                                 },
                                                 'content': [
                                                     {
-                                                        'component': 'VIcon',
-                                                        'html': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>database</title><path d="M12,3C7.58,3 4,4.79 4,7C4,9.21 7.58,11 12,11C16.42,11 20,9.21 20,7C20,4.79 16.42,3 12,3M4,9V12C4,14.21 7.58,16 12,16C16.42,16 20,14.21 20,12V9C20,11.21 16.42,13 12,13C7.58,13 4,11.21 4,9M4,14V17C4,19.21 7.58,21 12,21C16.42,21 20,19.21 20,17V14C20,16.21 16.42,18 12,18C7.58,18 4,16.21 4,14Z" /></svg>'
+                                                        'component': 'VImg',
+                                                        'props': {
+                                                            'src': '/plugin/seed_size.png'
+                                                        }
                                                     }
                                                 ]
                                             },
