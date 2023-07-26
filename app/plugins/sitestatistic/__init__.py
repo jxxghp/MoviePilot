@@ -299,6 +299,57 @@ class SiteStatistic(_PluginBase):
         total_seed_size = sum([data.get("seeding_size")
                                for data in stattistic_data.values() if data.get("seeding_size")])
 
+        # 站点数据明细
+        site_trs = [
+            {
+                'component': 'tr',
+                'props': {
+                    'class': 'text-sm'
+                },
+                'content': [
+                    {
+                        'component': 'td',
+                        'props': {
+                            'class': 'whitespace-nowrap break-keep'
+                        },
+                        'text': site
+                    },
+                    {
+                        'component': 'td',
+                        'text': data.get("username")
+                    },
+                    {
+                        'component': 'td',
+                        'text': data.get("user_level")
+                    },
+                    {
+                        'component': 'td',
+                        'text': StringUtils.str_filesize(data.get("upload"))
+                    },
+                    {
+                        'component': 'td',
+                        'text': StringUtils.str_filesize(data.get("download"))
+                    },
+                    {
+                        'component': 'td',
+                        'text': data.get('ratio')
+                    },
+                    {
+                        'component': 'td',
+                        'text': data.get('bonus')
+                    },
+                    {
+                        'component': 'td',
+                        'text': data.get('seeding')
+                    },
+                    {
+                        'component': 'td',
+                        'text': StringUtils.str_filesize(data.get('seeding_size'))
+                    }
+                ]
+            } for site, data in stattistic_data.items() if not data.get("err_msg")
+        ]
+
         # 拼装页面
         return [
             {
@@ -571,6 +622,95 @@ class SiteStatistic(_PluginBase):
                                                 ]
                                             }
                                         ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    # 各站点数据明细
+                    {
+                        'component': 'VCol',
+                        'props': {
+                            'cols': 12,
+                        },
+                        'content': [
+                            {
+                                'component': 'VTable',
+                                'props': {
+                                    'hover': True
+                                },
+                                'content': [
+                                    {
+                                        'component': 'thead',
+                                        'content': [
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                  'class': 'text-start ps-4'
+                                                },
+                                                'text': '站点'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                  'class': 'text-start ps-4'
+                                                },
+                                                'text': '用户名'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                  'class': 'text-start ps-4'
+                                                },
+                                                'text': '用户等级'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                  'class': 'text-start ps-4'
+                                                },
+                                                'text': '上传量'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                  'class': 'text-start ps-4'
+                                                },
+                                                'text': '下载量'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                    'class': 'text-start ps-4'
+                                                },
+                                                'text': '分享率'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                  'class': 'text-start ps-4'
+                                                },
+                                                'text': '魔力值'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                  'class': 'text-start ps-4'
+                                                },
+                                                'text': '做种数'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                  'class': 'text-start ps-4'
+                                                },
+                                                'text': '做种体积'
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        'component': 'tbody',
+                                        'content': site_trs
                                     }
                                 ]
                             }

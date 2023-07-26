@@ -276,30 +276,30 @@ class AutoSignIn(_PluginBase):
                 break
         if sign_data:
             contents = [
-                            {
-                                'component': 'tr',
-                                'props': {
-                                    'class': 'text-sm'
-                                },
-                                'content': [
-                                    {
-                                        'component': 'td',
-                                        'props': {
-                                            'class': 'whitespace-nowrap break-keep'
-                                        },
-                                        'text': current_day
-                                    },
-                                    {
-                                        'component': 'td',
-                                        'text': data.get("site")
-                                    },
-                                    {
-                                        'component': 'td',
-                                        'text': data.get("status")
-                                    }
-                                ]
-                            } for data in sign_data
-                        ]
+                {
+                    'component': 'tr',
+                    'props': {
+                        'class': 'text-sm'
+                    },
+                    'content': [
+                        {
+                            'component': 'td',
+                            'props': {
+                                'class': 'whitespace-nowrap break-keep'
+                            },
+                            'text': current_day
+                        },
+                        {
+                            'component': 'td',
+                            'text': data.get("site")
+                        },
+                        {
+                            'component': 'td',
+                            'text': data.get("status")
+                        }
+                    ]
+                } for data in sign_data
+            ]
         else:
             contents = [
                 {
@@ -331,14 +331,23 @@ class AutoSignIn(_PluginBase):
                         'content': [
                             {
                                 'component': 'th',
+                                'props': {
+                                    'class': 'text-start ps-4'
+                                },
                                 'text': '日期'
                             },
                             {
                                 'component': 'th',
+                                'props': {
+                                    'class': 'text-start ps-4'
+                                },
                                 'text': '站点'
                             },
                             {
                                 'component': 'th',
+                                'props': {
+                                    'class': 'text-start ps-4'
+                                },
                                 'text': '状态'
                             }
                         ]
