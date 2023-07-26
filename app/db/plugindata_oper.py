@@ -21,8 +21,15 @@ class PluginDataOper(DbOper):
         """
         if ObjectUtils.is_obj(value):
             value = json.dumps(value)
-        plugin = PluginData(plugin_id=plugin_id, key=key, value=value)
-        return plugin.create(self._db)
+        plugin = PluginData.get_plugin_data_by_key(self._db, plugin_id, key)
+        if plugin:
+            plugin.update(self._db, {
+                "value": value
+            })
+            return plugin
+        else:
+            plugin = PluginData(plugin_id=plugin_id, key=key, value=value)
+            return plugin.create(self._db)
 
     def get_data(self, plugin_id: str, key: str) -> Any:
         """

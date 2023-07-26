@@ -239,8 +239,8 @@ class DoubanSync(_PluginBase):
         拼装插件详情页面，需要返回页面配置，同时附带数据
         """
         # 查询同步详情
-        history = self.get_data('history')
-        if not history:
+        historys = self.get_data('history')
+        if not historys:
             return [
                 {
                     'component': 'div',
@@ -250,8 +250,80 @@ class DoubanSync(_PluginBase):
                     }
                 }
             ]
-        return [
+        # 拼装页面
+        contents = []
+        for history in historys:
+            title = history.get("title")
+            poster = history.get("poster")
+            mtype = history.get("type")
+            time_str = history.get("time")
+            overview = history.get("overview")
+            contents.append(
+                {
+                    'component': 'VCard',
+                    'content': [
+                        {
+                            'component': 'div',
+                            'props': {
+                                'class': 'd-flex justify-space-start flex-nowrap flex-row',
+                            },
+                            'content': [
+                                {
+                                    'component': 'div',
+                                    'content': [
+                                        {
+                                            'component': 'VImg',
+                                            'props': {
+                                                'src': poster,
+                                                'height': 120,
+                                                'width': 80,
+                                                'aspect-ratio': '2/3',
+                                                'class': 'object-cover rounded shadow ring-gray-500',
+                                                'cover': True
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    'component': 'div',
+                                    'content': [
+                                        {
+                                            'component': 'VCardSubtitle',
+                                            'props': {
+                                                'class': 'pa-2 font-bold break-words whitespace-break-spaces'
+                                            },
+                                            'text': title
+                                        },
+                                        {
+                                            'component': 'VCardText',
+                                            'props': {
+                                                'class': 'pa-0 px-2'
+                                            },
+                                            'text': f'类型：{mtype}'
+                                        },
+                                        {
+                                            'component': 'VCardText',
+                                            'props': {
+                                                'class': 'pa-0 px-2'
+                                            },
+                                            'text': f'时间：{time_str}'
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            )
 
+        return [
+            {
+                'component': 'div',
+                'props': {
+                    'class': 'grid gap-3 grid-info-card',
+                },
+                'content': contents
+            }
         ]
 
     def stop_service(self):
@@ -289,89 +361,92 @@ class DoubanSync(_PluginBase):
                 return
             # 解析数据
             for result in results:
-                dtype = result.get("title", "")[:2]
-                title = result.get("title", "")[2:]
-                if dtype not in ["想看"]:
-                    continue
-                if not result.get("link"):
-                    continue
-                # 判断是否在天数范围
-                pubdate: Optional[datetime.datetime] = result.get("pubdate")
-                if pubdate:
-                    if (datetime.datetime.now() - pubdate).days > self._days:
-                        logger.info(f'已超过同步天数，标题：{title}，发布时间：{pubdate}')
+                try:
+                    dtype = result.get("title", "")[:2]
+                    title = result.get("title", "")[2:]
+                    if dtype not in ["想看"]:
                         continue
-                douban_id = result.get("link", "").split("/")[-2]
-                # 检查缓存
-                if not douban_id or douban_id in caches:
-                    continue
-                # 根据豆瓣ID获取豆瓣数据
-                doubaninfo: Optional[dict] = self.chain.douban_info(doubanid=douban_id)
-                if not doubaninfo:
-                    logger.warn(f'未获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
-                    continue
-                logger.info(f'获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
-                # 识别媒体信息
-                meta = MetaInfo(doubaninfo.get("original_title") or doubaninfo.get("title"))
-                if doubaninfo.get("year"):
-                    meta.year = doubaninfo.get("year")
-                mediainfo: MediaInfo = self.chain.recognize_media(meta=meta)
-                if not mediainfo:
-                    logger.warn(f'未识别到媒体信息，标题：{title}，豆瓣ID：{douban_id}')
-                    continue
-                # 加入缓存
-                caches.append(douban_id)
-                # 查询缺失的媒体信息
-                exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
-                if exist_flag:
-                    logger.info(f'{mediainfo.title_year} 媒体库中已存在')
-                    continue
-                logger.info(f'{mediainfo.title_year} 媒体库中不存在，开始搜索 ...')
-                # 搜索
-                contexts = self.searchchain.process(mediainfo=mediainfo,
-                                                    no_exists=no_exists)
-                if not contexts:
-                    logger.warn(f'{mediainfo.title_year} 未搜索到资源')
-                    # 添加订阅
-                    self.subscribechain.add(title=mediainfo.title,
-                                            year=mediainfo.year,
-                                            mtype=mediainfo.type,
-                                            tmdbid=mediainfo.tmdb_id,
-                                            season=meta.begin_season,
-                                            exist_ok=True,
-                                            username="豆瓣想看")
+                    if not result.get("link"):
+                        continue
+                    # 判断是否在天数范围
+                    pubdate: Optional[datetime.datetime] = result.get("pubdate")
+                    if pubdate:
+                        if (datetime.datetime.now(datetime.timezone.utc) - pubdate).days > float(self._days):
+                            logger.info(f'已超过同步天数，标题：{title}，发布时间：{pubdate}')
+                            continue
+                    douban_id = result.get("link", "").split("/")[-2]
+                    # 检查缓存
+                    if not douban_id or douban_id in caches:
+                        continue
+                    # 根据豆瓣ID获取豆瓣数据
+                    doubaninfo: Optional[dict] = self.chain.douban_info(doubanid=douban_id)
+                    if not doubaninfo:
+                        logger.warn(f'未获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
+                        continue
+                    logger.info(f'获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
+                    # 识别媒体信息
+                    meta = MetaInfo(doubaninfo.get("original_title") or doubaninfo.get("title"))
+                    if doubaninfo.get("year"):
+                        meta.year = doubaninfo.get("year")
+                    mediainfo: MediaInfo = self.chain.recognize_media(meta=meta)
+                    if not mediainfo:
+                        logger.warn(f'未识别到媒体信息，标题：{title}，豆瓣ID：{douban_id}')
+                        continue
+                    # 加入缓存
+                    caches.append(douban_id)
+                    # 查询缺失的媒体信息
+                    exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
+                    if exist_flag:
+                        logger.info(f'{mediainfo.title_year} 媒体库中已存在')
+                        continue
+                    logger.info(f'{mediainfo.title_year} 媒体库中不存在，开始搜索 ...')
+                    # 搜索
+                    contexts = self.searchchain.process(mediainfo=mediainfo,
+                                                        no_exists=no_exists)
+                    if not contexts:
+                        logger.warn(f'{mediainfo.title_year} 未搜索到资源')
+                        # 添加订阅
+                        self.subscribechain.add(title=mediainfo.title,
+                                                year=mediainfo.year,
+                                                mtype=mediainfo.type,
+                                                tmdbid=mediainfo.tmdb_id,
+                                                season=meta.begin_season,
+                                                exist_ok=True,
+                                                username="豆瓣想看")
+                        action = "subscribe"
+                    else:
+                        # 自动下载
+                        downloads, lefts = self.downloadchain.batch_download(contexts=contexts, no_exists=no_exists)
+                        if downloads and not lefts:
+                            # 全部下载完成
+                            logger.info(f'{mediainfo.title_year} 下载完成')
+                            action = "download"
+                        else:
+                            # 未完成下载
+                            logger.info(f'{mediainfo.title_year} 未下载未完整，添加订阅 ...')
+                            # 添加订阅
+                            self.subscribechain.add(title=mediainfo.title,
+                                                    year=mediainfo.year,
+                                                    mtype=mediainfo.type,
+                                                    tmdbid=mediainfo.tmdb_id,
+                                                    season=meta.begin_season,
+                                                    exist_ok=True,
+                                                    username="豆瓣想看")
+                            action = "subscribe"
+                    # 存储历史记录
                     history.append({
-                        "action": 'subscribe',
-                        "media": mediainfo.to_dict(),
+                        "action": action,
+                        "title": doubaninfo.get("title") or mediainfo.title,
+                        "type": mediainfo.type.value,
+                        "year": mediainfo.year,
+                        "poster": mediainfo.poster_path,
+                        "overview": mediainfo.overview,
+                        "tmdbid": mediainfo.tmdb_id,
+                        "doubanid": douban_id,
                         "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     })
-                    continue
-                # 自动下载
-                downloads, lefts = self.downloadchain.batch_download(contexts=contexts, no_exists=no_exists)
-                if downloads and not lefts:
-                    # 全部下载完成
-                    logger.info(f'{mediainfo.title_year} 下载完成')
-                    history.append({
-                        "action": 'download',
-                        "media": mediainfo.to_dict(),
-                        "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    })
-                else:
-                    # 未完成下载
-                    logger.info(f'{mediainfo.title_year} 未下载未完整，添加订阅 ...')
-                    # 添加订阅
-                    self.subscribechain.add(title=mediainfo.title,
-                                            year=mediainfo.year,
-                                            mtype=mediainfo.type,
-                                            tmdbid=mediainfo.tmdb_id,
-                                            season=meta.begin_season,
-                                            exist_ok=True,
-                                            username="豆瓣想看")
-                    history.append({
-                        "action": 'subscribe',
-                        "media": mediainfo.to_dict(),
-                        "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    })
+                except Exception as err:
+                    logger.error(f'同步用户 {user_id} 豆瓣想看数据出错：{err}')
             logger.info(f"用户 {user_id} 豆瓣想看同步完成")
         # 保存历史记录
         self.save_data('history', history)
