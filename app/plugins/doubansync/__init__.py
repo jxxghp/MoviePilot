@@ -453,7 +453,7 @@ class DoubanSync(_PluginBase):
                             "title": doubaninfo.get("title") or mediainfo.title,
                             "type": mediainfo.type.value,
                             "year": mediainfo.year,
-                            "poster": mediainfo.poster_path,
+                            "poster": mediainfo.get_poster_image(),
                             "overview": mediainfo.overview,
                             "tmdbid": mediainfo.tmdb_id,
                             "doubanid": douban_id,
