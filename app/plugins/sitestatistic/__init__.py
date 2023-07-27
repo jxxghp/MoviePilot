@@ -530,7 +530,7 @@ class SiteStatistic(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/seed.png'
+                                                            'src': '/plugin/cloud.png'
                                                         }
                                                     }
                                                 ]
