@@ -241,11 +241,17 @@ class SubscribeChain(ChainBase):
                 sites = json.loads(subscribe.sites)
             else:
                 sites = None
+            # 过滤规则
+            if subscribe.best_version:
+                filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules2)
+            else:
+                filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules)
             # 搜索，同时电视剧会过滤掉不需要的剧集
             contexts = self.searchchain.process(mediainfo=mediainfo,
                                                 keyword=subscribe.keyword,
                                                 no_exists=no_exists,
-                                                sites=sites)
+                                                sites=sites,
+                                                filter_rule=filter_rule)
             if not contexts:
                 logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
                 if meta.type == MediaType.TV:
@@ -366,15 +372,6 @@ class SubscribeChain(ChainBase):
             domain = StringUtils.get_url_domain(indexer.get("domain"))
             torrents: List[TorrentInfo] = self.refresh_torrents(site=indexer)
             if torrents:
-                # 过滤种子
-                result: List[TorrentInfo] = self.filter_torrents(
-                    rule_string=self.systemconfig.get(SystemConfigKey.FilterRules),
-                    torrent_list=torrents)
-                if result is not None:
-                    torrents = result
-                if not torrents:
-                    logger.warn(f'{indexer.get("name")} 没有符合过滤条件的种子')
-                    continue
                 # 过滤出没有处理过的种子
                 torrents = [torrent for torrent in torrents
                             if f'{torrent.title}{torrent.description}'
@@ -492,6 +489,17 @@ class SubscribeChain(ChainBase):
                     # 比对TMDBID和类型
                     if torrent_mediainfo.tmdb_id != mediainfo.tmdb_id \
                             or torrent_mediainfo.type != mediainfo.type:
+                        continue
+                    # 过滤规则
+                    if subscribe.best_version:
+                        filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules2)
+                    else:
+                        filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules)
+                    result: List[TorrentInfo] = self.filter_torrents(
+                        rule_string=filter_rule,
+                        torrent_list=[torrent_info])
+                    if result is not None and not result:
+                        # 不符合过滤规则
                         continue
                     # 不在订阅站点范围的不处理
                     if subscribe.sites:

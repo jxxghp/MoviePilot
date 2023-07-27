@@ -83,13 +83,15 @@ class SearchChain(ChainBase):
     def process(self, mediainfo: MediaInfo,
                 keyword: str = None,
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
-                sites: List[int] = None) -> List[Context]:
+                sites: List[int] = None,
+                filter_rule: str = None) -> List[Context]:
         """
         根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
         :param mediainfo: 媒体信息
         :param keyword: 搜索关键词
         :param no_exists: 缺失的媒体信息
         :param sites: 站点ID列表，为空时搜索所有站点
+        :param filter_rule: 过滤规则，为空是使用默认过滤规则
         """
         logger.info(f'开始搜索资源，关键词：{keyword or mediainfo.title} ...')
         # 补充媒体信息
@@ -116,16 +118,19 @@ class SearchChain(ChainBase):
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
             return []
         # 过滤种子
-        filter_rules = self.systemconfig.get(SystemConfigKey.FilterRules)
-        logger.info(f'开始过滤资源，当前规则：{filter_rules} ...')
-        result: List[TorrentInfo] = self.filter_torrents(rule_string=filter_rules,
-                                                         torrent_list=torrents,
-                                                         season_episodes=season_episodes)
-        if result is not None:
-            torrents = result
-        if not torrents:
-            logger.warn(f'{keyword or mediainfo.title} 没有符合过滤条件的资源')
-            return []
+        if filter_rule is None:
+            # 取默认过滤规则
+            filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules)
+        if filter_rule:
+            logger.info(f'开始过滤资源，当前规则：{filter_rule} ...')
+            result: List[TorrentInfo] = self.filter_torrents(rule_string=filter_rule,
+                                                             torrent_list=torrents,
+                                                             season_episodes=season_episodes)
+            if result is not None:
+                torrents = result
+            if not torrents:
+                logger.warn(f'{keyword or mediainfo.title} 没有符合过滤条件的资源')
+                return []
         # 匹配的资源
         _match_torrents = []
         # 总数
