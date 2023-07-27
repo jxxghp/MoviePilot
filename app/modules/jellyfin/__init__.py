@@ -7,7 +7,7 @@ from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.jellyfin.jellyfin import Jellyfin
-from app.schemas import ExistMediaInfo
+from app.schemas import ExistMediaInfo, WebhookEventInfo
 from app.schemas.types import MediaType
 
 
@@ -33,7 +33,7 @@ class JellyfinModule(_ModuleBase):
         # Jellyfin认证
         return self.jellyfin.authenticate(name, password)
 
-    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
+    def webhook_parser(self, body: Any, form: Any, args: Any) -> WebhookEventInfo:
         """
         解析Webhook报文体
         :param body:  请求体

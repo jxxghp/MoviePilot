@@ -8,7 +8,7 @@ from plexapi.server import PlexServer
 
 from app.core.config import settings
 from app.log import logger
-from app.schemas import RefreshMediaItem, MediaType
+from app.schemas import RefreshMediaItem, MediaType, WebhookEventInfo
 from app.utils.singleton import Singleton
 
 
@@ -317,7 +317,7 @@ class Plex(metaclass=Singleton):
             logger.error(f"获取媒体库列表出错：{err}")
         yield {}
 
-    def get_webhook_message(self, message_str: str) -> dict:
+    def get_webhook_message(self, message_str: str) -> WebhookEventInfo:
         """
         解析Plex报文
         eventItem  字段的含义
@@ -328,44 +328,44 @@ class Plex(metaclass=Singleton):
         overview   剧情描述
         """
         message = json.loads(message_str)
-        eventItem = {'event': message.get('event', ''), "channel": "plex"}
+        eventItem = WebhookEventInfo(event=message.get('Event', ''), channel="plex")
         if message.get('Metadata'):
             if message.get('Metadata', {}).get('type') == 'episode':
-                eventItem['item_type'] = "TV"
-                eventItem['item_name'] = "%s %s%s %s" % (
+                eventItem.item_type = "TV"
+                eventItem.item_name = "%s %s%s %s" % (
                     message.get('Metadata', {}).get('grandparentTitle'),
                     "S" + str(message.get('Metadata', {}).get('parentIndex')),
                     "E" + str(message.get('Metadata', {}).get('index')),
                     message.get('Metadata', {}).get('title'))
-                eventItem['item_id'] = message.get('Metadata', {}).get('ratingKey')
-                eventItem['season_id'] = message.get('Metadata', {}).get('parentIndex')
-                eventItem['episode_id'] = message.get('Metadata', {}).get('index')
+                eventItem.item_id = message.get('Metadata', {}).get('ratingKey')
+                eventItem.season_id = message.get('Metadata', {}).get('parentIndex')
+                eventItem.episode_id = message.get('Metadata', {}).get('index')
 
                 if message.get('Metadata', {}).get('summary') and len(message.get('Metadata', {}).get('summary')) > 100:
-                    eventItem['overview'] = str(message.get('Metadata', {}).get('summary'))[:100] + "..."
+                    eventItem.overview = str(message.get('Metadata', {}).get('summary'))[:100] + "..."
                 else:
-                    eventItem['overview'] = message.get('Metadata', {}).get('summary')
+                    eventItem.overview = message.get('Metadata', {}).get('summary')
             else:
-                eventItem['item_type'] = "MOV" if message.get('Metadata', {}).get('type') == 'movie' else "SHOW"
-                eventItem['item_name'] = "%s %s" % (
+                eventItem.item_type = "MOV" if message.get('Metadata', {}).get('type') == 'movie' else "SHOW"
+                eventItem.item_name = "%s %s" % (
                     message.get('Metadata', {}).get('title'), "(" + str(message.get('Metadata', {}).get('year')) + ")")
-                eventItem['item_id'] = message.get('Metadata', {}).get('ratingKey')
+                eventItem.item_id = message.get('Metadata', {}).get('ratingKey')
                 if len(message.get('Metadata', {}).get('summary')) > 100:
-                    eventItem['overview'] = str(message.get('Metadata', {}).get('summary'))[:100] + "..."
+                    eventItem.overview = str(message.get('Metadata', {}).get('summary'))[:100] + "..."
                 else:
-                    eventItem['overview'] = message.get('Metadata', {}).get('summary')
+                    eventItem.overview = message.get('Metadata', {}).get('summary')
         if message.get('Player'):
-            eventItem['ip'] = message.get('Player').get('publicAddress')
-            eventItem['client'] = message.get('Player').get('title')
+            eventItem.ip = message.get('Player').get('publicAddress')
+            eventItem.client = message.get('Player').get('title')
             # 这里给个空,防止拼消息的时候出现None
-            eventItem['device_name'] = ' '
+            eventItem.device_name = ' '
         if message.get('Account'):
-            eventItem['user_name'] = message.get("Account").get('title')
+            eventItem.user_name = message.get("Account").get('title')
 
         # 获取消息图片
-        if eventItem.get("item_id"):
+        if eventItem.item_id:
             # 根据返回的item_id去调用媒体服务器获取
-            eventItem['image_url'] = self.get_remote_image_by_id(item_id=eventItem.get('item_id'),
-                                                                 image_type="Backdrop")
+            eventItem.image_url = self.get_remote_image_by_id(item_id=eventItem.item_id,
+                                                              image_type="Backdrop")
 
         return eventItem

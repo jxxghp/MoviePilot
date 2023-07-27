@@ -5,7 +5,7 @@ from typing import List, Optional, Union, Dict, Generator
 
 from app.core.config import settings
 from app.log import logger
-from app.schemas import RefreshMediaItem
+from app.schemas import RefreshMediaItem, WebhookEventInfo
 from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
@@ -537,58 +537,58 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接Users/Items出错：" + str(e))
         yield {}
 
-    def get_webhook_message(self, message_str: str) -> dict:
+    def get_webhook_message(self, message_str: str) -> WebhookEventInfo:
         """
         解析Emby Webhook报文
         """
         message = json.loads(message_str)
-        eventItem = {'event': message.get('Event', ''), "channel": "emby"}
+        eventItem = WebhookEventInfo(event=message.get('Event', ''), channel="emby")
         if message.get('Item'):
             if message.get('Item', {}).get('Type') == 'Episode':
-                eventItem['item_type'] = "TV"
-                eventItem['item_name'] = "%s %s%s %s" % (
+                eventItem.item_type = "TV"
+                eventItem.item_name = "%s %s%s %s" % (
                     message.get('Item', {}).get('SeriesName'),
                     "S" + str(message.get('Item', {}).get('ParentIndexNumber')),
                     "E" + str(message.get('Item', {}).get('IndexNumber')),
                     message.get('Item', {}).get('Name'))
-                eventItem['item_id'] = message.get('Item', {}).get('SeriesId')
-                eventItem['season_id'] = message.get('Item', {}).get('ParentIndexNumber')
-                eventItem['episode_id'] = message.get('Item', {}).get('IndexNumber')
+                eventItem.item_id = message.get('Item', {}).get('SeriesId')
+                eventItem.season_id = message.get('Item', {}).get('ParentIndexNumber')
+                eventItem.episode_id = message.get('Item', {}).get('IndexNumber')
             elif message.get('Item', {}).get('Type') == 'Audio':
-                eventItem['item_type'] = "AUD"
+                eventItem.item_type = "AUD"
                 album = message.get('Item', {}).get('Album')
                 file_name = message.get('Item', {}).get('FileName')
-                eventItem['item_name'] = album
-                eventItem['overview'] = file_name
-                eventItem['item_id'] = message.get('Item', {}).get('AlbumId')
+                eventItem.item_name = album
+                eventItem.overview = file_name
+                eventItem.item_id = message.get('Item', {}).get('AlbumId')
             else:
-                eventItem['item_type'] = "MOV"
-                eventItem['item_name'] = "%s %s" % (
+                eventItem.item_type = "MOV"
+                eventItem.item_name = "%s %s" % (
                     message.get('Item', {}).get('Name'), "(" + str(message.get('Item', {}).get('ProductionYear')) + ")")
-                eventItem['item_path'] = message.get('Item', {}).get('Path')
-                eventItem['item_id'] = message.get('Item', {}).get('Id')
+                eventItem.item_path = message.get('Item', {}).get('Path')
+                eventItem.item_id = message.get('Item', {}).get('Id')
 
-            eventItem['tmdb_id'] = message.get('Item', {}).get('ProviderIds', {}).get('Tmdb')
+            eventItem.tmdb_id = message.get('Item', {}).get('ProviderIds', {}).get('Tmdb')
             if message.get('Item', {}).get('Overview') and len(message.get('Item', {}).get('Overview')) > 100:
-                eventItem['overview'] = str(message.get('Item', {}).get('Overview'))[:100] + "..."
+                eventItem.overview = str(message.get('Item', {}).get('Overview'))[:100] + "..."
             else:
-                eventItem['overview'] = message.get('Item', {}).get('Overview')
-            eventItem['percentage'] = message.get('TranscodingInfo', {}).get('CompletionPercentage')
-            if not eventItem['percentage']:
+                eventItem.overview = message.get('Item', {}).get('Overview')
+            eventItem.percentage = message.get('TranscodingInfo', {}).get('CompletionPercentage')
+            if not eventItem.percentage:
                 if message.get('PlaybackInfo', {}).get('PositionTicks'):
-                    eventItem['percentage'] = message.get('PlaybackInfo', {}).get('PositionTicks') / \
-                                              message.get('Item', {}).get('RunTimeTicks') * 100
+                    eventItem.percentage = message.get('PlaybackInfo', {}).get('PositionTicks') / \
+                                           message.get('Item', {}).get('RunTimeTicks') * 100
         if message.get('Session'):
-            eventItem['ip'] = message.get('Session').get('RemoteEndPoint')
-            eventItem['device_name'] = message.get('Session').get('DeviceName')
-            eventItem['client'] = message.get('Session').get('Client')
+            eventItem.ip = message.get('Session').get('RemoteEndPoint')
+            eventItem.device_name = message.get('Session').get('DeviceName')
+            eventItem.client = message.get('Session').get('Client')
         if message.get("User"):
-            eventItem['user_name'] = message.get("User").get('Name')
+            eventItem.user_name = message.get("User").get('Name')
 
         # 获取消息图片
-        if eventItem.get("item_id"):
+        if eventItem.item_id:
             # 根据返回的item_id去调用媒体服务器获取
-            eventItem['image_url'] = self.get_remote_image_by_id(item_id=eventItem.get('item_id'),
-                                                                 image_type="Backdrop")
+            eventItem.image_url = self.get_remote_image_by_id(item_id=eventItem.item_id,
+                                                              image_type="Backdrop")
 
         return eventItem

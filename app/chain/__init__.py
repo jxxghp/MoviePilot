@@ -12,7 +12,8 @@ from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.core.module import ModuleManager
 from app.log import logger
-from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification
+from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
+    WebhookEventInfo
 from app.schemas.types import TorrentStatus, MediaType, MediaImageType
 from app.utils.object import ObjectUtils
 from app.utils.singleton import AbstractSingleton, Singleton
@@ -170,7 +171,7 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         """
         return self.run_module("message_parser", body=body, form=form, args=args)
 
-    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
+    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[WebhookEventInfo]:
         """
         解析Webhook报文体
         :param body:  请求体

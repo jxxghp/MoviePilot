@@ -6,7 +6,7 @@ from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.plex.plex import Plex
-from app.schemas import ExistMediaInfo, RefreshMediaItem
+from app.schemas import ExistMediaInfo, RefreshMediaItem, WebhookEventInfo
 from app.schemas.types import MediaType
 
 
@@ -23,7 +23,7 @@ class PlexModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "plex"
 
-    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[dict]:
+    def webhook_parser(self, body: Any, form: Any, args: Any) -> WebhookEventInfo:
         """
         解析Webhook报文体
         :param body:  请求体
