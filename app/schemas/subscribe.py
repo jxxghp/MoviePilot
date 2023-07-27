@@ -47,6 +47,10 @@ class Subscribe(BaseModel):
     username: Optional[str] = None
     # 订阅站点
     sites: Optional[List[int]] = None
+    # 是否洗版
+    best_version: Optional[int] = 0
+    # 当前优先级
+    current_priority: Optional[int] = None
 
     class Config:
         orm_mode = True

@@ -53,6 +53,10 @@ class Subscribe(Base):
     username = Column(String)
     # 订阅站点
     sites = Column(String)
+    # 是否洗版
+    best_version = Column(Integer, default=0)
+    # 当前优先级
+    current_priority = Column(Integer)
 
     @staticmethod
     def exists(db: Session, tmdbid: int, season: int = None):
