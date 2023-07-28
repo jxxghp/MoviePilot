@@ -6,7 +6,7 @@ envsubst '${NGINX_PORT}' < /etc/nginx/nginx.template.conf > /etc/nginx/nginx.con
 # 更改 moviepilot userid 和 groupid
 groupmod -o -g ${PGID} moviepilot
 usermod -o -u ${PUID} moviepilot
-chown -R moviepilot:moviepilot ${HOME} /app
+chown -R moviepilot:moviepilot ${HOME} /app /config
 # 下载浏览器内核
 gosu moviepilot:moviepilot playwright install chromium
 # 启动后端服务
