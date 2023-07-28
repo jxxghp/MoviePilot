@@ -1,5 +1,7 @@
 FROM python:3.10.11-slim
 ENV LANG="C.UTF-8" \
+    HOME="/moviepilot" \
+    TERM="xterm" \
     TZ="Asia/Shanghai" \
     PUID=0 \
     PGID=0 \
@@ -37,8 +39,11 @@ RUN apt-get update \
         locales \
         procps \
         gosu \
-    && mkdir -p /etc/nginx \
+        bash \
+    && mkdir -p /etc/nginx ${HOME} \
     && cp -f nginx.conf /etc/nginx/nginx.template.conf \
+    && groupadd -r moviepilot -g 911 \
+    && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
     && pip install -r requirements.txt \
     && python_ver=$(python3 -V | awk '{print $2}') \
     && echo "/app/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \
