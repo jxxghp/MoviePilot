@@ -51,6 +51,8 @@ docker pull jxxghp/moviepilot:latest
 - **PROXY_HOST：** 网络代理（可选），访问themoviedb需要使用代理访问，格式为`http(s)://ip:port`
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`或其它中转代理服务地址，能连通即可
 - **DOWNLOAD_PATH：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径与宿主机`真实路径`保持一致**，例如群晖中下载路程径为`/volume1/downloads`，则需要将`moviepilot`及`下载器`的映射路径均设置为`/volume1/downloads`，否则会导致下载文件无法转移
+- **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录，**必须是DOWNLOAD_PATH的下级路径**，不设置则下载到DOWNLOAD_PATH
+- **DOWNLOAD_TV_PATH：** 电视剧下载保存目录，**必须是DOWNLOAD_PATH的下级路径**，不设置则下载到DOWNLOAD_PATH
 - **DOWNLOAD_CATEGORY：** 下载二级分类开关，`true`/`false`，默认`false`，开启后会根据配置`category.yaml`自动在下载目录下建立二级目录分类
 - **TORRENT_TAG：** 种子标签，默认为`MOVIEPILOT`，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
 - **LIBRARY_PATH：** 媒体库目录，**注意：需要将`moviepilot`的映射路径与宿主机`真实路径`保持一致**，多个目录使用`,`分隔

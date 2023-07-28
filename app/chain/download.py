@@ -104,7 +104,15 @@ class DownloadChain(ChainBase):
                 return
         # 下载目录
         if settings.DOWNLOAD_CATEGORY and _media and _media.category:
-            download_dir = Path(settings.DOWNLOAD_PATH) / _media.category
+            if _media.type == MediaType.MOVIE:
+                download_dir = Path(settings.DOWNLOAD_MOVIE_PATH) / _media.category
+            else:
+                download_dir = Path(settings.DOWNLOAD_TV_PATH) / _media.category
+        elif _media:
+            if _media.type == MediaType.MOVIE:
+                download_dir = Path(settings.DOWNLOAD_MOVIE_PATH)
+            else:
+                download_dir = Path(settings.DOWNLOAD_TV_PATH)
         else:
             download_dir = Path(settings.DOWNLOAD_PATH)
         # 添加下载
