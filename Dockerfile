@@ -36,6 +36,7 @@ RUN apt-get update \
         gettext-base \
         locales \
         procps \
+        gosu \
     && mkdir -p /etc/nginx \
     && cp -f nginx.conf /etc/nginx/nginx.template.conf \
     && pip install -r requirements.txt \
