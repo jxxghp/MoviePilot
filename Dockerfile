@@ -40,13 +40,13 @@ RUN apt-get update \
         procps \
         gosu \
         bash \
-    && playwright install-deps chromium \
     && mkdir -p /etc/nginx ${HOME} \
     && cp -f nginx.conf /etc/nginx/nginx.template.conf \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
     && pip install --upgrade pip \
     && pip install -r requirements.txt \
+    && playwright install-deps chromium \
     && python_ver=$(python3 -V | awk '{print $2}') \
     && echo "/app/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
