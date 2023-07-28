@@ -30,7 +30,12 @@ ENV LANG="C.UTF-8" \
 WORKDIR "/app"
 COPY . .
 RUN apt-get update \
-    && apt-get -y install musl-dev nginx gettext-base \
+    && apt-get -y install \
+        musl-dev \
+        nginx \
+        gettext-base \
+        locales \
+        procps \
     && mkdir -p /etc/nginx \
     && cp -f nginx.conf /etc/nginx/nginx.template.conf \
     && pip install -r requirements.txt \
@@ -38,8 +43,15 @@ RUN apt-get update \
     && echo "/app/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
+    && locale-gen zh_CN.UTF-8 \
     && playwright install-deps chromium \
-    && rm -rf /root/.cache/
+    && apt-get autoremove -y \
+    && apt-get clean -y \
+    && rm -rf \
+        /tmp/* \
+        /root/.cache \
+        /var/lib/apt/lists/* \
+        /var/tmp/*
 EXPOSE 3000
 VOLUME ["/config"]
 ENTRYPOINT [ "bash", "-c", "/app/start.sh & nginx -g 'daemon off;'" ]
