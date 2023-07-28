@@ -56,7 +56,7 @@ RUN apt-get update \
     && apt-get clean -y \
     && rm -rf \
         /tmp/* \
-        /root/.cache \
+        /moviepilot/.cache \
         /var/lib/apt/lists/* \
         /var/tmp/*
 EXPOSE 3000
