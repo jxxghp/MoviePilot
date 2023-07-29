@@ -92,7 +92,7 @@ class Search(TMDb):
         :param page: int
         :return:
         """
-        params = "query=%s&page=%s" % (quote(term), page)
+        params = "query=%s&page=%s" % (quote(term['query']), page)
         if adult is not None:
             params += "&include_adult=%s" % "true" if adult else "false"
         if region is not None:
