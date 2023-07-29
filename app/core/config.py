@@ -110,9 +110,9 @@ class Settings(BaseSettings):
     # 下载保存目录，容器内映射路径需要一致
     DOWNLOAD_PATH: str = "/downloads"
     # 电影下载保存目录，容器内映射路径需要一致
-    DOWNLOAD_MOVIE_PATH: str = DOWNLOAD_PATH
+    DOWNLOAD_MOVIE_PATH: str = None
     # 电视剧下载保存目录，容器内映射路径需要一致
-    DOWNLOAD_TV_PATH: str = DOWNLOAD_PATH
+    DOWNLOAD_TV_PATH: str = None
     # 下载目录二级分类
     DOWNLOAD_CATEGORY: bool = False
     # 媒体服务器 emby/jellyfin/plex
