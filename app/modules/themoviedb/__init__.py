@@ -272,8 +272,7 @@ class TheMovieDbModule(_ModuleBase):
         if mediainfo.type == MediaType.MOVIE:
             images = self.tmdb.get_movie_images(mediainfo.tmdb_id)
         else:
-            # FIXME tmdbv3api库没有tv.images接口，只能取第1季的
-            images = self.tmdb.get_tv_images(mediainfo.tmdb_id, season=1)
+            images = self.tmdb.get_tv_images(mediainfo.tmdb_id)
         if not images:
             return mediainfo
         if isinstance(images, list):
@@ -345,6 +344,20 @@ class TheMovieDbModule(_ModuleBase):
         :param tmdbid:  TMDBID
         """
         return self.tmdb.get_tv_similar(tmdbid=tmdbid)
+
+    def movie_recommend(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询推荐电影
+        :param tmdbid:  TMDBID
+        """
+        return self.tmdb.get_movie_recommend(tmdbid=tmdbid)
+
+    def tv_recommend(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询推荐电视剧
+        :param tmdbid:  TMDBID
+        """
+        return self.tmdb.get_tv_recommend(tmdbid=tmdbid)
 
     def movie_credits(self, tmdbid: int) -> List[dict]:
         """

@@ -62,6 +62,20 @@ class TmdbChain(ChainBase):
         """
         return self.run_module("tv_similar", tmdbid=tmdbid)
 
+    def movie_recommend(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询推荐电影
+        :param tmdbid:  TMDBID
+        """
+        return self.run_module("movie_recommend", tmdbid=tmdbid)
+
+    def tv_recommend(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询推荐电视剧
+        :param tmdbid:  TMDBID
+        """
+        return self.run_module("tv_recommend", tmdbid=tmdbid)
+
     def movie_credits(self, tmdbid: int) -> List[dict]:
         """
         根据TMDBID查询电影演职人员

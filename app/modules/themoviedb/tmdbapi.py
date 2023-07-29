@@ -1033,7 +1033,7 @@ class TmdbHelper:
             print(str(e))
             return {}
 
-    def get_tv_images(self, tmdbid: int, season: int) -> dict:
+    def get_tv_images(self, tmdbid: int) -> dict:
         """
         获取电视剧的图片
         """
@@ -1041,7 +1041,7 @@ class TmdbHelper:
             return {}
         try:
             logger.info(f"正在获取电视剧图片：{tmdbid}...")
-            return self.season.images(tv_id=tmdbid, season_num=season) or {}
+            return self.tv.images(tv_id=tmdbid) or {}
         except Exception as e:
             print(str(e))
             return {}
@@ -1054,8 +1054,7 @@ class TmdbHelper:
             return []
         try:
             logger.info(f"正在获取相似电影：{tmdbid}...")
-            info = self.movie.similar(tmdbid) or {}
-            return info.get('results') or []
+            info = self.movie.similar(tmdbid) or []
         except Exception as e:
             print(str(e))
             return []
@@ -1068,8 +1067,33 @@ class TmdbHelper:
             return []
         try:
             logger.info(f"正在获取相似电视剧：{tmdbid}...")
-            info = self.tv.similar(tmdbid) or {}
-            return info.get('results') or []
+            info = self.tv.similar(tmdbid) or []
+        except Exception as e:
+            print(str(e))
+            return []
+
+    def get_movie_recommend(self, tmdbid: int) -> List[dict]:
+        """
+        获取电影的推荐电影
+        """
+        if not self.movie:
+            return []
+        try:
+            logger.info(f"正在获取推荐电影：{tmdbid}...")
+            info = self.movie.recommendations(tmdbid) or []
+        except Exception as e:
+            print(str(e))
+            return []
+
+    def get_tv_recommend(self, tmdbid: int) -> List[dict]:
+        """
+        获取电视剧的推荐电视剧
+        """
+        if not self.tv:
+            return []
+        try:
+            logger.info(f"正在获取推荐电视剧：{tmdbid}...")
+            info = self.tv.recommendations(tmdbid) or []
         except Exception as e:
             print(str(e))
             return []
