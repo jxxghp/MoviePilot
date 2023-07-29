@@ -7,7 +7,8 @@ class Trending(TMDb):
     def _trending(self, media_type="all", time_window="day", page=1):
         return self._request_obj(
             self._urls["trending"] % (media_type, time_window),
-            params="page=%s" % page
+            params="page=%s" % page,
+            key="results",
         )
 
     def all_day(self, page=1):

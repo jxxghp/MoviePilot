@@ -62,7 +62,11 @@ class SearchChain(ChainBase):
         results = self.systemconfig.get(SystemConfigKey.SearchResults)
         if not results:
             return []
-        return pickle.loads(results)
+        try:
+            return pickle.loads(results)
+        except Exception as e:
+            print(str(e))
+            return []
 
     def browse(self, domain: str, keyword: str = None) -> List[TorrentInfo]:
         """

@@ -23,6 +23,7 @@ class TMDb(object):
     TMDB_DEBUG_ENABLED = "TMDB_DEBUG_ENABLED"
     TMDB_CACHE_ENABLED = "TMDB_CACHE_ENABLED"
     TMDB_PROXIES = "TMDB_PROXIES"
+    TMDB_DOMAIN = "TMDB_DOMAIN"
     REQUEST_CACHE_MAXSIZE = None
 
     def __init__(self, obj_cached=True, session=None):
@@ -50,6 +51,10 @@ class TMDb(object):
     @property
     def api_key(self):
         return os.environ.get(self.TMDB_API_KEY)
+
+    @property
+    def domain(self):
+        return os.environ.get(self.TMDB_DOMAIN)
     
     @property
     def proxies(self):
@@ -66,6 +71,10 @@ class TMDb(object):
     @api_key.setter
     def api_key(self, api_key):
         os.environ[self.TMDB_API_KEY] = str(api_key)
+
+    @domain.setter
+    def domain(self, domain):
+        os.environ[self.TMDB_DOMAIN] = str(domain)
 
     @property
     def language(self):
