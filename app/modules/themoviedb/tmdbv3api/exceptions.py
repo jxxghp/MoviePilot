@@ -1,0 +1,2 @@
+class TMDbException(Exception):
+    pass

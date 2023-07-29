@@ -30,3 +30,12 @@ class TmdbEpisode(BaseModel):
     vote_average: Optional[float] = None
     crew: Optional[list] = []
     guest_stars: Optional[list] = []
+
+
+class TmdbCast(BaseModel):
+    id: Optional[int] = None
+    name: Optional[str] = None
+    character: Optional[str] = None
+    profile_path: Optional[str] = None
+    gender: Optional[int] = None
+    original_name: Optional[str] = None

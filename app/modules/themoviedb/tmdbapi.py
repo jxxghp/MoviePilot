@@ -5,8 +5,8 @@ from urllib.parse import quote
 
 import zhconv
 from lxml import etree
-from tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending
-from tmdbv3api.exceptions import TMDbException
+from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending
+from .tmdbv3api.exceptions import TMDbException
 
 from app.core.config import settings
 from app.log import logger
@@ -1045,3 +1045,59 @@ class TmdbHelper:
         except Exception as e:
             print(str(e))
             return {}
+
+    def get_movie_similar(self, tmdbid: int) -> List[dict]:
+        """
+        获取电影的相似电影
+        """
+        if not self.movie:
+            return []
+        try:
+            logger.info(f"正在获取相似电影：{tmdbid}...")
+            info = self.movie.similar(tmdbid) or {}
+            return info.get('results') or []
+        except Exception as e:
+            print(str(e))
+            return []
+
+    def get_tv_similar(self, tmdbid: int) -> List[dict]:
+        """
+        获取电视剧的相似电视剧
+        """
+        if not self.tv:
+            return []
+        try:
+            logger.info(f"正在获取相似电视剧：{tmdbid}...")
+            info = self.tv.similar(tmdbid) or {}
+            return info.get('results') or []
+        except Exception as e:
+            print(str(e))
+            return []
+
+    def get_movie_credits(self, tmdbid: int) -> List[dict]:
+        """
+        获取电影的演职员列表
+        """
+        if not self.movie:
+            return []
+        try:
+            logger.info(f"正在获取电影演职员：{tmdbid}...")
+            info = self.movie.credits(tmdbid) or {}
+            return info.get('cast') or []
+        except Exception as e:
+            print(str(e))
+            return []
+
+    def get_tv_credits(self, tmdbid: int) -> List[dict]:
+        """
+        获取电视剧的演职员列表
+        """
+        if not self.tv:
+            return []
+        try:
+            logger.info(f"正在获取电视剧演职员：{tmdbid}...")
+            info = self.tv.credits(tmdbid) or {}
+            return info.get('cast') or []
+        except Exception as e:
+            print(str(e))
+            return []

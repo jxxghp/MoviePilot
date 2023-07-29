@@ -16,7 +16,6 @@ anitopy~=2.1.1
 requests~=2.31.0
 urllib3~=2.0.2
 lxml~=4.9.2
-tmdbv3api~=1.7.7
 pyquery~=2.0.0
 ruamel.yaml~=0.17.31
 APScheduler~=3.10.1

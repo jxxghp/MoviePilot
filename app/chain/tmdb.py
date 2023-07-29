@@ -47,3 +47,31 @@ class TmdbChain(ChainBase):
         :param season:  季
         """
         return self.run_module("tmdb_episodes", tmdbid=tmdbid, season=season)
+
+    def movie_similar(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询类似电影
+        :param tmdbid:  TMDBID
+        """
+        return self.run_module("movie_similar", tmdbid=tmdbid)
+
+    def tv_similar(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询类似电视剧
+        :param tmdbid:  TMDBID
+        """
+        return self.run_module("tv_similar", tmdbid=tmdbid)
+
+    def movie_credits(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询电影演职人员
+        :param tmdbid:  TMDBID
+        """
+        return self.run_module("movie_credits", tmdbid=tmdbid)
+
+    def tv_credits(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询电视剧演职人员
+        :param tmdbid:  TMDBID
+        """
+        return self.run_module("tv_credits", tmdbid=tmdbid)

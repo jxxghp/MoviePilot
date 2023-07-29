@@ -9,7 +9,7 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.themoviedb.category import CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
-from app.modules.themoviedb.tmdb import TmdbHelper
+from app.modules.themoviedb.tmdbapi import TmdbHelper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.schemas.types import MediaType, MediaImageType
 from app.utils.system import SystemUtils
@@ -331,3 +331,31 @@ class TheMovieDbModule(_ModuleBase):
         if image_path:
             return f"https://image.tmdb.org/t/p/{image_prefix}{image_path}"
         return None
+
+    def movie_similar(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询类似电影
+        :param tmdbid:  TMDBID
+        """
+        return self.tmdb.get_movie_similar(tmdbid=tmdbid)
+
+    def tv_similar(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询类似电视剧
+        :param tmdbid:  TMDBID
+        """
+        return self.tmdb.get_tv_similar(tmdbid=tmdbid)
+
+    def movie_credits(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询电影演职员表
+        :param tmdbid:  TMDBID
+        """
+        return self.tmdb.get_movie_credits(tmdbid=tmdbid)
+
+    def tv_credits(self, tmdbid: int) -> List[dict]:
+        """
+        根据TMDBID查询电视剧演职员表
+        :param tmdbid:  TMDBID
+        """
+        return self.tmdb.get_tv_credits(tmdbid=tmdbid)

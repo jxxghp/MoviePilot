@@ -36,6 +36,46 @@ def tmdb_season_episodes(tmdbid: int, season: int,
         return episodes_info
 
 
+@router.get("/{tmdbid}/similar", summary="类似电影/电视剧", response_model=List[schemas.MediaInfo])
+def movie_similar(tmdbid: int,
+                  mtype: str,
+                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据TMDBID查询类似电影
+    """
+    mediatype = MediaType(mtype)
+    if mediatype == MediaType.MOVIE:
+        tmdbinfos = TmdbChain().movie_similar(tmdbid=tmdbid)
+    elif mediatype == MediaType.TV:
+        tmdbinfos = TmdbChain().tv_similar(tmdbid=tmdbid)
+    else:
+        return []
+    if not tmdbinfos:
+        return []
+    else:
+        return [MediaInfo(tmdb_info=tmdbinfo).to_dict() for tmdbinfo in tmdbinfos]
+
+
+@router.get("/{tmdbid}/credits", summary="演员阵容", response_model=List[schemas.TmdbCast])
+def movie_similar(tmdbid: int,
+                  mtype: str,
+                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据TMDBID查询演员阵容
+    """
+    mediatype = MediaType(mtype)
+    if mediatype == MediaType.MOVIE:
+        tmdbinfos = TmdbChain().movie_credits(tmdbid=tmdbid)
+    elif mediatype == MediaType.TV:
+        tmdbinfos = TmdbChain().tv_credits(tmdbid=tmdbid)
+    else:
+        return []
+    if not tmdbinfos:
+        return []
+    else:
+        return tmdbinfos
+
+
 @router.get("/movies", summary="TMDB电影", response_model=List[schemas.MediaInfo])
 def tmdb_movies(sort_by: str = "popularity.desc",
                 with_genres: str = "",
