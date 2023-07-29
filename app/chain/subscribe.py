@@ -438,18 +438,18 @@ class SubscribeChain(ChainBase):
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue
-            # 查询缺失的媒体信息
-            exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
-            if exist_flag:
-                logger.info(f'{mediainfo.title_year} 媒体库中已存在，完成订阅')
-                self.subscribehelper.delete(subscribe.id)
-                # 发送通知
-                self.post_message(Notification(mtype=NotificationType.Subscribe,
-                                               title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
-                                               image=mediainfo.get_message_image()))
-                continue
             # 非洗版
             if not subscribe.best_version:
+                # 查询缺失的媒体信息
+                exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
+                if exist_flag:
+                    logger.info(f'{mediainfo.title_year} 媒体库中已存在，完成订阅')
+                    self.subscribehelper.delete(subscribe.id)
+                    # 发送通知
+                    self.post_message(Notification(mtype=NotificationType.Subscribe,
+                                                   title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
+                                                   image=mediainfo.get_message_image()))
+                    continue
                 # 电视剧订阅
                 if meta.type == MediaType.TV:
                     # 使用订阅的总集数和开始集数替换no_exists
