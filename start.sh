@@ -10,4 +10,4 @@ chown -R moviepilot:moviepilot ${HOME} /app /config
 # 下载浏览器内核
 gosu moviepilot:moviepilot playwright install chromium
 # 启动后端服务
-gosu moviepilot:moviepilot python3 app/main.py
+exec gosu moviepilot:moviepilot python3 app/main.py
