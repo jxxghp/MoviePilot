@@ -1054,7 +1054,7 @@ class TmdbHelper:
             return []
         try:
             logger.info(f"正在获取相似电影：{tmdbid}...")
-            info = self.movie.similar(tmdbid) or []
+            return self.movie.similar(tmdbid) or []
         except Exception as e:
             print(str(e))
             return []
@@ -1067,7 +1067,7 @@ class TmdbHelper:
             return []
         try:
             logger.info(f"正在获取相似电视剧：{tmdbid}...")
-            info = self.tv.similar(tmdbid) or []
+            return self.tv.similar(tmdbid) or []
         except Exception as e:
             print(str(e))
             return []
@@ -1080,7 +1080,7 @@ class TmdbHelper:
             return []
         try:
             logger.info(f"正在获取推荐电影：{tmdbid}...")
-            info = self.movie.recommendations(tmdbid) or []
+            return self.movie.recommendations(tmdbid) or []
         except Exception as e:
             print(str(e))
             return []
@@ -1093,7 +1093,7 @@ class TmdbHelper:
             return []
         try:
             logger.info(f"正在获取推荐电视剧：{tmdbid}...")
-            info = self.tv.recommendations(tmdbid) or []
+            return self.tv.recommendations(tmdbid) or []
         except Exception as e:
             print(str(e))
             return []

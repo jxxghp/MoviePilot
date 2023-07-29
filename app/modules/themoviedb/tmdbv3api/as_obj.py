@@ -36,6 +36,9 @@ class AsObj:
     def _dict(self):
         return {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
 
+    def to_dict(self):
+        return self._dict()
+
     def __delitem__(self, key):
         return delattr(self, key)
 

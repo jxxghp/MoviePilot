@@ -503,6 +503,8 @@ class MediaInfo:
         dicts["type"] = self.type.value if self.type else None
         dicts["detail_link"] = self.detail_link
         dicts["title_year"] = self.title_year
+        dicts["season_info"] = [info.to_dict() for info in self.season_info]
+        dicts["tmdb_info"] = self.tmdb_info.to_dict()
         return dicts
 
 
