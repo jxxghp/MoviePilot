@@ -61,4 +61,4 @@ RUN apt-get update \
         /var/tmp/*
 EXPOSE 3000
 VOLUME ["/config"]
-ENTRYPOINT [ "bash", "-c", "/app/start.sh & nginx -g 'daemon off;'" ]
+ENTRYPOINT [ "/app/start.sh" ]
