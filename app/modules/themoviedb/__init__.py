@@ -372,3 +372,17 @@ class TheMovieDbModule(_ModuleBase):
         :param tmdbid:  TMDBID
         """
         return self.tmdb.get_tv_credits(tmdbid=tmdbid)
+
+    def credit_details(self, credit_id: str) -> List[dict]:
+        """
+        根据TMDBID查询演职员详情
+        :param credit_id:  人物ID
+        """
+        return self.tmdb.get_credit_details(credit_id=credit_id)
+
+    def person_detail(self, person_id: int) -> dict:
+        """
+        根据TMDBID查询人物详情
+        :param person_id:  人物ID
+        """
+        return self.tmdb.get_person_detail(person_id=person_id)

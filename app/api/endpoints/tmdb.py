@@ -25,9 +25,9 @@ def tmdb_seasons(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -
 
 
 @router.get("/similar/{tmdbid}/{type_name}", summary="类似电影/电视剧", response_model=List[schemas.MediaInfo])
-def similar(tmdbid: int,
-            type_name: str,
-            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def tmdb_similar(tmdbid: int,
+                 type_name: str,
+                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID查询类似电影/电视剧，type_name: 电影/电视剧
     """
@@ -45,9 +45,9 @@ def similar(tmdbid: int,
 
 
 @router.get("/recommend/{tmdbid}/{type_name}", summary="推荐电影/电视剧", response_model=List[schemas.MediaInfo])
-def recommend(tmdbid: int,
-              type_name: str,
-              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def tmdb_recommend(tmdbid: int,
+                   type_name: str,
+                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID查询推荐电影/电视剧，type_name: 电影/电视剧
     """
@@ -64,10 +64,10 @@ def recommend(tmdbid: int,
         return [MediaInfo(tmdb_info=tmdbinfo).to_dict() for tmdbinfo in tmdbinfos]
 
 
-@router.get("/credits/{tmdbid}/{type_name}", summary="演员阵容", response_model=List[schemas.TmdbCast])
-def movie_similar(tmdbid: int,
-                  type_name: str,
-                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.get("/credits/{tmdbid}/{type_name}", summary="演员阵容", response_model=List[schemas.TmdbPerson])
+def tmdb_credits(tmdbid: int,
+                 type_name: str,
+                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID查询演员阵容，type_name: 电影/电视剧
     """
@@ -81,7 +81,33 @@ def movie_similar(tmdbid: int,
     if not tmdbinfos:
         return []
     else:
-        return [schemas.TmdbCast(**tmdbinfo) for tmdbinfo in tmdbinfos]
+        return [schemas.TmdbPerson(**tmdbinfo) for tmdbinfo in tmdbinfos]
+
+
+@router.get("/credit/details/{credit_id}", summary="演员参演作品", response_model=List[schemas.MediaInfo])
+def tmdb_credit_details(credit_id: str,
+                        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据演员ID查询演员参演作品
+    """
+    tmdbinfos = TmdbChain().credit_details(credit_id=credit_id)
+    if not tmdbinfos:
+        return []
+    else:
+        return [MediaInfo(tmdb_info=tmdbinfo).to_dict() for tmdbinfo in tmdbinfos]
+
+
+@router.get("/person/{person_id}", summary="人物详情", response_model=schemas.TmdbPerson)
+def tmdb_person(person_id: int,
+                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据人物ID查询人物详情
+    """
+    tmdbinfo = TmdbChain().person_detail(person_id=person_id)
+    if not tmdbinfo:
+        return schemas.TmdbPerson()
+    else:
+        return schemas.TmdbPerson(**tmdbinfo)
 
 
 @router.get("/movies", summary="TMDB电影", response_model=List[schemas.MediaInfo])
