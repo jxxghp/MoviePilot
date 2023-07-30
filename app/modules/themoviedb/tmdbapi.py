@@ -5,14 +5,14 @@ from urllib.parse import quote
 
 import zhconv
 from lxml import etree
-from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending, Credit, Person
-from .tmdbv3api.exceptions import TMDbException
 
 from app.core.config import settings
 from app.log import logger
+from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
-from app.schemas.types import MediaType
+from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending, Person
+from .tmdbv3api.exceptions import TMDbException
 
 
 class TmdbHelper:
@@ -45,7 +45,6 @@ class TmdbHelper:
         self.episode = Episode()
         self.discover = Discover()
         self.trending = Trending()
-        self.credit = Credit()
         self.person = Person()
 
     def search_multiis(self, title: str) -> List[dict]:
@@ -1123,20 +1122,6 @@ class TmdbHelper:
             print(str(e))
             return []
 
-    def get_credit_details(self, credit_id: str) -> List[dict]:
-        """
-        获取演职员的详情
-        """
-        if not self.credit:
-            return []
-        try:
-            logger.info(f"正在获取演职员参演作品：{credit_id}...")
-            info = self.credit.details(credit_id=credit_id) or {}
-            return info
-        except Exception as e:
-            print(str(e))
-            return []
-
     def get_person_detail(self, person_id: int) -> dict:
         """
         获取人物详情
@@ -1147,6 +1132,20 @@ class TmdbHelper:
             logger.info(f"正在获取人物详情：{person_id}...")
             info = self.person.details(person_id=person_id) or {}
             return info
+        except Exception as e:
+            print(str(e))
+            return {}
+
+    def get_person_credits(self, person_id: int) -> dict:
+        """
+        获取人物参演作品
+        """
+        if not self.person:
+            return {}
+        try:
+            logger.info(f"正在获取人物参演作品：{person_id}...")
+            info = self.person.movie_credits(person_id=person_id) or {}
+            return info.get('cast') or []
         except Exception as e:
             print(str(e))
             return {}

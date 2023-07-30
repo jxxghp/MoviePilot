@@ -90,16 +90,16 @@ class TmdbChain(ChainBase):
         """
         return self.run_module("tv_credits", tmdbid=tmdbid)
 
-    def credit_details(self, credit_id: str) -> List[dict]:
-        """
-        根据TMDBID查询演职员详情
-        :param credit_id:  人物ID
-        """
-        return self.run_module("credit_details", credit_id=credit_id)
-
     def person_detail(self, person_id: int) -> dict:
         """
         根据TMDBID查询演职员详情
         :param person_id:  人物ID
         """
         return self.run_module("person_detail", person_id=person_id)
+
+    def person_credits(self, person_id: int) -> List[dict]:
+        """
+        根据人物ID查询人物参演作品
+        :param person_id:  人物ID
+        """
+        return self.run_module("person_credits", person_id=person_id)
