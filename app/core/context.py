@@ -278,8 +278,10 @@ class MediaInfo:
         # 类型
         if isinstance(info.get('media_type'), MediaType):
             self.type = info.get('media_type')
-        else:
+        elif info.get('media_type'):
             self.type = MediaType.MOVIE if info.get("media_type") == "movie" else MediaType.TV
+        else:
+            self.type = MediaType.MOVIE if info.get("title") else MediaType.TV
         # TMDBID
         self.tmdb_id = info.get('id')
         if not self.tmdb_id:
