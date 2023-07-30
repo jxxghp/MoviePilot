@@ -67,15 +67,16 @@ def tmdb_recommend(tmdbid: int,
 @router.get("/credits/{tmdbid}/{type_name}", summary="演员阵容", response_model=List[schemas.TmdbPerson])
 def tmdb_credits(tmdbid: int,
                  type_name: str,
+                 page: int = 1,
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID查询演员阵容，type_name: 电影/电视剧
     """
     mediatype = MediaType(type_name)
     if mediatype == MediaType.MOVIE:
-        tmdbinfos = TmdbChain().movie_credits(tmdbid=tmdbid)
+        tmdbinfos = TmdbChain().movie_credits(tmdbid=tmdbid, page=page)
     elif mediatype == MediaType.TV:
-        tmdbinfos = TmdbChain().tv_credits(tmdbid=tmdbid)
+        tmdbinfos = TmdbChain().tv_credits(tmdbid=tmdbid, page=page)
     else:
         return []
     if not tmdbinfos:

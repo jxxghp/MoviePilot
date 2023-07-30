@@ -29,7 +29,7 @@ class TMDb(object):
     def __init__(self, obj_cached=True, session=None):
         if self.__class__._session is None or session is not None:
             self.__class__._session = requests.Session() if session is None else session
-        self._base = "https://api.themoviedb.org/3"
+        self.domain = "api.themoviedb.org"
         self._remaining = 40
         self._reset = None
         self.obj_cached = obj_cached
@@ -143,8 +143,8 @@ class TMDb(object):
         if self.api_key is None or self.api_key == "":
             raise TMDbException("No API key found.")
 
-        url = "%s%s?api_key=%s&%s&language=%s" % (
-            self._base,
+        url = "https://%s/3%s?api_key=%s&%s&language=%s" % (
+            self.domain,
             action,
             self.api_key,
             params,

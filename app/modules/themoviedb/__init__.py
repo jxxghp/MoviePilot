@@ -359,19 +359,21 @@ class TheMovieDbModule(_ModuleBase):
         """
         return self.tmdb.get_tv_recommend(tmdbid=tmdbid)
 
-    def movie_credits(self, tmdbid: int) -> List[dict]:
+    def movie_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
         """
         根据TMDBID查询电影演职员表
         :param tmdbid:  TMDBID
+        :param page:  页码
         """
-        return self.tmdb.get_movie_credits(tmdbid=tmdbid)
+        return self.tmdb.get_movie_credits(tmdbid=tmdbid, page=page)
 
-    def tv_credits(self, tmdbid: int) -> List[dict]:
+    def tv_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
         """
         根据TMDBID查询电视剧演职员表
         :param tmdbid:  TMDBID
+        :param page:  页码
         """
-        return self.tmdb.get_tv_credits(tmdbid=tmdbid)
+        return self.tmdb.get_tv_credits(tmdbid=tmdbid, page=page)
 
     def person_detail(self, person_id: int) -> dict:
         """

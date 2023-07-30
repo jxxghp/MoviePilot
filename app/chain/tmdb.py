@@ -76,19 +76,21 @@ class TmdbChain(ChainBase):
         """
         return self.run_module("tv_recommend", tmdbid=tmdbid)
 
-    def movie_credits(self, tmdbid: int) -> List[dict]:
+    def movie_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
         """
         根据TMDBID查询电影演职人员
         :param tmdbid:  TMDBID
+        :param page:  页码
         """
-        return self.run_module("movie_credits", tmdbid=tmdbid)
+        return self.run_module("movie_credits", tmdbid=tmdbid, page=page)
 
-    def tv_credits(self, tmdbid: int) -> List[dict]:
+    def tv_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
         """
         根据TMDBID查询电视剧演职人员
         :param tmdbid:  TMDBID
+        :param page:  页码
         """
-        return self.run_module("tv_credits", tmdbid=tmdbid)
+        return self.run_module("tv_credits", tmdbid=tmdbid, page=page)
 
     def person_detail(self, person_id: int) -> dict:
         """

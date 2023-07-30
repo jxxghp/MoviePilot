@@ -1094,30 +1094,36 @@ class TmdbHelper:
             print(str(e))
             return []
 
-    def get_movie_credits(self, tmdbid: int) -> List[dict]:
+    def get_movie_credits(self, tmdbid: int, page: int = 1, count: int = 24) -> List[dict]:
         """
         获取电影的演职员列表
         """
         if not self.movie:
             return []
         try:
-            logger.info(f"正在获取电影演职员：{tmdbid}...")
+            logger.info(f"正在获取电影演职人员：{tmdbid}...")
             info = self.movie.credits(movie_id=tmdbid) or {}
-            return info.get('cast') or []
+            cast = info.get('cast') or []
+            if cast:
+                return [c.to_dict() for c in cast][(page - 1) * count: page * count]
+            return []
         except Exception as e:
             print(str(e))
             return []
 
-    def get_tv_credits(self, tmdbid: int) -> List[dict]:
+    def get_tv_credits(self, tmdbid: int, page: int = 1, count: int = 24) -> List[dict]:
         """
         获取电视剧的演职员列表
         """
         if not self.tv:
             return []
         try:
-            logger.info(f"正在获取电视剧演职员：{tmdbid}...")
+            logger.info(f"正在获取电视剧演职人员：{tmdbid}...")
             info = self.tv.credits(tv_id=tmdbid) or {}
-            return info.get('cast') or []
+            cast = info.get('cast') or []
+            if cast:
+                return [c.to_dict() for c in cast][(page - 1) * count: page * count]
+            return []
         except Exception as e:
             print(str(e))
             return []
