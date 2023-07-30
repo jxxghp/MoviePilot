@@ -1136,22 +1136,28 @@ class TmdbHelper:
             return {}
         try:
             logger.info(f"正在获取人物详情：{person_id}...")
-            info = self.person.details(person_id=person_id) or {}
-            return info
+            info = self.person.details(person_id=person_id)
+            if info:
+                info_dict = info.to_dict()
+                return info_dict
+            return {}
         except Exception as e:
             print(str(e))
             return {}
 
-    def get_person_credits(self, person_id: int) -> dict:
+    def get_person_credits(self, person_id: int, page: int = 1, count: int = 24) -> List[dict]:
         """
         获取人物参演作品
         """
         if not self.person:
-            return {}
+            return []
         try:
             logger.info(f"正在获取人物参演作品：{person_id}...")
             info = self.person.movie_credits(person_id=person_id) or {}
-            return info.get('cast') or []
+            cast = info.get('cast') or []
+            if cast:
+                return [c.to_dict() for c in cast][(page - 1) * count: page * count]
+            return []
         except Exception as e:
             print(str(e))
-            return {}
+            return []

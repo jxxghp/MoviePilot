@@ -40,7 +40,7 @@ class TmdbPerson(BaseModel):
     gender: Optional[int] = None
     original_name: Optional[str] = None
     credit_id: Optional[str] = None
-    also_known_as: Optional[list] = []
+    also_known_as: Optional[dict] = {}
     birthday: Optional[str] = None
     deathday: Optional[str] = None
     imdb_id: Optional[str] = None

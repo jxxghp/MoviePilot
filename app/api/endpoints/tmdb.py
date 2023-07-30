@@ -100,11 +100,12 @@ def tmdb_person(person_id: int,
 
 @router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])
 def tmdb_person_credits(person_id: int,
+                        page: int = 1,
                         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据人物ID查询人物参演作品
     """
-    tmdbinfo = TmdbChain().person_credits(person_id=person_id)
+    tmdbinfo = TmdbChain().person_credits(person_id=person_id, page=page)
     if not tmdbinfo:
         return []
     else:

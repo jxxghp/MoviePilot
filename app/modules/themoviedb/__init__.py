@@ -382,9 +382,10 @@ class TheMovieDbModule(_ModuleBase):
         """
         return self.tmdb.get_person_detail(person_id=person_id)
 
-    def person_credits(self, person_id: int) -> dict:
+    def person_credits(self, person_id: int, page: int = 1) -> List[dict]:
         """
-        根据TMDBID查询人物参演详情
+        根据TMDBID查询人物参演作品
         :param person_id:  人物ID
+        :param page:  页码
         """
-        return self.tmdb.get_person_credits(person_id=person_id)
+        return self.tmdb.get_person_credits(person_id=person_id, page=page)

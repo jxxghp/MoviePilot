@@ -99,9 +99,10 @@ class TmdbChain(ChainBase):
         """
         return self.run_module("person_detail", person_id=person_id)
 
-    def person_credits(self, person_id: int) -> List[dict]:
+    def person_credits(self, person_id: int, page: int = 1) -> List[dict]:
         """
         根据人物ID查询人物参演作品
         :param person_id:  人物ID
+        :param page:  页码
         """
-        return self.run_module("person_credits", person_id=person_id)
+        return self.run_module("person_credits", person_id=person_id, page=page)

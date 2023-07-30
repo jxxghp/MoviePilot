@@ -316,7 +316,7 @@ class MediaInfo:
                 self.year = self.release_date[:4]
             # 季集信息
             if info.get('seasons'):
-                self.season_info = info.get('seasons')
+                self.season_info = [s.to_dict() for s in info.get('seasons')]
                 for seainfo in info.get('seasons'):
                     # 季
                     season = seainfo.get("season_number")
@@ -503,8 +503,6 @@ class MediaInfo:
         dicts["type"] = self.type.value if self.type else None
         dicts["detail_link"] = self.detail_link
         dicts["title_year"] = self.title_year
-        dicts["season_info"] = [info.to_dict() for info in self.season_info]
-        dicts["tmdb_info"] = self.tmdb_info.to_dict()
         return dicts
 
 
