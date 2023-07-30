@@ -316,7 +316,7 @@ class MediaInfo:
                 self.year = self.release_date[:4]
             # 季集信息
             if info.get('seasons'):
-                self.season_info = [s.to_dict() for s in info.get('seasons')]
+                self.season_info = info.get('seasons')
                 for seainfo in info.get('seasons'):
                     # 季
                     season = seainfo.get("season_number")

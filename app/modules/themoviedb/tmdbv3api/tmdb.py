@@ -3,13 +3,12 @@
 import logging
 import os
 import time
+from functools import lru_cache
 
 import requests
 import requests.exceptions
 
-from .as_obj import AsObj
 from .exceptions import TMDbException
-from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -196,4 +195,6 @@ class TMDb(object):
         if "success" in json and json["success"] is False:
             raise TMDbException(json["status_message"])
 
-        return AsObj(json, key=key)
+        if key:
+            return json.get(key)
+        return json

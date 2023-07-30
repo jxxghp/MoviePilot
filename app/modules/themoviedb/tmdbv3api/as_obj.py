@@ -68,8 +68,8 @@ class AsObj:
             return reversed(self._dict())
 
     if sys.version_info >= (3, 9):
-        def __class_getitem__(self, key):
-            return self.__dict__.__class_getitem__(key)
+        def __class_getitem__(cls, key):
+            return cls.__dict__.__class_getitem__(key)
 
         def __ior__(self, value):
             return self._dict().__ior__(value)

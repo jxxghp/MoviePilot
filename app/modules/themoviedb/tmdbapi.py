@@ -1105,7 +1105,7 @@ class TmdbHelper:
             info = self.movie.credits(movie_id=tmdbid) or {}
             cast = info.get('cast') or []
             if cast:
-                return [c.to_dict() for c in cast][(page - 1) * count: page * count]
+                return cast[(page - 1) * count: page * count]
             return []
         except Exception as e:
             print(str(e))
@@ -1122,7 +1122,7 @@ class TmdbHelper:
             info = self.tv.credits(tv_id=tmdbid) or {}
             cast = info.get('cast') or []
             if cast:
-                return [c.to_dict() for c in cast][(page - 1) * count: page * count]
+                return cast[(page - 1) * count: page * count]
             return []
         except Exception as e:
             print(str(e))
@@ -1136,11 +1136,7 @@ class TmdbHelper:
             return {}
         try:
             logger.info(f"正在获取人物详情：{person_id}...")
-            info = self.person.details(person_id=person_id)
-            if info:
-                info_dict = info.to_dict()
-                return info_dict
-            return {}
+            return self.person.details(person_id=person_id) or {}
         except Exception as e:
             print(str(e))
             return {}
@@ -1156,7 +1152,7 @@ class TmdbHelper:
             info = self.person.movie_credits(person_id=person_id) or {}
             cast = info.get('cast') or []
             if cast:
-                return [c.to_dict() for c in cast][(page - 1) * count: page * count]
+                return cast[(page - 1) * count: page * count]
             return []
         except Exception as e:
             print(str(e))
