@@ -103,10 +103,6 @@ class MediaInfo(BaseModel):
     season_info: Optional[List[dict]] = []
     # 别名和译名
     names: Optional[list] = []
-    # 演员
-    actors: Optional[list] = []
-    # 导演
-    directors: Optional[list] = []
     # 详情链接
     detail_link: Optional[str] = None
     # 其它TMDB属性
