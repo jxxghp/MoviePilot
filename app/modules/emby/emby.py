@@ -546,7 +546,16 @@ class Emby(metaclass=Singleton):
         if message.get('Item'):
             if message.get('Item', {}).get('Type') == 'Episode':
                 eventItem.item_type = "TV"
-                eventItem.item_name = message.get('Item', {}).get('Name')
+                if message.get('Item', {}).get('SeriesName') \
+                        and message.get('Item', {}).get('ParentIndexNumber') \
+                        and message.get('Item', {}).get('IndexNumber'):
+                    eventItem.item_name = "%s %s%s %s" % (
+                        message.get('Item', {}).get('SeriesName'),
+                        "S" + str(message.get('Item', {}).get('ParentIndexNumber')),
+                        "E" + str(message.get('Item', {}).get('IndexNumber')),
+                        message.get('Item', {}).get('Name'))
+                else:
+                    eventItem.item_name = message.get('Item', {}).get('Name')
                 eventItem.item_id = message.get('Item', {}).get('SeriesId')
                 eventItem.season_id = message.get('Item', {}).get('ParentIndexNumber')
                 eventItem.episode_id = message.get('Item', {}).get('IndexNumber')
