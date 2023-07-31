@@ -38,7 +38,10 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         """
         cache_path = settings.TEMP_PATH / filename
         if cache_path.exists():
-            return pickle.load(cache_path.open('rb'))
+            try:
+                return pickle.load(cache_path.open('rb'))
+            except Exception as err:
+                logger.error(f"加载缓存 {filename} 出错：{err}")
         return None
 
     @staticmethod
@@ -46,7 +49,10 @@ class ChainBase(AbstractSingleton, metaclass=Singleton):
         """
         保存缓存到本地
         """
-        pickle.dump(cache, (settings.TEMP_PATH / filename).open('wb'))
+        try:
+            pickle.dump(cache, (settings.TEMP_PATH / filename).open('wb'))
+        except Exception as err:
+            logger.error(f"保存缓存 {filename} 出错：{err}")
 
     def run_module(self, method: str, *args, **kwargs) -> Any:
         """
