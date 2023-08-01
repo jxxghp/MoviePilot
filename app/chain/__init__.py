@@ -1,5 +1,6 @@
 import pickle
 import traceback
+from abc import ABCMeta
 from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
@@ -16,10 +17,9 @@ from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, Downloadi
     WebhookEventInfo
 from app.schemas.types import TorrentStatus, MediaType, MediaImageType
 from app.utils.object import ObjectUtils
-from app.utils.singleton import AbstractSingleton
 
 
-class ChainBase(AbstractSingleton):
+class ChainBase(metaclass=ABCMeta):
     """
     处理链基类
     """
