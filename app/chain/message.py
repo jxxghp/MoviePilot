@@ -9,10 +9,16 @@ from app.core.event import EventManager
 from app.log import logger
 from app.schemas import Notification
 from app.schemas.types import EventType, MessageChannel
-from app.utils.singleton import Singleton
+
+# 当前页面
+_current_page: int = 0
+# 当前元数据
+_current_meta: Optional[MetaBase] = None
+# 当前媒体信息
+_current_media: Optional[MediaInfo] = None
 
 
-class MessageChain(ChainBase, metaclass=Singleton):
+class MessageChain(ChainBase):
     """
     外来消息处理链
     """
@@ -20,12 +26,6 @@ class MessageChain(ChainBase, metaclass=Singleton):
     _cache_file = "__user_messages__"
     # 每页数据量
     _page_size: int = 8
-    # 当前页面
-    _current_page: int = 0
-    # 当前元数据
-    _current_meta: Optional[MetaBase] = None
-    # 当前媒体信息
-    _current_media: Optional[MediaInfo] = None
 
     def __init__(self):
         super().__init__()
@@ -41,6 +41,8 @@ class MessageChain(ChainBase, metaclass=Singleton):
         """
         识别消息内容，执行操作
         """
+        # 申明全局变量
+        global _current_page, _current_meta, _current_media
         # 获取消息内容
         info = self.message_parser(body=body, form=form, args=args)
         if not info:
@@ -90,16 +92,16 @@ class MessageChain(ChainBase, metaclass=Singleton):
             cache_list: list = cache_data.get('items')
             # 选择
             if cache_type == "Search":
-                mediainfo: MediaInfo = cache_list[int(text) + self._current_page * self._page_size - 1]
-                self._current_media = mediainfo
+                mediainfo: MediaInfo = cache_list[int(text) + _current_page * self._page_size - 1]
+                _current_media = mediainfo
                 # 查询缺失的媒体信息
-                exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=self._current_meta,
-                                                                              mediainfo=self._current_media)
+                exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=_current_meta,
+                                                                              mediainfo=_current_media)
                 if exist_flag:
                     self.post_message(
                         Notification(channel=channel,
-                                     title=f"{self._current_media.title_year}"
-                                           f"{self._current_meta.sea} 媒体库中已存在",
+                                     title=f"{_current_media.title_year}"
+                                           f"{_current_meta.sea} 媒体库中已存在",
                                      userid=userid))
                     return
                 # 发送缺失的媒体信息
@@ -123,7 +125,7 @@ class MessageChain(ChainBase, metaclass=Singleton):
                     # 没有数据
                     self.post_message(Notification(
                         channel=channel, title=f"{mediainfo.title}"
-                                               f"{self._current_meta.sea} 未搜索到需要的资源！",
+                                               f"{_current_meta.sea} 未搜索到需要的资源！",
                         userid=userid))
                     return
                 # 搜索结果排序
@@ -133,7 +135,7 @@ class MessageChain(ChainBase, metaclass=Singleton):
                     "type": "Torrent",
                     "items": contexts
                 }
-                self._current_page = 0
+                _current_page = 0
                 # 发送种子数据
                 logger.info(f"搜索到 {len(contexts)} 条数据，开始发送选择消息 ...")
                 self.__post_torrents_message(channel=channel,
@@ -146,13 +148,13 @@ class MessageChain(ChainBase, metaclass=Singleton):
                 # 订阅媒体
                 mediainfo: MediaInfo = cache_list[int(text) - 1]
                 # 查询缺失的媒体信息
-                exist_flag, _ = self.downloadchain.get_no_exists_info(meta=self._current_meta,
+                exist_flag, _ = self.downloadchain.get_no_exists_info(meta=_current_meta,
                                                                       mediainfo=mediainfo)
                 if exist_flag:
                     self.post_message(Notification(
                         channel=channel,
                         title=f"{mediainfo.title_year}"
-                              f"{self._current_meta.sea} 媒体库中已存在",
+                              f"{_current_meta.sea} 媒体库中已存在",
                         userid=userid))
                     return
                 # 添加订阅，状态为N
@@ -160,7 +162,7 @@ class MessageChain(ChainBase, metaclass=Singleton):
                                         year=mediainfo.year,
                                         mtype=mediainfo.type,
                                         tmdbid=mediainfo.tmdb_id,
-                                        season=self._current_meta.begin_season,
+                                        season=_current_meta.begin_season,
                                         channel=channel,
                                         userid=userid,
                                         username=username)
@@ -168,13 +170,13 @@ class MessageChain(ChainBase, metaclass=Singleton):
                 if int(text) == 0:
                     # 自动选择下载
                     # 查询缺失的媒体信息
-                    exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=self._current_meta,
-                                                                                  mediainfo=self._current_media)
+                    exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=_current_meta,
+                                                                                  mediainfo=_current_media)
                     if exist_flag:
                         self.post_message(Notification(
                             channel=channel,
-                            title=f"{self._current_media.title_year}"
-                                  f"{self._current_meta.sea} 媒体库中已存在",
+                            title=f"{_current_media.title_year}"
+                                  f"{_current_meta.sea} 媒体库中已存在",
                             userid=userid))
                         return
                     # 批量下载
@@ -183,16 +185,16 @@ class MessageChain(ChainBase, metaclass=Singleton):
                                                                          userid=userid)
                     if downloads and not lefts:
                         # 全部下载完成
-                        logger.info(f'{self._current_media.title_year} 下载完成')
+                        logger.info(f'{_current_media.title_year} 下载完成')
                     else:
                         # 未完成下载
-                        logger.info(f'{self._current_media.title_year} 未下载未完整，添加订阅 ...')
+                        logger.info(f'{_current_media.title_year} 未下载未完整，添加订阅 ...')
                         # 添加订阅，状态为R
-                        self.subscribechain.add(title=self._current_media.title,
-                                                year=self._current_media.year,
-                                                mtype=self._current_media.type,
-                                                tmdbid=self._current_media.tmdb_id,
-                                                season=self._current_meta.begin_season,
+                        self.subscribechain.add(title=_current_media.title,
+                                                year=_current_media.year,
+                                                mtype=_current_media.type,
+                                                tmdbid=_current_media.tmdb_id,
+                                                season=_current_meta.begin_season,
                                                 channel=channel,
                                                 userid=userid,
                                                 username=username,
@@ -212,7 +214,7 @@ class MessageChain(ChainBase, metaclass=Singleton):
                     channel=channel, title="输入有误！", userid=userid))
                 return
 
-            if self._current_page == 0:
+            if _current_page == 0:
                 # 第一页
                 self.post_message(Notification(
                     channel=channel, title="已经是第一页了！", userid=userid))
@@ -220,24 +222,24 @@ class MessageChain(ChainBase, metaclass=Singleton):
             cache_type: str = cache_data.get('type')
             cache_list: list = cache_data.get('items')
             # 减一页
-            self._current_page -= 1
-            if self._current_page == 0:
+            _current_page -= 1
+            if _current_page == 0:
                 start = 0
                 end = self._page_size
             else:
-                start = self._current_page * self._page_size
+                start = _current_page * self._page_size
                 end = start + self._page_size
             if cache_type == "Torrent":
                 # 发送种子数据
                 self.__post_torrents_message(channel=channel,
-                                             title=self._current_media.title,
+                                             title=_current_media.title,
                                              items=cache_list[start:end],
                                              userid=userid,
                                              total=len(cache_list))
             else:
                 # 发送媒体数据
                 self.__post_medias_message(channel=channel,
-                                           title=self._current_meta.name,
+                                           title=_current_meta.name,
                                            items=cache_list[start:end],
                                            userid=userid,
                                            total=len(cache_list))
@@ -255,7 +257,7 @@ class MessageChain(ChainBase, metaclass=Singleton):
             total = len(cache_list)
             # 加一页
             cache_list = cache_list[
-                         (self._current_page + 1) * self._page_size:(self._current_page + 2) * self._page_size]
+                         (_current_page + 1) * self._page_size:(_current_page + 2) * self._page_size]
             if not cache_list:
                 # 没有数据
                 self.post_message(Notification(
@@ -263,16 +265,16 @@ class MessageChain(ChainBase, metaclass=Singleton):
                 return
             else:
                 # 加一页
-                self._current_page += 1
+                _current_page += 1
                 if cache_type == "Torrent":
                     # 发送种子数据
                     self.__post_torrents_message(channel=channel,
-                                                 title=self._current_media.title,
+                                                 title=_current_media.title,
                                                  items=cache_list, userid=userid, total=total)
                 else:
                     # 发送媒体数据
                     self.__post_medias_message(channel=channel,
-                                               title=self._current_meta.name,
+                                               title=_current_meta.name,
                                                items=cache_list, userid=userid, total=total)
 
         else:
@@ -299,13 +301,13 @@ class MessageChain(ChainBase, metaclass=Singleton):
                 return
             logger.info(f"搜索到 {len(medias)} 条相关媒体信息")
             # 记录当前状态
-            self._current_meta = meta
+            _current_meta = meta
             user_cache[userid] = {
                 'type': action,
                 'items': medias
             }
-            self._current_page = 0
-            self._current_media = None
+            _current_page = 0
+            _current_media = None
             # 发送媒体列表
             self.__post_medias_message(channel=channel,
                                        title=meta.name,
