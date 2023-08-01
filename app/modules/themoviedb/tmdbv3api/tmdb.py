@@ -130,10 +130,9 @@ class TMDb(object):
     def cache(self, cache):
         os.environ[self.TMDB_CACHE_ENABLED] = str(cache)
 
-    @staticmethod
     @lru_cache(maxsize=REQUEST_CACHE_MAXSIZE)
-    def cached_request(method, url, data, json, proxies):
-        return requests.request(method, url, data=data, json=json, proxies=proxies)
+    def cached_request(self, method, url, data, json):
+        return requests.request(method, url, data=data, json=json, proxies=self.proxies)
 
     def cache_clear(self):
         return self.cached_request.cache_clear()
@@ -151,7 +150,7 @@ class TMDb(object):
         )
 
         if self.cache and self.obj_cached and call_cached and method != "POST":
-            req = self.cached_request(method, url, data, json, self.proxies)
+            req = self.cached_request(method, url, data, json)
         else:
             req = self.__class__._session.request(method, url, data=data, json=json, proxies=self.proxies)
 

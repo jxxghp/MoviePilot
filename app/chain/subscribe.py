@@ -1,5 +1,6 @@
 import json
 import re
+import gc
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
 
@@ -415,6 +416,9 @@ class SubscribeChain(ChainBase):
         self.__match(torrents_cache)
         # 保存缓存到本地
         self.save_cache(torrents_cache, self._cache_file)
+        # 主动回收内存
+        del torrents_cache
+        gc.collect()
 
     def __match(self, torrents_cache: Dict[str, List[Context]]):
         """
