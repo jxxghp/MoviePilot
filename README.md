@@ -6,6 +6,8 @@
 
 Docker：https://hub.docker.com/r/jxxghp/moviepilot
 
+发布频道：https://t.me/moviepilot_channel
+
 ## 主要特性
 - 前后端分离，基于FastApi + Vue3，前端项目地址：[MoviePilot-Frontend](https://github.com/jxxghp/MoviePilot-Frontend)
 - 聚焦核心需求，简化功能和设置，部分设置项可直接使用默认值。
@@ -236,8 +238,6 @@ location / {
 - [x] 本地存在标识
 - [x] 插件管理
 - [x] 洗版支持
+- [x] 媒体详情页面
 - [ ] 更多插件
 - [ ] 手动整理功能增强
-- [ ] 媒体详情页面
-
-
