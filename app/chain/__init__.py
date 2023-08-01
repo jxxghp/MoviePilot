@@ -16,10 +16,10 @@ from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, Downloadi
     WebhookEventInfo
 from app.schemas.types import TorrentStatus, MediaType, MediaImageType
 from app.utils.object import ObjectUtils
-from app.utils.singleton import AbstractSingleton, Singleton
+from app.utils.singleton import AbstractSingleton
 
 
-class ChainBase(AbstractSingleton, metaclass=Singleton):
+class ChainBase(AbstractSingleton):
     """
     处理链基类
     """

@@ -1,5 +1,5 @@
 from typing import Any
-import gc
+
 from app.chain.download import *
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
@@ -9,9 +9,10 @@ from app.core.event import EventManager
 from app.log import logger
 from app.schemas import Notification
 from app.schemas.types import EventType, MessageChannel
+from app.utils.singleton import Singleton
 
 
-class MessageChain(ChainBase):
+class MessageChain(ChainBase, metaclass=Singleton):
     """
     外来消息处理链
     """
@@ -312,9 +313,6 @@ class MessageChain(ChainBase):
                                        userid=userid, total=len(medias))
         # 保存缓存
         self.save_cache(user_cache, self._cache_file)
-        # 主动回收内存
-        del user_cache
-        gc.collect()
 
     def __post_medias_message(self, channel: MessageChannel,
                               title: str, items: list, userid: str, total: int):
