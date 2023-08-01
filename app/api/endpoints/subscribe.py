@@ -95,7 +95,11 @@ def update_subscribe(
         return schemas.Response(success=False, message="订阅不存在")
     if subscribe_in.sites:
         subscribe_in.sites = json.dumps(subscribe_in.sites)
-    subscribe.update(db, subscribe_in.dict())
+    # 避免更新缺失集数
+    subscribe_dict = subscribe_in.dict()
+    if not subscribe_in.lack_episode:
+        subscribe_dict.pop("lack_episode")
+    subscribe.update(db, subscribe_dict)
     return schemas.Response(success=True)
 
 

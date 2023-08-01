@@ -22,7 +22,7 @@ class DownloadHistory(Base):
     tvdbid = Column(Integer)
     doubanid = Column(String)
     # Sxx
-    seasons = Column(Integer)
+    seasons = Column(String)
     # Exx
     episodes = Column(String)
     # 海报

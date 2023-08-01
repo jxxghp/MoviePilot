@@ -104,8 +104,16 @@ class TransferChain(ChainBase):
                 # 查询下载记录识别情况
                 downloadhis: DownloadHistory = self.downloadhis.get_by_hash(torrent.hash)
                 if downloadhis:
-                    mtype = MediaType.TV if downloadhis.type == MediaType.TV.value else MediaType.MOVIE
-                    mediainfo = self.recognize_media(mtype=mtype, tmdbid=downloadhis.tmdbid)
+                    # 类型
+                    mtype = MediaType(downloadhis.type)
+                    # 补充剧集信息
+                    if mtype == MediaType.TV \
+                            and ((not meta.season_list and downloadhis.seasons)
+                                 or (not meta.episode_list and downloadhis.episodes)):
+                        meta = MetaInfo(f"{title} {downloadhis.seasons} {downloadhis.episodes}")
+                    # 按TMDBID识别
+                    mediainfo = self.recognize_media(mtype=mtype,
+                                                     tmdbid=downloadhis.tmdbid)
                 else:
                     # 使用标题识别媒体信息
                     mediainfo: MediaInfo = self.recognize_media(meta=meta)
@@ -229,8 +237,8 @@ class TransferChain(ChainBase):
             msg_str = f"{msg_str}，以下文件处理失败：\n{transferinfo.message}"
         # 发送
         self.post_message(Notification(
-                    mtype=NotificationType.Organize,
-                    title=msg_title, text=msg_str, image=mediainfo.get_message_image()))
+            mtype=NotificationType.Organize,
+            title=msg_title, text=msg_str, image=mediainfo.get_message_image()))
 
     @staticmethod
     def delete_files(path: Path):
