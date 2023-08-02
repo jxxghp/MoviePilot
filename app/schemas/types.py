@@ -30,6 +30,8 @@ class EventType(Enum):
     TransferComplete = "transfer.complete"
     # 添加下载
     DownloadAdded = "download.added"
+    # 删除历史记录
+    HistoryDeleted = "history.deleted"
 
 
 # 系统配置Key字典
