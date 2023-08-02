@@ -7,9 +7,9 @@ from app.schemas.types import EventType
 
 class TorrentRemover(_PluginBase):
     # 插件名称
-    plugin_name = "下载任务联动删除"
+    plugin_name = "自动删种"
     # 插件描述
-    plugin_desc = "历史记录被删除时，同步删除下载器中的下载任务。"
+    plugin_desc = "自动删除下载器中的下载任务。"
     # 插件图标
     plugin_icon = "torrentremover.png"
     # 主题色
