@@ -48,3 +48,4 @@ class TmdbPerson(BaseModel):
     place_of_birth: Optional[str] = None
     popularity: Optional[float] = None
     images: Optional[dict] = {}
+    biography: Optional[str] = None

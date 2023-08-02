@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from app.core.config import settings
 from app.core.meta import MetaBase
@@ -163,9 +163,32 @@ class MediaInfo:
     # 豆瓣 INFO
     douban_info: dict = field(default_factory=dict)
     # 导演
-    directors: List[dict] = field(default_factory=dict)
+    directors: List[dict] = field(default_factory=list)
     # 演员
-    actors: List[dict] = field(default_factory=dict)
+    actors: List[dict] = field(default_factory=list)
+    # 其它TMDB属性
+    adult: Optional[bool] = False
+    created_by: Optional[list] = field(default_factory=list)
+    episode_run_time: Optional[list] = field(default_factory=list)
+    genres: Optional[list] = field(default_factory=list)
+    first_air_date: Optional[str] = None
+    homepage: Optional[str] = None
+    languages: Optional[list] = field(default_factory=list)
+    last_air_date: Optional[str] = None
+    networks: Optional[list] = field(default_factory=list)
+    number_of_episodes: Optional[int] = 0
+    number_of_seasons: Optional[int] = 0
+    origin_country: Optional[list] = field(default_factory=list)
+    original_name: Optional[str] = None
+    production_companies: Optional[list] = field(default_factory=list)
+    production_countries: Optional[list] = field(default_factory=list)
+    spoken_languages: Optional[list] = field(default_factory=list)
+    status: Optional[str] = None
+    tagline: Optional[str] = None
+    vote_count: Optional[int] = 0
+    popularity: Optional[int] = 0
+    runtime: Optional[int] = None
+    next_episode_to_air: Optional[str] = None
 
     def __post_init__(self):
         # 设置媒体信息
@@ -267,7 +290,7 @@ class MediaInfo:
                 if cast.get("known_for_department") == "Acting":
                     actors.append(cast)
             for crew in _credits.get("crew"):
-                if crew.get("job") == "Director":
+                if crew.get("job") in ["Director", "Writer", "Editor", "Producer"]:
                     directors.append(crew)
             return directors, actors
 
@@ -343,7 +366,7 @@ class MediaInfo:
         self.names = info.get('names') or []
         # 剩余属性赋值
         for key, value in info.items():
-            if not hasattr(self, key):
+            if hasattr(self, key) and not getattr(self, key):
                 setattr(self, key, value)
 
     def set_douban_info(self, info: dict):
