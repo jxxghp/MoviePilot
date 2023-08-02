@@ -306,7 +306,7 @@ class TmdbHelper:
                 index += 1
                 if not tv.get("names"):
                     tv = self.get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
-                if self.__compare_names(name, tv.get("names")):
+                if tv and self.__compare_names(name, tv.get("names")):
                     return tv
                 if index > 5:
                     break
@@ -361,7 +361,7 @@ class TmdbHelper:
             for tv in tvs[:5]:
                 if not tv.get("names"):
                     tv = self.get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
-                if not self.__compare_names(name, tv.get("names")):
+                if not tv or not self.__compare_names(name, tv.get("names")):
                     continue
                 if __season_match(tv_info=tv, _season_year=season_year):
                     return tv
@@ -439,12 +439,12 @@ class TmdbHelper:
                 if multi.get("media_type") == "movie":
                     if not multi.get("names"):
                         multi = self.get_info(mtype=MediaType.MOVIE, tmdbid=multi.get("id"))
-                    if self.__compare_names(name, multi.get("names")):
+                    if multi and self.__compare_names(name, multi.get("names")):
                         return multi
                 elif multi.get("media_type") == "tv":
                     if not multi.get("names"):
                         multi = self.get_info(mtype=MediaType.TV, tmdbid=multi.get("id"))
-                    if self.__compare_names(name, multi.get("names")):
+                    if multi and self.__compare_names(name, multi.get("names")):
                         return multi
         return {}
 
