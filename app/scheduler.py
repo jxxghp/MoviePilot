@@ -64,7 +64,7 @@ class Scheduler(metaclass=Singleton):
                                 hours=12, kwargs={'state': 'R'}, name="订阅搜索")
 
         # 站点首页种子定时刷新缓存并匹配订阅
-        triggers = TimerUtils.random_scheduler(num_executions=20)
+        triggers = TimerUtils.random_scheduler(num_executions=30)
         for trigger in triggers:
             self._scheduler.add_job(SubscribeChain().refresh, "cron",
                                     hour=trigger.hour, minute=trigger.minute, name="订阅刷新")
