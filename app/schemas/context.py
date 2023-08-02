@@ -110,28 +110,50 @@ class MediaInfo(BaseModel):
     # 详情链接
     detail_link: Optional[str] = None
     # 其它TMDB属性
+    # 是否成人内容
     adult: Optional[bool] = False
+    # 创建人
     created_by: Optional[list] = []
+    # 集时长
     episode_run_time: Optional[list] = []
-    genres: Optional[list] = []
+    # 风格
+    genres: Optional[List[dict]] = []
+    # 首播日期
     first_air_date: Optional[str] = None
+    # 首页
     homepage: Optional[str] = None
+    # 语种
     languages: Optional[list] = []
+    # 最后上映日期
     last_air_date: Optional[str] = None
+    # 流媒体平台
     networks: Optional[list] = []
+    # 集数
     number_of_episodes: Optional[int] = 0
+    # 季数
     number_of_seasons: Optional[int] = 0
+    # 原产国
     origin_country: Optional[list] = []
+    # 原名
     original_name: Optional[str] = None
+    # 出品公司
     production_companies: Optional[list] = []
+    # 出品国
     production_countries: Optional[list] = []
+    # 语种
     spoken_languages: Optional[list] = []
+    # 状态
     status: Optional[str] = None
+    # 标签
     tagline: Optional[str] = None
+    # 评价数量
     vote_count: Optional[int] = 0
+    # 流行度
     popularity: Optional[int] = 0
+    # 时长
     runtime: Optional[int] = None
-    next_episode_to_air: Optional[str] = None
+    # 下一集
+    next_episode_to_air: Optional[dict] = {}
 
 
 class TorrentInfo(BaseModel):
