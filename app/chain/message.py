@@ -1,3 +1,4 @@
+import gc
 from typing import Any
 
 from app.chain.download import *
@@ -315,6 +316,9 @@ class MessageChain(ChainBase):
                                        userid=userid, total=len(medias))
         # 保存缓存
         self.save_cache(user_cache, self._cache_file)
+        # 主动资源回收
+        del user_cache
+        gc.collect()
 
     def __post_medias_message(self, channel: MessageChannel,
                               title: str, items: list, userid: str, total: int):
