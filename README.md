@@ -57,7 +57,7 @@ docker pull jxxghp/moviepilot:latest
 - **DOWNLOAD_TV_PATH：** 电视剧下载保存目录，**必须是DOWNLOAD_PATH的下级路径**，不设置则下载到DOWNLOAD_PATH
 - **DOWNLOAD_CATEGORY：** 下载二级分类开关，`true`/`false`，默认`false`，开启后会根据配置`category.yaml`自动在下载目录下建立二级目录分类
 - **TORRENT_TAG：** 种子标签，默认为`MOVIEPILOT`，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
-- **LIBRARY_PATH：** 媒体库目录，**注意：需要将`moviepilot`的映射路径与宿主机`真实路径`保持一致**，多个目录使用`,`分隔
+- **LIBRARY_PATH：** 媒体库目录，多个目录使用`,`分隔
 - **LIBRARY_CATEGORY：** 媒体库二级分类开关，`true`/`false`，默认`false`，开启后会根据配置`category.yaml`自动在媒体库目录下建立二级目录分类
 - **TRANSFER_TYPE：** 转移方式，支持`link`/`copy`/`move`/`softlink`
 - **COOKIECLOUD_HOST：** CookieCloud服务器地址，格式：`http://ip:port`，必须配置，否则无法添加站点
