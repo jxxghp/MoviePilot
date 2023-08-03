@@ -3,9 +3,11 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Any
 
 from app.core.config import settings
+from app.core.context import MediaInfo
 from app.core.event import eventmanager
 from app.log import logger
 from app.plugins import _PluginBase
+from app.schemas import TransferInfo
 from app.schemas.types import EventType, MediaType
 from app.utils.http import RequestUtils
 
@@ -14,7 +16,7 @@ class ChineseSubFinder(_PluginBase):
     # 插件名称
     plugin_name = "ChineseSubFinder"
     # 插件描述
-    plugin_desc = "通知ChineseSubFinder下载字幕。"
+    plugin_desc = "整理入库时通知ChineseSubFinder下载字幕。"
     # 插件图标
     plugin_icon = "chinesesubfinder.png"
     # 主题色
@@ -34,20 +36,16 @@ class ChineseSubFinder(_PluginBase):
 
     # 私有属性
     _save_tmp_path = None
-    _enable = False
+    _enabled = False
     _host = None
     _api_key = None
     _remote_path = None
     _local_path = None
-    _remote_path2 = None
-    _local_path2 = None
-    _remote_path3 = None
-    _local_path3 = None
 
     def init_plugin(self, config: dict = None):
         self._save_tmp_path = settings.TEMP_PATH
         if config:
-            self._enable = config.get("enable")
+            self._enabled = config.get("enabled")
             self._api_key = config.get("api_key")
             self._host = config.get('host')
             if self._host:
@@ -57,10 +55,6 @@ class ChineseSubFinder(_PluginBase):
                     self._host = self._host + "/"
             self._local_path = config.get("local_path")
             self._remote_path = config.get("remote_path")
-            self._local_path2 = config.get("local_path2")
-            self._remote_path2 = config.get("remote_path2")
-            self._local_path3 = config.get("local_path3")
-            self._remote_path3 = config.get("remote_path3")
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -70,7 +64,114 @@ class ChineseSubFinder(_PluginBase):
         pass
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        pass
+        return [
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'host',
+                                            'label': '服务器'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'api_key',
+                                            'label': 'API密钥'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'local_path',
+                                            'label': '本地路径'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'remote_path',
+                                            'label': '远端路径'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "host": "",
+            "api_key": "",
+            "local_path": "",
+            "remote_path": ""
+        }
 
     def get_page(self) -> List[dict]:
         pass
@@ -88,38 +189,36 @@ class ChineseSubFinder(_PluginBase):
         item = event.event_data
         if not item:
             return
-        # FIXME
+        # 请求地址
         req_url = "%sapi/v1/add-job" % self._host
 
-        item_media = item.get("media_info")
-        item_type = item_media.get("type")
-        item_bluray = item.get("bluray")
-        item_file = item.get("file")
-        item_file_ext = item.get("file_ext")
+        # 媒体信息
+        item_media: MediaInfo = item.get("mediainfo")
+        # 转移信息
+        item_transfer: TransferInfo = item.get("transferinfo")
+        # 类型
+        item_type = item_media.type
+        # 目的路径
+        item_dest: Path = item_transfer.target_path
+        # 是否蓝光原盘
+        item_bluray = item_transfer.is_bluray
+        # 文件清单
+        item_file_list = item_transfer.file_list
 
         if item_bluray:
-            file_path = "%s.mp4" % item_file
-        else:
-            if Path(item_file).suffix != item_file_ext:
-                file_path = "%s%s" % (item_file, item_file_ext)
-            else:
-                file_path = item_file
+            # 蓝光原盘虚拟个文件
+            item_file_list = ["%s.mp4" % item_dest / item_dest.name]
 
-        # 路径替换
-        if self._local_path and self._remote_path and file_path.startswith(self._local_path):
-            file_path = file_path.replace(self._local_path, self._remote_path).replace('\\', '/')
+        for file_path in item_file_list:
+            # 路径替换
+            if self._local_path and self._remote_path and file_path.startswith(self._local_path):
+                file_path = file_path.replace(self._local_path, self._remote_path).replace('\\', '/')
 
-        if self._local_path2 and self._remote_path2 and file_path.startswith(self._local_path2):
-            file_path = file_path.replace(self._local_path2, self._remote_path2).replace('\\', '/')
-
-        if self._local_path3 and self._remote_path3 and file_path.startswith(self._local_path3):
-            file_path = file_path.replace(self._local_path3, self._remote_path3).replace('\\', '/')
-
-        # 调用CSF下载字幕
-        self.__request_csf(req_url=req_url,
-                           file_path=file_path,
-                           item_type=0 if item_type == MediaType.MOVIE.value else 1,
-                           item_bluray=item_bluray)
+            # 调用CSF下载字幕
+            self.__request_csf(req_url=req_url,
+                               file_path=file_path,
+                               item_type=0 if item_type == MediaType.MOVIE.value else 1,
+                               item_bluray=item_bluray)
 
     @lru_cache(maxsize=128)
     def __request_csf(self, req_url, file_path, item_type, item_bluray):
