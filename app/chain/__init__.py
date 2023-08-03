@@ -39,7 +39,8 @@ class ChainBase(metaclass=ABCMeta):
         cache_path = settings.TEMP_PATH / filename
         if cache_path.exists():
             try:
-                return pickle.load(cache_path.open('rb'))
+                with open(cache_path, 'rb') as f:
+                    return pickle.load(f)
             except Exception as err:
                 logger.error(f"加载缓存 {filename} 出错：{err}")
         return None
@@ -50,7 +51,8 @@ class ChainBase(metaclass=ABCMeta):
         保存缓存到本地
         """
         try:
-            pickle.dump(cache, (settings.TEMP_PATH / filename).open('wb'))
+            with open(settings.TEMP_PATH / filename, 'wb') as f:
+                pickle.dump(cache, f)
         except Exception as err:
             logger.error(f"保存缓存 {filename} 出错：{err}")
 
