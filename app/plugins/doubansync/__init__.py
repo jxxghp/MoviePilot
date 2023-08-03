@@ -464,7 +464,7 @@ class DoubanSync(_PluginBase):
     @eventmanager.register(EventType.DoubanSync)
     def remote_sync(self, event: Event):
         """
-        刷新站点数据
+        豆瓣想看同步
         """
         if event:
             logger.info("收到命令，开始执行豆瓣想看同步 ...")
