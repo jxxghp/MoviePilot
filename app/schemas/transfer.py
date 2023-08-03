@@ -39,8 +39,12 @@ class TransferInfo(BaseModel):
     path: Optional[Path] = None
     # 转移后路径
     target_path: Optional[Path] = None
+    # 是否蓝光原盘
+    is_bluray: Optional[bool] = False
     # 处理文件数
     file_count: Optional[int] = 0
+    # 处理文件清单
+    file_list: Optional[list] = []
     # 总文件大小
     total_size: Optional[float] = 0
     # 失败清单

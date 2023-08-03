@@ -31,7 +31,7 @@ class SpeedLimiter(_PluginBase):
 
     # 私有属性
     _scheduler = None
-    _enable: bool = False
+    _enabled: bool = False
     _notify: bool = False
     _bandwidth: int = 0
     _interval: int = 60
@@ -39,7 +39,7 @@ class SpeedLimiter(_PluginBase):
     def init_plugin(self, config: dict = None):
         # 读取配置
         if config:
-            self._enable = config.get("enable")
+            self._enabled = config.get("enabled")
             self._notify = config.get("notify")
             try:
                 # 总带宽
@@ -52,7 +52,7 @@ class SpeedLimiter(_PluginBase):
         self.stop_service()
 
         # 启动限速任务
-        if self._enable:
+        if self._enabled:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             self._scheduler.add_job(func=self.__check_playing_sessions,
                                     trigger='interval',
@@ -60,6 +60,9 @@ class SpeedLimiter(_PluginBase):
             self._scheduler.print_jobs()
             self._scheduler.start()
             logger.info("播放限速服务启动")
+
+    def get_state(self) -> bool:
+        return self._enabled
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:

@@ -51,14 +51,16 @@ class FileTransferModule(_ModuleBase):
         if isinstance(result, str):
             return TransferInfo(message=result)
         # 解包结果
-        target_path, file_count, file_size, fail_list, msg = result
+        is_bluray, target_path, file_list, file_size, fail_list, msg = result
         # 返回
         return TransferInfo(path=path,
                             target_path=target_path,
                             message=msg,
-                            file_count=file_count,
+                            file_count=len(file_list),
                             total_size=file_size,
-                            fail_list=fail_list)
+                            fail_list=fail_list,
+                            is_bluray=is_bluray,
+                            file_list=file_list)
 
     @staticmethod
     def __transfer_command(file_item: Path, target_file: Path, rmt_mode) -> int:
@@ -333,14 +335,14 @@ class FileTransferModule(_ModuleBase):
                        mediainfo: MediaInfo,
                        rmt_mode: str = None,
                        target_dir: Path = None
-                       ) -> Union[str, Tuple[Path, int, int, List[Path], str]]:
+                       ) -> Union[str, Tuple[bool, Path, list, int, List[Path], str]]:
         """
         识别并转移一个文件、多个文件或者目录
         :param in_path: 转移的路径，可能是一个文件也可以是一个目录
         :param target_dir: 目的文件夹，非空的转移到该文件夹，为空时则按类型转移到配置文件中的媒体库文件夹
         :param rmt_mode: 文件转移方式
         :param mediainfo: 媒体信息
-        :return: 目的路径、处理文件数、总大小、失败文件列表、错误信息
+        :return: 是否蓝光原盘、目的路径、处理文件清单、总大小、失败文件列表、错误信息
         """
         # 检查目录路径
         if not in_path.exists():
@@ -370,8 +372,8 @@ class FileTransferModule(_ModuleBase):
         # 总大小
         total_filesize = 0
 
-        # 处理文件数
-        total_num = 0
+        # 处理文件清单
+        file_list = []
 
         # 失败文件清单
         fail_list = []
@@ -398,12 +400,10 @@ class FileTransferModule(_ModuleBase):
             if retcode != 0:
                 return f"{retcode}，蓝光原盘转移失败"
             else:
-                # 计算文件数
-                total_num += 1
                 # 计算大小
                 total_filesize += in_path.stat().st_size
                 # 返回转移后的路径
-                return new_path, total_num, total_filesize, [], ""
+                return bluray_flag, new_path, [], total_filesize, [], ""
         else:
             # 获取文件清单
             transfer_files: List[Path] = SystemUtils.list_files_with_extensions(in_path, settings.RMT_MEDIAEXT)
@@ -466,7 +466,7 @@ class FileTransferModule(_ModuleBase):
                         fail_list.append(transfer_file)
                         continue
                     # 计算文件数
-                    total_num += 1
+                    file_list.append(str(new_file))
                     # 计算大小
                     total_filesize += new_file.stat().st_size
                 except Exception as err:
@@ -474,12 +474,12 @@ class FileTransferModule(_ModuleBase):
                     logger.error(f"{transfer_file}转移失败：{err}")
                     fail_list.append(transfer_file)
 
-            if total_num == 0:
+            if not file_list:
                 # 没有成功的
                 return "\n".join(err_msgs)
 
-            # 新路径、处理文件数、总大小、失败文件列表、错误信息
-            return new_path, total_num, total_filesize, fail_list, "\n".join(err_msgs)
+            # 蓝光原盘、新路径、处理文件清单、总大小、失败文件列表、错误信息
+            return bluray_flag, new_path, file_list, total_filesize, fail_list, "\n".join(err_msgs)
 
     @staticmethod
     def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None) -> dict:

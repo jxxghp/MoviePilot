@@ -61,7 +61,6 @@ class DoubanSync(_PluginBase):
     _users: str = ""
 
     def init_plugin(self, config: dict = None):
-        self._cache_path = settings.TEMP_PATH / "__doubansync_cache__"
         self.rsshelper = RssHelper()
         self.downloadchain = DownloadChain()
         self.searchchain = SearchChain()
@@ -97,6 +96,9 @@ class DoubanSync(_PluginBase):
             if self._scheduler.get_jobs():
                 self._scheduler.print_jobs()
                 self._scheduler.start()
+
+    def get_state(self) -> bool:
+        return self._enabled
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -259,7 +261,6 @@ class DoubanSync(_PluginBase):
             poster = history.get("poster")
             mtype = history.get("type")
             time_str = history.get("time")
-            overview = history.get("overview")
             doubanid = history.get("doubanid")
             contents.append(
                 {
@@ -357,10 +358,8 @@ class DoubanSync(_PluginBase):
         """
         if not self._users:
             return
-        # 读取缓存
-        caches = self._cache_path.read_text().split("\n") if self._cache_path.exists() else []
         # 读取历史记录
-        history = self.get_data('history') or []
+        history: List[dict] = self.get_data('history') or []
         for user_id in self._users.split(","):
             # 同步每个用户的豆瓣数据
             if not user_id:
@@ -387,8 +386,8 @@ class DoubanSync(_PluginBase):
                             logger.info(f'已超过同步天数，标题：{title}，发布时间：{pubdate}')
                             continue
                     douban_id = result.get("link", "").split("/")[-2]
-                    # 检查缓存
-                    if not douban_id or douban_id in caches:
+                    # 检查是否处理过
+                    if not douban_id or douban_id in [h.get("doubanid") for h in history]:
                         continue
                     # 根据豆瓣ID获取豆瓣数据
                     doubaninfo: Optional[dict] = self.chain.douban_info(doubanid=douban_id)
@@ -404,8 +403,6 @@ class DoubanSync(_PluginBase):
                     if not mediainfo:
                         logger.warn(f'未识别到媒体信息，标题：{title}，豆瓣ID：{douban_id}')
                         continue
-                    # 加入缓存
-                    caches.append(douban_id)
                     # 查询缺失的媒体信息
                     exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
                     if exist_flag:
@@ -447,25 +444,22 @@ class DoubanSync(_PluginBase):
                                                         username="豆瓣想看")
                                 action = "subscribe"
                     # 存储历史记录
-                    if douban_id not in [h.get("doubanid") for h in history]:
-                        history.append({
-                            "action": action,
-                            "title": doubaninfo.get("title") or mediainfo.title,
-                            "type": mediainfo.type.value,
-                            "year": mediainfo.year,
-                            "poster": mediainfo.get_poster_image(),
-                            "overview": mediainfo.overview,
-                            "tmdbid": mediainfo.tmdb_id,
-                            "doubanid": douban_id,
-                            "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        })
+                    history.append({
+                        "action": action,
+                        "title": doubaninfo.get("title") or mediainfo.title,
+                        "type": mediainfo.type.value,
+                        "year": mediainfo.year,
+                        "poster": mediainfo.get_poster_image(),
+                        "overview": mediainfo.overview,
+                        "tmdbid": mediainfo.tmdb_id,
+                        "doubanid": douban_id,
+                        "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
                 except Exception as err:
                     logger.error(f'同步用户 {user_id} 豆瓣想看数据出错：{err}')
             logger.info(f"用户 {user_id} 豆瓣想看同步完成")
         # 保存历史记录
         self.save_data('history', history)
-        # 保存缓存
-        self._cache_path.write_text("\n".join(caches))
 
     @eventmanager.register(EventType.DoubanSync)
     def remote_sync(self, event: Event):

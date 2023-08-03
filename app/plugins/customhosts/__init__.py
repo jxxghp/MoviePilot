@@ -1,11 +1,10 @@
 from typing import List, Tuple, Dict, Any
 
+from python_hosts import Hosts, HostsEntry
 from app.log import logger
 from app.plugins import _PluginBase
 from app.utils.ip import IpUtils
 from app.utils.system import SystemUtils
-
-from python_hosts import Hosts, HostsEntry
 
 
 class CustomHosts(_PluginBase):
@@ -60,6 +59,9 @@ class CustomHosts(_PluginBase):
                     "enabled": self._enabled
                 })
 
+    def get_state(self) -> bool:
+        return self._enabled
+
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
         pass
@@ -68,7 +70,7 @@ class CustomHosts(_PluginBase):
         pass
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        """
+       """
        拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
        """
         return [
@@ -101,6 +103,9 @@ class CustomHosts(_PluginBase):
                         'content': [
                             {
                                 'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
                                 'content': [
                                     {
                                         'component': 'VTextarea',
@@ -120,6 +125,9 @@ class CustomHosts(_PluginBase):
                         'content': [
                             {
                                 'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
                                 'content': [
                                     {
                                         'component': 'VTextarea',
@@ -140,7 +148,7 @@ class CustomHosts(_PluginBase):
         ], {
             "enabled": False,
             "hosts": "",
-            "err_hosts": "",
+            "err_hosts": ""
         }
 
     def get_page(self) -> List[dict]:
@@ -189,6 +197,8 @@ class CustomHosts(_PluginBase):
             except Exception as err:
                 err_hosts.append(host + "\n")
                 logger.error(f"{host} 格式转换错误：{str(err)}")
+                # 推送实时消息
+                self.systemmessage.put(f"{host} 格式转换错误：{str(err)}")
 
         # 写入系统hosts
         if new_entrys:
@@ -202,10 +212,9 @@ class CustomHosts(_PluginBase):
             except Exception as err:
                 err_flag = True
                 logger.error(f"更新系统hosts文件失败：{str(err) or '请检查权限'}")
+                # 推送实时消息
+                self.systemmessage.put(f"更新系统hosts文件失败：{str(err) or '请检查权限'}")
         return err_flag, err_hosts
-
-    def get_state(self):
-        return self._enable and self._hosts and self._hosts[0]
 
     def stop_service(self):
         """

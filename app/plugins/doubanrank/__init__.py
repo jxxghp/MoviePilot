@@ -1,12 +1,17 @@
+import datetime
 import re
 import xml.dom.minidom
 from threading import Event
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from app.chain.download import DownloadChain
+from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
+from app.core.context import MediaInfo
+from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.plugins import _PluginBase
 from app.utils.dom import DomUtils
@@ -14,7 +19,6 @@ from app.utils.http import RequestUtils
 
 
 class DoubanRank(_PluginBase):
-
     # 插件名称
     plugin_name = "豆瓣榜单订阅"
     # 插件描述
@@ -39,10 +43,9 @@ class DoubanRank(_PluginBase):
     # 退出事件
     _event = Event()
     # 私有属性
-    mediaserver = None
-    subscribe = None
-    rsshelper = None
-    media = None
+    downloadchain: DownloadChain = None
+    subscribechain: SubscribeChain = None
+    _scheduler = None
     _douban_address = {
         'movie-ustop': 'https://rsshub.app/douban/movie/ustop',
         'movie-weekly': 'https://rsshub.app/douban/movie/weekly',
@@ -52,16 +55,18 @@ class DoubanRank(_PluginBase):
         'tv-hot': 'https://rsshub.app/douban/movie/weekly/tv_hot',
         'movie-top250': 'https://rsshub.app/douban/movie/weekly/movie_top250',
     }
-    _enable = False
+    _enabled = False
     _cron = ""
     _rss_addrs = []
     _ranks = []
     _vote = 0
-    _scheduler = None
-    
+
     def init_plugin(self, config: dict = None):
+        self.downloadchain = DownloadChain()
+        self.subscribechain = SubscribeChain()
+
         if config:
-            self._enable = config.get("enable")
+            self._enabled = config.get("enabled")
             self._cron = config.get("cron")
             self._vote = float(config.get("vote")) if config.get("vote") else 0
             rss_addrs = config.get("rss_addrs")
@@ -78,17 +83,27 @@ class DoubanRank(_PluginBase):
         self.stop_service()
 
         # 启动服务
-        if self._enable:
+        if self._enabled:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             if self._cron:
                 logger.info(f"豆瓣榜单订阅服务启动，周期：{self._cron}")
-                self._scheduler.add_job(self.__refresh_rss,
-                                        CronTrigger.from_crontab(self._cron))
+                try:
+                    self._scheduler.add_job(self.__refresh_rss,
+                                            CronTrigger.from_crontab(self._cron))
+                except Exception as e:
+                    logger.error(f"豆瓣榜单订阅服务启动失败，错误信息：{str(e)}")
+                    self.systemmessage.put(f"豆瓣榜单订阅服务启动失败，错误信息：{str(e)}")
+            else:
+                self._scheduler.add_job(self.__refresh_rss, CronTrigger.from_crontab("0 8 * * *"))
+                logger.info("豆瓣榜单订阅服务启动，周期：每天 08:00")
 
             if self._scheduler.get_jobs():
                 # 启动服务
                 self._scheduler.print_jobs()
                 self._scheduler.start()
+
+    def get_state(self) -> bool:
+        return self._enabled
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -98,13 +113,227 @@ class DoubanRank(_PluginBase):
         pass
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        pass
+        return [
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cron',
+                                            'label': '执行周期',
+                                            'placeholder': '5位cron表达式，留空自动'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'vote',
+                                            'label': '评分',
+                                            'placeholder': '评分大于等于该值才订阅'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'chips': True,
+                                            'multiple': True,
+                                            'model': 'ranks',
+                                            'label': '热门榜单',
+                                            'items': [
+                                                {'title': '电影北美票房榜', 'value': 'movie-ustop'},
+                                                {'title': '一周口碑电影榜', 'value': 'movie-weekly'},
+                                                {'title': '实时热门电影', 'value': 'movie-real-time'},
+                                                {'title': '热门综艺', 'value': 'show-domestic'},
+                                                {'title': '热门电影', 'value': 'movie-hot-gaia'},
+                                                {'title': '热门电视剧', 'value': 'tv-hot'},
+                                                {'title': '电影TOP10', 'value': 'movie-top250'},
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'rss_addrs',
+                                            'label': '自定义榜单地址',
+                                            'placeholder': '每行一个地址，如：https://rsshub.app/douban/movie/ustop'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "cron": "",
+            "vote": "",
+            "ranks": [],
+            "rss_addrs": "",
+        }
 
     def get_page(self) -> List[dict]:
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
         """
-        pass
+        # 查询历史记录
+        historys = self.get_data('history')
+        if not historys:
+            return [
+                {
+                    'component': 'div',
+                    'text': '暂无数据',
+                    'props': {
+                        'class': 'text-center',
+                    }
+                }
+            ]
+        # 数据按时间降序排序
+        historys = sorted(historys, key=lambda x: x.get('time'), reverse=True)
+        # 拼装页面
+        contents = []
+        for history in historys:
+            title = history.get("title")
+            poster = history.get("poster")
+            mtype = history.get("type")
+            time_str = history.get("time")
+            doubanid = history.get("doubanid")
+            contents.append(
+                {
+                    'component': 'VCard',
+                    'content': [
+                        {
+                            'component': 'div',
+                            'props': {
+                                'class': 'd-flex justify-space-start flex-nowrap flex-row',
+                            },
+                            'content': [
+                                {
+                                    'component': 'div',
+                                    'content': [
+                                        {
+                                            'component': 'VImg',
+                                            'props': {
+                                                'src': poster,
+                                                'height': 120,
+                                                'width': 80,
+                                                'aspect-ratio': '2/3',
+                                                'class': 'object-cover shadow ring-gray-500',
+                                                'cover': True
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    'component': 'div',
+                                    'content': [
+                                        {
+                                            'component': 'VCardSubtitle',
+                                            'props': {
+                                                'class': 'pa-2 font-bold break-words whitespace-break-spaces'
+                                            },
+                                            'content': [
+                                                {
+                                                    'component': 'a',
+                                                    'props': {
+                                                        'href': f"https://movie.douban.com/subject/{doubanid}",
+                                                        'target': '_blank'
+                                                    },
+                                                    'text': title
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            'component': 'VCardText',
+                                            'props': {
+                                                'class': 'pa-0 px-2'
+                                            },
+                                            'text': f'类型：{mtype}'
+                                        },
+                                        {
+                                            'component': 'VCardText',
+                                            'props': {
+                                                'class': 'pa-0 px-2'
+                                            },
+                                            'text': f'时间：{time_str}'
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            )
+
+        return [
+            {
+                'component': 'div',
+                'props': {
+                    'class': 'grid gap-3 grid-info-card',
+                },
+                'content': contents
+            }
+        ]
 
     def stop_service(self):
         """
@@ -125,13 +354,17 @@ class DoubanRank(_PluginBase):
         """
         刷新RSS
         """
-        logger.info(f"开始刷新RSS ...")
+        logger.info(f"开始刷新豆瓣榜单 ...")
         addr_list = self._rss_addrs + [self._douban_address.get(rank) for rank in self._ranks]
         if not addr_list:
-            logger.info(f"未设置RSS地址")
+            logger.info(f"未设置榜单RSS地址")
             return
         else:
-            logger.info(f"共 {len(addr_list)} 个RSS地址需要刷新")
+            logger.info(f"共 {len(addr_list)} 个榜单RSS地址需要刷新")
+
+        # 读取历史记录
+        history: List[dict] = self.get_data('history') or []
+
         for addr in addr_list:
             if not addr:
                 continue
@@ -150,18 +383,64 @@ class DoubanRank(_PluginBase):
 
                     title = rss_info.get('title')
                     douban_id = rss_info.get('doubanid')
-                    mtype = rss_info.get('type')
                     unique_flag = f"doubanrank: {title} (DB:{douban_id})"
-                    # TODO 检查是否已处理过
-                    # TODO 识别媒体信息
-                    # TODO 检查媒体服务器是否存在
-                    # TODO 检查是否已订阅过
-                    # TODO　添加处理历史
-                    # TODO 添加订阅
-                    # TODO 发送通知
-                    # TODO 更新历史记录
+                    # 检查是否已处理过
+                    if unique_flag in [h.get("unique") for h in history]:
+                        continue
+                    # 识别媒体信息
+                    if douban_id:
+                        # 根据豆瓣ID获取豆瓣数据
+                        doubaninfo: Optional[dict] = self.chain.douban_info(doubanid=douban_id)
+                        if not doubaninfo:
+                            logger.warn(f'未获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
+                            continue
+                        logger.info(f'获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
+                        # 识别
+                        title = doubaninfo.get("title")
+                        meta = MetaInfo(doubaninfo.get("original_title") or title)
+                        if doubaninfo.get("year"):
+                            meta.year = doubaninfo.get("year")
+                    else:
+                        meta = MetaInfo(title)
+                    # 匹配媒体信息
+                    mediainfo: MediaInfo = self.chain.recognize_media(meta=meta)
+                    if not mediainfo:
+                        logger.warn(f'未识别到媒体信息，标题：{title}，豆瓣ID：{douban_id}')
+                        continue
+                    # 查询缺失的媒体信息
+                    exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
+                    if exist_flag:
+                        logger.info(f'{mediainfo.title_year} 媒体库中已存在')
+                        action = "exist"
+                    else:
+                        # 添加订阅
+                        self.subscribechain.add(title=mediainfo.title,
+                                                year=mediainfo.year,
+                                                mtype=mediainfo.type,
+                                                tmdbid=mediainfo.tmdb_id,
+                                                season=meta.begin_season,
+                                                exist_ok=True,
+                                                username="豆瓣榜单")
+                        action = "subscribe"
+                    # 存储历史记录
+                    history.append({
+                        "action": action,
+                        "title": title,
+                        "type": mediainfo.type.value,
+                        "year": mediainfo.year,
+                        "poster": mediainfo.get_poster_image(),
+                        "overview": mediainfo.overview,
+                        "tmdbid": mediainfo.tmdb_id,
+                        "doubanid": douban_id,
+                        "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "unique": unique_flag
+                    })
             except Exception as e:
                 logger.error(str(e))
+
+        # 保存历史记录
+        self.save_data('history', history)
+
         logger.info(f"所有榜单RSS刷新完成")
 
     @staticmethod

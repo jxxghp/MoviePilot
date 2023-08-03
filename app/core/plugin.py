@@ -185,6 +185,12 @@ class PluginManager(metaclass=Singleton):
                 conf.update({"installed": True})
             else:
                 conf.update({"installed": False})
+            # 运行状态
+            if pid in self._running_plugins.keys() and hasattr(plugin, "get_state"):
+                plugin_obj = self._running_plugins.get(pid)
+                conf.update({"state": plugin_obj.get_state()})
+            else:
+                conf.update({"state": False})
             # 名称
             if hasattr(plugin, "plugin_name"):
                 conf.update({"plugin_name": plugin.plugin_name})
