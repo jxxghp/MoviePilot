@@ -1,9 +1,7 @@
 from typing import List, Tuple, Dict, Any
 
-from app.core.event import eventmanager
 from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas.types import EventType
 from app.utils.ip import IpUtils
 from app.utils.system import SystemUtils
 
@@ -34,16 +32,16 @@ class CustomHosts(_PluginBase):
 
     # 私有属性
     _hosts = []
-    _enable = False
+    _enabled = False
 
     def init_plugin(self, config: dict = None):
         # 读取配置
         if config:
-            self._enable = config.get("enable")
+            self._enabled = config.get("enabled")
             self._hosts = config.get("hosts")
             if isinstance(self._hosts, str):
                 self._hosts = str(self._hosts).split('\n')
-            if self._enable and self._hosts:
+            if self._enabled and self._hosts:
                 # 排除空的host
                 new_hosts = []
                 for host in self._hosts:
@@ -53,13 +51,13 @@ class CustomHosts(_PluginBase):
 
                 # 添加到系统
                 error_flag, error_hosts = self.__add_hosts_to_system(self._hosts)
-                self._enable = self._enable and not error_flag
+                self._enabled = self._enabled and not error_flag
 
                 # 更新错误Hosts
                 self.update_config({
                     "hosts": self._hosts,
                     "err_hosts": error_hosts,
-                    "enable": self._enable
+                    "enabled": self._enabled
                 })
 
     @staticmethod
@@ -70,7 +68,80 @@ class CustomHosts(_PluginBase):
         pass
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        pass
+        """
+       拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
+       """
+        return [
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'hosts',
+                                            'label': '自定义hosts',
+                                            'rows': 10,
+                                            'placeholder': '每行一个配置，格式为：ip host1 host2 ...'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'err_hosts',
+                                            'readonly': True,
+                                            'label': '错误hosts',
+                                            'rows': 2,
+                                            'placeholder': '错误的hosts配置会展示在此处，请修改上方hosts重新提交（错误的hosts不会写入系统hosts文件）'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "hosts": "",
+            "err_hosts": "",
+        }
 
     def get_page(self) -> List[dict]:
         pass
