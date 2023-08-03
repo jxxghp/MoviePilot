@@ -133,7 +133,7 @@ class PluginManager(metaclass=Singleton):
         for _, plugin in self._running_plugins.items():
             if hasattr(plugin, "get_command") \
                     and ObjectUtils.check_method(plugin.get_command):
-                ret_commands += plugin.get_command()
+                ret_commands += plugin.get_command() or []
         return ret_commands
 
     def get_plugin_apis(self) -> List[Dict[str, Any]]:
@@ -151,7 +151,7 @@ class PluginManager(metaclass=Singleton):
         for pid, plugin in self._running_plugins.items():
             if hasattr(plugin, "get_api") \
                     and ObjectUtils.check_method(plugin.get_api):
-                apis = plugin.get_api()
+                apis = plugin.get_api() or []
                 for api in apis:
                     api["path"] = f"/{pid}{api['path']}"
                 ret_apis.extend(apis)

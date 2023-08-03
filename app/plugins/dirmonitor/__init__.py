@@ -7,11 +7,11 @@ class DirMonitor(_PluginBase):
     # 插件名称
     plugin_name = "目录监控"
     # 插件描述
-    plugin_desc = "监控目录，文件发生变化时实时整理到媒体库。"
+    plugin_desc = "监控目录文件发生变化时实时整理到媒体库。"
     # 插件图标
-    plugin_icon = "synctimer.png"
+    plugin_icon = "directory.png"
     # 主题色
-    plugin_color = "#53BA48"
+    plugin_color = "#E0995E"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者
@@ -21,7 +21,7 @@ class DirMonitor(_PluginBase):
     # 插件配置项ID前缀
     plugin_config_prefix = "dirmonitor_"
     # 加载顺序
-    plugin_order = 5
+    plugin_order = 4
     # 可使用的用户级别
     user_level = 1
 

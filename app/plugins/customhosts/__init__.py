@@ -28,7 +28,7 @@ class CustomHosts(_PluginBase):
     # 插件配置项ID前缀
     plugin_config_prefix = "customhosts_"
     # 加载顺序
-    plugin_order = 11
+    plugin_order = 10
     # 可使用的用户级别
     auth_level = 1
 
