@@ -562,7 +562,8 @@ class MediaSyncDel(_PluginBase):
                 jellyfin_host = "http://" + jellyfin_host
 
         # jellyfin 日志url
-        log_url = "%sSystem/Logs/jellyfinserver.txt?api_key=%s" % (jellyfin_host, settings.JELLYFIN_API_KEY)
+        log_url = "%sSystem/Logs/Log?name=log_%s.log&api_key=%s" % (
+            jellyfin_host, datetime.date.today().strftime("%Y%m%d"), settings.JELLYFIN_API_KEY)
         log_res = RequestUtils().get_res(url=log_url)
 
         if not log_res or log_res.status_code != 200:

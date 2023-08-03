@@ -145,6 +145,10 @@ class Settings(BaseSettings):
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.57"
     # 媒体库目录
     LIBRARY_PATH: str = None
+    # 电影媒体库目录名，默认"电影"
+    LIBRARY_MOVIE_NAME: str = None
+    # 电视剧媒体库目录名，默认"电视剧"
+    LIBRARY_TV_NAME: str = None
     # 二级分类
     LIBRARY_CATEGORY: bool = True
     # 电影重命名格式

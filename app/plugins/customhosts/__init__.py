@@ -1,7 +1,6 @@
 from typing import List, Tuple, Dict, Any
 
 from python_hosts import Hosts, HostsEntry
-
 from app.log import logger
 from app.plugins import _PluginBase
 from app.utils.ip import IpUtils
@@ -57,7 +56,7 @@ class CustomHosts(_PluginBase):
                 self.update_config({
                     "hosts": self._hosts,
                     "err_hosts": error_hosts,
-                    "enable": self._enabled
+                    "enabled": self._enabled
                 })
 
     def get_state(self) -> bool:
@@ -71,6 +70,9 @@ class CustomHosts(_PluginBase):
         pass
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+       """
+       拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
+       """
         return [
             {
                 'component': 'VForm',
@@ -109,7 +111,9 @@ class CustomHosts(_PluginBase):
                                         'component': 'VTextarea',
                                         'props': {
                                             'model': 'hosts',
-                                            'label': '系统hosts'
+                                            'label': '自定义hosts',
+                                            'rows': 10,
+                                            'placeholder': '每行一个配置，格式为：ip host1 host2 ...'
                                         }
                                     }
                                 ]
@@ -130,7 +134,9 @@ class CustomHosts(_PluginBase):
                                         'props': {
                                             'model': 'err_hosts',
                                             'readonly': True,
-                                            'label': '错误记录'
+                                            'label': '错误hosts',
+                                            'rows': 2,
+                                            'placeholder': '错误的hosts配置会展示在此处，请修改上方hosts重新提交（错误的hosts不会写入系统hosts文件）'
                                         }
                                     }
                                 ]
