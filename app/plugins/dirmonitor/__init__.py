@@ -211,7 +211,9 @@ class DirMonitor(_PluginBase):
                     self.chain.obtain_images(mediainfo=mediainfo)
 
                     # 转移
-                    transferinfo: TransferInfo = self.chain.transfer(mediainfo=mediainfo, path=file_path)
+                    transferinfo: TransferInfo = self.chain.transfer(mediainfo=mediainfo,
+                                                                     path=file_path,
+                                                                     transfer_type=self._transfer_type)
 
                     if not transferinfo or not transferinfo.target_path:
                         # 转移失败

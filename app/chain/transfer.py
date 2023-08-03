@@ -136,7 +136,9 @@ class TransferChain(ChainBase):
             # 更新媒体图片
             self.obtain_images(mediainfo=mediainfo)
             # 转移
-            transferinfo: TransferInfo = self.transfer(mediainfo=mediainfo, path=torrent.path)
+            transferinfo: TransferInfo = self.transfer(mediainfo=mediainfo,
+                                                       path=torrent.path,
+                                                       transmode=settings.TRANSFER_TYPE)
             if not transferinfo or not transferinfo.target_path:
                 # 转移失败
                 logger.warn(f"{torrent.title} 入库失败")

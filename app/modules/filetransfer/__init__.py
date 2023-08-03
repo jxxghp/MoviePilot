@@ -29,11 +29,12 @@ class FileTransferModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def transfer(self, path: Path, mediainfo: MediaInfo) -> Optional[TransferInfo]:
+    def transfer(self, path: Path, mediainfo: MediaInfo, transfer_type: str) -> Optional[TransferInfo]:
         """
         文件转移
         :param path:  文件路径
         :param mediainfo:  识别的媒体信息
+        :param transfer_type:  转移方式
         :return: {path, target_path, message}
         """
         # 获取目标路径
@@ -44,7 +45,7 @@ class FileTransferModule(_ModuleBase):
         # 转移
         result = self.transfer_media(in_path=path,
                                      mediainfo=mediainfo,
-                                     rmt_mode=settings.TRANSFER_TYPE,
+                                     transfer_type=transfer_type,
                                      target_dir=target_path)
         if not result:
             return TransferInfo()
@@ -63,23 +64,23 @@ class FileTransferModule(_ModuleBase):
                             file_list=file_list)
 
     @staticmethod
-    def __transfer_command(file_item: Path, target_file: Path, rmt_mode) -> int:
+    def __transfer_command(file_item: Path, target_file: Path, transfer_type: str) -> int:
         """
         使用系统命令处理单个文件
         :param file_item: 文件路径
         :param target_file: 目标文件路径
-        :param rmt_mode: RmtMode转移方式
+        :param transfer_type: RmtMode转移方式
         """
         with lock:
 
             # 转移
-            if rmt_mode == 'link':
+            if transfer_type == 'link':
                 # 硬链接
                 retcode, retmsg = SystemUtils.link(file_item, target_file)
-            elif rmt_mode == 'softlink':
+            elif transfer_type == 'softlink':
                 # 软链接
                 retcode, retmsg = SystemUtils.softlink(file_item, target_file)
-            elif rmt_mode == 'move':
+            elif transfer_type == 'move':
                 # 移动
                 retcode, retmsg = SystemUtils.move(file_item, target_file)
             else:
@@ -91,28 +92,29 @@ class FileTransferModule(_ModuleBase):
 
         return retcode
 
-    def __transfer_other_files(self, org_path: Path, new_path: Path, rmt_mode: str, over_flag: bool) -> int:
+    def __transfer_other_files(self, org_path: Path, new_path: Path,
+                               transfer_type: str, over_flag: bool) -> int:
         """
         根据文件名转移其他相关文件
         :param org_path: 原文件名
         :param new_path: 新文件名
-        :param rmt_mode: RmtMode转移方式
+        :param transfer_type: RmtMode转移方式
         :param over_flag: 是否覆盖，为True时会先删除再转移
         """
-        retcode = self.__transfer_subtitles(org_path, new_path, rmt_mode)
+        retcode = self.__transfer_subtitles(org_path, new_path, transfer_type)
         if retcode != 0:
             return retcode
-        retcode = self.__transfer_audio_track_files(org_path, new_path, rmt_mode, over_flag)
+        retcode = self.__transfer_audio_track_files(org_path, new_path, transfer_type, over_flag)
         if retcode != 0:
             return retcode
         return 0
 
-    def __transfer_subtitles(self, org_path: Path, new_path: Path, rmt_mode: str) -> int:
+    def __transfer_subtitles(self, org_path: Path, new_path: Path, transfer_type: str) -> int:
         """
         根据文件名转移对应字幕文件
         :param org_path: 原文件名
         :param new_path: 新文件名
-        :param rmt_mode: RmtMode转移方式
+        :param transfer_type: RmtMode转移方式
         """
         # 字幕正则式
         _zhcn_sub_re = r"([.\[(](((zh[-_])?(cn|ch[si]|sg|sc))|zho?" \
@@ -188,12 +190,12 @@ class FileTransferModule(_ModuleBase):
                                 logger.debug(f"正在处理字幕：{file_item.name}")
                                 retcode = self.__transfer_command(file_item=file_item,
                                                                   target_file=new_file,
-                                                                  rmt_mode=rmt_mode)
+                                                                  transfer_type=transfer_type)
                                 if retcode == 0:
-                                    logger.info(f"字幕 {file_item.name} {rmt_mode}完成")
+                                    logger.info(f"字幕 {file_item.name} {transfer_type}完成")
                                     break
                                 else:
-                                    logger.error(f"字幕 {file_item.name} {rmt_mode}失败，错误码 {retcode}")
+                                    logger.error(f"字幕 {file_item.name} {transfer_type}失败，错误码 {retcode}")
                                     return retcode
                             # 如果字幕文件的大小与已存在文件相同, 说明已经转移过了, 则跳出循环
                             elif new_file.stat().st_size == file_item.stat().st_size:
@@ -204,12 +206,13 @@ class FileTransferModule(_ModuleBase):
                             logger.info(f"字幕 {new_file} 出错了,原因: {reason}")
         return 0
 
-    def __transfer_audio_track_files(self, org_path: Path, new_path: Path, rmt_mode: str, over_flag: bool) -> int:
+    def __transfer_audio_track_files(self, org_path: Path, new_path: Path,
+                                     transfer_type: str, over_flag: bool) -> int:
         """
         根据文件名转移对应音轨文件
         :param org_path: 原文件名
         :param new_path: 新文件名
-        :param rmt_mode: RmtMode转移方式
+        :param transfer_type: RmtMode转移方式
         :param over_flag: 是否覆盖，为True时会先删除再转移
         """
         dir_name = org_path.parent
@@ -234,40 +237,40 @@ class FileTransferModule(_ModuleBase):
                     logger.info(f"正在转移音轨文件：{track_file} 到 {new_track_file}")
                     retcode = self.__transfer_command(file_item=track_file,
                                                       target_file=new_track_file,
-                                                      rmt_mode=rmt_mode)
+                                                      transfer_type=transfer_type)
                     if retcode == 0:
-                        logger.info(f"音轨文件 {file_name} {rmt_mode}完成")
+                        logger.info(f"音轨文件 {file_name} {transfer_type}完成")
                     else:
-                        logger.error(f"音轨文件 {file_name} {rmt_mode}失败，错误码：{retcode}")
+                        logger.error(f"音轨文件 {file_name} {transfer_type}失败，错误码：{retcode}")
                 except OSError as reason:
-                    logger.error(f"音轨文件 {file_name} {rmt_mode}失败：{reason}")
+                    logger.error(f"音轨文件 {file_name} {transfer_type}失败：{reason}")
         return 0
 
-    def __transfer_bluray_dir(self, file_path: Path, new_path: Path, rmt_mode: str) -> int:
+    def __transfer_bluray_dir(self, file_path: Path, new_path: Path, transfer_type: str) -> int:
         """
         转移蓝光文件夹
         :param file_path: 原路径
         :param new_path: 新路径
-        :param rmt_mode: RmtMode转移方式
+        :param transfer_type: RmtMode转移方式
         """
-        logger.info(f"正在{rmt_mode}目录：{file_path} 到 {new_path}")
+        logger.info(f"正在{transfer_type}目录：{file_path} 到 {new_path}")
         # 复制
         retcode = self.__transfer_dir_files(src_dir=file_path,
                                             target_dir=new_path,
-                                            rmt_mode=rmt_mode)
+                                            transfer_type=transfer_type)
         if retcode == 0:
-            logger.info(f"文件 {file_path} {rmt_mode}完成")
+            logger.info(f"文件 {file_path} {transfer_type}完成")
         else:
-            logger.error(f"文件{file_path} {rmt_mode}失败，错误码：{retcode}")
+            logger.error(f"文件{file_path} {transfer_type}失败，错误码：{retcode}")
 
         return retcode
 
-    def __transfer_dir_files(self, src_dir: Path, target_dir: Path, rmt_mode: str) -> int:
+    def __transfer_dir_files(self, src_dir: Path, target_dir: Path, transfer_type: str) -> int:
         """
         按目录结构转移所有文件
         :param src_dir: 原路径
         :param target_dir: 新路径
-        :param rmt_mode: RmtMode转移方式
+        :param transfer_type: RmtMode转移方式
         """
         retcode = 0
         for file in src_dir.glob("**/*"):
@@ -279,19 +282,19 @@ class FileTransferModule(_ModuleBase):
                 new_file.parent.mkdir(parents=True, exist_ok=True)
             retcode = self.__transfer_command(file_item=file,
                                               target_file=new_file,
-                                              rmt_mode=rmt_mode)
+                                              transfer_type=transfer_type)
             if retcode != 0:
                 break
 
         return retcode
 
-    def __transfer_file(self, file_item: Path, new_file: Path, rmt_mode: str,
+    def __transfer_file(self, file_item: Path, new_file: Path, transfer_type: str,
                         over_flag: bool = False, old_file: Path = None) -> int:
         """
         转移一个文件，同时处理其他相关文件
         :param file_item: 原文件路径
         :param new_file: 新文件路径
-        :param rmt_mode: RmtMode转移方式
+        :param transfer_type: RmtMode转移方式
         :param over_flag: 是否覆盖，为True时会先删除再转移
         """
         if not over_flag and new_file.exists():
@@ -305,16 +308,16 @@ class FileTransferModule(_ModuleBase):
         new_file.parent.mkdir(parents=True, exist_ok=True)
         retcode = self.__transfer_command(file_item=file_item,
                                           target_file=new_file,
-                                          rmt_mode=rmt_mode)
+                                          transfer_type=transfer_type)
         if retcode == 0:
-            logger.info(f"文件 {file_item} {rmt_mode}完成")
+            logger.info(f"文件 {file_item} {transfer_type}完成")
         else:
-            logger.error(f"文件 {file_item} {rmt_mode}失败，错误码：{retcode}")
+            logger.error(f"文件 {file_item} {transfer_type}失败，错误码：{retcode}")
             return retcode
         # 处理其他相关文件
         return self.__transfer_other_files(org_path=file_item,
                                            new_path=new_file,
-                                           rmt_mode=rmt_mode,
+                                           transfer_type=transfer_type,
                                            over_flag=over_flag)
 
     @staticmethod
@@ -333,14 +336,14 @@ class FileTransferModule(_ModuleBase):
     def transfer_media(self,
                        in_path: Path,
                        mediainfo: MediaInfo,
-                       rmt_mode: str = None,
+                       transfer_type: str,
                        target_dir: Path = None
                        ) -> Union[str, Tuple[bool, Path, list, int, List[Path], str]]:
         """
         识别并转移一个文件、多个文件或者目录
         :param in_path: 转移的路径，可能是一个文件也可以是一个目录
         :param target_dir: 目的文件夹，非空的转移到该文件夹，为空时则按类型转移到配置文件中的媒体库文件夹
-        :param rmt_mode: 文件转移方式
+        :param transfer_type: 文件转移方式
         :param mediainfo: 媒体信息
         :return: 是否蓝光原盘、目的路径、处理文件清单、总大小、失败文件列表、错误信息
         """
@@ -396,7 +399,7 @@ class FileTransferModule(_ModuleBase):
             # 转移蓝光原盘
             retcode = self.__transfer_bluray_dir(file_path=in_path,
                                                  new_path=new_path,
-                                                 rmt_mode=rmt_mode)
+                                                 transfer_type=transfer_type)
             if retcode != 0:
                 return f"{retcode}，蓝光原盘转移失败"
             else:
@@ -458,7 +461,7 @@ class FileTransferModule(_ModuleBase):
                     # 转移文件
                     retcode = self.__transfer_file(file_item=transfer_file,
                                                    new_file=new_file,
-                                                   rmt_mode=rmt_mode,
+                                                   transfer_type=transfer_type,
                                                    over_flag=overflag)
                     if retcode != 0:
                         logger.error(f"{transfer_file} 转移文件失败，错误码：{retcode}")

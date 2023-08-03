@@ -255,14 +255,15 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("list_torrents", status=status, hashs=hashs)
 
-    def transfer(self, path: Path, mediainfo: MediaInfo) -> Optional[TransferInfo]:
+    def transfer(self, path: Path, mediainfo: MediaInfo, transfer_type: str) -> Optional[TransferInfo]:
         """
         文件转移
         :param path:  文件路径
         :param mediainfo:  识别的媒体信息
+        :param transfer_type:  转移模式
         :return: {path, target_path, message}
         """
-        return self.run_module("transfer", path=path, mediainfo=mediainfo)
+        return self.run_module("transfer", path=path, mediainfo=mediainfo, transfer_type=transfer_type)
 
     def transfer_completed(self, hashs: Union[str, list], transinfo: TransferInfo) -> None:
         """
