@@ -10,6 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
 from app.core.event import eventmanager, Event
+from app.db.models.transferhistory import TransferHistory
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
 from app.plugins import _PluginBase
@@ -23,9 +24,9 @@ class MediaSyncDel(_PluginBase):
     # 插件描述
     plugin_desc = "媒体库删除媒体后同步删除历史记录或源文件。"
     # 插件图标
-    plugin_icon = "emby.png"
+    plugin_icon = "sync.png"
     # 主题色
-    plugin_color = "#C90425"
+    plugin_color = "#53BA47"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者
@@ -234,7 +235,7 @@ class MediaSyncDel(_PluginBase):
         # 拼装页面
         contents = []
         for history in historys:
-            type = history.get("type")
+            htype = history.get("type")
             title = history.get("title")
             year = history.get("year")
             season = history.get("season")
@@ -276,7 +277,7 @@ class MediaSyncDel(_PluginBase):
                                             'props': {
                                                 'class': 'pa-0 px-2'
                                             },
-                                            'text': f'类型：{type}'
+                                            'text': f'类型：{htype}'
                                         },
                                         {
                                             'component': 'VCardSubtitle',
@@ -374,8 +375,6 @@ class MediaSyncDel(_PluginBase):
             media_year = del_media.get("year")
             # 媒体路径 /data/series/国产剧/蜀山战纪 (2015)/Season 2/蜀山战纪 - S02E01 - 第1集.mp4
             media_path = del_media.get("path")
-            # id 713083
-            id = del_media.get("id")
             # 季数 S02
             media_season = del_media.get("season")
             # 集数 E02
@@ -392,48 +391,53 @@ class MediaSyncDel(_PluginBase):
             # 删除电影
             if media_type == "Movie":
                 msg = f'电影 {media_name}'
-                transfer_history = self._transferhis.get_by(mtype="电影",
-                                                            title=media_name,
-                                                            year=media_year)
-                logger.info(f"正在同步删除{msg}")
+                transfer_history: List[TransferHistory] = self._transferhis.get_by(
+                    mtype="电影",
+                    title=media_name,
+                    year=media_year)
             # 删除电视剧
             elif media_type == "Series":
                 msg = f'剧集 {media_name}'
-                transfer_history = self._transferhis.get_by(mtype="电视剧",
-                                                            title=media_name,
-                                                            year=media_year)
-                logger.info(f"正在同步删除{msg}")
+                transfer_history: List[TransferHistory] = self._transferhis.get_by(
+                    mtype="电视剧",
+                    title=media_name,
+                    year=media_year)
             # 删除季 S02
             elif media_type == "Season":
                 msg = f'剧集 {media_name} {media_season}'
-                transfer_history = self._transferhis.get_by(mtype="电视剧",
-                                                            title=media_name,
-                                                            year=media_year,
-                                                            season=media_season)
-                logger.info(f"正在同步删除{msg}")
+                transfer_history: List[TransferHistory] = self._transferhis.get_by(
+                    mtype="电视剧",
+                    title=media_name,
+                    year=media_year,
+                    season=media_season)
             # 删除剧集S02E02
             elif media_type == "Episode":
                 msg = f'剧集 {media_name} {media_season}{media_episode}'
-                transfer_history = self._transferhis.get_by(mtype="电视剧",
-                                                            title=media_name,
-                                                            year=media_year,
-                                                            season=media_season,
-                                                            episode=media_episode)
-                logger.info(f"正在同步删除{msg}")
+                transfer_history: List[TransferHistory] = self._transferhis.get_by(
+                    mtype="电视剧",
+                    title=media_name,
+                    year=media_year,
+                    season=media_season,
+                    episode=media_episode)
             else:
                 continue
+
+            logger.info(f"正在同步删除 {msg}")
 
             if not transfer_history:
                 logger.info(f"未获取到 {msg} 转移记录")
                 continue
 
-            logger.info(f"获取到删除媒体数量 {len(transfer_history)}")
+            logger.info(f"获取到删除历史记录数量 {len(transfer_history)}")
 
             # 开始删除
             image = 'https://emby.media/notificationicon.png'
             for transferhis in transfer_history:
                 image = transferhis.image
                 self._transferhis.delete(transferhis.id)
+                # 删除种子任务
+                if self._del_source and transferhis.download_hash:
+                    self.chain.remove_torrents(transferhis.download_hash)
 
             logger.info(f"同步删除 {msg} 完成！")
 
@@ -441,7 +445,7 @@ class MediaSyncDel(_PluginBase):
             if self._notify:
                 self.post_message(
                     mtype=NotificationType.MediaServer,
-                    title="Emby同步删除任务完成",
+                    title="媒体库同步删除任务完成",
                     text=f"{msg}\n"
                          f"数量 {len(transfer_history)}\n"
                          f"时间 {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}",
@@ -488,15 +492,15 @@ class MediaSyncDel(_PluginBase):
         del_medias = []
         # 循环获取媒体信息
         for match in matches:
-            time = match[0]
+            mtime = match[0]
             # 排除已处理的媒体信息
-            if last_time and time < last_time:
+            if last_time and mtime < last_time:
                 continue
 
-            type = match[1]
+            mtype = match[1]
             name = match[2]
             path = match[3]
-            id = match[4]
+            mid = match[4]
 
             year = None
             year_pattern = r'\(\d+\)'
@@ -506,7 +510,7 @@ class MediaSyncDel(_PluginBase):
 
             season = None
             episode = None
-            if type == 'Episode' or type == 'Season':
+            if mtype == 'Episode' or mtype == 'Season':
                 name_pattern = r"\/([\u4e00-\u9fa5]+)(?= \()"
                 season_pattern = r"Season\s*(\d+)"
                 episode_pattern = r"S\d+E(\d+)"
@@ -533,12 +537,12 @@ class MediaSyncDel(_PluginBase):
                     episode = None
 
             media = {
-                "time": time,
-                "type": type,
+                "time": mtime,
+                "type": mtype,
                 "name": name,
                 "year": year,
                 "path": path,
-                "id": id,
+                "id": mid,
                 "season": season,
                 "episode": episode,
             }
@@ -572,15 +576,15 @@ class MediaSyncDel(_PluginBase):
         del_medias = []
         # 循环获取媒体信息
         for match in matches:
-            time = match[0]
+            mtime = match[0]
             # 排除已处理的媒体信息
             if time < last_time:
                 continue
 
-            type = match[1]
+            mtype = match[1]
             name = match[2]
             path = match[3]
-            id = match[4]
+            mid = match[4]
 
             year = None
             year_pattern = r'\(\d+\)'
@@ -590,7 +594,7 @@ class MediaSyncDel(_PluginBase):
 
             season = None
             episode = None
-            if type == 'Episode' or type == 'Season':
+            if mtype == 'Episode' or mtype == 'Season':
                 name_pattern = r"\/([\u4e00-\u9fa5]+)(?= \()"
                 season_pattern = r"Season\s*(\d+)"
                 episode_pattern = r"S\d+E(\d+)"
@@ -617,12 +621,12 @@ class MediaSyncDel(_PluginBase):
                     episode = None
 
             media = {
-                "time": time,
-                "type": type,
+                "time": mtime,
+                "type": mtype,
                 "name": name,
                 "year": year,
                 "path": path,
-                "id": id,
+                "id": mid,
                 "season": season,
                 "episode": episode,
             }
@@ -647,7 +651,7 @@ class MediaSyncDel(_PluginBase):
         except Exception as e:
             logger.error("退出插件失败：%s" % str(e))
 
-    @eventmanager.register(EventType.HistoryDeleted)
+    @eventmanager.register(EventType.MediaDeleted)
     def remote_sync_del(self, event: Event):
         """
         媒体库同步删除

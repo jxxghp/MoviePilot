@@ -32,6 +32,8 @@ class EventType(Enum):
     DownloadAdded = "download.added"
     # 删除历史记录
     HistoryDeleted = "history.deleted"
+    # 删除媒体库文件
+    MediaDeleted = "media.deleted"
 
 
 # 系统配置Key字典
