@@ -60,6 +60,9 @@ class CustomHosts(_PluginBase):
                     "enable": self._enabled
                 })
 
+    def get_state(self) -> bool:
+        return self._enabled
+
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
         pass

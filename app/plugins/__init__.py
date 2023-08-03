@@ -96,6 +96,13 @@ class _PluginBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def get_state(self) -> bool:
+        """
+        获取插件运行状态
+        """
+        pass
+
+    @abstractmethod
     def stop_service(self):
         """
         停止插件

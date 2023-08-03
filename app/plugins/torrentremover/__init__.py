@@ -29,11 +29,14 @@ class TorrentRemover(_PluginBase):
 
     # 私有属性
     downloader = None
-    _enable = False
+    _enabled = False
 
     def init_plugin(self, config: dict = None):
         if config:
-            self._enable = config.get("enable")
+            self._enabled = config.get("enabled")
+
+    def get_state(self) -> bool:
+        return self._enabled
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -56,7 +59,7 @@ class TorrentRemover(_PluginBase):
         """
         联动删除下载器中的下载任务
         """
-        if not self._enable:
+        if not self._enabled:
             return
         event_info = event.event_data
         if not event_info:

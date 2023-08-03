@@ -113,6 +113,9 @@ class AutoSignIn(_PluginBase):
                 self._scheduler.print_jobs()
                 self._scheduler.start()
 
+    def get_state(self) -> bool:
+        return self._enabled
+
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
         """

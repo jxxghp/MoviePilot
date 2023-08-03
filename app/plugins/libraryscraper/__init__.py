@@ -36,7 +36,7 @@ class LibraryScraper(_PluginBase):
     _scheduler = None
     _scraper = None
     # 限速开关
-    _enable = False
+    _enabled = False
     _cron = None
     _mode = None
     _scraper_path = None
@@ -47,7 +47,7 @@ class LibraryScraper(_PluginBase):
     def init_plugin(self, config: dict = None):
         # 读取配置
         if config:
-            self._enable = config.get("enable")
+            self._enabled = config.get("enabled")
             self._cron = config.get("cron")
             self._mode = config.get("mode")
             self._scraper_path = config.get("scraper_path")
@@ -57,7 +57,7 @@ class LibraryScraper(_PluginBase):
         self.stop_service()
 
         # 启动定时任务 & 立即运行一次
-        if self._enable:
+        if self._enabled:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             if self._cron:
                 logger.info(f"媒体库刮削服务启动，周期：{self._cron}")
@@ -67,6 +67,9 @@ class LibraryScraper(_PluginBase):
                 # 启动服务
                 self._scheduler.print_jobs()
                 self._scheduler.start()
+
+    def get_state(self) -> bool:
+        return self._enabled
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:

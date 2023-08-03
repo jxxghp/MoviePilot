@@ -173,6 +173,9 @@ class ChineseSubFinder(_PluginBase):
             "remote_path": ""
         }
 
+    def get_state(self) -> bool:
+        return self._enabled
+
     def get_page(self) -> List[dict]:
         pass
 
