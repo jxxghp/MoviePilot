@@ -349,8 +349,19 @@ class FileTransferModule(_ModuleBase):
         if not target_dir.exists():
             return f"{target_dir} 目标路径不存在"
 
-        # 目的目录加上类型和二级分类
-        target_dir = target_dir / mediainfo.type.value / mediainfo.category
+        if mediainfo.type == MediaType.MOVIE:
+            if settings.LIBRARY_MOVIE_NAME:
+                target_dir = target_dir / settings.LIBRARY_MOVIE_NAME / mediainfo.category
+            else:
+                # 目的目录加上类型和二级分类
+                target_dir = target_dir / mediainfo.type.value / mediainfo.category
+
+        if mediainfo.type == MediaType.TV:
+            if settings.LIBRARY_TV_NAME:
+                target_dir = target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
+            else:
+                # 目的目录加上类型和二级分类
+                target_dir = target_dir / mediainfo.type.value / mediainfo.category
 
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \
