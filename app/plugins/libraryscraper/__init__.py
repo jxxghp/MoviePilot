@@ -38,9 +38,8 @@ class LibraryScraper(_PluginBase):
     # 限速开关
     _enabled = False
     _cron = None
-    _mode = None
-    _scraper_path = None
-    _exclude_path = None
+    _scraper_paths = None
+    _exclude_paths = None
     # 退出事件
     _event = Event()
     
@@ -49,9 +48,8 @@ class LibraryScraper(_PluginBase):
         if config:
             self._enabled = config.get("enabled")
             self._cron = config.get("cron")
-            self._mode = config.get("mode")
-            self._scraper_path = config.get("scraper_path")
-            self._exclude_path = config.get("exclude_path")
+            self._scraper_paths = config.get("scraper_paths")
+            self._exclude_paths = config.get("exclude_paths")
 
         # 停止现有任务
         self.stop_service()
@@ -63,6 +61,10 @@ class LibraryScraper(_PluginBase):
                 logger.info(f"媒体库刮削服务启动，周期：{self._cron}")
                 self._scheduler.add_job(self.__libraryscraper,
                                         CronTrigger.from_crontab(self._cron))
+            else:
+                logger.info(f"媒体库刮削服务启动，周期：每7天")
+                self._scheduler.add_job(self.__libraryscraper,
+                                        CronTrigger.from_crontab("0 0 */7 * *"))
             if self._scheduler.get_jobs():
                 # 启动服务
                 self._scheduler.print_jobs()
