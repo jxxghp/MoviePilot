@@ -157,14 +157,8 @@ class SearchChain(ChainBase):
                     logger.info(f'{mediainfo.title} 匹配到资源：{torrent.site_name} - {torrent.title}')
                     _match_torrents.append(torrent)
                     continue
-                # 识别前预处理
-                result: Optional[tuple] = self.prepare_recognize(title=torrent.title, subtitle=torrent.description)
-                if result:
-                    title, subtitle = result
-                else:
-                    title, subtitle = torrent.title, torrent.description
                 # 识别
-                torrent_meta = MetaInfo(title=title, subtitle=subtitle)
+                torrent_meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
                 # 比对类型
                 if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
                     logger.warn(f'{torrent.site_name} - {torrent.title} 类型不匹配')

@@ -94,16 +94,6 @@ class ChainBase(metaclass=ABCMeta):
                 logger.error(f"运行模块 {method} 出错：{module.__class__.__name__} - {err}\n{traceback.print_exc()}")
         return result
 
-    def prepare_recognize(self, title: str,
-                          subtitle: str = None) -> Tuple[str, str]:
-        """
-        处理各类特别命名，以便识别
-        :param title:     标题
-        :param subtitle:  副标题
-        :return: 处理后的标题、副标题，该方法可被多个模块同时处理
-        """
-        return self.run_module("prepare_recognize", title=title, subtitle=subtitle)
-
     def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
                         tmdbid: int = None) -> Optional[MediaInfo]:

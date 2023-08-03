@@ -30,7 +30,7 @@ class TransferHistory(Base):
     tvdbid = Column(Integer)
     doubanid = Column(String)
     # Sxx
-    seasons = Column(Integer)
+    seasons = Column(String)
     # Exx
     episodes = Column(String)
     # 海报
@@ -58,6 +58,10 @@ class TransferHistory(Base):
     @staticmethod
     def get_by_hash(db: Session, download_hash: str):
         return db.query(TransferHistory).filter(TransferHistory.download_hash == download_hash).first()
+
+    @staticmethod
+    def get_by_src(db: Session, src: str):
+        return db.query(TransferHistory).filter(TransferHistory.src == src).first()
 
     @staticmethod
     def statistic(db: Session, days: int = 7):

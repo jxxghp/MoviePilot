@@ -4,6 +4,7 @@ from typing import Any, List, Dict, Tuple
 
 from app.chain import ChainBase
 from app.core.config import settings
+from app.core.event import EventManager
 from app.db.models import Base
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -44,6 +45,8 @@ class _PluginBase(metaclass=ABCMeta):
         self.systemconfig = SystemConfigOper()
         # 系统消息
         self.systemmessage = MessageHelper()
+        # 事件管理器
+        self.eventmanager = EventManager()
 
     @abstractmethod
     def init_plugin(self, config: dict = None):

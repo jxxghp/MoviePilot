@@ -17,6 +17,13 @@ class TransferHistoryOper(DbOper):
         """
         return TransferHistory.search_by_title(self._db, title)
 
+    def get_by_src(self, src: str) -> Any:
+        """
+        按源查询转移记录
+        :param src: 数据key
+        """
+        return TransferHistory.get_by_src(self._db, src)
+
     def add(self, **kwargs):
         """
         新增转移历史
@@ -36,7 +43,8 @@ class TransferHistoryOper(DbOper):
         """
         return TransferHistory.statistic(self._db, days)
 
-    def get_by(self, mtype: str, title: str, year: int, season=None, episode=None) -> Any:
+    def get_by(self, mtype: str, title: str, year: int,
+               season: str = None, episode: str = None) -> Any:
         """
         按类型、标题、年份、季集查询转移记录
         """

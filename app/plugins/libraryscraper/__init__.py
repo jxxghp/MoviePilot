@@ -54,8 +54,8 @@ class LibraryScraper(_PluginBase):
         if config:
             self._enabled = config.get("enabled")
             self._cron = config.get("cron")
-            self._scraper_paths = config.get("scraper_paths")
-            self._exclude_paths = config.get("exclude_paths")
+            self._scraper_paths = config.get("scraper_paths") or ""
+            self._exclude_paths = config.get("exclude_paths") or ""
 
         # 停止现有任务
         self.stop_service()

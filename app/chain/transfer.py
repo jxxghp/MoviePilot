@@ -89,16 +89,10 @@ class TransferChain(ChainBase):
             self.progress.update(value=processed_num / total_num * 100,
                                  text=f"正在转移 {torrent.title} ...",
                                  key=ProgressKey.FileTransfer)
-            # 识别前预处理
-            result: Optional[tuple] = self.prepare_recognize(title=torrent.title)
-            if result:
-                title, subtitle = result
-            else:
-                title, subtitle = torrent.title, None
             # 识别元数据
-            meta: MetaBase = MetaInfo(title=title, subtitle=subtitle)
+            meta: MetaBase = MetaInfo(title=torrent.title)
             if not meta.name:
-                logger.error(f'未识别到元数据，标题：{title}')
+                logger.error(f'未识别到元数据，标题：{torrent.title}')
                 continue
             if not arg_mediainfo:
                 # 查询下载记录识别情况
@@ -110,7 +104,7 @@ class TransferChain(ChainBase):
                     if mtype == MediaType.TV \
                             and ((not meta.season_list and downloadhis.seasons)
                                  or (not meta.episode_list and downloadhis.episodes)):
-                        meta = MetaInfo(f"{title} {downloadhis.seasons} {downloadhis.episodes}")
+                        meta = MetaInfo(f"{torrent.title} {downloadhis.seasons} {downloadhis.episodes}")
                     # 按TMDBID识别
                     mediainfo = self.recognize_media(mtype=mtype,
                                                      tmdbid=downloadhis.tmdbid)
@@ -195,7 +189,7 @@ class TransferChain(ChainBase):
             )
             # 转移完成
             self.transfer_completed(hashs=torrent.hash, transinfo=transferinfo)
-            # 刮剥
+            # 刮削元数据
             self.scrape_metadata(path=transferinfo.target_path, mediainfo=mediainfo)
             # 刷新媒体库
             self.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)

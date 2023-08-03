@@ -52,10 +52,6 @@ class SubscribeChain(ChainBase):
         识别媒体信息并添加订阅
         """
         logger.info(f'开始添加订阅，标题：{title} ...')
-        # 识别前预处理
-        result: Optional[tuple] = self.prepare_recognize(title=title)
-        if result:
-            title, _ = result
         # 识别元数据
         metainfo = MetaInfo(title)
         if year:
@@ -385,15 +381,8 @@ class SubscribeChain(ChainBase):
                     continue
                 for torrent in torrents:
                     logger.info(f'处理资源：{torrent.title} ...')
-                    # 识别前预处理
-                    result: Optional[tuple] = self.prepare_recognize(title=torrent.title,
-                                                                     subtitle=torrent.description)
-                    if result:
-                        title, subtitle = result
-                    else:
-                        title, subtitle = torrent.title, torrent.description
                     # 识别
-                    meta = MetaInfo(title=title, subtitle=subtitle)
+                    meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
                     # 识别媒体信息
                     mediainfo: MediaInfo = self.recognize_media(meta=meta)
                     if not mediainfo:

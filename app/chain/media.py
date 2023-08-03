@@ -18,10 +18,6 @@ class MediaChain(ChainBase):
         根据主副标题识别媒体信息
         """
         logger.info(f'开始识别媒体信息，标题：{title}，副标题：{subtitle} ...')
-        # 识别前预处理
-        result: Optional[tuple] = self.prepare_recognize(title=title, subtitle=subtitle)
-        if result:
-            title, subtitle = result
         # 识别元数据
         metainfo = MetaInfo(title, subtitle)
         # 识别媒体信息
