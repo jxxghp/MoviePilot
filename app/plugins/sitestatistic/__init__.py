@@ -986,7 +986,7 @@ class SiteStatistic(_PluginBase):
                 return
 
             # 并发刷新
-            with ThreadPool(min(len(refresh_sites), self._queue_cnt)) as p:
+            with ThreadPool(min(len(refresh_sites), int(self._queue_cnt or 5))) as p:
                 p.map(self.__refresh_site_data, refresh_sites)
 
             # 获取今天的日期
