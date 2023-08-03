@@ -65,6 +65,7 @@ class DirMonitor(_PluginBase):
     transferhis = None
     _observer = []
     _enabled = False
+    _notify = False
     # 模式 compatibility/fast
     _mode = "fast"
     # 转移方式
@@ -78,6 +79,7 @@ class DirMonitor(_PluginBase):
         # 读取配置
         if config:
             self._enabled = config.get("enabled")
+            self._notify = config.get("notify")
             self._mode = config.get("mode")
             self._transfer_type = config.get("transfer_type")
             self._monitor_dirs = config.get("monitor_dirs") or ""
@@ -200,10 +202,11 @@ class DirMonitor(_PluginBase):
                     mediainfo: MediaInfo = self.chain.recognize_media(meta=file_meta)
                     if not mediainfo:
                         logger.warn(f'未识别到媒体信息，标题：{file_meta.name}')
-                        self.chain.post_message(Notification(
-                            mtype=NotificationType.Manual,
-                            title=f"{file_path.name} 未识别到媒体信息，无法入库！"
-                        ))
+                        if self._notify:
+                            self.chain.post_message(Notification(
+                                mtype=NotificationType.Manual,
+                                title=f"{file_path.name} 未识别到媒体信息，无法入库！"
+                            ))
                         return
                     logger.info(f"{file_path.name} 识别为：{mediainfo.type.value} {mediainfo.title_year}")
 
@@ -218,11 +221,12 @@ class DirMonitor(_PluginBase):
                     if not transferinfo or not transferinfo.target_path:
                         # 转移失败
                         logger.warn(f"{file_path.name} 入库失败")
-                        self.chain.post_message(Notification(
-                            title=f"{mediainfo.title_year}{file_meta.season_episode} 入库失败！",
-                            text=f"原因：{transferinfo.message if transferinfo else '未知'}",
-                            image=mediainfo.get_message_image()
-                        ))
+                        if self._notify:
+                            self.chain.post_message(Notification(
+                                title=f"{mediainfo.title_year}{file_meta.season_episode} 入库失败！",
+                                text=f"原因：{transferinfo.message if transferinfo else '未知'}",
+                                image=mediainfo.get_message_image()
+                            ))
                         return
 
                     # 新增转移成功历史记录
@@ -249,7 +253,8 @@ class DirMonitor(_PluginBase):
                     # 刷新媒体库
                     self.chain.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
                     # 发送通知
-                    self.chain.__send_transfer_message(meta=file_meta, mediainfo=mediainfo, transferinfo=transferinfo)
+                    if self._notify:
+                        self.chain.__send_transfer_message(meta=file_meta, mediainfo=mediainfo, transferinfo=transferinfo)
                     # 广播事件
                     self.eventmanager.send_event(EventType.TransferComplete, {
                         'meta': file_meta,
@@ -290,6 +295,22 @@ class DirMonitor(_PluginBase):
                                         'props': {
                                             'model': 'enabled',
                                             'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'notify',
+                                            'label': '发送通知',
                                         }
                                     }
                                 ]
@@ -391,6 +412,7 @@ class DirMonitor(_PluginBase):
             }
         ], {
             "enabled": False,
+            "notify": False,
             "mode": "fast",
             "transfer_type": settings.TRANSFER_TYPE,
             "monitor_dirs": "",
