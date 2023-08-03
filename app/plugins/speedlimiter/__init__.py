@@ -11,7 +11,7 @@ class SpeedLimiter(_PluginBase):
     # 插件名称
     plugin_name = "播放限速"
     # 插件描述
-    plugin_desc = "媒体服务器播通过外网播放时，自动对下载器进行限速。"
+    plugin_desc = "外网播放媒体库视频时，自动对下载器进行限速。"
     # 插件图标
     plugin_icon = "SpeedLimiter.jpg"
     # 主题色
