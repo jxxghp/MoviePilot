@@ -77,3 +77,27 @@ class TransferHistory(Base):
     @staticmethod
     def count_by_title(db: Session, title: str):
         return db.query(func.count(TransferHistory.id)).filter(TransferHistory.title.like(f'%{title}%')).first()[0]
+
+    @staticmethod
+    def list_by(db: Session, mtype: str, title: str, year: int, season=None, episode=None):
+        """
+        据tmdbid、season、season_episode查询转移记录
+        """
+        # 电视剧所有季集｜电影
+        if not season and not episode:
+            return db.query(TransferHistory).filter(TransferHistory.type == mtype,
+                                                    TransferHistory.title == title,
+                                                    TransferHistory.year == year).all()
+        # 电视剧某季
+        if season and not episode:
+            return db.query(TransferHistory).filter(TransferHistory.type == mtype,
+                                                    TransferHistory.title == title,
+                                                    TransferHistory.year == year,
+                                                    TransferHistory.seasons == season).all()
+        # 电视剧某季某集
+        if season and episode:
+            return db.query(TransferHistory).filter(TransferHistory.type == mtype,
+                                                    TransferHistory.title == title,
+                                                    TransferHistory.year == year,
+                                                    TransferHistory.seasons == season,
+                                                    TransferHistory.episodes == episode).all()
