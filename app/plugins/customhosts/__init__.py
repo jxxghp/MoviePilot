@@ -1,13 +1,11 @@
 from typing import List, Tuple, Dict, Any
 
-from app.core.event import eventmanager
+from python_hosts import Hosts, HostsEntry
+
 from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas.types import EventType
 from app.utils.ip import IpUtils
 from app.utils.system import SystemUtils
-
-from python_hosts import Hosts, HostsEntry
 
 
 class CustomHosts(_PluginBase):
@@ -34,16 +32,16 @@ class CustomHosts(_PluginBase):
 
     # 私有属性
     _hosts = []
-    _enable = False
+    _enabled = False
 
     def init_plugin(self, config: dict = None):
         # 读取配置
         if config:
-            self._enable = config.get("enable")
+            self._enabled = config.get("enabled")
             self._hosts = config.get("hosts")
             if isinstance(self._hosts, str):
                 self._hosts = str(self._hosts).split('\n')
-            if self._enable and self._hosts:
+            if self._enabled and self._hosts:
                 # 排除空的host
                 new_hosts = []
                 for host in self._hosts:
@@ -53,13 +51,13 @@ class CustomHosts(_PluginBase):
 
                 # 添加到系统
                 error_flag, error_hosts = self.__add_hosts_to_system(self._hosts)
-                self._enable = self._enable and not error_flag
+                self._enabled = self._enabled and not error_flag
 
                 # 更新错误Hosts
                 self.update_config({
                     "hosts": self._hosts,
                     "err_hosts": error_hosts,
-                    "enable": self._enable
+                    "enable": self._enabled
                 })
 
     @staticmethod
@@ -70,7 +68,79 @@ class CustomHosts(_PluginBase):
         pass
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        pass
+        return [
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'hosts',
+                                            'label': '系统hosts'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'err_hosts',
+                                            'readonly': True,
+                                            'label': '错误记录'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "hosts": "",
+            "err_hosts": ""
+        }
 
     def get_page(self) -> List[dict]:
         pass
@@ -118,6 +188,8 @@ class CustomHosts(_PluginBase):
             except Exception as err:
                 err_hosts.append(host + "\n")
                 logger.error(f"{host} 格式转换错误：{str(err)}")
+                # 推送实时消息
+                self.systemmessage.put(f"{host} 格式转换错误：{str(err)}")
 
         # 写入系统hosts
         if new_entrys:
@@ -131,10 +203,9 @@ class CustomHosts(_PluginBase):
             except Exception as err:
                 err_flag = True
                 logger.error(f"更新系统hosts文件失败：{str(err) or '请检查权限'}")
+                # 推送实时消息
+                self.systemmessage.put(f"更新系统hosts文件失败：{str(err) or '请检查权限'}")
         return err_flag, err_hosts
-
-    def get_state(self):
-        return self._enable and self._hosts and self._hosts[0]
 
     def stop_service(self):
         """
