@@ -36,3 +36,19 @@ class TransferHistoryOper(DbOper):
         """
         return TransferHistory.statistic(self._db, days)
 
+    def get_by(self, mtype: str, title: str, year: int, season=None, episode=None) -> Any:
+        """
+        按类型、标题、年份、季集查询转移记录
+        """
+        return TransferHistory.list_by(db=self._db,
+                                       mtype=mtype,
+                                       title=title,
+                                       year=year,
+                                       season=season,
+                                       episode=episode)
+
+    def delete(self, historyid):
+        """
+        删除转移记录
+        """
+        TransferHistory.delete(self._db, historyid)
