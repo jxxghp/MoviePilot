@@ -42,6 +42,7 @@ RUN apt-get update \
         bash \
     && mkdir -p /etc/nginx ${HOME} \
     && cp -f nginx.conf /etc/nginx/nginx.template.conf \
+    && mv ./public / \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
     && pip install --upgrade pip \

@@ -38,8 +38,8 @@ jobs:
           cd MoviePilot-Frontend
           yarn && yarn build
           cd ..
-          mkdir -p /public
-          cp -rf ./MoviePilot-Frontend/dist/* /public/
+          mkdir -p public
+          cp -rf ./MoviePilot-Frontend/dist/* ./public/
           rm -rf MoviePilot-Frontend
           chmod +x start.sh
 
