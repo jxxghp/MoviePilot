@@ -75,7 +75,7 @@ class AutoSignIn(_PluginBase):
             self._enabled = config.get("enabled")
             self._cron = config.get("cron")
             self._notify = config.get("notify")
-            self._queue_cnt = config.get("queue_cnt")
+            self._queue_cnt = config.get("queue_cnt") or 5
             self._sign_sites = config.get("sign_sites")
 
         # 加载模块
@@ -385,7 +385,7 @@ class AutoSignIn(_PluginBase):
 
         # 执行签到
         logger.info("开始执行签到任务 ...")
-        with ThreadPool(min(len(sign_sites), self._queue_cnt)) as p:
+        with ThreadPool(min(len(sign_sites), int(self._queue_cnt))) as p:
             status = p.map(self.signin_site, sign_sites)
 
         if status:
