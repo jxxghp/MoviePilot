@@ -525,6 +525,8 @@ class DownloadChain(ChainBase):
                     if meta.begin_season \
                             and season not in meta.season_list:
                         continue
+                    if not episodes:
+                        continue
                     exist_seasons = exists_tvs.seasons
                     if exist_seasons.get(season):
                         # 取差集

@@ -408,23 +408,20 @@ class DoubanRank(_PluginBase):
                         logger.warn(f'未识别到媒体信息，标题：{title}，豆瓣ID：{douban_id}')
                         continue
                     # 查询缺失的媒体信息
-                    exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
+                    exist_flag, _ = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
                     if exist_flag:
                         logger.info(f'{mediainfo.title_year} 媒体库中已存在')
-                        action = "exist"
-                    else:
-                        # 添加订阅
-                        self.subscribechain.add(title=mediainfo.title,
-                                                year=mediainfo.year,
-                                                mtype=mediainfo.type,
-                                                tmdbid=mediainfo.tmdb_id,
-                                                season=meta.begin_season,
-                                                exist_ok=True,
-                                                username="豆瓣榜单")
-                        action = "subscribe"
+                        continue
+                    # 添加订阅
+                    self.subscribechain.add(title=mediainfo.title,
+                                            year=mediainfo.year,
+                                            mtype=mediainfo.type,
+                                            tmdbid=mediainfo.tmdb_id,
+                                            season=meta.begin_season,
+                                            exist_ok=True,
+                                            username="豆瓣榜单")
                     # 存储历史记录
                     history.append({
-                        "action": action,
                         "title": title,
                         "type": mediainfo.type.value,
                         "year": mediainfo.year,
