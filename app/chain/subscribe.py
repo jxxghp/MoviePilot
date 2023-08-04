@@ -368,7 +368,7 @@ class SubscribeChain(ChainBase):
             domain = StringUtils.get_url_domain(indexer.get("domain"))
             torrents: List[TorrentInfo] = self.refresh_torrents(site=indexer)
             # 按pubdate降序排列
-            torrents.sort(key=lambda x: x.pubdate, reverse=True)
+            torrents.sort(key=lambda x: x.pubdate or '', reverse=True)
             # 取前N条
             torrents = torrents[:settings.CACHE_CONF.get('refresh')]
             if torrents:
