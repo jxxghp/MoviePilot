@@ -219,18 +219,6 @@ class CustomHosts(_PluginBase):
                 self.systemmessage.put(f"更新系统hosts文件失败：{str(err) or '请检查权限'}")
         return err_flag, err_hosts
 
-    @eventmanager.register(EventType.PluginReload)
-    def reload(self, event):
-        """
-        响应插件重载事件
-        """
-        plugin_id = event.event_data.get("plugin_id")
-        if not plugin_id:
-            return
-        if plugin_id != self.__class__.__name__:
-            return
-        return self.init_plugin(self.get_config())
-
     def stop_service(self):
         """
         退出插件

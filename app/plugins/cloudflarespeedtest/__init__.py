@@ -171,11 +171,13 @@ class CloudflareSpeedTest(_PluginBase):
                                 new_hosts.append(host)
 
                     # 更新自定义Hosts
-                    self.update_config({
-                        "hosts": new_hosts,
-                        "err_hosts": err_hosts,
-                        "enable": enable
-                    }, "CustomHosts")
+                    self.update_config(
+                        {
+                            "hosts": new_hosts,
+                            "err_hosts": err_hosts,
+                            "enable": enable
+                        }, "CustomHosts"
+                    )
 
                     # 更新优选ip
                     old_ip = self._cf_ip
