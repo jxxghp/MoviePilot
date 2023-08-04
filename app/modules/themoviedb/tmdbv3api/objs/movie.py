@@ -1,7 +1,4 @@
-import warnings
 from ..tmdb import TMDb
-from .find import Find
-from .search import Search
 
 
 class Movie(TMDb):

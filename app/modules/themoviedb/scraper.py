@@ -116,8 +116,6 @@ class TmdbScraper:
         """
         生成公共NFO
         """
-        # TMDBINFO
-        tmdbinfo = mediainfo.tmdb_info
         # 添加时间
         DomUtils.add_node(doc, root, "dateadded",
                           time.strftime('%Y-%m-%d %H:%M:%S',
@@ -160,19 +158,11 @@ class TmdbScraper:
             DomUtils.add_node(doc, xactor, "thumb", actor.get('image'))
             DomUtils.add_node(doc, xactor, "profile", actor.get('profile'))
         # 风格
-        genres = tmdbinfo.get("genres") or []
+        genres = mediainfo.genres or []
         for genre in genres:
             DomUtils.add_node(doc, root, "genre", genre.get("name") or "")
         # 评分
         DomUtils.add_node(doc, root, "rating", mediainfo.vote_average or "0")
-        # 评级
-        if tmdbinfo.get("releases") and tmdbinfo.get("releases").get("countries"):
-            releases = [i for i in tmdbinfo.get("releases").get("countries") if
-                        i.get("certification") and i.get("certification").strip()]
-            # 国内没有分级，所以沿用美国的分级
-            us_release = next((c for c in releases if c.get("iso_3166_1") == "US"), None)
-            if us_release:
-                DomUtils.add_node(doc, root, "mpaa", us_release.get("certification") or "")
 
         return doc
 

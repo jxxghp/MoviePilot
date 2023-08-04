@@ -1,6 +1,4 @@
-import warnings
 from ..tmdb import TMDb
-from .search import Search
 
 
 class Person(TMDb):

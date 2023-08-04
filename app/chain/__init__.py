@@ -1,3 +1,4 @@
+import gc
 import pickle
 import traceback
 from abc import ABCMeta
@@ -55,6 +56,10 @@ class ChainBase(metaclass=ABCMeta):
                 pickle.dump(cache, f)
         except Exception as err:
             logger.error(f"保存缓存 {filename} 出错：{err}")
+        finally:
+            # 主动资源回收
+            del cache
+            gc.collect()
 
     def run_module(self, method: str, *args, **kwargs) -> Any:
         """

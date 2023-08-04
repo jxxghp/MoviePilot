@@ -1,6 +1,5 @@
 import json
 import re
-import gc
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
 
@@ -399,15 +398,14 @@ class SubscribeChain(ChainBase):
                     # 如果超过了200条则移除最早的一条
                     if len(torrents_cache[domain]) > settings.CACHE_CONF.get('torrents'):
                         torrents_cache[domain].pop(0)
+                # 回收资源
+                del torrents
             else:
                 logger.info(f'{indexer.get("name")} 获取到种子')
         # 从缓存中匹配订阅
         self.__match(torrents_cache)
         # 保存缓存到本地
         self.save_cache(torrents_cache, self._cache_file)
-        # 主动资源回收
-        del torrents_cache
-        gc.collect()
 
     def __match(self, torrents_cache: Dict[str, List[Context]]):
         """

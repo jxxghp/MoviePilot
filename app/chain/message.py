@@ -1,4 +1,3 @@
-import gc
 from typing import Any
 
 from app.chain.download import *
@@ -316,9 +315,6 @@ class MessageChain(ChainBase):
                                        userid=userid, total=len(medias))
         # 保存缓存
         self.save_cache(user_cache, self._cache_file)
-        # 主动资源回收
-        del user_cache
-        gc.collect()
 
     def __post_medias_message(self, channel: MessageChannel,
                               title: str, items: list, userid: str, total: int):
@@ -339,6 +335,5 @@ class MessageChain(ChainBase):
         self.post_torrents_message(Notification(
             channel=channel,
             title=f"【{title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择 p: 上一页 n: 下一页）",
-            items=items,
             userid=userid
         ), torrents=items)

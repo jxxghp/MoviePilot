@@ -9,8 +9,8 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.themoviedb.category import CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
-from app.modules.themoviedb.tmdbapi import TmdbHelper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
+from app.modules.themoviedb.tmdbapi import TmdbHelper
 from app.schemas.types import MediaType, MediaImageType
 from app.utils.system import SystemUtils
 
