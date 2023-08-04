@@ -500,7 +500,6 @@ class MediaSyncDel(_PluginBase):
             mtype = match[1]
             name = match[2]
             path = match[3]
-            mid = match[4]
 
             year = None
             year_pattern = r'\(\d+\)'
@@ -542,7 +541,6 @@ class MediaSyncDel(_PluginBase):
                 "name": name,
                 "year": year,
                 "path": path,
-                "id": mid,
                 "season": season,
                 "episode": episode,
             }
@@ -571,7 +569,7 @@ class MediaSyncDel(_PluginBase):
             return []
 
         # 正则解析删除的媒体信息
-        pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3}) Info App: Removing item from database, Type: (\w+), Name: (.*), Path: (.*), Id: (\d+)'
+        pattern = r'\[(.*?)\].*?Removing item, Type: "(.*?)", Name: "(.*?)", Path: "(.*?)"'
         matches = re.findall(pattern, log_res.text)
 
         del_medias = []
@@ -585,7 +583,6 @@ class MediaSyncDel(_PluginBase):
             mtype = match[1]
             name = match[2]
             path = match[3]
-            mid = match[4]
 
             year = None
             year_pattern = r'\(\d+\)'
@@ -627,7 +624,6 @@ class MediaSyncDel(_PluginBase):
                 "name": name,
                 "year": year,
                 "path": path,
-                "id": mid,
                 "season": season,
                 "episode": episode,
             }
