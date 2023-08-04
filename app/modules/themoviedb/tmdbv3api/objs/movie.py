@@ -324,25 +324,3 @@ class Movie(TMDb):
             params=params,
             key="results"
         )
-
-    def search(self, term, page=1):
-        """
-        Search for movies.
-        :param term: str
-        :param page: int
-        :return:
-        """
-        warnings.warn("search method is deprecated use tmdbv3api.Search().movies(term)",
-                      DeprecationWarning)
-        return Search().movies(term, page=page)
-
-    def external(self, external_id, external_source):
-        """
-        The find method makes it easy to search for objects in our database by an external id. For example, an IMDB ID.
-        :param external_id: str
-        :param external_source str
-        :return:
-        """
-        warnings.warn("external method is deprecated use tmdbv3api.Find().find(external_id, external_source)",
-                      DeprecationWarning)
-        return Find().find(external_id, external_source)

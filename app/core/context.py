@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from app.core.config import settings
 from app.core.meta import MetaBase

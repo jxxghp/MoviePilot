@@ -138,14 +138,3 @@ class Person(TMDb):
             params="page=%s" % page,
             key="results"
         )
-
-    def search(self, term, page=1):
-        """
-        Search for people.
-        :param term: string
-        :param page: int
-        :return:
-        """
-        warnings.warn("search method is deprecated use tmdbv3api.Search().people(params)",
-                      DeprecationWarning)
-        return Search().people(term, page=page)
