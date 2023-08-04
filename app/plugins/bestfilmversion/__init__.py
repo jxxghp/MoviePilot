@@ -9,30 +9,27 @@ from apscheduler.triggers.cron import CronTrigger
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.context import MediaInfo
-from app.core.event import Event
-from app.core.event import eventmanager
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules.emby import Emby
 from app.modules.jellyfin import Jellyfin
 from app.modules.plex import Plex
 from app.plugins import _PluginBase
-from app.schemas.types import EventType, MediaType
+from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 
 lock = Lock()
 
 
 class BestFilmVersion(_PluginBase):
-
     # 插件名称
     plugin_name = "收藏洗版"
     # 插件描述
-    plugin_desc = "jellyfin|emby点击收藏后,自动订阅洗版(只支持电影洗版)"
+    plugin_desc = "Jellyfin/Emby点击收藏电影后，自动订阅洗版"
     # 插件图标
     plugin_icon = "like.jpg"
     # 主题色
-    plugin_color = "#05B711"
+    plugin_color = "#E4003F"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者
@@ -40,9 +37,9 @@ class BestFilmVersion(_PluginBase):
     # 作者主页
     author_url = "https://github.com/developer-wlj"
     # 插件配置项ID前缀
-    plugin_config_prefix = "bestversion_"
+    plugin_config_prefix = "bestfilmversion_"
     # 加载顺序
-    plugin_order = 3
+    plugin_order = 13
     # 可使用的用户级别
     auth_level = 2
 
@@ -65,19 +62,19 @@ class BestFilmVersion(_PluginBase):
     _notify: bool = False
 
     def init_plugin(self, config: dict = None):
-        self._cache_path = settings.TEMP_PATH / "__best_version_cache__"
+        self._cache_path = settings.TEMP_PATH / "__best_film_version_cache__"
         self.subscribechain = SubscribeChain()
-        if settings.MEDIASERVER =='jellyfin':
+        if settings.MEDIASERVER == 'jellyfin':
             self.jellyfin = Jellyfin()
-            self.jellyfin_user=self.jellyfin.get_user()
-            self.service_apikey=settings.JELLYFIN_API_KEY
-            self.service_host=settings.JELLYFIN_HOST
-        if settings.MEDIASERVER =='emby':
+            self.jellyfin_user = self.jellyfin.get_user()
+            self.service_apikey = settings.JELLYFIN_API_KEY
+            self.service_host = settings.JELLYFIN_HOST
+        if settings.MEDIASERVER == 'emby':
             self.emby = Emby()
             self.emby_user = self.emby.get_user()
             self.service_apikey = settings.EMBY_API_KEY
             self.service_host = settings.EMBY_HOST
-        if settings.MEDIASERVER =='plex':
+        if settings.MEDIASERVER == 'plex':
             self.emby = Plex()
             self.service_apikey = settings.PLEX_TOKEN
             self.service_host = settings.PLEX_HOST
@@ -86,7 +83,6 @@ class BestFilmVersion(_PluginBase):
                 self.service_host += "/"
             if not self.service_host.startswith("http"):
                 self.service_host = "http://" + self.service_host
-
 
         # 停止现有任务
         self.stop_service()
@@ -188,7 +184,6 @@ class BestFilmVersion(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -200,22 +195,6 @@ class BestFilmVersion(_PluginBase):
                                         }
                                     }
                                 ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'queue_cnt',
-                                            'label': '队列数量'
-                                        }
-                                    }
-                                ]
                             }
                         ]
                     }
@@ -223,9 +202,8 @@ class BestFilmVersion(_PluginBase):
             }
         ], {
             "enabled": False,
-            "notify": True,
+            "notify": False,
             "cron": "*/30 * * * *",
-            "queue_cnt": 5
         }
 
     def get_page(self) -> List[dict]:
@@ -355,22 +333,35 @@ class BestFilmVersion(_PluginBase):
         # 读取历史记录
         history = self.get_data('history') or []
 
-        resp=None
         if self.jellyfin:
             # 根据加入日期 降序排序
-            url=self.service_host+'Users/'+self.jellyfin_user+'/Items?SortBy=DateCreated%2CSortName&SortOrder=Descending&Filters=IsFavorite&Recursive=true&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo&CollapseBoxSetItems=false&ExcludeLocationTypes=Virtual&EnableTotalRecordCount=false&Limit=20&apikey='+self.service_apikey
-            # 获取收藏数据
-            resp=self.media_simple_filter(url)
-
+            url = f"{self.service_host}Users/{self.jellyfin_user}/Items?SortBy=DateCreated%2CSortName" \
+                  f"&SortOrder=Descending" \
+                  f"&Filters=IsFavorite" \
+                  f"&Recursive=true" \
+                  f"&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
+                  f"&CollapseBoxSetItems=false" \
+                  f"&ExcludeLocationTypes=Virtual" \
+                  f"&EnableTotalRecordCount=false" \
+                  f"&Limit=20" \
+                  f"&apikey={self.service_apikey}"
         elif self.emby:
             # 根据加入日期 降序排序
-            url = self.service_host + 'emby/Users/' + self.emby_user+'/Items?SortBy=DateCreated%2CSortName&SortOrder=Descending&Filters=IsFavorite&Recursive=true&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo&CollapseBoxSetItems=false&ExcludeLocationTypes=Virtual&EnableTotalRecordCount=false&Limit=20&api_key=' + self.service_apikey
-            # 获取收藏数据
-            resp = self.media_simple_filter(url)
-
-        elif self.plex:
+            url = f"{self.service_host}emby/Users/{self.emby_user}/Items?SortBy=DateCreated%2CSortName" \
+                  f"&SortOrder=Descending" \
+                  f"&Filters=IsFavorite" \
+                  f"&Recursive=true" \
+                  f"&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
+                  f"&CollapseBoxSetItems=false" \
+                  f"&ExcludeLocationTypes=Virtual" \
+                  f"&EnableTotalRecordCount=false" \
+                  f"&Limit=20&api_key={self.service_apikey}"
+        else:
             # TODO plex待开发
             return
+
+        # 获取收藏数据
+        resp = self.media_simple_filter(url)
 
         for data in resp:
             # 检查缓存
@@ -378,46 +369,33 @@ class BestFilmVersion(_PluginBase):
                 continue
 
             # 获取详情
-            item_info_resp = None
             if self.jellyfin:
                 item_info_resp = self.jellyfin.get_iteminfo(itemid=data.get('Id'))
             elif self.emby:
                 item_info_resp = self.emby.get_iteminfo(itemid=data.get('Id'))
-            elif self.plex:
-                # TODO plex待开发
-                item_info_resp = self.plex.get_iteminfo(itemid=data.get('Id'))
+            else:
+                return
 
             if not item_info_resp:
                 continue
+
             # 只接受Movie类型
             if data.get('Type') != 'Movie':
                 continue
 
             # 获取tmdb_id
-            media_info_ids=item_info_resp.get('ExternalUrls')
+            media_info_ids = item_info_resp.get('ExternalUrls')
             for media_info_id in media_info_ids:
                 if 'TheMovieDb' != media_info_id.get('Name'):
                     continue
-                tmdb_find_id=str(media_info_id.get('Url')).split('/')
+                tmdb_find_id = str(media_info_id.get('Url')).split('/')
                 tmdb_find_id.reverse()
-                tmdb_id=tmdb_find_id[0]
-
-                # 根据tmdbID获取数据
-                tmdbinfo: Optional[dict] = self.chain.tmdb_info(tmdbid=tmdb_id,mtype=MediaType.MOVIE)
-                if not tmdbinfo:
-                    logger.warn(f'未获取到tmdb信息，标题：{data.get("Name")}，tmdbID：{tmdb_id}')
-                    continue
-                logger.info(f'获取到tmdb信息，标题：{data.get("Name")}，tmdbID：{tmdb_id}')
-
+                tmdb_id = tmdb_find_id[0]
                 # 识别媒体信息
-                meta = MetaInfo(tmdbinfo.get("original_title") or tmdbinfo.get("title"))
-                if tmdbinfo.get("year"):
-                    meta.year = tmdbinfo.get("year")
-                mediainfo: MediaInfo = self.chain.recognize_media(meta=meta)
+                mediainfo: MediaInfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
                 if not mediainfo:
                     logger.warn(f'未识别到媒体信息，标题：{data.get("Name")}，tmdbID：{tmdb_id}')
                     continue
-
                 # 添加订阅
                 self.subscribechain.add(mtype=MediaType.MOVIE,
                                         title=mediainfo.title,
@@ -431,7 +409,7 @@ class BestFilmVersion(_PluginBase):
                 # 存储历史记录
                 if mediainfo.tmdb_id not in [h.get("tmdbid") for h in history]:
                     history.append({
-                        "title": tmdbinfo.get("title") or mediainfo.title,
+                        "title": mediainfo.title,
                         "type": mediainfo.type.value,
                         "year": mediainfo.year,
                         "poster": mediainfo.get_poster_image(),
