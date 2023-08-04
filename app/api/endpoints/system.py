@@ -1,5 +1,6 @@
 import json
 import time
+import tailer
 from datetime import datetime
 from typing import Union
 
@@ -84,6 +85,26 @@ def get_progress(token: str):
             time.sleep(3)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.get("/logging", summary="实时日志")
+def get_logging(token: str):
+    """
+    实时获取系统日志，返回格式为SSE
+    """
+    if not token or not verify_token(token):
+        raise HTTPException(
+            status_code=403,
+            detail="认证失败！",
+        )
+
+    def log_generator():
+        while True:
+            for text in tailer.follow(open(settings.LOG_PATH / 'moviepilot.log')):
+                yield 'data: %s\n\n' % (text or '')
+            time.sleep(1)
+
+    return StreamingResponse(log_generator(), media_type="text/event-stream")
 
 
 @router.get("/nettest", summary="测试网络连通性")

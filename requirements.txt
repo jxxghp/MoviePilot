@@ -46,3 +46,4 @@ psutil~=5.9.4
 python_hosts~=1.0.3
 tmdbv3api~=1.7.7
 watchdog~=3.0.0
+tailer~=0.4.1
