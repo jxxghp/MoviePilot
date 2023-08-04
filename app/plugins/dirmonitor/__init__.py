@@ -56,7 +56,7 @@ class DirMonitor(_PluginBase):
     # 加载顺序
     plugin_order = 4
     # 可使用的用户级别
-    user_level = 1
+    auth_level = 1
 
     # 已处理的文件清单
     _synced_files = []
