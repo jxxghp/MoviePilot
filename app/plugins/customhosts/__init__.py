@@ -1,7 +1,6 @@
 from typing import List, Tuple, Dict, Any
 
 from python_hosts import Hosts, HostsEntry
-
 from app.log import logger
 from app.plugins import _PluginBase
 from app.utils.ip import IpUtils
