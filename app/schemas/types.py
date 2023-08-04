@@ -34,8 +34,6 @@ class EventType(Enum):
     HistoryDeleted = "history.deleted"
     # 删除媒体库文件
     MediaDeleted = "media.deleted"
-    # 收藏洗版
-    BestVersion = "film.bestversion"
 
 
 # 系统配置Key字典

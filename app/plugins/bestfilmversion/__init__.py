@@ -67,17 +67,17 @@ class BestFilmVersion(_PluginBase):
     def init_plugin(self, config: dict = None):
         self._cache_path = settings.TEMP_PATH / "__best_version_cache__"
         self.subscribechain = SubscribeChain()
-        if settings.MEDIASERVER =='jellyfin' or settings.MEDIASERVER =='JELLYFIN':
+        if settings.MEDIASERVER =='jellyfin':
             self.jellyfin = Jellyfin()
             self.jellyfin_user=self.jellyfin.get_user()
             self.service_apikey=settings.JELLYFIN_API_KEY
             self.service_host=settings.JELLYFIN_HOST
-        if settings.MEDIASERVER =='emby' or settings.MEDIASERVER =='EMBY':
+        if settings.MEDIASERVER =='emby':
             self.emby = Emby()
             self.emby_user = self.emby.get_user()
             self.service_apikey = settings.EMBY_API_KEY
             self.service_host = settings.EMBY_HOST
-        if settings.MEDIASERVER =='plex' or settings.MEDIASERVER =='PLEX':
+        if settings.MEDIASERVER =='plex':
             self.emby = Plex()
             self.service_apikey = settings.PLEX_TOKEN
             self.service_host = settings.PLEX_HOST
@@ -122,16 +122,7 @@ class BestFilmVersion(_PluginBase):
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
-        """
-        定义远程控制命令
-        :return: 命令关键字、事件、描述、附带数据
-        """
-        return [{
-            "cmd": "/best_version",
-            "event": EventType.BestVersion,
-            "desc": "收藏洗版",
-            "data": {}
-        }]
+        pass
 
     def get_api(self) -> List[Dict[str, Any]]:
         """
@@ -414,7 +405,7 @@ class BestFilmVersion(_PluginBase):
                 # 根据tmdbID获取数据
                 tmdbinfo: Optional[dict] = self.chain.tmdb_info(tmdbid=tmdb_id,mtype=MediaType.MOVIE)
                 if not tmdbinfo:
-                    logger.warn(f'未获取到tmdb信息，标题：{data.get("Name")}，豆瓣ID：{tmdb_id}')
+                    logger.warn(f'未获取到tmdb信息，标题：{data.get("Name")}，tmdbID：{tmdb_id}')
                     continue
                 logger.info(f'获取到tmdb信息，标题：{data.get("Name")}，tmdbID：{tmdb_id}')
 
@@ -465,19 +456,3 @@ class BestFilmVersion(_PluginBase):
         except Exception as e:
             logger.error(f"连接User/Items 出错：" + str(e))
             return []
-
-    @eventmanager.register(EventType.BestVersion)
-    def remote_sync(self, event: Event):
-        """
-        收藏洗版
-        """
-        if event:
-            logger.info("收到命令，开始执行收藏洗版 ...")
-            self.post_message(channel=event.event_data.get("channel"),
-                              title="开始执行收藏洗版 ...",
-                              userid=event.event_data.get("user"))
-        self.sync()
-
-        if event:
-            self.post_message(channel=event.event_data.get("channel"),
-                              title="收藏洗版执行完成！", userid=event.event_data.get("user"))
