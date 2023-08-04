@@ -36,6 +36,7 @@ class WordsMatcher(metaclass=Singleton):
                     # 集偏移
                     strings = word.split(" <> ")
                     offsets = strings[1].split(" >> ")
+                    strings[1] = offsets[0]
                     title, message, state = self.__episode_offset(title, strings[0], strings[1],
                                                                   offsets[1])
                 else:
