@@ -115,7 +115,7 @@ class SearchChain(ChainBase):
         # 搜索关键词
         if keyword:
             keywords = [keyword]
-        elif mediainfo.title != mediainfo.original_title:
+        elif mediainfo.original_title and mediainfo.title != mediainfo.original_title:
             keywords = [mediainfo.title, mediainfo.original_title]
         else:
             keywords = [mediainfo.title]
