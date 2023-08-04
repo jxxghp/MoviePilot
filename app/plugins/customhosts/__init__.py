@@ -1,8 +1,11 @@
 from typing import List, Tuple, Dict, Any
 
 from python_hosts import Hosts, HostsEntry
+
+from app.core.event import eventmanager
 from app.log import logger
 from app.plugins import _PluginBase
+from app.schemas.types import EventType
 from app.utils.ip import IpUtils
 from app.utils.system import SystemUtils
 
@@ -215,6 +218,18 @@ class CustomHosts(_PluginBase):
                 # 推送实时消息
                 self.systemmessage.put(f"更新系统hosts文件失败：{str(err) or '请检查权限'}")
         return err_flag, err_hosts
+
+    @eventmanager.register(EventType.PluginReload)
+    def reload(self, event):
+        """
+        响应插件重载事件
+        """
+        plugin_id = event.event_data.get("plugin_id")
+        if not plugin_id:
+            return
+        if plugin_id != self.__class__.__name__:
+            return
+        return self.init_plugin(self.get_config())
 
     def stop_service(self):
         """
