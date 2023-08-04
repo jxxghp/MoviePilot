@@ -199,6 +199,8 @@ class SearchChain(ChainBase):
         else:
             _match_torrents = torrents
         logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
+        # 去掉mediainfo中多余的数据
+        mediainfo.clear()
         # 组装上下文
         contexts = [Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
                             media_info=mediainfo,
@@ -262,7 +264,7 @@ class SearchChain(ChainBase):
             finish_count += 1
             result = future.result()
             if result:
-                results += result
+                results.extend(result)
             logger.info(f"站点搜索进度：{finish_count} / {total_num}")
             self.progress.update(value=finish_count / total_num * 100,
                                  text=f"正在搜索，已完成 {finish_count} / {total_num} 个站点 ...",

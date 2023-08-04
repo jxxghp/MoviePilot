@@ -388,6 +388,8 @@ class SubscribeChain(ChainBase):
                         logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
                         # 存储空的媒体信息
                         mediainfo = MediaInfo()
+                    # 清理多余数据
+                    mediainfo.clear()
                     # 上下文
                     context = Context(meta_info=meta, media_info=mediainfo, torrent_info=torrent)
                     # 添加到缓存

@@ -551,6 +551,24 @@ class MediaInfo:
         dicts["title_year"] = self.title_year
         return dicts
 
+    def clear(self):
+        """
+        去除多余数据，减小体积
+        """
+        self.tmdb_info = {}
+        self.douban_info = {}
+        self.seasons = {}
+        self.genres = []
+        self.season_info = []
+        self.names = []
+        self.actors = []
+        self.directors = []
+        self.production_companies = []
+        self.production_countries = []
+        self.spoken_languages = []
+        self.networks = []
+        self.next_episode_to_air = {}
+
 
 @dataclass
 class Context:
