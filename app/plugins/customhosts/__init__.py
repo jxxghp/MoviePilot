@@ -2,10 +2,8 @@ from typing import List, Tuple, Dict, Any
 
 from python_hosts import Hosts, HostsEntry
 
-from app.core.event import eventmanager
 from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas.types import EventType
 from app.utils.ip import IpUtils
 from app.utils.system import SystemUtils
 
