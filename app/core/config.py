@@ -194,14 +194,16 @@ class Settings(BaseSettings):
         if self.BIG_MEMORY_MODE:
             return {
                 "tmdb": 1024,
-                "torrents": 200,
+                "refresh": 50,
+                "torrents": 100,
                 "douban": 512,
                 "fanart": 512,
                 "meta": 15 * 24 * 3600
             }
         return {
             "tmdb": 256,
-            "torrents": 100,
+            "refresh": 30,
+            "torrents": 50,
             "douban": 256,
             "fanart": 128,
             "meta": 7 * 24 * 3600

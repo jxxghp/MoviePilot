@@ -367,6 +367,10 @@ class SubscribeChain(ChainBase):
             logger.info(f'开始刷新 {indexer.get("name")} 最新种子 ...')
             domain = StringUtils.get_url_domain(indexer.get("domain"))
             torrents: List[TorrentInfo] = self.refresh_torrents(site=indexer)
+            # 按pubdate降序排列
+            torrents.sort(key=lambda x: x.pubdate, reverse=True)
+            # 取前N条
+            torrents = torrents[:settings.CACHE_CONF.get('refresh')]
             if torrents:
                 # 过滤出没有处理过的种子
                 torrents = [torrent for torrent in torrents
@@ -397,9 +401,9 @@ class SubscribeChain(ChainBase):
                         torrents_cache[domain] = [context]
                     else:
                         torrents_cache[domain].append(context)
-                    # 如果超过了200条则移除最早的一条
+                    # 如果超过了限制条数则移除掉前面的
                     if len(torrents_cache[domain]) > settings.CACHE_CONF.get('torrents'):
-                        torrents_cache[domain].pop(0)
+                        torrents_cache[domain] = torrents_cache[domain][-settings.CACHE_CONF.get('torrents'):]
                 # 回收资源
                 del torrents
             else:
