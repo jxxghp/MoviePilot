@@ -88,43 +88,44 @@ class DirMonitor(_PluginBase):
         # 停止现有任务
         self.stop_service()
 
-        # 启动任务
-        monitor_dirs = self._monitor_dirs.split("\n")
-        if not monitor_dirs:
-            return
-        for mon_path in monitor_dirs:
-            if not mon_path:
-                continue
-            # 检查目录是不是媒体库目录的子目录
-            if Path(mon_path).is_relative_to(settings.LIBRARY_PATH):
-                logger.warn(f"{mon_path} 是媒体库目录的子目录，无法监控")
-                self.systemmessage.put(f"{mon_path} 是媒体库目录的子目录，无法监控")
-                continue
+        if self._enabled:
+            # 启动任务
+            monitor_dirs = self._monitor_dirs.split("\n")
+            if not monitor_dirs:
+                return
+            for mon_path in monitor_dirs:
+                if not mon_path:
+                    continue
+                # 检查目录是不是媒体库目录的子目录
+                if Path(mon_path).is_relative_to(settings.LIBRARY_PATH):
+                    logger.warn(f"{mon_path} 是媒体库目录的子目录，无法监控")
+                    self.systemmessage.put(f"{mon_path} 是媒体库目录的子目录，无法监控")
+                    continue
 
-            try:
-                if self._mode == "compatibility":
-                    # 兼容模式，目录同步性能降低且NAS不能休眠，但可以兼容挂载的远程共享目录如SMB
-                    observer = PollingObserver(timeout=10)
-                else:
-                    # 内部处理系统操作类型选择最优解
-                    observer = Observer(timeout=10)
-                self._observer.append(observer)
-                observer.schedule(FileMonitorHandler(mon_path, self), path=mon_path, recursive=True)
-                observer.daemon = True
-                observer.start()
-                logger.info(f"{mon_path} 的目录监控服务启动")
-            except Exception as e:
-                err_msg = str(e)
-                if "inotify" in err_msg and "reached" in err_msg:
-                    logger.warn(f"目录监控服务启动出现异常：{err_msg}，请在宿主机上（不是docker容器内）执行以下命令并重启："
-                                + """
-                             echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf
-                             echo fs.inotify.max_user_instances=524288 | sudo tee -a /etc/sysctl.conf
-                             sudo sysctl -p
-                             """)
-                else:
-                    logger.error(f"{mon_path} 启动目录监控失败：{err_msg}")
-                self.systemmessage.put(f"{mon_path} 启动目录监控失败：{err_msg}")
+                try:
+                    if self._mode == "compatibility":
+                        # 兼容模式，目录同步性能降低且NAS不能休眠，但可以兼容挂载的远程共享目录如SMB
+                        observer = PollingObserver(timeout=10)
+                    else:
+                        # 内部处理系统操作类型选择最优解
+                        observer = Observer(timeout=10)
+                    self._observer.append(observer)
+                    observer.schedule(FileMonitorHandler(mon_path, self), path=mon_path, recursive=True)
+                    observer.daemon = True
+                    observer.start()
+                    logger.info(f"{mon_path} 的目录监控服务启动")
+                except Exception as e:
+                    err_msg = str(e)
+                    if "inotify" in err_msg and "reached" in err_msg:
+                        logger.warn(f"目录监控服务启动出现异常：{err_msg}，请在宿主机上（不是docker容器内）执行以下命令并重启："
+                                    + """
+                                 echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf
+                                 echo fs.inotify.max_user_instances=524288 | sudo tee -a /etc/sysctl.conf
+                                 sudo sysctl -p
+                                 """)
+                    else:
+                        logger.error(f"{mon_path} 启动目录监控失败：{err_msg}")
+                    self.systemmessage.put(f"{mon_path} 启动目录监控失败：{err_msg}")
 
     def file_change_handler(self, event, text: str, event_path: str):
         """
