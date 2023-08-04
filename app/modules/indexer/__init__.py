@@ -48,6 +48,7 @@ class IndexerModule(_ModuleBase):
                 and site.get('language') == "en" \
                 and StringUtils.is_chinese(search_word):
             # 不支持中文
+            logger.warn(f"{site.get('name')} 不支持中文搜索")
             return []
 
         # 开始索引

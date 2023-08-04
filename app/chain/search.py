@@ -105,19 +105,30 @@ class SearchChain(ChainBase):
             if not mediainfo:
                 logger.error(f'媒体信息识别失败！')
                 return []
-        # 缺失的媒体信息
+        # 缺失的季集
         if no_exists and no_exists.get(mediainfo.tmdb_id):
             # 过滤剧集
             season_episodes = {sea: info.episodes
                                for sea, info in no_exists[mediainfo.tmdb_id].items()}
         else:
             season_episodes = None
+        # 搜索关键词
+        if keyword:
+            keywords = [keyword]
+        elif mediainfo.title != mediainfo.original_title:
+            keywords = [mediainfo.title, mediainfo.original_title]
+        else:
+            keywords = [mediainfo.title]
         # 执行搜索
-        torrents: List[TorrentInfo] = self.__search_all_sites(
-            mediainfo=mediainfo,
-            keyword=keyword,
-            sites=sites
-        )
+        torrents: List[TorrentInfo] = []
+        for keyword in keywords:
+            torrents = self.__search_all_sites(
+                mediainfo=mediainfo,
+                keyword=keyword,
+                sites=sites
+            )
+            if torrents:
+                break
         if not torrents:
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
             return []
