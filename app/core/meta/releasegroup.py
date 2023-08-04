@@ -94,7 +94,8 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
             # 自定义组
             custom_release_groups = self.systemconfig.get(SystemConfigKey.CustomReleaseGroups)
             if custom_release_groups:
-                groups = f"{self.__release_groups}|{custom_release_groups}"
+                custom_release_groups_str = '|'.join(custom_release_groups)
+                groups = f"{self.__release_groups}|{custom_release_groups_str}"
             else:
                 groups = self.__release_groups
         title = f"{title} "
