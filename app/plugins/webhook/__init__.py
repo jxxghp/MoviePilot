@@ -5,6 +5,7 @@ from app.utils.http import RequestUtils
 from typing import Any, List, Dict, Tuple
 from app.log import logger
 
+
 class WebHook(_PluginBase):
     # 插件名称
     plugin_name = "Webhook"
@@ -52,7 +53,7 @@ class WebHook(_PluginBase):
         """
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
-        request_options = ["POST","GET"]
+        request_options = ["POST", "GET"]
         return [
             {
                 'component': 'VForm',
@@ -83,6 +84,10 @@ class WebHook(_PluginBase):
                         'content': [
                             {
                                 'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
                                 'content': [
                                     {
                                         'component': 'VSelect',
@@ -97,7 +102,8 @@ class WebHook(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12
+                                    'cols': 12,
+                                    'md': 8
                                 },
                                 'content': [
                                     {
