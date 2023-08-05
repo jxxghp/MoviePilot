@@ -9,7 +9,6 @@ from apscheduler.triggers.cron import CronTrigger
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.context import MediaInfo
-from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules.emby import Emby
 from app.modules.jellyfin import Jellyfin
@@ -75,7 +74,7 @@ class BestFilmVersion(_PluginBase):
             self.service_apikey = settings.EMBY_API_KEY
             self.service_host = settings.EMBY_HOST
         if settings.MEDIASERVER == 'plex':
-            self.emby = Plex()
+            self.plex = Plex()
             self.service_apikey = settings.PLEX_TOKEN
             self.service_host = settings.PLEX_HOST
         if self.service_host:
@@ -362,6 +361,7 @@ class BestFilmVersion(_PluginBase):
 
         # 获取收藏数据
         resp = self.media_simple_filter(url)
+        logger.info(f'BestFilmVersion插件 resp打印 {resp}')
 
         for data in resp:
             # 检查缓存
@@ -376,6 +376,7 @@ class BestFilmVersion(_PluginBase):
             else:
                 return
 
+            logger.info(f'BestFilmVersion插件 item打印 {item_info_resp}')
             if not item_info_resp:
                 continue
 
