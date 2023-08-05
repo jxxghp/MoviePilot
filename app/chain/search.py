@@ -175,14 +175,17 @@ class SearchChain(ChainBase):
                     logger.warn(f'{torrent.site_name} - {torrent.title} 类型不匹配')
                     continue
                 # 比对年份
-                if mediainfo.year and torrent_meta.year:
+                if mediainfo.year:
                     if mediainfo.type == MediaType.TV:
-                        # 剧集
-                        if torrent_meta.year not in [year for year in mediainfo.season_years.values()]:
+                        # 需要剧集
+                        if torrent_meta.type != MediaType.TV and not torrent_meta.year:
+                            logger.warn(f'{torrent.site_name} - {torrent.title} 类型不确定且没有年份')
+                            continue
+                        if torrent_meta.year and torrent_meta.year not in [year for year in mediainfo.season_years.values()]:
                             logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
                             continue
                     else:
-                        # 没有季的剧集或者电影
+                        # 需要电影
                         if torrent_meta.year != mediainfo.year:
                             logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
                             continue
