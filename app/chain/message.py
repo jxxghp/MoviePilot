@@ -321,9 +321,13 @@ class MessageChain(ChainBase):
         """
         发送媒体列表消息
         """
+        if total > self._page_size:
+            title = f"【{title}】共找到{total}条相关信息，请回复对应数字选择（p: 上一页 n: 下一页）"
+        else:
+            title = f"【{title}】共找到{total}条相关信息，请回复对应数字选择"
         self.post_medias_message(Notification(
             channel=channel,
-            title=f"【{title}】共找到{total}条相关信息，请回复对应数字选择（p: 上一页 n: 下一页）",
+            title=title,
             userid=userid
         ), medias=items)
 
@@ -332,8 +336,12 @@ class MessageChain(ChainBase):
         """
         发送种子列表消息
         """
+        if total > self._page_size:
+            title = f"【{title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择 p: 上一页 n: 下一页）"
+        else:
+            title = f"【{title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择）"
         self.post_torrents_message(Notification(
             channel=channel,
-            title=f"【{title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择 p: 上一页 n: 下一页）",
+            title=title,
             userid=userid
         ), torrents=items)
