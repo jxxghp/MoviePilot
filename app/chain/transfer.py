@@ -196,7 +196,7 @@ class TransferChain(ChainBase):
             # 刷新媒体库
             self.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
             # 发送通知
-            self.__send_transfer_message(meta=meta, mediainfo=mediainfo, transferinfo=transferinfo)
+            self.send_transfer_message(meta=meta, mediainfo=mediainfo, transferinfo=transferinfo)
             # 广播事件
             self.eventmanager.send_event(EventType.TransferComplete, {
                 'meta': meta,
@@ -214,7 +214,7 @@ class TransferChain(ChainBase):
         logger.info("下载器文件转移执行完成")
         return True
 
-    def __send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo, transferinfo: TransferInfo):
+    def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo, transferinfo: TransferInfo):
         """
         发送入库成功的消息
         """

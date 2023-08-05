@@ -255,7 +255,7 @@ class DirMonitor(_PluginBase):
                     self.chain.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
                     # 发送通知
                     if self._notify:
-                        self.chain.__send_transfer_message(meta=file_meta, mediainfo=mediainfo, transferinfo=transferinfo)
+                        self.chain.send_transfer_message(meta=file_meta, mediainfo=mediainfo, transferinfo=transferinfo)
                     # 广播事件
                     self.eventmanager.send_event(EventType.TransferComplete, {
                         'meta': file_meta,
