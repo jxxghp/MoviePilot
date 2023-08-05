@@ -107,6 +107,8 @@ class Settings(BaseSettings):
     TR_PASSWORD: str = None
     # 种子标签
     TORRENT_TAG: str = "MOVIEPILOT"
+    # 是否开启下载器监控
+    DOWNLOAD_TRANSFER: bool = True
     # 下载保存目录，容器内映射路径需要一致
     DOWNLOAD_PATH: str = "/downloads"
     # 电影下载保存目录，容器内映射路径需要一致

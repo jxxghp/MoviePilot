@@ -69,8 +69,10 @@ class Scheduler(metaclass=Singleton):
             self._scheduler.add_job(SubscribeChain().refresh, "cron",
                                     hour=trigger.hour, minute=trigger.minute, name="订阅刷新")
 
-        # 下载器文件转移（每5分钟）
-        self._scheduler.add_job(TransferChain().process, "interval", minutes=5, name="下载文件整理")
+        # 是否开启下载器文件转移
+        if settings.DOWNLOAD_TRANSFER:
+            # 下载器文件转移（每5分钟）
+            self._scheduler.add_job(TransferChain().process, "interval", minutes=5, name="下载文件整理")
 
         # 公共定时服务
         self._scheduler.add_job(SchedulerChain().scheduler_job, "interval", minutes=10)
