@@ -25,7 +25,7 @@ class BestFilmVersion(_PluginBase):
     # 插件名称
     plugin_name = "收藏洗版"
     # 插件描述
-    plugin_desc = "Jellyfin/Emby点击收藏电影后，自动订阅洗版"
+    plugin_desc = "Jellyfin/Emby点击收藏电影后，自动订阅洗版。"
     # 插件图标
     plugin_icon = "like.jpg"
     # 主题色
