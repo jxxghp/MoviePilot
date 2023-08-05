@@ -28,12 +28,13 @@ class IndexerModule(_ModuleBase):
         return "INDEXER", "builtin"
 
     def search_torrents(self, site: CommentedMap, mediainfo: MediaInfo = None,
-                        keyword: str = None) -> List[TorrentInfo]:
+                        keyword: str = None, page: int = None) -> List[TorrentInfo]:
         """
         搜索一个站点
         :param mediainfo:  识别的媒体信息
         :param site:  站点
         :param keyword:  搜索关键词，如有按关键词搜索，否则按媒体信息名称搜索
+        :param page:  页码
         :return: 资源列表
         """
         # 确认搜索的名字
@@ -57,14 +58,15 @@ class IndexerModule(_ModuleBase):
         start_time = datetime.now()
         try:
             if site.get('parser') == "TNodeSpider":
-                error_flag, result_array = TNodeSpider(site).search(keyword=search_word)
+                error_flag, result_array = TNodeSpider(site).search(keyword=search_word, page=page)
             elif site.get('parser') == "TorrentLeech":
-                error_flag, result_array = TorrentLeech(site).search(keyword=search_word)
+                error_flag, result_array = TorrentLeech(site).search(keyword=search_word, page=page)
             else:
                 error_flag, result_array = self.__spider_search(
                     keyword=search_word,
                     indexer=site,
-                    mtype=mediainfo.type if mediainfo else None
+                    mtype=mediainfo.type if mediainfo else None,
+                    page=page
                 )
         except Exception as err:
             logger.error(f"{site.get('name')} 搜索出错：{err}")

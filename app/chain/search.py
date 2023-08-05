@@ -46,14 +46,16 @@ class SearchChain(ChainBase):
         self.systemconfig.set(SystemConfigKey.SearchResults, bytes_results)
         return results
 
-    def search_by_title(self, title: str) -> List[TorrentInfo]:
+    def search_by_title(self, title: str, page: int = 1, site: int = None) -> List[TorrentInfo]:
         """
         根据标题搜索资源，不识别不过滤，直接返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
+        :param page: 页码
+        :param site: 站点ID
         """
         logger.info(f'开始搜索资源，关键词：{title} ...')
         # 搜索
-        return self.__search_all_sites(keyword=title) or []
+        return self.__search_all_sites(keyword=title, sites=[site] if site else None, page=page) or []
 
     def last_search_results(self) -> List[Context]:
         """
@@ -225,12 +227,14 @@ class SearchChain(ChainBase):
 
     def __search_all_sites(self, mediainfo: Optional[MediaInfo] = None,
                            keyword: str = None,
-                           sites: List[int] = None) -> Optional[List[TorrentInfo]]:
+                           sites: List[int] = None,
+                           page: int = 1) -> Optional[List[TorrentInfo]]:
         """
         多线程搜索多个站点
         :param mediainfo:  识别的媒体信息
         :param keyword:  搜索关键词，如有按关键词搜索，否则按媒体信息名称搜索
         :param sites:  指定站点ID列表，如有则只搜索指定站点，否则搜索所有站点
+        :param page:  搜索页码
         :reutrn: 资源列表
         """
         # 未开启的站点不搜索
@@ -269,7 +273,7 @@ class SearchChain(ChainBase):
         all_task = []
         for site in indexer_sites:
             task = executor.submit(self.search_torrents, mediainfo=mediainfo,
-                                   site=site, keyword=keyword)
+                                   site=site, keyword=keyword, page=page)
             all_task.append(task)
         # 结果集
         results = []

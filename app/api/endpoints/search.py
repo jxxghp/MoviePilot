@@ -48,9 +48,11 @@ def search_by_tmdbid(mediaid: str,
 
 @router.get("/title/{keyword}", summary="模糊搜索资源", response_model=List[schemas.Context])
 async def search_by_title(keyword: str,
+                          page: int = 1,
+                          site: int = None,
                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据名称模糊搜索站点资源
     """
-    torrents = SearchChain().search_by_title(title=keyword)
+    torrents = SearchChain().search_by_title(title=keyword, page=page, site=site)
     return [Context(torrent_info=torrent).to_dict() for torrent in torrents]
