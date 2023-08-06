@@ -46,7 +46,7 @@ class SearchChain(ChainBase):
         self.systemconfig.set(SystemConfigKey.SearchResults, bytes_results)
         return results
 
-    def search_by_title(self, title: str, page: int = 1, site: int = None) -> List[TorrentInfo]:
+    def search_by_title(self, title: str, page: int = 0, site: int = None) -> List[TorrentInfo]:
         """
         根据标题搜索资源，不识别不过滤，直接返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
@@ -231,7 +231,7 @@ class SearchChain(ChainBase):
     def __search_all_sites(self, mediainfo: Optional[MediaInfo] = None,
                            keyword: str = None,
                            sites: List[int] = None,
-                           page: int = 1) -> Optional[List[TorrentInfo]]:
+                           page: int = 0) -> Optional[List[TorrentInfo]]:
         """
         多线程搜索多个站点
         :param mediainfo:  识别的媒体信息

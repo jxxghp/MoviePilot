@@ -195,7 +195,7 @@ class ChainBase(metaclass=ABCMeta):
     def search_torrents(self, site: CommentedMap,
                         mediainfo: Optional[MediaInfo] = None,
                         keyword: str = None,
-                        page: int = None) -> List[TorrentInfo]:
+                        page: int = 0) -> List[TorrentInfo]:
         """
         搜索一个站点的种子资源
         :param site:  站点

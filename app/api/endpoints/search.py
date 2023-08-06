@@ -48,7 +48,7 @@ def search_by_tmdbid(mediaid: str,
 
 @router.get("/title", summary="模糊搜索资源", response_model=List[schemas.TorrentInfo])
 async def search_by_title(keyword: str = None,
-                          page: int = 1,
+                          page: int = 0,
                           site: int = None,
                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
