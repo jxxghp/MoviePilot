@@ -287,7 +287,7 @@ class SearchChain(ChainBase):
                 results.extend(result)
             logger.info(f"站点搜索进度：{finish_count} / {total_num}")
             self.progress.update(value=finish_count / total_num * 100,
-                                 text=f"正在搜索，已完成 {finish_count} / {total_num} 个站点 ...",
+                                 text=f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个站点 ...",
                                  key=ProgressKey.Search)
         # 计算耗时
         end_time = datetime.now()
