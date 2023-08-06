@@ -320,7 +320,9 @@ class ChainBase(metaclass=ABCMeta):
         :param file_path:  文件路径
         :return: 成功或失败
         """
-        return self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
+        if settings.REFRESH_MEDIASERVER:
+            return self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
+        return None
 
     def post_message(self, message: Notification) -> Optional[bool]:
         """
@@ -355,7 +357,9 @@ class ChainBase(metaclass=ABCMeta):
         :param mediainfo:  识别的媒体信息
         :return: 成功或失败
         """
-        return self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
+        if settings.SCRAP_METADATE:
+            return self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
+        return None
 
     def register_commands(self, commands: dict) -> None:
         """
