@@ -46,3 +46,5 @@ psutil~=5.9.4
 python_hosts~=1.0.3
 watchdog~=3.0.0
 tailer~=0.4.1
+openai~=0.27.2
+cacheout~=0.14.1

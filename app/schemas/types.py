@@ -34,6 +34,8 @@ class EventType(Enum):
     HistoryDeleted = "history.deleted"
     # 删除媒体库文件
     MediaDeleted = "media.deleted"
+    # 用户外来消息
+    UserMessage = "user.message"
 
 
 # 系统配置Key字典
