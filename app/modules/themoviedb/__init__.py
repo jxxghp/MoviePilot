@@ -187,17 +187,19 @@ class TheMovieDbModule(_ModuleBase):
         :param mediainfo:  识别的媒体信息
         :return: 成功或失败
         """
-        if settings.SCRAP_SOURCE != "themoviedb":
-            return None
-        # 目录下的所有文件
-        for file in SystemUtils.list_files_with_extensions(path, settings.RMT_MEDIAEXT):
-            if not file:
-                continue
-            logger.info(f"开始刮削媒体库文件：{file} ...")
-            self.scraper.gen_scraper_files(mediainfo=mediainfo,
-                                           file_path=file)
-            logger.info(f"{file} 刮削完成")
-
+        if settings.SCRAP_METADATE:
+            if settings.SCRAP_SOURCE != "themoviedb":
+                return None
+            # 目录下的所有文件
+            for file in SystemUtils.list_files_with_extensions(path, settings.RMT_MEDIAEXT):
+                if not file:
+                    continue
+                logger.info(f"开始刮削媒体库文件：{file} ...")
+                self.scraper.gen_scraper_files(mediainfo=mediainfo,
+                                            file_path=file)
+                logger.info(f"{file} 刮削完成")
+        return False
+    
     def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,
                       page: int = 1) -> Optional[List[dict]]:
         """

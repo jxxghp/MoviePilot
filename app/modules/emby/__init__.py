@@ -8,7 +8,7 @@ from app.modules import _ModuleBase
 from app.modules.emby.emby import Emby
 from app.schemas import ExistMediaInfo, RefreshMediaItem, WebhookEventInfo
 from app.schemas.types import MediaType
-
+from app.core.config import settings
 
 class EmbyModule(_ModuleBase):
     emby: Emby = None
@@ -74,16 +74,18 @@ class EmbyModule(_ModuleBase):
         :param file_path:  文件路径
         :return: 成功或失败
         """
-        items = [
-            RefreshMediaItem(
-                title=mediainfo.title,
-                year=mediainfo.year,
-                type=mediainfo.type,
-                category=mediainfo.category,
-                target_path=file_path
-            )
-        ]
-        return self.emby.refresh_library_by_items(items)
+        if settings.REFRESH_MEDIASERVER:
+            items = [
+                RefreshMediaItem(
+                    title=mediainfo.title,
+                    year=mediainfo.year,
+                    type=mediainfo.type,
+                    category=mediainfo.category,
+                    target_path=file_path
+                )
+            ]
+            return self.emby.refresh_library_by_items(items)
+        return False
 
     def media_statistic(self) -> schemas.Statistic:
         """
