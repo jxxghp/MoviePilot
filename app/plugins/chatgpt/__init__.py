@@ -2,6 +2,7 @@ from typing import Any, List, Dict, Tuple
 
 from app.core.event import eventmanager
 from app.plugins import _PluginBase
+from app.plugins.chatgpt.openai import OpenAi
 from app.schemas.types import EventType
 
 
@@ -28,6 +29,7 @@ class ChatGPT(_PluginBase):
     auth_level = 1
 
     # 私有属性
+    openai = None
     _enabled = False
     _openai_url = None
     _openai_key = None
@@ -37,6 +39,7 @@ class ChatGPT(_PluginBase):
             self._enabled = config.get("enabled")
             self._openai_url = config.get("openai_url")
             self._openai_key = config.get("openai_key")
+            self.openai = OpenAi(api_key=self._openai_key, api_url=self._openai_url)
 
     def get_state(self) -> bool:
         return self._enabled
@@ -131,7 +134,16 @@ class ChatGPT(_PluginBase):
         """
         监听用户消息，获取ChatGPT回复
         """
-        pass
+        if not self.openai:
+            return
+        text = event.event_data.get("text")
+        userid = event.event_data.get("userid")
+        channel = event.event_data.get("channel")
+        if not text:
+            return
+        response = self.openai.get_response(text=text, userid=userid)
+        if response:
+            self.post_message(channel=channel, title=text, userid=userid)
 
     def stop_service(self):
         """

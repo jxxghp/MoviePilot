@@ -283,36 +283,57 @@ class MessageChain(ChainBase):
                 # 订阅
                 content = re.sub(r"订阅[:：\s]*", "", text)
                 action = "Subscribe"
+            elif text.startswith("#") \
+                    or re.search(r"^请[问帮你]", text) \
+                    or re.search(r"[?？]$", text) \
+                    or StringUtils.count_words(text) > 10 \
+                    or text.find("继续") != -1:
+                # 聊天
+                content = text
+                action = "chat"
             else:
                 # 搜索
                 content = re.sub(r"(搜索|下载)[:：\s]*", "", text)
                 action = "Search"
-            # 搜索
-            meta, medias = self.medtachain.search(content)
-            # 识别
-            if not meta.name:
-                self.post_message(Notification(
-                    channel=channel, title="无法识别输入内容！", userid=userid))
-                return
-            # 开始搜索
-            if not medias:
-                self.post_message(Notification(
-                    channel=channel, title=f"{meta.name} 没有找到对应的媒体信息！", userid=userid))
-                return
-            logger.info(f"搜索到 {len(medias)} 条相关媒体信息")
-            # 记录当前状态
-            _current_meta = meta
-            user_cache[userid] = {
-                'type': action,
-                'items': medias
-            }
-            _current_page = 0
-            _current_media = None
-            # 发送媒体列表
-            self.__post_medias_message(channel=channel,
-                                       title=meta.name,
-                                       items=medias[:self._page_size],
-                                       userid=userid, total=len(medias))
+
+            if action in ["Subscribe", "Search"]:
+                # 搜索
+                meta, medias = self.medtachain.search(content)
+                # 识别
+                if not meta.name:
+                    self.post_message(Notification(
+                        channel=channel, title="无法识别输入内容！", userid=userid))
+                    return
+                # 开始搜索
+                if not medias:
+                    self.post_message(Notification(
+                        channel=channel, title=f"{meta.name} 没有找到对应的媒体信息！", userid=userid))
+                    return
+                logger.info(f"搜索到 {len(medias)} 条相关媒体信息")
+                # 记录当前状态
+                _current_meta = meta
+                user_cache[userid] = {
+                    'type': action,
+                    'items': medias
+                }
+                _current_page = 0
+                _current_media = None
+                # 发送媒体列表
+                self.__post_medias_message(channel=channel,
+                                           title=meta.name,
+                                           items=medias[:self._page_size],
+                                           userid=userid, total=len(medias))
+            else:
+                # 广播事件
+                self.eventmanager.send_event(
+                    EventType.UserMessage,
+                    {
+                        "text": content,
+                        "user": userid,
+                        "channel": channel
+                    }
+                )
+
         # 保存缓存
         self.save_cache(user_cache, self._cache_file)
 
