@@ -85,7 +85,7 @@ class EmbyModule(_ModuleBase):
                 )
             ]
             return self.emby.refresh_library_by_items(items)
-        return False
+        return None
 
     def media_statistic(self) -> schemas.Statistic:
         """

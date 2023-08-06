@@ -115,9 +115,9 @@ class Settings(BaseSettings):
     DOWNLOAD_TV_PATH: str = None
     # 下载目录二级分类
     DOWNLOAD_CATEGORY: bool = False
-    # 通知媒体服务器刷新媒体库
+    # 入库刷新媒体库
     REFRESH_MEDIASERVER: bool = True
-    # 刮削整理好的媒体文件
+    # 刮削入库的媒体文件
     SCRAP_METADATE: bool = True
     # 媒体服务器 emby/jellyfin/plex
     MEDIASERVER: str = "emby"

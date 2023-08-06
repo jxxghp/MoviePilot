@@ -198,7 +198,7 @@ class TheMovieDbModule(_ModuleBase):
                 self.scraper.gen_scraper_files(mediainfo=mediainfo,
                                             file_path=file)
                 logger.info(f"{file} 刮削完成")
-        return False
+        return None
     
     def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,
                       page: int = 1) -> Optional[List[dict]]:
