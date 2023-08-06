@@ -577,7 +577,7 @@ class MediaSyncDel(_PluginBase):
         for match in matches:
             mtime = match[0]
             # 排除已处理的媒体信息
-            if last_time and time < last_time:
+            if last_time and mtime < last_time:
                 continue
 
             mtype = match[1]
