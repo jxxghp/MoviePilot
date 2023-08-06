@@ -53,7 +53,10 @@ class SearchChain(ChainBase):
         :param page: 页码
         :param site: 站点ID
         """
-        logger.info(f'开始搜索资源，关键词：{title} ...')
+        if title:
+            logger.info(f'开始搜索资源，关键词：{title} ...')
+        else:
+            logger.info(f'开始浏览资源，站点：{site} ...')
         # 搜索
         return self.__search_all_sites(keyword=title, sites=[site] if site else None, page=page) or []
 
