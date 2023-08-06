@@ -133,10 +133,9 @@ class CloudflareSpeedTest(_PluginBase):
         hosts = customHosts.get("hosts")
         if isinstance(hosts, str):
             hosts = str(hosts).split('\n')
-
         # 校正优选ip
         if self._check:
-            self.__check_cf_if(hosts=hosts)
+            self.__check_cf_ip(hosts=hosts)
 
         # 开始优选
         if err_flag:
@@ -204,7 +203,7 @@ class CloudflareSpeedTest(_PluginBase):
             self.__update_config()
             self.stop_service()
 
-    def __check_cf_if(self, hosts):
+    def __check_cf_ip(self, hosts):
         """
         校正cf优选ip
         防止特殊情况下cf优选ip和自定义hosts插件中ip不一致
@@ -212,11 +211,12 @@ class CloudflareSpeedTest(_PluginBase):
         # 统计每个IP地址出现的次数
         ip_count = {}
         for host in hosts:
-            ip = host.split()[0]
-            if ip in ip_count:
-                ip_count[ip] += 1
-            else:
-                ip_count[ip] = 1
+            if host:
+                ip = host.split()[0]
+                if ip in ip_count:
+                    ip_count[ip] += 1
+                else:
+                    ip_count[ip] = 1
 
         # 找出出现次数最多的IP地址
         max_ips = []  # 保存最多出现的IP地址
