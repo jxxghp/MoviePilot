@@ -357,7 +357,7 @@ class ChainBase(metaclass=ABCMeta):
         :param mediainfo:  识别的媒体信息
         :return: 成功或失败
         """
-        if settings.SCRAP_METADATE:
+        if settings.SCRAP_METADATA:
             return self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
         return None
 

@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     PROXY_HOST: str = None
     # 媒体信息搜索来源
     SEARCH_SOURCE: str = "themoviedb"
+    # 刮削入库的媒体文件
+    SCRAP_METADATA: bool = True
     # 刮削来源
     SCRAP_SOURCE: str = "themoviedb"
     # TMDB图片地址
@@ -115,12 +117,10 @@ class Settings(BaseSettings):
     DOWNLOAD_TV_PATH: str = None
     # 下载目录二级分类
     DOWNLOAD_CATEGORY: bool = False
-    # 入库刷新媒体库
-    REFRESH_MEDIASERVER: bool = True
-    # 刮削入库的媒体文件
-    SCRAP_METADATE: bool = True
     # 媒体服务器 emby/jellyfin/plex
     MEDIASERVER: str = "emby"
+    # 入库刷新媒体库
+    REFRESH_MEDIASERVER: bool = True
     # 媒体服务器同步间隔（小时）
     MEDIASERVER_SYNC_INTERVAL: int = 6
     # EMBY服务器地址，IP:PORT
