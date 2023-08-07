@@ -36,8 +36,8 @@ class EventType(Enum):
     MediaDeleted = "media.deleted"
     # 用户外来消息
     UserMessage = "user.message"
-    # wechat消息
-    WechatMessage = "wechat.message"
+    # 通知消息
+    NoticeMessage = "notice.message"
 
 
 # 系统配置Key字典

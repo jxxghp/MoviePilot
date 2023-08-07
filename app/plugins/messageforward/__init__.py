@@ -5,7 +5,7 @@ from datetime import datetime
 from app.core.config import settings
 from app.plugins import _PluginBase
 from app.core.event import eventmanager
-from app.schemas.types import EventType
+from app.schemas.types import EventType, MessageChannel
 from app.utils.http import RequestUtils
 from typing import Any, List, Dict, Tuple, Optional
 from app.log import logger
@@ -13,7 +13,7 @@ from app.log import logger
 
 class MessageForward(_PluginBase):
     # 插件名称
-    plugin_name = "WeChat消息转发"
+    plugin_name = "消息转发"
     # 插件描述
     plugin_desc = "根据正则转发通知到其他WeChat应用。"
     # 插件图标
@@ -107,7 +107,7 @@ class MessageForward(_PluginBase):
                                         'props': {
                                             'model': 'wechat',
                                             'rows': '3',
-                                            'label': 'wechat应用配置',
+                                            'label': '应用配置',
                                             'placeholder': 'appid:corpid:appsecret（一行一个配置）'
                                         }
                                     }
@@ -130,7 +130,7 @@ class MessageForward(_PluginBase):
                                             'model': 'pattern',
                                             'rows': '3',
                                             'label': '正则配置',
-                                            'placeholder': '对应上方wechat配置，一行一个，一一对应'
+                                            'placeholder': '对应上方应用配置，一行一个，一一对应'
                                         }
                                     }
                                 ]
@@ -148,7 +148,7 @@ class MessageForward(_PluginBase):
     def get_page(self) -> List[dict]:
         pass
 
-    @eventmanager.register(EventType.WechatMessage)
+    @eventmanager.register(EventType.NoticeMessage)
     def send(self, event):
         """
         消息转发
@@ -158,6 +158,10 @@ class MessageForward(_PluginBase):
 
         # 消息体
         data = event.event_data
+        channel = data['channel']
+        if channel and channel != MessageChannel.Wechat:
+            return
+
         title = data['title']
         text = data['text']
         image = data['image']

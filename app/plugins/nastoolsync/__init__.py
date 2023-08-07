@@ -7,11 +7,11 @@ from typing import Any, List, Dict, Tuple
 from app.log import logger
 
 
-class NastoolsSync(_PluginBase):
+class NAStoolSync(_PluginBase):
     # 插件名称
     plugin_name = "历史记录同步"
     # 插件描述
-    plugin_desc = "同步NasTools历史记录到MoviePilot。"
+    plugin_desc = "同步NAStool历史记录到MoviePilot。"
     # 插件图标
     plugin_icon = "sync.png"
     # 主题色
@@ -163,12 +163,13 @@ class NastoolsSync(_PluginBase):
                     AND t.TYPE = d.TYPE;'''
         cursor.execute(sql)
         nt_historys = cursor.fetchall()
+        cursor.close()
 
         if not nt_historys:
-            logger.error("未获取到NasTools数据库文件中的转移历史，请检查数据库路径是正确")
+            logger.error("未获取到NAStool数据库文件中的转移历史，请检查数据库路径是正确")
             return
 
-        logger.info(f"获取到NasTools转移记录 {len(nt_historys)} 条")
+        logger.info(f"获取到NAStool转移记录 {len(nt_historys)} 条")
         return nt_historys
 
     def get_state(self) -> bool:
@@ -224,7 +225,7 @@ class NastoolsSync(_PluginBase):
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'nt_db_path',
-                                            'label': 'NasTools数据库user.db路径',
+                                            'label': 'NAStool数据库user.db路径',
                                         }
                                     }
                                 ]
@@ -245,7 +246,7 @@ class NastoolsSync(_PluginBase):
                                         'props': {
                                             'model': 'path',
                                             'label': '路径映射',
-                                            'placeholder': 'NasTools路径:MoviePilot路径（一行一个）'
+                                            'placeholder': 'NAStool路径:MoviePilot路径（一行一个）'
                                         }
                                     }
                                 ]

@@ -3,13 +3,11 @@ from typing import Optional, Union, List, Tuple, Any
 
 from app.core.config import settings
 from app.core.context import Context, MediaInfo
-from app.core.event import EventManager
 from app.log import logger
 from app.modules import _ModuleBase, checkMessage
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.modules.wechat.wechat import WeChat
 from app.schemas import MessageChannel, CommingMessage, Notification
-from app.schemas.types import EventType
 from app.utils.dom import DomUtils
 
 
@@ -123,14 +121,6 @@ class WechatModule(_ModuleBase):
         :param message: 消息内容
         :return: 成功或失败
         """
-        # 发送事件
-        EventManager().send_event(etype=EventType.WechatMessage,
-                                  data={
-                                      "title": message.title,
-                                      "text": message.text,
-                                      "image": message.image,
-                                      "userid": message.userid,
-                                  })
         return self.wechat.send_msg(title=message.title, text=message.text,
                                     image=message.image, userid=message.userid)
 

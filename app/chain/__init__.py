@@ -16,7 +16,7 @@ from app.core.module import ModuleManager
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
     WebhookEventInfo
-from app.schemas.types import TorrentStatus, MediaType, MediaImageType
+from app.schemas.types import TorrentStatus, MediaType, MediaImageType, EventType
 from app.utils.object import ObjectUtils
 
 
@@ -330,6 +330,15 @@ class ChainBase(metaclass=ABCMeta):
         :param message:  消息体
         :return: 成功或失败
         """
+        # 发送事件
+        self.eventmanager.send_event(etype=EventType.NoticeMessage,
+                                     data={
+                                         "channel": message.channel,
+                                         "title": message.title,
+                                         "text": message.text,
+                                         "image": message.image,
+                                         "userid": message.userid,
+                                     })
         return self.run_module("post_message", message=message)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
