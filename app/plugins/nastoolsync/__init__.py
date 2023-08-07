@@ -76,6 +76,9 @@ class NAStoolSync(_PluginBase):
             mdownload_hash = history[11]
             mdate = history[12]
 
+            if not msrc or not mdest:
+                continue
+
             # 处理路径映射
             if self._path:
                 paths = self._path.split("\n")
