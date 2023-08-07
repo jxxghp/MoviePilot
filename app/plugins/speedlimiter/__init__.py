@@ -4,9 +4,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.core.config import settings
 from app.log import logger
+from app.modules.plex import Plex
 from app.modules.qbittorrent import Qbittorrent
 from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
+from app.schemas import NotificationType
+from app.utils.http import RequestUtils
+from app.utils.ip import IpUtils
 
 
 class SpeedLimiter(_PluginBase):
@@ -248,12 +252,107 @@ class SpeedLimiter(_PluginBase):
         """
         if not self._qb and not self._tr:
             return
+        # 当前播放的总比特率
+        total_bit_rate = 0
+        # 查询播放中会话
+        playing_sessions = []
+        if settings.MEDIASERVER == "emby":
+            req_url = "{HOST}emby/Sessions?api_key={APIKEY}"
+            try:
+                res = RequestUtils().get_res(req_url)
+                if res and res.status_code == 200:
+                    sessions = res.json()
+                    for session in sessions:
+                        if session.get("NowPlayingItem") and not session.get("PlayState", {}).get("IsPaused"):
+                            playing_sessions.append(session)
+            except Exception as e:
+                logger.error(f"获取Emby播放会话失败：{str(e)}")
+            # 计算有效比特率
+            for session in playing_sessions:
+                if not IpUtils.is_private_ip(session.get("RemoteEndPoint")) \
+                        and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
+                    total_bit_rate += int(session.get("NowPlayingItem", {}).get("Bitrate") or 0)
+        elif settings.MEDIASERVER == "jellyfin":
+            req_url = "{HOST}Sessions?api_key={APIKEY}"
+            try:
+                res = RequestUtils().get_res(req_url)
+                if res and res.status_code == 200:
+                    sessions = res.json()
+                    for session in sessions:
+                        if session.get("NowPlayingItem") and not session.get("PlayState", {}).get("IsPaused"):
+                            playing_sessions.append(session)
+            except Exception as e:
+                logger.error(f"获取Jellyfin播放会话失败：{str(e)}")
+            # 计算有效比特率
+            for session in playing_sessions:
+                if not IpUtils.is_private_ip(session.get("RemoteEndPoint")) \
+                        and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
+                    media_streams = session.get("NowPlayingItem", {}).get("MediaStreams") or []
+                    for media_stream in media_streams:
+                        total_bit_rate += int(media_stream.get("BitRate") or 0)
+        elif settings.MEDIASERVER == "plex":
+            _plex = Plex().get_plex()
+            if _plex:
+                sessions = _plex.sessions()
+                for session in sessions:
+                    bitrate = sum([m.bitrate or 0 for m in session.media])
+                    playing_sessions.append({
+                        "type": session.TAG,
+                        "bitrate": bitrate,
+                        "address": session.player.address
+                    })
+                # 计算有效比特率
+                for session in playing_sessions:
+                    if not IpUtils.is_private_ip(session.get("address")) \
+                            and session.get("type") == "Video":
+                        total_bit_rate += int(session.get("bitrate") or 0)
 
-    def __set_limiter(self):
+        if total_bit_rate:
+            # 当前正在播放，开始限速
+            self.__set_limiter(limit_type="播放", upload_limit=self._play_up_speed,
+                               download_limit=self._play_down_speed)
+        else:
+            # 当前没有播放，开始限速
+            self.__set_limiter(limit_type="未播放", upload_limit=self._noplay_up_speed,
+                               download_limit=self._noplay_down_speed)
+
+    def __set_limiter(self, limit_type: str, upload_limit: float, download_limit: float):
         """
         设置限速
         """
-        pass
+        if not self._qb and not self._tr:
+            return
+        if upload_limit:
+            text = f"上传：{upload_limit} KB/s"
+        else:
+            text = f"上传：未限速"
+        if download_limit:
+            text = f"{text}\n下载：{download_limit} KB/s"
+        else:
+            text = f"{text}\n下载：未限速"
+        try:
+            if self._qb:
+                self._qb.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
+                # 发送通知
+                if self._notify:
+                    title = f"Qbittorrent 开始{limit_type}限速"
+                    self.post_message(
+                        mtype=NotificationType.MediaServer,
+                        title=title,
+                        text=text
+                    )
+            if self._tr:
+                self._tr.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
+                # 发送通知
+                if self._notify:
+                    title = f"Transmission 开始{limit_type}限速"
+                    self.post_message(
+                        mtype=NotificationType.MediaServer,
+                        title=title,
+                        text=text
+                    )
+        except Exception as e:
+            logger.error(f"设置限速失败：{str(e)}")
 
     def stop_service(self):
         """

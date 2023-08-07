@@ -369,3 +369,9 @@ class Plex(metaclass=Singleton):
                                                               image_type="Backdrop")
 
         return eventItem
+
+    def get_plex(self):
+        """
+        获取plex对象，以便直接操作
+        """
+        return self._plex
