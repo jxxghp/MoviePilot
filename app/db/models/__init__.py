@@ -29,6 +29,11 @@ class Base:
         db.commit()
 
     @classmethod
+    def truncate(cls, db):
+        db.query(cls).delete()
+        db.commit()
+
+    @classmethod
     def list(cls, db):
         return db.query(cls).all()
 
