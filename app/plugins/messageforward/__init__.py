@@ -15,7 +15,7 @@ class MessageForward(_PluginBase):
     # 插件名称
     plugin_name = "WeChat消息转发"
     # 插件描述
-    plugin_desc = "根据正则转发通知到其他wechat应用。"
+    plugin_desc = "根据正则转发通知到其他WeChat应用。"
     # 插件图标
     plugin_icon = "forward.png"
     # 主题色
