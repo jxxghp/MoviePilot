@@ -190,24 +190,7 @@ class BestFilmVersion(_PluginBase):
                                                'component': 'VSwitch',
                                                'props': {
                                                    'model': 'webhook_enabled',
-                                                   'label': 'webhook',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'test',
-                                                   'label': '假开关,用来描述webhook选项,插件支持主动获取媒体库数据和webhook两种方式,两者只能选一,'
-                                                            '不知道webhook的,默认就好. Plex用户,使用主动获取时,执行周期设置大些, 建议大于1小时,'
-                                                            '收藏api接口,只能走plex官网,有接口限制'
+                                                   'label': 'Webhook',
                                                }
                                            }
                                        ]
@@ -234,6 +217,28 @@ class BestFilmVersion(_PluginBase):
                                        ]
                                    }
                                ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VAlert',
+                                               'props': {
+                                                   'text': '支持主动定时获取媒体库数据和Webhook两种方式，两者只能选一，'
+                                                           'Webhook需要在媒体服务器设置发送Webhook。'
+                                                           'Plex使用主动获取时，建议执行周期设置大些1小时，'
+                                                           '收藏Api接口调用Plex官网接口，有频率限制。'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
                            }
                        ]
                    }
@@ -242,8 +247,7 @@ class BestFilmVersion(_PluginBase):
                    "notify": False,
                    "cron": "*/30 * * * *",
                    "webhook_enabled": False,
-                   "only_once": False,
-                   "test": False
+                   "only_once": False
                }
 
     def get_page(self) -> List[dict]:
