@@ -143,7 +143,7 @@ class ChatGPT(_PluginBase):
             return
         response = self.openai.get_response(text=text, userid=userid)
         if response:
-            self.post_message(channel=channel, title=text, userid=userid)
+            self.post_message(channel=channel, title=response, userid=userid)
 
     def stop_service(self):
         """

@@ -115,6 +115,8 @@ class Transmission(metaclass=Singleton):
         """
         设置种子标签
         """
+        if not self.trc:
+            return False
         if not ids or not tags:
             return False
         try:
@@ -138,6 +140,8 @@ class Transmission(metaclass=Singleton):
         :param cookie: 站点Cookie用于辅助下载种子
         :return: Torrent
         """
+        if not self.trc:
+            return None
         try:
             return self.trc.add_torrent(torrent=content,
                                         download_dir=download_dir,
@@ -193,6 +197,8 @@ class Transmission(metaclass=Singleton):
         """
         获取种子文件列表
         """
+        if not self.trc:
+            return None
         if not tid:
             return None
         try:
@@ -209,6 +215,8 @@ class Transmission(metaclass=Singleton):
         """
         设置下载文件的状态
         """
+        if not self.trc:
+            return False
         try:
             self.trc.change_torrent(ids=tid, files_wanted=file_ids)
             return True
@@ -220,8 +228,39 @@ class Transmission(metaclass=Singleton):
         """
         获取传输信息
         """
+        if not self.trc:
+            return None
         try:
             return self.trc.session_stats()
         except Exception as err:
             logger.error(f"获取传输信息出错：{err}")
             return None
+
+    def set_speed_limit(self, download_limit: float = None, upload_limit: float = None):
+        """
+        设置速度限制
+        :param download_limit: 下载速度限制，单位KB/s
+        :param upload_limit: 上传速度限制，单位kB/s
+        """
+        if not self.trc:
+            return
+        try:
+            session = self.trc.get_session()
+            download_limit_enabled = True if download_limit else False
+            upload_limit_enabled = True if upload_limit else False
+            if download_limit_enabled == session.speed_limit_down_enabled and \
+                    upload_limit_enabled == session.speed_limit_up_enabled and \
+                    download_limit == session.speed_limit_down and \
+                    upload_limit == session.speed_limit_up:
+                return
+            self.trc.set_session(
+                speed_limit_down=download_limit if download_limit != session.speed_limit_down
+                else session.speed_limit_down,
+                speed_limit_up=upload_limit if upload_limit != session.speed_limit_up
+                else session.speed_limit_up,
+                speed_limit_down_enabled=download_limit_enabled,
+                speed_limit_up_enabled=upload_limit_enabled
+            )
+        except Exception as err:
+            logger.error(f"设置速度限制出错：{err}")
+            return False

@@ -352,6 +352,11 @@ class SubscribeChain(ChainBase):
         """
         刷新站点最新资源
         """
+        # 所有订阅
+        subscribes = self.subscribehelper.list('R')
+        if not subscribes:
+            # 没有订阅不运行
+            return
         # 读取缓存
         torrents_cache: Dict[str, List[Context]] = self.load_cache(self._cache_file) or {}
 

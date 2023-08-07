@@ -106,6 +106,8 @@ class Qbittorrent(metaclass=Singleton):
         :param ids: 种子Hash列表
         :param tag: 标签内容
         """
+        if not self.qbc:
+            return False
         try:
             self.qbc.torrents_delete_tags(torrent_hashes=ids, tags=tag)
             return True
@@ -129,6 +131,8 @@ class Qbittorrent(metaclass=Singleton):
         """
         设置强制作种
         """
+        if not self.qbc:
+            return
         try:
             self.qbc.torrents_set_force_start(enable=True, torrent_hashes=ids)
         except Exception as err:
@@ -266,6 +270,8 @@ class Qbittorrent(metaclass=Singleton):
         """
         获取种子文件清单
         """
+        if not self.qbc:
+            return None
         try:
             return self.qbc.torrents_files(torrent_hash=tid)
         except Exception as err:
@@ -276,6 +282,8 @@ class Qbittorrent(metaclass=Singleton):
         """
         设置下载文件的状态，priority为0为不下载，priority为1为下载
         """
+        if not self.qbc:
+            return False
         if not kwargs.get("torrent_hash") or not kwargs.get("file_ids"):
             return False
         try:
@@ -291,8 +299,29 @@ class Qbittorrent(metaclass=Singleton):
         """
         获取传输信息
         """
+        if not self.qbc:
+            return None
         try:
             return self.qbc.transfer_info()
         except Exception as err:
             logger.error(f"获取传输信息出错：{err}")
             return None
+
+    def set_speed_limit(self, download_limit: float = None, upload_limit: float = None) -> bool:
+        """
+        设置速度限制
+        :param download_limit: 下载速度限制，单位KB/s
+        :param upload_limit: 上传速度限制，单位kB/s
+        """
+        if not self.qbc:
+            return False
+        download_limit = download_limit * 1024
+        upload_limit = upload_limit * 1024
+        try:
+            if self.qbc.transfer.upload_limit != upload_limit:
+                self.qbc.transfer.upload_limit = upload_limit
+            if self.qbc.transfer.download_limit != download_limit:
+                self.qbc.transfer.download_limit = download_limit
+        except Exception as err:
+            logger.error(f"设置速度限制出错：{err}")
+            return False

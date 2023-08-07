@@ -1,10 +1,10 @@
 import datetime
 from pathlib import Path
-from threading import Lock
 from typing import Optional, Any, List, Dict, Tuple
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from requests import Response
 
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
@@ -12,12 +12,8 @@ from app.core.context import MediaInfo
 from app.log import logger
 from app.modules.emby import Emby
 from app.modules.jellyfin import Jellyfin
-from app.modules.plex import Plex
 from app.plugins import _PluginBase
 from app.schemas.types import MediaType
-from app.utils.http import RequestUtils
-
-lock = Lock()
 
 
 class BestFilmVersion(_PluginBase):
@@ -46,14 +42,6 @@ class BestFilmVersion(_PluginBase):
     _scheduler: Optional[BackgroundScheduler] = None
     _cache_path: Optional[Path] = None
     subscribechain = None
-    jellyfin = None
-    jellyfin_user = None
-    emby = None
-    emby_user = None
-    plex = None
-    plex_user = None
-    service_host = None
-    service_apikey = None
 
     # 配置属性
     _enabled: bool = False
@@ -63,25 +51,6 @@ class BestFilmVersion(_PluginBase):
     def init_plugin(self, config: dict = None):
         self._cache_path = settings.TEMP_PATH / "__best_film_version_cache__"
         self.subscribechain = SubscribeChain()
-        if settings.MEDIASERVER == 'jellyfin':
-            self.jellyfin = Jellyfin()
-            self.jellyfin_user = self.jellyfin.get_user()
-            self.service_apikey = settings.JELLYFIN_API_KEY
-            self.service_host = settings.JELLYFIN_HOST
-        if settings.MEDIASERVER == 'emby':
-            self.emby = Emby()
-            self.emby_user = self.emby.get_user()
-            self.service_apikey = settings.EMBY_API_KEY
-            self.service_host = settings.EMBY_HOST
-        if settings.MEDIASERVER == 'plex':
-            self.plex = Plex()
-            self.service_apikey = settings.PLEX_TOKEN
-            self.service_host = settings.PLEX_HOST
-        if self.service_host:
-            if not self.service_host.endswith("/"):
-                self.service_host += "/"
-            if not self.service_host.startswith("http"):
-                self.service_host = "http://" + self.service_host
 
         # 停止现有任务
         self.stop_service()
@@ -230,7 +199,6 @@ class BestFilmVersion(_PluginBase):
             poster = history.get("poster")
             mtype = history.get("type")
             time_str = history.get("time")
-            overview = history.get("overview")
             tmdbid = history.get("tmdbid")
             contents.append(
                 {
@@ -332,36 +300,35 @@ class BestFilmVersion(_PluginBase):
         # 读取历史记录
         history = self.get_data('history') or []
 
-        if self.jellyfin:
+        # 读取收藏
+        if settings.MEDIASERVER == 'jellyfin':
             # 根据加入日期 降序排序
-            url = f"{self.service_host}Users/{self.jellyfin_user}/Items?SortBy=DateCreated%2CSortName" \
-                  f"&SortOrder=Descending" \
-                  f"&Filters=IsFavorite" \
-                  f"&Recursive=true" \
-                  f"&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
-                  f"&CollapseBoxSetItems=false" \
-                  f"&ExcludeLocationTypes=Virtual" \
-                  f"&EnableTotalRecordCount=false" \
-                  f"&Limit=20" \
-                  f"&apikey={self.service_apikey}"
-        elif self.emby:
+            url = "{HOST}Users/{USER}/Items?SortBy=DateCreated%2CSortName" \
+                  "&SortOrder=Descending" \
+                  "&Filters=IsFavorite" \
+                  "&Recursive=true" \
+                  "&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
+                  "&CollapseBoxSetItems=false" \
+                  "&ExcludeLocationTypes=Virtual" \
+                  "&EnableTotalRecordCount=false" \
+                  "&Limit=20" \
+                  "&apikey={APIKEY}"
+            resp = self.get_items(Jellyfin().get_data(url))
+        elif settings.MEDIASERVER == 'emby':
             # 根据加入日期 降序排序
-            url = f"{self.service_host}emby/Users/{self.emby_user}/Items?SortBy=DateCreated%2CSortName" \
-                  f"&SortOrder=Descending" \
-                  f"&Filters=IsFavorite" \
-                  f"&Recursive=true" \
-                  f"&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
-                  f"&CollapseBoxSetItems=false" \
-                  f"&ExcludeLocationTypes=Virtual" \
-                  f"&EnableTotalRecordCount=false" \
-                  f"&Limit=20&api_key={self.service_apikey}"
+            url = "{HOST}emby/Users/{USER}/Items?SortBy=DateCreated%2CSortName" \
+                  "&SortOrder=Descending" \
+                  "&Filters=IsFavorite" \
+                  "&Recursive=true" \
+                  "&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
+                  "&CollapseBoxSetItems=false" \
+                  "&ExcludeLocationTypes=Virtual" \
+                  "&EnableTotalRecordCount=false" \
+                  "&Limit=20&api_key={APIKEY}"
+            resp = self.get_items(Emby().get_data(url))
         else:
             # TODO plex待开发
             return
-
-        # 获取收藏数据
-        resp = self.media_simple_filter(url)
-        logger.info(f'BestFilmVersion插件 resp打印 {resp}')
 
         for data in resp:
             # 检查缓存
@@ -369,11 +336,12 @@ class BestFilmVersion(_PluginBase):
                 continue
 
             # 获取详情
-            if self.jellyfin:
-                item_info_resp = self.jellyfin.get_iteminfo(itemid=data.get('Id'))
-            elif self.emby:
-                item_info_resp = self.emby.get_iteminfo(itemid=data.get('Id'))
+            if settings.MEDIASERVER == 'jellyfin':
+                item_info_resp = Jellyfin().get_iteminfo(itemid=data.get('Id'))
+            elif settings.MEDIASERVER == 'emby':
+                item_info_resp = Emby().get_iteminfo(itemid=data.get('Id'))
             else:
+                # TODO plex待开发
                 return
 
             logger.info(f'BestFilmVersion插件 item打印 {item_info_resp}')
@@ -424,14 +392,12 @@ class BestFilmVersion(_PluginBase):
         self._cache_path.write_text("\n".join(caches))
 
     @staticmethod
-    def media_simple_filter(url):
+    def get_items(resp: Response):
         try:
-            resp = RequestUtils().get_res(url=url)
             if resp:
-                return resp.json().get("Items")
+                return resp.json().get("Items") or []
             else:
-                logger.error(f"User/Items 未获取到返回数据")
                 return []
         except Exception as e:
-            logger.error(f"连接User/Items 出错：" + str(e))
+            print(str(e))
             return []

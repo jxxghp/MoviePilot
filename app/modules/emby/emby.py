@@ -3,6 +3,8 @@ import re
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Generator
 
+from requests import Response
+
 from app.core.config import settings
 from app.log import logger
 from app.schemas import RefreshMediaItem, WebhookEventInfo
@@ -597,3 +599,17 @@ class Emby(metaclass=Singleton):
                                                               image_type="Backdrop")
 
         return eventItem
+
+    def get_data(self, url: str) -> Optional[Response]:
+        """
+        自定义URL从媒体服务器获取数据，其中{HOST}、{APIKEY}、{USER}会被替换成实际的值
+        :param url: 请求地址
+        """
+        url = url.replace("{HOST}", self._host)\
+            .replace("{APIKEY}", self._apikey)\
+            .replace("{USER}", self._user)
+        try:
+            return RequestUtils().get_res(url=url)
+        except Exception as e:
+            logger.error(f"连接Emby出错：" + str(e))
+            return None
