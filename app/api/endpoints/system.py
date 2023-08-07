@@ -20,6 +20,17 @@ from app.utils.http import RequestUtils
 router = APIRouter()
 
 
+@router.get("/env", summary="查询系统环境变量", response_model=schemas.Response)
+def get_setting(_: schemas.TokenPayload = Depends(verify_token)):
+    """
+    查询系统环境变量
+    """
+    return schemas.Response(success=True,
+                            data=settings.dict(
+                                exclude={"SECRET_KEY", "SUPERUSER_PASSWORD", "API_TOKEN"}
+                            ))
+
+
 @router.get("/progress/{process_type}", summary="实时进度")
 def get_progress(process_type: str, token: str):
     """

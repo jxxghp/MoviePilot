@@ -1,7 +1,9 @@
+from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Event
 from typing import List, Tuple, Dict, Any
 
+import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -43,6 +45,7 @@ class LibraryScraper(_PluginBase):
     _scraper = None
     # 限速开关
     _enabled = False
+    _onlyonce = False
     _cron = None
     _scraper_paths = ""
     _exclude_paths = ""
@@ -53,6 +56,7 @@ class LibraryScraper(_PluginBase):
         # 读取配置
         if config:
             self._enabled = config.get("enabled")
+            self._onlyonce = config.get("onlyonce")
             self._cron = config.get("cron")
             self._scraper_paths = config.get("scraper_paths") or ""
             self._exclude_paths = config.get("exclude_paths") or ""
@@ -61,7 +65,7 @@ class LibraryScraper(_PluginBase):
         self.stop_service()
 
         # 启动定时任务 & 立即运行一次
-        if self._enabled:
+        if self._enabled or self._onlyonce:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             if self._cron:
                 logger.info(f"媒体库刮削服务启动，周期：{self._cron}")
@@ -77,6 +81,20 @@ class LibraryScraper(_PluginBase):
                 self._scheduler.add_job(func=self.__libraryscraper,
                                         trigger=CronTrigger.from_crontab("0 0 */7 * *"),
                                         name="媒体库刮削")
+            if self._onlyonce:
+                logger.info(f"媒体库刮削服务，立即运行一次")
+                self._scheduler.add_job(func=self.__libraryscraper, trigger='date',
+                                        run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+                                        name="Cloudflare优选")
+                # 关闭一次性开关
+                self._onlyonce = False
+                self.update_config({
+                    "onlyonce": False,
+                    "enabled": self._enabled,
+                    "cron": self._cron,
+                    "scraper_paths": self._scraper_paths,
+                    "exclude_paths": self._exclude_paths
+                })
             if self._scheduler.get_jobs():
                 # 启动服务
                 self._scheduler.print_jobs()
@@ -112,6 +130,22 @@ class LibraryScraper(_PluginBase):
                                         'props': {
                                             'model': 'enabled',
                                             'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
                                         }
                                     }
                                 ]
