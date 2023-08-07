@@ -470,15 +470,15 @@ class MediaSyncDel(_PluginBase):
 
     @staticmethod
     def parse_emby_log(last_time):
-        # emby
-        log_text = Emby().get_log()
-        if not log_text:
+        log_url = "{HOST}System/Logs/embyserver.txt?api_key={APIKEY}"
+        log_res = Emby().get_data(log_url)
+        if not log_res or log_res.status_code != 200:
             logger.error("获取emby日志失败，请检查服务器配置")
             return []
 
         # 正则解析删除的媒体信息
         pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3}) Info App: Removing item from database, Type: (\w+), Name: (.*), Path: (.*), Id: (\d+)'
-        matches = re.findall(pattern, log_text)
+        matches = re.findall(pattern, log_res.text)
 
         del_medias = []
         # 循环获取媒体信息
@@ -542,16 +542,16 @@ class MediaSyncDel(_PluginBase):
 
     @staticmethod
     def parse_jellyfin_log(last_time):
-        # jellyfin
-        log_text = Jellyfin().get_log()
-
-        if not log_text:
+        # 根据加入日期 降序排序
+        log_url = "{HOST}System/Logs/Log?name=log_%s.log&api_key={APIKEY}" % datetime.date.today().strftime("%Y%m%d")
+        log_res = Jellyfin().get_data(log_url)
+        if not log_res or log_res.status_code != 200:
             logger.error("获取jellyfin日志失败，请检查服务器配置")
             return []
 
         # 正则解析删除的媒体信息
         pattern = r'\[(.*?)\].*?Removing item, Type: "(.*?)", Name: "(.*?)", Path: "(.*?)"'
-        matches = re.findall(pattern, log_text)
+        matches = re.findall(pattern, log_res.text)
 
         del_medias = []
         # 循环获取媒体信息

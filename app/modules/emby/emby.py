@@ -3,6 +3,8 @@ import re
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Generator
 
+from requests import Response
+
 from app.core.config import settings
 from app.log import logger
 from app.schemas import RefreshMediaItem, WebhookEventInfo
@@ -598,41 +600,16 @@ class Emby(metaclass=Singleton):
 
         return eventItem
 
-    def get_log(self):
+    def get_data(self, url: str) -> Optional[Response]:
         """
-        获取日志
+        自定义URL从媒体服务器获取数据，其中{HOST}、{APIKEY}、{USER}会被替换成实际的值
+        :param url: 请求地址
         """
-        if not self._host or not self._apikey:
-            return ""
-        # emby 日志url
-        log_url = "%sSystem/Logs/embyserver.txt?api_key=%s" % (self._host, self._apikey)
-        log_res = RequestUtils().get_res(url=log_url)
-
-        if not log_res or log_res.status_code != 200:
-            return ""
-        return log_res.text
-
-    def get_fav_items(self, user: str = None) -> list:
-        """
-        获取已收藏媒体列表
-        """
-        # 根据加入日期 降序排序
-        url = f"{self._host}emby/Users/{user or self._user}/Items?SortBy=DateCreated%2CSortName" \
-              f"&SortOrder=Descending" \
-              f"&Filters=IsFavorite" \
-              f"&Recursive=true" \
-              f"&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
-              f"&CollapseBoxSetItems=false" \
-              f"&ExcludeLocationTypes=Virtual" \
-              f"&EnableTotalRecordCount=false" \
-              f"&Limit=20&api_key={self._apikey}"
+        url = url.replace("{HOST}", self._host)\
+            .replace("{APIKEY}", self._apikey)\
+            .replace("{USER}", self._user)
         try:
-            resp = RequestUtils().get_res(url=url)
-            if resp:
-                return resp.json().get("Items")
-            else:
-                logger.error(f"User/Items 未获取到返回数据")
-                return []
+            return RequestUtils().get_res(url=url)
         except Exception as e:
-            logger.error(f"连接User/Items 出错：" + str(e))
-            return []
+            logger.error(f"连接Emby出错：" + str(e))
+            return None
