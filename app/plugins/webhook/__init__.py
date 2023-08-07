@@ -5,7 +5,6 @@ from app.utils.http import RequestUtils
 from typing import Any, List, Dict, Tuple
 from app.log import logger
 
-
 class WebHook(_PluginBase):
     # 插件名称
     plugin_name = "Webhook"
@@ -135,10 +134,21 @@ class WebHook(_PluginBase):
         """
         if not self._webhook_url:
             return
+
+        def __to_dict(event):
+            # 遍历 event_data
+            result = {}
+            for key, value in event.items():
+                if hasattr(value, 'to_dict'):
+                    result[key] = value.to_dict()    
+                result[key] = str(value)
+            return result
+
         event_info = {
             "type": event.event_type,
-            "data": str(event.event_data)
+            "data": __to_dict(event.event_data)
         }
+
         if self._method == 'POST':
             ret = RequestUtils(content_type="application/json").post_res(self._webhook_url, json=event_info)
         else:
