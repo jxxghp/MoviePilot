@@ -306,3 +306,22 @@ class Qbittorrent(metaclass=Singleton):
         except Exception as err:
             logger.error(f"获取传输信息出错：{err}")
             return None
+
+    def set_speed_limit(self, download_limit: float = None, upload_limit: float = None) -> bool:
+        """
+        设置速度限制
+        :param download_limit: 下载速度限制，单位KB/s
+        :param upload_limit: 上传速度限制，单位kB/s
+        """
+        if not self.qbc:
+            return False
+        download_limit = download_limit * 1024
+        upload_limit = upload_limit * 1024
+        try:
+            if self.qbc.transfer.upload_limit != upload_limit:
+                self.qbc.transfer.upload_limit = upload_limit
+            if self.qbc.transfer.download_limit != download_limit:
+                self.qbc.transfer.download_limit = download_limit
+        except Exception as err:
+            logger.error(f"设置速度限制出错：{err}")
+            return False

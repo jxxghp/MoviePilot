@@ -235,3 +235,32 @@ class Transmission(metaclass=Singleton):
         except Exception as err:
             logger.error(f"获取传输信息出错：{err}")
             return None
+
+    def set_speed_limit(self, download_limit: float = None, upload_limit: float = None):
+        """
+        设置速度限制
+        :param download_limit: 下载速度限制，单位KB/s
+        :param upload_limit: 上传速度限制，单位kB/s
+        """
+        if not self.trc:
+            return
+        try:
+            session = self.trc.get_session()
+            download_limit_enabled = True if download_limit else False
+            upload_limit_enabled = True if upload_limit else False
+            if download_limit_enabled == session.speed_limit_down_enabled and \
+                    upload_limit_enabled == session.speed_limit_up_enabled and \
+                    download_limit == session.speed_limit_down and \
+                    upload_limit == session.speed_limit_up:
+                return
+            self.trc.set_session(
+                speed_limit_down=download_limit if download_limit != session.speed_limit_down
+                else session.speed_limit_down,
+                speed_limit_up=upload_limit if upload_limit != session.speed_limit_up
+                else session.speed_limit_up,
+                speed_limit_down_enabled=download_limit_enabled,
+                speed_limit_up_enabled=upload_limit_enabled
+            )
+        except Exception as err:
+            logger.error(f"设置速度限制出错：{err}")
+            return False
