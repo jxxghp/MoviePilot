@@ -137,12 +137,12 @@ class WebHook(_PluginBase):
             return
 
         def __to_dict(event):
-            # 遍历 event_data
             result = {}
             for key, value in event.items():
                 if hasattr(value, 'to_dict'):
-                    result[key] = value.to_dict()    
-                result[key] = str(value)
+                    result[key] = value.to_dict()
+                else:
+                    result[key] = str(value)
             return result
 
         event_info = {
