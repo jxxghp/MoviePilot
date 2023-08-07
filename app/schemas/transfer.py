@@ -30,7 +30,6 @@ class DownloadingTorrent(BaseModel):
     dlspeed: Optional[str] = None
     media: Optional[dict] = {}
 
-
 class TransferInfo(BaseModel):
     """
     文件转移结果信息
@@ -51,3 +50,12 @@ class TransferInfo(BaseModel):
     fail_list: Optional[list] = []
     # 错误信息
     message: Optional[str] = None
+
+    def to_dict(self):
+        """
+        返回字典
+        """
+        dicts = vars(self).copy()  # 创建一个字典的副本以避免修改原始数据
+        dicts["path"] = str(self.path) if self.path else None
+        dicts["target_path"] = str(self.target_path) if self.target_path else None
+        return dicts

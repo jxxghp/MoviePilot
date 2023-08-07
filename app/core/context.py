@@ -549,6 +549,7 @@ class MediaInfo:
         dicts["type"] = self.type.value if self.type else None
         dicts["detail_link"] = self.detail_link
         dicts["title_year"] = self.title_year
+        dicts["tmdb_info"]["media_type"] = self.type.value if self.type else None
         return dicts
 
     def clear(self):
