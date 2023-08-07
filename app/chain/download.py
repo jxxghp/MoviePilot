@@ -145,8 +145,7 @@ class DownloadChain(ChainBase):
                 torrent_site=_torrent.site_name
             )
             # 发送消息
-            self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent,
-                                       channel=channel, userid=userid)
+            self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, channel=channel)
             # 下载成功后处理
             self.download_added(context=context, torrent_path=torrent_file, download_dir=download_dir)
             # 广播事件
@@ -168,8 +167,7 @@ class DownloadChain(ChainBase):
                      f"种子名称：{_meta.org_string}\n"
                      f"种子链接：{_torrent.enclosure}\n"
                      f"错误信息：{error_msg}",
-                image=_media.get_message_image(),
-                userid=userid))
+                image=_media.get_message_image()))
         return _hash
 
     def batch_download(self,
