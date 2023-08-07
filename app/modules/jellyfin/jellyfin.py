@@ -1,3 +1,4 @@
+import datetime
 import json
 import re
 from typing import List, Union, Optional, Dict, Generator
@@ -437,3 +438,45 @@ class Jellyfin(metaclass=Singleton):
         except Exception as e:
             logger.error(f"连接Users/Items出错：" + str(e))
         yield {}
+
+    def get_log(self):
+        """
+        获取日志
+        """
+        if not self._host or not self._apikey:
+            return ""
+        # 日志url
+        log_url = "%sSystem/Logs/Log?name=log_%s.log&api_key=%s" % (
+            self._host, datetime.date.today().strftime("%Y%m%d"), self._apikey)
+        log_res = RequestUtils().get_res(url=log_url)
+
+        if not log_res or log_res.status_code != 200:
+            return ""
+        else:
+            return log_res.text
+
+    def get_fav_items(self, user: str = None) -> list:
+        """
+        获取已收藏媒体列表
+        """
+        # 根据加入日期 降序排序
+        url = f"{self._host}Users/{user or self._user}/Items?SortBy=DateCreated%2CSortName" \
+              f"&SortOrder=Descending" \
+              f"&Filters=IsFavorite" \
+              f"&Recursive=true" \
+              f"&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
+              f"&CollapseBoxSetItems=false" \
+              f"&ExcludeLocationTypes=Virtual" \
+              f"&EnableTotalRecordCount=false" \
+              f"&Limit=20" \
+              f"&apikey={self._apikey}"
+        try:
+            resp = RequestUtils().get_res(url=url)
+            if resp:
+                return resp.json().get("Items")
+            else:
+                logger.error(f"User/Items 未获取到返回数据")
+                return []
+        except Exception as e:
+            logger.error(f"连接User/Items 出错：" + str(e))
+            return []

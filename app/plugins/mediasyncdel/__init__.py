@@ -13,9 +13,10 @@ from app.core.event import eventmanager, Event
 from app.db.models.transferhistory import TransferHistory
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
+from app.modules.emby import Emby
+from app.modules.jellyfin import Jellyfin
 from app.plugins import _PluginBase
 from app.schemas.types import NotificationType, EventType
-from app.utils.http import RequestUtils
 
 
 class MediaSyncDel(_PluginBase):
@@ -469,25 +470,15 @@ class MediaSyncDel(_PluginBase):
 
     @staticmethod
     def parse_emby_log(last_time):
-        # emby host
-        emby_host = settings.EMBY_HOST
-        if emby_host:
-            if not emby_host.endswith("/"):
-                emby_host += "/"
-            if not emby_host.startswith("http"):
-                emby_host = "http://" + emby_host
-
-        # emby 日志url
-        log_url = "%sSystem/Logs/embyserver.txt?api_key=%s" % (emby_host, settings.EMBY_API_KEY)
-        log_res = RequestUtils().get_res(url=log_url)
-
-        if not log_res or log_res.status_code != 200:
+        # emby
+        log_text = Emby().get_log()
+        if not log_text:
             logger.error("获取emby日志失败，请检查服务器配置")
             return []
 
         # 正则解析删除的媒体信息
         pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3}) Info App: Removing item from database, Type: (\w+), Name: (.*), Path: (.*), Id: (\d+)'
-        matches = re.findall(pattern, log_res.text)
+        matches = re.findall(pattern, log_text)
 
         del_medias = []
         # 循环获取媒体信息
@@ -551,26 +542,16 @@ class MediaSyncDel(_PluginBase):
 
     @staticmethod
     def parse_jellyfin_log(last_time):
-        # jellyfin host
-        jellyfin_host = settings.JELLYFIN_HOST
-        if jellyfin_host:
-            if not jellyfin_host.endswith("/"):
-                jellyfin_host += "/"
-            if not jellyfin_host.startswith("http"):
-                jellyfin_host = "http://" + jellyfin_host
+        # jellyfin
+        log_text = Jellyfin().get_log()
 
-        # jellyfin 日志url
-        log_url = "%sSystem/Logs/Log?name=log_%s.log&api_key=%s" % (
-            jellyfin_host, datetime.date.today().strftime("%Y%m%d"), settings.JELLYFIN_API_KEY)
-        log_res = RequestUtils().get_res(url=log_url)
-
-        if not log_res or log_res.status_code != 200:
+        if not log_text:
             logger.error("获取jellyfin日志失败，请检查服务器配置")
             return []
 
         # 正则解析删除的媒体信息
         pattern = r'\[(.*?)\].*?Removing item, Type: "(.*?)", Name: "(.*?)", Path: "(.*?)"'
-        matches = re.findall(pattern, log_res.text)
+        matches = re.findall(pattern, log_text)
 
         del_medias = []
         # 循环获取媒体信息
