@@ -373,7 +373,10 @@ class Jellyfin(metaclass=Singleton):
         """
         eventItem = WebhookEventInfo(
             event=message.get('NotificationType', ''),
+            item_id=message.get('ItemId'),
             item_name=message.get('Name'),
+            item_type=message.get('ItemType'),
+            tmdb_id=message.get('Provider_tmdb'),
             user_name=message.get('NotificationUsername'),
             channel="jellyfin"
         )

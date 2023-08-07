@@ -1,6 +1,7 @@
 import datetime
 from pathlib import Path
 from typing import Optional, Any, List, Dict, Tuple
+from xml.dom.minidom import parseString
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -9,11 +10,15 @@ from requests import Response
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.context import MediaInfo
+from app.core.event import eventmanager
 from app.log import logger
 from app.modules.emby import Emby
 from app.modules.jellyfin import Jellyfin
+from app.modules.plex import Plex
 from app.plugins import _PluginBase
-from app.schemas.types import MediaType
+from app.schemas import WebhookEventInfo
+from app.schemas.types import MediaType, EventType
+from app.utils.http import RequestUtils
 
 
 class BestFilmVersion(_PluginBase):
@@ -47,6 +52,8 @@ class BestFilmVersion(_PluginBase):
     _enabled: bool = False
     _cron: str = ""
     _notify: bool = False
+    _webhook_enabled: bool = False
+    _only_once: bool = False
 
     def init_plugin(self, config: dict = None):
         self._cache_path = settings.TEMP_PATH / "__best_film_version_cache__"
@@ -60,8 +67,10 @@ class BestFilmVersion(_PluginBase):
             self._enabled = config.get("enabled")
             self._cron = config.get("cron")
             self._notify = config.get("notify")
+            self._webhook_enabled = config.get("webhook_enabled")
+            self._only_once = config.get("only_once")
 
-        if self._enabled:
+        if self._enabled and not self._webhook_enabled:
 
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             if self._cron:
@@ -80,6 +89,17 @@ class BestFilmVersion(_PluginBase):
             if self._scheduler.get_jobs():
                 self._scheduler.print_jobs()
                 self._scheduler.start()
+
+        if self._enabled and self._only_once:
+            self._only_once = False
+            self.update_config({
+                "enabled": self._enabled,
+                "cron": self._cron,
+                "notify": self._notify,
+                "webhook_enabled": self._webhook_enabled,
+                "only_once": self._only_once
+            })
+            self.sync()
 
     def get_state(self) -> bool:
         return self._enabled
@@ -105,74 +125,126 @@ class BestFilmVersion(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         return [
-            {
-                'component': 'VForm',
-                'content': [
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'enabled',
-                                            'label': '启用插件',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'notify',
-                                            'label': '发送通知',
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'cron',
-                                            'label': '执行周期',
-                                            'placeholder': '5位cron表达式，留空自动'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        ], {
-            "enabled": False,
-            "notify": False,
-            "cron": "*/30 * * * *",
-        }
+                   {
+                       'component': 'VForm',
+                       'content': [
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 3
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'enabled',
+                                                   'label': '启用插件',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 3
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'notify',
+                                                   'label': '发送通知',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 3
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'only_once',
+                                                   'label': '立即运行一次',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 3
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'webhook_enabled',
+                                                   'label': 'webhook',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'test',
+                                                   'label': '假开关,用来描述webhook选项,插件支持主动拉获取媒体库数据和webhook两种方式,两者只能选一,'
+                                                            '不知道webhook的,默认就好. Plex用户,使用主动获取时,执行周期设置大些, 建议大于1小时,'
+                                                            '收藏api接口,只能走的plex官网,有接口限制'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'cron',
+                                                   'label': '执行周期',
+                                                   'placeholder': '5位cron表达式，留空自动'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           }
+                       ]
+                   }
+               ], {
+                   "enabled": False,
+                   "notify": False,
+                   "cron": "*/30 * * * *",
+                   "webhook_enabled": False,
+                   "only_once": False,
+                   "test": False
+               }
 
     def get_page(self) -> List[dict]:
         """
@@ -300,37 +372,53 @@ class BestFilmVersion(_PluginBase):
         # 读取历史记录
         history = self.get_data('history') or []
 
+        all_item = []
         # 读取收藏
         if settings.MEDIASERVER == 'jellyfin':
-            # 根据加入日期 降序排序
-            url = "{HOST}Users/{USER}/Items?SortBy=DateCreated%2CSortName" \
-                  "&SortOrder=Descending" \
-                  "&Filters=IsFavorite" \
-                  "&Recursive=true" \
-                  "&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
-                  "&CollapseBoxSetItems=false" \
-                  "&ExcludeLocationTypes=Virtual" \
-                  "&EnableTotalRecordCount=false" \
-                  "&Limit=20" \
-                  "&apikey={APIKEY}"
-            resp = self.get_items(Jellyfin().get_data(url))
+            # 获取所有user
+            users_url = "{HOST}Users?&apikey={APIKEY}"
+            users = self.get_users(Jellyfin().get_data(users_url))
+            if not users:
+                logger.info(f"bestfilmversion/users_url: {users_url}")
+                return
+            for user in users:
+                # 根据加入日期 降序排序
+                url = "{HOST}Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
+                                              "&SortOrder=Descending" \
+                                              "&Filters=IsFavorite" \
+                                              "&Recursive=true" \
+                                              "&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
+                                              "&CollapseBoxSetItems=false" \
+                                              "&ExcludeLocationTypes=Virtual" \
+                                              "&EnableTotalRecordCount=false" \
+                                              "&Limit=20" \
+                                              "&apikey={APIKEY}"
+                resp = self.get_items(Jellyfin().get_data(url))
+                all_item.extend(resp)
         elif settings.MEDIASERVER == 'emby':
-            # 根据加入日期 降序排序
-            url = "{HOST}emby/Users/{USER}/Items?SortBy=DateCreated%2CSortName" \
-                  "&SortOrder=Descending" \
-                  "&Filters=IsFavorite" \
-                  "&Recursive=true" \
-                  "&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
-                  "&CollapseBoxSetItems=false" \
-                  "&ExcludeLocationTypes=Virtual" \
-                  "&EnableTotalRecordCount=false" \
-                  "&Limit=20&api_key={APIKEY}"
-            resp = self.get_items(Emby().get_data(url))
+            # 获取所有user
+            get_users_url = "{HOST}Users?&api_key={APIKEY}"
+            users = self.get_users(Jellyfin().get_data(get_users_url))
+            if not users:
+                return
+            for user in users:
+                # 根据加入日期 降序排序
+                url = "{HOST}emby/Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
+                                                   "&SortOrder=Descending" \
+                                                   "&Filters=IsFavorite" \
+                                                   "&Recursive=true" \
+                                                   "&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
+                                                   "&CollapseBoxSetItems=false" \
+                                                   "&ExcludeLocationTypes=Virtual" \
+                                                   "&EnableTotalRecordCount=false" \
+                                                   "&Limit=20&api_key={APIKEY}"
+                resp = self.get_items(Emby().get_data(url))
+                all_item.extend(resp)
         else:
-            # TODO plex待开发
-            return
+            resp = self.plex_get_watchlist(self)
+            all_item.extend(resp)
 
-        for data in resp:
+        for data in all_item:
             # 检查缓存
             if data.get('Name') in caches:
                 continue
@@ -341,8 +429,7 @@ class BestFilmVersion(_PluginBase):
             elif settings.MEDIASERVER == 'emby':
                 item_info_resp = Emby().get_iteminfo(itemid=data.get('Id'))
             else:
-                # TODO plex待开发
-                return
+                item_info_resp = self.plex_get_iteminfo(itemid=data.get('Id'))
 
             logger.info(f'BestFilmVersion插件 item打印 {item_info_resp}')
             if not item_info_resp:
@@ -401,3 +488,167 @@ class BestFilmVersion(_PluginBase):
         except Exception as e:
             print(str(e))
             return []
+
+    @staticmethod
+    def get_users(resp: Response):
+        try:
+            if resp:
+                return [data['Id'] for data in resp.json()]
+            else:
+                logger.error(f"BestFilmVersion/Users 未获取到返回数据")
+                return []
+        except Exception as e:
+            logger.error(f"连接BestFilmVersion/Users 出错：" + str(e))
+            return []
+
+    @staticmethod
+    def plex_get_watchlist(self):
+        # 根据加入日期 降序排序
+        url = f"https://metadata.provider.plex.tv/library/sections/watchlist/all?type=1&sort=addedAt%3Adesc" \
+              f"&X-Plex-Container-Start=0&X-Plex-Container-Size=50" \
+              f"&X-Plex-Token={self.service_apikey}"
+        res = []
+        try:
+            resp = RequestUtils().get_res(url=url)
+            if resp:
+                dom = parseString(resp.text)
+                # 获取文档元素对象
+                elem = dom.documentElement
+                # 获取 指定元素
+                eles = elem.getElementsByTagName('Video')
+                for ele in eles:
+                    data = {}
+                    # 获取标签中内容
+                    ele_id = ele.attributes['ratingKey'].nodeValue
+                    ele_title = ele.attributes['title'].nodeValue
+                    ele_type = ele.attributes['type'].nodeValue
+                    _type = "Movie" if ele_type == "movie" else ""
+                    data['Id'] = ele_id
+                    data['Name'] = ele_title
+                    data['Type'] = _type
+                    res.append(data)
+                return res
+            else:
+                logger.error(f"Plex/Watchlist 未获取到返回数据")
+                return []
+        except Exception as e:
+            logger.error(f"连接Plex/Watchlist 出错：" + str(e))
+            return []
+
+    def plex_get_iteminfo(self, itemid):
+        url = f"https://metadata.provider.plex.tv/library/metadata/{itemid}" \
+              f"?X-Plex-Token={settings.PLEX_TOKEN}"
+        try:
+            resp = RequestUtils().get_res(url=url)
+            if resp:
+                dom = parseString(resp.text)
+                # 获取文档元素对象
+                elem = dom.documentElement
+                # 获取 指定元素
+                eles = elem.getElementsByTagName('Video')
+                for ele in eles:
+                    # 获取标签中内容
+                    return {"ExternalUrls": "TheMovieDb", "Url": f"{self.ele_get_tmdbid(ele)}"}
+            else:
+                logger.error(f"Plex/Items 未获取到返回数据")
+                return []
+        except Exception as e:
+            logger.error(f"连接Plex/Items 出错：" + str(e))
+            return []
+
+    @staticmethod
+    def ele_get_tmdbid(ele):
+        data = []
+        for h in ele.getElementsByTagName('Guid'):
+            tmdbid = h.attributes['id'].nodeValue if h.attributes['id'].nodeValue.__contains__("tmdb") else ""
+            if not tmdbid:
+                continue
+            obj = {"Name": "TheMovieDb", "Url": f"{tmdbid}"}
+            data.append(obj)
+            return data
+        logger.warn(f"连接Plex/Guid 警告：" + "未获取到tmdbid数据")
+        return data
+
+    @eventmanager.register(EventType.WebhookMessage)
+    def webhook_message_action(self, event):
+
+        if not self._enabled:
+            return
+        if not self._webhook_enabled:
+            return
+
+        data: WebhookEventInfo = event.event_data
+        logger.info(f'BestFilmVersion/webhook_message_action WebhookEventInfo打印：{data}')
+
+        mediainfo: Optional[MediaInfo] = None
+        if not data.tmdb_id:
+            info = None
+            if data.channel == 'jellyfin' and data.event == 'UserDataSaved':
+                info = Jellyfin().get_iteminfo(itemid=data.item_id)
+            if data.channel == 'emby' and data.event == 'item.rate':
+                info = Emby().get_iteminfo(itemid=data.item_id)
+            if data.channel == 'plex' and data.event == 'item.rate':
+                info = Plex().get_iteminfo(itemid=data.item_id)
+            logger.info(f'BestFilmVersion/webhook_message_action item打印：{info}')
+
+            if not info:
+                return
+            if info['Type'] not in ['Movie', 'MOV', 'movie']:
+                return
+
+            # 获取tmdb_id
+            media_info_ids = info.get('ExternalUrls')
+            for media_info_id in media_info_ids:
+
+                if 'TheMovieDb' != media_info_id.get('Name'):
+                    continue
+
+                tmdb_find_id = str(media_info_id.get('Url')).split('/')
+                tmdb_find_id.reverse()
+                tmdb_id = tmdb_find_id[0]
+
+                mediainfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
+                if not mediainfo:
+                    logger.warn(f'未识别到媒体信息，标题：{data.item_name}，tmdbID：{tmdb_id}')
+                    return
+        else:
+            if data.item_type not in ['Movie', 'MOV', 'movie']:
+                return
+
+            mediainfo = self.chain.recognize_media(tmdbid=data.tmdb_id, mtype=MediaType.MOVIE)
+            if not mediainfo:
+                logger.warn(f'未识别到媒体信息，标题：{data.item_name}，tmdbID：{data.tmdb_id}')
+                return
+
+        # 读取缓存
+        caches = self._cache_path.read_text().split("\n") if self._cache_path.exists() else []
+        # 检查缓存
+        if mediainfo.title in caches:
+            return
+        # 读取历史记录
+        history = self.get_data('history') or []
+        # 添加订阅
+        self.subscribechain.add(mtype=MediaType.MOVIE,
+                                title=mediainfo.title,
+                                year=mediainfo.year,
+                                tmdbid=mediainfo.tmdb_id,
+                                best_version=True,
+                                username="收藏洗版",
+                                exist_ok=True)
+        # 加入缓存
+        caches.append(data.item_name)
+        # 存储历史记录
+        if mediainfo.tmdb_id not in [h.get("tmdbid") for h in history]:
+            history.append({
+                "title": mediainfo.title,
+                "type": mediainfo.type.value,
+                "year": mediainfo.year,
+                "poster": mediainfo.get_poster_image(),
+                "overview": mediainfo.overview,
+                "tmdbid": mediainfo.tmdb_id,
+                "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+        # 保存历史记录
+        self.save_data('history', history)
+        # 保存缓存
+        self._cache_path.write_text("\n".join(caches))
