@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from app import schemas
 from app.chain.douban import DoubanChain
 from app.chain.search import SearchChain
-from app.core.context import Context
 from app.core.security import verify_token
 from app.schemas.types import MediaType
 

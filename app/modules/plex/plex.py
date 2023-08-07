@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import List, Optional, Dict, Tuple, Generator
+from typing import List, Optional, Dict, Tuple, Generator, Any
 from urllib.parse import quote_plus
 
 from plexapi import media
@@ -220,7 +220,7 @@ class Plex(metaclass=Singleton):
                 self._plex.query(f'/library/sections/{lib_key}/refresh?path={quote_plus(path)}')
 
     @staticmethod
-    def __find_librarie(path: Path, libraries: List[dict]) -> Tuple[str, str]:
+    def __find_librarie(path: Path, libraries: List[Any]) -> Tuple[str, str]:
         """
         判断这个path属于哪个媒体库
         多个媒体库配置的目录不应有重复和嵌套,
@@ -262,7 +262,7 @@ class Plex(metaclass=Singleton):
             return {}
 
     @staticmethod
-    def __get_ids(guids: List[dict]) -> dict:
+    def __get_ids(guids: List[Any]) -> dict:
         guid_mapping = {
             "imdb://": "imdb_id",
             "tmdb://": "tmdb_id",

@@ -415,7 +415,7 @@ class BestFilmVersion(_PluginBase):
                 resp = self.get_items(Emby().get_data(url))
                 all_item.extend(resp)
         else:
-            resp = self.plex_get_watchlist(self)
+            resp = self.plex_get_watchlist()
             all_item.extend(resp)
 
         for data in all_item:
@@ -502,7 +502,7 @@ class BestFilmVersion(_PluginBase):
             return []
 
     @staticmethod
-    def plex_get_watchlist(self):
+    def plex_get_watchlist():
         # 根据加入日期 降序排序
         url = f"https://metadata.provider.plex.tv/library/sections/watchlist/all?type=1&sort=addedAt%3Adesc" \
               f"&X-Plex-Container-Start=0&X-Plex-Container-Size=50" \

@@ -306,7 +306,7 @@ class TorrentTransfer(_PluginBase):
                         continue
                     # TODO 读取trackers
                     try:
-                        torrent_main = None
+                        torrent_main = {}
                         main_announce = None
                     except Exception as err:
                         logger.error(f"解析种子文件 {torrent_file} 失败：{err}")

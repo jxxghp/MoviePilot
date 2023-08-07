@@ -43,7 +43,7 @@ def create_user(
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
     user = User(**user_info)
-    user = user.create(db)
+    user.create(db)
     return schemas.Response(success=True)
 
 
