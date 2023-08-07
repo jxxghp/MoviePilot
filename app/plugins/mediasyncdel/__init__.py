@@ -25,9 +25,9 @@ class MediaSyncDel(_PluginBase):
     # 插件描述
     plugin_desc = "媒体库删除媒体后同步删除历史记录或源文件。"
     # 插件图标
-    plugin_icon = "sync.png"
+    plugin_icon = "mediasyncdel.png"
     # 主题色
-    plugin_color = "#53BA47"
+    plugin_color = "#ff1a1a"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者

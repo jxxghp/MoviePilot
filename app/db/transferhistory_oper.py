@@ -60,3 +60,9 @@ class TransferHistoryOper(DbOper):
         删除转移记录
         """
         TransferHistory.delete(self._db, historyid)
+
+    def truncate(self):
+        """
+        清空转移记录
+        """
+        TransferHistory.truncate(self._db)
