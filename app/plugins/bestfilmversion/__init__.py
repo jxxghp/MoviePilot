@@ -25,13 +25,13 @@ class BestFilmVersion(_PluginBase):
     # 插件名称
     plugin_name = "收藏洗版"
     # 插件描述
-    plugin_desc = "Jellyfin/Emby点击收藏电影后，自动订阅洗版。"
+    plugin_desc = "Jellyfin/Emby/Plex点击收藏电影后，自动订阅洗版。"
     # 插件图标
     plugin_icon = "like.jpg"
     # 主题色
     plugin_color = "#E4003F"
     # 插件版本
-    plugin_version = "1.0"
+    plugin_version = "2.0"
     # 插件作者
     plugin_author = "wlj"
     # 作者主页
@@ -205,9 +205,9 @@ class BestFilmVersion(_PluginBase):
                                                'component': 'VSwitch',
                                                'props': {
                                                    'model': 'test',
-                                                   'label': '假开关,用来描述webhook选项,插件支持主动拉获取媒体库数据和webhook两种方式,两者只能选一,'
+                                                   'label': '假开关,用来描述webhook选项,插件支持主动获取媒体库数据和webhook两种方式,两者只能选一,'
                                                             '不知道webhook的,默认就好. Plex用户,使用主动获取时,执行周期设置大些, 建议大于1小时,'
-                                                            '收藏api接口,只能走的plex官网,有接口限制'
+                                                            '收藏api接口,只能走plex官网,有接口限制'
                                                }
                                            }
                                        ]
@@ -398,7 +398,7 @@ class BestFilmVersion(_PluginBase):
         elif settings.MEDIASERVER == 'emby':
             # 获取所有user
             get_users_url = "{HOST}Users?&api_key={APIKEY}"
-            users = self.get_users(Jellyfin().get_data(get_users_url))
+            users = self.get_users(Emby().get_data(get_users_url))
             if not users:
                 return
             for user in users:
@@ -506,7 +506,7 @@ class BestFilmVersion(_PluginBase):
         # 根据加入日期 降序排序
         url = f"https://metadata.provider.plex.tv/library/sections/watchlist/all?type=1&sort=addedAt%3Adesc" \
               f"&X-Plex-Container-Start=0&X-Plex-Container-Size=50" \
-              f"&X-Plex-Token={self.service_apikey}"
+              f"&X-Plex-Token={settings.PLEX_TOKEN}"
         res = []
         try:
             resp = RequestUtils().get_res(url=url)
