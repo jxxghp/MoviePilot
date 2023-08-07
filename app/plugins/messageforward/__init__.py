@@ -151,7 +151,7 @@ class MessageForward(_PluginBase):
     @eventmanager.register(EventType.WechatMessage)
     def send(self, event):
         """
-        向第三方Webhook发送请求
+        消息转发
         """
         if not self._enabled:
             return
