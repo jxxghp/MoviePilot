@@ -66,15 +66,17 @@ class LibraryScraper(_PluginBase):
             if self._cron:
                 logger.info(f"媒体库刮削服务启动，周期：{self._cron}")
                 try:
-                    self._scheduler.add_job(self.__libraryscraper,
-                                            CronTrigger.from_crontab(self._cron))
+                    self._scheduler.add_job(func=self.__libraryscraper,
+                                            trigger=CronTrigger.from_crontab(self._cron),
+                                            name="媒体库刮削")
                 except Exception as e:
                     logger.error(f"媒体库刮削服务启动失败，原因：{e}")
                     self.systemmessage.put(f"媒体库刮削服务启动失败，原因：{e}")
             else:
                 logger.info(f"媒体库刮削服务启动，周期：每7天")
-                self._scheduler.add_job(self.__libraryscraper,
-                                        CronTrigger.from_crontab("0 0 */7 * *"))
+                self._scheduler.add_job(func=self.__libraryscraper,
+                                        trigger=CronTrigger.from_crontab("0 0 */7 * *"),
+                                        name="媒体库刮削")
             if self._scheduler.get_jobs():
                 # 启动服务
                 self._scheduler.print_jobs()

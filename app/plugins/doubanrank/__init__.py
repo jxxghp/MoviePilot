@@ -88,13 +88,16 @@ class DoubanRank(_PluginBase):
             if self._cron:
                 logger.info(f"豆瓣榜单订阅服务启动，周期：{self._cron}")
                 try:
-                    self._scheduler.add_job(self.__refresh_rss,
-                                            CronTrigger.from_crontab(self._cron))
+                    self._scheduler.add_job(func=self.__refresh_rss,
+                                            trigger=CronTrigger.from_crontab(self._cron),
+                                            name="豆瓣榜单订阅")
                 except Exception as e:
                     logger.error(f"豆瓣榜单订阅服务启动失败，错误信息：{str(e)}")
                     self.systemmessage.put(f"豆瓣榜单订阅服务启动失败，错误信息：{str(e)}")
             else:
-                self._scheduler.add_job(self.__refresh_rss, CronTrigger.from_crontab("0 8 * * *"))
+                self._scheduler.add_job(func=self.__refresh_rss,
+                                        trigger=CronTrigger.from_crontab("0 8 * * *"),
+                                        name="豆瓣榜单订阅")
                 logger.info("豆瓣榜单订阅服务启动，周期：每天 08:00")
 
             if self._scheduler.get_jobs():

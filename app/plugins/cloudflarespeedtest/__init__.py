@@ -87,8 +87,9 @@ class CloudflareSpeedTest(_PluginBase):
 
             if self._onlyonce:
                 logger.info(f"Cloudflare CDN优选服务启动，立即运行一次")
-                self._scheduler.add_job(self.__cloudflareSpeedTest, 'date',
-                                        run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3))
+                self._scheduler.add_job(func=self.__cloudflareSpeedTest, trigger='date',
+                                        run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+                                        name="Cloudflare优选")
                 # 关闭一次性开关
                 self._onlyonce = False
                 self.__update_config()

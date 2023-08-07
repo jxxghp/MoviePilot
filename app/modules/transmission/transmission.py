@@ -115,6 +115,8 @@ class Transmission(metaclass=Singleton):
         """
         设置种子标签
         """
+        if not self.trc:
+            return False
         if not ids or not tags:
             return False
         try:
@@ -138,6 +140,8 @@ class Transmission(metaclass=Singleton):
         :param cookie: 站点Cookie用于辅助下载种子
         :return: Torrent
         """
+        if not self.trc:
+            return None
         try:
             return self.trc.add_torrent(torrent=content,
                                         download_dir=download_dir,
@@ -193,6 +197,8 @@ class Transmission(metaclass=Singleton):
         """
         获取种子文件列表
         """
+        if not self.trc:
+            return None
         if not tid:
             return None
         try:
@@ -209,6 +215,8 @@ class Transmission(metaclass=Singleton):
         """
         设置下载文件的状态
         """
+        if not self.trc:
+            return False
         try:
             self.trc.change_torrent(ids=tid, files_wanted=file_ids)
             return True
@@ -220,6 +228,8 @@ class Transmission(metaclass=Singleton):
         """
         获取传输信息
         """
+        if not self.trc:
+            return None
         try:
             return self.trc.session_stats()
         except Exception as err:

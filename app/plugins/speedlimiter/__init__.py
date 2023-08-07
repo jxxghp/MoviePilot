@@ -4,6 +4,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.core.config import settings
 from app.log import logger
+from app.modules.qbittorrent import Qbittorrent
+from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 
 
@@ -31,22 +33,32 @@ class SpeedLimiter(_PluginBase):
 
     # 私有属性
     _scheduler = None
+    _qb = None
+    _tr = None
     _enabled: bool = False
     _notify: bool = False
-    _bandwidth: int = 0
     _interval: int = 60
+    _downloader: list = []
+    _play_up_speed: float = 0
+    _play_down_speed: float = 0
+    _noplay_up_speed: float = 0
+    _noplay_down_speed: float = 0
 
     def init_plugin(self, config: dict = None):
         # 读取配置
         if config:
             self._enabled = config.get("enabled")
             self._notify = config.get("notify")
-            try:
-                # 总带宽
-                self._bandwidth = int(float(config.get("bandwidth") or 0)) * 1000000
-            except Exception as e:
-                logger.error(f"总带宽配置错误：{e}")
-                self._bandwidth = 0
+            self._play_up_speed = float(config.get("play_up_speed")) if config.get("play_up_speed") else 0
+            self._play_down_speed = float(config.get("play_down_speed")) if config.get("play_down_speed") else 0
+            self._noplay_up_speed = float(config.get("noplay_up_speed")) if config.get("noplay_up_speed") else 0
+            self._noplay_down_speed = float(config.get("noplay_down_speed")) if config.get("noplay_down_speed") else 0
+            self._downloader = config.get("downloader") or []
+            if self._downloader:
+                if 'qbittorrent' in self._downloader:
+                    self._qb = Qbittorrent()
+                if 'transmission' in self._downloader:
+                    self._tr = Transmission()
 
         # 移出现有任务
         self.stop_service()
@@ -56,10 +68,11 @@ class SpeedLimiter(_PluginBase):
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             self._scheduler.add_job(func=self.__check_playing_sessions,
                                     trigger='interval',
-                                    seconds=self._interval)
+                                    seconds=self._interval,
+                                    name="播放限速检查")
             self._scheduler.print_jobs()
             self._scheduler.start()
-            logger.info("播放限速服务启动")
+            logger.info("播放限速检查服务启动")
 
     def get_state(self) -> bool:
         return self._enabled
@@ -72,7 +85,159 @@ class SpeedLimiter(_PluginBase):
         pass
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        pass
+        return [
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'notify',
+                                            'label': '发送通知',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'chips': True,
+                                            'multiple': True,
+                                            'model': 'sign_sites',
+                                            'label': '下载器',
+                                            'items': [
+                                                {'title': 'Qbittorrent', 'value': 'qbittorrent'},
+                                                {'title': 'Transmission', 'value': 'transmission'},
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'play_up_speed',
+                                            'label': '播放限速（上传）',
+                                            'placeholder': 'KB/s'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'play_down_speed',
+                                            'label': '播放限速（下载）',
+                                            'placeholder': 'KB/s'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'noplay_up_speed',
+                                            'label': '未播放限速（上传）',
+                                            'placeholder': 'KB/s'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'noplay_down_speed',
+                                            'label': '未播放限速（下载）',
+                                            'placeholder': 'KB/s'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "notify": True,
+            "downloader": [],
+            "play_up_speed": 0,
+            "play_down_speed": 0,
+            "noplay_up_speed": 0,
+            "noplay_down_speed": 0,
+        }
 
     def get_page(self) -> List[dict]:
         pass
@@ -80,6 +245,13 @@ class SpeedLimiter(_PluginBase):
     def __check_playing_sessions(self):
         """
         检查播放会话
+        """
+        if not self._qb and not self._tr:
+            return
+
+    def __set_limiter(self):
+        """
+        设置限速
         """
         pass
 
