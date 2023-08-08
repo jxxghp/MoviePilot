@@ -69,27 +69,21 @@ class MediaSyncDel(_PluginBase):
             self._del_source = config.get("del_source")
             self._exclude_path = config.get("exclude_path")
 
-        if self._enabled:
+        if self._enabled and str(self._sync_type) == "log":
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             if self._cron:
                 try:
-                    if str(self._sync_type) == "log":
-                        self._scheduler.add_job(func=self.sync_del_by_log,
-                                                trigger=CronTrigger.from_crontab(self._cron),
-                                                name="媒体库同步删除")
-                    if str(self._sync_type) == "plugin":
-                        self._scheduler.add_job(func=self.sync_del_by_plugin,
-                                                trigger=CronTrigger.from_crontab(self._cron),
-                                                name="媒体库同步删除")
+
+                    self._scheduler.add_job(func=self.sync_del_by_log,
+                                            trigger=CronTrigger.from_crontab(self._cron),
+                                            name="媒体库同步删除")
                 except Exception as err:
                     logger.error(f"定时任务配置错误：{err}")
                     # 推送实时消息
                     self.systemmessage.put(f"执行周期配置错误：{err}")
             else:
-                if str(self._sync_type) == "log":
-                    self._scheduler.add_job(self.sync_del_by_log, "interval", minutes=30, name="媒体库同步删除")
-                if str(self._sync_type) == "plugin":
-                    self._scheduler.add_job(self.sync_del_by_plugin, "interval", minutes=30, name="媒体库同步删除")
+                self._scheduler.add_job(self.sync_del_by_log, "interval", minutes=30, name="媒体库同步删除")
+
             # 启动任务
             if self._scheduler.get_jobs():
                 self._scheduler.print_jobs()
