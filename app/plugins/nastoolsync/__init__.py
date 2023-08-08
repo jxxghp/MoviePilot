@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 from datetime import datetime
@@ -87,12 +88,13 @@ class NAStoolSync(_PluginBase):
                 self.update_config(
                     {
                         "clear": False,
-                        "nt_db_path": "",
+                        "nt_db_path": self._nt_db_path,
                         "path": self._path,
+                        "downloader": self._downloader,
                         "site": self._site,
-                        "transfer": self._transfer,
-                        "plugin": self._plugin,
-                        "download": self._download,
+                        "transfer": False,
+                        "plugin": False,
+                        "download": False,
                     }
                 )
 
@@ -130,19 +132,27 @@ class NAStoolSync(_PluginBase):
                 downloaders = self._downloader.split("\n")
                 for downloader in downloaders:
                     sub_downloaders = downloader.split(":")
-                    # 转种记录
+                    # 替换转种记录
                     if str(plugin_id) == "TorrentTransfer":
                         keys = str(plugin_key).split("-")
-                        if int(keys[0]) == int(sub_downloaders[0]):
+                        if keys[0].isdigit() and int(keys[0]) == int(sub_downloaders[0]):
                             # 替换key
                             plugin_key = plugin_key.replace(keys[0], sub_downloaders[1])
-                            # 替换value
-                            if int(plugin_value.get("to_download")) == int(sub_downloaders[0]):
-                                plugin_value["to_download"] = sub_downloaders[1]
-                    # 辅种记录
+
+                        # 替换value
+                        if isinstance(plugin_value, str):
+                            plugin_value = json.loads(plugin_value)
+                        if str(plugin_value.get("to_download")).isdigit() and int(
+                                plugin_value.get("to_download")) == int(sub_downloaders[0]):
+                            plugin_value["to_download"] = sub_downloaders[1]
+
+                    # 替换辅种记录
                     if str(plugin_id) == "IYUUAutoSeed":
+                        if isinstance(plugin_value, str):
+                            plugin_value = json.loads(plugin_value)
                         for value in plugin_value:
-                            if int(value.get("downloader")) == int(sub_downloaders[0]):
+                            if str(value.get("downloader")).isdigit() and int(value.get("downloader")) == int(
+                                    sub_downloaders[0]):
                                 value["downloader"] = sub_downloaders[1]
 
             self._plugindata.save(plugin_id=plugin_id,
@@ -385,7 +395,7 @@ class NAStoolSync(_PluginBase):
         return nt_historys
 
     def get_state(self) -> bool:
-        return True if self._nt_db_path else False
+        return True if self._transfer or self._plugin or self._download else False
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -588,6 +598,7 @@ class NAStoolSync(_PluginBase):
             "download": False,
             "nt_db_path": "",
             "path": "",
+            "downloader": "",
             "site": "",
         }
 
