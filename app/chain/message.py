@@ -329,7 +329,7 @@ class MessageChain(ChainBase):
                     EventType.UserMessage,
                     {
                         "text": content,
-                        "user": userid,
+                        "userid": userid,
                         "channel": channel
                     }
                 )
