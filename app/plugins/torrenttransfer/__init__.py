@@ -2,15 +2,21 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Event
-from typing import Any, List, Dict, Tuple
+from typing import Any, List, Dict, Tuple, Optional
 
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from torrentool.torrent import Torrent
 
 from app.core.config import settings
+from app.helper.sites import SitesHelper
+from app.helper.torrent import TorrentHelper
 from app.log import logger
+from app.modules.qbittorrent import Qbittorrent
+from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
+from app.utils.string import StringUtils
 
 
 class TorrentTransfer(_PluginBase):
@@ -37,7 +43,10 @@ class TorrentTransfer(_PluginBase):
 
     # 私有属性
     _scheduler = None
+    qb = None
+    tr = None
     sites = None
+    torrent = None
     # 开关
     _enabled = False
     _cron = None
@@ -61,6 +70,8 @@ class TorrentTransfer(_PluginBase):
     _torrent_tags = ["已整理", "转移做种"]
 
     def init_plugin(self, config: dict = None):
+        self.sites = SitesHelper()
+        self.torrent = TorrentHelper()
         # 读取配置
         if config:
             self._enabled = config.get("enabled")
@@ -82,9 +93,12 @@ class TorrentTransfer(_PluginBase):
 
         # 启动定时任务 & 立即运行一次
         if self.get_state() or self._onlyonce:
+            self.qb = Qbittorrent()
+            self.tr = Transmission()
             # 检查配置
             if self._fromtorrentpath and not Path(self._fromtorrentpath).exists():
                 logger.error(f"源下载器种子文件保存路径不存在：{self._fromtorrentpath}")
+                self.systemmessage.put(f"源下载器种子文件保存路径不存在：{self._fromtorrentpath}")
                 return
             if self._fromdownloader == self._todownloader:
                 logger.error(f"源下载器和目的下载器不能相同")
@@ -188,6 +202,218 @@ class TorrentTransfer(_PluginBase):
                                 ]
                             }
                         ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cron',
+                                            'label': '执行周期',
+                                            'placeholder': '0 0 0 ? *'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'nolabels',
+                                            'label': '不转移种子标签',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'fromdownloader',
+                                            'label': '源下载器',
+                                            'items': [
+                                                {'title': 'Qbittorrent', 'value': 'qbittorrent'},
+                                                {'title': 'Transmission', 'value': 'transmission'}
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'fromtorrentpath',
+                                            'label': '种子文件路径',
+                                            'placeholder': 'BT_backup、torrents'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'frompath',
+                                            'label': '数据文件根路径',
+                                            'placeholder': '根路径，留空不进行路径转换'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'todownloader',
+                                            'label': '目的下载器',
+                                            'items': [
+                                                {'title': 'Qbittorrent', 'value': 'qbittorrent'},
+                                                {'title': 'Transmission', 'value': 'transmission'}
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'topath',
+                                            'label': '数据文件根路径',
+                                            'placeholder': '根路径，留空不进行路径转换'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'nopaths',
+                                            'label': '不转移数据文件目录',
+                                            'rows': 3,
+                                            'placeholder': '每一行一个目录'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'autostart',
+                                            'label': '校验完成后自动开始',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'deletesource',
+                                            'label': '删除源种子',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 ]
             }
@@ -210,6 +436,52 @@ class TorrentTransfer(_PluginBase):
     def get_page(self) -> List[dict]:
         pass
 
+    def __get_downloader(self, dtype: str):
+        """
+        根据类型返回下载器实例
+        """
+        if dtype == "qbittorrent":
+            return self.qb
+        elif dtype == "transmission":
+            return self.tr
+        else:
+            return None
+
+    def __download(self, downloader: str, content: bytes,
+                   save_path: str) -> Optional[str]:
+        """
+        添加下载任务
+        """
+        if downloader == "qbittorrent":
+            # 生成随机Tag
+            tag = StringUtils.generate_random_str(10)
+            state = self.qb.add_torrent(content=content,
+                                        download_dir=save_path,
+                                        is_paused=True,
+                                        tag=["已整理", "转移做种", tag])
+            if not state:
+                return None
+            else:
+                # 获取种子Hash
+                torrent_hash = self.qb.get_torrent_id_by_tag(tags=tag)
+                if not torrent_hash:
+                    logger.error(f"{downloader} 获取种子Hash失败")
+                    return None
+            return torrent_hash
+        elif downloader == "transmission":
+            # 添加任务
+            torrent = self.tr.add_torrent(content=content,
+                                          download_dir=save_path,
+                                          is_paused=True,
+                                          labels=["已整理", "转移做种"])
+            if not torrent:
+                return None
+            else:
+                return torrent.hashString
+
+        logger.error(f"不支持的下载器：{downloader}")
+        return None
+
     def transfer(self):
         """
         开始移转做种
@@ -225,8 +497,9 @@ class TorrentTransfer(_PluginBase):
         downloader = self._fromdownloader
         # 目的下载器
         todownloader = self._todownloader
-        # TODO 获取下载器中已完成的种子
-        torrents = []
+        # 获取下载器中已完成的种子
+        downloader_obj = self.__get_downloader(downloader)
+        torrents = downloader_obj.get_completed_torrents()
         if torrents:
             logger.info(f"下载器 {downloader} 已完成种子数：{len(torrents)}")
         else:
@@ -276,14 +549,14 @@ class TorrentTransfer(_PluginBase):
             fail = 0
             for hash_item in hash_strs:
                 # 检查种子文件是否存在
-                torrent_file = os.path.join(self._fromtorrentpath,
-                                            f"{hash_item.get('hash')}.torrent")
-                if not os.path.exists(torrent_file):
+                torrent_file = Path(self._fromtorrentpath) / f"{hash_item.get('hash')}.torrent"
+                if not torrent_file.exists():
                     logger.error(f"种子文件不存在：{torrent_file}")
                     fail += 1
                     continue
-                # TODO 查询hash值是否已经在目的下载器中
-                torrent_info = []
+                # 查询hash值是否已经在目的下载器中
+                todownloader_obj = self.__get_downloader(todownloader)
+                torrent_info = todownloader_obj.get_torrents(ids=[hash_item.get('hash')])
                 if torrent_info:
                     logger.debug(f"{hash_item.get('hash')} 已在目的下载器中，跳过 ...")
                     continue
@@ -298,16 +571,10 @@ class TorrentTransfer(_PluginBase):
 
                 # 如果是QB检查是否有Tracker，没有的话补充解析
                 if downloader == "qbittorrent":
-                    # TODO 读取种子内容、解析种子文件
-                    content, retmsg = None, ""
-                    if not content:
-                        logger.error(f"读取种子文件失败：{retmsg}")
-                        fail += 1
-                        continue
-                    # TODO 读取trackers
+                    # 读取trackers
                     try:
-                        torrent_main = {}
-                        main_announce = None
+                        torrent_main = Torrent.from_file(torrent_file)
+                        main_announce = torrent_main.announce_urls
                     except Exception as err:
                         logger.error(f"解析种子文件 {torrent_file} 失败：{err}")
                         fail += 1
@@ -316,42 +583,36 @@ class TorrentTransfer(_PluginBase):
                     if not main_announce:
                         logger.info(f"{hash_item.get('hash')} 未发现tracker信息，尝试补充tracker信息...")
                         # 读取fastresume文件
-                        fastresume_file = os.path.join(self._fromtorrentpath,
-                                                       f"{hash_item.get('hash')}.fastresume")
-                        if not os.path.exists(fastresume_file):
+                        fastresume_file = Path(self._fromtorrentpath) / f"{hash_item.get('hash')}.fastresume"
+                        if not fastresume_file.exists():
                             logger.error(f"fastresume文件不存在：{fastresume_file}")
                             fail += 1
                             continue
                         # 尝试补充trackers
                         try:
-                            with open(fastresume_file, 'rb') as f:
-                                fastresume = f.read()
-                            # TODO 解析fastresume文件
-                            torrent_fastresume = None
-                            # TODO 读取trackers
-                            fastresume_trackers = None
-                            if isinstance(fastresume_trackers, list) \
-                                    and len(fastresume_trackers) > 0 \
-                                    and fastresume_trackers[0]:
+                            # 解析fastresume文件
+                            torrent_fastresume = Torrent.from_file(fastresume_file)
+                            # 读取trackers
+                            fastresume_trackers = torrent_fastresume.announce_urls
+                            if fastresume_trackers:
                                 # 重新赋值
-                                torrent_main['announce'] = fastresume_trackers[0][0]
+                                torrent_main.announce_urls = fastresume_trackers
                                 # 替换种子文件路径
                                 torrent_file = settings.TEMP_PATH / f"{hash_item.get('hash')}.torrent"
-                                # TODO 编码并保存到临时文件
-                                with open(torrent_file, 'wb') as f:
-                                    pass
+                                # 编码并保存到临时文件
+                                Torrent.to_file(torrent_file)
                         except Exception as err:
                             logger.error(f"解析fastresume文件 {fastresume_file} 失败：{err}")
                             fail += 1
                             continue
 
-                # TODO 发送到另一个下载器中下载：默认暂停、传输下载路径、关闭自动管理模式
-                download_id, retmsg = None, ""
+                # 发送到另一个下载器中下载：默认暂停、传输下载路径、关闭自动管理模式
+                logger.info(f"添加转移做种任务：{torrent_file} ...")
+                download_id = self.__download(downloader=downloader,
+                                              content=torrent_file.read_bytes(),
+                                              save_path=download_dir)
                 if not download_id:
                     # 下载失败
-                    logger.warn(f"添加转移任务出错，"
-                                f"错误原因：{retmsg or '下载器添加任务失败'}，"
-                                f"种子文件：{torrent_file}")
                     fail += 1
                     continue
                 else:
@@ -364,17 +625,16 @@ class TorrentTransfer(_PluginBase):
                     logger.info(f"成功添加转移做种任务，种子文件：{torrent_file}")
                     # TR会自动校验
                     if downloader == "qbittorrent":
-                        # TODO 开始校验种子
-                        pass
-                    # TODO 删除源种子，不能删除文件！
+                        todownloader_obj.recheck_torrents(ids=[download_id])
+                    # 删除源种子，不能删除文件！
                     if self._deletesource:
-                        pass
+                        downloader_obj.delete_torrents(delete_file=False, ids=[hash_item.get('hash')])
                     success += 1
                     # 插入转种记录
-                    history_key = "%s-%s" % (int(self._fromdownloader[0]), hash_item.get('hash'))
+                    history_key = "%s-%s" % (self._fromdownloader, hash_item.get('hash'))
                     self.save_data(key=history_key,
                                    value={
-                                       "to_download": int(self._todownloader[0]),
+                                       "to_download": self._todownloader,
                                        "to_download_id": download_id,
                                        "delete_source": self._deletesource,
                                    })
@@ -408,8 +668,8 @@ class TorrentTransfer(_PluginBase):
             return
         logger.info(f"开始检查下载器 {downloader} 的校验任务 ...")
         self._is_recheck_running = True
-        # TODO 获取下载器中的种子
-        torrents = []
+        downloader_obj = self.__get_downloader(downloader)
+        torrents = downloader_obj.get_torrents(ids=recheck_torrents)
         if torrents:
             can_seeding_torrents = []
             for torrent in torrents:
@@ -418,8 +678,9 @@ class TorrentTransfer(_PluginBase):
                 if self.__can_seeding(torrent, downloader):
                     can_seeding_torrents.append(hash_str)
             if can_seeding_torrents:
-                logger.info(f"共 {len(can_seeding_torrents)} 个任务校验完成，开始辅种 ...")
-                # TODO 开始辅种
+                logger.info(f"共 {len(can_seeding_torrents)} 个任务校验完成，开始做种 ...")
+                # 开始做种
+                downloader_obj.start_torrents(ids=can_seeding_torrents)
                 # 去除已经处理过的种子
                 self._recheck_torrents[downloader] = list(
                     set(recheck_torrents).difference(set(can_seeding_torrents)))
