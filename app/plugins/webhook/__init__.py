@@ -135,10 +135,21 @@ class WebHook(_PluginBase):
         """
         if not self._webhook_url:
             return
+
+        def __to_dict(event):
+            result = {}
+            for key, value in event.items():
+                if hasattr(value, 'to_dict'):
+                    result[key] = value.to_dict()
+                else:
+                    result[key] = str(value)
+            return result
+
         event_info = {
             "type": event.event_type,
-            "data": str(event.event_data)
+            "data": __to_dict(event.event_data)
         }
+
         if self._method == 'POST':
             ret = RequestUtils(content_type="application/json").post_res(self._webhook_url, json=event_info)
         else:
