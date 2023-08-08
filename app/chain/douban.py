@@ -23,6 +23,12 @@ class DoubanChain(ChainBase):
         if not doubaninfo:
             logger.warn(f'未查询到豆瓣信息，豆瓣ID：{doubanid}')
             return None
+        return self.recognize_by_doubaninfo(doubaninfo)
+
+    def recognize_by_doubaninfo(self, doubaninfo: dict) -> Optional[Context]:
+        """
+        根据豆瓣信息识别媒体信息
+        """
         # 使用原标题匹配
         meta = MetaInfo(title=doubaninfo.get("original_title") or doubaninfo.get("title"))
         # 处理类型
@@ -35,7 +41,7 @@ class DoubanChain(ChainBase):
         if not mediainfo:
             logger.warn(f'{meta.name} 未识别到TMDB媒体信息')
             return Context(meta_info=meta, media_info=MediaInfo(douban_info=doubaninfo))
-        logger.info(f'{doubanid} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}{meta.season}')
+        logger.info(f'识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}{meta.season}')
         mediainfo.set_douban_info(doubaninfo)
         return Context(meta_info=meta, media_info=mediainfo)
 

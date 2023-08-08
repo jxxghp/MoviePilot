@@ -3,7 +3,6 @@ from typing import List, Any
 from fastapi import APIRouter, Depends
 
 from app import schemas
-from app.chain.douban import DoubanChain
 from app.chain.tmdb import TmdbChain
 from app.core.context import MediaInfo
 from app.core.security import verify_token
@@ -173,23 +172,3 @@ def tmdb_season_episodes(tmdbid: int, season: int,
         return []
     else:
         return episodes_info
-
-
-@router.get("/{mediaid}", summary="TMDB详情", response_model=schemas.MediaInfo)
-def tmdb_info(mediaid: str, type_name: str,
-              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    根据媒体ID查询themoviedb媒体信息，type_name: 电影/电视剧
-    """
-    mtype = MediaType(type_name)
-    if mediaid.startswith("tmdb:"):
-        result = TmdbChain().tmdb_info(int(mediaid[5:]), mtype)
-        return MediaInfo(tmdb_info=result).to_dict()
-    elif mediaid.startswith("douban:"):
-        result = DoubanChain().recognize_by_doubanid(mediaid[7:])
-        if result:
-            return result.media_info.to_dict()
-        else:
-            return schemas.MediaInfo()
-    else:
-        return schemas.MediaInfo()
