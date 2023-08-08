@@ -136,9 +136,9 @@ class WebHook(_PluginBase):
         if not self._webhook_url:
             return
 
-        def __to_dict(event):
+        def __to_dict(_event):
             result = {}
-            for key, value in event.items():
+            for key, value in _event.items():
                 if hasattr(value, 'to_dict'):
                     result[key] = value.to_dict()
                 else:

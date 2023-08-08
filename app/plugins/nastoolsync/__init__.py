@@ -237,7 +237,8 @@ class NAStoolSync(_PluginBase):
 
         logger.info(f"转移记录已同步完成。总耗时 {(end_time - start_time).seconds} 秒")
 
-    def get_nt_plugin_history(self, cursor):
+    @staticmethod
+    def get_nt_plugin_history(cursor):
         """
         获取插件历史记录
         """
@@ -252,7 +253,8 @@ class NAStoolSync(_PluginBase):
         logger.info(f"获取到NAStool插件记录 {len(plugin_history)} 条")
         return plugin_history
 
-    def get_nt_download_history(self, cursor):
+    @staticmethod
+    def get_nt_download_history(cursor):
         """
         获取下载历史记录
         """
@@ -293,7 +295,8 @@ class NAStoolSync(_PluginBase):
         logger.info(f"获取到NAStool下载记录 {len(download_history)} 条")
         return download_history
 
-    def get_nt_transfer_history(self, cursor):
+    @staticmethod
+    def get_nt_transfer_history(cursor):
         """
         获取nt转移记录
         """

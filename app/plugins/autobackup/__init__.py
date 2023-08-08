@@ -24,7 +24,7 @@ class AutoBackup(_PluginBase):
     # 插件图标
     plugin_icon = "backup.png"
     # 主题色
-    plugin_color = "bg-green"
+    plugin_color = "#4FB647"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者
@@ -140,7 +140,8 @@ class AutoBackup(_PluginBase):
                      f"清理备份数量 {del_cnt}\n"
                      f"剩余备份数量 {bk_cnt - del_cnt}")
 
-    def backup(self, bk_path=None):
+    @staticmethod
+    def backup(bk_path: Path = None):
         """
         @param bk_path     自定义备份路径
         """
@@ -148,7 +149,7 @@ class AutoBackup(_PluginBase):
             # 创建备份文件夹
             config_path = Path(settings.CONFIG_PATH)
             backup_file = f"bk_{time.strftime('%Y%m%d%H%M%S')}"
-            backup_path = Path(bk_path) / backup_file
+            backup_path = bk_path / backup_file
             backup_path.mkdir(parents=True)
             # 把现有的相关文件进行copy备份
             shutil.copy(f'{config_path}/category.yaml', backup_path)
