@@ -608,7 +608,7 @@ class IYUUAutoSeed(_PluginBase):
                     if not history.get("downloader"):
                         continue
                     # 如果本次辅种下载器之前有过记录则继续添加
-                    if int(history.get("downloader")) == downloader:
+                    if str(history.get("downloader")) == downloader:
                         history_torrents = history.get("torrents") or []
                         history["torrents"] = list(set(history_torrents + success_torrents))
                         new_history = False

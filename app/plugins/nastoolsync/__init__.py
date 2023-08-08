@@ -43,6 +43,7 @@ class NAStoolSync(_PluginBase):
     _transfer = None
     _plugin = None
     _download = None
+    _downloader = None
 
     def init_plugin(self, config: dict = None):
         self._transferhistory = TransferHistoryOper()
@@ -55,6 +56,7 @@ class NAStoolSync(_PluginBase):
             self._site = config.get("site")
             self._transfer = config.get("transfer")
             self._plugin = config.get("plugin")
+            self._downloader = config.get("downloader")
             self._download = config.get("download")
 
             if self._nt_db_path and (self._transfer or self._plugin or self._download):
@@ -97,6 +99,18 @@ class NAStoolSync(_PluginBase):
     def sync_plugin_history(self, plugin_history):
         """
         导入插件记录
+
+        NAStool
+        {
+            "id": "TorrentTransfer",
+            "key: "1-4bdc22bc1e062803c8686beb2796369c59ee141f",
+            "value": "{"to_download": 2, "to_download_id": "4bdc22bc1e062803c8686beb2796369c59ee141f", "delete_source": true}"
+        },
+        {
+            "id": "IYUUAutoSeed",
+            "key: "f161efaf008d2e56e7939272e8d95eca58fa71dd",
+            "value": "[{"downloader": "2", "torrents": ["bd64a8edc5afe6b4beb8813bdbf6faedfb1d4cc4"]}]"
+        }
         """
         # 开始计时
         start_time = datetime.now()
@@ -110,6 +124,26 @@ class NAStoolSync(_PluginBase):
             plugin_id = history[1]
             plugin_key = history[2]
             plugin_value = history[3]
+
+            # 处理下载器映射
+            if self._downloader:
+                downloaders = self._downloader.split("\n")
+                for downloader in downloaders:
+                    sub_downloaders = downloader.split(":")
+                    # 转种记录
+                    if str(plugin_id) == "TorrentTransfer":
+                        keys = str(plugin_key).split("-")
+                        if int(keys[0]) == int(sub_downloaders[0]):
+                            # 替换key
+                            plugin_key = plugin_key.replace(keys[0], sub_downloaders[1])
+                            # 替换value
+                            if int(plugin_value.get("to_download")) == int(sub_downloaders[0]):
+                                plugin_value["to_download"] = sub_downloaders[1]
+                    # 辅种记录
+                    if str(plugin_id) == "IYUUAutoSeed":
+                        for value in plugin_value:
+                            if int(value.get("downloader")) == int(sub_downloaders[0]):
+                                value["downloader"] = sub_downloaders[1]
 
             self._plugindata.save(plugin_id=plugin_id,
                                   key=plugin_key,
@@ -491,6 +525,28 @@ class NAStoolSync(_PluginBase):
                                     {
                                         'component': 'VTextarea',
                                         'props': {
+                                            'model': 'downloader',
+                                            'rows': '2',
+                                            'label': '下载器映射',
+                                            'placeholder': 'NAStool下载器id:qbittorrent|transmission（一行一个）'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
                                             'model': 'site',
                                             'label': '站点映射',
                                             'placeholder': 'NAStool站点名:MoviePilot站点名（一行一个）'
@@ -516,7 +572,7 @@ class NAStoolSync(_PluginBase):
                                                     '开启清空记录时，会在导入历史数据之前删除MoviePilot之前的记录。'
                                                     '如果转移记录很多，同步时间可能会长，'
                                                     '所以点击确定后页面没反应是正常现象，后台正在处理。'
-                                                    '路径映射在同步转移记录时有效、站点映射在同步下载记录时有效。'
+                                                    '路径映射在同步转移记录时有效、下载器映射在同步插件记录时有效、站点映射在同步下载记录时有效。'
                                         }
                                     }
                                 ]
