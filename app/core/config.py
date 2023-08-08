@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     PORT: int = 3001
     # 是否调试模式
     DEBUG: bool = False
+    # 是否开发模式
+    DEV: bool = False
     # 配置文件目录
     CONFIG_DIR: str = None
     # 超级管理员

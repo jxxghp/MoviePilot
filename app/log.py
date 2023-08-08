@@ -5,7 +5,10 @@ from app.core.config import settings
 
 # logger
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+if settings.DEBUG:
+    logger.setLevel(logging.DEBUG)
+else:
+    logger.setLevel(logging.INFO)
 
 # 创建终端输出Handler
 console_handler = logging.StreamHandler()
