@@ -230,10 +230,10 @@ class BestFilmVersion(_PluginBase):
                                            {
                                                'component': 'VAlert',
                                                'props': {
-                                                   'text': '支持主动定时获取媒体库数据和Webhook两种方式，两者只能选一，'
-                                                           'Webhook需要在媒体服务器设置发送Webhook。'
-                                                           'Plex使用主动获取时，建议执行周期设置大些1小时，'
-                                                           '收藏Api接口调用Plex官网接口，有频率限制。'
+                                                   'text': '支持主动定时获取媒体库数据和Webhook实时触发两种方式，两者只能选其一，'
+                                                           'Webhook需要在媒体服务器设置发送Webhook报文。'
+                                                           'Plex使用主动获取时，建议执行周期设置大于1小时，'
+                                                           '收藏Api调用Plex官网接口，有频率限制。'
                                                }
                                            }
                                        ]

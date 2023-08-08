@@ -7,6 +7,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 
+from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
@@ -63,6 +64,7 @@ class DirMonitor(_PluginBase):
 
     # 私有属性
     transferhis = None
+    transferchian = None
     _observer = []
     _enabled = False
     _notify = False
@@ -75,6 +77,7 @@ class DirMonitor(_PluginBase):
 
     def init_plugin(self, config: dict = None):
         self.transferhis = TransferHistoryOper()
+        self.transferchian = TransferChain()
 
         # 读取配置
         if config:
@@ -255,7 +258,7 @@ class DirMonitor(_PluginBase):
                     self.chain.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
                     # 发送通知
                     if self._notify:
-                        self.chain.send_transfer_message(meta=file_meta, mediainfo=mediainfo, transferinfo=transferinfo)
+                        self.transferchian.send_transfer_message(meta=file_meta, mediainfo=mediainfo, transferinfo=transferinfo)
                     # 广播事件
                     self.eventmanager.send_event(EventType.TransferComplete, {
                         'meta': file_meta,
