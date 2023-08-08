@@ -274,7 +274,7 @@ class TorrentTransfer(_PluginBase):
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'fromtorrentpath',
-                                            'label': '种子文件路径',
+                                            'label': '源下载器种子文件路径',
                                             'placeholder': 'BT_backup、torrents'
                                         }
                                     }
@@ -291,7 +291,7 @@ class TorrentTransfer(_PluginBase):
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'frompath',
-                                            'label': '数据文件根路径',
+                                            'label': '源数据文件根路径',
                                             'placeholder': '根路径，留空不进行路径转换'
                                         }
                                     }
@@ -332,7 +332,7 @@ class TorrentTransfer(_PluginBase):
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'topath',
-                                            'label': '数据文件根路径',
+                                            'label': '目的数据文件根路径',
                                             'placeholder': '根路径，留空不进行路径转换'
                                         }
                                     }
