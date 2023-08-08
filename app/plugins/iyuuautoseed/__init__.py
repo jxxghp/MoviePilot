@@ -16,6 +16,7 @@ from app.modules.qbittorrent import Qbittorrent
 from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 from app.plugins.iyuuautoseed.iyuu_helper import IyuuHelper
+from app.schemas import NotificationType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
@@ -462,6 +463,7 @@ class IYUUAutoSeed(_PluginBase):
         if self._notify:
             if self.success or self.fail:
                 self.post_message(
+                    mtype=NotificationType.SiteMessage,
                     title="【IYUU自动辅种任务完成】",
                     text=f"服务器返回可辅种总数：{self.total}\n"
                          f"实际可辅种数：{self.realtotal}\n"
