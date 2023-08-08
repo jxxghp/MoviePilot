@@ -515,7 +515,7 @@ class NAStoolSync(_PluginBase):
                                         'props': {
                                             'model': 'path',
                                             'rows': '2',
-                                            'label': '路径映射',
+                                            'label': '历史记录路径映射',
                                             'placeholder': 'NAStool路径:MoviePilot路径（一行一个）'
                                         }
                                     }
@@ -537,7 +537,7 @@ class NAStoolSync(_PluginBase):
                                         'props': {
                                             'model': 'downloader',
                                             'rows': '2',
-                                            'label': '下载器映射',
+                                            'label': '插件数据下载器映射',
                                             'placeholder': 'NAStool下载器id:qbittorrent|transmission（一行一个）'
                                         }
                                     }
@@ -558,7 +558,7 @@ class NAStoolSync(_PluginBase):
                                         'component': 'VTextarea',
                                         'props': {
                                             'model': 'site',
-                                            'label': '站点映射',
+                                            'label': '下载历史站点映射',
                                             'placeholder': 'NAStool站点名:MoviePilot站点名（一行一个）'
                                         }
                                     }
@@ -582,7 +582,6 @@ class NAStoolSync(_PluginBase):
                                                     '开启清空记录时，会在导入历史数据之前删除MoviePilot之前的记录。'
                                                     '如果转移记录很多，同步时间可能会长，'
                                                     '所以点击确定后页面没反应是正常现象，后台正在处理。'
-                                                    '路径映射在同步转移记录时有效、下载器映射在同步插件记录时有效、站点映射在同步下载记录时有效。'
                                         }
                                     }
                                 ]
