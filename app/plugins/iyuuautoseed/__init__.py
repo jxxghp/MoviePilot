@@ -1,7 +1,7 @@
 import re
 from datetime import datetime, timedelta
 from threading import Event
-from typing import Any, List, Dict, Tuple
+from typing import Any, List, Dict, Tuple, Optional
 
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -9,10 +9,15 @@ from apscheduler.triggers.cron import CronTrigger
 from lxml import etree
 
 from app.core.config import settings
+from app.helper.sites import SitesHelper
+from app.helper.torrent import TorrentHelper
 from app.log import logger
+from app.modules.qbittorrent import Qbittorrent
+from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 from app.plugins.iyuuautoseed.iyuu_helper import IyuuHelper
 from app.utils.http import RequestUtils
+from app.utils.string import StringUtils
 
 
 class IYUUAutoSeed(_PluginBase):
@@ -40,7 +45,10 @@ class IYUUAutoSeed(_PluginBase):
     # 私有属性
     _scheduler = None
     iyuuhelper = None
+    qb = None
+    tr = None
     sites = None
+    torrent = None
     # 开关
     _enabled = False
     _cron = None
@@ -79,6 +87,8 @@ class IYUUAutoSeed(_PluginBase):
     cached = 0
 
     def init_plugin(self, config: dict = None):
+        self.sites = SitesHelper()
+        self.torrent = TorrentHelper()
         # 读取配置
         if config:
             self._enabled = config.get("enabled")
@@ -101,6 +111,9 @@ class IYUUAutoSeed(_PluginBase):
         if self.get_state() or self._onlyonce:
             self.iyuuhelper = IyuuHelper(token=self._token)
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+            self.qb = Qbittorrent()
+            self.tr = Transmission()
+
             if self._cron:
                 try:
                     self._scheduler.add_job(self.auto_seed,
@@ -147,6 +160,9 @@ class IYUUAutoSeed(_PluginBase):
         """
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
+        # 站点的可选项
+        site_options = [{"title": site.get("name"), "value": site.get("id")}
+                        for site in self.sites.get_indexers()]
         return [
             {
                 'component': 'VForm',
@@ -187,6 +203,146 @@ class IYUUAutoSeed(_PluginBase):
                                 ]
                             }
                         ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'token',
+                                            'label': 'IYUU Token',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cron',
+                                            'label': '执行周期',
+                                            'placeholder': '0 0 0 ? *'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'nolabels',
+                                            'label': '不辅种标签',
+                                            'placeholder': '使用,分隔多个标签'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'chips': True,
+                                            'multiple': True,
+                                            'model': 'downloaders',
+                                            'label': '辅种下载器',
+                                            'items': [
+                                                {'title': 'Qbittorrent', 'value': 'qbittorrent'},
+                                                {'title': 'Transmission', 'value': 'transmission'}
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'chips': True,
+                                            'multiple': True,
+                                            'model': 'sites',
+                                            'label': '辅种站点',
+                                            'items': site_options
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'clearcache',
+                                            'label': '清除缓存后运行',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 ]
             }
@@ -221,6 +377,17 @@ class IYUUAutoSeed(_PluginBase):
             "permanent_error_caches": self._permanent_error_caches
         })
 
+    def __get_downloader(self, dtype: str):
+        """
+        根据类型返回下载器实例
+        """
+        if dtype == "qbittorrent":
+            return self.qb
+        elif dtype == "transmission":
+            return self.tr
+        else:
+            return None
+
     def auto_seed(self):
         """
         开始辅种
@@ -241,8 +408,9 @@ class IYUUAutoSeed(_PluginBase):
         # 扫描下载器辅种
         for downloader in self._downloaders:
             logger.info(f"开始扫描下载器 {downloader} ...")
-            # TODO 获取下载器中已完成的种子
-            torrents = []
+            downloader_obj = self.__get_downloader(downloader)
+            # 获取下载器中已完成的种子
+            torrents = downloader_obj.get_completed_torrents()
             if torrents:
                 logger.info(f"下载器 {downloader} 已完成种子数：{len(torrents)}")
             else:
@@ -319,9 +487,10 @@ class IYUUAutoSeed(_PluginBase):
             if not recheck_torrents:
                 continue
             logger.info(f"开始检查下载器 {downloader} 的校验任务 ...")
-            # 下载器类型
-            # TODO 获取下载器中的种子
-            torrents = []
+            # 下载器
+            downloader_obj = self.__get_downloader(downloader)
+            # 获取下载器中的种子状态
+            torrents = downloader_obj.get_torrents(ids=recheck_torrents)
             if torrents:
                 can_seeding_torrents = []
                 for torrent in torrents:
@@ -331,7 +500,8 @@ class IYUUAutoSeed(_PluginBase):
                         can_seeding_torrents.append(hash_str)
                 if can_seeding_torrents:
                     logger.info(f"共 {len(can_seeding_torrents)} 个任务校验完成，开始辅种 ...")
-                    # TODO 开始任务
+                    # 开始任务
+                    downloader_obj.start_torrents(ids=can_seeding_torrents)
                     # 去除已经处理过的种子
                     self._recheck_torrents[downloader] = list(
                         set(recheck_torrents).difference(set(can_seeding_torrents)))
@@ -457,6 +627,41 @@ class IYUUAutoSeed(_PluginBase):
         except Exception as e:
             print(str(e))
 
+    def __download(self, downloader: str, content: bytes,
+                   save_path: str) -> Optional[str]:
+        """
+        添加下载任务
+        """
+        if downloader == "qbittorrent":
+            # 生成随机Tag
+            tag = StringUtils.generate_random_str(10)
+            state = self.qb.add_torrent(content=content,
+                                        download_dir=save_path,
+                                        is_paused=True,
+                                        tag=["已整理", "辅种", tag])
+            if not state:
+                return None
+            else:
+                # 获取种子Hash
+                torrent_hash = self.qb.get_torrent_id_by_tag(tags=tag)
+                if not torrent_hash:
+                    logger.error(f"{downloader} 获取种子Hash失败")
+                    return None
+            return torrent_hash
+        elif downloader == "transmission":
+            # 添加任务
+            torrent = self.tr.add_torrent(content=content,
+                                          download_dir=save_path,
+                                          is_paused=True,
+                                          labels=["已整理", "辅种"])
+            if not torrent:
+                return None
+            else:
+                return torrent.hashString
+
+        logger.error(f"不支持的下载器：{downloader}")
+        return None
+
     def __download_torrent(self, seed: dict, downloader: str, save_path: str):
         """
         下载种子
@@ -476,22 +681,25 @@ class IYUUAutoSeed(_PluginBase):
             self.cached += 1
             return False
         # 查询站点
-        site_info = self.sites.get_sites(siteurl=site_url)
+        site_domain = StringUtils.get_url_domain(site_url)
+        # 站点信息
+        site_info = self.sites.get_indexer(site_domain)
         if not site_info:
             logger.debug(f"没有维护种子对应的站点：{site_url}")
             return False
-        if self._sites and str(site_info.get("id")) not in self._sites:
+        if self._sites and str(site_info.get('id')) not in self._sites:
             logger.info("当前站点不在选择的辅助站点范围，跳过 ...")
             return False
         self.realtotal += 1
-        # TODO 查询hash值是否已经在下载器中
-        torrent_info = []
+        # 查询hash值是否已经在下载器中
+        downloader_obj = self.__get_downloader(downloader)
+        torrent_info = downloader_obj.get_torrents(ids=[seed.get("info_hash")])
         if torrent_info:
             logger.debug(f"{seed.get('info_hash')} 已在下载器中，跳过 ...")
             self.exist += 1
             return False
         # 站点流控
-        if self.sites.check_ratelimit(site_info.get("id")):
+        if self.sites.check(site_domain):
             self.fail += 1
             return False
         # 下载种子
@@ -509,20 +717,33 @@ class IYUUAutoSeed(_PluginBase):
             torrent_url += "&https=1"
         else:
             torrent_url += "?https=1"
-        # TODO 添加下载，辅种任务默认暂停
-        download_id, retmsg = None, ""
-        if not download_id:
+        # 下载种子文件
+        _, content, _, _, error_msg = self.torrent.download_torrent(
+            url=torrent_url,
+            cookie=site_info.get("cookie"),
+            ua=site_info.get("ua") or settings.USER_AGENT,
+            proxy=site_info.get("proxy"))
+        if not content:
             # 下载失败
-            logger.warn(f"添加下载任务出错，"
-                        f"错误原因：{retmsg or '下载器添加任务失败'}，"
-                        f"种子链接：{torrent_url}")
             self.fail += 1
             # 加入失败缓存
-            if retmsg and ('无法打开链接' in retmsg or '触发站点流控' in retmsg):
+            if error_msg and ('无法打开链接' in error_msg or '触发站点流控' in error_msg):
                 self._error_caches.append(seed.get("info_hash"))
             else:
                 # 种子不存在的情况
                 self._permanent_error_caches.append(seed.get("info_hash"))
+            logger.error(f"下载种子文件失败：{torrent_url}")
+            return False
+        # 添加下载，辅种任务默认暂停
+        logger.info(f"添加下载任务：{torrent_url} ...")
+        download_id = self.__download(downloader=downloader,
+                                      content=content,
+                                      save_path=save_path)
+        if not download_id:
+            # 下载失败
+            self.fail += 1
+            # 加入失败缓存
+            self._error_caches.append(seed.get("info_hash"))
             return False
         else:
             self.success += 1
@@ -535,9 +756,8 @@ class IYUUAutoSeed(_PluginBase):
             logger.info(f"成功添加辅种下载，站点：{site_info.get('name')}，种子链接：{torrent_url}")
             # TR会自动校验
             if downloader == "qbittorrent":
-                # TODO 开始校验种子
-                pass
-
+                # 开始校验种子
+                downloader_obj.recheck_torrents(ids=[download_id])
             # 成功也加入缓存，有一些改了路径校验不通过的，手动删除后，下一次又会辅上
             self._success_caches.append(seed.get("info_hash"))
             return True

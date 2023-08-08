@@ -264,3 +264,15 @@ class Transmission(metaclass=Singleton):
         except Exception as err:
             logger.error(f"设置速度限制出错：{err}")
             return False
+
+    def recheck_torrents(self, ids: Union[str, list]):
+        """
+        重新校验种子
+        """
+        if not self.trc:
+            return False
+        try:
+            return self.trc.verify_torrent(ids=ids)
+        except Exception as err:
+            logger.error(f"重新校验种子出错：{err}")
+            return False

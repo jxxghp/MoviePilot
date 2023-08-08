@@ -325,3 +325,15 @@ class Qbittorrent(metaclass=Singleton):
         except Exception as err:
             logger.error(f"设置速度限制出错：{err}")
             return False
+
+    def recheck_torrents(self, ids: Union[str, list]):
+        """
+        重新校验种子
+        """
+        if not self.qbc:
+            return False
+        try:
+            return self.qbc.torrents_recheck(torrent_hashes=ids)
+        except Exception as err:
+            logger.error(f"重新校验种子出错：{err}")
+            return False
