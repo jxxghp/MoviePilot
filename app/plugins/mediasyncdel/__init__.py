@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import re
+import shutil
 import time
 from typing import List, Tuple, Dict, Any, Optional
 
@@ -18,6 +19,7 @@ from app.modules.jellyfin import Jellyfin
 from app.modules.themoviedb.tmdbv3api import Episode
 from app.plugins import _PluginBase
 from app.schemas.types import NotificationType, EventType
+from app.utils.path_utils import PathUtils
 
 
 class MediaSyncDel(_PluginBase):
@@ -496,8 +498,21 @@ class MediaSyncDel(_PluginBase):
             self._transferhis.delete(transferhis.id)
             del_cnt += 1
             # 删除种子任务
-            if self._del_source and transferhis.download_hash:
-                self.chain.remove_torrents(transferhis.download_hash)
+            if self._del_source:
+                del_source = False
+                if transferhis.download_hash:
+                    try:
+                        self.chain.remove_torrents(transferhis.download_hash)
+                    except Exception as e:
+                        logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
+                        del_source = True
+
+                # 直接删除源文件
+                if del_source:
+                    source_name = os.path.basename(transferhis.src)
+                    source_path = str(transferhis.src).replace(source_name, "")
+                    self.delete_media_file(filedir=source_path,
+                                           filename=source_name)
 
         logger.info(f"同步删除 {msg} 完成！")
 
@@ -632,8 +647,21 @@ class MediaSyncDel(_PluginBase):
                 image = transferhis.image
                 self._transferhis.delete(transferhis.id)
                 # 删除种子任务
-                if self._del_source and transferhis.download_hash:
-                    self.chain.remove_torrents(transferhis.download_hash)
+                if self._del_source:
+                    del_source = False
+                    if transferhis.download_hash:
+                        try:
+                            self.chain.remove_torrents(transferhis.download_hash)
+                        except Exception as e:
+                            logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
+                            del_source = True
+
+                    # 直接删除源文件
+                    if del_source:
+                        source_name = os.path.basename(transferhis.src)
+                        source_path = str(transferhis.src).replace(source_name, "")
+                        self.delete_media_file(filedir=source_path,
+                                               filename=source_name)
 
             logger.info(f"同步删除 {msg} 完成！")
 
@@ -807,6 +835,42 @@ class MediaSyncDel(_PluginBase):
 
         return del_medias
 
+    @staticmethod
+    def delete_media_file(filedir, filename):
+        """
+        删除媒体文件，空目录也会被删除
+        """
+        filedir = os.path.normpath(filedir).replace("\\", "/")
+        file = os.path.join(filedir, filename)
+        try:
+            if not os.path.exists(file):
+                return False, f"{file} 不存在"
+            os.remove(file)
+            nfoname = f"{os.path.splitext(filename)[0]}.nfo"
+            nfofile = os.path.join(filedir, nfoname)
+            if os.path.exists(nfofile):
+                os.remove(nfofile)
+            # 检查空目录并删除
+            if re.findall(r"^S\d{2}|^Season", os.path.basename(filedir), re.I):
+                # 当前是季文件夹，判断并删除
+                seaon_dir = filedir
+                if seaon_dir.count('/') > 1 and not PathUtils.get_dir_files(seaon_dir, exts=settings.RMT_MEDIAEXT):
+                    shutil.rmtree(seaon_dir)
+                # 媒体文件夹
+                media_dir = os.path.dirname(seaon_dir)
+            else:
+                media_dir = filedir
+            # 检查并删除媒体文件夹，非根目录且目录大于二级，且没有媒体文件时才会删除
+            if media_dir != '/' \
+                    and media_dir.count('/') > 1 \
+                    and not re.search(r'[a-zA-Z]:/$', media_dir) \
+                    and not PathUtils.get_dir_files(media_dir, exts=settings.RMT_MEDIAEXT):
+                shutil.rmtree(media_dir)
+            return True, f"{file} 删除成功"
+        except Exception as e:
+            logger.error("删除源文件失败：%s" % str(e))
+            return True, f"{file} 删除失败"
+
     def get_state(self):
         return self._enabled
 
@@ -833,7 +897,7 @@ class MediaSyncDel(_PluginBase):
             self.post_message(channel=event.event_data.get("channel"),
                               title="开始媒体库同步删除 ...",
                               userid=event.event_data.get("user"))
-        self.sync_del()
+        self.sync_del_by_log()
 
         if event:
             self.post_message(channel=event.event_data.get("channel"),
