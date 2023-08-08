@@ -15,6 +15,7 @@ from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
 from app.modules.emby import Emby
 from app.modules.jellyfin import Jellyfin
+from app.modules.themoviedb.tmdbv3api import Episode
 from app.plugins import _PluginBase
 from app.schemas.types import NotificationType, EventType
 
@@ -44,15 +45,17 @@ class MediaSyncDel(_PluginBase):
     # 私有属性
     _scheduler: Optional[BackgroundScheduler] = None
     _enabled = False
+    _sync_type: str = ""
     _cron: str = ""
     _notify = False
     _del_source = False
     _exclude_path = None
-
+    _episode = None
     _transferhis = None
 
     def init_plugin(self, config: dict = None):
         self._transferhis = TransferHistoryOper()
+        self.episode = Episode()
 
         # 停止现有任务
         self.stop_service()
@@ -60,6 +63,7 @@ class MediaSyncDel(_PluginBase):
         # 读取配置
         if config:
             self._enabled = config.get("enabled")
+            self._sync_type = config.get("sync_type")
             self._cron = config.get("cron")
             self._notify = config.get("notify")
             self._del_source = config.get("del_source")
@@ -69,16 +73,23 @@ class MediaSyncDel(_PluginBase):
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             if self._cron:
                 try:
-                    self._scheduler.add_job(func=self.sync_del,
-                                            trigger=CronTrigger.from_crontab(self._cron),
-                                            name="媒体库同步删除")
+                    if str(self._sync_type) == "log":
+                        self._scheduler.add_job(func=self.sync_del_by_log,
+                                                trigger=CronTrigger.from_crontab(self._cron),
+                                                name="媒体库同步删除")
+                    if str(self._sync_type) == "plugin":
+                        self._scheduler.add_job(func=self.sync_del_by_plugin,
+                                                trigger=CronTrigger.from_crontab(self._cron),
+                                                name="媒体库同步删除")
                 except Exception as err:
                     logger.error(f"定时任务配置错误：{err}")
                     # 推送实时消息
                     self.systemmessage.put(f"执行周期配置错误：{err}")
             else:
-                self._scheduler.add_job(self.sync_del, "interval", minutes=30, name="媒体库同步删除")
-
+                if str(self._sync_type) == "log":
+                    self._scheduler.add_job(self.sync_del_by_log, "interval", minutes=30, name="媒体库同步删除")
+                if str(self._sync_type) == "plugin":
+                    self._scheduler.add_job(self.sync_del_by_plugin, "interval", minutes=30, name="媒体库同步删除")
             # 启动任务
             if self._scheduler.get_jobs():
                 self._scheduler.print_jobs()
@@ -105,115 +116,150 @@ class MediaSyncDel(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         return [
-            {
-                'component': 'VForm',
-                'content': [
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'enabled',
-                                            'label': '启用插件',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'notify',
-                                            'label': '发送通知',
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'del_source',
-                                            'label': '删除源文件',
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'cron',
-                                            'label': '执行周期',
-                                            'placeholder': '5位cron表达式，留空自动'
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'exclude_path',
-                                            'label': '排除路径'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-
-                ]
-            }
-        ], {
-            "enabled": False,
-            "notify": True,
-            "del_source": False,
-            "cron": "*/30 * * * *",
-            "exclude_path": "",
-        }
+                   {
+                       'component': 'VForm',
+                       'content': [
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'enabled',
+                                                   'label': '启用插件',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'notify',
+                                                   'label': '发送通知',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'del_source',
+                                                   'label': '删除源文件',
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSelect',
+                                               'props': {
+                                                   'model': 'sync_type',
+                                                   'label': '同步方式',
+                                                   'items': [
+                                                       {'title': '日志', 'value': 'log'},
+                                                       {'title': 'Scripter X', 'value': 'plugin'}
+                                                   ]
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'cron',
+                                                   'label': '执行周期',
+                                                   'placeholder': '5位cron表达式，留空自动'
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'exclude_path',
+                                                   'label': '排除路径'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VAlert',
+                                               'props': {
+                                                   'text': '同步方式分为日志同步和Scripter X。日志同步需要配置执行周期，默认30分钟执行一次。'
+                                                           'Scripter X方式需要emby安装并配置Scripter X插件，无需配置执行周期。'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           }
+                       ]
+                   }
+               ], {
+                   "enabled": False,
+                   "notify": True,
+                   "del_source": False,
+                   "sync_type": "log",
+                   "cron": "*/30 * * * *",
+                   "exclude_path": "",
+               }
 
     def get_page(self) -> List[dict]:
         """
@@ -341,9 +387,165 @@ class MediaSyncDel(_PluginBase):
             }
         ]
 
-    def sync_del(self):
+    @eventmanager.register(EventType.WebhookMessage)
+    def sync_del_by_plugin(self, event):
         """
         emby删除媒体库同步删除历史记录
+        Scripter X插件
+        """
+        if not self._enabled:
+            return
+        event_data = event.event_data
+        event_type = event_data.get("event_type")
+        if not event_type or str(event_type) != 'media_del':
+            return
+
+        # 是否虚拟标识
+        item_isvirtual = event_data.get("item_isvirtual")
+        if not item_isvirtual:
+            logger.error("item_isvirtual参数未配置，为防止误删除，暂停插件运行")
+            self.update_config({
+                "enable": False,
+                "del_source": self._del_source,
+                "exclude_path": self._exclude_path,
+                "notify": self._notify,
+                "cron": self._cron,
+                "sync_type": self._sync_type,
+            })
+            return
+
+        # 如果是虚拟item，则直接return，不进行删除
+        if item_isvirtual == 'True':
+            return
+
+        # 读取历史记录
+        history = self.get_data('history') or []
+
+        # 媒体类型
+        media_type = event_data.get("media_type")
+        # 媒体名称
+        media_name = event_data.get("media_name")
+        # 媒体路径
+        media_path = event_data.get("media_path")
+        # tmdb_id
+        tmdb_id = event_data.get("tmdb_id")
+        # 季数
+        season_num = event_data.get("season_num")
+        if season_num and str(season_num).isdigit() and int(season_num) < 10:
+            season_num = f'S0{season_num}'
+        else:
+            season_num = f'S{season_num}'
+        # 集数
+        episode_num = event_data.get("episode_num")
+        if episode_num and str(episode_num).isdigit() and int(episode_num) < 10:
+            episode_num = f'E0{episode_num}'
+        else:
+            episode_num = f'E{episode_num}'
+
+        if not media_type:
+            logger.error(f"{media_name} 同步删除失败，未获取到媒体类型")
+            return
+        if not tmdb_id or not str(tmdb_id).isdigit():
+            logger.error(f"{media_name} 同步删除失败，未获取到TMDB ID")
+            return
+
+        if self._exclude_path and media_path and any(
+                os.path.abspath(media_path).startswith(os.path.abspath(path)) for path in
+                self._exclude_path.split(",")):
+            logger.info(f"媒体路径 {media_path} 已被排除，暂不处理")
+            return
+
+        # 删除电影
+        if media_type == "Movie":
+            msg = f'电影 {media_name} {tmdb_id}'
+            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id)
+        # 删除电视剧
+        elif media_type == "Series":
+            msg = f'剧集 {media_name} {tmdb_id}'
+            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id)
+        # 删除季 S02
+        elif media_type == "Season":
+            if not season_num or not str(season_num).isdigit():
+                logger.error(f"{media_name} 季同步删除失败，未获取到具体季")
+                return
+            msg = f'剧集 {media_name} S{season_num} {tmdb_id}'
+            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
+                                                                               season=season_num)
+        # 删除剧集S02E02
+        elif media_type == "Episode":
+            if not season_num or not str(season_num).isdigit() or not episode_num or not str(episode_num).isdigit():
+                logger.error(f"{media_name} 集同步删除失败，未获取到具体集")
+                return
+            msg = f'剧集 {media_name} S{season_num}E{episode_num} {tmdb_id}'
+            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
+                                                                               season=season_num,
+                                                                               episode=episode_num)
+        else:
+            return
+
+        logger.info(f"正在同步删除{msg}")
+
+        if not transfer_history:
+            logger.warn(f"{media_type} {media_name} 未获取到可删除数据")
+            return
+
+        # 开始删除
+        del_cnt = 0
+        image = 'https://emby.media/notificationicon.png'
+        year = None
+        for transferhis in transfer_history:
+            image = transferhis.image
+            year = transferhis.year
+            if media_type == "Episode" or media_type == "Movie":
+                # 如果有剧集或者电影有多个版本的话，需要根据名称筛选下要删除的版本
+                if os.path.basename(transferhis.dest) != os.path.basename(media_path):
+                    continue
+            self._transferhis.delete(transferhis.id)
+            del_cnt += 1
+            # 删除种子任务
+            if self._del_source and transferhis.download_hash:
+                self.chain.remove_torrents(transferhis.download_hash)
+
+        logger.info(f"同步删除 {msg} 完成！")
+
+        # 发送消息
+        if self._notify:
+            if media_type == "Episode":
+                # 根据tmdbid获取图片
+                image = self._episode().images(tv_id=tmdb_id,
+                                               season_id=season_num,
+                                               episode_id=episode_num,
+                                               orginal=True)
+            # 发送通知
+            self.post_message(
+                mtype=NotificationType.MediaServer,
+                title="媒体库同步删除任务完成",
+                image=image,
+                text=f"{msg}\n"
+                     f"数量 {del_cnt}\n"
+                     f"时间 {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}"
+            )
+
+        history.append({
+            "type": "电影" if media_type == "Movie" else "电视剧",
+            "title": media_name,
+            "year": year,
+            "path": media_path,
+            "season": season_num,
+            "episode": episode_num,
+            "image": image,
+            "del_time": str(datetime.datetime.now())
+        })
+
+        # 保存历史
+        self.save_data("history", history)
+
+        self.save_data("last_time", datetime.datetime.now())
+
+    def sync_del_by_log(self):
+        """
+        emby删除媒体库同步删除历史记录
+        日志方式
         """
         # 读取历史记录
         history = self.get_data('history') or []
@@ -445,7 +647,6 @@ class MediaSyncDel(_PluginBase):
             # 发送消息
             if self._notify:
                 self.post_message(
-                    mtype=NotificationType.MediaServer,
                     title="媒体库同步删除任务完成",
                     text=f"{msg}\n"
                          f"数量 {len(transfer_history)}\n"
