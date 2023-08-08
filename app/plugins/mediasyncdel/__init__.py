@@ -668,6 +668,7 @@ class MediaSyncDel(_PluginBase):
             # 发送消息
             if self._notify:
                 self.post_message(
+                    mtype=NotificationType.MediaServer,
                     title="媒体库同步删除任务完成",
                     text=f"{msg}\n"
                          f"数量 {len(transfer_history)}\n"
