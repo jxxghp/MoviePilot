@@ -1,0 +1,155 @@
+import re
+import time
+
+from app.chain import ChainBase
+from app.chain.download import DownloadChain
+from app.core.config import settings
+from app.core.context import Context, TorrentInfo, MediaInfo
+from app.core.metainfo import MetaInfo
+from app.db.rss_oper import RssOper
+from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.rss import RssHelper
+from app.helper.sites import SitesHelper
+from app.log import logger
+from app.schemas import Notification
+from app.schemas.types import SystemConfigKey, MediaType, NotificationType
+from app.utils.string import StringUtils
+
+
+class RssChain(ChainBase):
+    """
+    RSS处理链
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.rssoper = RssOper()
+        self.sites = SitesHelper()
+        self.systemconfig = SystemConfigOper()
+        self.downloadchain = DownloadChain()
+
+    def refresh(self):
+        """
+        刷新RSS订阅数据
+        """
+        # 所有RSS订阅
+        logger.info("开始刷新RSS订阅数据 ...")
+        rss_tasks = self.rssoper.list() or []
+        for rss_task in rss_tasks:
+            if not rss_task.url:
+                continue
+            # 下载Rss报文
+            items = RssHelper.parse(rss_task.url, True if rss_task.proxy else False)
+            if not items:
+                logger.error(f"RSS未下载到数据：{rss_task.url}")
+            logger.info(f"{rss_task.name} RSS下载到数据：{len(items)}")
+            # 过滤规则
+            if rss_task.best_version:
+                filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules2)
+            else:
+                filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules)
+            # 处理RSS条目
+            matched_contexts = []
+            for item in items:
+                if not item.get("title"):
+                    continue
+                # 基本要素匹配
+                if rss_task.include \
+                        and not re.search(r"%s" % rss_task.include, item.get("title")):
+                    logger.info(f"{item.get('title')} 未包含 {rss_task.include}")
+                    continue
+                if rss_task.exclude \
+                        and re.search(r"%s" % rss_task.exclude, item.get("title")):
+                    logger.info(f"{item.get('title')} 包含 {rss_task.exclude}")
+                    continue
+                # 检查站点
+                domain = StringUtils.get_url_domain(item.get("enclosure"))
+                site_info = self.sites.get_indexer(domain)
+                if not site_info:
+                    logger.error(f"{item.get('title')} 没有维护对应站点")
+                    continue
+                # 识别媒体信息
+                meta = MetaInfo(title=item.get("title"), subtitle=item.get("description"))
+                if not meta.name:
+                    logger.error(f"{item.get('title')} 未识别到有效信息")
+                    continue
+                mediainfo = self.recognize_media(meta=meta)
+                if not mediainfo:
+                    logger.error(f"{item.get('title')} 未识别到TMDB媒体信息")
+                    continue
+                if mediainfo.tmdb_id != rss_task.tmdbid:
+                    logger.error(f"{item.get('title')} 不匹配")
+                    continue
+                # 种子
+                torrentinfo = TorrentInfo(
+                    site=site_info.get("id"),
+                    site_name=site_info.get("name"),
+                    site_cookie=site_info.get("cookie"),
+                    site_ua=site_info.get("cookie") or settings.USER_AGENT,
+                    site_proxy=site_info.get("proxy"),
+                    site_order=site_info.get("pri"),
+                    title=item.get("title"),
+                    description=item.get("description"),
+                    enclosure=item.get("enclosure"),
+                    page_url=item.get("link"),
+                    size=item.get("size"),
+                    pubdate=time.strftime("%Y-%m-%d %H:%M:%S", item.get("pubdate")) if item.get("pubdate") else None,
+                )
+                # 过滤种子
+                result = self.filter_torrents(
+                    rule_string=filter_rule,
+                    torrent_list=[torrentinfo]
+                )
+                if not result:
+                    logger.info(f"{rss_task.name} 不匹配过滤规则")
+                    continue
+                # 匹配
+                mediainfo.clear()
+                matched_contexts.append(Context(
+                    meta_info=meta,
+                    media_info=mediainfo,
+                    torrent_info=torrentinfo
+                ))
+            # 过滤规则
+            if not matched_contexts:
+                logger.info(f"{rss_task.name} 未匹配到数据")
+                continue
+            logger.info(f"{rss_task.name} 匹配到 {len(matched_contexts)} 条数据")
+            # 查询本地存在情况
+            if not rss_task.best_version:
+                # 查询缺失的媒体信息
+                rss_meta = MetaInfo(title=rss_task.title)
+                rss_meta.type = MediaType(rss_task.type)
+                exist_flag, no_exists = self.downloadchain.get_no_exists_info(
+                    meta=rss_meta,
+                    mediainfo=MediaInfo(
+                        title=rss_task.title,
+                        year=rss_task.year,
+                        tmdb_id=rss_task.tmdbid,
+                        season=rss_task.season
+                    ),
+                )
+                if exist_flag:
+                    logger.info(f'{rss_task.name} 媒体库中已存在，完成订阅')
+                    self.rssoper.delete(rss_task.id)
+                    # 发送通知
+                    self.post_message(Notification(mtype=NotificationType.Subscribe,
+                                                   title=f'自定义订阅 {rss_task.name} 已完成',
+                                                   image=rss_task.backdrop))
+                    continue
+            else:
+                no_exists = {}
+            # 开始下载
+            downloads, lefts = self.downloadchain.batch_download(contexts=matched_contexts,
+                                                                 no_exists=no_exists)
+            if downloads and not lefts:
+                if not rss_task.best_version:
+                    self.rssoper.delete(rss_task.id)
+                    # 发送通知
+                    self.post_message(Notification(mtype=NotificationType.Subscribe,
+                                                   title=f'自定义订阅 {rss_task.name} 已完成',
+                                                   image=rss_task.backdrop))
+            # 未完成下载
+            logger.info(f'{rss_task.name} 未下载未完整，继续订阅 ...')
+
+        logger.info("刷新RSS订阅数据完成")
