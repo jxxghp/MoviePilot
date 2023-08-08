@@ -167,7 +167,8 @@ class DownloadChain(ChainBase):
                      f"种子名称：{_meta.org_string}\n"
                      f"种子链接：{_torrent.enclosure}\n"
                      f"错误信息：{error_msg}",
-                image=_media.get_message_image()))
+                image=_media.get_message_image(),
+                userid=userid))
         return _hash
 
     def batch_download(self,
