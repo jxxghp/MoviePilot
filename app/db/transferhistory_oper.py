@@ -43,8 +43,8 @@ class TransferHistoryOper(DbOper):
         """
         return TransferHistory.statistic(self._db, days)
 
-    def get_by(self, mtype: str, title: str, year: int,
-               season: str = None, episode: str = None) -> Any:
+    def get_by(self, mtype: str = None, title: str = None, year: int = None,
+               season: str = None, episode: str = None, tmdbid: str = None) -> Any:
         """
         按类型、标题、年份、季集查询转移记录
         """
@@ -53,7 +53,8 @@ class TransferHistoryOper(DbOper):
                                        title=title,
                                        year=year,
                                        season=season,
-                                       episode=episode)
+                                       episode=episode,
+                                       tmdbid=tmdbid)
 
     def delete(self, historyid):
         """
