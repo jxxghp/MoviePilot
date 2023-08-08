@@ -73,7 +73,6 @@ class MediaSyncDel(_PluginBase):
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             if self._cron:
                 try:
-
                     self._scheduler.add_job(func=self.sync_del_by_log,
                                             trigger=CronTrigger.from_crontab(self._cron),
                                             name="媒体库同步删除")
