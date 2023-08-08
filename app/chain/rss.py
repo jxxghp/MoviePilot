@@ -43,6 +43,12 @@ class RssChain(ChainBase):
             if not items:
                 logger.error(f"RSS未下载到数据：{rss_task.url}")
             logger.info(f"{rss_task.name} RSS下载到数据：{len(items)}")
+            # 检查站点
+            domain = StringUtils.get_url_domain(rss_task.url)
+            site_info = self.sites.get_indexer(domain)
+            if not site_info:
+                logger.error(f"{rss_task.name} 没有维护对应站点")
+                continue
             # 过滤规则
             if rss_task.best_version:
                 filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules2)
@@ -61,12 +67,6 @@ class RssChain(ChainBase):
                 if rss_task.exclude \
                         and re.search(r"%s" % rss_task.exclude, item.get("title")):
                     logger.info(f"{item.get('title')} 包含 {rss_task.exclude}")
-                    continue
-                # 检查站点
-                domain = StringUtils.get_url_domain(item.get("enclosure"))
-                site_info = self.sites.get_indexer(domain)
-                if not site_info:
-                    logger.error(f"{item.get('title')} 没有维护对应站点")
                     continue
                 # 识别媒体信息
                 meta = MetaInfo(title=item.get("title"), subtitle=item.get("description"))
