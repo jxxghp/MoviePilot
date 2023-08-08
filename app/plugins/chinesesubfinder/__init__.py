@@ -187,7 +187,7 @@ class ChineseSubFinder(_PluginBase):
         """
         调用ChineseSubFinder下载字幕
         """
-        if not self._host or not self._api_key:
+        if not self._enabled or not self._host or not self._api_key:
             return
         item = event.event_data
         if not item:

@@ -43,3 +43,9 @@ class PluginDataOper(DbOper):
         if ObjectUtils.is_obj(data.value):
             return json.loads(data.value)
         return data.value
+
+    def truncate(self):
+        """
+        清空转移记录
+        """
+        PluginData.truncate(self._db)

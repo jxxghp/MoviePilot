@@ -36,3 +36,9 @@ class DownloadHistoryOper(DbOper):
         分页查询下载历史
         """
         return DownloadHistory.list_by_page(self._db, page, count)
+
+    def truncate(self):
+        """
+        清空转移记录
+        """
+        DownloadHistory.truncate(self._db)
