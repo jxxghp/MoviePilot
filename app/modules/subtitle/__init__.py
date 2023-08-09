@@ -59,6 +59,7 @@ class SubtitleModule(_ModuleBase):
             time.sleep(1)
         # 目录不存在则创建目录
         if not download_dir.exists():
+            logger.error(f"字幕下载位置不存在：{download_dir}")
             return
             # download_dir.mkdir(parents=True, exist_ok=True)
         # 不是目录说明是单文件种子，直接使用下载目录
