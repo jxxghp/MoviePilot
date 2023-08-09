@@ -59,7 +59,8 @@ class SubtitleModule(_ModuleBase):
             time.sleep(1)
         # 目录不存在则创建目录
         if not download_dir.exists():
-            download_dir.mkdir(parents=True, exist_ok=True)
+            return
+            # download_dir.mkdir(parents=True, exist_ok=True)
         # 不是目录说明是单文件种子，直接使用下载目录
         if download_dir.is_file():
             download_dir = download_dir.parent

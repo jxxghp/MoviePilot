@@ -188,8 +188,8 @@ class DirMonitor(_PluginBase):
                         file_meta.cn_name = dir_meta.cn_name
                     if not file_meta.en_name and dir_meta.en_name:
                         file_meta.en_name = dir_meta.en_name
-                    if file_meta.type != MediaType.TV and dir_meta.type == MediaType.TV:
-                        file_meta.type = MediaType.TV
+                    # if file_meta.type != MediaType.TV and dir_meta.type == MediaType.TV:
+                    #     file_meta.type = MediaType.TV
                     if not file_meta.year and dir_meta.year:
                         file_meta.year = dir_meta.year
                     if not file_meta.begin_season and dir_meta.begin_season:
