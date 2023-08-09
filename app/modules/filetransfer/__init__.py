@@ -368,6 +368,13 @@ class FileTransferModule(_ModuleBase):
                 # 目的目录加上类型和二级分类
                 target_dir = target_dir / mediainfo.type.value / mediainfo.category
 
+        if mediainfo.type == MediaType.ANIME:
+            if settings.LIBRARY_ANIME_NAME:
+                target_dir = target_dir / settings.LIBRARY_ANIME_NAME / mediainfo.category
+            else:
+                # 目的目录加上类型和二级分类
+                target_dir = target_dir / mediainfo.type.value / mediainfo.category
+
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \
             if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT

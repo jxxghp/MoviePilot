@@ -487,7 +487,8 @@ class StringUtils:
             return None, None, None, None, None, None
 
         # 去掉查询中的电影或电视剧关键字
-        mtype = MediaType.TV if re.search(r'^(电视剧|动漫|\s+电视剧|\s+动漫)', content) else None
+        mtype = MediaType.TV if re.search(r'^(电视剧|\s+电视剧)', content) else None
+        mtype = MediaType.ANIME if re.search(r'^(动漫|\s+动漫)', content) else None
         content = re.sub(r'^(电影|电视剧|动漫|\s+电影|\s+电视剧|\s+动漫)', '', content).strip()
 
         # 稍微切一下剧集吧

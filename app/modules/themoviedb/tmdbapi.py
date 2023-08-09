@@ -11,6 +11,7 @@ from app.log import logger
 from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
+from . import CategoryHelper
 from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending, Person
 from .tmdbv3api.exceptions import TMDbException
 
@@ -58,6 +59,9 @@ class TmdbHelper:
         for multi in multis:
             if multi.get("media_type") in ["movie", "tv"]:
                 multi['media_type'] = MediaType.MOVIE if multi.get("media_type") == "movie" else MediaType.TV
+                if CategoryHelper().is_anime_category and multi.get("media_type") == MediaType.TV:
+                    if set(multi.get("genre_ids")).intersection(set(settings.ANIME_GENREIDS)):
+                        multi['media_type'] = MediaType.ANIME
                 ret_infos.append(multi)
         return ret_infos
 
@@ -539,15 +543,18 @@ class TmdbHelper:
         else:
             tmdb_info = self.__get_tv_detail(tmdbid)
             if tmdb_info:
+                # 转换genreid
+                tmdb_info['genre_ids'] = __get_genre_ids(tmdb_info.get('genres'))
                 tmdb_info['media_type'] = MediaType.TV
+                if CategoryHelper().is_anime_category:
+                    if set(tmdb_info.get('genre_ids')).intersection(set(settings.ANIME_GENREIDS)):
+                        tmdb_info['media_type'] = MediaType.ANIME
             else:
                 tmdb_info = self.__get_movie_detail(tmdbid)
                 if tmdb_info:
                     tmdb_info['media_type'] = MediaType.MOVIE
 
         if tmdb_info:
-            # 转换genreid
-            tmdb_info['genre_ids'] = __get_genre_ids(tmdb_info.get('genres'))
             # 别名和译名
             tmdb_info['names'] = self.__get_names(tmdb_info)
             # 转换中文标题

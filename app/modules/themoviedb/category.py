@@ -15,6 +15,7 @@ class CategoryHelper(metaclass=Singleton):
     _categorys = {}
     _movie_categorys = {}
     _tv_categorys = {}
+    _anime_categorys = {}
 
     def __init__(self):
         self._category_path: Path = settings.CONFIG_PATH / "category.yaml"
@@ -37,6 +38,7 @@ class CategoryHelper(metaclass=Singleton):
         if self._categorys:
             self._movie_categorys = self._categorys.get('movie')
             self._tv_categorys = self._categorys.get('tv')
+            self._anime_categorys = self._categorys.get('anime')
         logger.info(f"已加载二级分类策略 category.yaml")
 
     @property
@@ -54,6 +56,15 @@ class CategoryHelper(metaclass=Singleton):
         获取电视剧分类标志
         """
         if self._tv_categorys:
+            return True
+        return False
+
+    @property
+    def is_anime_category(self) -> bool:
+        """
+        获取动漫分类标志
+        """
+        if self._anime_categorys:
             return True
         return False
 
@@ -90,6 +101,14 @@ class CategoryHelper(metaclass=Singleton):
         :return: 二级分类的名称
         """
         return self.get_category(self._tv_categorys, tmdb_info)
+
+    def get_anime_category(self, tmdb_info) -> str:
+        """
+        判断动漫的分类
+        :param tmdb_info: 识别的TMDB中的信息
+        :return: 二级分类的名称
+        """
+        return self.get_category(self._anime_categorys, tmdb_info)
 
     @staticmethod
     def get_category(categorys: dict, tmdb_info: dict) -> str:

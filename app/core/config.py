@@ -117,6 +117,8 @@ class Settings(BaseSettings):
     DOWNLOAD_MOVIE_PATH: str = None
     # 电视剧下载保存目录，容器内映射路径需要一致
     DOWNLOAD_TV_PATH: str = None
+    # 动漫下载保存目录，容器内映射路径需要一致
+    DOWNLOAD_ANIME_PATH: str = None
     # 下载目录二级分类
     DOWNLOAD_CATEGORY: bool = False
     # 媒体服务器 emby/jellyfin/plex
@@ -155,8 +157,12 @@ class Settings(BaseSettings):
     LIBRARY_MOVIE_NAME: str = None
     # 电视剧媒体库目录名，默认"电视剧"
     LIBRARY_TV_NAME: str = None
+    # 动漫媒体库目录名，默认"电视剧"
+    LIBRARY_ANIME_NAME: str = None
     # 二级分类
     LIBRARY_CATEGORY: bool = True
+    # 电视剧动漫的分类genre_ids
+    ANIME_GENREIDS = [16]
     # 电影重命名格式
     MOVIE_RENAME_FORMAT: str = "{{title}}{% if year %} ({{year}}){% endif %}" \
                                "/{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if videoFormat %} - {{videoFormat}}{% endif %}" \

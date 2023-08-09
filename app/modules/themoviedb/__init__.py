@@ -120,6 +120,8 @@ class TheMovieDbModule(_ModuleBase):
             # 确定二级分类
             if info.get('media_type') == MediaType.TV:
                 cat = self.category.get_tv_category(info)
+            elif info.get('media_type') == MediaType.ANIME:
+                cat = self.category.get_anime_category(info)
             else:
                 cat = self.category.get_movie_category(info)
             # 赋值TMDB信息并返回
