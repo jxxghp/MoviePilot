@@ -16,6 +16,7 @@ from app.log import logger
 from app.modules.qbittorrent import Qbittorrent
 from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
+from app.schemas import NotificationType
 from app.utils.string import StringUtils
 
 
@@ -324,8 +325,7 @@ class TorrentTransfer(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12,
-                                    'md': 12
+                                    'cols': 12
                                 },
                                 'content': [
                                     {
@@ -644,6 +644,7 @@ class TorrentTransfer(_PluginBase):
             # 发送通知
             if self._notify:
                 self.post_message(
+                    mtype=NotificationType.SiteMessage,
                     title="【移转做种任务执行完成】",
                     text=f"总数：{total}，成功：{success}，失败：{fail}"
                 )
