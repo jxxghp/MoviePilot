@@ -131,3 +131,5 @@ class WebhookEventInfo(BaseModel):
     client: Optional[str] = None
     user_name: Optional[str] = None
     image_url: Optional[str] = None
+    item_favorite: Optional[bool] = None
+    save_reason: Optional[str] = None
