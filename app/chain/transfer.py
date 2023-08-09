@@ -101,7 +101,7 @@ class TransferChain(ChainBase):
                     # 类型
                     mtype = MediaType(downloadhis.type)
                     # 补充剧集信息
-                    if mtype == MediaType.TV \
+                    if (mtype == MediaType.TV or mtype == MediaType.ANIME) \
                             and ((not meta.season_list and downloadhis.seasons)
                                  or (not meta.episode_list and downloadhis.episodes)):
                         meta = MetaInfo(f"{torrent.title} {downloadhis.seasons} {downloadhis.episodes}")

@@ -540,6 +540,12 @@ class TmdbHelper:
             tmdb_info = self.__get_tv_detail(tmdbid)
             if tmdb_info:
                 tmdb_info['media_type'] = MediaType.TV
+                # 转换genreid
+                tmdb_info['genre_ids'] = __get_genre_ids(tmdb_info.get('genres'))
+                tmdb_info['media_type'] = MediaType.TV
+                if CategoryHelper().is_anime_category:
+                    if set(tmdb_info.get('genre_ids')).intersection(set(settings.ANIME_GENREIDS)):
+                        tmdb_info['media_type'] = MediaType.ANIME
         else:
             tmdb_info = self.__get_tv_detail(tmdbid)
             if tmdb_info:
