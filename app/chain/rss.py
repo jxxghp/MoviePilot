@@ -114,10 +114,7 @@ class RssChain(ChainBase):
             logger.info(f"{rss_task.name} RSS下载到数据：{len(items)}")
             # 检查站点
             domain = StringUtils.get_url_domain(rss_task.url)
-            site_info = self.sites.get_indexer(domain)
-            if not site_info:
-                logger.error(f"{rss_task.name} 没有维护对应站点")
-                continue
+            site_info = self.sites.get_indexer(domain) or {}
             # 过滤规则
             if rss_task.best_version:
                 filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules2)
@@ -168,7 +165,7 @@ class RssChain(ChainBase):
                     site_name=site_info.get("name"),
                     site_cookie=site_info.get("cookie"),
                     site_ua=site_info.get("cookie") or settings.USER_AGENT,
-                    site_proxy=site_info.get("proxy"),
+                    site_proxy=site_info.get("proxy") or rss_task.proxy,
                     site_order=site_info.get("pri"),
                     title=item.get("title"),
                     description=item.get("description"),
