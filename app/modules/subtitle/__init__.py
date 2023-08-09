@@ -57,10 +57,10 @@ class SubtitleModule(_ModuleBase):
             if download_dir.exists():
                 break
             time.sleep(1)
-        # 不是目录说明是单文件种子，直接使用下载目录
+        # 目录不存在则创建目录
         if not download_dir.exists():
-            logger.error(f"字幕下载位置不存在：{download_dir}")
-            return
+            download_dir.mkdir(parents=True, exist_ok=True)
+        # 不是目录说明是单文件种子，直接使用下载目录
         if download_dir.is_file():
             download_dir = download_dir.parent
         # 读取网站代码
@@ -91,9 +91,6 @@ class SubtitleModule(_ModuleBase):
                 # 下载
                 ret = request.get_res(sublink)
                 if ret and ret.status_code == 200:
-                    # 创建目录
-                    if not download_dir.exists():
-                        download_dir.mkdir(parents=True, exist_ok=True)
                     # 保存ZIP
                     file_name = TorrentHelper.get_url_filename(ret, sublink)
                     if not file_name:
