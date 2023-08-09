@@ -1,3 +1,4 @@
+import os
 import shutil
 import time
 from pathlib import Path
@@ -59,12 +60,14 @@ class SubtitleModule(_ModuleBase):
             time.sleep(1)
         # 目录不存在则创建目录
         if not download_dir.exists():
-            logger.error(f"字幕下载位置不存在：{download_dir}")
-            return
-            # download_dir.mkdir(parents=True, exist_ok=True)
-        # 不是目录说明是单文件种子，直接使用下载目录
-        if download_dir.is_file():
-            download_dir = download_dir.parent
+            # 获取路径扩展名
+            extension = os.path.splitext(download_dir)[1]
+            # 有扩展名且在支持的后缀格式中，取parent路径
+            if extension and extension in settings.RMT_MEDIAEXT:
+                download_dir = download_dir.parent
+            # 路径|上级不存在、创建
+            if not download_dir.exists():
+                download_dir.mkdir(parents=True, exist_ok=True)
         # 读取网站代码
         request = RequestUtils(cookies=torrent.site_cookie, ua=torrent.site_ua)
         res = request.get_res(torrent.page_url)
