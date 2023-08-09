@@ -176,13 +176,13 @@ class SearchChain(ChainBase):
                 # 识别
                 torrent_meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
                 # 比对类型
-                if (torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV) \
-                        or (torrent_meta.type != MediaType.TV and mediainfo.type == MediaType.TV):
+                if (torrent_meta.type == MediaType.TV and mediainfo.type == MediaType.MOVIE) \
+                        or (torrent_meta.type == MediaType.MOVIE and mediainfo.type == MediaType.TV):
                     logger.warn(f'{torrent.site_name} - {torrent.title} 类型不匹配')
                     continue
                 # 比对年份
                 if mediainfo.year:
-                    if mediainfo.type == MediaType.TV:
+                    if mediainfo.type == MediaType.TV or mediainfo.type == MediaType.ANIME:
                         # 需要剧集
                         if torrent_meta.year and torrent_meta.year not in [year for year in
                                                                            mediainfo.season_years.values()]:
