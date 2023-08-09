@@ -1,5 +1,7 @@
+import json
 import re
 import time
+from typing import Tuple, Optional
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
@@ -11,7 +13,7 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.rss import RssHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
-from app.schemas import Notification
+from app.schemas import Notification, NotExistMediaInfo
 from app.schemas.types import SystemConfigKey, MediaType, NotificationType
 from app.utils.string import StringUtils
 
@@ -27,6 +29,73 @@ class RssChain(ChainBase):
         self.sites = SitesHelper()
         self.systemconfig = SystemConfigOper()
         self.downloadchain = DownloadChain()
+
+    def add(self, title: str, year: str,
+            mtype: MediaType = None,
+            season: int = None,
+            **kwargs) -> Tuple[Optional[int], str]:
+        """
+        识别媒体信息并添加订阅
+        """
+        logger.info(f'开始添加自定义订阅，标题：{title} ...')
+        # 识别元数据
+        metainfo = MetaInfo(title)
+        if year:
+            metainfo.year = year
+        if mtype:
+            metainfo.type = mtype
+        if season:
+            metainfo.type = MediaType.TV
+            metainfo.begin_season = season
+        # 识别媒体信息
+        mediainfo: MediaInfo = self.recognize_media(meta=metainfo)
+        if not mediainfo:
+            logger.warn(f'{title} 未识别到媒体信息')
+            return None, "未识别到媒体信息"
+        # 更新媒体图片
+        self.obtain_images(mediainfo=mediainfo)
+        # 总集数
+        if mediainfo.type == MediaType.TV:
+            if not season:
+                season = 1
+            # 总集数
+            if not kwargs.get('total_episode'):
+                if not mediainfo.seasons:
+                    # 补充媒体信息
+                    mediainfo: MediaInfo = self.recognize_media(mtype=mediainfo.type,
+                                                                tmdbid=mediainfo.tmdb_id)
+                    if not mediainfo:
+                        logger.error(f"媒体信息识别失败！")
+                        return None, "媒体信息识别失败"
+                    if not mediainfo.seasons:
+                        logger.error(f"{title} 媒体信息中没有季集信息")
+                        return None, "媒体信息中没有季集信息"
+                total_episode = len(mediainfo.seasons.get(season) or [])
+                if not total_episode:
+                    logger.error(f'{title} 未获取到总集数')
+                    return None, "未获取到总集数"
+                kwargs.update({
+                    'total_episode': total_episode
+                })
+        # 添加订阅
+        sid = self.rssoper.add(title=mediainfo.title,
+                               year=mediainfo.year,
+                               mtype=mediainfo.type.value,
+                               season=season,
+                               tmdbid=mediainfo.tmdb_id,
+                               poster=mediainfo.get_poster_image(),
+                               backdrop=mediainfo.get_backdrop_image(),
+                               vote=mediainfo.vote_average,
+                               description=mediainfo.overview,
+                               **kwargs)
+        if not sid:
+            logger.error(f'{mediainfo.title_year} 添加自定义订阅失败')
+            return None, "添加自定义订阅失败"
+        else:
+            logger.info(f'{mediainfo.title_year}{metainfo.season} 添加订阅成功')
+
+        # 返回结果
+        return sid, ""
 
     def refresh(self):
         """
@@ -56,8 +125,17 @@ class RssChain(ChainBase):
                 filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules)
             # 处理RSS条目
             matched_contexts = []
+            # 处理过的title
+            processed_data = json.loads(rss_task.note) if rss_task.note else {
+                "titles": [],
+                "season_episodes": []
+            }
             for item in items:
                 if not item.get("title"):
+                    continue
+                # 标题是否已处理过
+                if item.get("title") in processed_data.get('titles'):
+                    logger.info(f"{item.get('title')} 已处理过")
                     continue
                 # 基本要素匹配
                 if rss_task.include \
@@ -79,6 +157,10 @@ class RssChain(ChainBase):
                     continue
                 if mediainfo.tmdb_id != rss_task.tmdbid:
                     logger.error(f"{item.get('title')} 不匹配")
+                    continue
+                # 季集是否已处理过
+                if meta.season_episode in processed_data.get('season_episodes'):
+                    logger.info(f"{meta.season_episode} 已处理过")
                     continue
                 # 种子
                 torrentinfo = TorrentInfo(
@@ -103,14 +185,19 @@ class RssChain(ChainBase):
                 if not result:
                     logger.info(f"{rss_task.name} 不匹配过滤规则")
                     continue
-                # 匹配
+                # 更新已处理数据
+                processed_data['titles'].append(item.get("title"))
+                processed_data['season_episodes'].append(meta.season_episode)
+                # 清除多条数据
                 mediainfo.clear()
+                # 匹配到的数据
                 matched_contexts.append(Context(
                     meta_info=meta,
                     media_info=mediainfo,
                     torrent_info=torrentinfo
                 ))
-            # 过滤规则
+            # 更新已处理过的title
+            self.rssoper.update(rssid=rss_task.id, note=json.dumps(processed_data))
             if not matched_contexts:
                 logger.info(f"{rss_task.name} 未匹配到数据")
                 continue
@@ -119,6 +206,8 @@ class RssChain(ChainBase):
             if not rss_task.best_version:
                 # 查询缺失的媒体信息
                 rss_meta = MetaInfo(title=rss_task.title)
+                rss_meta.year = rss_task.year
+                rss_meta.begin_season = rss_task.season
                 rss_meta.type = MediaType(rss_task.type)
                 exist_flag, no_exists = self.downloadchain.get_no_exists_info(
                     meta=rss_meta,
@@ -137,8 +226,23 @@ class RssChain(ChainBase):
                                                    title=f'自定义订阅 {rss_task.name} 已完成',
                                                    image=rss_task.backdrop))
                     continue
+                elif rss_meta.type == MediaType.TV.value:
+                    # 打印缺失集信息
+                    if no_exists and no_exists.get(rss_task.tmdbid):
+                        no_exists_info = no_exists.get(rss_task.tmdbid).get(rss_task.season)
+                        if no_exists_info:
+                            logger.info(f'订阅 {rss_task.name} 缺失集：{no_exists_info.episodes}')
             else:
-                no_exists = {}
+                if rss_task.type == MediaType.TV.value:
+                    no_exists = {
+                        rss_task.season: NotExistMediaInfo(
+                            season=rss_task.season,
+                            episodes=[],
+                            total_episodes=rss_task.total_episode,
+                            start_episode=1)
+                    }
+                else:
+                    no_exists = {}
             # 开始下载
             downloads, lefts = self.downloadchain.batch_download(contexts=matched_contexts,
                                                                  no_exists=no_exists)

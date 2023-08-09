@@ -31,6 +31,8 @@ class Rss(Base):
     vote = Column(Integer)
     # 简介
     description = Column(String)
+    # 总集数
+    total_episode = Column(Integer)
     # 包含
     include = Column(String)
     # 排除
@@ -46,7 +48,7 @@ class Rss(Base):
     # 最后更新时间
     last_update = Column(String)
     # 状态 0-停用，1-启用
-    state = Column(Integer)
+    state = Column(Integer, default=1)
 
     @staticmethod
     def get_by_tmdbid(db: Session, tmdbid: int, season: int = None):

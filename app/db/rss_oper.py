@@ -38,3 +38,13 @@ class RssOper(DbOper):
             item.delete(self._db)
             return True
         return False
+
+    def update(self, rssid: int, **kwargs) -> bool:
+        """
+        更新RSS订阅
+        """
+        item = Rss.get(self._db, rssid)
+        if item:
+            item.update(self._db, kwargs)
+            return True
+        return False

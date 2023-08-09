@@ -27,6 +27,8 @@ class Rss(BaseModel):
     vote: Optional[float]
     # 简介
     description: Optional[str]
+    # 总集数
+    total_episodes: Optional[int]
     # 包含
     include: Optional[str]
     # 排除
