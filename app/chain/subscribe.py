@@ -414,15 +414,15 @@ class SubscribeChain(ChainBase):
             else:
                 logger.info(f'{indexer.get("name")} 获取到种子')
         # 从缓存中匹配订阅
-        self.__match(torrents_cache)
+        self.match(torrents_cache)
         # 保存缓存到本地
         self.save_cache(torrents_cache, self._cache_file)
 
-    def __match(self, torrents_cache: Dict[str, List[Context]]):
+    def match(self, torrents: Dict[str, List[Context]]):
         """
         从缓存中匹配订阅，并自动下载
         """
-        if not torrents_cache:
+        if not torrents:
             logger.warn('没有缓存资源，无法匹配订阅')
             return
         # 所有订阅
@@ -482,7 +482,7 @@ class SubscribeChain(ChainBase):
                     no_exists = {}
             # 遍历缓存种子
             _match_context = []
-            for domain, contexts in torrents_cache.items():
+            for domain, contexts in torrents.items():
                 for context in contexts:
                     # 检查是否匹配
                     torrent_meta = context.meta_info

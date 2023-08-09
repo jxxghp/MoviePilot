@@ -1,8 +1,10 @@
-import datetime
+from datetime import datetime, timedelta
+from functools import reduce
 from pathlib import Path
 from typing import Optional, Any, List, Dict, Tuple
 from xml.dom.minidom import parseString
 
+import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from requests import Response
@@ -70,36 +72,37 @@ class BestFilmVersion(_PluginBase):
             self._webhook_enabled = config.get("webhook_enabled")
             self._only_once = config.get("only_once")
 
-        if self._enabled and not self._webhook_enabled:
-
+        if self._enabled:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-            if self._cron:
-                try:
-                    self._scheduler.add_job(func=self.sync,
-                                            trigger=CronTrigger.from_crontab(self._cron),
-                                            name="收藏洗版")
-                except Exception as err:
-                    logger.error(f"定时任务配置错误：{err}")
-                    # 推送实时消息
-                    self.systemmessage.put(f"执行周期配置错误：{err}")
-            else:
-                self._scheduler.add_job(self.sync, "interval", minutes=30, name="收藏洗版")
+            if not self._webhook_enabled:
+                if self._cron:
+                    try:
+                        self._scheduler.add_job(func=self.sync,
+                                                trigger=CronTrigger.from_crontab(self._cron),
+                                                name="收藏洗版")
+                    except Exception as err:
+                        logger.error(f"定时任务配置错误：{err}")
+                        # 推送实时消息
+                        self.systemmessage.put(f"执行周期配置错误：{err}")
+                else:
+                    self._scheduler.add_job(self.sync, "interval", minutes=30, name="收藏洗版")
 
+            if self._only_once:
+                self._only_once = False
+                self.update_config({
+                    "enabled": self._enabled,
+                    "cron": self._cron,
+                    "notify": self._notify,
+                    "webhook_enabled": self._webhook_enabled,
+                    "only_once": self._only_once
+                })
+                self._scheduler.add_job(self.sync, 'date',
+                                        run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+                                        name="立即运行收藏洗版")
             # 启动任务
             if self._scheduler.get_jobs():
                 self._scheduler.print_jobs()
                 self._scheduler.start()
-
-        if self._enabled and self._only_once:
-            self._only_once = False
-            self.update_config({
-                "enabled": self._enabled,
-                "cron": self._cron,
-                "notify": self._notify,
-                "webhook_enabled": self._webhook_enabled,
-                "only_once": self._only_once
-            })
-            self.sync()
 
     def get_state(self) -> bool:
         return self._enabled
@@ -398,6 +401,8 @@ class BestFilmVersion(_PluginBase):
                                               "&Limit=20" \
                                               "&apikey={APIKEY}"
                 resp = self.get_items(Jellyfin().get_data(url))
+                if not resp:
+                    continue
                 all_item.extend(resp)
         elif settings.MEDIASERVER == 'emby':
             # 获取所有user
@@ -417,12 +422,21 @@ class BestFilmVersion(_PluginBase):
                                                    "&EnableTotalRecordCount=false" \
                                                    "&Limit=20&api_key={APIKEY}"
                 resp = self.get_items(Emby().get_data(url))
+                if not resp:
+                    continue
                 all_item.extend(resp)
         else:
             resp = self.plex_get_watchlist()
+            if not resp:
+                return
             all_item.extend(resp)
 
-        for data in all_item:
+        def function(y, x):
+            return y if (x['Name'] in [i['Name'] for i in y]) else (lambda z, u: (z.append(u), z))(y, x)[1]
+        # all_item 根据电影名去重
+        result = reduce(function, all_item, [])
+
+        for data in result:
             # 检查缓存
             if data.get('Name') in caches:
                 continue
@@ -520,6 +534,8 @@ class BestFilmVersion(_PluginBase):
                 elem = dom.documentElement
                 # 获取 指定元素
                 eles = elem.getElementsByTagName('Video')
+                if not eles:
+                    return []
                 for ele in eles:
                     data = {}
                     # 获取标签中内容
@@ -539,39 +555,35 @@ class BestFilmVersion(_PluginBase):
             logger.error(f"连接Plex/Watchlist 出错：" + str(e))
             return []
 
-    def plex_get_iteminfo(self, itemid):
+    @staticmethod
+    def plex_get_iteminfo(itemid):
         url = f"https://metadata.provider.plex.tv/library/metadata/{itemid}" \
               f"?X-Plex-Token={settings.PLEX_TOKEN}"
+        ids = []
         try:
-            resp = RequestUtils().get_res(url=url)
+            resp = RequestUtils(accept_type="application/json, text/plain, */*").get_res(url=url)
             if resp:
-                dom = parseString(resp.text)
-                # 获取文档元素对象
-                elem = dom.documentElement
-                # 获取 指定元素
-                eles = elem.getElementsByTagName('Video')
-                for ele in eles:
-                    # 获取标签中内容
-                    return {"ExternalUrls": "TheMovieDb", "Url": f"{self.ele_get_tmdbid(ele)}"}
+                metadata = resp.json().get('MediaContainer').get('Metadata')
+                for item in metadata:
+                    _guid = item.get('Guid')
+                    if not _guid:
+                        continue
+
+                    id_list = [h.get('id') for h in _guid if h.get('id').__contains__("tmdb")]
+                    if not id_list:
+                        continue
+
+                    ids.append({'Name': 'TheMovieDb', 'Url': id_list[0]})
+
+                if not ids:
+                    return []
+                return {'ExternalUrls': ids}
             else:
                 logger.error(f"Plex/Items 未获取到返回数据")
                 return []
         except Exception as e:
             logger.error(f"连接Plex/Items 出错：" + str(e))
             return []
-
-    @staticmethod
-    def ele_get_tmdbid(ele):
-        data = []
-        for h in ele.getElementsByTagName('Guid'):
-            tmdbid = h.attributes['id'].nodeValue if h.attributes['id'].nodeValue.__contains__("tmdb") else ""
-            if not tmdbid:
-                continue
-            obj = {"Name": "TheMovieDb", "Url": f"{tmdbid}"}
-            data.append(obj)
-            return data
-        logger.warn(f"连接Plex/Guid 警告：" + "未获取到tmdbid数据")
-        return data
 
     @eventmanager.register(EventType.WebhookMessage)
     def webhook_message_action(self, event):

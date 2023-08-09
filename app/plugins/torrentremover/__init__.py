@@ -376,6 +376,22 @@ class TorrentRemover(_PluginBase):
                                     {
                                         'component': 'VTextField',
                                         'props': {
+                                            'model': 'errorkeywords',
+                                            'label': '错误信息关键词',
+                                            'placeholder': '支持正式表达式'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
                                             'model': 'torrentstates',
                                             'label': '任务状态',
                                             'placeholder': '用,分隔多个状态'
@@ -457,7 +473,7 @@ class TorrentRemover(_PluginBase):
                 ]
             }
         ], {
-            "enable": False,
+            "enabled": False,
             "notify": False,
             "onlyonce": False,
             "action": 'pause',
