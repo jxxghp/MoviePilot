@@ -393,9 +393,6 @@ class IYUUAutoSeed(_PluginBase):
         """
         开始辅种
         """
-        if not self._enabled or not self._token or not self._downloaders:
-            logger.warn("辅种服务未启用或未配置")
-            return
         if not self.iyuuhelper:
             return
         logger.info("开始辅种任务 ...")
@@ -492,7 +489,7 @@ class IYUUAutoSeed(_PluginBase):
             # 下载器
             downloader_obj = self.__get_downloader(downloader)
             # 获取下载器中的种子状态
-            torrents = downloader_obj.get_torrents(ids=recheck_torrents)
+            torrents, _ = downloader_obj.get_torrents(ids=recheck_torrents)
             if torrents:
                 can_seeding_torrents = []
                 for torrent in torrents:
@@ -695,9 +692,9 @@ class IYUUAutoSeed(_PluginBase):
         self.realtotal += 1
         # 查询hash值是否已经在下载器中
         downloader_obj = self.__get_downloader(downloader)
-        torrent_info = downloader_obj.get_torrents(ids=[seed.get("info_hash")])
+        torrent_info, _ = downloader_obj.get_torrents(ids=[seed.get("info_hash")])
         if torrent_info:
-            logger.debug(f"{seed.get('info_hash')} 已在下载器中，跳过 ...")
+            logger.info(f"{seed.get('info_hash')} 已在下载器中，跳过 ...")
             self.exist += 1
             return False
         # 站点流控

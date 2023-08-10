@@ -486,12 +486,6 @@ class TorrentTransfer(_PluginBase):
         """
         开始移转做种
         """
-        if not self._enabled \
-                or not self._fromdownloader \
-                or not self._todownloader \
-                or not self._fromtorrentpath:
-            logger.warn("移转做种服务未启用或未配置")
-            return
         logger.info("开始移转做种任务 ...")
         # 源下载器
         downloader = self._fromdownloader
@@ -556,9 +550,9 @@ class TorrentTransfer(_PluginBase):
                     continue
                 # 查询hash值是否已经在目的下载器中
                 todownloader_obj = self.__get_downloader(todownloader)
-                torrent_info = todownloader_obj.get_torrents(ids=[hash_item.get('hash')])
+                torrent_info, _ = todownloader_obj.get_torrents(ids=[hash_item.get('hash')])
                 if torrent_info:
-                    logger.debug(f"{hash_item.get('hash')} 已在目的下载器中，跳过 ...")
+                    logger.info(f"{hash_item.get('hash')} 已在目的下载器中，跳过 ...")
                     continue
                 # 转换保存路径
                 download_dir = self.__convert_save_path(hash_item.get('save_path'),
@@ -670,7 +664,7 @@ class TorrentTransfer(_PluginBase):
         logger.info(f"开始检查下载器 {downloader} 的校验任务 ...")
         self._is_recheck_running = True
         downloader_obj = self.__get_downloader(downloader)
-        torrents = downloader_obj.get_torrents(ids=recheck_torrents)
+        torrents, _ = downloader_obj.get_torrents(ids=recheck_torrents)
         if torrents:
             can_seeding_torrents = []
             for torrent in torrents:
