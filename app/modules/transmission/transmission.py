@@ -26,7 +26,7 @@ class Transmission(metaclass=Singleton):
               "error", "errorString", "doneDate", "queuePosition", "activityDate", "trackers"]
 
     def __init__(self):
-        self._host, self._port = StringUtils.get_domain_address(settings.QB_HOST)
+        self._host, self._port = StringUtils.get_domain_address(settings.TR_HOST)
         self._username = settings.TR_USER
         self._password = settings.TR_PASSWORD
         if self._host and self._port and self._username and self._password:
