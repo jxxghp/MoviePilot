@@ -252,7 +252,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         if settings.DOWNLOAD_SUBTITLE:
             return self.run_module("download_added", context=context, torrent_path=torrent_path,
-                                download_dir=download_dir)
+                                   download_dir=download_dir)
         return None
 
     def list_torrents(self, status: TorrentStatus = None,
