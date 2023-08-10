@@ -35,7 +35,7 @@ class TorrentHelper:
         :return: 种子保存路径、种子内容、种子主目录、种子文件清单、错误信息
         """
         if url.startswith("magnet:"):
-            return None, url, "", [], f"{url} 为磁力链接"
+            return None, url, "", [], f"磁力链接"
         # 请求种子文件
         req = RequestUtils(
             ua=ua,
@@ -46,7 +46,7 @@ class TorrentHelper:
         while req and req.status_code in [301, 302]:
             url = req.headers['Location']
             if url and url.startswith("magnet:"):
-                return None, url, "", [], f"获取到磁力链接：{url}"
+                return None, url, "", [], f"获取到磁力链接"
             req = RequestUtils(
                 ua=ua,
                 cookies=cookie,
@@ -59,7 +59,7 @@ class TorrentHelper:
             # 解析内容格式
             if req.text and str(req.text).startswith("magnet:"):
                 # 磁力链接
-                return None, req.text, "", [], f"获取到磁力链接：{req.text}"
+                return None, req.text, "", [], f"获取到磁力链接"
             elif req.text and "下载种子文件" in req.text:
                 # 首次下载提示页面
                 skip_flag = False
@@ -119,7 +119,7 @@ class TorrentHelper:
             # 返回失败
             return None, None, "", [], ""
         elif req is None:
-            return None, None, "", [], f"无法打开链接：{url}"
+            return None, None, "", [], "无法打开链接"
         elif req.status_code == 429:
             return None, None, "", [], "触发站点流控，请稍后重试"
         else:

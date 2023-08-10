@@ -599,7 +599,7 @@ class BestFilmVersion(_PluginBase):
         mediainfo: Optional[MediaInfo] = None
         if not data.tmdb_id:
             info = None
-            if data.channel == 'jellyfin' and data.event == 'UserDataSaved':
+            if data.channel == 'jellyfin' and data.save_reason == 'UpdateUserRating' and data.item_favorite:
                 info = Jellyfin().get_iteminfo(itemid=data.item_id)
             if data.channel == 'emby' and data.event == 'item.rate':
                 info = Emby().get_iteminfo(itemid=data.item_id)
@@ -628,6 +628,8 @@ class BestFilmVersion(_PluginBase):
                     logger.warn(f'未识别到媒体信息，标题：{data.item_name}，tmdbID：{tmdb_id}')
                     return
         else:
+            if settings.MEDIASERVER == 'jellyfin' and (data.save_reason != 'UpdateUserRating' or not data.item_favorite):
+                return
             if data.item_type not in ['Movie', 'MOV', 'movie']:
                 return
 
