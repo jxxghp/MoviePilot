@@ -57,7 +57,7 @@ class TorrentSpider:
     # 页码
     page: int = 0
     # 搜索条数
-    result_num: int = 300
+    result_num: int = 100
     # 单个种子信息
     torrents_info: dict = {}
     # 种子列表
