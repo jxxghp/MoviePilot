@@ -1,3 +1,4 @@
+import re
 import threading
 import traceback
 from pathlib import Path
@@ -157,7 +158,7 @@ class DirMonitor(_PluginBase):
                     # 命中过滤关键字不处理
                     if self._exclude_keywords:
                         for keyword in self._exclude_keywords.split("\n"):
-                            if keyword and keyword in event_path:
+                            if keyword and re.findall(keyword, event_path):
                                 logger.debug(f"{event_path} 命中过滤关键字 {keyword}")
                                 return
 
