@@ -26,10 +26,12 @@ class RssOper(DbOper):
         """
         return Rss.get_by_tmdbid(self._db, tmdbid, season)
 
-    def list(self) -> List[Rss]:
+    def list(self, rssid: int = None) -> List[Rss]:
         """
         查询所有RSS订阅
         """
+        if rssid:
+            return [Rss.get(self._db, rssid)]
         return Rss.list(self._db)
 
     def delete(self, rssid: int) -> bool:

@@ -11,6 +11,7 @@ from app.core.context import Context, TorrentInfo, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.db.rss_oper import RssOper
 from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.message import MessageHelper
 from app.helper.rss import RssHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -30,6 +31,7 @@ class RssChain(ChainBase):
         self.sites = SitesHelper()
         self.systemconfig = SystemConfigOper()
         self.downloadchain = DownloadChain()
+        self.message = MessageHelper()
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,
@@ -104,14 +106,16 @@ class RssChain(ChainBase):
         # 返回结果
         return sid, ""
 
-    def refresh(self):
+    def refresh(self, rssid: int = None, manual: bool = False):
         """
         刷新RSS订阅数据
         """
         # 所有RSS订阅
         logger.info("开始刷新RSS订阅数据 ...")
-        rss_tasks = self.rssoper.list() or []
+        rss_tasks = self.rssoper.list(rssid) or []
         for rss_task in rss_tasks:
+            if not rss_task:
+                continue
             if not rss_task.url:
                 continue
             # 下载Rss报文
@@ -266,3 +270,8 @@ class RssChain(ChainBase):
                                     processed=(rss_task.processed or 0) + len(downloads),
                                     last_update=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         logger.info("刷新RSS订阅数据完成")
+        if manual:
+            if len(rss_tasks) == 1:
+                self.message.put(f"{rss_tasks[0].name} 自定义订阅刷新完成")
+            else:
+                self.message.put(f"自定义订阅刷新完成")

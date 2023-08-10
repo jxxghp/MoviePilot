@@ -8,6 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.mediaserver import MediaServerChain
+from app.chain.rss import RssChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
@@ -68,6 +69,10 @@ class Scheduler(metaclass=Singleton):
         for trigger in triggers:
             self._scheduler.add_job(SubscribeChain().refresh, "cron",
                                     hour=trigger.hour, minute=trigger.minute, name="订阅刷新")
+
+        # 自定义订阅
+        self._scheduler.add_job(RssChain().refresh, "interval",
+                                minutes=30, name="自定义订阅刷新")
 
         # 下载器文件转移（每5分钟）
         self._scheduler.add_job(TransferChain().process, "interval", minutes=5, name="下载文件整理")
