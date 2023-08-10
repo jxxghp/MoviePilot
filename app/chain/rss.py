@@ -1,6 +1,7 @@
 import json
 import re
 import time
+from datetime import datetime
 from typing import Tuple, Optional
 
 from app.chain import ChainBase
@@ -77,17 +78,23 @@ class RssChain(ChainBase):
                 kwargs.update({
                     'total_episode': total_episode
                 })
+        # 检查是否存在
+        if self.rssoper.exists(tmdbid=mediainfo.tmdb_id, season=season):
+            logger.warn(f'{mediainfo.title} 已存在')
+            return None, f'{mediainfo.title} 自定义订阅已存在'
+        if not kwargs.get("name"):
+            kwargs.update({
+                "name": mediainfo.title
+            })
+        kwargs.update({
+            "tmdbid": mediainfo.tmdb_id,
+            "poster": mediainfo.get_poster_image(),
+            "backdrop": mediainfo.get_backdrop_image(),
+            "vote": mediainfo.vote_average,
+            "description": mediainfo.overview,
+        })
         # 添加订阅
-        sid = self.rssoper.add(title=mediainfo.title,
-                               year=mediainfo.year,
-                               mtype=mediainfo.type.value,
-                               season=season,
-                               tmdbid=mediainfo.tmdb_id,
-                               poster=mediainfo.get_poster_image(),
-                               backdrop=mediainfo.get_backdrop_image(),
-                               vote=mediainfo.vote_average,
-                               description=mediainfo.overview,
-                               **kwargs)
+        sid = self.rssoper.add(title=title, year=year, season=season, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} 添加自定义订阅失败')
             return None, "添加自定义订阅失败"
@@ -235,14 +242,15 @@ class RssChain(ChainBase):
                         rss_task.season: NotExistMediaInfo(
                             season=rss_task.season,
                             episodes=[],
-                            total_episodes=rss_task.total_episode,
+                            total_episode=rss_task.total_episode,
                             start_episode=1)
                     }
                 else:
                     no_exists = {}
             # 开始下载
             downloads, lefts = self.downloadchain.batch_download(contexts=matched_contexts,
-                                                                 no_exists=no_exists)
+                                                                 no_exists=no_exists,
+                                                                 save_path=rss_task.save_path)
             if downloads and not lefts:
                 if not rss_task.best_version:
                     self.rssoper.delete(rss_task.id)
@@ -252,5 +260,9 @@ class RssChain(ChainBase):
                                                    image=rss_task.backdrop))
             # 未完成下载
             logger.info(f'{rss_task.name} 未下载未完整，继续订阅 ...')
-
+            if downloads:
+                # 更新最后更新时间和已处理数量
+                self.rssoper.update(rssid=rss_task.id,
+                                    processed=(rss_task.processed or 0) + len(downloads),
+                                    last_update=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         logger.info("刷新RSS订阅数据完成")

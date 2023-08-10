@@ -36,7 +36,7 @@ class MetaBase(object):
     # 识别的结束季 数字
     end_season: Optional[int] = None
     # 总集数
-    total_episodes: int = 0
+    total_episode: int = 0
     # 识别的开始集
     begin_episode: Optional[int] = None
     # 识别的结束集
@@ -146,13 +146,13 @@ class MetaBase(object):
                     return
                 if self.begin_episode is None and isinstance(begin_episode, int):
                     self.begin_episode = begin_episode
-                    self.total_episodes = 1
+                    self.total_episode = 1
                 if self.begin_episode is not None \
                         and self.end_episode is None \
                         and isinstance(end_episode, int) \
                         and end_episode != self.begin_episode:
                     self.end_episode = end_episode
-                    self.total_episodes = (self.end_episode - self.begin_episode) + 1
+                    self.total_episode = (self.end_episode - self.begin_episode) + 1
                 self.type = MediaType.TV
                 self._subtitle_flag = True
             # x集全
@@ -163,7 +163,7 @@ class MetaBase(object):
                     episode_all = episode_all_str.group(2)
                 if episode_all and self.begin_episode is None:
                     try:
-                        self.total_episodes = int(cn2an.cn2an(episode_all.strip(), mode='smart'))
+                        self.total_episode = int(cn2an.cn2an(episode_all.strip(), mode='smart'))
                     except Exception as err:
                         print(str(err))
                         return

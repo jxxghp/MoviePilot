@@ -32,7 +32,7 @@ class MetaInfo(BaseModel):
     # 识别的结束季 数字
     end_season: Optional[int] = None
     # 总集数
-    total_episodes: Optional[int] = 0
+    total_episode: Optional[int] = 0
     # 识别的开始集
     begin_episode: Optional[int] = None
     # 识别的结束集

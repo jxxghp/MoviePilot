@@ -25,7 +25,7 @@ class NotExistMediaInfo(BaseModel):
     # 剧集列表
     episodes: Optional[list] = []
     # 总集数
-    total_episodes: Optional[int] = 0
+    total_episode: Optional[int] = 0
     # 开始集
     start_episode: Optional[int] = 0
 

@@ -440,8 +440,8 @@ class FileTransferModule(_ModuleBase):
                     if file_meta.total_seasons:
                         meta.total_seasons = file_meta.total_seasons
                     # 总集数
-                    if file_meta.total_episodes:
-                        meta.total_episodes = file_meta.total_episodes
+                    if file_meta.total_episode:
+                        meta.total_episode = file_meta.total_episode
                     # 结束季为空
                     meta.end_season = None
                     # 目的文件名

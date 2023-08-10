@@ -394,14 +394,14 @@ class MetaVideo(MetaBase):
                     se = int(se)
                 if self.begin_episode is None:
                     self.begin_episode = se
-                    self.total_episodes = 1
+                    self.total_episode = 1
                 else:
                     if se > self.begin_episode:
                         self.end_episode = se
-                        self.total_episodes = (self.end_episode - self.begin_episode) + 1
-                        if self.isfile and self.total_episodes > 2:
+                        self.total_episode = (self.end_episode - self.begin_episode) + 1
+                        if self.isfile and self.total_episode > 2:
                             self.end_episode = None
-                            self.total_episodes = 1
+                            self.total_episode = 1
         elif token.isdigit():
             try:
                 int(token)
@@ -413,10 +413,10 @@ class MetaVideo(MetaBase):
                     and int(token) > self.begin_episode \
                     and self._last_token_type == "episode":
                 self.end_episode = int(token)
-                self.total_episodes = (self.end_episode - self.begin_episode) + 1
-                if self.isfile and self.total_episodes > 2:
+                self.total_episode = (self.end_episode - self.begin_episode) + 1
+                if self.isfile and self.total_episode > 2:
                     self.end_episode = None
-                    self.total_episodes = 1
+                    self.total_episode = 1
                 self._continue_flag = False
                 self.type = MediaType.TV
             elif self.begin_episode is None \
@@ -425,7 +425,7 @@ class MetaVideo(MetaBase):
                     and self._last_token_type != "videoencode" \
                     and token != self._unknown_name_str:
                 self.begin_episode = int(token)
-                self.total_episodes = 1
+                self.total_episode = 1
                 self._last_token_type = "episode"
                 self._continue_flag = False
                 self._stop_name_flag = True
@@ -434,7 +434,7 @@ class MetaVideo(MetaBase):
                     and self.begin_episode is None \
                     and len(token) < 5:
                 self.begin_episode = int(token)
-                self.total_episodes = 1
+                self.total_episode = 1
                 self._last_token_type = "episode"
                 self._continue_flag = False
                 self._stop_name_flag = True

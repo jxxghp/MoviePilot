@@ -17,11 +17,14 @@ class RssOper(DbOper):
         新增RSS订阅
         """
         item = Rss(**kwargs)
-        if not item.get_by_tmdbid(self._db, tmdbid=kwargs.get("tmdbid"),
-                                  season=kwargs.get("season")):
-            item.create(self._db)
-            return True
-        return False
+        item.create(self._db)
+        return True
+
+    def exists(self, tmdbid: int, season: int = None):
+        """
+        判断是否存在
+        """
+        return Rss.get_by_tmdbid(self._db, tmdbid, season)
 
     def list(self) -> List[Rss]:
         """

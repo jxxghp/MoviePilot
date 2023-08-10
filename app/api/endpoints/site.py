@@ -14,6 +14,7 @@ from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.systemconfig_oper import SystemConfigOper
 from app.schemas.types import SystemConfigKey
+from app.utils.string import StringUtils
 
 router = APIRouter()
 
@@ -167,6 +168,25 @@ def site_resource(site_id: int, keyword: str = None,
     return [torrent.to_dict() for torrent in torrents]
 
 
+@router.get("/domain/{site_url}", summary="站点详情", response_model=schemas.Site)
+def read_site_by_domain(
+        site_url: str,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)
+) -> Any:
+    """
+    通过域名获取站点信息
+    """
+    domain = StringUtils.get_url_domain(site_url)
+    site = Site.get_by_domain(db, domain)
+    if not site:
+        raise HTTPException(
+            status_code=404,
+            detail=f"站点 {domain} 不存在",
+        )
+    return site
+
+
 @router.get("/{site_id}", summary="站点详情", response_model=schemas.Site)
 def read_site(
         site_id: int,
@@ -174,7 +194,7 @@ def read_site(
         _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
     """
-    获取站点信息
+    通过ID获取站点信息
     """
     site = Site.get(db, site_id)
     if not site:

@@ -227,7 +227,7 @@ class SubscribeChain(ChainBase):
                         subscribe.season: NotExistMediaInfo(
                             season=subscribe.season,
                             episodes=[],
-                            total_episodes=subscribe.total_episode,
+                            total_episode=subscribe.total_episode,
                             start_episode=subscribe.start_episode or 1)
                     }
                 else:
@@ -475,7 +475,7 @@ class SubscribeChain(ChainBase):
                         subscribe.season: NotExistMediaInfo(
                             season=subscribe.season,
                             episodes=[],
-                            total_episodes=subscribe.total_episode,
+                            total_episode=subscribe.total_episode,
                             start_episode=subscribe.start_episode or 1)
                     }
                 else:
@@ -726,7 +726,7 @@ class SubscribeChain(ChainBase):
                 # 原季集列表
                 episode_list = no_exist_season.episodes
                 # 原总集数
-                total = no_exist_season.total_episodes
+                total = no_exist_season.total_episode
                 if total_episode and start_episode:
                     # 有开始集和总集数
                     episodes = list(range(start_episode, total_episode + 1))
@@ -747,7 +747,7 @@ class SubscribeChain(ChainBase):
                 no_exists[tmdb_id][begin_season] = NotExistMediaInfo(
                     season=begin_season,
                     episodes=episodes,
-                    total_episodes=total_episode,
+                    total_episode=total_episode,
                     start_episode=start_episode
                 )
         return no_exists

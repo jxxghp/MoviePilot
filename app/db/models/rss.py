@@ -43,6 +43,8 @@ class Rss(Base):
     proxy = Column(Integer)
     # 保存路径
     save_path = Column(String)
+    # 已处理数量
+    processed = Column(Integer)
     # 附加信息，已处理数据
     note = Column(String)
     # 最后更新时间

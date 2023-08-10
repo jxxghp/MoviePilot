@@ -89,6 +89,7 @@ class DownloadChain(ChainBase):
     def download_single(self, context: Context, torrent_file: Path = None,
                         episodes: Set[int] = None,
                         channel: MessageChannel = None,
+                        save_path: str = None,
                         userid: Union[str, int] = None) -> Optional[str]:
         """
         下载及发送通知
@@ -103,18 +104,21 @@ class DownloadChain(ChainBase):
             if not torrent_file:
                 return
         # 下载目录
-        if settings.DOWNLOAD_CATEGORY and _media and _media.category:
-            if _media.type == MediaType.MOVIE:
-                download_dir = Path(settings.DOWNLOAD_MOVIE_PATH or settings.DOWNLOAD_PATH) / _media.category
+        if not save_path:
+            if settings.DOWNLOAD_CATEGORY and _media and _media.category:
+                if _media.type == MediaType.MOVIE:
+                    download_dir = Path(settings.DOWNLOAD_MOVIE_PATH or settings.DOWNLOAD_PATH) / _media.category
+                else:
+                    download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH) / _media.category
+            elif _media:
+                if _media.type == MediaType.MOVIE:
+                    download_dir = Path(settings.DOWNLOAD_MOVIE_PATH or settings.DOWNLOAD_PATH)
+                else:
+                    download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH)
             else:
-                download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH) / _media.category
-        elif _media:
-            if _media.type == MediaType.MOVIE:
-                download_dir = Path(settings.DOWNLOAD_MOVIE_PATH or settings.DOWNLOAD_PATH)
-            else:
-                download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH)
+                download_dir = Path(settings.DOWNLOAD_PATH)
         else:
-            download_dir = Path(settings.DOWNLOAD_PATH)
+            download_dir = Path(save_path)
         # 添加下载
         result: Optional[tuple] = self.download(torrent_path=torrent_file,
                                                 cookie=_torrent.site_cookie,
@@ -174,11 +178,13 @@ class DownloadChain(ChainBase):
     def batch_download(self,
                        contexts: List[Context],
                        no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
+                       save_path: str = None,
                        userid: str = None) -> Tuple[List[Context], Dict[int, Dict[int, NotExistMediaInfo]]]:
         """
         根据缺失数据，自动种子列表中组合择优下载
         :param contexts:  资源上下文列表
         :param no_exists:  缺失的剧集信息
+        :param save_path:  保存路径
         :param userid:  用户ID
         :return: 已经下载的资源列表、剩余未下载到的剧集 no_exists[tmdb_id] = {season: NotExistMediaInfo}
         """
@@ -217,7 +223,7 @@ class DownloadChain(ChainBase):
                 no_exists[_tmdbid][_sea] = NotExistMediaInfo(
                     season=not_exist.season,
                     episodes=need,
-                    total_episodes=not_exist.total_episodes,
+                    total_episode=not_exist.total_episode,
                     start_episode=not_exist.start_episode
                 )
             else:
@@ -235,7 +241,7 @@ class DownloadChain(ChainBase):
             no_exist = no_exists.get(tmdbid)
             if not no_exist.get(season):
                 return 0
-            return no_exist[season].total_episodes
+            return no_exist[season].total_episode
 
         # 分组排序
         contexts = TorrentHelper().sort_group_torrents(contexts)
@@ -243,7 +249,7 @@ class DownloadChain(ChainBase):
         # 如果是电影，直接下载
         for context in contexts:
             if context.media_info.type == MediaType.MOVIE:
-                if self.download_single(context, userid=userid):
+                if self.download_single(context, save_path=save_path, userid=userid):
                     # 下载成功
                     downloaded_list.append(context)
 
@@ -294,6 +300,7 @@ class DownloadChain(ChainBase):
                                     # 下载
                                     download_id = self.download_single(context=context,
                                                                        torrent_file=torrent_path,
+                                                                       save_path=save_path,
                                                                        userid=userid)
                                 else:
                                     logger.info(
@@ -301,7 +308,7 @@ class DownloadChain(ChainBase):
                                     continue
                             else:
                                 # 下载
-                                download_id = self.download_single(context, userid=userid)
+                                download_id = self.download_single(context, save_path=save_path, userid=userid)
 
                             if download_id:
                                 # 下载成功
@@ -326,12 +333,12 @@ class DownloadChain(ChainBase):
                     # 当前需要集
                     need_episodes = tv.episodes
                     # TMDB总集数
-                    total_episodes = tv.total_episodes
+                    total_episode = tv.total_episode
                     # 需要开始集
                     start_episode = tv.start_episode or 1
                     # 缺失整季的转化为缺失集进行比较
                     if not need_episodes:
-                        need_episodes = list(range(start_episode, total_episodes))
+                        need_episodes = list(range(start_episode, total_episode))
                     # 循环种子
                     for context in contexts:
                         # 媒体信息
@@ -359,7 +366,7 @@ class DownloadChain(ChainBase):
                             # 为需要集的子集则下载
                             if torrent_episodes.issubset(set(need_episodes)):
                                 # 下载
-                                download_id = self.download_single(context, userid=userid)
+                                download_id = self.download_single(context, save_path=save_path, userid=userid)
                                 if download_id:
                                     # 下载成功
                                     downloaded_list.append(context)
@@ -429,6 +436,7 @@ class DownloadChain(ChainBase):
                             download_id = self.download_single(context=context,
                                                                torrent_file=torrent_path,
                                                                episodes=selected_episodes,
+                                                               save_path=save_path,
                                                                userid=userid)
                             if not download_id:
                                 continue
@@ -464,7 +472,7 @@ class DownloadChain(ChainBase):
             {tmdbid: [
                 "season": int,
                 "episodes": list,
-                "total_episodes": int,
+                "total_episode": int,
                 "start_episode": int
             ]}
             """
@@ -473,7 +481,7 @@ class DownloadChain(ChainBase):
                     _season: NotExistMediaInfo(
                         season=_season,
                         episodes=_episodes,
-                        total_episodes=_total,
+                        total_episode=_total,
                         start_episode=_start
                     )
                 }
@@ -481,7 +489,7 @@ class DownloadChain(ChainBase):
                 no_exists[mediainfo.tmdb_id][_season] = NotExistMediaInfo(
                     season=_season,
                     episodes=_episodes,
-                    total_episodes=_total,
+                    total_episode=_total,
                     start_episode=_start
                 )
 

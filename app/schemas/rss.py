@@ -28,7 +28,7 @@ class Rss(BaseModel):
     # 简介
     description: Optional[str]
     # 总集数
-    total_episodes: Optional[int]
+    total_episode: Optional[int]
     # 包含
     include: Optional[str]
     # 排除
@@ -41,6 +41,8 @@ class Rss(BaseModel):
     save_path: Optional[str]
     # 附加信息
     note: Optional[str]
+    # 已处理数量
+    processed: Optional[int]
     # 最后更新时间
     last_update: Optional[str]
     # 状态 0-停用，1-启用

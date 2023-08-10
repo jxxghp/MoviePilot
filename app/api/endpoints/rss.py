@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.chain.rss import RssChain
 from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.rss import Rss
+from app.schemas import MediaType
 
 router = APIRouter()
 
@@ -24,19 +26,25 @@ def read_rsses(
 @router.post("/", summary="新增自定义订阅", response_model=schemas.Response)
 def create_rss(
         *,
-        db: Session = Depends(get_db),
         rss_in: schemas.Rss,
         _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
     """
     新增自定义订阅
     """
-    rss = Rss.get_by_tmdbid(db, tmdbid=rss_in.tmdbid, season=rss_in.season)
-    if rss:
-        return schemas.Response(success=False, message="自定义订阅已存在")
-    rss = Rss(**rss_in.dict())
-    rss.create(db)
-    return schemas.Response(success=True)
+    if rss_in.type:
+        mtype = MediaType(rss_in.type)
+    else:
+        mtype = None
+    rssid, errormsg = RssChain().add(
+        mtype=mtype,
+        **rss_in.dict()
+    )
+    if not rssid:
+        return schemas.Response(success=False, message=errormsg)
+    return schemas.Response(success=True, data={
+        "id": rssid
+    })
 
 
 @router.put("/", summary="更新自定义订阅", response_model=schemas.Response)
@@ -57,7 +65,7 @@ def update_rss(
     return schemas.Response(success=True)
 
 
-@router.get("/{rssid}", summary="查询订阅详情", response_model=schemas.Rss)
+@router.get("/{rssid}", summary="查询自定义订阅详情", response_model=schemas.Rss)
 def read_rss(
         rssid: int,
         db: Session = Depends(get_db),
@@ -66,3 +74,15 @@ def read_rss(
     根据ID查询自定义订阅详情
     """
     return Rss.get(db, rssid)
+
+
+@router.delete("/{rssid}", summary="删除自定义订阅", response_model=schemas.Response)
+def read_rss(
+        rssid: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据ID删除自定义订阅
+    """
+    Rss.delete(db, rssid)
+    return schemas.Response(success=True)
