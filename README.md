@@ -229,20 +229,10 @@ location / {
 }
 ```
 
-## TODO
+![image](https://github.com/jxxghp/MoviePilot/assets/51039935/b8f0238d-847f-4f9d-b210-e905837362b9)
 
-仍在开发中，当前功能并不完善。
+![image](https://github.com/jxxghp/MoviePilot/assets/51039935/28219233-ec7d-479b-b184-9a901c947dd1)
 
-- [x] 搜索结果过滤
-- [x] 多通知渠道支持
-- [x] 多媒体库目录支持
-- [x] 自定义识别词
-- [x] 便捷工具
-- [x] 过滤规则维护
-- [x] 本地存在标识
-- [x] 插件管理
-- [x] 洗版支持
-- [x] 媒体详情页面
-- [x] 更多插件
-- [x] 自定义订阅
-- [ ] 手动整理功能增强
+![image](https://github.com/jxxghp/MoviePilot/assets/51039935/f7df0806-668d-4c8b-ad41-133bf8f0bf73)
+
+![image](https://github.com/jxxghp/MoviePilot/assets/51039935/f7ea77cd-0362-4c35-967c-7f1b22dbef05)
