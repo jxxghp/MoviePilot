@@ -89,6 +89,17 @@ class TorrentSpider:
         self.category = indexer.get('category')
         self.list = indexer.get('torrents').get('list', {})
         self.fields = indexer.get('torrents').get('fields')
+        if str(self.indexername).lower() == "mikan":
+            if keyword:
+                self.fields['download'] = {'selector': 'td:nth-child(4) > a', 'attribute': 'href'}
+            else:
+                self.list['selector'] = 'table.table.table-striped.tbl-border.fadeIn > tbody > tr'
+                self.fields['id'] = {'selector':'tr'}
+                self.fields['title'] = {'selector': 'td:nth-child(3) > a.magnet-link-wrap'}
+                self.fields['detail'] = {'selector': 'td:nth-child(3) > a.magnet-link-wrap', 'attribute': 'href'}
+                self.fields['download'] = {'selector': 'td:nth-child(5) > a', 'attribute': 'href'}
+                self.fields['date_added'] = {'selector': 'td:nth-child(1)'}
+                self.fields['size'] = {'selector': 'td:nth-child(4)'}
         self.render = indexer.get('render')
         self.domain = indexer.get('domain')
         self.page = page

@@ -250,8 +250,10 @@ class ChainBase(metaclass=ABCMeta):
         :param download_dir:  下载目录
         :return: None，该方法可被多个模块同时处理
         """
-        return self.run_module("download_added", context=context, torrent_path=torrent_path,
-                               download_dir=download_dir)
+        if settings.DOWNLOAD_SUBTITLE:
+            return self.run_module("download_added", context=context, torrent_path=torrent_path,
+                                   download_dir=download_dir)
+        return None
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
