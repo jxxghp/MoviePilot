@@ -43,7 +43,7 @@ class JellyfinModule(_ModuleBase):
         """
         return self.jellyfin.get_webhook_message(json.loads(body))
 
-    def media_exists(self, mediainfo: MediaInfo, itemid: str) -> Optional[ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, itemid: Optional[str] = None) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
