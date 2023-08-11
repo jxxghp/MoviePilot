@@ -66,7 +66,7 @@ def get_setting(key: str,
 
 
 @router.post("/setting/{key}", summary="更新系统设置", response_model=schemas.Response)
-def set_setting(key: str, value: Union[list, dict, str, int],
+def set_setting(key: str, value: Union[list, dict, str, int] = None,
                 db: Session = Depends(get_db),
                 _: schemas.TokenPayload = Depends(verify_token)):
     """
