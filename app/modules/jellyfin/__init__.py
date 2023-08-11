@@ -43,7 +43,7 @@ class JellyfinModule(_ModuleBase):
         """
         return self.jellyfin.get_webhook_message(json.loads(body))
 
-    def media_exists(self, mediainfo: MediaInfo) -> Optional[ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, itemid: Optional[str] = None) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
@@ -60,7 +60,8 @@ class JellyfinModule(_ModuleBase):
         else:
             tvs = self.jellyfin.get_tv_episodes(title=mediainfo.title,
                                                 year=mediainfo.year,
-                                                tmdb_id=mediainfo.tmdb_id)
+                                                tmdb_id=mediainfo.tmdb_id,
+                                                item_id=itemid)
             if not tvs:
                 logger.info(f"{mediainfo.title_year} 在媒体库中不存在")
                 return None

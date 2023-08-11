@@ -33,7 +33,7 @@ class PlexModule(_ModuleBase):
         """
         return self.plex.get_webhook_message(form.get("payload"))
 
-    def media_exists(self, mediainfo: MediaInfo) -> Optional[ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, itemid: Optional[str] = None) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息

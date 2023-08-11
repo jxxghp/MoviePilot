@@ -293,10 +293,10 @@ class Jellyfin(metaclass=Singleton):
             if not item_id:
                 return {}
             # 验证tmdbid是否相同
-            item_tmdbid = self.get_iteminfo(item_id).get("ProviderIds", {}).get("Tmdb")
-            if tmdb_id and item_tmdbid:
-                if str(tmdb_id) != str(item_tmdbid):
-                    return {}
+        item_tmdbid = self.get_iteminfo(item_id).get("ProviderIds", {}).get("Tmdb")
+        if tmdb_id and item_tmdbid:
+            if str(tmdb_id) != str(item_tmdbid):
+                return {}
         if not season:
             season = ""
         try:
