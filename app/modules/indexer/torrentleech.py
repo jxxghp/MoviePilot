@@ -47,7 +47,6 @@ class TorrentLeech:
             results = res.json().get('torrentList') or []
             for result in results:
                 torrent = {
-                    'indexer': self._indexer.get('id'),
                     'title': result.get('name'),
                     'enclosure': self._downloadurl % (self._indexer.get('domain'), result.get('fid'), result.get('filename')),
                     'pubdate': StringUtils.format_timestamp(result.get('addedTimestamp')),

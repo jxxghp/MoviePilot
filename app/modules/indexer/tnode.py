@@ -83,7 +83,6 @@ class TNodeSpider:
             results = res.json().get('data', {}).get("torrents") or []
             for result in results:
                 torrent = {
-                    'site': self._indexerid,
                     'title': result.get('title'),
                     'description': result.get('subtitle'),
                     'enclosure': self._downloadurl % (self._domain, result.get('id')),
