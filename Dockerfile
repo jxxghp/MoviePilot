@@ -7,6 +7,7 @@ ENV LANG="C.UTF-8" \
     PUID=0 \
     PGID=0 \
     UMASK=000 \
+    MOVIEPILOT_AUTO_UPDATE=true \
     NGINX_PORT=3000 \
     CONFIG_DIR="/config" \
     API_TOKEN="moviepilot" \
@@ -45,6 +46,8 @@ RUN apt-get update \
         curl \
         busybox \
     && cp -f nginx.conf /etc/nginx/nginx.template.conf \
+    && cp update /usr/local/bin/mp_update \
+    && chmod +x /usr/local/bin/mp_update \
     && mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
