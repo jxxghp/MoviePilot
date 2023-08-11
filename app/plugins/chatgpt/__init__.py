@@ -1,5 +1,6 @@
 from typing import Any, List, Dict, Tuple
 
+from app.core.config import settings
 from app.core.event import eventmanager
 from app.plugins import _PluginBase
 from app.plugins.chatgpt.openai import OpenAi
@@ -31,15 +32,18 @@ class ChatGPT(_PluginBase):
     # 私有属性
     openai = None
     _enabled = False
+    _proxy = False
     _openai_url = None
     _openai_key = None
 
     def init_plugin(self, config: dict = None):
         if config:
             self._enabled = config.get("enabled")
+            self._proxy = config.get("proxy")
             self._openai_url = config.get("openai_url")
             self._openai_key = config.get("openai_key")
-            self.openai = OpenAi(api_key=self._openai_key, api_url=self._openai_url)
+            self.openai = OpenAi(api_key=self._openai_key, api_url=self._openai_url,
+                                 proxy=settings.PROXY if self._proxy else None)
 
     def get_state(self) -> bool:
         return self._enabled
@@ -74,6 +78,22 @@ class ChatGPT(_PluginBase):
                                         'props': {
                                             'model': 'enabled',
                                             'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'proxy',
+                                            'label': '使用代理',
                                         }
                                     }
                                 ]
@@ -122,6 +142,7 @@ class ChatGPT(_PluginBase):
             }
         ], {
             "enabled": False,
+            "proxy": False,
             "openai_url": "https://api.openai.com",
             "openai_key": ""
         }
