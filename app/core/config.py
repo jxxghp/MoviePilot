@@ -120,7 +120,7 @@ class Settings(BaseSettings):
     # 下载目录二级分类
     DOWNLOAD_CATEGORY: bool = False
     # 下载站点字幕
-    DOWNLOAD_SUBTITLE: bool = False
+    DOWNLOAD_SUBTITLE: bool = True
     # 媒体服务器 emby/jellyfin/plex
     MEDIASERVER: str = "emby"
     # 入库刷新媒体库
