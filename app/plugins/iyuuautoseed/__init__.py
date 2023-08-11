@@ -698,7 +698,9 @@ class IYUUAutoSeed(_PluginBase):
             self.exist += 1
             return False
         # 站点流控
-        if self.sites.check(site_domain):
+        check, checkmsg = self.sites.check(site_domain)
+        if check:
+            logger.warn(checkmsg)
             self.fail += 1
             return False
         # 下载种子

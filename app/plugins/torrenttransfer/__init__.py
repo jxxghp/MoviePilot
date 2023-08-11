@@ -10,7 +10,6 @@ from apscheduler.triggers.cron import CronTrigger
 from torrentool.torrent import Torrent
 
 from app.core.config import settings
-from app.helper.sites import SitesHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.modules.qbittorrent import Qbittorrent
@@ -46,7 +45,6 @@ class TorrentTransfer(_PluginBase):
     _scheduler = None
     qb = None
     tr = None
-    sites = None
     torrent = None
     # 开关
     _enabled = False
@@ -71,7 +69,6 @@ class TorrentTransfer(_PluginBase):
     _torrent_tags = ["已整理", "转移做种"]
 
     def init_plugin(self, config: dict = None):
-        self.sites = SitesHelper()
         self.torrent = TorrentHelper()
         # 读取配置
         if config:
