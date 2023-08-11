@@ -39,6 +39,6 @@ class DownloadHistoryOper(DbOper):
 
     def truncate(self):
         """
-        清空转移记录
+        清空下载记录
         """
         DownloadHistory.truncate(self._db)
