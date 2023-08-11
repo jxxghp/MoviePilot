@@ -1,4 +1,5 @@
 FROM python:3.10.11-slim
+ARG MOVIEPILOT_FRONTEND_VERSION
 ENV LANG="C.UTF-8" \
     HOME="/moviepilot" \
     TERM="xterm" \
@@ -6,6 +7,7 @@ ENV LANG="C.UTF-8" \
     PUID=0 \
     PGID=0 \
     UMASK=000 \
+    MOVIEPILOT_AUTO_UPDATE=true \
     NGINX_PORT=3000 \
     CONFIG_DIR="/config" \
     API_TOKEN="moviepilot" \
@@ -41,9 +43,12 @@ RUN apt-get update \
         gosu \
         bash \
         wget \
-    && mkdir -p /etc/nginx ${HOME} \
+        curl \
+        busybox \
     && cp -f nginx.conf /etc/nginx/nginx.template.conf \
-    && mv ./public / \
+    && cp update /usr/local/bin/mp_update \
+    && chmod +x /usr/local/bin/mp_update \
+    && mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
     && pip install --upgrade pip \
@@ -54,6 +59,8 @@ RUN apt-get update \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && locale-gen zh_CN.UTF-8 \
+    && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/v${MOVIEPILOT_FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
+    && mv /dist /public \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf \
