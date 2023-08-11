@@ -502,38 +502,46 @@ def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> 
             status_code=403,
             detail="认证失败！",
         )
-    # 查询TMDB媒体信息
+
+    # 获取TVDBID
     if not term.startswith("tvdb:"):
         mediainfo = MediaChain().recognize_media(meta=MetaInfo(term),
-                                                 mtype=MediaType.MOVIE)
+                                                 mtype=MediaType.TV)
         if not mediainfo:
             return [SonarrSeries()]
         tvdbid = mediainfo.tvdb_id
-        tmdbid = mediainfo.tmdb_id
-    else:
-        tvdbid = int(term.replace("tvdb:", ""))
-        mediainfo = MediaChain().recognize_media(mtype=MediaType.MOVIE,
-                                                 tmdbid=tvdbid)
-        if not mediainfo:
+        if not tvdbid:
             return [SonarrSeries()]
-        tmdbid = mediainfo.tmdb_id
-    # 查询TVDB季信息
+    else:
+        mediainfo = None
+        tvdbid = int(term.replace("tvdb:", ""))
+
+    # 查询TVDB信息
+    tvdbinfo = MediaChain().tvdb_info(tvdbid=tvdbid)
+    if not tvdbinfo:
+        return [SonarrSeries()]
+
+    # 季信息
     seas: List[int] = []
-    if tvdbid:
-        tvdbinfo = MediaChain().tvdb_info(tvdbid=tvdbid)
-        if tvdbinfo:
-            sea_num = tvdbinfo.get('season')
-            if sea_num:
-                seas = list(range(1, int(sea_num) + 1))
+    sea_num = tvdbinfo.get('season')
+    if sea_num:
+        seas = list(range(1, int(sea_num) + 1))
+
+    # 根据TVDB查询媒体信息
+    if not mediainfo:
+        mediainfo = MediaChain().recognize_media(meta=MetaInfo(tvdbinfo.get('seriesName')),
+                                                 mtype=MediaType.TV)
+
     # 查询是否存在
     exists = MediaChain().media_exists(mediainfo)
     if exists:
         hasfile = True
     else:
         hasfile = False
+
     # 查询订阅信息
     seasons: List[dict] = []
-    subscribes = Subscribe.get_by_tmdbid(db, tmdbid)
+    subscribes = Subscribe.get_by_tmdbid(db, mediainfo.tmdb_id)
     if subscribes:
         # 已监控
         monitored = True
