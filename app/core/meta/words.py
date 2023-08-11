@@ -46,7 +46,7 @@ class WordsMatcher(metaclass=Singleton):
                 if state:
                     appley_words.append(word)
                 else:
-                    logger.error(f"自定义识别词替换失败：{message}")
+                    logger.debug(f"自定义识别词替换失败：{message}")
             except Exception as err:
                 print(str(err))
 
