@@ -1,15 +1,23 @@
 #!/bin/bash
 
+if [ "${MOVIEPILOT_CN_UPDATE}" = "true" ]; then
+    GITHUB_URL="https://ghproxy.com/https://github.com"
+    GITHUBUSERCONTENT_URL="https://ghproxy.com/https://raw.githubusercontent.com"
+else
+    GITHUB_URL="https://github.com"
+    GITHUBUSERCONTENT_URL="https://raw.githubusercontent.com"
+fi
+
 old_version=$(cat /app/version.py)
-new_version=$(curl -sL https://raw.githubusercontent.com/jxxghp/MoviePilot/main/version.py)
+new_version=$(curl -sL "${GITHUBUSERCONTENT_URL}/jxxghp/MoviePilot/main/version.py")
 release_version=v$(echo ${new_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
 
 if [ "${old_version}" != "${new_version}" ]; then
     echo "发现新版本，开始更新程序..."
-    curl -sL "https://github.com/jxxghp/MoviePilot/archive/refs/tags/${release_version}.zip" | busybox unzip -d /tmp -
+    curl -sL "${GITHUB_URL}/jxxghp/MoviePilot/archive/refs/tags/${release_version}.zip" | busybox unzip -d /tmp -
     if [ $? -eq 0 ]; then
         echo "后端下载成功"
-        curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${release_version}/dist.zip" | busybox unzip -d /tmp -
+        curl -sL "${GITHUB_URL}/jxxghp/MoviePilot-Frontend/releases/download/${release_version}/dist.zip" | busybox unzip -d /tmp -
         if [ $? -eq 0 ]; then
             echo "前端下载成功"
             rm -rf /app
