@@ -46,6 +46,6 @@ class PluginDataOper(DbOper):
 
     def truncate(self):
         """
-        清空转移记录
+        清空插件数据
         """
         PluginData.truncate(self._db)

@@ -28,7 +28,6 @@ class TMDb(object):
     def __init__(self, obj_cached=True, session=None):
         if self.__class__._session is None or session is not None:
             self.__class__._session = requests.Session() if session is None else session
-        self.domain = "api.themoviedb.org"
         self._remaining = 40
         self._reset = None
         self.obj_cached = obj_cached
