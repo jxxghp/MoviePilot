@@ -7,9 +7,10 @@ from app.core.config import settings
 from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.meta import MetaBase
 from app.db.downloadhistory_oper import DownloadHistoryOper
+from app.db.mediaserver_oper import MediaServerOper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification
+from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification, MediaServerItem
 from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType
 from app.utils.string import StringUtils
 
@@ -23,6 +24,7 @@ class DownloadChain(ChainBase):
         super().__init__()
         self.torrent = TorrentHelper()
         self.downloadhis = DownloadHistoryOper()
+        self.mediaserver = MediaServerOper()
 
     def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo,
                               channel: MessageChannel = None,
@@ -514,7 +516,11 @@ class DownloadChain(ChainBase):
                     logger.error(f"媒体信息中没有季集信息：{mediainfo.title_year}")
                     return False, {}
             # 电视剧
-            exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo)
+            mediaserveritem: Optional[MediaServerItem] = self.mediaserver.exists(mtype=mediainfo.type.value,
+                                                                                 tmdbid=mediainfo.tmdb_id,
+                                                                                 season=mediainfo.season)
+            item_id = str(mediaserveritem.item_id) if mediaserveritem and mediaserveritem.item_id else None
+            exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo,item_id)
             if not exists_tvs:
                 # 所有剧集均缺失
                 for season, episodes in mediainfo.seasons.items():
