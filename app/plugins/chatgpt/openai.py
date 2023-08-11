@@ -16,6 +16,7 @@ class OpenAi:
         self._api_key = api_key
         self._api_url = api_url
         openai.api_base = self._api_url + "/v1"
+        openai.api_key = self._api_key
 
     def get_state(self) -> bool:
         return True if self._api_key else False
