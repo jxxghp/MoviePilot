@@ -4,6 +4,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 from threading import Lock
 from typing import Optional, Any, List, Dict, Tuple
 
+import pytz
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -60,9 +61,11 @@ class SiteStatistic(_PluginBase):
 
     # 配置属性
     _enabled: bool = False
+    _onlyonce: bool = False
     _cron: str = ""
     _notify: bool = False
     _queue_cnt: int = 5
+    _statistic_type: str = None
     _statistic_sites: list = []
 
     def init_plugin(self, config: dict = None):
@@ -73,12 +76,14 @@ class SiteStatistic(_PluginBase):
         # 配置
         if config:
             self._enabled = config.get("enabled")
+            self._onlyonce = config.get("onlyonce")
             self._cron = config.get("cron")
             self._notify = config.get("notify")
             self._queue_cnt = config.get("queue_cnt")
-            self._statistic_sites = config.get("statistic_sites")
+            self._statistic_type = config.get("statistic_type") or "all"
+            self._statistic_sites = config.get("statistic_sites") or []
 
-        if self._enabled:
+        if self._enabled or self._onlyonce:
             # 加载模块
             self._site_schema = ModuleHelper.load('app.plugins.sitestatistic.siteuserinfo',
                                                   filter_func=lambda _, obj: hasattr(obj, 'schema'))
@@ -108,6 +113,17 @@ class SiteStatistic(_PluginBase):
                     self._scheduler.add_job(self.refresh_all_site_data, "cron",
                                             hour=trigger.hour, minute=trigger.minute,
                                             name="站点数据统计")
+            if self._onlyonce:
+                logger.info(f"站点数据统计服务启动，立即运行一次")
+                self._scheduler.add_job(self.refresh_all_site_data, 'date',
+                                        run_date=datetime.now(
+                                            tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3)
+                                        )
+                # 关闭一次性开关
+                self._onlyonce = False
+
+                # 保存配置
+                self.__update_config()
 
             # 启动任务
             if self._scheduler.get_jobs():
@@ -166,7 +182,7 @@ class SiteStatistic(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -182,7 +198,7 @@ class SiteStatistic(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -190,6 +206,22 @@ class SiteStatistic(_PluginBase):
                                         'props': {
                                             'model': 'notify',
                                             'label': '发送通知',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
                                         }
                                     }
                                 ]
@@ -203,7 +235,7 @@ class SiteStatistic(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -220,7 +252,7 @@ class SiteStatistic(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -228,6 +260,26 @@ class SiteStatistic(_PluginBase):
                                         'props': {
                                             'model': 'queue_cnt',
                                             'label': '队列数量'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'statistic_type',
+                                            'label': '统计类型',
+                                            'items': [
+                                                {'title': '全量', 'value': 'all'},
+                                                {'title': '增量', 'value': 'add'}
+                                            ]
                                         }
                                     }
                                 ]
@@ -258,9 +310,11 @@ class SiteStatistic(_PluginBase):
             }
         ], {
             "enabled": False,
+            "onlyonce": False,
             "notify": True,
             "cron": "5 1 * * *",
             "queue_cnt": 5,
+            "statistic_type": "all",
             "statistic_sites": []
         }
 
@@ -660,35 +714,35 @@ class SiteStatistic(_PluginBase):
                                             {
                                                 'component': 'th',
                                                 'props': {
-                                                  'class': 'text-start ps-4'
+                                                    'class': 'text-start ps-4'
                                                 },
                                                 'text': '站点'
                                             },
                                             {
                                                 'component': 'th',
                                                 'props': {
-                                                  'class': 'text-start ps-4'
+                                                    'class': 'text-start ps-4'
                                                 },
                                                 'text': '用户名'
                                             },
                                             {
                                                 'component': 'th',
                                                 'props': {
-                                                  'class': 'text-start ps-4'
+                                                    'class': 'text-start ps-4'
                                                 },
                                                 'text': '用户等级'
                                             },
                                             {
                                                 'component': 'th',
                                                 'props': {
-                                                  'class': 'text-start ps-4'
+                                                    'class': 'text-start ps-4'
                                                 },
                                                 'text': '上传量'
                                             },
                                             {
                                                 'component': 'th',
                                                 'props': {
-                                                  'class': 'text-start ps-4'
+                                                    'class': 'text-start ps-4'
                                                 },
                                                 'text': '下载量'
                                             },
@@ -702,21 +756,21 @@ class SiteStatistic(_PluginBase):
                                             {
                                                 'component': 'th',
                                                 'props': {
-                                                  'class': 'text-start ps-4'
+                                                    'class': 'text-start ps-4'
                                                 },
                                                 'text': '魔力值'
                                             },
                                             {
                                                 'component': 'th',
                                                 'props': {
-                                                  'class': 'text-start ps-4'
+                                                    'class': 'text-start ps-4'
                                                 },
                                                 'text': '做种数'
                                             },
                                             {
                                                 'component': 'th',
                                                 'props': {
-                                                  'class': 'text-start ps-4'
+                                                    'class': 'text-start ps-4'
                                                 },
                                                 'text': '做种体积'
                                             }
@@ -956,7 +1010,7 @@ class SiteStatistic(_PluginBase):
             self.post_message(channel=event.event_data.get("channel"),
                               title="站点数据刷新完成！", userid=event.event_data.get("user"))
 
-    def refresh_all_site_data(self, force: bool = False, specify_sites: list = None):
+    def refresh_all_site_data(self, force: bool = False):
         """
         多线程刷新站点下载上传量，默认间隔6小时
         """
@@ -968,22 +1022,15 @@ class SiteStatistic(_PluginBase):
         with lock:
 
             if not force \
-                    and not specify_sites \
-                    and self._last_update_time:
+                    and not self._statistic_sites:
                 return
 
-            if specify_sites \
-                    and not isinstance(specify_sites, list):
-                specify_sites = [specify_sites]
-
             # 没有指定站点，默认使用全部站点
-            if not specify_sites:
+            if not self._statistic_sites:
                 refresh_sites = [site for site in self.sites.get_indexers() if not site.get("public")]
             else:
                 refresh_sites = [site for site in self.sites.get_indexers() if
-                                 site.get("name") in specify_sites]
-                # 过滤掉未选中的站点
-                refresh_sites = [site for site in refresh_sites if site.get("id") in self._statistic_sites]
+                                 site.get("id") in self._statistic_sites]
 
             if not refresh_sites:
                 return
@@ -996,16 +1043,25 @@ class SiteStatistic(_PluginBase):
             key = datetime.now().strftime('%Y-%m-%d')
             # 保存数据
             self.save_data(key, self._sites_data)
-            # 更新时间
-            self._last_update_time = datetime.now()
 
             # 通知刷新完成
             if self._notify:
+                yesterday_sites_data = {}
+                # 增量数据
+                if self._statistic_type == "add":
+                    last_update_time = self.get_data("last_update_time")
+                    if last_update_time:
+                        yesterday_sites_data = self.get_data(last_update_time) or {}
+
                 messages = []
                 # 按照上传降序排序
                 sites = self._sites_data.keys()
-                uploads = [self._sites_data[site].get("upload") or 0 for site in sites]
-                downloads = [self._sites_data[site].get("download") or 0 for site in sites]
+                uploads = [self._sites_data[site].get("upload") or 0 if not yesterday_sites_data.get(site) else
+                           (self._sites_data[site].get("upload") or 0) - (
+                                   yesterday_sites_data[site].get("upload") or 0) for site in sites]
+                downloads = [self._sites_data[site].get("download") or 0 if not yesterday_sites_data.get(site) else
+                             (self._sites_data[site].get("download") or 0) - (
+                                     yesterday_sites_data[site].get("download") or 0) for site in sites]
                 data_list = sorted(list(zip(sites, uploads, downloads)),
                                    key=lambda x: x[1],
                                    reverse=True)
@@ -1030,7 +1086,20 @@ class SiteStatistic(_PluginBase):
                                        f"总上传：{StringUtils.str_filesize(incUploads)}\n"
                                        f"总下载：{StringUtils.str_filesize(incDownloads)}\n"
                                        f"————————————")
-                self.post_message(mtype=NotificationType.SiteMessage,
-                                  title="站点数据统计", text="\n".join(messages))
+                    self.post_message(mtype=NotificationType.SiteMessage,
+                                      title="站点数据统计", text="\n".join(messages))
 
+        # 更新时间
+        self.save_data("last_update_time", key)
         logger.info("站点数据刷新完成")
+
+    def __update_config(self):
+        self.update_config({
+            "enable": self._enabled,
+            "onlyonce": self._onlyonce,
+            "cron": self._cron,
+            "notify": self._notify,
+            "queue_cnt": self._queue_cnt,
+            "statistic_type": self._statistic_type,
+            "statistic_sites": self._statistic_sites,
+        })
