@@ -52,6 +52,7 @@ RUN apt-get update \
     && mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
+    && apt-get install -y build-essential \
     && pip install --upgrade pip \
     && pip install -r requirements.txt \
     && playwright install-deps chromium \
@@ -62,6 +63,7 @@ RUN apt-get update \
     && locale-gen zh_CN.UTF-8 \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/v${MOVIEPILOT_FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
     && mv /dist /public \
+    && apt-get remove -y build-essential \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf \
