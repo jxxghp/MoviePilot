@@ -45,9 +45,9 @@ RUN apt-get update \
         wget \
         curl \
         busybox \
-    && cp -f nginx.conf /etc/nginx/nginx.template.conf \
-    && cp update /usr/local/bin/mp_update \
-    && chmod +x /usr/local/bin/mp_update \
+    && cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
+    && cp /app/update /usr/local/bin/mp_update \
+    && chmod +x /app/start.sh /usr/local/bin/mp_update \
     && mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
