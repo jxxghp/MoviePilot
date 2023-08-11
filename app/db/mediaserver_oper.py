@@ -52,3 +52,12 @@ class MediaServerOper(DbOper):
             if kwargs.get("season") not in seasoninfo.keys():
                 return None
         return item
+
+    def get_item_id(self, **kwargs) -> Optional[str]:
+        """
+        获取媒体服务器数据ID
+        """
+        item = self.exists(**kwargs)
+        if not item:
+            return None
+        return str(item.item_id)

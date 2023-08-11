@@ -10,7 +10,7 @@ from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.mediaserver_oper import MediaServerOper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification, MediaServerItem
+from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification
 from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType
 from app.utils.string import StringUtils
 
@@ -499,7 +499,9 @@ class DownloadChain(ChainBase):
             no_exists = {}
         if mediainfo.type == MediaType.MOVIE:
             # 电影
-            exists_movies: Optional[ExistMediaInfo] = self.media_exists(mediainfo)
+            itemid = self.mediaserver.get_item_id(mtype=mediainfo.type.value,
+                                                  tmdbid=mediainfo.tmdb_id)
+            exists_movies: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if exists_movies:
                 logger.info(f"媒体库中已存在电影：{mediainfo.title_year}")
                 return True, {}
@@ -516,11 +518,10 @@ class DownloadChain(ChainBase):
                     logger.error(f"媒体信息中没有季集信息：{mediainfo.title_year}")
                     return False, {}
             # 电视剧
-            mediaserveritem: Optional[MediaServerItem] = self.mediaserver.exists(mtype=mediainfo.type.value,
-                                                                                 tmdbid=mediainfo.tmdb_id,
-                                                                                 season=mediainfo.season)
-            item_id = str(mediaserveritem.item_id) if mediaserveritem and mediaserveritem.item_id else None
-            exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo,item_id)
+            itemid = self.mediaserver.get_item_id(mtype=mediainfo.type.value,
+                                                  tmdbid=mediainfo.tmdb_id,
+                                                  season=mediainfo.season)
+            exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if not exists_tvs:
                 # 所有剧集均缺失
                 for season, episodes in mediainfo.seasons.items():
