@@ -252,7 +252,7 @@ class SearchChain(ChainBase):
             if not config_indexers or str(indexer.get("id")) in config_indexers:
                 # 站点流控
                 state, msg = self.siteshelper.check(indexer.get("domain"))
-                if not state:
+                if state:
                     logger.warn(msg)
                     continue
                 indexer_sites.append(indexer)
