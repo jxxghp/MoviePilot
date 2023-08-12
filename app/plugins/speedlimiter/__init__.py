@@ -3,12 +3,14 @@ from typing import List, Tuple, Dict, Any
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.core.config import settings
+from app.core.event import eventmanager, Event
 from app.log import logger
 from app.modules.plex import Plex
 from app.modules.qbittorrent import Qbittorrent
 from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
-from app.schemas import NotificationType
+from app.schemas import NotificationType, WebhookEventInfo
+from app.schemas.types import EventType
 from app.utils.http import RequestUtils
 from app.utils.ip import IpUtils
 
@@ -246,12 +248,17 @@ class SpeedLimiter(_PluginBase):
     def get_page(self) -> List[dict]:
         pass
 
-    def __check_playing_sessions(self):
+    @eventmanager.register(EventType.WebhookMessage)
+    def __check_playing_sessions(self, event: Event = None):
         """
         检查播放会话
         """
         if not self._qb and not self._tr:
             return
+        if event:
+            event_data: WebhookEventInfo = event.event_data
+            if event_data.event not in ["playback.start", "PlaybackStart", "media.play"]:
+                return
         # 当前播放的总比特率
         total_bit_rate = 0
         # 查询播放中会话
