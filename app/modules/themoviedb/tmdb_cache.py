@@ -182,7 +182,7 @@ class TmdbCache(metaclass=Singleton):
                         new_meta_data.pop(k)
         else:
             count = 0
-            keys = random.sample(new_meta_data.keys(), 25)
+            keys = random.sample(sorted(new_meta_data.keys()), 25)
             for k in keys:
                 info = new_meta_data.get(k)
                 expire = info.get(CACHE_EXPIRE_TIMESTAMP_STR)
