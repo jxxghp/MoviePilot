@@ -13,7 +13,6 @@ from app.utils.string import StringUtils
 
 
 class Qbittorrent(metaclass=Singleton):
-
     _host: str = None
     _port: int = None
     _username: str = None
@@ -22,7 +21,7 @@ class Qbittorrent(metaclass=Singleton):
     qbc: Client = None
 
     def __init__(self):
-        self._host, self._port = StringUtils.get_domain_address(settings.QB_HOST)
+        self._host, self._port = StringUtils.get_domain_address(address=settings.QB_HOST, prefix=True)
         self._username = settings.QB_USER
         self._password = settings.QB_PASSWORD
         if self._host and self._port and self._username and self._password:
