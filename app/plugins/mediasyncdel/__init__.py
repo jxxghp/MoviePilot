@@ -613,17 +613,14 @@ class MediaSyncDel(_PluginBase):
                 transfer_history: List[TransferHistory] = self._transferhis.get_by(
                     mtype="电视剧",
                     title=media_name,
-                    year=media_year,
-                    season=media_season)
+                    year=media_year)
             # 删除剧集S02E02
             elif media_type == "Episode":
                 msg = f'剧集 {media_name} {media_season}{media_episode}'
                 transfer_history: List[TransferHistory] = self._transferhis.get_by(
                     mtype="电视剧",
                     title=media_name,
-                    year=media_year,
-                    season=media_season,
-                    episode=media_episode)
+                    year=media_year)
             else:
                 continue
 
