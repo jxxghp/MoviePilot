@@ -631,7 +631,7 @@ class DownloadChain(ChainBase):
         获取种子文件清单
         """
         try:
-            return self.get_torrent_files(tid=tid)
+            return self.torrent_files(tid=tid)
         except Exception as err:
             logger.error(f"获取种子文件列表出错：{err}")
-            return []
+            return None

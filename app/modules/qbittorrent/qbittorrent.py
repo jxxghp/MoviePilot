@@ -265,7 +265,7 @@ class Qbittorrent(metaclass=Singleton):
             logger.error(f"删除种子出错：{err}")
             return False
 
-    def get_files(self, tid: str) -> Optional[TorrentFilesList]:
+    def torrent_files(self, tid: str) -> Optional[TorrentFilesList]:
         """
         获取种子文件清单
         """

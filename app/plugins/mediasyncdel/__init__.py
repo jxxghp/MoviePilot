@@ -485,10 +485,6 @@ class MediaSyncDel(_PluginBase):
         for transferhis in transfer_history:
             image = transferhis.image
             year = transferhis.year
-            if media_type == "Episode" or media_type == "Movie":
-                # 如果有剧集或者电影有多个版本的话，需要根据名称筛选下要删除的版本
-                if os.path.basename(transferhis.dest) != os.path.basename(media_path):
-                    continue
             # 删除种子任务
             if self._del_source:
                 del_source = False
@@ -748,7 +744,6 @@ class MediaSyncDel(_PluginBase):
                         dl_file_name = dl_file.get("name")
                         if not stop_from:
                             torrent_file = os.path.join(src, os.path.basename(dl_file_name))
-                            logger.error(f"种子路径 {torrent_file} {Path(torrent_file).exists()}")
                             if Path(torrent_file).exists():
                                 logger.info(f"种子有文件被删除，种子文件{torrent_file}暂未删除，暂停种子")
                                 delete_flag = False
