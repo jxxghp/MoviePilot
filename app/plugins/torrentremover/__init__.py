@@ -132,7 +132,7 @@ class TorrentRemover(_PluginBase):
                 })
 
     def get_state(self) -> bool:
-        return self._enabled and self._cron and self._downloaders
+        return True if self._enabled and self._cron and self._downloaders else False
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
