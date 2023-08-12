@@ -613,6 +613,8 @@ class Emby(metaclass=Singleton):
         自定义URL从媒体服务器获取数据，其中{HOST}、{APIKEY}、{USER}会被替换成实际的值
         :param url: 请求地址
         """
+        if not self._host or not self._apikey:
+            return None
         url = url.replace("{HOST}", self._host)\
             .replace("{APIKEY}", self._apikey)\
             .replace("{USER}", self._user)

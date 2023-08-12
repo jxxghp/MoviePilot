@@ -5,6 +5,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.core.config import settings
 from app.core.event import eventmanager, Event
 from app.log import logger
+from app.modules.emby import Emby
+from app.modules.jellyfin import Jellyfin
 from app.modules.plex import Plex
 from app.modules.qbittorrent import Qbittorrent
 from app.modules.transmission import Transmission
@@ -143,7 +145,7 @@ class SpeedLimiter(_PluginBase):
                                         'props': {
                                             'chips': True,
                                             'multiple': True,
-                                            'model': 'sign_sites',
+                                            'model': 'downloader',
                                             'label': '下载器',
                                             'items': [
                                                 {'title': 'Qbittorrent', 'value': 'qbittorrent'},
@@ -266,7 +268,7 @@ class SpeedLimiter(_PluginBase):
         if settings.MEDIASERVER == "emby":
             req_url = "{HOST}emby/Sessions?api_key={APIKEY}"
             try:
-                res = RequestUtils().get_res(req_url)
+                res = Emby().get_data(req_url)
                 if res and res.status_code == 200:
                     sessions = res.json()
                     for session in sessions:
@@ -282,7 +284,7 @@ class SpeedLimiter(_PluginBase):
         elif settings.MEDIASERVER == "jellyfin":
             req_url = "{HOST}Sessions?api_key={APIKEY}"
             try:
-                res = RequestUtils().get_res(req_url)
+                res = Jellyfin().get_data(req_url)
                 if res and res.status_code == 200:
                     sessions = res.json()
                     for session in sessions:
