@@ -41,6 +41,8 @@ class Rss(Base):
     best_version = Column(Integer)
     # 是否使用代理服务器
     proxy = Column(Integer)
+    # 是否使用过滤规则
+    filter = Column(Integer)
     # 保存路径
     save_path = Column(String)
     # 已处理数量

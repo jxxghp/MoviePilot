@@ -37,6 +37,8 @@ class Rss(BaseModel):
     best_version: Optional[int]
     # 是否使用代理服务器
     proxy: Optional[int]
+    # 是否使用过滤规则
+    filter: Optional[int]
     # 保存路径
     save_path: Optional[str]
     # 附加信息
