@@ -192,7 +192,7 @@ class Transmission(metaclass=Singleton):
             logger.error(f"删除种子出错：{err}")
             return False
 
-    def torrent_files(self, tid: str) -> Optional[List[File]]:
+    def get_files(self, tid: str) -> Optional[List[File]]:
         """
         获取种子文件列表
         """

@@ -1,3 +1,4 @@
+from msilib.schema import File
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List
 
@@ -170,6 +171,12 @@ class TransmissionModule(_ModuleBase):
         :return: bool
         """
         return self.transmission.start_torrents(ids=hashs)
+
+    def torrent_files(self, tid: str) -> Optional[List[File]]:
+        """
+        获取种子文件列表
+        """
+        return self.transmission.get_files(tid=tid)
 
     def downloader_info(self) -> schemas.DownloaderInfo:
         """

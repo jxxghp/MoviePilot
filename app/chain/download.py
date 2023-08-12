@@ -1,8 +1,7 @@
 import re
+from msilib.schema import File
 from pathlib import Path
 from typing import List, Optional, Tuple, Set, Dict, Union
-
-from qbittorrentapi import TorrentFilesList
 
 from app.chain import ChainBase
 from app.core.config import settings
@@ -626,7 +625,7 @@ class DownloadChain(ChainBase):
         """
         return self.remove_torrents(hashs=[hash_str])
 
-    def get_files(self, tid: str) -> Optional[TorrentFilesList]:
+    def get_files(self, tid: str) -> Optional[List[File]]:
         """
         获取种子文件清单
         """

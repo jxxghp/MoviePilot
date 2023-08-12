@@ -2,6 +2,7 @@ import gc
 import pickle
 import traceback
 from abc import ABCMeta
+from msilib.schema import File
 from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
@@ -307,7 +308,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("stop_torrents", hashs=hashs)
 
-    def torrent_files(self, tid: str) -> Optional[Tuple[Optional[str], str]]:
+    def torrent_files(self, tid: str) -> Optional[List[File]]:
         """
         根据种子文件，选择并添加下载任务
         :param tid:  种子Hash
