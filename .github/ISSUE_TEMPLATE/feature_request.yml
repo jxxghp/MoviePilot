@@ -28,5 +28,3 @@ body:
       label: 参考资料
       description: 可以列举一些参考资料。
       placeholder: "参考资料"
-    validations:
-      required: true
