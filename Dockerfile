@@ -46,7 +46,12 @@ RUN apt-get update \
         wget \
         curl \
         busybox \
-    && if [ "$(uname -m)" = "aarch64" ]; then ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1; fi \
+    && \
+    if [ "$(uname -m)" = "x86_64" ]; \
+        then ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
+    elif [ "$(uname -m)" = "aarch64" ]; \
+        then ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1; \
+    fi \
     && cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && cp /app/update /usr/local/bin/mp_update \
     && chmod +x /app/start.sh /usr/local/bin/mp_update \
