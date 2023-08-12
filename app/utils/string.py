@@ -238,6 +238,8 @@ class StringUtils:
         """
         if not url:
             return ""
+        if 'u2.dmhy.org' in url:
+            return 'u2.dmhy.org'
         _, netloc = StringUtils.get_url_netloc(url)
         if netloc:
             return ".".join(netloc.split(".")[-2:])
