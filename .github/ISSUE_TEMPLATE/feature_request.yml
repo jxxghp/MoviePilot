@@ -23,7 +23,7 @@ body:
     validations:
       required: true
   - type: textarea
-    id: feature-request
+    id: references
     attributes:
       label: 参考资料
       description: 可以列举一些参考资料。
