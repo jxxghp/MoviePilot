@@ -45,6 +45,7 @@ class MediaSyncDel(_PluginBase):
     auth_level = 1
 
     # 私有属性
+    episode = None
     _scheduler: Optional[BackgroundScheduler] = None
     _enabled = False
     _sync_type: str = ""

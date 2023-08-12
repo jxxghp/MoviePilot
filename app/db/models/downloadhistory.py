@@ -45,3 +45,7 @@ class DownloadHistory(Base):
     @staticmethod
     def list_by_page(db: Session, page: int = 1, count: int = 30):
         return db.query(DownloadHistory).offset((page - 1) * count).limit(count).all()
+
+    @staticmethod
+    def get_by_path(db: Session, path: str):
+        return db.query(DownloadHistory).filter(DownloadHistory.path == path).first()

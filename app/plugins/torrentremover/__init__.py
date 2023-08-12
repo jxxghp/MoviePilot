@@ -111,7 +111,7 @@ class TorrentRemover(_PluginBase):
                 self._onlyonce = False
                 # 保存设置
                 self.update_config({
-                    "enable": self._enabled,
+                    "enabled": self._enabled,
                     "notify": self._notify,
                     "onlyonce": self._onlyonce,
                     "action": self._action,
@@ -132,7 +132,7 @@ class TorrentRemover(_PluginBase):
                 })
 
     def get_state(self) -> bool:
-        return self._enabled and True if self._cron and self._downloaders else False
+        return self._enabled and self._cron and self._downloaders
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:

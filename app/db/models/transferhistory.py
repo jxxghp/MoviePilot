@@ -43,6 +43,8 @@ class TransferHistory(Base):
     errmsg = Column(String)
     # 时间
     date = Column(String, index=True)
+    # 文件清单，以JSON存储
+    files = Column(String)
 
     @staticmethod
     def list_by_title(db: Session, title: str, page: int = 1, count: int = 30):

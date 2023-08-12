@@ -15,7 +15,7 @@ class TransferHistoryOper(DbOper):
         按标题查询转移记录
         :param title: 数据key
         """
-        return TransferHistory.search_by_title(self._db, title)
+        return TransferHistory.list_by_title(self._db, title)
 
     def get_by_src(self, src: str) -> Any:
         """

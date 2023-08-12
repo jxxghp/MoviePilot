@@ -1,3 +1,4 @@
+import json
 import re
 import shutil
 from pathlib import Path
@@ -167,7 +168,8 @@ class TransferChain(ChainBase):
                     image=mediainfo.get_poster_image(),
                     download_hash=torrent.hash,
                     status=0,
-                    errmsg=transferinfo.message if transferinfo else '未知错误'
+                    errmsg=transferinfo.message if transferinfo else '未知错误',
+                    files=json.dumps(transferinfo.file_list) if transferinfo else None
                 )
                 continue
             # 新增转移成功历史记录
@@ -187,7 +189,8 @@ class TransferChain(ChainBase):
                 episodes=meta.episode,
                 image=mediainfo.get_poster_image(),
                 download_hash=torrent.hash,
-                status=1
+                status=1,
+                files=json.dumps(transferinfo.file_list)
             )
             # 转移完成
             self.transfer_completed(hashs=torrent.hash, transinfo=transferinfo)

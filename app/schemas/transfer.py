@@ -4,7 +4,6 @@ from typing import Optional
 from pydantic import BaseModel
 
 
-
 class TransferTorrent(BaseModel):
     """
     待转移任务信息
