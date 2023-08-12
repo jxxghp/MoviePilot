@@ -20,4 +20,4 @@ nginx
 # 设置后端服务权限掩码
 umask ${UMASK}
 # 启动后端服务
-exec gosu moviepilot:moviepilot python3 app/main.py
+exec dumb-init gosu moviepilot:moviepilot python3 app/main.py
