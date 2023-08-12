@@ -74,7 +74,7 @@ class MediaServerChain(ChainBase):
                     item_type = "电视剧" if item.item_type in ['Series', 'show'] else "电影"
                     if item_type == "电视剧":
                         # 查询剧集信息
-                        espisodes_info = self.episodes(item.item_id)
+                        espisodes_info = self.episodes(item.item_id) or []
                         for episode in espisodes_info:
                             seasoninfo[episode.season] = episode.episodes
                     # 插入数据
