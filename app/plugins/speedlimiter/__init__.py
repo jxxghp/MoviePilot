@@ -13,7 +13,6 @@ from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 from app.schemas import NotificationType, WebhookEventInfo
 from app.schemas.types import EventType
-from app.utils.http import RequestUtils
 from app.utils.ip import IpUtils
 
 
@@ -74,7 +73,7 @@ class SpeedLimiter(_PluginBase):
         # 启动限速任务
         if self._enabled:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-            self._scheduler.add_job(func=self.__check_playing_sessions,
+            self._scheduler.add_job(func=self.check_playing_sessions,
                                     trigger='interval',
                                     seconds=self._interval,
                                     name="播放限速检查")
@@ -251,7 +250,7 @@ class SpeedLimiter(_PluginBase):
         pass
 
     @eventmanager.register(EventType.WebhookMessage)
-    def __check_playing_sessions(self, event: Event = None):
+    def check_playing_sessions(self, event: Event = None):
         """
         检查播放会话
         """
