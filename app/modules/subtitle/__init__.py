@@ -50,18 +50,20 @@ class SubtitleModule(_ModuleBase):
         logger.info("开始从站点下载字幕：%s" % torrent.page_url)
         # 获取种子信息
         folder_name, _ = TorrentHelper.get_torrent_info(torrent_path)
-
+        # 下载目录，也可能是文件名
         download_dir = download_dir / (folder_name or "")
         # 等待文件或者目录存在
-        for _ in range(10):
+        for _ in range(30):
             if download_dir.exists():
                 break
             time.sleep(1)
-        # 目录不存在则创建目录
-        if not download_dir.exists():
+        # 目录仍然不存在，且是目录则创建目录
+        if not download_dir.exists() \
+                and download_dir.suffix not in settings.RMT_MEDIAEXT:
             download_dir.mkdir(parents=True, exist_ok=True)
         # 不是目录说明是单文件种子，直接使用下载目录
-        if download_dir.is_file():
+        if download_dir.is_file() \
+                or download_dir.suffix in settings.RMT_MEDIAEXT:
             download_dir = download_dir.parent
         # 读取网站代码
         request = RequestUtils(cookies=torrent.site_cookie, ua=torrent.site_ua)
