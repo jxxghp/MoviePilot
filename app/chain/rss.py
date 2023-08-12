@@ -186,13 +186,14 @@ class RssChain(ChainBase):
                     pubdate=time.strftime("%Y-%m-%d %H:%M:%S", item.get("pubdate")) if item.get("pubdate") else None,
                 )
                 # 过滤种子
-                result = self.filter_torrents(
-                    rule_string=filter_rule,
-                    torrent_list=[torrentinfo]
-                )
-                if not result:
-                    logger.info(f"{rss_task.name} 不匹配过滤规则")
-                    continue
+                if rss_task.filter:
+                    result = self.filter_torrents(
+                        rule_string=filter_rule,
+                        torrent_list=[torrentinfo]
+                    )
+                    if not result:
+                        logger.info(f"{rss_task.name} 不匹配过滤规则")
+                        continue
                 # 更新已处理数据
                 processed_data['titles'].append(item.get("title"))
                 processed_data['season_episodes'].append(meta.season_episode)
