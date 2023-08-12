@@ -142,20 +142,35 @@ class _PluginBase(metaclass=ABCMeta):
             data_path.mkdir(parents=True)
         return data_path
 
-    def save_data(self, key: str, value: Any) -> Base:
+    def save_data(self, key: str, value: Any, plugin_id: str = None) -> Base:
         """
         保存插件数据
         :param key: 数据key
         :param value: 数据值
         """
-        return self.plugindata.save(self.__class__.__name__, key, value)
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        return self.plugindata.save(plugin_id, key, value)
 
-    def get_data(self, key: str) -> Any:
+    def get_data(self, key: str, plugin_id: str = None) -> Any:
         """
         获取插件数据
         :param key: 数据key
+        :param plugin_id: plugin_id
         """
-        return self.plugindata.get_data(self.__class__.__name__, key)
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        return self.plugindata.get_data(plugin_id, key)
+
+    def del_data(self, key: str, plugin_id: str = None) -> Any:
+        """
+        删除插件数据
+        :param key: 数据key
+        :param plugin_id: plugin_id
+        """
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        return self.plugindata.del_data(plugin_id, key)
 
     def post_message(self, channel: MessageChannel = None, mtype: NotificationType = None, title: str = None,
                      text: str = None, image: str = None, link: str = None, userid: str = None):

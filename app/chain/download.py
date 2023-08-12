@@ -2,6 +2,8 @@ import re
 from pathlib import Path
 from typing import List, Optional, Tuple, Set, Dict, Union
 
+from qbittorrentapi import TorrentFilesList
+
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.context import MediaInfo, TorrentInfo, Context
@@ -623,3 +625,13 @@ class DownloadChain(ChainBase):
         删除下载任务
         """
         return self.remove_torrents(hashs=[hash_str])
+
+    def get_files(self, tid: str) -> Optional[TorrentFilesList]:
+        """
+        获取种子文件清单
+        """
+        try:
+            return self.get_torrent_files(tid=tid)
+        except Exception as err:
+            logger.error(f"获取种子文件列表出错：{err}")
+            return []
