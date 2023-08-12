@@ -1,4 +1,4 @@
-FROM python:3.10.11-slim
+FROM python:3.11.4-slim-bookworm
 ARG MOVIEPILOT_FRONTEND_VERSION
 ENV LANG="C.UTF-8" \
     HOME="/moviepilot" \
