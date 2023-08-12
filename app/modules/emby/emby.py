@@ -591,6 +591,14 @@ class Emby(metaclass=Singleton):
             eventItem.client = message.get('Session').get('Client')
         if message.get("User"):
             eventItem.user_name = message.get("User").get('Name')
+        if message.get("item_isvirtual"):
+            eventItem.item_isvirtual = message.get("item_isvirtual")
+            eventItem.item_type = message.get("item_type")
+            eventItem.item_name = message.get("item_name")
+            eventItem.item_path = message.get("item_path")
+            eventItem.tmdb_id = message.get("tmdb_id")
+            eventItem.season_id = message.get("season_id")
+            eventItem.episode_id = message.get("episode_id")
 
         # 获取消息图片
         if eventItem.item_id:
