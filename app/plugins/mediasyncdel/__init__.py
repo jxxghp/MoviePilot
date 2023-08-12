@@ -391,12 +391,12 @@ class MediaSyncDel(_PluginBase):
         if not self._enabled:
             return
         event_data = event.event_data
-        event_type = event_data.get("event_type")
+        event_type = event_data.event
         if not event_type or str(event_type) != 'media_del':
             return
 
         # 是否虚拟标识
-        item_isvirtual = event_data.get("item_isvirtual")
+        item_isvirtual = event_data.item_isvirtual
         if not item_isvirtual:
             logger.error("item_isvirtual参数未配置，为防止误删除，暂停插件运行")
             self.update_config({
@@ -417,24 +417,24 @@ class MediaSyncDel(_PluginBase):
         history = self.get_data('history') or []
 
         # 媒体类型
-        media_type = event_data.get("media_type")
+        media_type = event_data.item_type
         # 媒体名称
-        media_name = event_data.get("media_name")
+        media_name = event_data.item_name
         # 媒体路径
-        media_path = event_data.get("media_path")
+        media_path = event_data.item_path
         # tmdb_id
-        tmdb_id = event_data.get("tmdb_id")
+        tmdb_id = event_data.tmdb_id
         # 季数
-        season_num = event_data.get("season_num")
+        season_num = event_data.season_id
         if season_num and str(season_num).isdigit() and int(season_num) < 10:
             season_num = f'S0{season_num}'
-        else:
+        elif season_num:
             season_num = f'S{season_num}'
         # 集数
-        episode_num = event_data.get("episode_num")
+        episode_num = event_data.episode_id
         if episode_num and str(episode_num).isdigit() and int(episode_num) < 10:
             episode_num = f'E0{episode_num}'
-        else:
+        elif episode_num:
             episode_num = f'E{episode_num}'
 
         if not media_type:

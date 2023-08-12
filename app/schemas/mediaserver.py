@@ -133,3 +133,4 @@ class WebhookEventInfo(BaseModel):
     image_url: Optional[str] = None
     item_favorite: Optional[bool] = None
     save_reason: Optional[str] = None
+    item_isvirtual: Optional[bool] = None
