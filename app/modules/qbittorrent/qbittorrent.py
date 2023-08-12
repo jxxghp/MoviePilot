@@ -1,8 +1,9 @@
 import time
+from msilib.schema import File
 from typing import Optional, Union, Tuple, List
 
 import qbittorrentapi
-from qbittorrentapi import TorrentFilesList, TorrentDictionary
+from qbittorrentapi import TorrentDictionary
 from qbittorrentapi.client import Client
 from qbittorrentapi.transfer import TransferInfoDictionary
 
@@ -265,7 +266,7 @@ class Qbittorrent(metaclass=Singleton):
             logger.error(f"删除种子出错：{err}")
             return False
 
-    def get_files(self, tid: str) -> Optional[TorrentFilesList]:
+    def get_files(self, tid: str) -> Optional[List[File]]:
         """
         获取种子文件清单
         """

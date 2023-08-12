@@ -2,6 +2,7 @@ import gc
 import pickle
 import traceback
 from abc import ABCMeta
+from msilib.schema import File
 from pathlib import Path
 from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
@@ -306,6 +307,14 @@ class ChainBase(metaclass=ABCMeta):
         :return: bool
         """
         return self.run_module("stop_torrents", hashs=hashs)
+
+    def torrent_files(self, tid: str) -> Optional[List[File]]:
+        """
+        根据种子文件，选择并添加下载任务
+        :param tid:  种子Hash
+        :return: 种子文件
+        """
+        return self.run_module("torrent_files", tid=tid)
 
     def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
         """

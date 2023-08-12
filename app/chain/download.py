@@ -1,4 +1,5 @@
 import re
+from msilib.schema import File
 from pathlib import Path
 from typing import List, Optional, Tuple, Set, Dict, Union
 
@@ -623,3 +624,13 @@ class DownloadChain(ChainBase):
         删除下载任务
         """
         return self.remove_torrents(hashs=[hash_str])
+
+    def get_files(self, tid: str) -> Optional[List[File]]:
+        """
+        获取种子文件清单
+        """
+        try:
+            return self.torrent_files(tid=tid)
+        except Exception as err:
+            logger.error(f"获取种子文件列表出错：{err}")
+            return None
