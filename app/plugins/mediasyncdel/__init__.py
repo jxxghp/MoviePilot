@@ -427,15 +427,11 @@ class MediaSyncDel(_PluginBase):
         # 季数
         season_num = event_data.season_id
         if season_num and str(season_num).isdigit() and int(season_num) < 10:
-            season_num = f'S0{season_num}'
-        elif season_num:
-            season_num = f'S{season_num}'
+            season_num = f'0{season_num}'
         # 集数
         episode_num = event_data.episode_id
         if episode_num and str(episode_num).isdigit() and int(episode_num) < 10:
-            episode_num = f'E0{episode_num}'
-        elif episode_num:
-            episode_num = f'E{episode_num}'
+            episode_num = f'0{episode_num}'
 
         if not media_type:
             logger.error(f"{media_name} 同步删除失败，未获取到媒体类型")
@@ -465,7 +461,7 @@ class MediaSyncDel(_PluginBase):
                 return
             msg = f'剧集 {media_name} S{season_num} {tmdb_id}'
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
-                                                                               season=season_num)
+                                                                               season=f"S{season_num}")
         # 删除剧集S02E02
         elif media_type == "Episode":
             if not season_num or not str(season_num).isdigit() or not episode_num or not str(episode_num).isdigit():
@@ -473,8 +469,8 @@ class MediaSyncDel(_PluginBase):
                 return
             msg = f'剧集 {media_name} S{season_num}E{episode_num} {tmdb_id}'
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
-                                                                               season=season_num,
-                                                                               episode=episode_num)
+                                                                               season=f"S{season_num}",
+                                                                               episode=f"E{episode_num}")
         else:
             return
 
