@@ -11,7 +11,7 @@ body:
         2. 如果你的问题可以直接在以往 issue 或者 Telegram频道 中找到，那么你的 issue 将会被直接关闭。
         3. 提交问题务必描述清楚、附上日志，描述不清导致无法理解和分析的问题会被直接关闭。
         4. 此仓库为后端仓库，如果是前端WebUI问题请在[前端仓库](https://github.com/jxxghp/MoviePilot-Frontend)提 issue。
- - type: checkboxes
+  - type: checkboxes
     id: ensure
     attributes:
       label: 确认
