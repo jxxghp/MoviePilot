@@ -305,7 +305,10 @@ def arr_movie(apikey: str, mid: int, db: Session = Depends(get_db)) -> Any:
 
 
 @arr_router.post("/movie", summary="新增电影订阅")
-def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
+def arr_add_movie(apikey: str,
+                  movie: RadarrMovie,
+                  db: Session = Depends(get_db),
+                  ) -> Any:
     """
     新增Rardar电影订阅
     """
@@ -314,6 +317,13 @@ def arr_add_movie(apikey: str, movie: RadarrMovie) -> Any:
             status_code=403,
             detail="认证失败！",
         )
+    # 检查订阅是否已存在
+    subscribe = Subscribe.get_by_tmdbid(db, movie.tmdbId)
+    if subscribe:
+        return {
+            "id": subscribe.id
+        }
+    # 添加订阅
     sid, message = SubscribeChain().add(title=movie.title,
                                         year=movie.year,
                                         mtype=MediaType.MOVIE,
@@ -627,7 +637,8 @@ def arr_serie(apikey: str, tid: int, db: Session = Depends(get_db)) -> Any:
 
 
 @arr_router.post("/series", summary="新增剧集订阅")
-def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
+def arr_add_series(apikey: str, tv: schemas.SonarrSeries,
+                   db: Session = Depends(get_db)) -> Any:
     """
     新增Sonarr剧集订阅
     """
@@ -636,9 +647,23 @@ def arr_add_series(apikey: str, tv: schemas.SonarrSeries) -> Any:
             status_code=403,
             detail="认证失败！",
         )
+    # 检查订阅是否存在
+    left_seasons = []
+    for season in tv.seasons:
+        subscribe = Subscribe.get_by_tmdbid(db, tmdbid=tv.tmdbId,
+                                            season=season.get("seasonNumber"))
+        if subscribe:
+            continue
+        left_seasons.append(season)
+    # 全部已存在订阅
+    if not left_seasons:
+        return {
+            "id": 1
+        }
+    # 剩下的添加订阅
     sid = 0
     message = ""
-    for season in tv.seasons:
+    for season in left_seasons:
         if not season.get("monitored"):
             continue
         sid, message = SubscribeChain().add(title=tv.title,
