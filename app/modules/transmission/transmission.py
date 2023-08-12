@@ -11,7 +11,6 @@ from app.utils.string import StringUtils
 
 
 class Transmission(metaclass=Singleton):
-
     _host: str = None
     _port: int = None
     _username: str = None
@@ -26,7 +25,7 @@ class Transmission(metaclass=Singleton):
               "error", "errorString", "doneDate", "queuePosition", "activityDate", "trackers"]
 
     def __init__(self):
-        self._host, self._port = StringUtils.get_domain_address(settings.TR_HOST)
+        self._host, self._port = StringUtils.get_domain_address(address=settings.TR_HOST, prefix=False)
         self._username = settings.TR_USER
         self._password = settings.TR_PASSWORD
         if self._host and self._port and self._username and self._password:

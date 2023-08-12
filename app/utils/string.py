@@ -543,13 +543,13 @@ class StringUtils:
         return reparse
 
     @staticmethod
-    def get_domain_address(address: str) -> Tuple[Optional[str], Optional[int]]:
+    def get_domain_address(address: str, prefix: bool = True) -> Tuple[Optional[str], Optional[int]]:
         """
         从地址中获取域名和端口号
         """
         if not address:
             return None, None
-        if not address.startswith("http"):
+        if prefix and not address.startswith("http"):
             address = "http://" + address
         parts = address.split(":")
         if len(parts) > 3:
