@@ -29,3 +29,16 @@ async def webhook_message(background_tasks: BackgroundTasks,
     args = request.query_params
     background_tasks.add_task(start_webhook_chain, body, form, args)
     return schemas.Response(success=True)
+
+
+@router.get("/", summary="Webhook消息响应", response_model=schemas.Response)
+async def webhook_message(background_tasks: BackgroundTasks,
+                          token: str, request: Request) -> Any:
+    """
+    Webhook响应
+    """
+    if token != settings.API_TOKEN:
+        return schemas.Response(success=False, message="token认证不通过")
+    args = request.query_params
+    background_tasks.add_task(start_webhook_chain, None, None, args)
+    return schemas.Response(success=True)

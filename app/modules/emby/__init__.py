@@ -40,14 +40,10 @@ class EmbyModule(_ModuleBase):
         :param args:  请求参数
         :return: 字典，解析为消息时需要包含：title、text、image
         """
-        if form.get("data"):
+        if form and form.get("data"):
             result = form.get("data")
         else:
-            pairs = args.split("&")
-            result = {}
-            for pair in pairs:
-                key, value = pair.split("=")
-                result[key] = value
+            result = dict(args)
         return self.emby.get_webhook_message(result)
 
     def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
