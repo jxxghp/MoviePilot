@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Optional, Tuple, Union, Any, List, Generator
 
@@ -43,7 +44,7 @@ class EmbyModule(_ModuleBase):
         if form and form.get("data"):
             result = form.get("data")
         else:
-            result = dict(args)
+            result = json.dumps(dict(args))
         return self.emby.get_webhook_message(result)
 
     def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
