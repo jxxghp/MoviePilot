@@ -294,7 +294,7 @@ class Plex(metaclass=Singleton):
         if not self._plex:
             yield {}
         try:
-            section = self._plex.library.sectionByID(parent)
+            section = self._plex.library.sectionByID(int(parent))
             if section:
                 for item in section.all():
                     if not item:
