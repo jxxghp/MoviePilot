@@ -12,7 +12,7 @@ class TheTvDbModule(_ModuleBase):
     tvdb: tvdb_api.Tvdb = None
 
     def init_module(self) -> None:
-        self.tvdb = tvdb_api.Tvdb(apikey=settings.TVDB_API_KEY)
+        self.tvdb = tvdb_api.Tvdb(apikey=settings.TVDB_API_KEY, cache=False, select_first=True)
 
     def stop(self):
         pass
