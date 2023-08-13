@@ -78,10 +78,9 @@ class WebhookChain(ChainBase):
         # 查询剧集图片
         if event_info.tmdb_id \
                 and event_info.season_id:
-            mtype = MediaType.TV if event_info.item_type == "TV" else MediaType.MOVIE
             specific_image = self.obtain_specific_image(
                 mediaid=event_info.tmdb_id,
-                mtype=mtype,
+                mtype=MediaType.TV,
                 image_type=MediaImageType.Backdrop,
                 season=event_info.season_id,
                 episode=event_info.episode_id
