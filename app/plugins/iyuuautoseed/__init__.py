@@ -832,7 +832,7 @@ class IYUUAutoSeed(_PluginBase):
             return False
 
         try:
-            if __is_special_site(site.get('strict_url')):
+            if __is_special_site(site.get('url')):
                 # 从详情页面获取下载链接
                 return self.__get_torrent_url_from_page(seed=seed, site=site)
             else:
@@ -860,7 +860,7 @@ class IYUUAutoSeed(_PluginBase):
                                              download_url,
                                              flags=re.IGNORECASE),
                                       flags=re.IGNORECASE)
-                return f"{site.get('strict_url')}/{download_url}"
+                return f"{site.get('url')}{download_url}"
         except Exception as e:
             logger.warn(f"站点 {site.get('name')} Url转换失败：{str(e)}，尝试通过详情页面获取种子下载链接 ...")
             return self.__get_torrent_url_from_page(seed=seed, site=site)
@@ -870,7 +870,7 @@ class IYUUAutoSeed(_PluginBase):
         从详情页面获取下载链接
         """
         try:
-            page_url = f"{site.get('strict_url')}/details.php?id={seed.get('torrent_id')}&hit=1"
+            page_url = f"{site.get('url')}details.php?id={seed.get('torrent_id')}&hit=1"
             logger.info(f"正在获取种子下载链接：{page_url} ...")
             res = RequestUtils(
                 cookies=site.get("cookie"),
@@ -894,9 +894,9 @@ class IYUUAutoSeed(_PluginBase):
                         logger.info(f"获取种子下载链接成功：{download_url}")
                         if not download_url.startswith("http"):
                             if download_url.startswith("/"):
-                                download_url = f"{site.get('strict_url')}{download_url}"
+                                download_url = f"{site.get('url')}{download_url[1:]}"
                             else:
-                                download_url = f"{site.get('strict_url')}/{download_url}"
+                                download_url = f"{site.get('url')}{download_url}"
                         return download_url
                 logger.warn(f"获取种子下载链接失败，未找到下载链接：{page_url}")
                 return None
