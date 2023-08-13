@@ -342,7 +342,7 @@ class SpeedLimiter(_PluginBase):
             if self._qb:
                 self._qb.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
                 # 发送通知
-                if self._notify:
+                if self._notify and (upload_limit or download_limit):
                     title = f"Qbittorrent 开始{limit_type}限速"
                     self.post_message(
                         mtype=NotificationType.MediaServer,
@@ -352,7 +352,7 @@ class SpeedLimiter(_PluginBase):
             if self._tr:
                 self._tr.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
                 # 发送通知
-                if self._notify:
+                if self._notify and (upload_limit or download_limit):
                     title = f"Transmission 开始{limit_type}限速"
                     self.post_message(
                         mtype=NotificationType.MediaServer,
