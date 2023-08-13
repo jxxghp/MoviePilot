@@ -50,6 +50,8 @@ class SpeedLimiter(_PluginBase):
     _play_down_speed: float = 0
     _noplay_up_speed: float = 0
     _noplay_down_speed: float = 0
+    # 当前限速状态
+    _current_state = ""
 
     def init_plugin(self, config: dict = None):
         # 读取配置
@@ -330,6 +332,13 @@ class SpeedLimiter(_PluginBase):
         """
         if not self._qb and not self._tr:
             return
+        state = f"U:{upload_limit},D:{download_limit}"
+        if self._current_state == state:
+            # 限速状态没有改变
+            return
+        else:
+            self._current_state = state
+
         if upload_limit:
             text = f"上传：{upload_limit} KB/s"
         else:
@@ -342,23 +351,39 @@ class SpeedLimiter(_PluginBase):
             if self._qb:
                 self._qb.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
                 # 发送通知
-                if self._notify and (upload_limit or download_limit):
-                    title = f"Qbittorrent 开始{limit_type}限速"
-                    self.post_message(
-                        mtype=NotificationType.MediaServer,
-                        title=title,
-                        text=text
-                    )
+                if self._notify:
+                    title = "【播放限速】"
+                    if upload_limit or download_limit:
+                        subtitle = f"Qbittorrent 开始{limit_type}限速"
+                        self.post_message(
+                            mtype=NotificationType.MediaServer,
+                            title=title,
+                            text=f"{subtitle}\n{text}"
+                        )
+                    else:
+                        self.post_message(
+                            mtype=NotificationType.MediaServer,
+                            title=title,
+                            text=f"Qbittorrent 已取消限速"
+                        )
             if self._tr:
                 self._tr.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
                 # 发送通知
-                if self._notify and (upload_limit or download_limit):
-                    title = f"Transmission 开始{limit_type}限速"
-                    self.post_message(
-                        mtype=NotificationType.MediaServer,
-                        title=title,
-                        text=text
-                    )
+                if self._notify:
+                    title = "【播放限速】"
+                    if upload_limit or download_limit:
+                        subtitle = f"Transmission 开始{limit_type}限速"
+                        self.post_message(
+                            mtype=NotificationType.MediaServer,
+                            title=title,
+                            text=f"{subtitle}\n{text}"
+                        )
+                    else:
+                        self.post_message(
+                            mtype=NotificationType.MediaServer,
+                            title=title,
+                            text=f"Transmission 已取消限速"
+                        )
         except Exception as e:
             logger.error(f"设置限速失败：{str(e)}")
 
