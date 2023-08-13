@@ -47,16 +47,16 @@ class EmbyModule(_ModuleBase):
             result = json.dumps(dict(args))
         return self.emby.get_webhook_message(result)
 
-    def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, itemid: List[str]) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
-        :param itemid:  媒体服务器ItemID
+        :param itemid:  媒体服务器ItemID列表
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
         if mediainfo.type == MediaType.MOVIE:
-            if itemid:
-                movie = self.emby.get_iteminfo(itemid)
+            for id in itemid:
+                movie = self.emby.get_iteminfo(id)
                 if movie:
                     logger.info(f"媒体库中已存在：{movie}")
                     return ExistMediaInfo(type=MediaType.MOVIE)
@@ -71,7 +71,7 @@ class EmbyModule(_ModuleBase):
             tvs = self.emby.get_tv_episodes(title=mediainfo.title,
                                             year=mediainfo.year,
                                             tmdb_id=mediainfo.tmdb_id,
-                                            item_id=itemid)
+                                            item_ids=itemid)
             if not tvs:
                 logger.info(f"{mediainfo.title_year} 在媒体库中不存在")
                 return None
@@ -145,11 +145,11 @@ class EmbyModule(_ModuleBase):
                 path=item.get("path"),
             )
 
-    def mediaserver_tv_episodes(self, item_id: Union[str, int]) -> List[schemas.MediaServerSeasonInfo]:
+    def mediaserver_tv_episodes(self, item_id: str) -> List[schemas.MediaServerSeasonInfo]:
         """
         获取剧集信息
         """
-        seasoninfo = self.emby.get_tv_episodes(item_id=item_id)
+        seasoninfo = self.emby.get_tv_episodes(item_ids=[item_id])
         if not seasoninfo:
             return []
         return [schemas.MediaServerSeasonInfo(

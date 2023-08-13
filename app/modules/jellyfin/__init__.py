@@ -43,16 +43,16 @@ class JellyfinModule(_ModuleBase):
         """
         return self.jellyfin.get_webhook_message(json.loads(body))
 
-    def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, itemid: List[str]) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
-        :param itemid:  媒体服务器ItemID
+        :param itemid:  媒体服务器ItemID列表
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
         if mediainfo.type == MediaType.MOVIE:
-            if itemid:
-                movie = self.jellyfin.get_iteminfo(itemid)
+            for id in itemid:
+                movie = self.jellyfin.get_iteminfo(id)
                 if movie:
                     logger.info(f"媒体库中已存在：{movie}")
                     return ExistMediaInfo(type=MediaType.MOVIE)
@@ -67,7 +67,7 @@ class JellyfinModule(_ModuleBase):
             tvs = self.jellyfin.get_tv_episodes(title=mediainfo.title,
                                                 year=mediainfo.year,
                                                 tmdb_id=mediainfo.tmdb_id,
-                                                item_id=itemid)
+                                                item_ids=itemid)
             if not tvs:
                 logger.info(f"{mediainfo.title_year} 在媒体库中不存在")
                 return None
@@ -136,7 +136,7 @@ class JellyfinModule(_ModuleBase):
         """
         获取剧集信息
         """
-        seasoninfo = self.jellyfin.get_tv_episodes(item_id=item_id)
+        seasoninfo = self.jellyfin.get_tv_episodes(item_id=[item_id])
         if not seasoninfo:
             return []
         return [schemas.MediaServerSeasonInfo(

@@ -309,19 +309,11 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("stop_torrents", hashs=hashs)
 
-    def torrent_files(self, tid: str) -> Optional[Union[TorrentFilesList, List[File]]]:
-        """
-        根据种子文件，选择并添加下载任务
-        :param tid:  种子Hash
-        :return: 种子文件
-        """
-        return self.run_module("torrent_files", tid=tid)
-
     def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
-        :param itemid:  媒体服务器ItemID
+        :param itemid:  媒体服务器ItemID列表
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
         return self.run_module("media_exists", mediainfo=mediainfo, itemid=itemid)

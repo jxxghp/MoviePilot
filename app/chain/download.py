@@ -499,8 +499,8 @@ class DownloadChain(ChainBase):
             no_exists = {}
         if mediainfo.type == MediaType.MOVIE:
             # 电影
-            itemid = self.mediaserver.get_item_id(mtype=mediainfo.type.value,
-                                                  tmdbid=mediainfo.tmdb_id)
+            itemid = self.mediaserver.get_item_id_list(mtype=mediainfo.type.value,
+                                                       tmdbid=mediainfo.tmdb_id)
             exists_movies: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if exists_movies:
                 logger.info(f"媒体库中已存在电影：{mediainfo.title_year}")
@@ -518,9 +518,9 @@ class DownloadChain(ChainBase):
                     logger.error(f"媒体信息中没有季集信息：{mediainfo.title_year}")
                     return False, {}
             # 电视剧
-            itemid = self.mediaserver.get_item_id(mtype=mediainfo.type.value,
-                                                  tmdbid=mediainfo.tmdb_id,
-                                                  season=mediainfo.season)
+            itemid = self.mediaserver.get_item_id_list(mtype=mediainfo.type.value,
+                                                       tmdbid=mediainfo.tmdb_id,
+                                                       season=mediainfo.season)
             exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if not exists_tvs:
                 # 所有剧集均缺失

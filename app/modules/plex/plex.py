@@ -139,13 +139,13 @@ class Plex(metaclass=Singleton):
         return ret_movies
 
     def get_tv_episodes(self,
-                        item_id: str = None,
+                        item_ids: List[str],
                         title: str = None,
                         year: str = None,
                         season: int = None) -> Optional[Dict[int, list]]:
         """
         根据标题、年份、季查询电视剧所有集信息
-        :param item_id: 媒体ID
+        :param item_id: 媒体ID列表
         :param title: 标题
         :param year: 年份，可以为空，为空时不按年份过滤
         :param season: 季号，数字
@@ -153,8 +153,8 @@ class Plex(metaclass=Singleton):
         """
         if not self._plex:
             return {}
-        if item_id:
-            videos = self._plex.library.sectionByID(item_id).all()
+        if item_ids:
+            videos = self._plex.library.sectionByID(item_ids[0]).all()
         else:
             videos = self._plex.library.search(title=title, year=year, libtype="show")
         if not videos:

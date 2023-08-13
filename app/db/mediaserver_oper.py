@@ -1,5 +1,5 @@
 import json
-from typing import Optional
+from typing import Optional, List
 
 from app.db import DbOper, SessionLocal
 from app.db.models.mediaserver import MediaServerItem
@@ -29,35 +29,32 @@ class MediaServerOper(DbOper):
         """
         MediaServerItem.empty(self._db, server)
 
-    def exists(self, **kwargs) -> Optional[MediaServerItem]:
+    def exists(self, **kwargs) -> Optional[List[MediaServerItem]]:
         """
         判断媒体服务器数据是否存在
         """
+        items = []
         if kwargs.get("tmdbid"):
             # 优先按TMDBID查
-            item = MediaServerItem.exist_by_tmdbid(self._db, tmdbid=kwargs.get("tmdbid"),
-                                                   mtype=kwargs.get("mtype"))
+            items = MediaServerItem.exist_by_tmdbid(self._db, tmdbid=kwargs.get("tmdbid"),
+                                                    mtype=kwargs.get("mtype"))
         else:
             # 按标题、类型、年份查
-            item = MediaServerItem.exists_by_title(self._db, title=kwargs.get("title"),
-                                                   mtype=kwargs.get("mtype"), year=kwargs.get("year"))
-        if not item:
-            return None
+            items = MediaServerItem.exists_by_title(self._db, title=kwargs.get("title"),
+                                                    mtype=kwargs.get("mtype"), year=kwargs.get("year"))                                                   
+        for item in items:
+            if kwargs.get("season"):
+                # 判断季是否存在
+                if not item.seasoninfo:
+                    return []
+                seasoninfo = json.loads(item.seasoninfo) or {}
+                if kwargs.get("season") not in seasoninfo.keys():
+                    return []
+        return items
 
-        if kwargs.get("season"):
-            # 判断季是否存在
-            if not item.seasoninfo:
-                return None
-            seasoninfo = json.loads(item.seasoninfo) or {}
-            if kwargs.get("season") not in seasoninfo.keys():
-                return None
-        return item
-
-    def get_item_id(self, **kwargs) -> Optional[str]:
+    def get_item_id_list(self, **kwargs) -> Optional[List[str]]:
         """
         获取媒体服务器数据ID
         """
-        item = self.exists(**kwargs)
-        if not item:
-            return None
-        return str(item.item_id)
+        items = self.exists(**kwargs)
+        return [str(item.item_id) for item in items]
