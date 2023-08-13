@@ -26,5 +26,5 @@ body:
     id: references
     attributes:
       label: 参考资料
-      description: 可以列举一些参考资料。
+      description: 可以列举一些参考资料，但是不要引用同类但商业化软件的任何内容。
       placeholder: "参考资料"
