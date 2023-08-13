@@ -1,6 +1,7 @@
-from msilib.schema import File
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List
+
+from transmission_rpc import File
 
 from app import schemas
 from app.core.config import settings

@@ -1,6 +1,7 @@
-from msilib.schema import File
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List
+
+from qbittorrentapi import TorrentFilesList
 
 from app import schemas
 from app.core.config import settings
@@ -188,7 +189,7 @@ class QbittorrentModule(_ModuleBase):
         """
         return self.qbittorrent.start_torrents(ids=hashs)
 
-    def torrent_files(self, tid: str) -> Optional[List[File]]:
+    def torrent_files(self, tid: str) -> Optional[TorrentFilesList]:
         """
         获取种子文件列表
         """

@@ -715,7 +715,7 @@ class MediaSyncDel(_PluginBase):
                 logger.info(f"{history_key} 转种时未删除源下载任务，开始删除源下载任务…")
 
                 try:
-                    dl_files = self.chain.get_files(tid=torrent_hash)
+                    dl_files = self.chain.torrent_files(tid=torrent_hash)
                     if not dl_files:
                         logger.info(f"未获取到 {settings.DOWNLOADER} - {torrent_hash} 种子文件，种子已被删除")
                     else:
@@ -736,7 +736,7 @@ class MediaSyncDel(_PluginBase):
         # 如果是False则说明种子文件没有完全被删除，暂停种子，暂不处理
         if delete_flag:
             try:
-                dl_files = self.chain.get_files(tid=download_id)
+                dl_files = self.chain.torrent_files(tid=download_id)
                 if not dl_files:
                     logger.info(f"未获取到 {download} - {download_id} 种子文件，种子已被删除")
                 else:
