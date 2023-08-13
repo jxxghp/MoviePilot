@@ -425,30 +425,49 @@ class FileTransferModule(_ModuleBase):
                 try:
                     # 识别文件元数据，不包含后缀
                     file_meta = MetaInfo(transfer_file.stem)
-                    # 组合目录和文件的Meta信息
-                    meta.type = file_meta.type
                     # 开始季
-                    if file_meta.begin_season:
-                        meta.begin_season = file_meta.begin_season
-                    # 开始集
-                    if file_meta.begin_episode:
-                        meta.begin_episode = file_meta.begin_episode
-                    # 结束集
-                    if file_meta.end_episode:
-                        meta.end_episode = file_meta.end_episode
-                    # 总季数
-                    if file_meta.total_seasons:
-                        meta.total_seasons = file_meta.total_seasons
-                    # 总集数
-                    if file_meta.total_episode:
-                        meta.total_episode = file_meta.total_episode
+                    if not file_meta.begin_season:
+                        file_meta.begin_season = meta.begin_season
                     # 结束季为空
-                    meta.end_season = None
+                    file_meta.end_season = None
+                    # 总季数
+                    if file_meta.begin_season:
+                        file_meta.total_seasons = 1
+                    # 开始集
+                    if not file_meta.begin_episode:
+                        file_meta.begin_episode = meta.begin_episode
+                    # 结束集
+                    if not file_meta.end_episode:
+                        file_meta.end_episode = meta.end_episode
+                    # 总集数
+                    if not file_meta.total_episode:
+                        file_meta.total_episode = meta.total_episode
+                    # 版本
+                    if not file_meta.resource_type:
+                        file_meta.resource_type = meta.resource_type
+                    # 分辨率
+                    if not file_meta.resource_pix:
+                        file_meta.resource_pix = meta.resource_pix
+                    # 制作组/字幕组
+                    if not file_meta.resource_team:
+                        file_meta.resource_team = meta.resource_team
+                    # 特效
+                    if not file_meta.resource_effect:
+                        file_meta.resource_effect = meta.resource_effect
+                    # 视频编码
+                    if not file_meta.video_encode:
+                        file_meta.video_encode = meta.video_encode
+                    # 音频编码
+                    if not file_meta.audio_encode:
+                        file_meta.audio_encode = meta.audio_encode
+                    # Part
+                    if not file_meta.part:
+                        file_meta.part = meta.part
                     # 目的文件名
                     new_file = self.get_rename_path(
                         path=target_dir,
                         template_string=rename_format,
-                        rename_dict=self.__get_naming_dict(meta=meta,
+                        rename_dict=self.__get_naming_dict(meta=file_meta,
                                                            mediainfo=mediainfo,
                                                            file_ext=transfer_file.suffix)
                     )
