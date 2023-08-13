@@ -40,6 +40,8 @@ class TorrentSpider:
     referer: str = None
     # 搜索关键字
     keyword: str = None
+    # 搜索IMDBID
+    imdbid: str = None
     # 媒体类型
     mtype: MediaType = None
     # 搜索路径、方式配置
@@ -66,6 +68,7 @@ class TorrentSpider:
     def __init__(self,
                  indexer: CommentedMap,
                  keyword: [str, list] = None,
+                 imdbid: str = None,
                  page=None,
                  referer=None,
                  mtype: MediaType = None):
@@ -73,6 +76,7 @@ class TorrentSpider:
         设置查询参数
         :param indexer: 索引器
         :param keyword: 搜索关键字，如果数组则为批量搜索
+        :param imdbid: IMDB ID
         :param page: 页码
         :param referer: Referer
         :param mtype: 媒体类型
@@ -80,6 +84,7 @@ class TorrentSpider:
         if not indexer:
             return
         self.keyword = keyword
+        self.imdbid = imdbid
         self.mtype = mtype
         self.indexerid = indexer.get('id')
         self.indexername = indexer.get('name')
@@ -131,7 +136,7 @@ class TorrentSpider:
                     torrentspath = path.get('path')
                     break
 
-        # 关键字搜索
+        # 精确搜索
         if self.keyword:
 
             if isinstance(self.keyword, list):
@@ -139,7 +144,8 @@ class TorrentSpider:
                 if self.batch:
                     delimiter = self.batch.get('delimiter') or ' '
                     space_replace = self.batch.get('space_replace') or ' '
-                    search_word = delimiter.join([str(k).replace(' ', space_replace) for k in self.keyword])
+                    search_word = delimiter.join([str(k).replace(' ',
+                                                                 space_replace) for k in self.keyword])
                 else:
                     search_word = " ".join(self.keyword)
                 # 查询模式：或
@@ -151,7 +157,17 @@ class TorrentSpider:
                 search_mode = "0"
 
             # 搜索URL
-            if self.search.get("params"):
+            indexer_params = self.search.get("params") or {}
+            if indexer_params:
+                # 支持IMDBID时优先使用IMDBID搜索
+                search_area = indexer_params.get("search_area") or 0
+                if self.imdbid and search_area:
+                    search_word = self.imdbid
+                else:
+                    search_word = self.keyword
+                    # 不启用IMDBID搜索时需要将search_area移除
+                    if search_area:
+                        indexer_params.pop('search_area')
                 # 变量字典
                 inputs_dict = {
                     "keyword": search_word
@@ -159,11 +175,12 @@ class TorrentSpider:
                 # 查询参数
                 params = {
                     "search_mode": search_mode,
+                    "search_area": 0,
                     "page": self.page or 0,
                     "notnewword": 1
                 }
                 # 额外参数
-                for key, value in self.search.get("params").items():
+                for key, value in indexer_params.items():
                     params.update({
                         "%s" % key: str(value).format(**inputs_dict)
                     })

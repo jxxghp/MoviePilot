@@ -58,12 +58,20 @@ class IndexerModule(_ModuleBase):
         start_time = datetime.now()
         try:
             if site.get('parser') == "TNodeSpider":
-                error_flag, result_array = TNodeSpider(site).search(keyword=search_word, page=page)
+                error_flag, result_array = TNodeSpider(site).search(
+                    keyword=search_word,
+                    # imdbid=mediainfo.imdb_id if mediainfo else None,
+                    page=page
+                )
             elif site.get('parser') == "TorrentLeech":
-                error_flag, result_array = TorrentLeech(site).search(keyword=search_word, page=page)
+                error_flag, result_array = TorrentLeech(site).search(
+                    keyword=search_word,
+                    page=page
+                )
             else:
                 error_flag, result_array = self.__spider_search(
                     keyword=search_word,
+                    # imdbid=mediainfo.imdb_id if mediainfo else None,
                     indexer=site,
                     mtype=mediainfo.type if mediainfo else None,
                     page=page
@@ -92,12 +100,14 @@ class IndexerModule(_ModuleBase):
     @staticmethod
     def __spider_search(indexer: CommentedMap,
                         keyword: str = None,
+                        imdbid: str = None,
                         mtype: MediaType = None,
                         page: int = None) -> (bool, List[dict]):
         """
         根据关键字搜索单个站点
         :param: indexer: 站点配置
         :param: keyword: 关键字
+        :param: imdbid: imdbid
         :param: page: 页码
         :param: mtype: 媒体类型
         :param: timeout: 超时时间
@@ -106,6 +116,7 @@ class IndexerModule(_ModuleBase):
         _spider = TorrentSpider(indexer=indexer,
                                 mtype=mtype,
                                 keyword=keyword,
+                                imdbid=imdbid,
                                 page=page)
 
         return _spider.is_error, _spider.get_torrents()
