@@ -40,7 +40,7 @@ body:
       options:
         - 主程序运行问题
         - 插件问题
-        - Docker运行及环境问题
+        - Docker或运行环境问题
         - 其他问题
     validations:
       required: true
