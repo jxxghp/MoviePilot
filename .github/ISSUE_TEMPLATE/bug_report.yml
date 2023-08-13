@@ -1,6 +1,6 @@
 name: 问题反馈
 description: File a bug report
-title: "[错误报告]请在此处简单描述你的问题"
+title: "[错误报告]: 请在此处简单描述你的问题"
 labels: ["bug"]
 body:
   - type: markdown
