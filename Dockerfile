@@ -55,7 +55,7 @@ RUN apt-get update \
     fi \
     && cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && cp /app/update /usr/local/bin/mp_update \
-    && chmod +x /app/start.sh /usr/local/bin/mp_update \
+    && chmod +x /app/start /usr/local/bin/mp_update \
     && mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
@@ -80,4 +80,4 @@ RUN apt-get update \
         /var/tmp/*
 EXPOSE 3000
 VOLUME ["/config"]
-ENTRYPOINT [ "/app/start.sh" ]
+ENTRYPOINT [ "/app/start" ]
