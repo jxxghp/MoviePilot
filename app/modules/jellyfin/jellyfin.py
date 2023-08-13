@@ -269,7 +269,7 @@ class Jellyfin(metaclass=Singleton):
         return []
 
     def get_tv_episodes(self,
-                        item_ids: List[str],
+                        item_ids: List[str] = [],
                         title: str = None,
                         year: str = None,
                         tmdb_id: int = None,
@@ -323,7 +323,6 @@ class Jellyfin(metaclass=Singleton):
                         if not season_episodes.get(season_index):
                             season_episodes[season_index] = []
                         season_episodes[season_index].append(episode_index)
-                    return season_episodes
             except Exception as e:
                 logger.error(f"连接Shows/Id/Episodes出错：" + str(e))
                 return None
