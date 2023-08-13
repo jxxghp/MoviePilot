@@ -1,6 +1,6 @@
 name: 问题反馈
 description: File a bug report
-title: "[错误报告]请在此处简单描述你的问题"
+title: "[错误报告]: 请在此处简单描述你的问题"
 labels: ["bug"]
 body:
   - type: markdown
@@ -40,7 +40,7 @@ body:
       options:
         - 主程序运行问题
         - 插件问题
-        - Docker运行及环境问题
+        - Docker或运行环境问题
         - 其他问题
     validations:
       required: true
