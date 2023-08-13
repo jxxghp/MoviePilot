@@ -45,8 +45,11 @@ class PTerClub(_ISiteSigninHandler):
         if not html_text:
             logger.error(f"{site} 签到失败，签到接口请求失败")
             return False, '签到失败，请检查cookie是否失效'
-
-        sign_dict = json.loads(html_text)
+        try:
+            sign_dict = json.loads(html_text)
+        except Exception as e:
+            logger.error(f"{site} 签到失败，签到接口返回数据异常，错误信息：{e}")
+            return False, '签到失败，签到接口返回数据异常'
         if sign_dict['status'] == '1':
             # {"status":"1","data":" (签到已成功300)","message":"<p>这是您的第<b>237</b>次签到，
             # 已连续签到<b>237</b>天。</p><p>本次签到获得<b>300</b>克猫粮。</p>"}
