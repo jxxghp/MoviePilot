@@ -294,7 +294,7 @@ class Emby(metaclass=Singleton):
         return []
 
     def get_tv_episodes(self,
-                        item_ids: List[str],
+                        item_ids: List[str] = [],
                         title: str = None,
                         year: str = None,
                         tmdb_id: int = None,
@@ -310,18 +310,19 @@ class Emby(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return None
+        item_id_by_name = ''
         season_episodes = {}
-        item_id = None
         if not season:
             season = ""
         # 电视剧
         if not item_ids:
-            item_id = self.__get_emby_series_id_by_name(title, year)
-            if item_id is None:
+            item_id_by_name = self.__get_emby_series_id_by_name(title, year)
+            if item_id_by_name is None:
                 return None
-            if not item_id:
+            if not item_id_by_name:
                 return {}
-        item_ids.append(item_id)
+        if item_id_by_name:
+            item_ids.append(item_id_by_name)
         for item_id in item_ids:
             # 验证tmdbid是否相同
             item_tmdbid = self.get_iteminfo(item_id).get("ProviderIds", {}).get("Tmdb")

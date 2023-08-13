@@ -139,7 +139,7 @@ class Plex(metaclass=Singleton):
         return ret_movies
 
     def get_tv_episodes(self,
-                        item_ids: List[str],
+                        item_ids: List[str] = [],
                         title: str = None,
                         year: str = None,
                         season: int = None) -> Optional[Dict[int, list]]:

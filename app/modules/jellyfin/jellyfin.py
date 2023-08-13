@@ -287,18 +287,19 @@ class Jellyfin(metaclass=Singleton):
             return None
         # 查TVID
         season_episodes = {}
-        item_id = None
+        item_id_by_name = ''
         if not season:
             season = ""
         if not item_ids:
-            item_id = self.__get_jellyfin_series_id_by_name(title, year)
-            if item_id is None:
+            item_id_by_name = self.__get_jellyfin_series_id_by_name(title, year)
+            if item_id_by_name is None:
                 return None
-            if not item_id:
+            if not item_id_by_name:
                 return {}
-        # 验证tmdbid是否相同
-        item_ids.append(item_id)
+        if item_id_by_name:
+            item_ids.append(item_id_by_name)
         for item_id in item_ids:
+            # 验证tmdbid是否相同
             item_tmdbid = self.get_iteminfo(item_id).get("ProviderIds", {}).get("Tmdb")
             if tmdb_id and item_tmdbid:
                 if str(tmdb_id) != str(item_tmdbid):

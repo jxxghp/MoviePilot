@@ -29,7 +29,7 @@ class MediaServerOper(DbOper):
         """
         MediaServerItem.empty(self._db, server)
 
-    def exists(self, **kwargs) -> Optional[List[MediaServerItem]]:
+    def exists(self, **kwargs) -> List[MediaServerItem]:
         """
         判断媒体服务器数据是否存在
         """
@@ -52,7 +52,7 @@ class MediaServerOper(DbOper):
                     return []
         return items
 
-    def get_item_id_list(self, **kwargs) -> Optional[List[str]]:
+    def get_item_id_list(self, **kwargs) -> List[str]:
         """
         获取媒体服务器数据ID
         """

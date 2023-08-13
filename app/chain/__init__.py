@@ -309,7 +309,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("stop_torrents", hashs=hashs)
 
-    def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, itemid: List[str] = []) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
