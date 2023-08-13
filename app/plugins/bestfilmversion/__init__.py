@@ -489,7 +489,7 @@ class BestFilmVersion(_PluginBase):
                         "poster": mediainfo.get_poster_image(),
                         "overview": mediainfo.overview,
                         "tmdbid": mediainfo.tmdb_id,
-                        "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     })
         # 保存历史记录
         self.save_data('history', history)
@@ -668,7 +668,7 @@ class BestFilmVersion(_PluginBase):
                 "poster": mediainfo.get_poster_image(),
                 "overview": mediainfo.overview,
                 "tmdbid": mediainfo.tmdb_id,
-                "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
         # 保存历史记录
         self.save_data('history', history)
