@@ -7,6 +7,7 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from lxml import etree
+from ruamel.yaml import CommentedMap
 
 from app.core.config import settings
 from app.helper.sites import SitesHelper
@@ -809,7 +810,7 @@ class IYUUAutoSeed(_PluginBase):
             print(str(e))
             return ""
 
-    def __get_download_url(self, seed: dict, site: dict, base_url: str):
+    def __get_download_url(self, seed: dict, site: CommentedMap, base_url: str):
         """
         拼装种子下载链接
         """
@@ -874,7 +875,7 @@ class IYUUAutoSeed(_PluginBase):
             logger.info(f"正在获取种子下载链接：{page_url} ...")
             res = RequestUtils(
                 cookies=site.get("cookie"),
-                headers=site.get("ua"),
+                ua=site.get("ua"),
                 proxies=settings.PROXY if site.get("proxy") else None
             ).get_res(url=page_url)
             if res is not None and res.status_code in (200, 500):
