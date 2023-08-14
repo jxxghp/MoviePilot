@@ -473,7 +473,7 @@ class MediaInfo:
     @property
     def title_year(self):
         if self.title:
-            return "%s (%s）" % (self.title, self.year) if self.year else self.title
+            return "%s (%s)" % (self.title, self.year) if self.year else self.title
         return ""
 
     @property
