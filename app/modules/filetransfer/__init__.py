@@ -588,10 +588,14 @@ class FileTransferModule(_ModuleBase):
         target_path = None
         if in_path:
             for path in dest_paths:
-                relative = Path(path).relative_to(in_path).as_posix()
-                if relative.startswith("..") or len(relative) > max_length:
-                    max_length = len(relative)
-                    target_path = path
+                try:
+                    relative = Path(path).relative_to(in_path).as_posix()
+                    if relative.startswith("..") or len(relative) > max_length:
+                        max_length = len(relative)
+                        target_path = path
+                except Exception as e:
+                    logger.debug(f"计算目标路径时出错：{e}")
+                    continue
             if target_path:
                 return Path(target_path)
         # 顺序匹配第1个满足空间存储要求的目录
