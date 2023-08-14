@@ -154,7 +154,7 @@ class Plex(metaclass=Singleton):
         if not self._plex:
             return {}
         if item_id:
-            videos = self._plex.library.sectionByID(item_id).all()
+            videos = self._plex.fetchItem(item_id)
         else:
             videos = self._plex.library.search(title=title, year=year, libtype="show")
         if not videos:
