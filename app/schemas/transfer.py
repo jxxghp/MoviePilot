@@ -45,6 +45,8 @@ class TransferInfo(BaseModel):
     file_count: Optional[int] = 0
     # 处理文件清单
     file_list: Optional[list] = []
+    # 目标文件清单
+    file_list_new: Optional[list] = []
     # 总文件大小
     total_size: Optional[float] = 0
     # 失败清单

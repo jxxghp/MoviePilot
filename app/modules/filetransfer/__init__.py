@@ -52,7 +52,7 @@ class FileTransferModule(_ModuleBase):
         if isinstance(result, str):
             return TransferInfo(message=result)
         # 解包结果
-        is_bluray, target_path, file_list, file_size, fail_list, msg = result
+        is_bluray, target_path, file_list, file_list_new, file_size, fail_list, msg = result
         # 返回
         return TransferInfo(path=path,
                             target_path=target_path,
@@ -61,7 +61,8 @@ class FileTransferModule(_ModuleBase):
                             total_size=file_size,
                             fail_list=fail_list,
                             is_bluray=is_bluray,
-                            file_list=file_list)
+                            file_list=file_list,
+                            file_list_new=file_list_new)
 
     @staticmethod
     def __transfer_command(file_item: Path, target_file: Path, transfer_type: str) -> int:
@@ -378,6 +379,9 @@ class FileTransferModule(_ModuleBase):
         # 处理文件清单
         file_list = []
 
+        # 目标文件清单
+        file_list_new = []
+
         # 失败文件清单
         fail_list = []
 
@@ -489,6 +493,7 @@ class FileTransferModule(_ModuleBase):
                         continue
                     # 计算文件数
                     file_list.append(str(transfer_file))
+                    file_list_new.append(str(new_file))
                     # 计算大小
                     total_filesize += transfer_file.stat().st_size
                 except Exception as err:
@@ -501,7 +506,7 @@ class FileTransferModule(_ModuleBase):
                 return "\n".join(err_msgs)
 
             # 蓝光原盘、新路径、处理文件清单、总大小、失败文件列表、错误信息
-            return bluray_flag, new_path, file_list, total_filesize, fail_list, "\n".join(err_msgs)
+            return bluray_flag, new_path, file_list, file_list_new, total_filesize, fail_list, "\n".join(err_msgs)
 
     @staticmethod
     def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None) -> dict:
