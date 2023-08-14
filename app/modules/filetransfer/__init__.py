@@ -122,11 +122,11 @@ class FileTransferModule(_ModuleBase):
                        r"|chinese|(cn|ch[si]|sg|zho?|eng)[-_&](cn|ch[si]|sg|zho?|eng)" \
                        r"|简[体中]?)[.\])])" \
                        r"|([\u4e00-\u9fa5]{0,3}[中双][\u4e00-\u9fa5]{0,2}[字文语][\u4e00-\u9fa5]{0,3})" \
-                       r"|简体|简中" \
+                       r"|简体|简中|JPSC|CHS" \
                        r"|(?<![a-z0-9])gb(?![a-z0-9])"
         _zhtw_sub_re = r"([.\[(](((zh[-_])?(hk|tw|cht|tc))" \
                        r"|繁[体中]?)[.\])])" \
-                       r"|繁体中[文字]|中[文字]繁体|繁体" \
+                       r"|繁体中[文字]|中[文字]繁体|繁体|JPTC|CHT" \
                        r"|(?<![a-z0-9])big5(?![a-z0-9])"
         _eng_sub_re = r"[.\[(]eng[.\])]"
 
