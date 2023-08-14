@@ -110,8 +110,11 @@ def get_logging(token: str):
         )
 
     def log_generator():
+        log_path = settings.LOG_PATH / 'moviepilot.log'
+        texts = tailer.tail(open(log_path, 'r'), 50)
         while True:
-            for text in tailer.follow(open(settings.LOG_PATH / 'moviepilot.log')):
+            yield 'data: %s\n\n' % '\n'.join(texts)
+            for text in tailer.follow(open(log_path, 'r')):
                 yield 'data: %s\n\n' % (text or '')
             time.sleep(1)
 
