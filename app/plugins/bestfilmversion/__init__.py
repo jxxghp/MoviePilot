@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from functools import reduce
 from pathlib import Path
+from threading import RLock
 from typing import Optional, Any, List, Dict, Tuple
 from xml.dom.minidom import parseString
 
@@ -21,6 +22,8 @@ from app.plugins import _PluginBase
 from app.schemas import WebhookEventInfo
 from app.schemas.types import MediaType, EventType
 from app.utils.http import RequestUtils
+
+lock = RLock()
 
 
 class BestFilmVersion(_PluginBase):
@@ -373,128 +376,143 @@ class BestFilmVersion(_PluginBase):
         """
         通过流媒体管理工具收藏,自动洗版
         """
+        # 获取锁
+        _is_lock: bool = lock.acquire(timeout=60)
+        if not _is_lock:
+            return
+        try:
+            # 读取缓存
+            caches = self._cache_path.read_text().split("\n") if self._cache_path.exists() else []
+            # 读取历史记录
+            history = self.get_data('history') or []
 
-        # 读取缓存
-        caches = self._cache_path.read_text().split("\n") if self._cache_path.exists() else []
-        # 读取历史记录
-        history = self.get_data('history') or []
+            all_item = []
+            # 读取收藏
+            if settings.MEDIASERVER == 'jellyfin':
+                self.jellyfin_get_items(all_item)
+            elif settings.MEDIASERVER == 'emby':
+                self.emby_get_items(all_item)
+            else:
+                resp = self.plex_get_watchlist()
+                if not resp:
+                    return
+                all_item.extend(resp)
 
-        all_item = []
-        # 读取收藏
-        if settings.MEDIASERVER == 'jellyfin':
-            # 获取所有user
-            users_url = "{HOST}Users?&apikey={APIKEY}"
-            users = self.get_users(Jellyfin().get_data(users_url))
-            if not users:
-                logger.info(f"bestfilmversion/users_url: {users_url}")
-                return
-            for user in users:
-                # 根据加入日期 降序排序
-                url = "{HOST}Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
-                                              "&SortOrder=Descending" \
-                                              "&Filters=IsFavorite" \
-                                              "&Recursive=true" \
-                                              "&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
-                                              "&CollapseBoxSetItems=false" \
-                                              "&ExcludeLocationTypes=Virtual" \
-                                              "&EnableTotalRecordCount=false" \
-                                              "&Limit=20" \
-                                              "&apikey={APIKEY}"
-                resp = self.get_items(Jellyfin().get_data(url))
-                if not resp:
+            def function(y, x):
+                return y if (x['Name'] in [i['Name'] for i in y]) else (lambda z, u: (z.append(u), z))(y, x)[1]
+
+            # all_item 根据电影名去重
+            result = reduce(function, all_item, [])
+
+            for data in result:
+                # 检查缓存
+                if data.get('Name') in caches:
                     continue
-                all_item.extend(resp)
-        elif settings.MEDIASERVER == 'emby':
-            # 获取所有user
-            get_users_url = "{HOST}Users?&api_key={APIKEY}"
-            users = self.get_users(Emby().get_data(get_users_url))
-            if not users:
-                return
-            for user in users:
-                # 根据加入日期 降序排序
-                url = "{HOST}emby/Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
-                                                   "&SortOrder=Descending" \
-                                                   "&Filters=IsFavorite" \
-                                                   "&Recursive=true" \
-                                                   "&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
-                                                   "&CollapseBoxSetItems=false" \
-                                                   "&ExcludeLocationTypes=Virtual" \
-                                                   "&EnableTotalRecordCount=false" \
-                                                   "&Limit=20&api_key={APIKEY}"
-                resp = self.get_items(Emby().get_data(url))
-                if not resp:
+
+                # 获取详情
+                if settings.MEDIASERVER == 'jellyfin':
+                    item_info_resp = Jellyfin().get_iteminfo(itemid=data.get('Id'))
+                elif settings.MEDIASERVER == 'emby':
+                    item_info_resp = Emby().get_iteminfo(itemid=data.get('Id'))
+                else:
+                    item_info_resp = self.plex_get_iteminfo(itemid=data.get('Id'))
+
+                logger.info(f'BestFilmVersion插件 item打印 {item_info_resp}')
+                if not item_info_resp:
                     continue
-                all_item.extend(resp)
-        else:
-            resp = self.plex_get_watchlist()
+
+                # 只接受Movie类型
+                if data.get('Type') != 'Movie':
+                    continue
+
+                # 获取tmdb_id
+                media_info_ids = item_info_resp.get('ExternalUrls')
+                if not media_info_ids:
+                    continue
+                for media_info_id in media_info_ids:
+                    if 'TheMovieDb' != media_info_id.get('Name'):
+                        continue
+                    tmdb_find_id = str(media_info_id.get('Url')).split('/')
+                    tmdb_find_id.reverse()
+                    tmdb_id = tmdb_find_id[0]
+                    # 识别媒体信息
+                    mediainfo: MediaInfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
+                    if not mediainfo:
+                        logger.warn(f'未识别到媒体信息，标题：{data.get("Name")}，tmdbID：{tmdb_id}')
+                        continue
+                    # 添加订阅
+                    self.subscribechain.add(mtype=MediaType.MOVIE,
+                                            title=mediainfo.title,
+                                            year=mediainfo.year,
+                                            tmdbid=mediainfo.tmdb_id,
+                                            best_version=True,
+                                            username="收藏洗版",
+                                            exist_ok=True)
+                    # 加入缓存
+                    caches.append(data.get('Name'))
+                    # 存储历史记录
+                    if mediainfo.tmdb_id not in [h.get("tmdbid") for h in history]:
+                        history.append({
+                            "title": mediainfo.title,
+                            "type": mediainfo.type.value,
+                            "year": mediainfo.year,
+                            "poster": mediainfo.get_poster_image(),
+                            "overview": mediainfo.overview,
+                            "tmdbid": mediainfo.tmdb_id,
+                            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        })
+            # 保存历史记录
+            self.save_data('history', history)
+            # 保存缓存
+            self._cache_path.write_text("\n".join(caches))
+        finally:
+            lock.release()
+
+    def jellyfin_get_items(self, all_item):
+        # 获取所有user
+        users_url = "{HOST}Users?&apikey={APIKEY}"
+        users = self.get_users(Jellyfin().get_data(users_url))
+        if not users:
+            logger.info(f"bestfilmversion/users_url: {users_url}")
+            return
+        for user in users:
+            # 根据加入日期 降序排序
+            url = "{HOST}Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
+                                          "&SortOrder=Descending" \
+                                          "&Filters=IsFavorite" \
+                                          "&Recursive=true" \
+                                          "&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
+                                          "&CollapseBoxSetItems=false" \
+                                          "&ExcludeLocationTypes=Virtual" \
+                                          "&EnableTotalRecordCount=false" \
+                                          "&Limit=20" \
+                                          "&apikey={APIKEY}"
+            resp = self.get_items(Jellyfin().get_data(url))
             if not resp:
-                return
+                continue
             all_item.extend(resp)
 
-        def function(y, x):
-            return y if (x['Name'] in [i['Name'] for i in y]) else (lambda z, u: (z.append(u), z))(y, x)[1]
-        # all_item 根据电影名去重
-        result = reduce(function, all_item, [])
-
-        for data in result:
-            # 检查缓存
-            if data.get('Name') in caches:
+    def emby_get_items(self, all_item):
+        # 获取所有user
+        get_users_url = "{HOST}Users?&api_key={APIKEY}"
+        users = self.get_users(Emby().get_data(get_users_url))
+        if not users:
+            return
+        for user in users:
+            # 根据加入日期 降序排序
+            url = "{HOST}emby/Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
+                                               "&SortOrder=Descending" \
+                                               "&Filters=IsFavorite" \
+                                               "&Recursive=true" \
+                                               "&Fields=PrimaryImageAspectRatio%2CBasicSyncInfo" \
+                                               "&CollapseBoxSetItems=false" \
+                                               "&ExcludeLocationTypes=Virtual" \
+                                               "&EnableTotalRecordCount=false" \
+                                               "&Limit=20&api_key={APIKEY}"
+            resp = self.get_items(Emby().get_data(url))
+            if not resp:
                 continue
-
-            # 获取详情
-            if settings.MEDIASERVER == 'jellyfin':
-                item_info_resp = Jellyfin().get_iteminfo(itemid=data.get('Id'))
-            elif settings.MEDIASERVER == 'emby':
-                item_info_resp = Emby().get_iteminfo(itemid=data.get('Id'))
-            else:
-                item_info_resp = self.plex_get_iteminfo(itemid=data.get('Id'))
-
-            logger.info(f'BestFilmVersion插件 item打印 {item_info_resp}')
-            if not item_info_resp:
-                continue
-
-            # 只接受Movie类型
-            if data.get('Type') != 'Movie':
-                continue
-
-            # 获取tmdb_id
-            media_info_ids = item_info_resp.get('ExternalUrls')
-            for media_info_id in media_info_ids:
-                if 'TheMovieDb' != media_info_id.get('Name'):
-                    continue
-                tmdb_find_id = str(media_info_id.get('Url')).split('/')
-                tmdb_find_id.reverse()
-                tmdb_id = tmdb_find_id[0]
-                # 识别媒体信息
-                mediainfo: MediaInfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
-                if not mediainfo:
-                    logger.warn(f'未识别到媒体信息，标题：{data.get("Name")}，tmdbID：{tmdb_id}')
-                    continue
-                # 添加订阅
-                self.subscribechain.add(mtype=MediaType.MOVIE,
-                                        title=mediainfo.title,
-                                        year=mediainfo.year,
-                                        tmdbid=mediainfo.tmdb_id,
-                                        best_version=True,
-                                        username="收藏洗版",
-                                        exist_ok=True)
-                # 加入缓存
-                caches.append(data.get('Name'))
-                # 存储历史记录
-                if mediainfo.tmdb_id not in [h.get("tmdbid") for h in history]:
-                    history.append({
-                        "title": mediainfo.title,
-                        "type": mediainfo.type.value,
-                        "year": mediainfo.year,
-                        "poster": mediainfo.get_poster_image(),
-                        "overview": mediainfo.overview,
-                        "tmdbid": mediainfo.tmdb_id,
-                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    })
-        # 保存历史记录
-        self.save_data('history', history)
-        # 保存缓存
-        self._cache_path.write_text("\n".join(caches))
+            all_item.extend(resp)
 
     @staticmethod
     def get_items(resp: Response):
@@ -594,83 +612,98 @@ class BestFilmVersion(_PluginBase):
             return
 
         data: WebhookEventInfo = event.event_data
+        # 排除不是收藏调用
+        if data.channel not in ['jellyfin', 'emby', 'plex']:
+            return
+        if data.channel in ['emby', 'plex'] and data.event != 'item.rate':
+            return
+        if data.channel == 'jellyfin' and data.save_reason != 'UpdateUserRating':
+            return
         logger.info(f'BestFilmVersion/webhook_message_action WebhookEventInfo打印：{data}')
 
-        mediainfo: Optional[MediaInfo] = None
-        if not data.tmdb_id:
-            info = None
-            if data.channel == 'jellyfin' and data.save_reason == 'UpdateUserRating' and data.item_favorite:
-                info = Jellyfin().get_iteminfo(itemid=data.item_id)
-            if data.channel == 'emby' and data.event == 'item.rate':
-                info = Emby().get_iteminfo(itemid=data.item_id)
-            if data.channel == 'plex' and data.event == 'item.rate':
-                info = Plex().get_iteminfo(itemid=data.item_id)
-            logger.info(f'BestFilmVersion/webhook_message_action item打印：{info}')
-
-            if not info:
-                return
-            if info['Type'] not in ['Movie', 'MOV', 'movie']:
-                return
-
-            # 获取tmdb_id
-            media_info_ids = info.get('ExternalUrls')
-            for media_info_id in media_info_ids:
-
-                if 'TheMovieDb' != media_info_id.get('Name'):
-                    continue
-
-                tmdb_find_id = str(media_info_id.get('Url')).split('/')
-                tmdb_find_id.reverse()
-                tmdb_id = tmdb_find_id[0]
-
-                mediainfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
-                if not mediainfo:
-                    logger.warn(f'未识别到媒体信息，标题：{data.item_name}，tmdbID：{tmdb_id}')
-                    return
-        else:
-            if data.channel == 'jellyfin' and (data.save_reason != 'UpdateUserRating' or not data.item_favorite):
-                return
-            if data.channel == 'emby' and data.event != 'item.rate':
-                return
-            if data.channel == 'plex' and data.event != 'item.rate':
-                return
-            if data.item_type not in ['Movie', 'MOV', 'movie']:
-                return
-
-            mediainfo = self.chain.recognize_media(tmdbid=data.tmdb_id, mtype=MediaType.MOVIE)
-            if not mediainfo:
-                logger.warn(f'未识别到媒体信息，标题：{data.item_name}，tmdbID：{data.tmdb_id}')
-                return
-
-        # 读取缓存
-        caches = self._cache_path.read_text().split("\n") if self._cache_path.exists() else []
-        # 检查缓存
-        if mediainfo.title in caches:
+        # 获取锁
+        _is_lock: bool = lock.acquire(timeout=60)
+        if not _is_lock:
             return
-        # 读取历史记录
-        history = self.get_data('history') or []
-        # 添加订阅
-        self.subscribechain.add(mtype=MediaType.MOVIE,
-                                title=mediainfo.title,
-                                year=mediainfo.year,
-                                tmdbid=mediainfo.tmdb_id,
-                                best_version=True,
-                                username="收藏洗版",
-                                exist_ok=True)
-        # 加入缓存
-        caches.append(data.item_name)
-        # 存储历史记录
-        if mediainfo.tmdb_id not in [h.get("tmdbid") for h in history]:
-            history.append({
-                "title": mediainfo.title,
-                "type": mediainfo.type.value,
-                "year": mediainfo.year,
-                "poster": mediainfo.get_poster_image(),
-                "overview": mediainfo.overview,
-                "tmdbid": mediainfo.tmdb_id,
-                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            })
-        # 保存历史记录
-        self.save_data('history', history)
-        # 保存缓存
-        self._cache_path.write_text("\n".join(caches))
+        try:
+
+            mediainfo: Optional[MediaInfo] = None
+            if not data.tmdb_id:
+                info = None
+                if data.channel == 'jellyfin' and data.save_reason == 'UpdateUserRating' and data.item_favorite:
+                    info = Jellyfin().get_iteminfo(itemid=data.item_id)
+                elif data.channel == 'emby' and data.event == 'item.rate':
+                    info = Emby().get_iteminfo(itemid=data.item_id)
+                elif data.channel == 'plex' and data.event == 'item.rate':
+                    info = Plex().get_iteminfo(itemid=data.item_id)
+                logger.info(f'BestFilmVersion/webhook_message_action item打印：{info}')
+
+                if not info:
+                    return
+                if info['Type'] not in ['Movie', 'MOV', 'movie']:
+                    return
+
+                # 获取tmdb_id
+                media_info_ids = info.get('ExternalUrls')
+                if not media_info_ids:
+                    return
+                for media_info_id in media_info_ids:
+
+                    if 'TheMovieDb' != media_info_id.get('Name'):
+                        continue
+
+                    tmdb_find_id = str(media_info_id.get('Url')).split('/')
+                    tmdb_find_id.reverse()
+                    tmdb_id = tmdb_find_id[0]
+
+                    mediainfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
+                    if not mediainfo:
+                        logger.warn(f'未识别到媒体信息，标题：{data.item_name}，tmdbID：{tmdb_id}')
+                        return
+            else:
+                if data.channel == 'jellyfin' and (data.save_reason != 'UpdateUserRating' or not data.item_favorite):
+                    return
+                if data.item_type not in ['Movie', 'MOV', 'movie']:
+                    return
+
+                mediainfo = self.chain.recognize_media(tmdbid=data.tmdb_id, mtype=MediaType.MOVIE)
+                if not mediainfo:
+                    logger.warn(f'未识别到媒体信息，标题：{data.item_name}，tmdbID：{data.tmdb_id}')
+                    return
+
+            if not mediainfo:
+                return
+            # 读取缓存
+            caches = self._cache_path.read_text().split("\n") if self._cache_path.exists() else []
+            # 检查缓存
+            if mediainfo.title in caches:
+                return
+            # 读取历史记录
+            history = self.get_data('history') or []
+            # 添加订阅
+            self.subscribechain.add(mtype=MediaType.MOVIE,
+                                    title=mediainfo.title,
+                                    year=mediainfo.year,
+                                    tmdbid=mediainfo.tmdb_id,
+                                    best_version=True,
+                                    username="收藏洗版",
+                                    exist_ok=True)
+            # 加入缓存
+            caches.append(data.item_name)
+            # 存储历史记录
+            if mediainfo.tmdb_id not in [h.get("tmdbid") for h in history]:
+                history.append({
+                    "title": mediainfo.title,
+                    "type": mediainfo.type.value,
+                    "year": mediainfo.year,
+                    "poster": mediainfo.get_poster_image(),
+                    "overview": mediainfo.overview,
+                    "tmdbid": mediainfo.tmdb_id,
+                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                })
+            # 保存历史记录
+            self.save_data('history', history)
+            # 保存缓存
+            self._cache_path.write_text("\n".join(caches))
+        finally:
+            lock.release()
