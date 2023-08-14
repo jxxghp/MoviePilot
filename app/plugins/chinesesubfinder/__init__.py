@@ -206,7 +206,7 @@ class ChineseSubFinder(_PluginBase):
         # 是否蓝光原盘
         item_bluray = item_transfer.is_bluray
         # 文件清单
-        item_file_list = item_transfer.file_list
+        item_file_list = item_transfer.file_list_new
 
         if item_bluray:
             # 蓝光原盘虚拟个文件
