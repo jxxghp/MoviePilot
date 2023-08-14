@@ -676,7 +676,7 @@ class BestFilmVersion(_PluginBase):
             # 读取缓存
             caches = self._cache_path.read_text().split("\n") if self._cache_path.exists() else []
             # 检查缓存
-            if mediainfo.title in caches:
+            if data.item_name in caches:
                 return
             # 读取历史记录
             history = self.get_data('history') or []
