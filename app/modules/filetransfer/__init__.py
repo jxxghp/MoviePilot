@@ -506,7 +506,7 @@ class FileTransferModule(_ModuleBase):
                 return "\n".join(err_msgs)
 
             # 蓝光原盘、新路径、处理文件清单、总大小、失败文件列表、错误信息
-            return bluray_flag, new_path, file_list, total_filesize, fail_list, "\n".join(err_msgs)
+            return bluray_flag, new_path, file_list, file_list_new, total_filesize, fail_list, "\n".join(err_msgs)
 
     @staticmethod
     def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None) -> dict:
