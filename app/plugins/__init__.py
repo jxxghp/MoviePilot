@@ -4,12 +4,13 @@ from typing import Any, List, Dict, Tuple
 
 from app.chain import ChainBase
 from app.core.config import settings
-from app.core.event import EventManager
+from app.core.event import EventManager, eventmanager, Event
 from app.db.models import Base
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.schemas import Notification, NotificationType, MessageChannel
+from app.schemas.types import EventType
 
 
 class PluginChian(ChainBase):
@@ -35,7 +36,7 @@ class _PluginBase(metaclass=ABCMeta):
     plugin_name: str = ""
     # 插件描述
     plugin_desc: str = ""
-    
+
     def __init__(self):
         # 插件数据
         self.plugindata = PluginDataOper()
@@ -147,6 +148,7 @@ class _PluginBase(metaclass=ABCMeta):
         保存插件数据
         :param key: 数据key
         :param value: 数据值
+        :param plugin_id: 插件ID
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
@@ -181,3 +183,16 @@ class _PluginBase(metaclass=ABCMeta):
             channel=channel, mtype=mtype, title=title, text=text,
             image=image, link=link, userid=userid
         ))
+
+    @eventmanager.register(EventType.PluginReload)
+    def reload(self, event: Event):
+        """
+        重新加载插件
+        """
+        plugin_id = event.event_data.get("plugin_id")
+        if not plugin_id:
+            return
+        conf = self.get_config(plugin_id)
+        if not conf:
+            return
+        self.init_plugin(conf)
