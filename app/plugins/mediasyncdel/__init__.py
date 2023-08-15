@@ -402,7 +402,7 @@ class MediaSyncDel(_PluginBase):
         if not item_isvirtual:
             logger.error("item_isvirtual参数未配置，为防止误删除，暂停插件运行")
             self.update_config({
-                "enable": False,
+                "enabled": False,
                 "del_source": self._del_source,
                 "exclude_path": self._exclude_path,
                 "notify": self._notify,

@@ -110,7 +110,7 @@ class CloudflareSpeedTest(_PluginBase):
 
         # 获取自定义Hosts插件，若无设置则停止
         customHosts = self.get_config("CustomHosts")
-        self._customhosts = customHosts and customHosts.get("enable")
+        self._customhosts = customHosts and customHosts.get("enabled")
         if self._cf_ip and not customHosts or not customHosts.get("hosts"):
             logger.error(f"Cloudflare CDN优选依赖于自定义Hosts，请先维护hosts")
             return
