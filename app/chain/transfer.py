@@ -37,7 +37,7 @@ class TransferChain(ChainBase):
     def process(self, arg_str: str = None, channel: MessageChannel = None, userid: Union[str, int] = None) -> bool:
         """
         获取下载器中的种子列表，并执行转移
-        :param arg_str: 传入的参数 (种子hash和TMDB ID)
+        :param arg_str: 传入的参数 (种子hash和TMDBID|类型)
         :param channel: 消息通道
         :param userid: 用户ID
         """
@@ -59,6 +59,13 @@ class TransferChain(ChainBase):
         with lock:
             if arg_str:
                 logger.info(f"开始转移下载器文件，参数：{arg_str}")
+                # 解析中附带的类型
+                args = arg_str.split('|')
+                if len(args) > 1:
+                    mtype = MediaType(args[-1])
+                    arg_str = args[0]
+                else:
+                    mtype = None
                 # 解析中种子hash，TMDB ID
                 torrent_hash, tmdbid = extract_hash_and_number(arg_str)
                 if not hash or not tmdbid:
@@ -67,10 +74,10 @@ class TransferChain(ChainBase):
                 # 获取种子
                 torrents: Optional[List[TransferTorrent]] = self.list_torrents(hashs=torrent_hash)
                 if not torrents:
-                    logger.error(f"没有获取到种子，参数：{arg_str}")
+                    logger.error(f"没有获取到种子，参数：{torrent_hash}")
                     return False
                 # 查询媒体信息
-                arg_mediainfo = self.recognize_media(tmdbid=tmdbid)
+                arg_mediainfo = self.recognize_media(mtype=mtype, tmdbid=tmdbid)
             else:
                 arg_mediainfo = None
                 logger.info("开始执行下载器文件转移 ...")
@@ -123,7 +130,7 @@ class TransferChain(ChainBase):
                             channel=channel,
                             mtype=NotificationType.Manual,
                             title=f"{torrent.title} 未识别到媒体信息，无法入库！\n"
-                                  f"回复：```\n/transfer {torrent.hash} [tmdbid]\n``` 手动识别转移。",
+                                  f"回复：```\n/transfer {torrent.hash} [tmdbid]|[类型]\n``` 手动识别转移。",
                             userid=userid))
                         # 新增转移失败历史记录
                         self.transferhis.add(

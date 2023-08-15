@@ -10,6 +10,7 @@ from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
+from app.schemas import MediaType
 
 router = APIRouter()
 
@@ -81,13 +82,14 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
 
 @router.post("/transfer", summary="历史记录重新转移", response_model=schemas.Response)
 def redo_transfer_history(history_in: schemas.TransferHistory,
+                          mtype: str,
                           new_tmdbid: int,
                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     历史记录重新转移
     """
     hash_str = history_in.download_hash
-    result = TransferChain().process(f"{hash_str} {new_tmdbid}")
+    result = TransferChain().process(f"{hash_str} {new_tmdbid}|{mtype}")
     if result:
         return schemas.Response(success=True)
     else:
