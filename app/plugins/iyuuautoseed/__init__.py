@@ -349,7 +349,7 @@ class IYUUAutoSeed(_PluginBase):
                 ]
             }
         ], {
-            "enable": False,
+            "enabled": False,
             "onlyonce": False,
             "notify": False,
             "clearcache": False,
@@ -365,7 +365,7 @@ class IYUUAutoSeed(_PluginBase):
 
     def __update_config(self):
         self.update_config({
-            "enable": self._enabled,
+            "enabled": self._enabled,
             "onlyonce": self._onlyonce,
             "clearcache": self._clearcache,
             "cron": self._cron,

@@ -110,7 +110,7 @@ class CloudflareSpeedTest(_PluginBase):
 
         # 获取自定义Hosts插件，若无设置则停止
         customHosts = self.get_config("CustomHosts")
-        self._customhosts = customHosts and customHosts.get("enable")
+        self._customhosts = customHosts and customHosts.get("enabled")
         if self._cf_ip and not customHosts or not customHosts.get("hosts"):
             logger.error(f"Cloudflare CDN优选依赖于自定义Hosts，请先维护hosts")
             return
@@ -158,7 +158,6 @@ class CloudflareSpeedTest(_PluginBase):
                 else:
                     # 替换优选ip
                     err_hosts = customHosts.get("err_hosts")
-                    enable = customHosts.get("enable")
 
                     # 处理ip
                     new_hosts = []
@@ -166,16 +165,16 @@ class CloudflareSpeedTest(_PluginBase):
                         if host and host != '\n':
                             host_arr = str(host).split()
                             if host_arr[0] == self._cf_ip:
-                                new_hosts.append(host.replace(self._cf_ip, best_ip))
+                                new_hosts.append(host.replace(self._cf_ip, best_ip).replace("\n", "") + "\n")
                             else:
-                                new_hosts.append(host)
+                                new_hosts.append(host.replace("\n", "") + "\n")
 
                     # 更新自定义Hosts
                     self.update_config(
                         {
-                            "hosts": new_hosts,
+                            "hosts": ''.join(new_hosts),
                             "err_hosts": err_hosts,
-                            "enable": enable
+                            "enabled": True
                         }, "CustomHosts"
                     )
 
@@ -405,207 +404,207 @@ class CloudflareSpeedTest(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         return [
-                   {
-                       'component': 'VForm',
-                       'content': [
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'cf_ip',
-                                                   'label': '优选IP',
-                                                   'placeholder': '121.121.121.121'
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'cron',
-                                                   'label': '优选周期',
-                                                   'placeholder': '0 0 0 ? *'
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'version',
-                                                   'readonly': True,
-                                                   'label': 'CloudflareSpeedTest版本',
-                                                   'placeholder': '暂未安装'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'ipv4',
-                                                   'label': 'IPv4',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'ipv6',
-                                                   'label': 'IPv6',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'check',
-                                                   'label': '自动校准',
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'onlyonce',
-                                                   'label': '立即运行一次',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 're_install',
-                                                   'label': '重装后运行',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'notify',
-                                                   'label': '运行时通知',
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'additional_args',
-                                                   'label': '高级参数',
-                                                   'placeholder': '-dd'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           }
-                       ]
-                   }
-               ], {
-                   "cf_ip": "",
-                   "cron": "",
-                   "version": "",
-                   "ipv4": True,
-                   "ipv6": False,
-                   "check": False,
-                   "onlyonce": False,
-                   "re_install": False,
-                   "notify": True,
-                   "additional_args": ""
-               }
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cf_ip',
+                                            'label': '优选IP',
+                                            'placeholder': '121.121.121.121'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cron',
+                                            'label': '优选周期',
+                                            'placeholder': '0 0 0 ? *'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'version',
+                                            'readonly': True,
+                                            'label': 'CloudflareSpeedTest版本',
+                                            'placeholder': '暂未安装'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'ipv4',
+                                            'label': 'IPv4',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'ipv6',
+                                            'label': 'IPv6',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'check',
+                                            'label': '自动校准',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 're_install',
+                                            'label': '重装后运行',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'notify',
+                                            'label': '运行时通知',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'additional_args',
+                                            'label': '高级参数',
+                                            'placeholder': '-dd'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "cf_ip": "",
+            "cron": "",
+            "version": "",
+            "ipv4": True,
+            "ipv6": False,
+            "check": False,
+            "onlyonce": False,
+            "re_install": False,
+            "notify": True,
+            "additional_args": ""
+        }
 
     def get_page(self) -> List[dict]:
         pass

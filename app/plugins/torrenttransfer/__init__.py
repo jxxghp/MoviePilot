@@ -120,7 +120,7 @@ class TorrentTransfer(_PluginBase):
                 # 关闭一次性开关
                 self._onlyonce = False
                 self.update_config({
-                    "enable": self._enabled,
+                    "enabled": self._enabled,
                     "onlyonce": self._onlyonce,
                     "cron": self._cron,
                     "notify": self._notify,
@@ -415,7 +415,7 @@ class TorrentTransfer(_PluginBase):
                 ]
             }
         ], {
-            "enable": False,
+            "enabled": False,
             "notify": False,
             "onlyonce": False,
             "cron": "",

@@ -35,7 +35,7 @@ class _PluginBase(metaclass=ABCMeta):
     plugin_name: str = ""
     # 插件描述
     plugin_desc: str = ""
-    
+
     def __init__(self):
         # 插件数据
         self.plugindata = PluginDataOper()
@@ -147,6 +147,7 @@ class _PluginBase(metaclass=ABCMeta):
         保存插件数据
         :param key: 数据key
         :param value: 数据值
+        :param plugin_id: 插件ID
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
