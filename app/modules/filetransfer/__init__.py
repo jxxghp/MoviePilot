@@ -122,11 +122,11 @@ class FileTransferModule(_ModuleBase):
                        r"|chinese|(cn|ch[si]|sg|zho?|eng)[-_&](cn|ch[si]|sg|zho?|eng)" \
                        r"|简[体中]?)[.\])])" \
                        r"|([\u4e00-\u9fa5]{0,3}[中双][\u4e00-\u9fa5]{0,2}[字文语][\u4e00-\u9fa5]{0,3})" \
-                       r"|简体|简中|JPSC|CHS" \
+                       r"|简体|简中|JPSC" \
                        r"|(?<![a-z0-9])gb(?![a-z0-9])"
         _zhtw_sub_re = r"([.\[(](((zh[-_])?(hk|tw|cht|tc))" \
                        r"|繁[体中]?)[.\])])" \
-                       r"|繁体中[文字]|中[文字]繁体|繁体|JPTC|CHT" \
+                       r"|繁体中[文字]|中[文字]繁体|繁体|JPTC" \
                        r"|(?<![a-z0-9])big5(?![a-z0-9])"
         _eng_sub_re = r"[.\[(]eng[.\])]"
 
@@ -162,12 +162,12 @@ class FileTransferModule(_ModuleBase):
                         continue
                     new_file_type = ""
                     # 兼容jellyfin字幕识别(多重识别), emby则会识别最后一个后缀
-                    if re.search(_zhcn_sub_re, file_item.stem, re.I):
+                    if re.search(_zhcn_sub_re, file_item.name, re.I):
                         new_file_type = ".chi.zh-cn"
-                    elif re.search(_zhtw_sub_re, file_item.stem,
+                    elif re.search(_zhtw_sub_re, file_item.name,
                                    re.I):
                         new_file_type = ".zh-tw"
-                    elif re.search(_eng_sub_re, file_item.stem, re.I):
+                    elif re.search(_eng_sub_re, file_item.name, re.I):
                         new_file_type = ".eng"
                     # 通过对比字幕文件大小  尽量转移所有存在的字幕
                     file_ext = file_item.suffix
