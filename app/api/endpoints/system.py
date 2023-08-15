@@ -111,8 +111,10 @@ def get_logging(token: str):
 
     def log_generator():
         log_path = settings.LOG_PATH / 'moviepilot.log'
-        texts = tailer.tail(open(log_path, 'r'), 50)
-        yield 'data: %s\n\n' % '\n'.join(texts)
+        # 读取文件末尾50行，不使用tailer模块
+        with open(log_path, 'r') as f:
+            for line in f.readlines()[-50:]:
+                yield 'data: %s\n\n' % line
         while True:
             for text in tailer.follow(open(log_path, 'r')):
                 yield 'data: %s\n\n' % (text or '')
