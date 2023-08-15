@@ -1095,7 +1095,7 @@ class SiteStatistic(_PluginBase):
 
     def __update_config(self):
         self.update_config({
-            "enable": self._enabled,
+            "enabled": self._enabled,
             "onlyonce": self._onlyonce,
             "cron": self._cron,
             "notify": self._notify,
