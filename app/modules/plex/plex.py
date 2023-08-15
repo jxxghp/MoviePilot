@@ -159,7 +159,7 @@ class Plex(metaclass=Singleton):
             videos = self._plex.library.search(title=title, year=year, libtype="show")
         if not videos:
             return {}
-        episodes = videos[0].episodes()
+        episodes = videos.episodes()
         season_episodes = {}
         for episode in episodes:
             if season and episode.seasonNumber != int(season):
