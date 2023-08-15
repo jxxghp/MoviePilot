@@ -97,6 +97,8 @@ class Settings(BaseSettings):
     SLACK_CHANNEL: str = ""
     # 下载器 qbittorrent/transmission
     DOWNLOADER: str = "qbittorrent"
+    # 下载器监控开关
+    DOWNLOADER_MONITOR: bool = True
     # Qbittorrent地址，IP:PORT
     QB_HOST: str = None
     # Qbittorrent用户名
