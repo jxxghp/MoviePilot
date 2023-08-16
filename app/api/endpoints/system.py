@@ -16,6 +16,7 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.utils.http import RequestUtils
+from version import APP_VERSION
 
 router = APIRouter()
 
@@ -25,10 +26,14 @@ def get_setting(_: schemas.TokenPayload = Depends(verify_token)):
     """
     查询系统环境变量
     """
+    info = settings.dict(
+        exclude={"SECRET_KEY", "SUPERUSER_PASSWORD", "API_TOKEN"}
+    )
+    info.update({
+        "VERSION": APP_VERSION
+    })
     return schemas.Response(success=True,
-                            data=settings.dict(
-                                exclude={"SECRET_KEY", "SUPERUSER_PASSWORD", "API_TOKEN"}
-                            ))
+                            data=info)
 
 
 @router.get("/progress/{process_type}", summary="实时进度")
