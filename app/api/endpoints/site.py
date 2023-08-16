@@ -52,16 +52,16 @@ def update_site(
     return schemas.Response(success=True)
 
 
-@router.delete("/", summary="删除站点", response_model=schemas.Response)
+@router.delete("/{site_id}", summary="删除站点", response_model=schemas.Response)
 def delete_site(
-        site_in: schemas.Site,
+        site_id: int,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
     """
     删除站点
     """
-    Site.delete(db, site_in.id)
+    Site.delete(db, site_id)
     return schemas.Response(success=True)
 
 
