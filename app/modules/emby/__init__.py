@@ -139,7 +139,7 @@ class EmbyModule(_ModuleBase):
                 title=item.get("title"),
                 original_title=item.get("original_title"),
                 year=item.get("year"),
-                tmdbid=item.get("tmdbid"),
+                tmdbid=int(item.get("tmdbid")) if item.get("tmdbid") else None,
                 imdbid=item.get("imdbid"),
                 tvdbid=item.get("tvdbid"),
                 path=item.get("path"),
