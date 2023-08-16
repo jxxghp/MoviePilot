@@ -83,7 +83,7 @@ class DownloadChain(ChainBase):
             logger.error(f"下载种子文件失败：{torrent.title} - {torrent.enclosure}")
             self.post_message(Notification(
                 channel=channel,
-                mtype=NotificationType.Download,
+                mtype=NotificationType.Manual,
                 title=f"{torrent.title} 种子下载失败！",
                 text=f"错误信息：{error_msg}\n种子链接：{torrent.enclosure}",
                 userid=userid))
@@ -168,7 +168,7 @@ class DownloadChain(ChainBase):
                          f"{_torrent.title} - {_torrent.enclosure}，{error_msg}")
             self.post_message(Notification(
                 channel=channel,
-                mtype=NotificationType.Download,
+                mtype=NotificationType.Manual,
                 title="添加下载任务失败：%s %s"
                       % (_media.title_year, _meta.season_episode),
                 text=f"站点：{_torrent.site_name}\n"
