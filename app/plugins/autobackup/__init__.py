@@ -152,7 +152,8 @@ class AutoBackup(_PluginBase):
             backup_path = bk_path / backup_file
             backup_path.mkdir(parents=True)
             # 把现有的相关文件进行copy备份
-            shutil.copy(f'{config_path}/category.yaml', backup_path)
+            if settings.LIBRARY_CATEGORY:
+                shutil.copy(f'{config_path}/category.yaml', backup_path)
             shutil.copy(f'{config_path}/user.db', backup_path)
 
             zip_file = str(backup_path) + '.zip'
