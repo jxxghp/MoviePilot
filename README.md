@@ -51,12 +51,12 @@ docker pull jxxghp/moviepilot:latest
 - **PUID**：运行程序用户的`uid`，默认`0`
 - **PGID**：运行程序用户的`gid`，默认`0`
 - **UMASK**：掩码权限，默认`000`，可以考虑设置为`022`
-- **MOVIEPILOT_AUTO_UPDATE**：重启更新，`true`/`false`，默认`true`
+- **MOVIEPILOT_AUTO_UPDATE**：重启更新，`true`/`false`，默认`true` **注意：如果出现网络问题可以配置`PROXY_HOST`，具体看下方`PROXY_HOST`解释**
 - **NGINX_PORT：** WEB服务端口，默认`3000`，可自行修改，但不能为`3001`
 - **SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
 - **SUPERUSER_PASSWORD：** 超级管理员初始密码，默认`password`，建议修改为复杂密码
 - **API_TOKEN：** API密钥，默认`moviepilot`，在媒体服务器Webhook、微信回调等地址配置中需要加上`?token=`该值，建议修改为复杂字符串
-- **PROXY_HOST：** 网络代理（可选），访问themoviedb需要使用代理访问，格式为`http(s)://ip:port`
+- **PROXY_HOST：** 网络代理（可选），访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`或其它中转代理服务地址，能连通即可
 - **DOWNLOAD_PATH：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径保持一致**，否则会导致下载文件无法转移
 - **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录，**必须是`DOWNLOAD_PATH`的下级路径**，不设置则下载到`DOWNLOAD_PATH`
@@ -70,7 +70,7 @@ docker pull jxxghp/moviepilot:latest
 - **LIBRARY_MOVIE_NAME：** 电影媒体库目录名，默认`电影`
 - **LIBRARY_TV_NAME：** 电视剧媒体库目录名，默认`电视剧`
 - **LIBRARY_CATEGORY：** 媒体库二级分类开关，`true`/`false`，默认`false`，开启后会根据配置`category.yaml`自动在媒体库目录下建立二级目录分类
-- **TRANSFER_TYPE：** 转移方式，支持`link`/`copy`/`move`/`softlink`
+- **TRANSFER_TYPE：** 转移方式，支持`link`/`copy`/`move`/`softlink`  **注意：在`link`和`softlink`转移方式下，转移后的文件会继承源文件的权限掩码，不受`UMASK`影响**
 - **COOKIECLOUD_HOST：** CookieCloud服务器地址，格式：`http://ip:port`，必须配置，否则无法添加站点
 - **COOKIECLOUD_KEY：** CookieCloud用户KEY
 - **COOKIECLOUD_PASSWORD：** CookieCloud端对端加密密码
