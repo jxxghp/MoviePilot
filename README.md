@@ -134,7 +134,7 @@ docker pull jxxghp/moviepilot:latest
     - **PLEX_HOST：** Plex服务器地址，格式：`ip:port`，https需要添加`https://`前缀
     - **PLEX_TOKEN：** Plex网页Url中的`X-Plex-Token`，通过浏览器F12->网络从请求URL中获取
 
-**MEDIASERVER_SYNC_INTERVAL:** 媒体服务器同步间隔（小时），默认`6`，留空则不同步
+- **MEDIASERVER_SYNC_INTERVAL:** 媒体服务器同步间隔（小时），默认`6`，留空则不同步
 
 
 ### 2. **用户认证**
