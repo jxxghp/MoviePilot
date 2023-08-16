@@ -1,5 +1,7 @@
 from typing import Tuple, List
 
+from sqlalchemy.orm import Session
+
 from app.core.context import MediaInfo
 from app.db import DbOper
 from app.db.models.subscribe import Subscribe
@@ -10,11 +12,14 @@ class SubscribeOper(DbOper):
     订阅管理
     """
 
-    def add(self, mediainfo: MediaInfo, **kwargs) -> Tuple[int, str]:
+    def add(self, mediainfo: MediaInfo, db: Session = None, **kwargs) -> Tuple[int, str]:
         """
         新增订阅
         """
-        subscribe = Subscribe.exists(self._db, tmdbid=mediainfo.tmdb_id, season=kwargs.get('season'))
+        if db:
+            subscribe = Subscribe.exists(db, tmdbid=mediainfo.tmdb_id, season=kwargs.get('season'))
+        else:
+            subscribe = Subscribe.exists(self._db, tmdbid=mediainfo.tmdb_id, season=kwargs.get('season'))
         if not subscribe:
             subscribe = Subscribe(name=mediainfo.title,
                                   year=mediainfo.year,
@@ -27,7 +32,10 @@ class SubscribeOper(DbOper):
                                   vote=mediainfo.vote_average,
                                   description=mediainfo.overview,
                                   **kwargs)
-            subscribe.create(self._db)
+            if db:
+                subscribe.create(db)
+            else:
+                subscribe.create(self._db)
             return subscribe.id, "新增订阅成功"
         else:
             return subscribe.id, "订阅已存在"

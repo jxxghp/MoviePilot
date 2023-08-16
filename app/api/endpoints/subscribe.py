@@ -51,6 +51,7 @@ def read_subscribes(
 def create_subscribe(
         *,
         subscribe_in: schemas.Subscribe,
+        db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """
@@ -66,7 +67,8 @@ def create_subscribe(
         title = subscribe_in.name
     else:
         title = None
-    sid, message = SubscribeChain().add(mtype=mtype,
+    sid, message = SubscribeChain().add(db=db,
+                                        mtype=mtype,
                                         title=title,
                                         year=subscribe_in.year,
                                         tmdbid=subscribe_in.tmdbid,
