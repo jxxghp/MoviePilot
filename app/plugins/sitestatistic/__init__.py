@@ -1005,12 +1005,12 @@ class SiteStatistic(_PluginBase):
             self.post_message(channel=event.event_data.get("channel"),
                               title="开始刷新站点数据 ...",
                               userid=event.event_data.get("user"))
-        self.refresh_all_site_data(force=True)
+        self.refresh_all_site_data()
         if event:
             self.post_message(channel=event.event_data.get("channel"),
                               title="站点数据刷新完成！", userid=event.event_data.get("user"))
 
-    def refresh_all_site_data(self, force: bool = False):
+    def refresh_all_site_data(self):
         """
         多线程刷新站点下载上传量，默认间隔6小时
         """
@@ -1020,10 +1020,6 @@ class SiteStatistic(_PluginBase):
         logger.info("开始刷新站点数据 ...")
 
         with lock:
-
-            if not force \
-                    and not self._statistic_sites:
-                return
 
             # 没有指定站点，默认使用全部站点
             if not self._statistic_sites:
