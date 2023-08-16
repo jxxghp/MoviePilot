@@ -1,22 +1,24 @@
 import json
 from typing import Any, Union
 
-from app.db import DbOper, SessionLocal
+from sqlalchemy.orm import Session
+
+from app.db import DbOper
 from app.db.models.systemconfig import SystemConfig
+from app.schemas.types import SystemConfigKey
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
-from app.schemas.types import SystemConfigKey
 
 
 class SystemConfigOper(DbOper, metaclass=Singleton):
     # 配置对象
     __SYSTEMCONF: dict = {}
 
-    def __init__(self, _db=SessionLocal()):
+    def __init__(self, db: Session = None):
         """
         加载配置到内存
         """
-        super().__init__(_db)
+        super().__init__(db)
         for item in SystemConfig.list(self._db):
             if ObjectUtils.is_obj(item.value):
                 self.__SYSTEMCONF[item.key] = json.loads(item.value)

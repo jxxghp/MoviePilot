@@ -19,22 +19,23 @@ from app.schemas.types import SystemConfigKey, NotificationType
 router = APIRouter()
 
 
-def start_message_chain(body: Any, form: Any, args: Any):
+def start_message_chain(db: Session, body: Any, form: Any, args: Any):
     """
     启动链式任务
     """
-    MessageChain().process(body=body, form=form, args=args)
+    MessageChain(db).process(body=body, form=form, args=args)
 
 
 @router.post("/", summary="接收用户消息", response_model=schemas.Response)
-async def user_message(background_tasks: BackgroundTasks, request: Request):
+async def user_message(background_tasks: BackgroundTasks, request: Request,
+                       db: Session = Depends(get_db)):
     """
     用户消息响应
     """
     body = await request.body()
     form = await request.form()
     args = request.query_params
-    background_tasks.add_task(start_message_chain, body, form, args)
+    background_tasks.add_task(start_message_chain, db, body, form, args)
     return schemas.Response(success=True)
 
 

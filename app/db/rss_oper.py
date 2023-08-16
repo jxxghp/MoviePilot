@@ -1,6 +1,8 @@
 from typing import List
 
-from app.db import DbOper, SessionLocal
+from sqlalchemy.orm import Session
+
+from app.db import DbOper
 from app.db.models.rss import Rss
 
 
@@ -9,7 +11,7 @@ class RssOper(DbOper):
     RSS订阅数据管理
     """
 
-    def __init__(self, db=SessionLocal()):
+    def __init__(self, db: Session = None):
         super().__init__(db)
 
     def add(self, **kwargs) -> bool:

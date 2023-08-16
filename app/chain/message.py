@@ -27,12 +27,12 @@ class MessageChain(ChainBase):
     # 每页数据量
     _page_size: int = 8
 
-    def __init__(self):
-        super().__init__()
-        self.downloadchain = DownloadChain()
-        self.subscribechain = SubscribeChain()
-        self.searchchain = SearchChain()
-        self.medtachain = MediaChain()
+    def __init__(self, db: Session = None):
+        super().__init__(db)
+        self.downloadchain = DownloadChain(self._db)
+        self.subscribechain = SubscribeChain(self._db)
+        self.searchchain = SearchChain(self._db)
+        self.medtachain = MediaChain(self._db)
         self.torrent = TorrentHelper()
         self.eventmanager = EventManager()
         self.torrenthelper = TorrentHelper()

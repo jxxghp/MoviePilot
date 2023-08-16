@@ -33,8 +33,11 @@ class DbOper:
 
     _db: Session = None
 
-    def __init__(self, _db=SessionLocal()):
-        self._db = _db
+    def __init__(self, db: Session = None):
+        if db:
+            self._db = db
+        else:
+            self._db = SessionLocal()
 
     def __del__(self):
         if self._db:

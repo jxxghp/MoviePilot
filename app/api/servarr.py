@@ -235,11 +235,11 @@ def arr_movie_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> A
         )
     tmdbid = term.replace("tmdb:", "")
     # 查询媒体信息
-    mediainfo = MediaChain().recognize_media(mtype=MediaType.MOVIE, tmdbid=int(tmdbid))
+    mediainfo = MediaChain(db).recognize_media(mtype=MediaType.MOVIE, tmdbid=int(tmdbid))
     if not mediainfo:
         return [RadarrMovie()]
     # 查询是否已存在
-    exists = MediaChain().media_exists(mediainfo=mediainfo)
+    exists = MediaChain(db).media_exists(mediainfo=mediainfo)
     if not exists:
         # 文件不存在
         hasfile = False
@@ -324,11 +324,11 @@ def arr_add_movie(apikey: str,
             "id": subscribe.id
         }
     # 添加订阅
-    sid, message = SubscribeChain().add(title=movie.title,
-                                        year=movie.year,
-                                        mtype=MediaType.MOVIE,
-                                        tmdbid=movie.tmdbId,
-                                        userid="Seerr")
+    sid, message = SubscribeChain(db).add(title=movie.title,
+                                          year=movie.year,
+                                          mtype=MediaType.MOVIE,
+                                          tmdbid=movie.tmdbId,
+                                          userid="Seerr")
     if sid:
         return {
             "id": sid
@@ -515,8 +515,8 @@ def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> 
 
     # 获取TVDBID
     if not term.startswith("tvdb:"):
-        mediainfo = MediaChain().recognize_media(meta=MetaInfo(term),
-                                                 mtype=MediaType.TV)
+        mediainfo = MediaChain(db).recognize_media(meta=MetaInfo(term),
+                                                   mtype=MediaType.TV)
         if not mediainfo:
             return [SonarrSeries()]
         tvdbid = mediainfo.tvdb_id
@@ -527,7 +527,7 @@ def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> 
         tvdbid = int(term.replace("tvdb:", ""))
 
     # 查询TVDB信息
-    tvdbinfo = MediaChain().tvdb_info(tvdbid=tvdbid)
+    tvdbinfo = MediaChain(db).tvdb_info(tvdbid=tvdbid)
     if not tvdbinfo:
         return [SonarrSeries()]
 
@@ -539,11 +539,11 @@ def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> 
 
     # 根据TVDB查询媒体信息
     if not mediainfo:
-        mediainfo = MediaChain().recognize_media(meta=MetaInfo(tvdbinfo.get('seriesName')),
-                                                 mtype=MediaType.TV)
+        mediainfo = MediaChain(db).recognize_media(meta=MetaInfo(tvdbinfo.get('seriesName')),
+                                                   mtype=MediaType.TV)
 
     # 查询是否存在
-    exists = MediaChain().media_exists(mediainfo)
+    exists = MediaChain(db).media_exists(mediainfo)
     if exists:
         hasfile = True
     else:
@@ -666,12 +666,12 @@ def arr_add_series(apikey: str, tv: schemas.SonarrSeries,
     for season in left_seasons:
         if not season.get("monitored"):
             continue
-        sid, message = SubscribeChain().add(title=tv.title,
-                                            year=tv.year,
-                                            season=season.get("seasonNumber"),
-                                            tmdbid=tv.tmdbId,
-                                            mtype=MediaType.TV,
-                                            userid="Seerr")
+        sid, message = SubscribeChain(db).add(title=tv.title,
+                                              year=tv.year,
+                                              season=season.get("seasonNumber"),
+                                              tmdbid=tv.tmdbId,
+                                              mtype=MediaType.TV,
+                                              userid="Seerr")
 
     if sid:
         return {

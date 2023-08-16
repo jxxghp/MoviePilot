@@ -1,7 +1,9 @@
 import json
 from typing import Optional
 
-from app.db import DbOper, SessionLocal
+from sqlalchemy.orm import Session
+
+from app.db import DbOper
 from app.db.models.mediaserver import MediaServerItem
 
 
@@ -10,7 +12,7 @@ class MediaServerOper(DbOper):
     媒体服务器数据管理
     """
 
-    def __init__(self, db=SessionLocal()):
+    def __init__(self, db: Session = None):
         super().__init__(db)
 
     def add(self, **kwargs) -> bool:

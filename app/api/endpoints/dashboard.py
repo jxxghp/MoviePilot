@@ -19,11 +19,12 @@ router = APIRouter()
 
 
 @router.get("/statistic", summary="媒体数量统计", response_model=schemas.Statistic)
-def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def statistic(db: Session = Depends(get_db),
+              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询媒体数量统计信息
     """
-    media_statistic = DashboardChain().media_statistic()
+    media_statistic = DashboardChain(db).media_statistic()
     if media_statistic:
         return schemas.Statistic(
             movie_count=media_statistic.movie_count,
@@ -61,11 +62,12 @@ def processes(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/downloader", summary="下载器信息", response_model=schemas.DownloaderInfo)
-def downloader(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def downloader(db: Session = Depends(get_db),
+               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询下载器信息
     """
-    transfer_info = DashboardChain().downloader_info()
+    transfer_info = DashboardChain(db).downloader_info()
     free_space = SystemUtils.free_space(Path(settings.DOWNLOAD_PATH))
     return schemas.DownloaderInfo(
         download_speed=transfer_info.download_speed,

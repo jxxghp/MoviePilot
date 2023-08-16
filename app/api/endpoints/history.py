@@ -74,7 +74,7 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
         if not history:
             return schemas.Response(success=False, msg="记录不存在")
         # 册除文件
-        TransferChain().delete_files(Path(history.dest))
+        TransferChain(db).delete_files(Path(history.dest))
     # 删除记录
     TransferHistory.delete(db, history_in.id)
     return schemas.Response(success=True)
@@ -84,12 +84,13 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
 def redo_transfer_history(history_in: schemas.TransferHistory,
                           mtype: str,
                           new_tmdbid: int,
+                          db: Session = Depends(get_db),
                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     历史记录重新转移
     """
     hash_str = history_in.download_hash
-    result = TransferChain().process(f"{hash_str} {new_tmdbid}|{mtype}")
+    result = TransferChain(db).process(f"{hash_str} {new_tmdbid}|{mtype}")
     if result:
         return schemas.Response(success=True)
     else:

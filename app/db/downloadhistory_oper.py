@@ -15,7 +15,7 @@ class DownloadHistoryOper(DbOper):
         按路径查询下载记录
         :param path: 数据key
         """
-        return DownloadHistory.get_by_path(self._db, path)
+        return DownloadHistory.get_by_path(self._db, str(path))
 
     def get_by_hash(self, download_hash: str) -> Any:
         """

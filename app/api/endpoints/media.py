@@ -20,12 +20,13 @@ router = APIRouter()
 @router.get("/recognize", summary="识别媒体信息", response_model=schemas.Context)
 def recognize(title: str,
               subtitle: str = None,
+              db: Session = Depends(get_db),
               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据标题、副标题识别媒体信息
     """
     # 识别媒体信息
-    context = MediaChain().recognize_by_title(title=title, subtitle=subtitle)
+    context = MediaChain(db).recognize_by_title(title=title, subtitle=subtitle)
     if context:
         return context.to_dict()
     return schemas.Context()
@@ -35,11 +36,12 @@ def recognize(title: str,
 def search_by_title(title: str,
                     page: int = 1,
                     count: int = 8,
+                    db: Session = Depends(get_db),
                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     模糊搜索媒体信息列表
     """
-    _, medias = MediaChain().search(title=title)
+    _, medias = MediaChain(db).search(title=title)
     if medias:
         return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
     return []
@@ -69,20 +71,21 @@ def exists(title: str = None,
 
 @router.get("/{mediaid}", summary="查询媒体详情", response_model=schemas.MediaInfo)
 def tmdb_info(mediaid: str, type_name: str,
+              db: Session = Depends(get_db),
               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据媒体ID查询themoviedb或豆瓣媒体信息，type_name: 电影/电视剧
     """
     mtype = MediaType(type_name)
     if mediaid.startswith("tmdb:"):
-        result = TmdbChain().tmdb_info(int(mediaid[5:]), mtype)
+        result = TmdbChain(db).tmdb_info(int(mediaid[5:]), mtype)
         return MediaInfo(tmdb_info=result).to_dict()
     elif mediaid.startswith("douban:"):
         # 查询豆瓣信息
-        doubaninfo = DoubanChain().douban_info(doubanid=mediaid[7:])
+        doubaninfo = DoubanChain(db).douban_info(doubanid=mediaid[7:])
         if not doubaninfo:
             return schemas.MediaInfo()
-        result = DoubanChain().recognize_by_doubaninfo(doubaninfo)
+        result = DoubanChain(db).recognize_by_doubaninfo(doubaninfo)
         if result:
             # TMDB
             return result.media_info.to_dict()

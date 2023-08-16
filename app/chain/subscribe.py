@@ -3,6 +3,8 @@ import re
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
 
+from requests import Session
+
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.search import SearchChain
@@ -27,14 +29,14 @@ class SubscribeChain(ChainBase):
 
     _cache_file = "__torrents_cache__"
 
-    def __init__(self):
-        super().__init__()
-        self.downloadchain = DownloadChain()
-        self.searchchain = SearchChain()
-        self.subscribehelper = SubscribeOper()
+    def __init__(self, db: Session = None):
+        super().__init__(db)
+        self.downloadchain = DownloadChain(self._db)
+        self.searchchain = SearchChain(self._db)
+        self.subscribehelper = SubscribeOper(self._db)
         self.siteshelper = SitesHelper()
         self.message = MessageHelper()
-        self.systemconfig = SystemConfigOper()
+        self.systemconfig = SystemConfigOper(self._db)
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,

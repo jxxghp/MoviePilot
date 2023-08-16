@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import Dict
 from typing import List, Optional
 
+from sqlalchemy.orm import Session
+
 from app.chain import ChainBase
 from app.core.context import Context
 from app.core.context import MediaInfo, TorrentInfo
@@ -23,11 +25,11 @@ class SearchChain(ChainBase):
     站点资源搜索处理链
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, db: Session = None):
+        super().__init__(db)
         self.siteshelper = SitesHelper()
         self.progress = ProgressHelper()
-        self.systemconfig = SystemConfigOper()
+        self.systemconfig = SystemConfigOper(self._db)
         self.torrenthelper = TorrentHelper()
 
     def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None) -> List[Context]:

@@ -36,7 +36,7 @@ async def login_access_token(
     if not user:
         # 请求协助认证
         logger.warn("登录用户本地不匹配，尝试辅助认证 ...")
-        token = UserChain().user_authenticate(form_data.username, form_data.password)
+        token = UserChain(db).user_authenticate(form_data.username, form_data.password)
         if not token:
             raise HTTPException(status_code=401, detail="用户名或密码不正确")
         else:
@@ -83,11 +83,11 @@ def bing_wallpaper() -> Any:
 
 
 @router.get("/tmdb", summary="TMDB电影海报", response_model=schemas.Response)
-def tmdb_wallpaper() -> Any:
+def tmdb_wallpaper(db: Session = Depends(get_db)) -> Any:
     """
     获取TMDB电影海报
     """
-    infos = TmdbChain().tmdb_trending()
+    infos = TmdbChain(db).tmdb_trending()
     if infos:
         # 随机一个电影
         while True:

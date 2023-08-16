@@ -4,6 +4,8 @@ import time
 from datetime import datetime
 from typing import Tuple, Optional
 
+from sqlalchemy.orm import Session
+
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.core.config import settings
@@ -25,12 +27,12 @@ class RssChain(ChainBase):
     RSS处理链
     """
 
-    def __init__(self):
-        super().__init__()
-        self.rssoper = RssOper()
+    def __init__(self, db: Session = None):
+        super().__init__(db)
+        self.rssoper = RssOper(self._db)
         self.sites = SitesHelper()
-        self.systemconfig = SystemConfigOper()
-        self.downloadchain = DownloadChain()
+        self.systemconfig = SystemConfigOper(self._db)
+        self.downloadchain = DownloadChain(self._db)
         self.message = MessageHelper()
 
     def add(self, title: str, year: str,

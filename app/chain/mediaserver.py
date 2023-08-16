@@ -2,6 +2,8 @@ import json
 import threading
 from typing import List, Union, Generator
 
+from sqlalchemy.orm import Session
+
 from app import schemas
 from app.chain import ChainBase
 from app.core.config import settings
@@ -17,9 +19,9 @@ class MediaServerChain(ChainBase):
     媒体服务器处理链
     """
 
-    def __init__(self):
-        super().__init__()
-        self.mediaserverdb = MediaServerOper()
+    def __init__(self, db: Session = None):
+        super().__init__(db)
+        self.mediaserverdb = MediaServerOper(db)
 
     def librarys(self) -> List[schemas.MediaServerLibrary]:
         """

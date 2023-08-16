@@ -5,6 +5,8 @@ import threading
 from pathlib import Path
 from typing import List, Optional, Union
 
+from sqlalchemy.orm import Session
+
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.context import MediaInfo
@@ -28,10 +30,10 @@ class TransferChain(ChainBase):
     文件转移处理链
     """
 
-    def __init__(self):
-        super().__init__()
-        self.downloadhis = DownloadHistoryOper()
-        self.transferhis = TransferHistoryOper()
+    def __init__(self, db: Session = None):
+        super().__init__(db)
+        self.downloadhis = DownloadHistoryOper(self._db)
+        self.transferhis = TransferHistoryOper(self._db)
         self.progress = ProgressHelper()
 
     def process(self, arg_str: str = None, channel: MessageChannel = None, userid: Union[str, int] = None) -> bool:

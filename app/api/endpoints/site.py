@@ -19,11 +19,11 @@ from app.utils.string import StringUtils
 router = APIRouter()
 
 
-def start_cookiecloud_sync():
+def start_cookiecloud_sync(db: Session):
     """
     后台启动CookieCloud站点同步
     """
-    CookieCloudChain().process(manual=True)
+    CookieCloudChain(db).process(manual=True)
 
 
 @router.get("/", summary="所有站点", response_model=List[schemas.Site])
@@ -67,11 +67,12 @@ def delete_site(
 
 @router.get("/cookiecloud", summary="CookieCloud同步", response_model=schemas.Response)
 def cookie_cloud_sync(background_tasks: BackgroundTasks,
+                      db: Session = Depends(get_db),
                       _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     运行CookieCloud同步站点信息
     """
-    background_tasks.add_task(start_cookiecloud_sync)
+    background_tasks.add_task(start_cookiecloud_sync, db)
     return schemas.Response(success=True, message="CookieCloud同步任务已启动！")
 
 
@@ -83,7 +84,7 @@ def cookie_cloud_sync(db: Session = Depends(get_db),
     """
     Site.reset(db)
     SystemConfigOper(db).set(SystemConfigKey.IndexerSites, [])
-    CookieCloudChain().process(manual=True)
+    CookieCloudChain(db).process(manual=True)
     return schemas.Response(success=True, message="站点已重置！")
 
 
@@ -105,9 +106,9 @@ def update_cookie(
             detail=f"站点 {site_id} 不存在！",
         )
     # 更新Cookie
-    state, message = SiteChain().update_cookie(site_info=site_info,
-                                               username=username,
-                                               password=password)
+    state, message = SiteChain(db).update_cookie(site_info=site_info,
+                                                 username=username,
+                                                 password=password)
     return schemas.Response(success=state, message=message)
 
 
@@ -124,7 +125,7 @@ def test_site(site_id: int,
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
-    status, message = SiteChain().test(site.domain)
+    status, message = SiteChain(db).test(site.domain)
     return schemas.Response(success=status, message=message)
 
 
@@ -162,7 +163,7 @@ def site_resource(site_id: int, keyword: str = None,
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
-    torrents = SearchChain().browse(site.domain, keyword)
+    torrents = SearchChain(db).browse(site.domain, keyword)
     if not torrents:
         return []
     return [torrent.to_dict() for torrent in torrents]

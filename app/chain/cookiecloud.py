@@ -3,6 +3,7 @@ from typing import Tuple, Optional, Union
 from urllib.parse import urljoin
 
 from lxml import etree
+from sqlalchemy.orm import Session
 
 from app.chain import ChainBase
 from app.chain.site import SiteChain
@@ -22,12 +23,12 @@ class CookieCloudChain(ChainBase):
     CookieCloud处理链
     """
 
-    def __init__(self):
-        super().__init__()
-        self.siteoper = SiteOper()
-        self.siteiconoper = SiteIconOper()
+    def __init__(self, db: Session = None):
+        super().__init__(db)
+        self.siteoper = SiteOper(self._db)
+        self.siteiconoper = SiteIconOper(self._db)
         self.siteshelper = SitesHelper()
-        self.sitechain = SiteChain()
+        self.sitechain = SiteChain(self._db)
         self.message = MessageHelper()
         self.cookiecloud = CookieCloudHelper(
             server=settings.COOKIECLOUD_HOST,

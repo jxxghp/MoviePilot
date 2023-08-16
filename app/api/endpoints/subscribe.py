@@ -17,20 +17,20 @@ from app.schemas.types import MediaType
 router = APIRouter()
 
 
-def start_subscribe_add(title: str, year: str,
+def start_subscribe_add(db: Session, title: str, year: str,
                         mtype: MediaType, tmdbid: int, season: int, username: str):
     """
     启动订阅任务
     """
-    SubscribeChain().add(title=title, year=year,
-                         mtype=mtype, tmdbid=tmdbid, season=season, username=username)
+    SubscribeChain(db).add(title=title, year=year,
+                           mtype=mtype, tmdbid=tmdbid, season=season, username=username)
 
 
-def start_subscribe_search(sid: Optional[int], state: Optional[str]):
+def start_subscribe_search(db: Session, sid: Optional[int], state: Optional[str]):
     """
     启动订阅搜索任务
     """
-    SubscribeChain().search(sid=sid, state=state, manual=True)
+    SubscribeChain(db).search(sid=sid, state=state, manual=True)
 
 
 @router.get("/", summary="所有订阅", response_model=List[schemas.Subscribe])
@@ -51,6 +51,7 @@ def read_subscribes(
 def create_subscribe(
         *,
         subscribe_in: schemas.Subscribe,
+        db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """
@@ -66,15 +67,15 @@ def create_subscribe(
         title = subscribe_in.name
     else:
         title = None
-    sid, message = SubscribeChain().add(mtype=mtype,
-                                        title=title,
-                                        year=subscribe_in.year,
-                                        tmdbid=subscribe_in.tmdbid,
-                                        season=subscribe_in.season,
-                                        doubanid=subscribe_in.doubanid,
-                                        username=current_user.name,
-                                        best_version=subscribe_in.best_version,
-                                        exist_ok=True)
+    sid, message = SubscribeChain(db).add(mtype=mtype,
+                                          title=title,
+                                          year=subscribe_in.year,
+                                          tmdbid=subscribe_in.tmdbid,
+                                          season=subscribe_in.season,
+                                          doubanid=subscribe_in.doubanid,
+                                          username=current_user.name,
+                                          best_version=subscribe_in.best_version,
+                                          exist_ok=True)
     return schemas.Response(success=True if sid else False, message=message, data={
         "id": sid
     })
@@ -171,6 +172,7 @@ def delete_subscribe(
 
 @router.post("/seerr", summary="OverSeerr/JellySeerr通知订阅", response_model=schemas.Response)
 async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
+                          db: Session = Depends(get_db),
                           authorization: str = Header(None)) -> Any:
     """
     Jellyseerr/Overseerr订阅
@@ -198,6 +200,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
     # 添加订阅
     if media_type == MediaType.MOVIE:
         background_tasks.add_task(start_subscribe_add,
+                                  db=db,
                                   mtype=media_type,
                                   tmdbid=tmdbId,
                                   title=subject,
@@ -212,6 +215,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
                 break
         for season in seasons:
             background_tasks.add_task(start_subscribe_add,
+                                      db=db,
                                       mtype=media_type,
                                       tmdbid=tmdbId,
                                       title=subject,
@@ -224,11 +228,12 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
 
 @router.get("/refresh", summary="刷新订阅", response_model=schemas.Response)
 def refresh_subscribes(
+        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     刷新所有订阅
     """
-    SubscribeChain().refresh()
+    SubscribeChain(db).refresh()
     return schemas.Response(success=True)
 
 
@@ -236,20 +241,22 @@ def refresh_subscribes(
 def search_subscribe(
         subscribe_id: int,
         background_tasks: BackgroundTasks,
+        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     搜索所有订阅
     """
-    background_tasks.add_task(start_subscribe_search, sid=subscribe_id, state=None)
+    background_tasks.add_task(start_subscribe_search, db=db, sid=subscribe_id, state=None)
     return schemas.Response(success=True)
 
 
 @router.get("/search", summary="搜索所有订阅", response_model=schemas.Response)
 def search_subscribes(
         background_tasks: BackgroundTasks,
+        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     搜索所有订阅
     """
-    background_tasks.add_task(start_subscribe_search, sid=None, state='R')
+    background_tasks.add_task(start_subscribe_search, db=db, sid=None, state='R')
     return schemas.Response(success=True)

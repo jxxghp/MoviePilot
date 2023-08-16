@@ -15,11 +15,11 @@ from app.schemas import MediaType
 router = APIRouter()
 
 
-def start_rss_refresh(rssid: int = None):
+def start_rss_refresh(db: Session, rssid: int = None):
     """
     启动自定义订阅刷新
     """
-    RssChain().refresh(rssid=rssid, manual=True)
+    RssChain(db).refresh(rssid=rssid, manual=True)
 
 
 @router.get("/", summary="所有自定义订阅", response_model=List[schemas.Rss])
@@ -36,6 +36,7 @@ def read_rsses(
 def create_rss(
         *,
         rss_in: schemas.Rss,
+        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)
 ) -> Any:
     """
@@ -45,7 +46,7 @@ def create_rss(
         mtype = MediaType(rss_in.type)
     else:
         mtype = None
-    rssid, errormsg = RssChain().add(
+    rssid, errormsg = RssChain(db).add(
         mtype=mtype,
         **rss_in.dict()
     )
@@ -100,11 +101,13 @@ def preview_rss(
 def refresh_rss(
         rssid: int,
         background_tasks: BackgroundTasks,
+        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据ID刷新自定义订阅
     """
     background_tasks.add_task(start_rss_refresh,
+                              db=db,
                               rssid=rssid)
     return schemas.Response(success=True)
 
