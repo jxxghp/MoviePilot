@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 from pydantic import BaseModel
 
@@ -9,4 +9,4 @@ class Response(BaseModel):
     # 消息文本
     message: Optional[str] = None
     # 数据
-    data: Optional[dict] = {}
+    data: Optional[Union[dict, list]] = {}

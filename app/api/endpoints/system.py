@@ -24,7 +24,7 @@ router = APIRouter()
 @router.get("/env", summary="查询系统环境变量", response_model=schemas.Response)
 def get_setting(_: schemas.TokenPayload = Depends(verify_token)):
     """
-    查询系统环境变量
+    查询系统环境变量，包括当前版本号
     """
     info = settings.dict(
         exclude={"SECRET_KEY", "SUPERUSER_PASSWORD", "API_TOKEN"}
@@ -153,3 +153,16 @@ def nettest(url: str,
         })
     else:
         return schemas.Response(success=False, message="网络连接失败！")
+
+
+@router.get("/versions", summary="查询Github所有Release版本", response_model=schemas.Response)
+def latest_version(_: schemas.TokenPayload = Depends(verify_token)):
+    """
+    查询Github所有Release版本
+    """
+    version_res = RequestUtils().get_res(f"https://api.github.com/repos/jxxghp/MoviePilot/releases")
+    if version_res:
+        ver_json = version_res.json()
+        if ver_json:
+            return schemas.Response(success=True, data=ver_json)
+    return schemas.Response(success=False)
