@@ -144,7 +144,7 @@ docker pull jxxghp/moviepilot:latest
 `MoviePilot`需要认证后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数。
 
 | 站点 | 参数                                                    |
-|----|-------------------------------------------------------|
+|:--:|:-----------------------------------------------------:|
 | iyuu | `IYUU_SIGN`：IYUU登录令牌                                  |
 | hhclub | `HHCLUB_USERNAME`：用户名<br/>`HHCLUB_PASSKEY`：密钥         |
 | audiences | `AUDIENCES_UID`：用户ID<br/>`AUDIENCES_PASSKEY`：密钥       |
