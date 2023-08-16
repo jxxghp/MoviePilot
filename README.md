@@ -52,7 +52,6 @@ docker pull jxxghp/moviepilot:latest
 - **PGID**：运行程序用户的`gid`，默认`0`
 - **UMASK**：掩码权限，默认`000`，可以考虑设置为`022`
 - **MOVIEPILOT_AUTO_UPDATE**：重启更新，`true`/`false`，默认`true`
-- **MOVIEPILOT_CN_UPDATE**：重启更新是否使用国内加速，`true`/`false`，默认`false `
 - **NGINX_PORT：** WEB服务端口，默认`3000`，可自行修改，但不能为`3001`
 - **SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
 - **SUPERUSER_PASSWORD：** 超级管理员初始密码，默认`password`，建议修改为复杂密码

@@ -1,27 +1,27 @@
 #!/bin/bash
 
-if [ "${MOVIEPILOT_CN_UPDATE}" = "true" ]; then
-    GITHUB_URL="https://ghproxy.com/https://github.com"
-    GITHUBUSERCONTENT_URL="https://ghproxy.com/https://raw.githubusercontent.com"
+if [ -n "${PROXY_HOST}" ]; then
+    CURL_OPTIONS="-sL -x ${PROXY_HOST}"
+    echo "使用代理更新程序"
 else
-    GITHUB_URL="https://github.com"
-    GITHUBUSERCONTENT_URL="https://raw.githubusercontent.com"
+    CURL_OPTIONS="-sL"
+    echo "不使用代理更新程序"
 fi
 
 old_version=$(cat /app/version.py)
 if [[ "${old_version}" == *APP_VERSION* ]]; then
     current_version=v$(echo ${old_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
     echo "当前版本号：${current_version}"
-    new_version=$(curl -s "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" | jq -r .tag_name)
+    new_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" | jq -r .tag_name)
     if [[ "${new_version}" == *v* ]]; then
         release_version=${new_version}
         echo "最新版本号：${release_version}"
         if [ "${current_version}" != "${release_version}" ]; then
             echo "发现新版本，开始更新程序..."
-            curl -sL "${GITHUB_URL}/jxxghp/MoviePilot/archive/refs/tags/${release_version}.zip" | busybox unzip -d /tmp -
+            curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot/archive/refs/tags/${release_version}.zip" | busybox unzip -d /tmp -
             if [ $? -eq 0 ]; then
                 echo "后端下载成功"
-                curl -sL "${GITHUB_URL}/jxxghp/MoviePilot-Frontend/releases/download/${release_version}/dist.zip" | busybox unzip -d /tmp -
+                curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${release_version}/dist.zip" | busybox unzip -d /tmp -
                 if [ $? -eq 0 ]; then
                     echo "前端下载成功"
                     rm -rf /app
