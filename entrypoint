@@ -4,7 +4,9 @@
 envsubst '${NGINX_PORT}' < /etc/nginx/nginx.template.conf > /etc/nginx/nginx.conf
 # 自动更新
 if [ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]; then
+    cd /
     /usr/local/bin/mp_update
+    cd /app
 else
     echo "程序自动升级已关闭，如需自动升级请在创建容器时设置环境变量：MOVIEPILOT_AUTO_UPDATE=true"
 fi
