@@ -3,6 +3,8 @@ import re
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
 
+from sqlalchemy.orm import Session
+
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.search import SearchChain
@@ -37,6 +39,7 @@ class SubscribeChain(ChainBase):
         self.systemconfig = SystemConfigOper()
 
     def add(self, title: str, year: str,
+            db: Session = None,
             mtype: MediaType = None,
             tmdbid: int = None,
             doubanid: str = None,
@@ -96,7 +99,7 @@ class SubscribeChain(ChainBase):
                     'lack_episode': kwargs.get('total_episode')
                 })
         # 添加订阅
-        sid, err_msg = self.subscribehelper.add(mediainfo, doubanid=doubanid,
+        sid, err_msg = self.subscribehelper.add(mediainfo, db=db, doubanid=doubanid,
                                                 season=season, username=username, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
