@@ -133,7 +133,7 @@ class WebHook(_PluginBase):
         """
         向第三方Webhook发送请求
         """
-        if not self._webhook_url:
+        if not self._enabled or not self._webhook_url:
             return
 
         def __to_dict(_event):
