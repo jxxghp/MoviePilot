@@ -54,8 +54,9 @@ RUN apt-get update \
         then ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1; \
     fi \
     && cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
-    && cp /app/update /usr/local/bin/mp_update \
-    && chmod +x /app/start /usr/local/bin/mp_update \
+    && cp -f /app/update /usr/local/bin/mp_update \
+    && cp -f /app/entrypoint /entrypoint \
+    && chmod +x /entrypoint /usr/local/bin/mp_update \
     && mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
@@ -80,4 +81,4 @@ RUN apt-get update \
         /var/tmp/*
 EXPOSE 3000
 VOLUME ["/config"]
-ENTRYPOINT [ "/app/start" ]
+ENTRYPOINT [ "/entrypoint" ]

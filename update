@@ -9,28 +9,38 @@ else
 fi
 
 old_version=$(cat /app/version.py)
-new_version=$(curl -sL "${GITHUBUSERCONTENT_URL}/jxxghp/MoviePilot/main/version.py")
-release_version=v$(echo ${new_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
-
-if [ "${old_version}" != "${new_version}" ]; then
-    echo "发现新版本，开始更新程序..."
-    curl -sL "${GITHUB_URL}/jxxghp/MoviePilot/archive/refs/tags/${release_version}.zip" | busybox unzip -d /tmp -
-    if [ $? -eq 0 ]; then
-        echo "后端下载成功"
-        curl -sL "${GITHUB_URL}/jxxghp/MoviePilot-Frontend/releases/download/${release_version}/dist.zip" | busybox unzip -d /tmp -
-        if [ $? -eq 0 ]; then
-            echo "前端下载成功"
-            rm -rf /app
-            mv /tmp/MoviePilot* /app
-            rm -rf /public
-            mv /tmp/dist /public
-            echo "程序更新成功"
+if [[ "${old_version}" == *APP_VERSION* ]]; then
+    current_version=v$(echo ${old_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
+    echo "当前版本号：${current_version}"
+    new_version=$(curl -sL "${GITHUBUSERCONTENT_URL}/jxxghp/MoviePilot/main/version.py")
+    if [[ "${new_version}" == *APP_VERSION* ]]; then
+        release_version=v$(echo ${new_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
+        echo "最新版本号：${release_version}"
+        if [ "${old_version}" != "${new_version}" ]; then
+            echo "发现新版本，开始更新程序..."
+            curl -sL "${GITHUB_URL}/jxxghp/MoviePilot/archive/refs/tags/${release_version}.zip" | busybox unzip -d /tmp -
+            if [ $? -eq 0 ]; then
+                echo "后端下载成功"
+                curl -sL "${GITHUB_URL}/jxxghp/MoviePilot-Frontend/releases/download/${release_version}/dist.zip" | busybox unzip -d /tmp -
+                if [ $? -eq 0 ]; then
+                    echo "前端下载成功"
+                    rm -rf /app
+                    mv /tmp/MoviePilot* /app
+                    rm -rf /public
+                    mv /tmp/dist /public
+                    echo "程序更新成功"
+                else
+                    echo "前端下载失败，继续使用旧的程序来启动..."
+                fi
+            else
+                echo "后端下载失败，继续使用旧的程序来启动..."
+            fi
         else
-            echo "前端下载失败，继续使用旧的程序来启动..."
+            echo "未发现新版本，跳过更新步骤"
         fi
     else
-        echo "后端下载失败，继续使用旧的程序来启动..."
+        echo "最新版本号获取失败，继续使用旧的程序来启动..."
     fi
 else
-    echo "未发现新版本，跳过更新步骤"
+    echo "当前版本号获取失败，继续使用旧的程序来启动..."
 fi

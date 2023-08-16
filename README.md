@@ -46,6 +46,11 @@ docker pull jxxghp/moviepilot:latest
 
 ### 1. **基础设置**
 
+- **PUID**：运行程序用户的`uid`，默认`0`
+- **PGID**：运行程序用户的`gid`，默认`0`
+- **UMASK**：掩码权限，默认`000`，可以考虑设置为`022`
+- **MOVIEPILOT_AUTO_UPDATE**：重启更新，`true`/`false`，默认`true`
+- **MOVIEPILOT_CN_UPDATE**：重启更新是否使用国内加速，`true`/`false`，默认`false `
 - **NGINX_PORT：** WEB服务端口，默认`3000`，可自行修改，但不能为`3001`
 - **SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
 - **SUPERUSER_PASSWORD：** 超级管理员初始密码，默认`password`，建议修改为复杂密码
@@ -53,8 +58,8 @@ docker pull jxxghp/moviepilot:latest
 - **PROXY_HOST：** 网络代理（可选），访问themoviedb需要使用代理访问，格式为`http(s)://ip:port`
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`或其它中转代理服务地址，能连通即可
 - **DOWNLOAD_PATH：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径保持一致**，否则会导致下载文件无法转移
-- **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录，**必须是DOWNLOAD_PATH的下级路径**，不设置则下载到DOWNLOAD_PATH
-- **DOWNLOAD_TV_PATH：** 电视剧下载保存目录，**必须是DOWNLOAD_PATH的下级路径**，不设置则下载到DOWNLOAD_PATH
+- **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录，**必须是`DOWNLOAD_PATH`的下级路径**，不设置则下载到`DOWNLOAD_PATH`
+- **DOWNLOAD_TV_PATH：** 电视剧下载保存目录，**必须是`DOWNLOAD_PATH`的下级路径**，不设置则下载到`DOWNLOAD_PATH`
 - **DOWNLOAD_CATEGORY：** 下载二级分类开关，`true`/`false`，默认`false`，开启后会根据配置`category.yaml`自动在下载目录下建立二级目录分类
 - **DOWNLOAD_SUBTITLE：** 下载站点字幕，`true`/`false`，默认`true`
 - **REFRESH_MEDIASERVER：** 入库刷新媒体库，`true`/`false`，默认`true`
@@ -70,67 +75,66 @@ docker pull jxxghp/moviepilot:latest
 - **COOKIECLOUD_PASSWORD：** CookieCloud端对端加密密码
 - **COOKIECLOUD_INTERVAL：** CookieCloud同步间隔（分钟）
 - **USER_AGENT：** CookieCloud对应的浏览器UA，可选，设置后可增加连接站点的成功率，同步站点后可以在管理界面中修改
+- **MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
+
+  - `wechat`设置项：
+
+    - **WECHAT_CORPID：** WeChat企业ID
+    - **WECHAT_APP_SECRET：** WeChat应用Secret
+    - **WECHAT_APP_ID：** WeChat应用ID
+    - **WECHAT_TOKEN：** WeChat消息回调的Token
+    - **WECHAT_ENCODING_AESKEY：** WeChat消息回调的EncodingAESKey
+    - **WECHAT_ADMINS：** WeChat管理员列表，多个管理员用英文逗号分隔（可选）
+    - **WECHAT_PROXY：** WeChat代理服务器（后面不要加/）
+
+  - `telegram`设置项：
+
+    - **TELEGRAM_TOKEN：** Telegram Bot Token
+    - **TELEGRAM_CHAT_ID：** Telegram Chat ID
+    - **TELEGRAM_USERS：** Telegram 用户ID，多个使用,分隔，只有用户ID在列表中才可以使用Bot，如未设置则均可以使用Bot
+    - **TELEGRAM_ADMINS：** Telegram 管理员ID，多个使用,分隔，只有管理员才可以操作Bot菜单，如未设置则均可以操作菜单
+
+  - `slack`设置项：
+
+    - **SLACK_OAUTH_TOKEN：** Slack Bot User OAuth Token
+    - **SLACK_APP_TOKEN：** Slack App-Level Token
+    - **SLACK_CHANNEL：** Slack 频道名称，默认`全体`
 
 
-**MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
+- **DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
 
-`wechat`设置项：
+  - `qbittorrent`设置项：
 
-- **WECHAT_CORPID：** WeChat企业ID
-- **WECHAT_APP_SECRET：** WeChat应用Secret
-- **WECHAT_APP_ID：** WeChat应用ID
-- **WECHAT_TOKEN：** WeChat消息回调的Token
-- **WECHAT_ENCODING_AESKEY：** WeChat消息回调的EncodingAESKey
-- **WECHAT_ADMINS：** WeChat管理员列表，多个管理员用英文逗号分隔（可选）
-- **WECHAT_PROXY：** WeChat代理服务器（后面不要加/）
+    - **QB_HOST：** qbittorrent地址，格式：`ip:port`，https需要添加`https://`前缀
+    - **QB_USER：** qbittorrent用户名
+    - **QB_PASSWORD：** qbittorrent密码
 
-`telegram`设置项：
+  - `transmission`设置项：
 
-- **TELEGRAM_TOKEN：** Telegram Bot Token
-- **TELEGRAM_CHAT_ID：** Telegram Chat ID
-- **TELEGRAM_USERS：** Telegram 用户ID，多个使用,分隔，只有用户ID在列表中才可以使用Bot，如未设置则均可以使用Bot
-- **TELEGRAM_ADMINS：** Telegram 管理员ID，多个使用,分隔，只有管理员才可以操作Bot菜单，如未设置则均可以操作菜单
+    - **TR_HOST：** transmission地址，格式：`ip:port`，https需要添加`https://`前缀
+    - **TR_USER：** transmission用户名
+    - **TR_PASSWORD：** transmission密码
 
-`slack`设置项：
+- **DOWNLOADER_MONITOR：** 下载器监控，`true`/`false`，默认为`true`，开启后下载完成时才会自动整理入库
 
-- **SLACK_OAUTH_TOKEN：** Slack Bot User OAuth Token
-- **SLACK_APP_TOKEN：** Slack App-Level Token
-- **SLACK_CHANNEL：** Slack 频道名称，默认`全体`
+- **MEDIASERVER：** 媒体服务器，支持`emby`/`jellyfin`/`plex`，同时还需要配置对应媒体服务器的环境变量，非对应媒体服务器的变量可删除，推荐使用`emby`
 
+  - `emby`设置项：
 
-**DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
-**DOWNLOADER_MONITOR：** 下载器监控，`true`/`false`，默认为`true`，开启后下载完成时才会自动整理入库
+    - **EMBY_HOST：** Emby服务器地址，格式：`ip:port`，https需要添加`https://`前缀
+    - **EMBY_API_KEY：** Emby Api Key，在`设置->高级->API密钥`处生成
 
-`qbittorrent`设置项：
+  - `jellyfin`设置项：
 
-- **QB_HOST：** qbittorrent地址，格式：`ip:port`，https需要添加`https://`前缀
-- **QB_USER：** qbittorrent用户名
-- **QB_PASSWORD：** qbittorrent密码
+    - **JELLYFIN_HOST：** Jellyfin服务器地址，格式：`ip:port`，https需要添加`https://`前缀
+    - **JELLYFIN_API_KEY：** Jellyfin Api Key，在`设置->高级->API密钥`处生成
 
-`transmission`设置项：
+  - `plex`设置项：
 
-- **TR_HOST：** transmission地址，格式：`ip:port`，https需要添加`https://`前缀
-- **TR_USER：** transmission用户名
-- **TR_PASSWORD：** transmission密码
+    - **PLEX_HOST：** Plex服务器地址，格式：`ip:port`，https需要添加`https://`前缀
+    - **PLEX_TOKEN：** Plex网页Url中的`X-Plex-Token`，通过浏览器F12->网络从请求URL中获取
 
-**MEDIASERVER：** 媒体服务器，支持`emby`/`jellyfin`/`plex`，同时还需要配置对应媒体服务器的环境变量，非对应媒体服务器的变量可删除，推荐使用`emby`
-
-**MEDIASERVER_SYNC_INTERVAL:** 媒体服务器同步间隔（小时），默认`6`，留空则不同步
-
-`emby`设置项：
-
-- **EMBY_HOST：** Emby服务器地址，格式：`ip:port`，https需要添加`https://`前缀
-- **EMBY_API_KEY：** Emby Api Key，在`设置->高级->API密钥`处生成
-
-`jellyfin`设置项：
-
-- **JELLYFIN_HOST：** Jellyfin服务器地址，格式：`ip:port`，https需要添加`https://`前缀
-- **JELLYFIN_API_KEY：** Jellyfin Api Key，在`设置->高级->API密钥`处生成
-
-`plex`设置项：
- 
- - **PLEX_HOST：** Plex服务器地址，格式：`ip:port`，https需要添加`https://`前缀
- - **PLEX_TOKEN：** Plex网页Url中的`X-Plex-Token`，通过浏览器F12->网络从请求URL中获取
+- **MEDIASERVER_SYNC_INTERVAL:** 媒体服务器同步间隔（小时），默认`6`，留空则不同步
 
 
 ### 2. **用户认证**
@@ -140,7 +144,7 @@ docker pull jxxghp/moviepilot:latest
 `MoviePilot`需要认证后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数。
 
 | 站点 | 参数                                                    |
-|----|-------------------------------------------------------|
+|:--:|:-----------------------------------------------------:|
 | iyuu | `IYUU_SIGN`：IYUU登录令牌                                  |
 | hhclub | `HHCLUB_USERNAME`：用户名<br/>`HHCLUB_PASSKEY`：密钥         |
 | audiences | `AUDIENCES_UID`：用户ID<br/>`AUDIENCES_PASSKEY`：密钥       |
