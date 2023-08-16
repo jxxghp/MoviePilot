@@ -12,11 +12,11 @@ old_version=$(cat /app/version.py)
 if [[ "${old_version}" == *APP_VERSION* ]]; then
     current_version=v$(echo ${old_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
     echo "当前版本号：${current_version}"
-    new_version=$(curl -sL "${GITHUBUSERCONTENT_URL}/jxxghp/MoviePilot/main/version.py")
-    if [[ "${new_version}" == *APP_VERSION* ]]; then
-        release_version=v$(echo ${new_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
+    new_version=$(curl -s "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" | jq -r .tag_name)
+    if [[ "${new_version}" == *v* ]]; then
+        release_version=${new_version}
         echo "最新版本号：${release_version}"
-        if [ "${old_version}" != "${new_version}" ]; then
+        if [ "${current_version}" != "${release_version}" ]; then
             echo "发现新版本，开始更新程序..."
             curl -sL "${GITHUB_URL}/jxxghp/MoviePilot/archive/refs/tags/${release_version}.zip" | busybox unzip -d /tmp -
             if [ $? -eq 0 ]; then
