@@ -493,7 +493,7 @@ class MediaSyncDel(_PluginBase):
                         # 判断种子是否被删除完
                         self.handle_torrent(history_id=transferhis.id,
                                             src=transferhis.src,
-                                            torrent_hash=history.download_hash)
+                                            torrent_hash=transferhis.download_hash)
                     except Exception as e:
                         logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
                         del_source = True
@@ -641,7 +641,7 @@ class MediaSyncDel(_PluginBase):
                             # 判断种子是否被删除完
                             self.handle_torrent(history_id=transferhis.id,
                                                 src=transferhis.src,
-                                                torrent_hash=history.download_hash)
+                                                torrent_hash=transferhis.download_hash)
                         except Exception as e:
                             logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
                             del_source = True
