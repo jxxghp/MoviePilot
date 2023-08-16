@@ -242,7 +242,10 @@ class StringUtils:
             return 'u2.dmhy.org'
         _, netloc = StringUtils.get_url_netloc(url)
         if netloc:
-            return ".".join(netloc.split(".")[-2:])
+            locs = netloc.split(".")
+            if len(locs) > 3:
+                return netloc
+            return ".".join(locs[-2:])
         return ""
 
     @staticmethod
