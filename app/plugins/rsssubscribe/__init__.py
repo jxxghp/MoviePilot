@@ -253,6 +253,10 @@ class RssSubscribe(_PluginBase):
                         'content': [
                             {
                                 'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
                                 'content': [
                                     {
                                         'component': 'VTextField',
@@ -266,6 +270,10 @@ class RssSubscribe(_PluginBase):
                             },
                             {
                                 'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
                                 'content': [
                                     {
                                         'component': 'VTextField',
