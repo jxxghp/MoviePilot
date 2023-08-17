@@ -31,11 +31,52 @@ def arr_system_status(apikey: str) -> Any:
         "appName": "MoviePilot",
         "instanceName": "moviepilot",
         "version": APP_VERSION,
-        "urlBase": ""
+        "buildTime": "",
+        "isDebug": False,
+        "isProduction": True,
+        "isAdmin": True,
+        "isUserInteractive": True,
+        "startupPath": "/app",
+        "appData": "/config",
+        "osName": "debian",
+        "osVersion": "",
+        "isNetCore": True,
+        "isLinux": True,
+        "isOsx": False,
+        "isWindows": False,
+        "isDocker": True,
+        "mode": "console",
+        "branch": "main",
+        "databaseType": "sqLite",
+        "databaseVersion": {
+            "major": 0,
+            "minor": 0,
+            "build": 0,
+            "revision": 0,
+            "majorRevision": 0,
+            "minorRevision": 0
+        },
+        "authentication": "none",
+        "migrationVersion": 0,
+        "urlBase": "",
+        "runtimeVersion": {
+            "major": 0,
+            "minor": 0,
+            "build": 0,
+            "revision": 0,
+            "majorRevision": 0,
+            "minorRevision": 0
+        },
+        "runtimeName": "",
+        "startTime": "",
+        "packageVersion": "",
+        "packageAuthor": "jxxghp",
+        "packageUpdateMechanism": "builtIn",
+        "packageUpdateMechanismMessage": ""
     }
 
 
-@arr_router.get("/qualityProfile", summary="质量配置")
+@arr_router.get("/qualityprofile", summary="质量配置")
 def arr_qualityProfile(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr质量配置
@@ -48,7 +89,35 @@ def arr_qualityProfile(apikey: str) -> Any:
     return [
         {
             "id": 1,
-            "name": "默认"
+            "name": "默认",
+            "upgradeAllowed": True,
+            "cutoff": 0,
+            "items": [
+                {
+                    "id": 0,
+                    "name": "默认",
+                    "quality": {
+                        "id": 0,
+                        "name": "默认",
+                        "source": "0",
+                        "resolution": 0
+                    },
+                    "items": [
+                        "string"
+                    ],
+                    "allowed": True
+                }
+            ],
+            "minFormatScore": 0,
+            "cutoffFormatScore": 0,
+            "formatItems": [
+                {
+                    "id": 0,
+                    "format": 0,
+                    "name": "默认",
+                    "score": 0
+                }
+            ]
         }
     ]
 
@@ -487,7 +556,7 @@ def arr_series(apikey: str, db: Session = Depends(get_db)) -> Any:
                 "seasonNumber": subscribe.season,
                 "monitored": True,
             }],
-            remotePoster=subscribe.image,
+            remotePoster=subscribe.poster,
             year=subscribe.year,
             tmdbId=subscribe.tmdbid,
             tvdbId=subscribe.tvdbid,
