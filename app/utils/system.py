@@ -59,7 +59,8 @@ class SystemUtils:
         移动
         """
         try:
-            shutil.move(src.replace(dest.name), dest)
+            temp = src.replace(src.parent / dest.name)
+            shutil.move(temp, dest)
             return 0, ""
         except Exception as err:
             print(str(err))
