@@ -7,6 +7,7 @@ from typing import Any, List, Dict, Tuple, Optional
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from torrentool.bencode import Bencode
 from torrentool.torrent import Torrent
 
 from app.core.config import settings
@@ -582,9 +583,9 @@ class TorrentTransfer(_PluginBase):
                         # 尝试补充trackers
                         try:
                             # 解析fastresume文件
-                            torrent_fastresume = Torrent.from_file(fastresume_file)
+                            torrent_fastresume = Bencode.read_file(fastresume_file, byte_keys={'pieces'})
                             # 读取trackers
-                            fastresume_trackers = torrent_fastresume.announce_urls
+                            fastresume_trackers = torrent_fastresume.get("trackers")
                             if fastresume_trackers:
                                 # 重新赋值
                                 torrent_main.announce_urls = fastresume_trackers
