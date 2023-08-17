@@ -15,7 +15,7 @@ from app.core.metainfo import MetaInfo
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas import MediaType, Notification, NotificationType, TransferInfo
+from app.schemas import Notification, NotificationType, TransferInfo
 from app.schemas.types import EventType
 
 lock = threading.Lock()
@@ -180,24 +180,17 @@ class DirMonitor(_PluginBase):
                         logger.info(f"{event_path} 已整理过")
                         return
 
-                    # 文件元数据
-                    file_meta = MetaInfo(title=file_path.name)
                     # 上级目录元数据
-                    dir_meta = MetaInfo(title=file_path.parent.name)
-                    # 整合元数据
-                    if not file_meta.cn_name and dir_meta.cn_name:
-                        file_meta.cn_name = dir_meta.cn_name
-                    if not file_meta.en_name and dir_meta.en_name:
-                        file_meta.en_name = dir_meta.en_name
-                    if file_meta.type != MediaType.TV and dir_meta.type == MediaType.TV:
-                        file_meta.type = MediaType.TV
-                    if not file_meta.year and dir_meta.year:
-                        file_meta.year = dir_meta.year
-                    if not file_meta.begin_season and dir_meta.begin_season:
-                        file_meta.begin_season = dir_meta.begin_season
-                    if not file_meta.episode_list and dir_meta.episode_list:
-                        file_meta.begin_episode = dir_meta.begin_episode
-                        file_meta.end_episode = dir_meta.end_episode
+                    meta = MetaInfo(title=file_path.parent.name)
+                    # 文件元数据，不包含后缀
+                    file_meta = MetaInfo(title=file_path.stem)
+                    # 合并元数据
+                    file_meta.merge(meta)
+                    # 结束季为空
+                    file_meta.end_season = None
+                    # 总季数为1
+                    if file_meta.begin_season:
+                        file_meta.total_seasons = 1
 
                     if not file_meta.name:
                         logger.warn(f"{file_path.name} 无法识别有效信息")
@@ -221,15 +214,19 @@ class DirMonitor(_PluginBase):
                     # 转移
                     transferinfo: TransferInfo = self.chain.transfer(mediainfo=mediainfo,
                                                                      path=file_path,
-                                                                     transfer_type=self._transfer_type)
+                                                                     transfer_type=self._transfer_type,
+                                                                     meta=file_meta)
 
-                    if not transferinfo or not transferinfo.target_path:
+                    if not transferinfo:
+                        logger.error("文件转移模块运行失败")
+                        return
+                    if not transferinfo.target_path:
                         # 转移失败
-                        logger.warn(f"{file_path.name} 入库失败")
+                        logger.warn(f"{file_path.name} 入库失败：{transferinfo.message}")
                         if self._notify:
                             self.chain.post_message(Notification(
                                 title=f"{mediainfo.title_year}{file_meta.season_episode} 入库失败！",
-                                text=f"原因：{transferinfo.message if transferinfo else '未知'}",
+                                text=f"原因：{transferinfo.message or '未知'}",
                                 image=mediainfo.get_message_image()
                             ))
                         return
@@ -237,7 +234,7 @@ class DirMonitor(_PluginBase):
                     # 新增转移成功历史记录
                     self.transferhis.add(
                         src=event_path,
-                        dest=str(transferinfo.target_path) if transferinfo else None,
+                        dest=str(transferinfo.target_path),
                         mode=settings.TRANSFER_TYPE,
                         type=mediainfo.type.value,
                         category=mediainfo.category,

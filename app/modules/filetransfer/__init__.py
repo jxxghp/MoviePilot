@@ -29,12 +29,14 @@ class FileTransferModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def transfer(self, path: Path, mediainfo: MediaInfo, transfer_type: str) -> Optional[TransferInfo]:
+    def transfer(self, path: Path, mediainfo: MediaInfo,
+                 transfer_type: str, meta: MetaBase = None) -> TransferInfo:
         """
         文件转移
         :param path:  文件路径
         :param mediainfo:  识别的媒体信息
         :param transfer_type:  转移方式
+        :param meta: 预识别的元数据，仅单文件转移时传递
         :return: {path, target_path, message}
         """
         # 获取目标路径
@@ -43,26 +45,11 @@ class FileTransferModule(_ModuleBase):
             logger.error("未找到媒体库目录，无法转移文件")
             return TransferInfo(message="未找到媒体库目录，无法转移文件")
         # 转移
-        result = self.transfer_media(in_path=path,
-                                     mediainfo=mediainfo,
-                                     transfer_type=transfer_type,
-                                     target_dir=target_path)
-        if not result:
-            return TransferInfo()
-        if isinstance(result, str):
-            return TransferInfo(message=result)
-        # 解包结果
-        is_bluray, target_path, file_list, file_list_new, file_size, fail_list, msg = result
-        # 返回
-        return TransferInfo(path=path,
-                            target_path=target_path,
-                            message=msg,
-                            file_count=len(file_list),
-                            total_size=file_size,
-                            fail_list=fail_list,
-                            is_bluray=is_bluray,
-                            file_list=file_list,
-                            file_list_new=file_list_new)
+        return self.transfer_media(in_path=path,
+                                   mediainfo=mediainfo,
+                                   transfer_type=transfer_type,
+                                   target_dir=target_path,
+                                   file_meta=meta)
 
     @staticmethod
     def __transfer_command(file_item: Path, target_file: Path, transfer_type: str) -> int:
@@ -338,22 +325,24 @@ class FileTransferModule(_ModuleBase):
                        in_path: Path,
                        mediainfo: MediaInfo,
                        transfer_type: str,
-                       target_dir: Path = None
-                       ) -> Union[str, Tuple[bool, Path, list, list, int, List[Path], str]]:
+                       target_dir: Path = None,
+                       file_meta: MetaBase = None
+                       ) -> TransferInfo:
         """
         识别并转移一个文件、多个文件或者目录
         :param in_path: 转移的路径，可能是一个文件也可以是一个目录
+        :param mediainfo: 媒体信息
         :param target_dir: 目的文件夹，非空的转移到该文件夹，为空时则按类型转移到配置文件中的媒体库文件夹
         :param transfer_type: 文件转移方式
-        :param mediainfo: 媒体信息
-        :return: 是否蓝光原盘、目的路径、处理文件清单、总大小、失败文件列表、错误信息
+        :param file_meta：预识别元数，为空则重新识别
+        :return: TransferInfo、错误信息
         """
         # 检查目录路径
         if not in_path.exists():
-            return f"{in_path} 路径不存在"
+            return TransferInfo(message=f"{in_path} 路径不存在")
 
         if not target_dir.exists():
-            return f"{target_dir} 目标路径不存在"
+            return TransferInfo(message=f"{target_dir} 目标路径不存在")
 
         if mediainfo.type == MediaType.MOVIE:
             if settings.LIBRARY_MOVIE_NAME:
@@ -405,17 +394,22 @@ class FileTransferModule(_ModuleBase):
                                                  new_path=new_path,
                                                  transfer_type=transfer_type)
             if retcode != 0:
-                return f"{retcode}，蓝光原盘转移失败"
+                return TransferInfo(message=f"{retcode}，蓝光原盘转移失败")
             else:
                 # 计算大小
                 total_filesize += in_path.stat().st_size
                 # 返回转移后的路径
-                return bluray_flag, new_path, [], [], total_filesize, [], ""
+                return TransferInfo(path=in_path,
+                                    target_path=new_path,
+                                    total_size=total_filesize,
+                                    is_bluray=bluray_flag,
+                                    file_list=[],
+                                    file_list_new=[])
         else:
             # 获取文件清单
             transfer_files: List[Path] = SystemUtils.list_files_with_extensions(in_path, settings.RMT_MEDIAEXT)
             if len(transfer_files) == 0:
-                return f"{in_path} 目录下没有找到可转移的文件"
+                return TransferInfo(message=f"{in_path} 目录下没有找到可转移的文件")
             # 识别目录名称，不包括后缀
             meta = MetaInfo(in_path.stem)
             # 目的路径
@@ -427,46 +421,16 @@ class FileTransferModule(_ModuleBase):
             # 转移所有文件
             for transfer_file in transfer_files:
                 try:
-                    # 识别文件元数据，不包含后缀
-                    file_meta = MetaInfo(transfer_file.stem)
-                    # 开始季
-                    if not file_meta.begin_season:
-                        file_meta.begin_season = meta.begin_season
-                    # 结束季为空
-                    file_meta.end_season = None
-                    # 总季数
-                    if file_meta.begin_season:
-                        file_meta.total_seasons = 1
-                    # 开始集
-                    if not file_meta.begin_episode:
-                        file_meta.begin_episode = meta.begin_episode
-                    # 结束集
-                    if not file_meta.end_episode:
-                        file_meta.end_episode = meta.end_episode
-                    # 总集数
-                    if not file_meta.total_episode:
-                        file_meta.total_episode = meta.total_episode
-                    # 版本
-                    if not file_meta.resource_type:
-                        file_meta.resource_type = meta.resource_type
-                    # 分辨率
-                    if not file_meta.resource_pix:
-                        file_meta.resource_pix = meta.resource_pix
-                    # 制作组/字幕组
-                    if not file_meta.resource_team:
-                        file_meta.resource_team = meta.resource_team
-                    # 特效
-                    if not file_meta.resource_effect:
-                        file_meta.resource_effect = meta.resource_effect
-                    # 视频编码
-                    if not file_meta.video_encode:
-                        file_meta.video_encode = meta.video_encode
-                    # 音频编码
-                    if not file_meta.audio_encode:
-                        file_meta.audio_encode = meta.audio_encode
-                    # Part
-                    if not file_meta.part:
-                        file_meta.part = meta.part
+                    if not file_meta:
+                        # 识别文件元数据，不包含后缀
+                        file_meta = MetaInfo(transfer_file.stem)
+                        # 合并元数据
+                        file_meta.merge(meta)
+                        # 结束季为空
+                        file_meta.end_season = None
+                        # 总季数为1
+                        if file_meta.begin_season:
+                            file_meta.total_seasons = 1
                     # 目的文件名
                     new_file = self.get_rename_path(
                         path=target_dir,
@@ -475,6 +439,8 @@ class FileTransferModule(_ModuleBase):
                                                            mediainfo=mediainfo,
                                                            file_ext=transfer_file.suffix)
                     )
+                    # 重新修正目的路径
+                    new_path = new_path.parents[-2].name
                     # 判断是否要覆盖
                     overflag = False
                     if new_file.exists():
@@ -491,10 +457,11 @@ class FileTransferModule(_ModuleBase):
                         err_msgs.append(f"{transfer_file.name}：错误码 {retcode}")
                         fail_list.append(transfer_file)
                         continue
-                    # 计算文件数
+                    # 源文件清单
                     file_list.append(str(transfer_file))
+                    # 目的文件清单
                     file_list_new.append(str(new_file))
-                    # 计算大小
+                    # 计算总大小
                     total_filesize += transfer_file.stat().st_size
                 except Exception as err:
                     err_msgs.append(f"{transfer_file.name}：{err}")
@@ -503,10 +470,17 @@ class FileTransferModule(_ModuleBase):
 
             if not file_list:
                 # 没有成功的
-                return "\n".join(err_msgs)
+                return TransferInfo(message="\n".join(err_msgs))
 
-            # 蓝光原盘、新路径、处理文件清单、总大小、失败文件列表、错误信息
-            return bluray_flag, new_path, file_list, file_list_new, total_filesize, fail_list, "\n".join(err_msgs)
+            return TransferInfo(path=in_path,
+                                target_path=new_path,
+                                message="\n".join(err_msgs),
+                                file_count=len(file_list),
+                                total_size=total_filesize,
+                                fail_list=fail_list,
+                                is_bluray=bluray_flag,
+                                file_list=file_list,
+                                file_list_new=file_list_new)
 
     @staticmethod
     def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None) -> dict:

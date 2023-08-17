@@ -1,5 +1,5 @@
 from dataclasses import dataclass, asdict
-from typing import Union, Optional, List
+from typing import Union, Optional, List, Self
 
 import cn2an
 import regex as re
@@ -443,6 +443,61 @@ class MetaBase(object):
         elif str(ep).isdigit():
             self.begin_episode = int(ep)
             self.end_episode = None
+            
+    def merge(self, meta: Self):
+        """
+        全并Meta信息
+        """
+        # 类型
+        if self.type == MediaType.UNKNOWN \
+                and meta.type != MediaType.UNKNOWN:
+            self.type = meta.type
+        # 名称
+        if not self.name:
+            self.cn_name = meta.cn_name
+            self.en_name = meta.en_name
+        # 年份
+        if not self.year:
+            self.year = meta.year
+        # 开始季
+        if not self.begin_season:
+            self.begin_season = meta.begin_season
+        # 结束季
+        if not self.end_season:
+            self.end_season = meta.end_season
+        # 总季数
+        if self.begin_season:
+            self.total_seasons = meta.total_seasons
+        # 开始集
+        if not self.begin_episode:
+            self.begin_episode = meta.begin_episode
+        # 结束集
+        if not self.end_episode:
+            self.end_episode = meta.end_episode
+        # 总集数
+        if not self.total_episode:
+            self.total_episode = meta.total_episode
+        # 版本
+        if not self.resource_type:
+            self.resource_type = meta.resource_type
+        # 分辨率
+        if not self.resource_pix:
+            self.resource_pix = meta.resource_pix
+        # 制作组/字幕组
+        if not self.resource_team:
+            self.resource_team = meta.resource_team
+        # 特效
+        if not self.resource_effect:
+            self.resource_effect = meta.resource_effect
+        # 视频编码
+        if not self.video_encode:
+            self.video_encode = meta.video_encode
+        # 音频编码
+        if not self.audio_encode:
+            self.audio_encode = meta.audio_encode
+        # Part
+        if not self.part:
+            self.part = meta.part
 
     def to_dict(self):
         """
