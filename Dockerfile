@@ -8,7 +8,6 @@ ENV LANG="C.UTF-8" \
     PGID=0 \
     UMASK=000 \
     MOVIEPILOT_AUTO_UPDATE=true \
-    MOVIEPILOT_CN_UPDATE=false \
     NGINX_PORT=3000 \
     CONFIG_DIR="/config" \
     API_TOKEN="moviepilot" \
@@ -47,6 +46,7 @@ RUN apt-get update \
         curl \
         busybox \
         dumb-init \
+        jq \
     && \
     if [ "$(uname -m)" = "x86_64" ]; \
         then ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
