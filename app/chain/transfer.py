@@ -145,6 +145,8 @@ class TransferChain(ChainBase):
                             status=0,
                             errmsg="未识别到媒体信息"
                         )
+                        # 设置种子状态，避免一直报错
+                        self.transfer_completed(hashs=torrent.hash, transinfo=transferinfo)
                         continue
                 else:
                     mediainfo = arg_mediainfo
@@ -189,6 +191,8 @@ class TransferChain(ChainBase):
                         errmsg=transferinfo.message if transferinfo else '未知错误',
                         files=json.dumps(transferinfo.file_list) if transferinfo else None
                     )
+                    # 设置种子状态，避免一直报错
+                    self.transfer_completed(hashs=torrent.hash, transinfo=transferinfo)
                     continue
                 # 新增转移成功历史记录
                 self.transferhis.add(
