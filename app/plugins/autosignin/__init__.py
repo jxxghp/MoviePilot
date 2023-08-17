@@ -59,6 +59,7 @@ class AutoSignIn(_PluginBase):
     # 配置属性
     _enabled: bool = False
     _cron: str = ""
+    _onlyonce: bool = False
     _notify: bool = False
     _queue_cnt: int = 5
     _sign_sites: list = []
@@ -74,12 +75,13 @@ class AutoSignIn(_PluginBase):
         if config:
             self._enabled = config.get("enabled")
             self._cron = config.get("cron")
+            self._onlyonce = config.get("onlyonce")
             self._notify = config.get("notify")
             self._queue_cnt = config.get("queue_cnt") or 5
             self._sign_sites = config.get("sign_sites")
 
         # 加载模块
-        if self._enabled:
+        if self._enabled or self._onlyonce:
 
             self._site_schema = ModuleHelper.load('app.plugins.autosignin.sites',
                                                   filter_func=lambda _, obj: hasattr(obj, 'match'))
@@ -107,6 +109,21 @@ class AutoSignIn(_PluginBase):
                     self._scheduler.add_job(self.sign_in, "cron",
                                             hour=trigger.hour, minute=trigger.minute,
                                             name="站点自动签到")
+
+            if self._onlyonce:
+                # 关闭一次性开关
+                self._onlyonce = False
+                # 保存配置
+                self.update_config(
+                    {
+                        "enabled": self._enabled,
+                        "notify": self._notify,
+                        "cron": self._cron,
+                        "onlyonce": self._onlyonce,
+                        "queue_cnt": self._queue_cnt,
+                        "sign_sites": self._sign_sites
+                    }
+                )
 
             # 启动任务
             if self._scheduler.get_jobs():
@@ -165,7 +182,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -181,7 +198,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -189,6 +206,22 @@ class AutoSignIn(_PluginBase):
                                         'props': {
                                             'model': 'notify',
                                             'label': '发送通知',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
                                         }
                                     }
                                 ]
@@ -259,6 +292,7 @@ class AutoSignIn(_PluginBase):
             "enabled": False,
             "notify": True,
             "cron": "",
+            "onlyonce": False,
             "queue_cnt": 5,
             "sign_sites": []
         }

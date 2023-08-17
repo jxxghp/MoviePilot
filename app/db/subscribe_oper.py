@@ -32,6 +32,12 @@ class SubscribeOper(DbOper):
         else:
             return subscribe.id, "订阅已存在"
 
+    def exists(self, tmdbid: int, season: int):
+        """
+        判断是否存在
+        """
+        return True if Subscribe.exists(self._db, tmdbid=tmdbid, season=season) else False
+
     def get(self, sid: int) -> Subscribe:
         """
         获取订阅

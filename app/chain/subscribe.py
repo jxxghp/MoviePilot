@@ -10,6 +10,7 @@ from app.chain.download import DownloadChain
 from app.chain.search import SearchChain
 from app.core.config import settings
 from app.core.context import TorrentInfo, Context, MediaInfo
+from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.models.subscribe import Subscribe
 from app.db.subscribe_oper import SubscribeOper
@@ -33,7 +34,7 @@ class SubscribeChain(ChainBase):
         super().__init__(db)
         self.downloadchain = DownloadChain(self._db)
         self.searchchain = SearchChain(self._db)
-        self.subscribehelper = SubscribeOper(self._db)
+        self.subscribeoper = SubscribeOper(self._db)
         self.siteshelper = SitesHelper()
         self.message = MessageHelper()
         self.systemconfig = SystemConfigOper(self._db)
@@ -98,8 +99,8 @@ class SubscribeChain(ChainBase):
                     'lack_episode': kwargs.get('total_episode')
                 })
         # 添加订阅
-        sid, err_msg = self.subscribehelper.add(mediainfo, doubanid=doubanid,
-                                                season=season, username=username, **kwargs)
+        sid, err_msg = self.subscribeoper.add(mediainfo, doubanid=doubanid,
+                                              season=season, username=username, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
@@ -126,6 +127,15 @@ class SubscribeChain(ChainBase):
         # 返回结果
         return sid, ""
 
+    def exists(self, mediainfo: MediaInfo, meta: MetaBase = None):
+        """
+        判断订阅是否已存在
+        """
+        if self.subscribeoper.exists(tmdbid=mediainfo.tmdb_id,
+                                     season=meta.begin_season if meta else None):
+            return True
+        return False
+
     def remote_refresh(self, channel: MessageChannel, userid: Union[str, int] = None):
         """
         远程刷新订阅，发送消息
@@ -147,7 +157,7 @@ class SubscribeChain(ChainBase):
             return
         if arg_str:
             sid = int(arg_str)
-            subscribe = self.subscribehelper.get(sid)
+            subscribe = self.subscribeoper.get(sid)
             if not subscribe:
                 self.post_message(Notification(channel=channel,
                                                title=f"订阅编号 {sid} 不存在！", userid=userid))
@@ -174,15 +184,15 @@ class SubscribeChain(ChainBase):
         :return: 更新订阅状态为R或删除订阅
         """
         if sid:
-            subscribes = [self.subscribehelper.get(sid)]
+            subscribes = [self.subscribeoper.get(sid)]
         else:
-            subscribes = self.subscribehelper.list(state)
+            subscribes = self.subscribeoper.list(state)
         # 遍历订阅
         for subscribe in subscribes:
             logger.info(f'开始搜索订阅，标题：{subscribe.name} ...')
             # 如果状态为N则更新为R
             if subscribe.state == 'N':
-                self.subscribehelper.update(subscribe.id, {'state': 'R'})
+                self.subscribeoper.update(subscribe.id, {'state': 'R'})
             # 生成元数据
             meta = MetaInfo(subscribe.name)
             meta.year = subscribe.year
@@ -200,7 +210,7 @@ class SubscribeChain(ChainBase):
                 exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
                 if exist_flag:
                     logger.info(f'{mediainfo.title_year} 媒体库中已存在，完成订阅')
-                    self.subscribehelper.delete(subscribe.id)
+                    self.subscribeoper.delete(subscribe.id)
                     # 发送通知
                     self.post_message(Notification(mtype=NotificationType.Subscribe,
                                                    title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
@@ -328,7 +338,7 @@ class SubscribeChain(ChainBase):
         if not subscribe.best_version:
             # 全部下载完成
             logger.info(f'{mediainfo.title_year} 下载完成，完成订阅')
-            self.subscribehelper.delete(subscribe.id)
+            self.subscribeoper.delete(subscribe.id)
             # 发送通知
             self.post_message(Notification(mtype=NotificationType.Subscribe,
                                            title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
@@ -338,7 +348,7 @@ class SubscribeChain(ChainBase):
             priority = max([item.torrent_info.pri_order for item in downloads])
             if priority == 100:
                 logger.info(f'{mediainfo.title_year} 洗版完成，删除订阅')
-                self.subscribehelper.delete(subscribe.id)
+                self.subscribeoper.delete(subscribe.id)
                 # 发送通知
                 self.post_message(Notification(mtype=NotificationType.Subscribe,
                                                title=f'{mediainfo.title_year}{meta.season} 已洗版完成',
@@ -346,7 +356,7 @@ class SubscribeChain(ChainBase):
             else:
                 # 正在洗版，更新资源优先级
                 logger.info(f'{mediainfo.title_year} 正在洗版，更新资源优先级')
-                self.subscribehelper.update(subscribe.id, {
+                self.subscribeoper.update(subscribe.id, {
                     "current_priority": priority
                 })
 
@@ -355,7 +365,7 @@ class SubscribeChain(ChainBase):
         刷新站点最新资源
         """
         # 所有订阅
-        subscribes = self.subscribehelper.list('R')
+        subscribes = self.subscribeoper.list('R')
         if not subscribes:
             # 没有订阅不运行
             return
@@ -428,7 +438,7 @@ class SubscribeChain(ChainBase):
             logger.warn('没有缓存资源，无法匹配订阅')
             return
         # 所有订阅
-        subscribes = self.subscribehelper.list('R')
+        subscribes = self.subscribeoper.list('R')
         # 遍历订阅
         for subscribe in subscribes:
             logger.info(f'开始匹配订阅，标题：{subscribe.name} ...')
@@ -448,7 +458,7 @@ class SubscribeChain(ChainBase):
                 exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
                 if exist_flag:
                     logger.info(f'{mediainfo.title_year} 媒体库中已存在，完成订阅')
-                    self.subscribehelper.delete(subscribe.id)
+                    self.subscribeoper.delete(subscribe.id)
                     # 发送通知
                     self.post_message(Notification(mtype=NotificationType.Subscribe,
                                                    title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
@@ -610,7 +620,7 @@ class SubscribeChain(ChainBase):
             # 合并已下载集
             note = list(set(note).union(set(episodes)))
             # 更新订阅
-            self.subscribehelper.update(subscribe.id, {
+            self.subscribeoper.update(subscribe.id, {
                 "note": json.dumps(note)
             })
 
@@ -643,12 +653,12 @@ class SubscribeChain(ChainBase):
                 logger.info(f'{mediainfo.title_year} 季 {season} 更新缺失集数为{len(left_episodes)} ...')
                 if update_date:
                     # 同时更新最后时间
-                    self.subscribehelper.update(subscribe.id, {
+                    self.subscribeoper.update(subscribe.id, {
                         "lack_episode": len(left_episodes),
                         "last_update": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     })
                 else:
-                    self.subscribehelper.update(subscribe.id, {
+                    self.subscribeoper.update(subscribe.id, {
                         "lack_episode": len(left_episodes)
                     })
 
@@ -656,7 +666,7 @@ class SubscribeChain(ChainBase):
         """
         查询订阅并发送消息
         """
-        subscribes = self.subscribehelper.list()
+        subscribes = self.subscribeoper.list()
         if not subscribes:
             self.post_message(Notification(channel=channel,
                                            title='没有任何订阅！', userid=userid))
@@ -695,13 +705,13 @@ class SubscribeChain(ChainBase):
             if not arg_str.isdigit():
                 continue
             subscribe_id = int(arg_str)
-            subscribe = self.subscribehelper.get(subscribe_id)
+            subscribe = self.subscribeoper.get(subscribe_id)
             if not subscribe:
                 self.post_message(Notification(channel=channel,
                                                title=f"订阅编号 {subscribe_id} 不存在！", userid=userid))
                 return
             # 删除订阅
-            self.subscribehelper.delete(subscribe_id)
+            self.subscribeoper.delete(subscribe_id)
         # 重新发送消息
         self.remote_list(channel, userid)
 

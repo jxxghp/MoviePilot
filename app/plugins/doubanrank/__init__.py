@@ -57,9 +57,12 @@ class DoubanRank(_PluginBase):
     }
     _enabled = False
     _cron = ""
+    _onlyonce = False
     _rss_addrs = []
     _ranks = []
     _vote = 0
+    _clear = False
+    _clearflag = False
 
     def init_plugin(self, config: dict = None):
         self.downloadchain = DownloadChain()
@@ -68,6 +71,7 @@ class DoubanRank(_PluginBase):
         if config:
             self._enabled = config.get("enabled")
             self._cron = config.get("cron")
+            self._onlyonce = config.get("onlyonce")
             self._vote = float(config.get("vote")) if config.get("vote") else 0
             rss_addrs = config.get("rss_addrs")
             if rss_addrs:
@@ -78,12 +82,13 @@ class DoubanRank(_PluginBase):
             else:
                 self._rss_addrs = []
             self._ranks = config.get("ranks") or []
+            self._clear = config.get("clear")
 
         # 停止现有任务
         self.stop_service()
 
         # 启动服务
-        if self._enabled:
+        if self._enabled or self._onlyonce:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             if self._cron:
                 logger.info(f"豆瓣榜单订阅服务启动，周期：{self._cron}")
@@ -99,6 +104,16 @@ class DoubanRank(_PluginBase):
                                         trigger=CronTrigger.from_crontab("0 8 * * *"),
                                         name="豆瓣榜单订阅")
                 logger.info("豆瓣榜单订阅服务启动，周期：每天 08:00")
+
+            if self._onlyonce or self._clear:
+                # 关闭一次性开关
+                self._onlyonce = False
+                # 记录缓存清理标志
+                self._clearflag = self._clear
+                # 关闭清理缓存
+                self._clear = False
+                # 保存配置
+                self.__update_config()
 
             if self._scheduler.get_jobs():
                 # 启动服务
@@ -126,7 +141,8 @@ class DoubanRank(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12
+                                    'cols': 12,
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -134,6 +150,22 @@ class DoubanRank(_PluginBase):
                                         'props': {
                                             'model': 'enabled',
                                             'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
                                         }
                                     }
                                 ]
@@ -224,15 +256,38 @@ class DoubanRank(_PluginBase):
                                 ]
                             }
                         ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'clear',
+                                            'label': '清理历史记录',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 ]
             }
         ], {
             "enabled": False,
             "cron": "",
+            "onlyonce": False,
             "vote": "",
             "ranks": [],
             "rss_addrs": "",
+            "clear": False
         }
 
     def get_page(self) -> List[dict]:
@@ -353,6 +408,20 @@ class DoubanRank(_PluginBase):
         except Exception as e:
             print(str(e))
 
+    def __update_config(self):
+        """
+        列新配置
+        """
+        self.update_config({
+            "enabled": self._enabled,
+            "cron": self._cron,
+            "onlyonce": self._onlyonce,
+            "vote": self._vote,
+            "ranks": self._ranks,
+            "rss_addrs": self._rss_addrs,
+            "clear": self._clear
+        })
+
     def __refresh_rss(self):
         """
         刷新RSS
@@ -366,7 +435,10 @@ class DoubanRank(_PluginBase):
             logger.info(f"共 {len(addr_list)} 个榜单RSS地址需要刷新")
 
         # 读取历史记录
-        history: List[dict] = self.get_data('history') or []
+        if self._clearflag:
+            history = []
+        else:
+            history: List[dict] = self.get_data('history') or []
 
         for addr in addr_list:
             if not addr:
@@ -440,7 +512,8 @@ class DoubanRank(_PluginBase):
 
         # 保存历史记录
         self.save_data('history', history)
-
+        # 缓存只清理一次
+        self._clearflag = False
         logger.info(f"所有榜单RSS刷新完成")
 
     @staticmethod
