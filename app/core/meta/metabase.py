@@ -30,7 +30,7 @@ class MetaBase(object):
     # 年份
     year: Optional[str] = None
     # 总季数
-    total_seasons: int = 0
+    total_season: int = 0
     # 识别的开始季 数字
     begin_season: Optional[int] = None
     # 识别的结束季 数字
@@ -115,13 +115,13 @@ class MetaBase(object):
                     return
                 if self.begin_season is None and isinstance(begin_season, int):
                     self.begin_season = begin_season
-                    self.total_seasons = 1
+                    self.total_season = 1
                 if self.begin_season is not None \
                         and self.end_season is None \
                         and isinstance(end_season, int) \
                         and end_season != self.begin_season:
                     self.end_season = end_season
-                    self.total_seasons = (self.end_season - self.begin_season) + 1
+                    self.total_season = (self.end_season - self.begin_season) + 1
                 self.type = MediaType.TV
                 self._subtitle_flag = True
             # 第x集
@@ -179,12 +179,12 @@ class MetaBase(object):
                     season_all = season_all_str.group(2)
                 if season_all and self.begin_season is None and self.begin_episode is None:
                     try:
-                        self.total_seasons = int(cn2an.cn2an(season_all.strip(), mode='smart'))
+                        self.total_season = int(cn2an.cn2an(season_all.strip(), mode='smart'))
                     except Exception as err:
                         print(str(err))
                         return
                     self.begin_season = 1
-                    self.end_season = self.total_seasons
+                    self.end_season = self.total_season
                     self.type = MediaType.TV
                     self._subtitle_flag = True
 
@@ -466,8 +466,10 @@ class MetaBase(object):
         if not self.end_season:
             self.end_season = meta.end_season
         # 总季数
-        if self.begin_season:
-            self.total_seasons = meta.total_seasons
+        if self.begin_season and self.end_season:
+            self.total_season = (self.end_season - self.begin_season) + 1
+        elif self.begin_season:
+            self.total_season = 1
         # 开始集
         if not self.begin_episode:
             self.begin_episode = meta.begin_episode
@@ -475,8 +477,10 @@ class MetaBase(object):
         if not self.end_episode:
             self.end_episode = meta.end_episode
         # 总集数
-        if not self.total_episode:
-            self.total_episode = meta.total_episode
+        if self.begin_episode and self.end_episode:
+            self.total_episode = (self.end_episode - self.begin_episode) + 1
+        elif self.begin_episode:
+            self.total_episode = 1
         # 版本
         if not self.resource_type:
             self.resource_type = meta.resource_type

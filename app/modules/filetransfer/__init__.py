@@ -426,11 +426,17 @@ class FileTransferModule(_ModuleBase):
                         file_meta = MetaInfo(transfer_file.stem)
                         # 合并元数据
                         file_meta.merge(meta)
-                        # 结束季为空
-                        file_meta.end_season = None
-                        # 总季数为1
-                        if file_meta.begin_season:
-                            file_meta.total_seasons = 1
+
+                    # 文件结束季为空
+                    file_meta.end_season = None
+                    # 文件总季数为1
+                    if file_meta.total_season:
+                        file_meta.total_season = 1
+                    # 文件不可能有多集
+                    if file_meta.total_episode > 2:
+                        file_meta.total_episode = 1
+                        file_meta.end_episode = None
+
                     # 目的文件名
                     new_file = self.get_rename_path(
                         path=target_dir,

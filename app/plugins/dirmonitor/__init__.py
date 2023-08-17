@@ -186,11 +186,6 @@ class DirMonitor(_PluginBase):
                     file_meta = MetaInfo(title=file_path.stem)
                     # 合并元数据
                     file_meta.merge(meta)
-                    # 结束季为空
-                    file_meta.end_season = None
-                    # 总季数为1
-                    if file_meta.begin_season:
-                        file_meta.total_seasons = 1
 
                     if not file_meta.name:
                         logger.warn(f"{file_path.name} 无法识别有效信息")

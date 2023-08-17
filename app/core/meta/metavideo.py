@@ -347,14 +347,14 @@ class MetaVideo(MetaBase):
                     se = int(se)
                 if self.begin_season is None:
                     self.begin_season = se
-                    self.total_seasons = 1
+                    self.total_season = 1
                 else:
                     if se > self.begin_season:
                         self.end_season = se
-                        self.total_seasons = (self.end_season - self.begin_season) + 1
-                        if self.isfile and self.total_seasons > 1:
+                        self.total_season = (self.end_season - self.begin_season) + 1
+                        if self.isfile and self.total_season > 1:
                             self.end_season = None
-                            self.total_seasons = 1
+                            self.total_season = 1
         elif token.isdigit():
             try:
                 int(token)
@@ -364,7 +364,7 @@ class MetaVideo(MetaBase):
                     and self.begin_season is None \
                     and len(token) < 3:
                 self.begin_season = int(token)
-                self.total_seasons = 1
+                self.total_season = 1
                 self._last_token_type = "season"
                 self._stop_name_flag = True
                 self._continue_flag = False

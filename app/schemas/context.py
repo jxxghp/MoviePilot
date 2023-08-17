@@ -26,7 +26,7 @@ class MetaInfo(BaseModel):
     # 年份
     year: Optional[str] = None
     # 总季数
-    total_seasons: Optional[int] = 0
+    total_season: Optional[int] = 0
     # 识别的开始季 数字
     begin_season: Optional[int] = None
     # 识别的结束季 数字
