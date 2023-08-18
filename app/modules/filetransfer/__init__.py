@@ -49,7 +49,7 @@ class FileTransferModule(_ModuleBase):
                                    mediainfo=mediainfo,
                                    transfer_type=transfer_type,
                                    target_dir=target_path,
-                                   file_meta=meta)
+                                   in_meta=meta)
 
     @staticmethod
     def __transfer_command(file_item: Path, target_file: Path, transfer_type: str) -> int:
@@ -326,7 +326,7 @@ class FileTransferModule(_ModuleBase):
                        mediainfo: MediaInfo,
                        transfer_type: str,
                        target_dir: Path = None,
-                       file_meta: MetaBase = None
+                       in_meta: MetaBase = None
                        ) -> TransferInfo:
         """
         识别并转移一个文件、多个文件或者目录
@@ -334,7 +334,7 @@ class FileTransferModule(_ModuleBase):
         :param mediainfo: 媒体信息
         :param target_dir: 目的文件夹，非空的转移到该文件夹，为空时则按类型转移到配置文件中的媒体库文件夹
         :param transfer_type: 文件转移方式
-        :param file_meta：预识别元数，为空则重新识别
+        :param in_meta：预识别元数，为空则重新识别
         :return: TransferInfo、错误信息
         """
         # 检查目录路径
@@ -410,11 +410,11 @@ class FileTransferModule(_ModuleBase):
             transfer_files: List[Path] = SystemUtils.list_files_with_extensions(in_path, settings.RMT_MEDIAEXT)
             if len(transfer_files) == 0:
                 return TransferInfo(message=f"{in_path} 目录下没有找到可转移的文件")
-            if not file_meta:
+            if not in_meta:
                 # 识别目录名称，不包括后缀
                 meta = MetaInfo(in_path.stem)
             else:
-                meta = file_meta
+                meta = in_meta
             # 目的路径
             new_path = target_dir / (self.get_rename_path(
                 template_string=rename_format,
@@ -423,11 +423,13 @@ class FileTransferModule(_ModuleBase):
             # 转移所有文件
             for transfer_file in transfer_files:
                 try:
-                    if not file_meta:
+                    if not in_meta:
                         # 识别文件元数据，不包含后缀
                         file_meta = MetaInfo(transfer_file.stem)
                         # 合并元数据
                         file_meta.merge(meta)
+                    else:
+                        file_meta = in_meta
 
                     # 文件结束季为空
                     file_meta.end_season = None
