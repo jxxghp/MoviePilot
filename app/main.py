@@ -68,6 +68,8 @@ def start_module():
     """
     # 虚伪显示
     DisplayHelper()
+    # 站点管理
+    SitesHelper()
     # 加载模块
     ModuleManager()
     # 加载插件
@@ -76,8 +78,6 @@ def start_module():
     Scheduler()
     # 启动事件消费
     Command()
-    # 站点管理
-    SitesHelper()
     # 初始化路由
     init_routers()
 
