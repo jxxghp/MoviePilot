@@ -410,14 +410,16 @@ class FileTransferModule(_ModuleBase):
             transfer_files: List[Path] = SystemUtils.list_files_with_extensions(in_path, settings.RMT_MEDIAEXT)
             if len(transfer_files) == 0:
                 return TransferInfo(message=f"{in_path} 目录下没有找到可转移的文件")
-            # 识别目录名称，不包括后缀
-            meta = MetaInfo(in_path.stem)
+            if not file_meta:
+                # 识别目录名称，不包括后缀
+                meta = MetaInfo(in_path.stem)
+            else:
+                meta = file_meta
             # 目的路径
-            new_path = target_dir / self.get_rename_path(
+            new_path = target_dir / (self.get_rename_path(
                 template_string=rename_format,
                 rename_dict=self.__get_naming_dict(meta=meta,
-                                                   mediainfo=mediainfo)
-            ).parents[-2].name
+                                                   mediainfo=mediainfo)).parents[-2].name)
             # 转移所有文件
             for transfer_file in transfer_files:
                 try:
@@ -445,8 +447,7 @@ class FileTransferModule(_ModuleBase):
                                                            mediainfo=mediainfo,
                                                            file_ext=transfer_file.suffix)
                     )
-                    # 重新修正目的路径
-                    new_path = new_path.parents[-2].name
+
                     # 判断是否要覆盖
                     overflag = False
                     if new_file.exists():
