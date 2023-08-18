@@ -61,7 +61,7 @@ class DownloadChain(ChainBase):
         self.post_message(Notification(
             channel=channel,
             mtype=NotificationType.Download,
-            title=f"{mediainfo.title_year}"
+            title=f"{mediainfo.title_year} "
                   f"{meta.season_episode} 开始下载",
             text=msg_text,
             image=mediainfo.get_message_image(),
