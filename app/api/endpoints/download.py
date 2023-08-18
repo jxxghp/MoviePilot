@@ -92,7 +92,7 @@ def exists(media_in: schemas.MediaInfo,
     return []
 
 
-@router.get("/{hashString}/start", summary="开始任务", response_model=schemas.Response)
+@router.get("/start/{hashString}", summary="开始任务", response_model=schemas.Response)
 def start_downloading(
         hashString: str,
         db: Session = Depends(get_db),
@@ -104,7 +104,7 @@ def start_downloading(
     return schemas.Response(success=True if ret else False)
 
 
-@router.get("/{hashString}/stop", summary="暂停任务", response_model=schemas.Response)
+@router.get("/stop/{hashString}", summary="暂停任务", response_model=schemas.Response)
 def stop_downloading(
         hashString: str,
         db: Session = Depends(get_db),
