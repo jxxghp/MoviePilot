@@ -28,7 +28,7 @@ class IndexerModule(_ModuleBase):
         return "INDEXER", "builtin"
 
     def search_torrents(self, site: CommentedMap, mediainfo: MediaInfo = None,
-                        keyword: str = None, page: int = None) -> List[TorrentInfo]:
+                        keyword: str = None, page: int = 0) -> List[TorrentInfo]:
         """
         搜索一个站点
         :param mediainfo:  识别的媒体信息
@@ -102,7 +102,7 @@ class IndexerModule(_ModuleBase):
                         keyword: str = None,
                         imdbid: str = None,
                         mtype: MediaType = None,
-                        page: int = None) -> (bool, List[dict]):
+                        page: int = 0) -> (bool, List[dict]):
         """
         根据关键字搜索单个站点
         :param: indexer: 站点配置

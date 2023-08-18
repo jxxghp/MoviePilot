@@ -69,8 +69,8 @@ class TorrentSpider:
                  indexer: CommentedMap,
                  keyword: [str, list] = None,
                  imdbid: str = None,
-                 page=None,
-                 referer=None,
+                 page: int = 0,
+                 referer: str = None,
                  mtype: MediaType = None):
         """
         设置查询参数
