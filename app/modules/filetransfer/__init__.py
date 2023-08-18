@@ -572,12 +572,11 @@ class FileTransferModule(_ModuleBase):
         if in_path:
             for path in dest_paths:
                 try:
-                    relative = Path(path).relative_to(in_path).as_posix()
-                    if relative.startswith("..") or len(relative) > max_length:
+                    relative = Path(in_path).relative_to(path).as_posix()
+                    if len(relative) > max_length:
                         max_length = len(relative)
                         target_path = path
                 except Exception as e:
-                    logger.debug(f"计算目标路径时出错：{e}")
                     continue
             if target_path:
                 return Path(target_path)
