@@ -509,7 +509,7 @@ class FileTransferModule(_ModuleBase):
             # 识别名称
             "name": meta.name,
             # 年份
-            "year": mediainfo.year,
+            "year": mediainfo.year or meta.year,
             # 版本
             "edition": meta.edition,
             # 分辨率
