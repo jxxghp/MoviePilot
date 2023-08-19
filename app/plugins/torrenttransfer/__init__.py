@@ -583,16 +583,16 @@ class TorrentTransfer(_PluginBase):
                         # 尝试补充trackers
                         try:
                             # 解析fastresume文件
-                            torrent_fastresume = Bencode.read_file(fastresume_file, byte_keys={'pieces'})
+                            torrent_fastresume = Bencode.read_file(fastresume_file)
                             # 读取trackers
                             fastresume_trackers = torrent_fastresume.get("trackers")
                             if fastresume_trackers:
                                 # 重新赋值
-                                torrent_main.announce_urls = fastresume_trackers
+                                torrent_main.announce_urls = fastresume_trackers[0]
                                 # 替换种子文件路径
                                 torrent_file = settings.TEMP_PATH / f"{hash_item.get('hash')}.torrent"
                                 # 编码并保存到临时文件
-                                Torrent.to_file(torrent_file)
+                                torrent_main.to_file(torrent_file)
                         except Exception as err:
                             logger.error(f"解析fastresume文件 {fastresume_file} 失败：{err}")
                             fail += 1
