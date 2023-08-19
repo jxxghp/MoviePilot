@@ -1,5 +1,6 @@
 import datetime
 import re
+import time
 from pathlib import Path
 from threading import Lock
 from typing import Optional, Any, List, Dict, Tuple
@@ -12,11 +13,12 @@ from app.chain.download import DownloadChain
 from app.chain.search import SearchChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
-from app.core.context import MediaInfo
+from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.metainfo import MetaInfo
 from app.helper.rss import RssHelper
 from app.log import logger
 from app.plugins import _PluginBase
+from app.schemas.types import SystemConfigKey, MediaType
 
 lock = Lock()
 
@@ -25,7 +27,7 @@ class RssSubscribe(_PluginBase):
     # 插件名称
     plugin_name = "RSS订阅"
     # 插件描述
-    plugin_desc = "定时刷新RSS报文，识别报文内容并自动添加订阅。"
+    plugin_desc = "定时刷新RSS报文，识别内容后添加订阅或直接下载。"
     # 插件图标
     plugin_icon = "rss.png"
     # 主题色
@@ -60,8 +62,11 @@ class RssSubscribe(_PluginBase):
     _include: str = ""
     _exclude: str = ""
     _proxy: bool = False
+    _filter: bool = False
     _clear: bool = False
     _clearflag: bool = False
+    _action: str = "subscribe"
+    _save_path: str = ""
 
     def init_plugin(self, config: dict = None):
         self.rsshelper = RssHelper()
@@ -82,7 +87,10 @@ class RssSubscribe(_PluginBase):
             self._include = config.get("include")
             self._exclude = config.get("exclude")
             self._proxy = config.get("proxy")
+            self._filter = config.get("filter")
             self._clear = config.get("clear")
+            self._action = config.get("action")
+            self._save_path = config.get("save_path")
 
         if self._enabled or self._onlyonce:
 
@@ -211,7 +219,8 @@ class RssSubscribe(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12
+                                    'cols': 12,
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -220,6 +229,26 @@ class RssSubscribe(_PluginBase):
                                             'model': 'cron',
                                             'label': '执行周期',
                                             'placeholder': '5位cron表达式，留空自动'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'action',
+                                            'label': '动作',
+                                            'items': [
+                                                {'title': '订阅', 'value': 'subscribe'},
+                                                {'title': '下载', 'value': 'download'}
+                                            ]
                                         }
                                     }
                                 ]
@@ -240,7 +269,7 @@ class RssSubscribe(_PluginBase):
                                         'props': {
                                             'model': 'address',
                                             'label': 'RSS地址',
-                                            'rows': 5,
+                                            'rows': 3,
                                             'placeholder': '每行一个RSS地址'
                                         }
                                     }
@@ -290,11 +319,33 @@ class RssSubscribe(_PluginBase):
                     {
                         'component': 'VRow',
                         'content': [
+
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'save_path',
+                                            'label': '保存目录',
+                                            'placeholder': '下载时有效，留空自动'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
                             {
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -305,12 +356,27 @@ class RssSubscribe(_PluginBase):
                                         }
                                     }
                                 ]
+                            }, {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'filter',
+                                            'label': '使用过滤规则',
+                                        }
+                                    }
+                                ]
                             },
                             {
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -335,7 +401,10 @@ class RssSubscribe(_PluginBase):
             "include": "",
             "exclude": "",
             "proxy": False,
-            "clear": False
+            "clear": False,
+            "filter": False,
+            "action": "subscribe",
+            "save_path": ""
         }
 
     def get_page(self) -> List[dict]:
@@ -480,11 +549,17 @@ class RssSubscribe(_PluginBase):
             if not results:
                 logger.error(f"未获取到RSS数据：{url}")
                 return
+            # 过滤规则
+            filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules)
             # 解析数据
             for result in results:
                 try:
                     title = result.get("title")
                     description = result.get("description")
+                    enclosure = result.get("enclosure")
+                    link = result.get("link")
+                    sise = result.get("sise")
+                    pubdate = result.get("pubdate")
                     # 检查是否处理过
                     if not title or title in [h.get("key") for h in history]:
                         continue
@@ -506,25 +581,68 @@ class RssSubscribe(_PluginBase):
                     if not mediainfo:
                         logger.warn(f'未识别到媒体信息，标题：{title}')
                         continue
+                    # 种子
+                    torrentinfo = TorrentInfo(
+                        title=title,
+                        description=description,
+                        enclosure=enclosure,
+                        page_url=link,
+                        size=sise,
+                        pubdate=time.strftime("%Y-%m-%d %H:%M:%S", pubdate) if pubdate else None,
+                    )
+                    # 过滤种子
+                    if self._filter:
+                        result = self.chain.filter_torrents(
+                            rule_string=filter_rule,
+                            torrent_list=[torrentinfo]
+                        )
+                        if not result:
+                            logger.info(f"{title} {description} 不匹配过滤规则")
+                            continue
                     # 查询缺失的媒体信息
                     exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
                     if exist_flag:
                         logger.info(f'{mediainfo.title_year} 媒体库中已存在')
                         continue
                     else:
-                        # 检查是否在订阅中
-                        subflag = self.subscribechain.exists(mediainfo=mediainfo, meta=meta)
-                        if subflag:
-                            logger.info(f'{mediainfo.title_year} {meta.season} 正在订阅中')
-                            continue
-                        # 添加订阅
-                        self.subscribechain.add(title=mediainfo.title,
-                                                year=mediainfo.year,
-                                                mtype=mediainfo.type,
-                                                tmdbid=mediainfo.tmdb_id,
-                                                season=meta.begin_season,
-                                                exist_ok=True,
-                                                username="RSS订阅")
+                        if self._action == "download":
+                            if mediainfo.type == MediaType.TV:
+                                if no_exists:
+                                    exist_info = no_exists.get(mediainfo.tmdb_id)
+                                    season_info = exist_info.get(meta.begin_season or 1)
+                                    if not season_info:
+                                        logger.info(f'{mediainfo.title_year} {meta.season} 己存在')
+                                        continue
+                                    if (season_info.episodes
+                                            and not set(meta.episode_list).issubset(set(season_info.episodes))):
+                                        logger.info(f'{mediainfo.title_year} {meta.season_episode} 己存在')
+                                        continue
+                            # 添加下载
+                            result = self.downloadchain.download_single(
+                                context=Context(
+                                    meta_info=meta,
+                                    media_info=mediainfo,
+                                    torrent_info=torrentinfo,
+                                ),
+                                save_path=self._save_path
+                            )
+                            if not result:
+                                logger.error(f'{title} 下载失败')
+                                continue
+                        else:
+                            # 检查是否在订阅中
+                            subflag = self.subscribechain.exists(mediainfo=mediainfo, meta=meta)
+                            if subflag:
+                                logger.info(f'{mediainfo.title_year} {meta.season} 正在订阅中')
+                                continue
+                            # 添加订阅
+                            self.subscribechain.add(title=mediainfo.title,
+                                                    year=mediainfo.year,
+                                                    mtype=mediainfo.type,
+                                                    tmdbid=mediainfo.tmdb_id,
+                                                    season=meta.begin_season,
+                                                    exist_ok=True,
+                                                    username="RSS订阅")
                     # 存储历史记录
                     history.append({
                         "title": f"{mediainfo.title} {meta.season}",
