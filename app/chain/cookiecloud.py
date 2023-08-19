@@ -10,12 +10,15 @@ from app.chain.site import SiteChain
 from app.core.config import settings
 from app.db.siteicon_oper import SiteIconOper
 from app.db.site_oper import SiteOper
+from app.helper.browser import PlaywrightHelper
+from app.helper.cloudflare import under_challenge
 from app.helper.cookiecloud import CookieCloudHelper
 from app.helper.message import MessageHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType, MessageChannel
 from app.utils.http import RequestUtils
+from app.utils.site import SiteUtils
 
 
 class CookieCloudChain(ChainBase):
@@ -65,12 +68,13 @@ class CookieCloudChain(ChainBase):
         # 保存Cookie或新增站点
         _update_count = 0
         _add_count = 0
+        _fail_count = 0
         for domain, cookie in cookies.items():
             # 获取站点信息
             indexer = self.siteshelper.get_indexer(domain)
-            # 检查站点连通性
-            status, msg = self.sitechain.test(domain)
             if self.siteoper.exists(domain):
+                # 检查站点连通性
+                status, msg = self.sitechain.test(domain)
                 # 更新站点Cookie
                 if status:
                     logger.info(f"站点【{indexer.get('name')}】连通性正常，不同步CookieCloud数据")
@@ -80,10 +84,25 @@ class CookieCloudChain(ChainBase):
                 _update_count += 1
             elif indexer:
                 # 新增站点
-                if not status:
-                    logger.warn(f"站点【{indexer.get('name')}】无法登录，"
-                                f"可能原因：没有该站点账号/站点处于关闭状态/Cookie已失效，暂不新增站点，"
-                                f"下次同步将偿试重新添加，也可手动添加该站点")
+                res = RequestUtils(cookies=cookie,
+                                   ua=settings.USER_AGENT
+                                   ).get_res(url=indexer.get("domain"))
+                if res and res.status_code in [200, 500, 403]:
+                    if not indexer.get("public") and not SiteUtils.is_logged_in(res.text):
+                        _fail_count += 1
+                        if under_challenge(res.text):
+                            logger.warn(f"站点 {indexer.get('name')} 被Cloudflare防护，无法登录，无法添加站点")
+                            continue
+                        logger.warn(
+                            f"站点 {indexer.get('name')} 登录失败，没有该站点账号或Cookie已失效，无法添加站点")
+                        continue
+                elif res is not None:
+                    _fail_count += 1
+                    logger.warn(f"站点 {indexer.get('name')} 连接状态码：{res.status_code}，无法添加站点")
+                    continue
+                else:
+                    _fail_count += 1
+                    logger.warn(f"站点 {indexer.get('name')} 连接失败，无法添加站点")
                     continue
                 self.siteoper.add(name=indexer.get("name"),
                                   url=indexer.get("domain"),
@@ -109,6 +128,8 @@ class CookieCloudChain(ChainBase):
                         logger.warn(f"缓存站点 {indexer.get('name')} 图标失败")
         # 处理完成
         ret_msg = f"更新了{_update_count}个站点，新增了{_add_count}个站点"
+        if _fail_count > 0:
+            ret_msg += f"，{_fail_count}个站点添加失败，下次同步时将重试，也可以手动添加"
         if manual:
             self.message.put(f"CookieCloud同步成功, {ret_msg}")
         logger.info(f"CookieCloud同步成功：{ret_msg}")
