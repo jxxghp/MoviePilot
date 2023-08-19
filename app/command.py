@@ -103,6 +103,11 @@ class Command(metaclass=Singleton):
                 "func": TransferChain().process,
                 "description": "下载文件整理",
                 "data": {}
+            },
+            "/redo": {
+                "func": TransferChain().remote_transfer,
+                "description": "手动整理",
+                "data": {}
             }
         }
         # 汇总插件命令
