@@ -1,6 +1,11 @@
 name: MoviePilot Docker
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - version.py
 
 jobs:
   build:
@@ -55,3 +60,16 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/moviepilot:latest
             ${{ secrets.DOCKER_USERNAME }}/moviepilot:${{ env.app_version }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      -
+        name: Create Release
+        id: create_release
+        uses: actions/create-release@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ env.app_version }}
+          release_name: v${{ env.app_version }}
+          body: ${{ github.event.commits[0].message }}
+          draft: false
+          prerelease: false
