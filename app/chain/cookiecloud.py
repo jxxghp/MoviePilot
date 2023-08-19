@@ -68,9 +68,10 @@ class CookieCloudChain(ChainBase):
         for domain, cookie in cookies.items():
             # 获取站点信息
             indexer = self.siteshelper.get_indexer(domain)
+            # 检查站点连通性
+            status, msg = self.sitechain.test(domain)
             if self.siteoper.exists(domain):
-                # 检查站点连通性
-                status, msg = self.sitechain.test(domain)
+                # 更新站点Cookie
                 if status:
                     logger.info(f"站点【{indexer.get('name')}】连通性正常，不同步CookieCloud数据")
                     continue
@@ -79,6 +80,11 @@ class CookieCloudChain(ChainBase):
                 _update_count += 1
             elif indexer:
                 # 新增站点
+                if not status:
+                    logger.warn(f"站点【{indexer.get('name')}】无法登录，"
+                                f"可能原因：没有该站点账号/站点处于关闭状态/Cookie已失效，暂不新增站点，"
+                                f"下次同步将偿试重新添加，也可手动添加该站点")
+                    continue
                 self.siteoper.add(name=indexer.get("name"),
                                   url=indexer.get("domain"),
                                   domain=domain,
