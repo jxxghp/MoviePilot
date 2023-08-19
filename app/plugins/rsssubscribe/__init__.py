@@ -486,7 +486,7 @@ class RssSubscribe(_PluginBase):
                     title = result.get("title")
                     description = result.get("description")
                     # 检查是否处理过
-                    if not title or title in [h.get("title") for h in history]:
+                    if not title or title in [h.get("key") for h in history]:
                         continue
                     # 检查规则
                     if self._include and not re.search(r"%s" % self._include,
@@ -515,7 +515,7 @@ class RssSubscribe(_PluginBase):
                         # 检查是否在订阅中
                         subflag = self.subscribechain.exists(mediainfo=mediainfo, meta=meta)
                         if subflag:
-                            logger.info(f'{mediainfo.title_year}{meta.season} 正在订阅中')
+                            logger.info(f'{mediainfo.title_year} {meta.season} 正在订阅中')
                             continue
                         # 添加订阅
                         self.subscribechain.add(title=mediainfo.title,
@@ -528,6 +528,7 @@ class RssSubscribe(_PluginBase):
                     # 存储历史记录
                     history.append({
                         "title": f"{mediainfo.title} {meta.season}",
+                        "key": f"{title}",
                         "type": mediainfo.type.value,
                         "year": mediainfo.year,
                         "poster": mediainfo.get_poster_image(),
