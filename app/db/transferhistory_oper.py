@@ -10,6 +10,13 @@ class TransferHistoryOper(DbOper):
     转移历史管理
     """
 
+    def get(self, historyid: int) -> Any:
+        """
+        获取转移历史
+        :param historyid: 转移历史id
+        """
+        return TransferHistory.get(self._db, historyid)
+
     def get_by_title(self, title: str) -> Any:
         """
         按标题查询转移记录

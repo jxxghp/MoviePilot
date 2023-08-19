@@ -3,7 +3,7 @@ import re
 import shutil
 import threading
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory
+from app.db.models.transferhistory import TransferHistory
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.progress import ProgressHelper
 from app.log import logger
@@ -238,6 +239,35 @@ class TransferChain(ChainBase):
             self.progress.end(ProgressKey.FileTransfer)
             logger.info("下载器文件转移执行完成")
             return True
+
+    def re_transfer(self, logid: int, mtype: MediaType, tmdbid: int) -> Tuple[bool, str]:
+        """
+        根据历史记录，重新识别转移
+        :param logid: 历史记录ID
+        :param mtype: 媒体类型
+        :param tmdbid: TMDB ID
+        """
+        # 查询历史记录
+        history: TransferHistory = self.transferhis.get(logid)
+        if not history:
+            logger.error(f"历史记录不存在，ID：{logid}")
+            return False, "历史记录不存在"
+        if history.download_hash:
+            # 有下载记录，按下载记录重新转移
+            torrents: Optional[List[TransferTorrent]] = self.list_torrents(hashs=history.download_hash)
+            if not torrents:
+                return False, f"没有获取到种子，hash：{history.download_hash}"
+        else:
+            # 没有下载记录，按源目录路径重新转移
+            src_path = Path(history.src)
+            if not src_path.exists():
+                return False, f"源目录不存在：{src_path}"
+            meta = MetaInfo(title=src_path.stem)
+            if not meta.name:
+                return False, f"未识别到元数据，标题：{src_path.stem}"
+        # 查询媒体信息
+        mediainfo = self.recognize_media(mtype=mtype, tmdbid=tmdbid)
+        # TODO 重新执行转移
 
     def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo, transferinfo: TransferInfo):
         """
