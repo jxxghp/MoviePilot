@@ -13,6 +13,7 @@ from app.db import get_db
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.systemconfig_oper import SystemConfigOper
+from app.helper.sites import SitesHelper
 from app.schemas.types import SystemConfigKey
 from app.utils.string import StringUtils
 
@@ -33,6 +34,32 @@ def read_sites(db: Session = Depends(get_db),
     获取站点列表
     """
     return Site.list_order_by_pri(db)
+
+
+@router.post("/", summary="新增站点", response_model=schemas.Response)
+def update_site(
+        *,
+        db: Session = Depends(get_db),
+        site_in: schemas.Site,
+        _: schemas.TokenPayload = Depends(verify_token)
+) -> Any:
+    """
+    新增站点
+    """
+    if not site_in.url:
+        return schemas.Response(success=False, message="站点地址不能为空")
+    domain = StringUtils.get_url_domain(site_in.url)
+    site_info = SitesHelper().get_indexer(domain)
+    if not site_info:
+        return schemas.Response(success=False, message="该站点不支持")
+    if Site.get_by_domain(db, domain):
+        return schemas.Response(success=False, message=f"{domain} 站点己存在")
+    # 保存站点信息
+    site_in.domain = domain
+    site_in.name = site_info.get("name")
+    site = Site(**site_in.dict())
+    site.create(db)
+    return schemas.Response(success=True)
 
 
 @router.put("/", summary="更新站点", response_model=schemas.Response)
