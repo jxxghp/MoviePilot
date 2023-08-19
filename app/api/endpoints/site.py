@@ -57,6 +57,7 @@ def update_site(
     # 保存站点信息
     site_in.domain = domain
     site_in.name = site_info.get("name")
+    site_in.id = None
     site = Site(**site_in.dict())
     site.create(db)
     return schemas.Response(success=True)
