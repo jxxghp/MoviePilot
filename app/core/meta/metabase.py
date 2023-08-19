@@ -459,28 +459,18 @@ class MetaBase(object):
         # 年份
         if not self.year:
             self.year = meta.year
-        # 开始季
-        if not self.begin_season:
+        # 季
+        if (self.type == MediaType.TV
+                and not self.season):
             self.begin_season = meta.begin_season
-        # 结束季
-        if not self.end_season:
             self.end_season = meta.end_season
-        # 总季数
-        if self.begin_season and self.end_season:
-            self.total_season = (self.end_season - self.begin_season) + 1
-        elif self.begin_season:
-            self.total_season = 1
+            self.total_season = meta.total_season
         # 开始集
-        if not self.begin_episode:
+        if (self.type == MediaType.TV
+                and not self.episode):
             self.begin_episode = meta.begin_episode
-        # 结束集
-        if not self.end_episode:
             self.end_episode = meta.end_episode
-        # 总集数
-        if self.begin_episode and self.end_episode:
-            self.total_episode = (self.end_episode - self.begin_episode) + 1
-        elif self.begin_episode:
-            self.total_episode = 1
+            self.total_episode = meta.total_episode
         # 版本
         if not self.resource_type:
             self.resource_type = meta.resource_type
