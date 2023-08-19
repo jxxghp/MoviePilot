@@ -49,3 +49,43 @@ class DownloadHistory(Base):
     @staticmethod
     def get_by_path(db: Session, path: str):
         return db.query(DownloadHistory).filter(DownloadHistory.path == path).first()
+
+    @staticmethod
+    def get_last_by(db: Session, mtype: str = None, title: str = None, year: int = None, season: str = None,
+                    episode: str = None, tmdbid: str = None):
+        """
+        据tmdbid、season、season_episode查询转移记录
+        """
+        if tmdbid and not season and not episode:
+            return db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid).order_by(
+                DownloadHistory.id.desc()).first()
+        if tmdbid and season and not episode:
+            return db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid,
+                                                    DownloadHistory.seasons == season).order_by(
+                DownloadHistory.id.desc()).first()
+        if tmdbid and season and episode:
+            return db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid,
+                                                    DownloadHistory.seasons == season,
+                                                    DownloadHistory.episodes == episode).order_by(
+                DownloadHistory.id.desc()).first()
+        # 电视剧所有季集｜电影
+        if not season and not episode:
+            return db.query(DownloadHistory).filter(DownloadHistory.type == mtype,
+                                                    DownloadHistory.title == title,
+                                                    DownloadHistory.year == year).order_by(
+                DownloadHistory.id.desc()).first()
+        # 电视剧某季
+        if season and not episode:
+            return db.query(DownloadHistory).filter(DownloadHistory.type == mtype,
+                                                    DownloadHistory.title == title,
+                                                    DownloadHistory.year == year,
+                                                    DownloadHistory.seasons == season).order_by(
+                DownloadHistory.id.desc()).first()
+        # 电视剧某季某集
+        if season and episode:
+            return db.query(DownloadHistory).filter(DownloadHistory.type == mtype,
+                                                    DownloadHistory.title == title,
+                                                    DownloadHistory.year == year,
+                                                    DownloadHistory.seasons == season,
+                                                    DownloadHistory.episodes == episode).order_by(
+                DownloadHistory.id.desc()).first()

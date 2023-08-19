@@ -112,150 +112,150 @@ class MediaSyncDel(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         return [
-            {
-                'component': 'VForm',
-                'content': [
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'enabled',
-                                            'label': '启用插件',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'notify',
-                                            'label': '发送通知',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'del_source',
-                                            'label': '删除源文件',
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSelect',
-                                        'props': {
-                                            'model': 'sync_type',
-                                            'label': '同步方式',
-                                            'items': [
-                                                {'title': '日志', 'value': 'log'},
-                                                {'title': 'Scripter X', 'value': 'plugin'}
-                                            ]
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'cron',
-                                            'label': '执行周期',
-                                            'placeholder': '5位cron表达式，留空自动'
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'exclude_path',
-                                            'label': '排除路径'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VAlert',
-                                        'props': {
-                                            'text': '同步方式分为日志同步和Scripter X。日志同步需要配置执行周期，默认30分钟执行一次。'
-                                                    'Scripter X方式需要emby安装并配置Scripter X插件，无需配置执行周期。'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        ], {
-            "enabled": False,
-            "notify": True,
-            "del_source": False,
-            "sync_type": "log",
-            "cron": "*/30 * * * *",
-            "exclude_path": "",
-        }
+                   {
+                       'component': 'VForm',
+                       'content': [
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'enabled',
+                                                   'label': '启用插件',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'notify',
+                                                   'label': '发送通知',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'del_source',
+                                                   'label': '删除源文件',
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSelect',
+                                               'props': {
+                                                   'model': 'sync_type',
+                                                   'label': '同步方式',
+                                                   'items': [
+                                                       {'title': '日志', 'value': 'log'},
+                                                       {'title': 'Scripter X', 'value': 'plugin'}
+                                                   ]
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'cron',
+                                                   'label': '执行周期',
+                                                   'placeholder': '5位cron表达式，留空自动'
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'exclude_path',
+                                                   'label': '排除路径'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VAlert',
+                                               'props': {
+                                                   'text': '同步方式分为日志同步和Scripter X。日志同步需要配置执行周期，默认30分钟执行一次。'
+                                                           'Scripter X方式需要emby安装并配置Scripter X插件，无需配置执行周期。'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           }
+                       ]
+                   }
+               ], {
+                   "enabled": False,
+                   "notify": True,
+                   "del_source": False,
+                   "sync_type": "log",
+                   "cron": "*/30 * * * *",
+                   "exclude_path": "",
+               }
 
     def get_page(self) -> List[dict]:
         """
@@ -286,6 +286,83 @@ class MediaSyncDel(_PluginBase):
             image = history.get("image")
             del_time = history.get("del_time")
 
+            if season:
+                sub_contents = [
+                    {
+                        'component': 'VCardText',
+                        'props': {
+                            'class': 'pa-0 px-2'
+                        },
+                        'text': f'类型：{htype}'
+                    },
+                    {
+                        'component': 'VCardText',
+                        'props': {
+                            'class': 'pa-0 px-2'
+                        },
+                        'text': f'标题：{title}'
+                    },
+                    {
+                        'component': 'VCardText',
+                        'props': {
+                            'class': 'pa-0 px-2'
+                        },
+                        'text': f'年份：{year}'
+                    },
+                    {
+                        'component': 'VCardText',
+                        'props': {
+                            'class': 'pa-0 px-2'
+                        },
+                        'text': f'季：{season}'
+                    },
+                    {
+                        'component': 'VCardText',
+                        'props': {
+                            'class': 'pa-0 px-2'
+                        },
+                        'text': f'集：{episode}'
+                    },
+                    {
+                        'component': 'VCardText',
+                        'props': {
+                            'class': 'pa-0 px-2'
+                        },
+                        'text': f'时间：{del_time}'
+                    }
+                ]
+            else:
+                sub_contents = [
+                    {
+                        'component': 'VCardText',
+                        'props': {
+                            'class': 'pa-0 px-2'
+                        },
+                        'text': f'类型：{htype}'
+                    },
+                    {
+                        'component': 'VCardText',
+                        'props': {
+                            'class': 'pa-0 px-2'
+                        },
+                        'text': f'标题：{title}'
+                    },
+                    {
+                        'component': 'VCardText',
+                        'props': {
+                            'class': 'pa-0 px-2'
+                        },
+                        'text': f'年份：{year}'
+                    },
+                    {
+                        'component': 'VCardText',
+                        'props': {
+                            'class': 'pa-0 px-2'
+                        },
+                        'text': f'时间：{del_time}'
+                    }
+                ]
+
             contents.append(
                 {
                     'component': 'VCard',
@@ -314,58 +391,7 @@ class MediaSyncDel(_PluginBase):
                                 },
                                 {
                                     'component': 'div',
-                                    'content': [
-                                        {
-                                            'component': 'VCardText',
-                                            'props': {
-                                                'class': 'pa-0 px-2'
-                                            },
-                                            'text': f'类型：{htype}'
-                                        },
-                                        {
-                                            'component': 'VCardSubtitle',
-                                            'props': {
-                                                'class': 'pa-2 font-bold break-words whitespace-break-spaces'
-                                            },
-                                            'content': [
-                                                {
-                                                    'component': 'a',
-                                                    'props': {
-                                                        'class': 'pa-0 px-2'
-                                                    },
-                                                    'text': title
-                                                }
-                                            ]
-                                        },
-                                        {
-                                            'component': 'VCardText',
-                                            'props': {
-                                                'class': 'pa-0 px-2'
-                                            },
-                                            'text': f'年份：{year}'
-                                        },
-                                        {
-                                            'component': 'VCardText',
-                                            'props': {
-                                                'class': 'pa-0 px-2'
-                                            },
-                                            'text': f'季：{season}'
-                                        },
-                                        {
-                                            'component': 'VCardText',
-                                            'props': {
-                                                'class': 'pa-0 px-2'
-                                            },
-                                            'text': f'集：{episode}'
-                                        },
-                                        {
-                                            'component': 'VCardText',
-                                            'props': {
-                                                'class': 'pa-0 px-2'
-                                            },
-                                            'text': f'时间：{del_time}'
-                                        }
-                                    ]
+                                    'content': sub_contents
                                 }
                             ]
                         }
@@ -510,9 +536,11 @@ class MediaSyncDel(_PluginBase):
         if self._notify:
             if media_type == "Episode":
                 # 根据tmdbid获取图片
-                image = self.episode.images(tv_id=tmdb_id,
-                                            season_num=season_num,
-                                            episode_num=episode_num)
+                images = self.episode.images(tv_id=tmdb_id,
+                                             season_num=season_num,
+                                             episode_num=episode_num)
+                if images:
+                    image = self.get_tmdbimage_url(images[-1].get("file_path"), prefix="original")
             # 发送通知
             self.post_message(
                 mtype=NotificationType.MediaServer,
@@ -530,7 +558,7 @@ class MediaSyncDel(_PluginBase):
             "season": season_num,
             "episode": episode_num,
             "image": image,
-            "del_time": str(datetime.datetime.now())
+            "del_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
         })
 
         # 保存历史
@@ -671,7 +699,7 @@ class MediaSyncDel(_PluginBase):
                 "season": media_season,
                 "episode": media_episode,
                 "image": image,
-                "del_time": del_time
+                "del_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
             })
 
         # 保存历史
@@ -1034,3 +1062,10 @@ class MediaSyncDel(_PluginBase):
         if event:
             self.post_message(channel=event.event_data.get("channel"),
                               title="媒体库同步删除完成！", userid=event.event_data.get("user"))
+
+    @staticmethod
+    def get_tmdbimage_url(path, prefix="w500"):
+        if not path:
+            return ""
+        tmdb_image_url = f"https://{settings.TMDB_IMAGE_DOMAIN}"
+        return tmdb_image_url + f"/t/p/{prefix}{path}"

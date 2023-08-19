@@ -42,3 +42,16 @@ class DownloadHistoryOper(DbOper):
         清空下载记录
         """
         DownloadHistory.truncate(self._db)
+
+    def get_last_by(self, mtype=None, title: str = None, year: str = None,
+                    season: str = None, episode: str = None, tmdbid=None) -> DownloadHistory:
+        """
+        按类型、标题、年份、季集查询下载记录
+        """
+        return DownloadHistory.get_last_by(db=self._db,
+                                           mtype=mtype,
+                                           title=title,
+                                           year=year,
+                                           season=season,
+                                           episode=episode,
+                                           tmdbid=tmdbid)
