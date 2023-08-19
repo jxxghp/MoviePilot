@@ -273,6 +273,8 @@ class TransferChain(ChainBase):
             mediainfo=mediainfo,
             transferinfo=transferinfo
         )
+        # 删除旧历史记录
+        self.transferhis.delete(logid)
         # 刮削元数据
         self.scrape_metadata(path=transferinfo.target_path, mediainfo=mediainfo)
         # 刷新媒体库
