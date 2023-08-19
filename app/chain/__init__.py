@@ -358,6 +358,10 @@ class ChainBase(metaclass=ABCMeta):
                                          "image": message.image,
                                          "userid": message.userid,
                                      })
+        logger.info(f"发送消息：channel={message.channel}，"
+                    f"title={message.title}, "
+                    f"text={message.text}，"
+                    f"userid={message.userid}")
         return self.run_module("post_message", message=message)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
