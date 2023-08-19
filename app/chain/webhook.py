@@ -76,9 +76,9 @@ class WebhookChain(ChainBase):
         # 消息图片
         image_url = event_info.image_url
         # 查询剧集图片
-        if not image_url \
-                and event_info.tmdb_id \
-                and event_info.season_id:
+        if (event_info.tmdb_id
+                and event_info.season_id
+                and event_info.episode_id):
             specific_image = self.obtain_specific_image(
                 mediaid=event_info.tmdb_id,
                 mtype=MediaType.TV,

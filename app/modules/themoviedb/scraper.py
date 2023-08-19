@@ -100,6 +100,7 @@ class TmdbScraper:
                     # 集NFO
                     if not file_path.with_suffix(".nfo").exists():
                         self.__gen_tv_episode_nfo_file(episodeinfo=episodeinfo,
+                                                       tmdbid=mediainfo.tmdb_id,
                                                        season=meta.begin_season,
                                                        episode=meta.begin_episode,
                                                        file_path=file_path)
@@ -250,12 +251,14 @@ class TmdbScraper:
         self.__save_nfo(doc, season_path.joinpath("season.nfo"))
 
     def __gen_tv_episode_nfo_file(self,
+                                  tmdbid: int,
                                   episodeinfo: dict,
                                   season: int,
                                   episode: int,
                                   file_path: Path):
         """
         生成电视剧集的NFO描述文件
+        :param tmdbid: TMDBID
         :param episodeinfo: 集TMDB元数据
         :param season: 季号
         :param episode: 集号
@@ -268,11 +271,11 @@ class TmdbScraper:
         # 添加时间
         DomUtils.add_node(doc, root, "dateadded", time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
         # TMDBID
-        uniqueid = DomUtils.add_node(doc, root, "uniqueid", episodeinfo.get("id") or "")
+        uniqueid = DomUtils.add_node(doc, root, "uniqueid", tmdbid)
         uniqueid.setAttribute("type", "tmdb")
         uniqueid.setAttribute("default", "true")
         # tmdbid
-        DomUtils.add_node(doc, root, "tmdbid", episodeinfo.get("id") or "")
+        DomUtils.add_node(doc, root, "tmdbid", tmdbid)
         # 标题
         DomUtils.add_node(doc, root, "title", episodeinfo.get("name") or "第 %s 集" % episode)
         # 简介

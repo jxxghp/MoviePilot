@@ -542,6 +542,240 @@ class Emby(metaclass=Singleton):
     def get_webhook_message(self, message_str: str) -> WebhookEventInfo:
         """
         解析Emby Webhook报文
+        电影：
+        {
+          "Title": "admin 在 Microsoft Edge Windows 上停止播放 蜘蛛侠：纵横宇宙",
+          "Date": "2023-08-19T00:49:07.8523469Z",
+          "Event": "playback.stop",
+          "User": {
+            "Name": "admin",
+            "Id": "e6a9dd89fd954d689870e7e0e3e72947"
+          },
+          "Item": {
+            "Name": "蜘蛛侠：纵横宇宙",
+            "OriginalTitle": "Spider-Man: Across the Spider-Verse",
+            "ServerId": "f40a5bd0c6b64051bdbed00580fa1118",
+            "Id": "240270",
+            "DateCreated": "2023-06-21T21:01:27.0000000Z",
+            "Container": "mp4",
+            "SortName": "蜘蛛侠：纵横宇宙",
+            "PremiereDate": "2023-05-30T16:00:00.0000000Z",
+            "ExternalUrls": [
+              {
+                "Name": "IMDb",
+                "Url": "https://www.imdb.com/title/tt9362722"
+              },
+              {
+                "Name": "TheMovieDb",
+                "Url": "https://www.themoviedb.org/movie/569094"
+              },
+              {
+                "Name": "Trakt",
+                "Url": "https://trakt.tv/search/tmdb/569094?id_type=movie"
+              }
+            ],
+            "Path": "\\\\10.10.10.10\\Video\\电影\\动画电影\\蜘蛛侠：纵横宇宙 (2023)\\蜘蛛侠：纵横宇宙 (2023).mp4",
+            "OfficialRating": "PG",
+            "Overview": "讲述了新生代蜘蛛侠迈尔斯（沙梅克·摩尔 Shameik Moore 配音）携手蜘蛛格温（海莉·斯坦菲尔德 Hailee Steinfeld 配音），穿越多元宇宙踏上更宏大的冒险征程的故事。面临每个蜘蛛侠都会失去至亲的宿命，迈尔斯誓言打破命运魔咒，找到属于自己的英雄之路。而这个决定和蜘蛛侠2099（奥斯卡·伊萨克 Oscar Is aac 配音）所领军的蜘蛛联盟产生了极大冲突，一场以一敌百的蜘蛛侠大内战即将拉响！",
+            "Taglines": [],
+            "Genres": [
+              "动作",
+              "冒险",
+              "动画",
+              "科幻"
+            ],
+            "CommunityRating": 8.7,
+            "RunTimeTicks": 80439590000,
+            "Size": 3170164641,
+            "FileName": "蜘蛛侠：纵横宇宙 (2023).mp4",
+            "Bitrate": 3152840,
+            "PlayAccess": "Full",
+            "ProductionYear": 2023,
+            "RemoteTrailers": [
+              {
+                "Url": "https://www.youtube.com/watch?v=BbXJ3_AQE_o"
+              },
+              {
+                "Url": "https://www.youtube.com/watch?v=cqGjhVJWtEg"
+              },
+              {
+                "Url": "https://www.youtube.com/watch?v=shW9i6k8cB0"
+              },
+              {
+                "Url": "https://www.youtube.com/watch?v=Etv-L2JKCWk"
+              },
+              {
+                "Url": "https://www.youtube.com/watch?v=yFrxzaBLDQM"
+              }
+            ],
+            "ProviderIds": {
+              "Tmdb": "569094",
+              "Imdb": "tt9362722"
+            },
+            "IsFolder": false,
+            "ParentId": "240253",
+            "Type": "Movie",
+            "Studios": [
+              {
+                "Name": "Columbia Pictures",
+                "Id": 1252
+              },
+              {
+                "Name": "Sony Pictures Animation",
+                "Id": 1814
+              },
+              {
+                "Name": "Lord Miller",
+                "Id": 240307
+              },
+              {
+                "Name": "Pascal Pictures",
+                "Id": 60101
+              },
+              {
+                "Name": "Arad Productions",
+                "Id": 67372
+              }
+            ],
+            "GenreItems": [
+              {
+                "Name": "动作",
+                "Id": 767
+              },
+              {
+                "Name": "冒险",
+                "Id": 818
+              },
+              {
+                "Name": "动画",
+                "Id": 1382
+              },
+              {
+                "Name": "科幻",
+                "Id": 709
+              }
+            ],
+            "TagItems": [],
+            "PrimaryImageAspectRatio": 0.7012622720897616,
+            "ImageTags": {
+              "Primary": "c080830ff3c964a775dd0b011b675a29",
+              "Art": "a418b990ca0df95838884b5951883ad5",
+              "Logo": "1782310274c108e85d02d2b0b1c7249c",
+              "Thumb": "29d499a96b7da07cd1cf37edb58507a8",
+              "Banner": "bec236365d57f7f646d8fda16fce2ecb",
+              "Disc": "3e32d87be8655f52bcf43bd34ee94c2b"
+            },
+            "BackdropImageTags": [
+              "13acab1246c95a6fbdee22cf65edf3f0"
+            ],
+            "MediaType": "Video",
+            "Width": 1920,
+            "Height": 820
+          },
+          "Server": {
+            "Name": "PN41",
+            "Id": "f40a5bd0c6b64051bdbed00580fa1118",
+            "Version": "4.7.13.0"
+          },
+          "Session": {
+            "RemoteEndPoint": "10.10.10.253",
+            "Client": "Emby Web",
+            "DeviceName": "Microsoft Edge Windows",
+            "DeviceId": "30239450-1748-4855-9799-de3544fc2744",
+            "ApplicationVersion": "4.7.13.0",
+            "Id": "c336b028b893558b333d1a49238b7db1"
+          },
+          "PlaybackInfo": {
+            "PlayedToCompletion": false,
+            "PositionTicks": 17431791950,
+            "PlaylistIndex": 0,
+            "PlaylistLength": 1
+          }
+        }
+
+        电视剧：
+        {
+          "Title": "admin 在 Microsoft Edge Windows 上开始播放 长风渡 - S1, Ep11 - 第 11 集",
+          "Date": "2023-08-19T00:52:20.5200050Z",
+          "Event": "playback.start",
+          "User": {
+            "Name": "admin",
+            "Id": "e6a9dd89fd954d689870e7e0e3e72947"
+          },
+          "Item": {
+            "Name": "第 11 集",
+            "ServerId": "f40a5bd0c6b64051bdbed00580fa1118",
+            "Id": "240252",
+            "DateCreated": "2023-06-21T10:51:06.0000000Z",
+            "Container": "mp4",
+            "SortName": "第 11 集",
+            "PremiereDate": "2023-06-20T16:00:00.0000000Z",
+            "ExternalUrls": [
+              {
+                "Name": "Trakt",
+                "Url": "https://trakt.tv/search/tmdb/4533239?id_type=episode"
+              }
+            ],
+            "Path": "\\\\10.10.10.10\\Video\\电视剧\\国产剧\\长风渡 (2023)\\Season 1\\长风渡 - S01E11 - 第 11 集.mp4",
+            "Taglines": [],
+            "Genres": [],
+            "RunTimeTicks": 28021450000,
+            "Size": 707122056,
+            "FileName": "长风渡 - S01E11 - 第 11 集.mp4",
+            "Bitrate": 2018802,
+            "PlayAccess": "Full",
+            "ProductionYear": 2023,
+            "IndexNumber": 11,
+            "ParentIndexNumber": 1,
+            "RemoteTrailers": [],
+            "ProviderIds": {
+              "Tmdb": "4533239"
+            },
+            "IsFolder": false,
+            "ParentId": "240203",
+            "Type": "Episode",
+            "Studios": [],
+            "GenreItems": [],
+            "TagItems": [],
+            "ParentLogoItemId": "240202",
+            "ParentBackdropItemId": "240202",
+            "ParentBackdropImageTags": [
+              "7dd568c67721c1f184b281001ced2f8e"
+            ],
+            "SeriesName": "长风渡",
+            "SeriesId": "240202",
+            "SeasonId": "240203",
+            "PrimaryImageAspectRatio": 2.4,
+            "SeriesPrimaryImageTag": "e91c822173e9bcbf7a0efa7d1c16f6bd",
+            "SeasonName": "季 1",
+            "ImageTags": {
+              "Primary": "d6bf1d76150cd86fdff746e4353569ee"
+            },
+            "BackdropImageTags": [],
+            "ParentLogoImageTag": "51cf6b2661c3c9cef3796abafd6a1694",
+            "MediaType": "Video",
+            "Width": 1920,
+            "Height": 800
+          },
+          "Server": {
+            "Name": "PN41",
+            "Id": "f40a5bd0c6b64051bdbed00580fa1118",
+            "Version": "4.7.13.0"
+          },
+          "Session": {
+            "RemoteEndPoint": "10.10.10.253",
+            "Client": "Emby Web",
+            "DeviceName": "Microsoft Edge Windows",
+            "DeviceId": "30239450-1748-4855-9799-de3544fc2744",
+            "ApplicationVersion": "4.7.13.0",
+            "Id": "c336b028b893558b333d1a49238b7db1"
+          },
+          "PlaybackInfo": {
+            "PositionTicks": 14256663550,
+            "PlaylistIndex": 10,
+            "PlaylistLength": 40
+          }
+        }
         """
         message = json.loads(message_str)
         eventItem = WebhookEventInfo(event=message.get('Event', ''), channel="emby")
