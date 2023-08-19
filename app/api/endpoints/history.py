@@ -89,9 +89,9 @@ def redo_transfer_history(history_in: schemas.TransferHistory,
     """
     历史记录重新转移
     """
-    hash_str = history_in.download_hash
-    result = TransferChain(db).process(f"{hash_str} {new_tmdbid}|{mtype}")
-    if result:
+    state, errmsg = TransferChain(db).re_transfer(logid=history_in.id,
+                                                  mtype=MediaType(mtype), tmdbid=new_tmdbid)
+    if state:
         return schemas.Response(success=True)
     else:
-        return schemas.Response(success=False, message="失败原因详见通知消息")
+        return schemas.Response(success=False, message=errmsg)
