@@ -117,6 +117,7 @@ class TorrentRemover(_PluginBase):
                     "onlyonce": self._onlyonce,
                     "action": self._action,
                     "cron": self._cron,
+                    "downloaders": self._downloaders,
                     "samedata": self._samedata,
                     "mponly": self._mponly,
                     "size": self._size,
@@ -203,7 +204,7 @@ class TorrentRemover(_PluginBase):
                                         'props': {
                                             'model': 'cron',
                                             'label': '执行周期',
-                                            'placeholder': '0 0 0 ? *'
+                                            'placeholder': '0 */12 * * *'
                                         }
                                     }
                                 ]
@@ -482,7 +483,8 @@ class TorrentRemover(_PluginBase):
             "notify": False,
             "onlyonce": False,
             "action": 'pause',
-            "cron": '0 0 0 ? *',
+            'downloaders': [],
+            "cron": '0 */12 * * *',
             "samedata": False,
             "mponly": False,
             "size": "",
