@@ -94,7 +94,7 @@ class IndexerModule(_ModuleBase):
                                 site_cookie=site.get("cookie"),
                                 site_ua=site.get("ua"),
                                 site_proxy=site.get("proxy"),
-                                site_order=site.get("order"),
+                                site_order=site.get("pri"),
                                 **result) for result in result_array]
 
     @staticmethod
