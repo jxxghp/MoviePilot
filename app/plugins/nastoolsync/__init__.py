@@ -46,6 +46,7 @@ class NAStoolSync(_PluginBase):
     _site = None
     _downloader = None
     _supp = False
+    _transfer = False
     qb = None
     tr = None
 
@@ -61,8 +62,9 @@ class NAStoolSync(_PluginBase):
             self._site = config.get("site")
             self._downloader = config.get("downloader")
             self._supp = config.get("supp")
+            self._transfer = config.get("transfer")
 
-            if self._nt_db_path:
+            if self._nt_db_path and self._transfer:
                 self.qb = Qbittorrent()
                 self.tr = Transmission()
 
@@ -92,12 +94,13 @@ class NAStoolSync(_PluginBase):
 
                 self.update_config(
                     {
+                        "transfer": False,
                         "clear": False,
                         "nt_db_path": "",
                         "path": self._path,
                         "downloader": self._downloader,
                         "site": self._site,
-                        "supp": self._supp
+                        "supp": self._supp,
                     }
                 )
 
@@ -527,7 +530,23 @@ class NAStoolSync(_PluginBase):
                                        'component': 'VCol',
                                        'props': {
                                            'cols': 12,
-                                           'md': 6
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'transfer',
+                                                   'label': '同步记录'
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
                                        },
                                        'content': [
                                            {
@@ -543,7 +562,7 @@ class NAStoolSync(_PluginBase):
                                        'component': 'VCol',
                                        'props': {
                                            'cols': 12,
-                                           'md': 6
+                                           'md': 4
                                        },
                                        'content': [
                                            {
@@ -667,6 +686,7 @@ class NAStoolSync(_PluginBase):
                        ]
                    }
                ], {
+                   "transfer": False,
                    "clear": False,
                    "supp": False,
                    "nt_db_path": "",
