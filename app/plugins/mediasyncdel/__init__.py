@@ -512,23 +512,20 @@ class MediaSyncDel(_PluginBase):
             year = transferhis.year
             # 删除种子任务
             if self._del_source:
-                del_source = False
+                # 1、直接删除源文件
+                if transferhis.src and Path(transferhis.src).suffix in settings.RMT_MEDIAEXT:
+                    source_name = os.path.basename(transferhis.src)
+                    source_path = str(transferhis.src).replace(source_name, "")
+                    self.delete_media_file(filedir=source_path,
+                                           filename=source_name)
                 if transferhis.download_hash:
                     try:
-                        # 判断种子是否被删除完
+                        # 2、判断种子是否被删除完
                         self.handle_torrent(history_id=transferhis.id,
                                             src=transferhis.src,
                                             torrent_hash=transferhis.download_hash)
                     except Exception as e:
                         logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
-                        del_source = True
-
-                # 直接删除源文件
-                if del_source:
-                    source_name = os.path.basename(transferhis.src)
-                    source_path = str(transferhis.src).replace(source_name, "")
-                    self.delete_media_file(filedir=source_path,
-                                           filename=source_name)
 
         logger.info(f"同步删除 {msg} 完成！")
 
@@ -564,8 +561,6 @@ class MediaSyncDel(_PluginBase):
         # 保存历史
         self.save_data("history", history)
 
-        self.save_data("last_time", datetime.datetime.now())
-
     def sync_del_by_log(self):
         """
         emby删除媒体库同步删除历史记录
@@ -593,7 +588,6 @@ class MediaSyncDel(_PluginBase):
 
         # 遍历删除
         for del_media in del_medias:
-            del_time = del_media.get("time")
             # 媒体类型 Movie|Series|Season|Episode
             media_type = del_media.get("type")
             # 媒体名称 蜀山战纪
@@ -661,23 +655,20 @@ class MediaSyncDel(_PluginBase):
                 self._transferhis.delete(transferhis.id)
                 # 删除种子任务
                 if self._del_source:
-                    del_source = False
+                    # 1、直接删除源文件
+                    if transferhis.src and Path(transferhis.src).suffix in settings.RMT_MEDIAEXT:
+                        source_name = os.path.basename(transferhis.src)
+                        source_path = str(transferhis.src).replace(source_name, "")
+                        self.delete_media_file(filedir=source_path,
+                                               filename=source_name)
                     if transferhis.download_hash:
                         try:
-                            # 判断种子是否被删除完
+                            # 2、判断种子是否被删除完
                             self.handle_torrent(history_id=transferhis.id,
                                                 src=transferhis.src,
                                                 torrent_hash=transferhis.download_hash)
                         except Exception as e:
                             logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
-                            del_source = True
-
-                    # 直接删除源文件
-                    if del_source:
-                        source_name = os.path.basename(transferhis.src)
-                        source_path = str(transferhis.src).replace(source_name, "")
-                        self.delete_media_file(filedir=source_path,
-                                               filename=source_name)
 
             logger.info(f"同步删除 {msg} 完成！")
 

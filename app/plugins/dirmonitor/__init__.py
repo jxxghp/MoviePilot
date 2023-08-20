@@ -261,7 +261,7 @@ class DirMonitor(_PluginBase):
                                                                episode=file_meta.episode,
                                                                tmdbid=mediainfo.tmdb_id)
                     # 新增转移成功历史记录
-                    self.transferhis.add(
+                    self.transferhis.add_force(
                         src=event_path,
                         dest=str(transferinfo.target_path),
                         mode=settings.TRANSFER_TYPE,
