@@ -17,7 +17,9 @@ from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
 from app.modules.emby import Emby
 from app.modules.jellyfin import Jellyfin
+from app.modules.qbittorrent import Qbittorrent
 from app.modules.themoviedb.tmdbv3api import Episode
+from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 from app.schemas.types import NotificationType, EventType
 from app.utils.path_utils import PathUtils
@@ -55,10 +57,14 @@ class MediaSyncDel(_PluginBase):
     _del_source = False
     _exclude_path = None
     _transferhis = None
+    qb = None
+    tr = None
 
     def init_plugin(self, config: dict = None):
         self._transferhis = TransferHistoryOper()
         self.episode = Episode()
+        self.qb = Qbittorrent()
+        self.tr = Transmission()
 
         # 停止现有任务
         self.stop_service()
@@ -512,20 +518,21 @@ class MediaSyncDel(_PluginBase):
             year = transferhis.year
             # 删除种子任务
             if self._del_source:
+                # 0、删除转移记录
+                self._transferhis.delete(transferhis.id)
                 # 1、直接删除源文件
                 if transferhis.src and Path(transferhis.src).suffix in settings.RMT_MEDIAEXT:
                     source_name = os.path.basename(transferhis.src)
                     source_path = str(transferhis.src).replace(source_name, "")
                     self.delete_media_file(filedir=source_path,
                                            filename=source_name)
-                if transferhis.download_hash:
-                    try:
-                        # 2、判断种子是否被删除完
-                        self.handle_torrent(history_id=transferhis.id,
-                                            src=transferhis.src,
-                                            torrent_hash=transferhis.download_hash)
-                    except Exception as e:
-                        logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
+                    if transferhis.download_hash:
+                        try:
+                            # 2、判断种子是否被删除完
+                            self.handle_torrent(src=source_path,
+                                                torrent_hash=transferhis.download_hash)
+                        except Exception as e:
+                            logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
 
         logger.info(f"同步删除 {msg} 完成！")
 
@@ -655,20 +662,21 @@ class MediaSyncDel(_PluginBase):
                 self._transferhis.delete(transferhis.id)
                 # 删除种子任务
                 if self._del_source:
+                    # 0、删除转移记录
+                    self._transferhis.delete(transferhis.id)
                     # 1、直接删除源文件
                     if transferhis.src and Path(transferhis.src).suffix in settings.RMT_MEDIAEXT:
                         source_name = os.path.basename(transferhis.src)
                         source_path = str(transferhis.src).replace(source_name, "")
                         self.delete_media_file(filedir=source_path,
                                                filename=source_name)
-                    if transferhis.download_hash:
-                        try:
-                            # 2、判断种子是否被删除完
-                            self.handle_torrent(history_id=transferhis.id,
-                                                src=transferhis.src,
-                                                torrent_hash=transferhis.download_hash)
-                        except Exception as e:
-                            logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
+                        if transferhis.download_hash:
+                            try:
+                                # 2、判断种子是否被删除完
+                                self.handle_torrent(src=source_path,
+                                                    torrent_hash=transferhis.download_hash)
+                            except Exception as e:
+                                logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
 
             logger.info(f"同步删除 {msg} 完成！")
 
@@ -698,7 +706,7 @@ class MediaSyncDel(_PluginBase):
 
         self.save_data("last_time", datetime.datetime.now())
 
-    def handle_torrent(self, history_id: int, src: str, torrent_hash: str):
+    def handle_torrent(self, src: str, torrent_hash: str):
         """
         判断种子是否局部删除
         局部删除则暂停种子
@@ -753,32 +761,58 @@ class MediaSyncDel(_PluginBase):
         # 如果是False则说明种子文件没有完全被删除，暂停种子，暂不处理
         if delete_flag:
             try:
-                dl_files = self.chain.torrent_files(tid=download_id)
-                if not dl_files:
-                    logger.info(f"未获取到 {download} - {download_id} 种子文件，种子已被删除")
+                # 转种download
+                if download == "transmission":
+                    dl_files = self.tr.get_files(tid=download_id)
+                    if not dl_files:
+                        logger.info(f"未获取到 {download} - {download_id} 种子文件，种子已被删除")
+                    else:
+                        for dl_file in dl_files:
+                            dl_file_name = dl_file.name
+                            if not stop_from:
+                                torrent_file = os.path.join(src, os.path.basename(dl_file_name))
+                                if Path(torrent_file).exists():
+                                    logger.info(f"种子有文件被删除，种子文件{torrent_file}暂未删除，暂停种子")
+                                    delete_flag = False
+                                    break
+                    if delete_flag:
+                        # 删除源下载任务或转种后下载任务
+                        logger.info(f"删除下载任务：{download} - {download_id}")
+                        self.tr.delete_torrents(delete_file=True,
+                                                ids=download_id)
+
+                        # 删除转种记录
+                        if del_history:
+                            self.del_data(key=history_key, plugin_id=plugin_id)
+
+                        # 处理辅种
+                        self.__del_seed(download=download, download_id=download_id, action_flag="del")
                 else:
-                    for dl_file in dl_files:
-                        dl_file_name = dl_file.get("name")
-                        if not stop_from:
-                            torrent_file = os.path.join(src, os.path.basename(dl_file_name))
-                            if Path(torrent_file).exists():
-                                logger.info(f"种子有文件被删除，种子文件{torrent_file}暂未删除，暂停种子")
-                                delete_flag = False
-                                break
-                if delete_flag:
-                    # 删除源下载任务或转种后下载任务
-                    logger.info(f"删除下载任务：{download} - {download_id}")
-                    self.chain.remove_torrents(download_id)
+                    dl_files = self.qb.get_files(tid=download_id)
+                    if not dl_files:
+                        logger.info(f"未获取到 {download} - {download_id} 种子文件，种子已被删除")
+                    else:
+                        for dl_file in dl_files:
+                            dl_file_name = dl_file.get("name")
+                            if not stop_from:
+                                torrent_file = os.path.join(src, os.path.basename(dl_file_name))
+                                if Path(torrent_file).exists():
+                                    logger.info(f"种子有文件被删除，种子文件{torrent_file}暂未删除，暂停种子")
+                                    delete_flag = False
+                                    break
 
-                    # 删除转移记录
-                    self._transferhis.delete(history_id)
+                    if delete_flag:
+                        # 删除源下载任务或转种后下载任务
+                        logger.info(f"删除下载任务：{download} - {download_id}")
+                        self.qb.delete_torrents(delete_file=True,
+                                                ids=download_id)
 
-                    # 删除转种记录
-                    if del_history:
-                        self.del_data(key=history_key, plugin_id=plugin_id)
+                        # 删除转种记录
+                        if del_history:
+                            self.del_data(key=history_key, plugin_id=plugin_id)
 
-                    # 处理辅种
-                    self.__del_seed(download=download, download_id=download_id, action_flag="del")
+                        # 处理辅种
+                        self.__del_seed(download=download, download_id=download_id, action_flag="del")
             except Exception as e:
                 logger.error(f"删除转种辅种下载任务失败: {str(e)}")
 
@@ -791,12 +825,16 @@ class MediaSyncDel(_PluginBase):
                 self.chain.stop_torrents(torrent_hash)
                 logger.info(f"种子：{settings.DOWNLOADER} - {torrent_hash} 暂停")
 
-            # 转种
-            self.chain.stop_torrents(download_id)
-            logger.info(f"转种：{download} - {download_id} 暂停")
-
-            # 辅种
-            self.__del_seed(download=download, download_id=download_id, action_flag="stop")
+                # 暂停转种
+                if del_history:
+                    if download == "qbittorrent":
+                        self.qb.stop_torrents(download_id)
+                        logger.info(f"转种：{download} - {download_id} 暂停")
+                    else:
+                        self.tr.stop_torrents(download_id)
+                        logger.info(f"转种：{download} - {download_id} 暂停")
+                # 暂停辅种
+                self.__del_seed(download=download, download_id=download_id, action_flag="stop")
 
     def __del_seed(self, download, download_id, action_flag):
         """
@@ -822,15 +860,26 @@ class MediaSyncDel(_PluginBase):
                 # 删除辅种历史中与本下载器相同的辅种记录
                 if int(downloader) == download:
                     for torrent in torrents:
-                        # 删除辅种
-                        if action_flag == "del":
-                            logger.info(f"删除辅种：{downloader} - {torrent}")
-                            self.chain.remove_torrents(torrent)
-                        # 暂停辅种
-                        if action_flag == "stop":
-                            self.chain.stop_torrents(torrent)
-                            logger.info(f"辅种：{downloader} - {torrent} 暂停")
-
+                        if download == "qbittorrent":
+                            # 删除辅种
+                            if action_flag == "del":
+                                logger.info(f"删除辅种：{downloader} - {torrent}")
+                                self.qb.delete_torrents(delete_file=True,
+                                                        ids=torrent)
+                            # 暂停辅种
+                            if action_flag == "stop":
+                                self.qb.stop_torrents(torrent)
+                                logger.info(f"辅种：{downloader} - {torrent} 暂停")
+                        else:
+                            # 删除辅种
+                            if action_flag == "del":
+                                logger.info(f"删除辅种：{downloader} - {torrent}")
+                                self.tr.delete_torrents(delete_file=True,
+                                                        ids=torrent)
+                            # 暂停辅种
+                            if action_flag == "stop":
+                                self.tr.stop_torrents(torrent)
+                                logger.info(f"辅种：{downloader} - {torrent} 暂停")
                     # 删除本下载器辅种历史
                     if action_flag == "del":
                         del history
