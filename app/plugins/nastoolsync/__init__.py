@@ -4,8 +4,11 @@ import sqlite3
 from datetime import datetime
 
 from app.db.downloadhistory_oper import DownloadHistoryOper
+from app.db.models.plugin import PluginData
 from app.db.plugindata_oper import PluginDataOper
 from app.db.transferhistory_oper import TransferHistoryOper
+from app.modules.qbittorrent import Qbittorrent
+from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 from typing import Any, List, Dict, Tuple
 from app.log import logger
@@ -41,60 +44,60 @@ class NAStoolSync(_PluginBase):
     _nt_db_path = None
     _path = None
     _site = None
-    _transfer = None
-    _plugin = None
-    _download = None
     _downloader = None
+    _supp = False
+    qb = None
+    tr = None
 
     def init_plugin(self, config: dict = None):
         self._transferhistory = TransferHistoryOper()
         self._plugindata = PluginDataOper()
         self._downloadhistory = DownloadHistoryOper()
+
         if config:
             self._clear = config.get("clear")
             self._nt_db_path = config.get("nt_db_path")
             self._path = config.get("path")
             self._site = config.get("site")
-            self._transfer = config.get("transfer")
-            self._plugin = config.get("plugin")
             self._downloader = config.get("downloader")
-            self._download = config.get("download")
+            self._supp = config.get("supp")
 
-            if self._nt_db_path and (self._transfer or self._plugin or self._download):
+            if self._nt_db_path:
+                self.qb = Qbittorrent()
+                self.tr = Transmission()
+
                 # 读取sqlite数据
                 gradedb = sqlite3.connect(self._nt_db_path)
                 # 创建游标cursor来执行executeＳＱＬ语句
                 cursor = gradedb.cursor()
 
-                # 转移历史记录
-                if self._transfer:
-                    transfer_history = self.get_nt_transfer_history(cursor)
-                    # 导入历史记录
-                    self.sync_transfer_history(transfer_history)
-                # 插件历史记录
-                if self._plugin:
-                    plugin_history = self.get_nt_plugin_history(cursor)
-                    # 导入插件记录
-                    self.sync_plugin_history(plugin_history)
-                # 下载历史记录
-                if self._download:
-                    download_history = self.get_nt_download_history(cursor)
-                    # 导入下载记录
-                    self.sync_download_history(download_history)
+                download_history = self.get_nt_download_history(cursor)
+                plugin_history = self.get_nt_plugin_history(cursor)
+                transfer_history = self.get_nt_transfer_history(cursor)
 
                 # 关闭游标
                 cursor.close()
 
+                # 导入下载记录
+                if download_history:
+                    self.sync_download_history(download_history)
+
+                # 导入插件记录
+                if plugin_history:
+                    self.sync_plugin_history(plugin_history)
+
+                # 导入历史记录
+                if transfer_history:
+                    self.sync_transfer_history(transfer_history)
+
                 self.update_config(
                     {
                         "clear": False,
-                        "nt_db_path": self._nt_db_path,
+                        "nt_db_path": "",
                         "path": self._path,
                         "downloader": self._downloader,
                         "site": self._site,
-                        "transfer": False,
-                        "plugin": False,
-                        "download": False,
+                        "supp": self._supp
                     }
                 )
 
@@ -231,24 +234,108 @@ class NAStoolSync(_PluginBase):
             logger.info("MoviePilot转移记录已清空")
             self._transferhistory.truncate()
 
+        # 转种后种子hash
+        transfer_hash = []
+
+        # 获取所有的转种数据
+        transfer_datas = self._plugindata.get_data_all("TorrentTransfer")
+        if transfer_datas:
+            if not isinstance(transfer_datas, list):
+                transfer_datas = [transfer_datas]
+
+            for transfer_data in transfer_datas:
+                if not transfer_data or not isinstance(transfer_data, PluginData):
+                    continue
+                # 转移后种子hash
+                transfer_value = transfer_data.value
+                transfer_value = json.loads(transfer_value)
+                if not isinstance(transfer_value, dict):
+                    transfer_value = json.loads(transfer_value)
+                to_hash = transfer_value.get("to_download_id")
+                # 转移前种子hash
+                transfer_hash.append(to_hash)
+
+        # 获取tr、qb所有种子
+        qb_torrents, _ = self.qb.get_torrents()
+        tr_torrents, _ = self.tr.get_torrents(ids=transfer_hash)
+        tr_torrents_all, _ = self.tr.get_torrents()
+
         # 处理数据，存入mp数据库
         for history in transfer_history:
-            msrc = history[0]
-            mdest = history[1]
-            mmode = history[2]
-            mtype = history[3]
-            mcategory = history[4]
-            mtitle = history[5]
-            myear = history[6]
-            mtmdbid = history[7]
-            mseasons = history[8]
-            mepisodes = history[9]
-            mimage = history[10]
-            mdownload_hash = history[11]
-            mdate = history[12]
+            msrc_path = history[0]
+            msrc_filename = history[1]
+            mdest_path = history[2]
+            mdest_filename = history[3]
+            mmode = history[4]
+            mtype = history[5]
+            mcategory = history[6]
+            mtitle = history[7]
+            myear = history[8]
+            mtmdbid = history[9]
+            mseasons = history[10]
+            mepisodes = history[11]
+            mimage = history[12]
+            mdownload_hash = history[13]
+            mdate = history[14]
 
-            if not msrc or not mdest:
+            if not msrc_path or not mdest_path:
                 continue
+
+            msrc = msrc_path + "/" + msrc_filename
+            mdest = mdest_path + "/" + mdest_filename
+
+            # 尝试补充download_id
+            if self._supp and not mdownload_hash:
+                logger.debug(f"转移记录 {mtitle} 缺失download_hash，尝试补充……")
+                # 种子名称
+                torrent_name = str(msrc_path).split("/")[-1]
+                torrent_name2 = str(msrc_path).split("/")[-2]
+
+                # 处理下载器
+                for torrent in qb_torrents:
+                    if str(torrent.get("name")) == str(torrent_name) \
+                            or str(torrent.get("name")) == str(torrent_name2):
+                        mdownload_hash = torrent.get("hash")
+                        break
+
+                # 处理辅种器
+                if not mdownload_hash:
+                    for torrent in tr_torrents:
+                        if str(torrent.get("name")) == str(torrent_name) \
+                                or str(torrent.get("name")) == str(torrent_name2):
+                            mdownload_hash = torrent.get("hashString")
+                            break
+
+                # 继续补充 遍历所有种子，按照添加升序升序，第一个种子是初始种子
+                if not mdownload_hash:
+                    mate_torrents = []
+                    for torrent in tr_torrents_all:
+                        if str(torrent.get("name")) == str(torrent_name) \
+                                or str(torrent.get("name")) == str(torrent_name2):
+                            mate_torrents.append(torrent)
+
+                    # 匹配上则按照时间升序
+                    if mate_torrents:
+                        if len(mate_torrents) > 1:
+                            mate_torrents = sorted(mate_torrents, key=lambda x: x.added_date)
+                        # 最早添加的hash是下载的hash
+                        mdownload_hash = mate_torrents[0].get("hashString")
+                        # 补充转种记录
+                        self._plugindata.save(plugin_id="TorrentTransfer",
+                                              key=f"qbittorrent-{mdownload_hash}",
+                                              value={
+                                                  "to_download": "transmission",
+                                                  "to_download_id": mdownload_hash,
+                                                  "delete_source": True}
+                                              )
+                        # 补充辅种记录
+                        if len(mate_torrents) > 1:
+                            self._plugindata.save(plugin_id="IYUUAutoSeed",
+                                                  key=mdownload_hash,
+                                                  value=[{"downloader": "transmission",
+                                                          "torrents": [torrent.get("hashString") for torrent in
+                                                                       mate_torrents[1:]]}]
+                                                  )
 
             # 处理路径映射
             if self._path:
@@ -259,7 +346,7 @@ class NAStoolSync(_PluginBase):
                     mdest = mdest.replace(sub_paths[0], sub_paths[1]).replace('\\', '/')
 
             # 存库
-            self._transferhistory.add(
+            self._transferhistory.add_force(
                 src=msrc,
                 dest=mdest,
                 mode=mmode,
@@ -346,8 +433,10 @@ class NAStoolSync(_PluginBase):
         """
         sql = '''
         SELECT
-            t.SOURCE_PATH || '/' || t.SOURCE_FILENAME AS src,
-            t.DEST_PATH || '/' || t.DEST_FILENAME AS dest,
+            t.SOURCE_PATH AS src_path,
+            t.SOURCE_FILENAME AS src_filename,
+            t.DEST_PATH AS dest_path,
+            t.DEST_FILENAME AS dest_filename,
         CASE
                 t.MODE 
                 WHEN '硬链接' THEN
@@ -381,8 +470,9 @@ class NAStoolSync(_PluginBase):
             t.DATE AS date 
         FROM
             TRANSFER_HISTORY t
-            LEFT JOIN ( SELECT * FROM DOWNLOAD_HISTORY GROUP BY TMDBID ) d ON t.TITLE = d.TITLE 
-            AND t.TYPE = d.TYPE;
+            LEFT JOIN ( SELECT * FROM DOWNLOAD_HISTORY GROUP BY TMDBID ) d ON t.TMDBID = d.TMDBID
+            AND t.TYPE = d.TYPE
+            where t.TITLE = '黑客军团';
             '''
         cursor.execute(sql)
         nt_historys = cursor.fetchall()
@@ -395,7 +485,7 @@ class NAStoolSync(_PluginBase):
         return nt_historys
 
     def get_state(self) -> bool:
-        return True if self._transfer or self._plugin or self._download else False
+        return False
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -409,197 +499,163 @@ class NAStoolSync(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         return [
-            {
-                'component': 'VForm',
-                'content': [
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 3
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'clear',
-                                            'label': '清空记录'
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 3
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'transfer',
-                                            'label': '转移记录'
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 3
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'plugin',
-                                            'label': '插件记录'
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 3
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'download',
-                                            'label': '下载记录'
-                                        }
-                                    }
-                                ]
-                            },
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'nt_db_path',
-                                            'label': 'NAStool数据库user.db路径',
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextarea',
-                                        'props': {
-                                            'model': 'path',
-                                            'rows': '2',
-                                            'label': '历史记录路径映射',
-                                            'placeholder': 'NAStool路径:MoviePilot路径（一行一个）'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextarea',
-                                        'props': {
-                                            'model': 'downloader',
-                                            'rows': '2',
-                                            'label': '插件数据下载器映射',
-                                            'placeholder': 'NAStool下载器id:qbittorrent|transmission（一行一个）'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextarea',
-                                        'props': {
-                                            'model': 'site',
-                                            'label': '下载历史站点映射',
-                                            'placeholder': 'NAStool站点名:MoviePilot站点名（一行一个）'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VAlert',
-                                        'props': {
-                                            'text': '只有开启转移记录、插件记录、下载记录其中之一插件才会启用。'
-                                                    '开启清空记录时，会在导入历史数据之前删除MoviePilot之前的记录。'
-                                                    '如果转移记录很多，同步时间可能会长，'
-                                                    '所以点击确定后页面没反应是正常现象，后台正在处理。'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        ], {
-            "clear": False,
-            "transfer": False,
-            "plugin": False,
-            "download": False,
-            "nt_db_path": "",
-            "path": "",
-            "downloader": "",
-            "site": "",
-        }
+                   {
+                       'component': 'VForm',
+                       'content': [
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'clear',
+                                                   'label': '清空记录'
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'supp',
+                                                   'label': '补充数据'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'nt_db_path',
+                                                   'label': 'NAStool数据库user.db路径',
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextarea',
+                                               'props': {
+                                                   'model': 'path',
+                                                   'rows': '2',
+                                                   'label': '历史记录路径映射',
+                                                   'placeholder': 'NAStool路径:MoviePilot路径（一行一个）'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextarea',
+                                               'props': {
+                                                   'model': 'downloader',
+                                                   'rows': '2',
+                                                   'label': '插件数据下载器映射',
+                                                   'placeholder': 'NAStool下载器id:qbittorrent|transmission（一行一个）'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextarea',
+                                               'props': {
+                                                   'model': 'site',
+                                                   'label': '下载历史站点映射',
+                                                   'placeholder': 'NAStool站点名:MoviePilot站点名（一行一个）'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VAlert',
+                                               'props': {
+                                                   'text': '开启清空记录时，会在导入历史数据之前删除MoviePilot之前的记录。'
+                                                           '如果转移记录很多，同步时间可能会长（3-10分钟），'
+                                                           '所以点击确定后页面没反应是正常现象，后台正在处理。'
+                                                           '如果开启补充数据，会获取tr、qb种子，补充转移记录中download_hash缺失的情况（同步删除需要）。'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           }
+                       ]
+                   }
+               ], {
+                   "clear": False,
+                   "supp": False,
+                   "nt_db_path": "",
+                   "path": "",
+                   "downloader": "",
+                   "site": "",
+               }
 
     def get_page(self) -> List[dict]:
         pass

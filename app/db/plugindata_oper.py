@@ -57,3 +57,10 @@ class PluginDataOper(DbOper):
         清空插件数据
         """
         PluginData.truncate(self._db)
+
+    def get_data_all(self, plugin_id: str) -> Any:
+        """
+        获取插件所有数据
+        :param plugin_id: 插件id
+        """
+        return PluginData.get_plugin_data_by_plugin_id(self._db, plugin_id)
