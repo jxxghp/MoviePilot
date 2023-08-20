@@ -264,7 +264,7 @@ class DirMonitor(_PluginBase):
 
                     # 获取downloadhash
                     download_hash = self.get_download_hash(file_name=os.path.basename(event_path),
-                                                           tmdb_id=mediainfo.tmdb_id)
+                                                           tmdb_id=mediainfo.tmdb_id,)
 
                     # 新增转移成功历史记录
                     self.transferhis.add_force(
