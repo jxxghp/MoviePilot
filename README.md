@@ -21,10 +21,12 @@ Docker：https://hub.docker.com/r/jxxghp/moviepilot
 
 2. **安装CookieCloud服务端（可选）**
 
-MoviePilot内置了公共的CookieCloud服务器，如果需要自建服务，可参考 [CookieCloud](https://github.com/easychen/CookieCloud) 项目进行安装。
+MoviePilot内置了NAStool使用的公共CookieCloud服务器，如果需要自建服务，可参考 [CookieCloud](https://github.com/easychen/CookieCloud) 项目进行搭建。
 ```shell
 docker pull easychen/cookiecloud:latest
 ```
+
+**声明：** 本项目不会收集用户敏感数据，Cookie同步也是基于CookieCloud项目实现，非本项目提供的能力。技术角度上CookieCloud采用端到端加密，在个人不泄露`用户KEY`和`端对端加密密码`的情况下第三方无法窃取任何用户信息（包括服务器持有者）。如果你不放心，可以不使用公共服务或者不使用本项目，但如果使用后发生了任何信息泄露与本项目无关！
 
 3. **安装配套管理软件**
 
