@@ -260,6 +260,9 @@ class LibraryScraper(_PluginBase):
         # 查找目录下所有的文件
         files = SystemUtils.list_files_with_extensions(path, settings.RMT_MEDIAEXT)
         for file in files:
+            if self._event.is_set():
+                logger.info(f"媒体库刮削服务停止")
+                return
             # 排除目录
             exclude_flag = False
             for exclude_path in exclude_paths:
@@ -271,6 +274,11 @@ class LibraryScraper(_PluginBase):
                 continue
             # 识别媒体文件
             meta_info = MetaInfo(file.name)
+            if meta_info.type == MediaType.TV:
+                dir_info = MetaInfo(file.parent.parent.name)
+            else:
+                dir_info = MetaInfo(file.parent.name)
+            meta_info.merge(dir_info)
             # 优先读取本地nfo文件
             tmdbid = None
             if meta_info.type == MediaType.MOVIE:
@@ -297,7 +305,7 @@ class LibraryScraper(_PluginBase):
                 logger.warn(f"未识别到媒体信息：{file}")
                 continue
             # 开始刮削
-            self.chain.scrape_metadata(path=path, mediainfo=mediainfo)
+            self.chain.scrape_metadata(path=file, mediainfo=mediainfo)
 
     @staticmethod
     def __get_tmdbid_from_nfo(file_path: Path):

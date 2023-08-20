@@ -180,7 +180,7 @@ class FilterModule(_ModuleBase):
             if self.__match_group(torrent, parsed_group.as_list()[0]):
                 # 出现匹配时中断
                 matched = True
-                logger.info(f"种子 {torrent.site_name} - {torrent.title} 优先级为 {res_order}")
+                logger.info(f"种子 {torrent.site_name} - {torrent.title} 优先级为 {100 - res_order + 1}")
                 torrent.pri_order = res_order
                 break
             # 优先级降低，继续匹配
