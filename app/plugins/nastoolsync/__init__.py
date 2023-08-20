@@ -296,6 +296,7 @@ class NAStoolSync(_PluginBase):
                     if str(torrent.get("name")) == str(torrent_name) \
                             or str(torrent.get("name")) == str(torrent_name2):
                         mdownload_hash = torrent.get("hash")
+                        torrent_name = str(torrent.get("name"))
                         break
 
                 # 处理辅种器
@@ -304,6 +305,7 @@ class NAStoolSync(_PluginBase):
                         if str(torrent.get("name")) == str(torrent_name) \
                                 or str(torrent.get("name")) == str(torrent_name2):
                             mdownload_hash = torrent.get("hashString")
+                            torrent_name = str(torrent.get("name"))
                             break
 
                 # 继续补充 遍历所有种子，按照添加升序升序，第一个种子是初始种子
@@ -320,6 +322,7 @@ class NAStoolSync(_PluginBase):
                             mate_torrents = sorted(mate_torrents, key=lambda x: x.added_date)
                         # 最早添加的hash是下载的hash
                         mdownload_hash = mate_torrents[0].get("hashString")
+                        torrent_name = str(mate_torrents[0].get("name"))
                         # 补充转种记录
                         self._plugindata.save(plugin_id="TorrentTransfer",
                                               key=f"qbittorrent-{mdownload_hash}",
@@ -336,6 +339,22 @@ class NAStoolSync(_PluginBase):
                                                           "torrents": [torrent.get("hashString") for torrent in
                                                                        mate_torrents[1:]]}]
                                                   )
+
+                # 补充下载历史
+                self._downloadhistory.add(
+                    path=msrc_filename,
+                    type=mtype,
+                    title=mtitle,
+                    year=myear,
+                    tmdbid=mtmdbid,
+                    seasons=mseasons,
+                    episodes=mepisodes,
+                    image=mimage,
+                    download_hash=mdownload_hash,
+                    torrent_name=torrent_name,
+                    torrent_description="",
+                    torrent_site=""
+                )
 
             # 处理路径映射
             if self._path:
