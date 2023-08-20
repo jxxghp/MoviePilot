@@ -114,7 +114,7 @@ class DirMonitor(_PluginBase):
 
                 # 存储目的目录
                 paths = mon_path.split(":")
-                if len(paths > 1):
+                if len(paths) > 1:
                     mon_path = paths[0]
                     self._dirconf[mon_path] = paths[1]
 
