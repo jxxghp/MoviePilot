@@ -74,3 +74,9 @@ class TransferHistoryOper(DbOper):
         清空转移记录
         """
         TransferHistory.truncate(self._db)
+
+    def add_force(self, **kwargs):
+        """
+        新增转移历史
+        """
+        return TransferHistory(**kwargs).create(self._db)
