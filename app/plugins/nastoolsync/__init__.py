@@ -96,7 +96,7 @@ class NAStoolSync(_PluginBase):
                     {
                         "transfer": False,
                         "clear": False,
-                        "nt_db_path": "",
+                        "nt_db_path": self._nt_db_path,
                         "path": self._path,
                         "downloader": self._downloader,
                         "site": self._site,
