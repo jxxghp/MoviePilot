@@ -19,6 +19,8 @@ Docker：https://hub.docker.com/r/jxxghp/moviepilot
 
 站点信息需要通过CookieCloud同步获取，因此需要安装CookieCloud插件，将浏览器中的站点Cookie数据同步到云端后再同步到MoviePilot使用。 插件下载地址请点击 [这里](https://github.com/easychen/CookieCloud/releases)。
 
+**声明：Cookie同步非本项目提供的能力，本项目也不会收集任何数据，技术角度上说CookieCloud采用端到端加密，在不泄露KEY和加密密码的情况下第三方无法窃取，包括服务器持有者。如果你不放心，可以不使用公共服务器或者不使用本项目，但如果使用后发生的任何信息泄露本项目概不负责。**
+
 2. **安装CookieCloud服务端（可选）**
 
 MoviePilot内置了公共的CookieCloud服务器，如果需要自建服务，可参考 [CookieCloud](https://github.com/easychen/CookieCloud) 项目进行安装。
