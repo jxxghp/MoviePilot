@@ -85,7 +85,7 @@ class TransferHistory(Base):
         return db.query(func.count(TransferHistory.id)).filter(TransferHistory.title.like(f'%{title}%')).first()[0]
 
     @staticmethod
-    def list_by(db: Session, mtype: str = None, title: str = None, year: int = None, season: str = None,
+    def list_by(db: Session, title: str = None, year: int = None, season: str = None,
                 episode: str = None, tmdbid: str = None):
         """
         据tmdbid、season、season_episode查询转移记录
@@ -101,19 +101,16 @@ class TransferHistory(Base):
                                                     TransferHistory.episodes == episode).all()
         # 电视剧所有季集｜电影
         if not season and not episode:
-            return db.query(TransferHistory).filter(TransferHistory.type == mtype,
-                                                    TransferHistory.title == title,
+            return db.query(TransferHistory).filter(TransferHistory.title == title,
                                                     TransferHistory.year == year).all()
         # 电视剧某季
         if season and not episode:
-            return db.query(TransferHistory).filter(TransferHistory.type == mtype,
-                                                    TransferHistory.title == title,
+            return db.query(TransferHistory).filter(TransferHistory.title == title,
                                                     TransferHistory.year == year,
                                                     TransferHistory.seasons == season).all()
         # 电视剧某季某集
         if season and episode:
-            return db.query(TransferHistory).filter(TransferHistory.type == mtype,
-                                                    TransferHistory.title == title,
+            return db.query(TransferHistory).filter(TransferHistory.title == title,
                                                     TransferHistory.year == year,
                                                     TransferHistory.seasons == season,
                                                     TransferHistory.episodes == episode).all()

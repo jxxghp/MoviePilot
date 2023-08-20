@@ -319,7 +319,7 @@ class ChainBase(metaclass=ABCMeta):
 
     def torrent_files(self, tid: str) -> Optional[Union[TorrentFilesList, List[File]]]:
         """
-        根据种子文件，选择并添加下载任务
+        获取种子文件
         :param tid:  种子Hash
         :return: 种子文件
         """

@@ -72,12 +72,13 @@ class CookieCloudChain(ChainBase):
         for domain, cookie in cookies.items():
             # 获取站点信息
             indexer = self.siteshelper.get_indexer(domain)
-            if self.siteoper.exists(domain):
+            site_info = self.siteoper.get_by_domain(domain)
+            if site_info:
                 # 检查站点连通性
                 status, msg = self.sitechain.test(domain)
                 # 更新站点Cookie
                 if status:
-                    logger.info(f"站点【{indexer.get('name')}】连通性正常，不同步CookieCloud数据")
+                    logger.info(f"站点【{site_info.name}】连通性正常，不同步CookieCloud数据")
                     continue
                 # 更新站点Cookie
                 self.siteoper.update_cookie(domain=domain, cookies=cookie)

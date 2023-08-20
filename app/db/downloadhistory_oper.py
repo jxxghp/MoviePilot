@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 from app.db import DbOper
 from app.db.models.downloadhistory import DownloadHistory
@@ -44,7 +44,7 @@ class DownloadHistoryOper(DbOper):
         DownloadHistory.truncate(self._db)
 
     def get_last_by(self, mtype=None, title: str = None, year: str = None,
-                    season: str = None, episode: str = None, tmdbid=None) -> DownloadHistory:
+                    season: str = None, episode: str = None, tmdbid=None):
         """
         按类型、标题、年份、季集查询下载记录
         """

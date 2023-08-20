@@ -1,3 +1,4 @@
+import os
 import re
 import threading
 import time
@@ -16,6 +17,8 @@ from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
+from app.modules.qbittorrent import Qbittorrent
+from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 from app.schemas import Notification, NotificationType, TransferInfo
 from app.schemas.types import EventType
@@ -82,6 +85,8 @@ class DirMonitor(_PluginBase):
     _exclude_keywords = ""
     # 存储源目录与目的目录关系
     _dirconf: Dict[str, Path] = {}
+    qb = None
+    tr = None
 
     def init_plugin(self, config: dict = None):
         self.transferhis = TransferHistoryOper()
@@ -104,6 +109,9 @@ class DirMonitor(_PluginBase):
         self.stop_service()
 
         if self._enabled:
+            self.qb = Qbittorrent()
+            self.tr = Transmission()
+
             # 启动任务
             monitor_dirs = self._monitor_dirs.split("\n")
             if not monitor_dirs:
@@ -255,12 +263,9 @@ class DirMonitor(_PluginBase):
                         return
 
                     # 获取downloadhash
-                    downloadHis = self.downloadhis.get_last_by(mtype=mediainfo.type.value,
-                                                               title=mediainfo.title,
-                                                               year=mediainfo.year,
-                                                               season=file_meta.season,
-                                                               episode=file_meta.episode,
-                                                               tmdbid=mediainfo.tmdb_id)
+                    download_hash = self.get_download_hash(file_name=os.path.basename(event_path),
+                                                           tmdb_id=mediainfo.tmdb_id,)
+
                     # 新增转移成功历史记录
                     self.transferhis.add_force(
                         src=event_path,
@@ -277,7 +282,7 @@ class DirMonitor(_PluginBase):
                         seasons=file_meta.season,
                         episodes=file_meta.episode,
                         image=mediainfo.get_poster_image(),
-                        download_hash=downloadHis.download_hash if downloadHis else None,
+                        download_hash=download_hash,
                         status=1,
                         date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
                     )
@@ -299,6 +304,32 @@ class DirMonitor(_PluginBase):
 
             except Exception as e:
                 logger.error("目录监控发生错误：%s - %s" % (str(e), traceback.format_exc()))
+
+    def get_download_hash(self, file_name, tmdb_id):
+        """
+        获取download_hash
+        """
+        downloadHis = self.downloadhis.get_last_by(tmdbid=tmdb_id)
+        if downloadHis:
+            for his in downloadHis:
+                # qb
+                if settings.DOWNLOADER == "qbittorrent":
+                    files = self.qb.get_files(tid=his.download_hash)
+                    if files:
+                        for file in files:
+                            torrent_file_name = file.get("name")
+                            if str(file_name) == str(os.path.basename(torrent_file_name)):
+                                return his.download_hash
+                # tr
+                if settings.DOWNLOADER == "transmission":
+                    files = self.tr.get_files(tid=his.download_hash)
+                    if files:
+                        for file in files:
+                            torrent_file_name = file.name
+                            if str(file_name) == str(os.path.basename(torrent_file_name)):
+                                return his.download_hash
+
+        return None
 
     def get_state(self) -> bool:
         return self._enabled
