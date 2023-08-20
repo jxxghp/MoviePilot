@@ -471,8 +471,7 @@ class NAStoolSync(_PluginBase):
         FROM
             TRANSFER_HISTORY t
             LEFT JOIN ( SELECT * FROM DOWNLOAD_HISTORY GROUP BY TMDBID ) d ON t.TMDBID = d.TMDBID
-            AND t.TYPE = d.TYPE
-            where t.TITLE = '黑客军团';
+            AND t.TYPE = d.TYPE;
             '''
         cursor.execute(sql)
         nt_historys = cursor.fetchall()
