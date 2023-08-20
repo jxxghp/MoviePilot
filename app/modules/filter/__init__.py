@@ -91,7 +91,7 @@ class FilterModule(_ModuleBase):
         },
         # 国语配音
         "CNVOI": {
-            "include": [r'国语配音|国配'],
+            "include": [r'[国國][语語]配音|[国國]配'],
             "exclude": []
         }
     }
