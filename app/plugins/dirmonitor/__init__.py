@@ -264,8 +264,7 @@ class DirMonitor(_PluginBase):
 
                     # 获取downloadhash
                     download_hash = self.get_download_hash(file_name=os.path.basename(event_path),
-                                                           mediainfo=mediainfo,
-                                                           file_meta=file_meta)
+                                                           tmdb_id=mediainfo.tmdb_id)
 
                     # 新增转移成功历史记录
                     self.transferhis.add_force(
@@ -306,16 +305,11 @@ class DirMonitor(_PluginBase):
             except Exception as e:
                 logger.error("目录监控发生错误：%s - %s" % (str(e), traceback.format_exc()))
 
-    def get_download_hash(self, file_name, mediainfo, file_meta):
+    def get_download_hash(self, file_name, tmdb_id):
         """
         获取download_hash
         """
-        downloadHis = self.downloadhis.get_last_by(mtype=mediainfo.type.value,
-                                                   title=mediainfo.title,
-                                                   year=mediainfo.year,
-                                                   season=file_meta.season,
-                                                   episode=file_meta.episode,
-                                                   tmdbid=mediainfo.tmdb_id)
+        downloadHis = self.downloadhis.get_last_by(tmdbid=tmdb_id)
         if downloadHis:
             for his in downloadHis:
                 # qb

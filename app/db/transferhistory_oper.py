@@ -79,4 +79,8 @@ class TransferHistoryOper(DbOper):
         """
         新增转移历史
         """
+        if kwargs.get("src"):
+            transferhistory = TransferHistory.get_by_src(self._db, kwargs.get("src"))
+            if transferhistory:
+                transferhistory.delete(self._db, transferhistory.id)
         return TransferHistory(**kwargs).create(self._db)
