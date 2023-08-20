@@ -80,7 +80,7 @@ class DirMonitor(_PluginBase):
     _monitor_dirs = ""
     _exclude_keywords = ""
     # 存储源目录与目的目录关系
-    _dirconf: Dict[str, str] = {}
+    _dirconf: Dict[str, Path] = {}
 
     def init_plugin(self, config: dict = None):
         self.transferhis = TransferHistoryOper()
@@ -116,7 +116,7 @@ class DirMonitor(_PluginBase):
                 paths = mon_path.split(":")
                 if len(paths) > 1:
                     mon_path = paths[0]
-                    self._dirconf[mon_path] = paths[1]
+                    self._dirconf[mon_path] = Path(paths[1])
 
                 # 检查目录是不是媒体库目录的子目录
                 try:
