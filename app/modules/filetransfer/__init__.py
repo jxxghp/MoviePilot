@@ -30,25 +30,27 @@ class FileTransferModule(_ModuleBase):
         pass
 
     def transfer(self, path: Path, mediainfo: MediaInfo,
-                 transfer_type: str, meta: MetaBase = None) -> TransferInfo:
+                 transfer_type: str, target: Path = None, meta: MetaBase = None) -> TransferInfo:
         """
         文件转移
         :param path:  文件路径
         :param mediainfo:  识别的媒体信息
         :param transfer_type:  转移方式
+        :param target:  目标路径
         :param meta: 预识别的元数据，仅单文件转移时传递
         :return: {path, target_path, message}
         """
         # 获取目标路径
-        target_path = self.get_target_path(in_path=path)
-        if not target_path:
+        if not target:
+            target = self.get_target_path(in_path=path)
+        if not target:
             logger.error("未找到媒体库目录，无法转移文件")
             return TransferInfo(message="未找到媒体库目录，无法转移文件")
         # 转移
         return self.transfer_media(in_path=path,
                                    mediainfo=mediainfo,
                                    transfer_type=transfer_type,
-                                   target_dir=target_path,
+                                   target_dir=target,
                                    in_meta=meta)
 
     @staticmethod

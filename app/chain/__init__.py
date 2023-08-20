@@ -271,17 +271,19 @@ class ChainBase(metaclass=ABCMeta):
 
     def transfer(self, path: Path, mediainfo: MediaInfo,
                  transfer_type: str,
+                 target: Path = None,
                  meta: MetaBase = None) -> Optional[TransferInfo]:
         """
         文件转移
         :param path:  文件路径
         :param mediainfo:  识别的媒体信息
         :param transfer_type:  转移模式
+        :param target:  转移目标路径
         :param meta: 预识别的元数据，仅单文件转移时传递
         :return: {path, target_path, message}
         """
         return self.run_module("transfer", path=path, mediainfo=mediainfo,
-                               transfer_type=transfer_type, meta=meta)
+                               transfer_type=transfer_type, target=target, meta=meta)
 
     def transfer_completed(self, hashs: Union[str, list], transinfo: TransferInfo) -> None:
         """
