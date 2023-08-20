@@ -516,6 +516,8 @@ class MediaSyncDel(_PluginBase):
         # 开始删除
         image = 'https://emby.media/notificationicon.png'
         year = None
+        del_cnt = 0
+        stop_cnt = 0
         for transferhis in transfer_history:
             image = transferhis.image
             year = transferhis.year
@@ -532,8 +534,12 @@ class MediaSyncDel(_PluginBase):
                     if transferhis.download_hash:
                         try:
                             # 2、判断种子是否被删除完
-                            self.handle_torrent(src=source_path,
-                                                torrent_hash=transferhis.download_hash)
+                            delete_flag, stop_flag = self.handle_torrent(src=source_path,
+                                                                         torrent_hash=transferhis.download_hash)
+                            if delete_flag:
+                                del_cnt += 1
+                            if stop_flag:
+                                stop_cnt += 1
                         except Exception as e:
                             logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
 
@@ -554,6 +560,7 @@ class MediaSyncDel(_PluginBase):
                 title="媒体库同步删除任务完成",
                 image=image,
                 text=f"{msg}\n"
+                     f"数量 删除{del_cnt}个 暂停{stop_cnt}个\n"
                      f"时间 {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}"
             )
 
@@ -659,6 +666,8 @@ class MediaSyncDel(_PluginBase):
 
             # 开始删除
             image = 'https://emby.media/notificationicon.png'
+            del_cnt = 0
+            stop_cnt = 0
             for transferhis in transfer_history:
                 image = transferhis.image
                 self._transferhis.delete(transferhis.id)
@@ -675,8 +684,12 @@ class MediaSyncDel(_PluginBase):
                         if transferhis.download_hash:
                             try:
                                 # 2、判断种子是否被删除完
-                                self.handle_torrent(src=source_path,
-                                                    torrent_hash=transferhis.download_hash)
+                                delete_flag, stop_flag = self.handle_torrent(src=source_path,
+                                                                             torrent_hash=transferhis.download_hash)
+                                if delete_flag:
+                                    del_cnt += 1
+                                if stop_flag:
+                                    stop_cnt += 1
                             except Exception as e:
                                 logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
 
@@ -688,7 +701,7 @@ class MediaSyncDel(_PluginBase):
                     mtype=NotificationType.MediaServer,
                     title="媒体库同步删除任务完成",
                     text=f"{msg}\n"
-                         f"数量 {len(transfer_history)}\n"
+                         f"数量 删除{del_cnt}个 暂停{stop_cnt}个\n"
                          f"时间 {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}",
                     image=image)
 
@@ -726,9 +739,8 @@ class MediaSyncDel(_PluginBase):
         del_history = False
         # 删除种子标志
         delete_flag = True
-
         # 是否需要暂停源下载器种子
-        stop_from = False
+        stop_flag = False
 
         # 如果有转种记录，则删除转种后的下载任务
         if transfer_history and isinstance(transfer_history, dict):
@@ -752,7 +764,7 @@ class MediaSyncDel(_PluginBase):
                             if Path(torrent_file).exists():
                                 logger.warn(f"种子有文件被删除，种子文件{torrent_file}暂未删除，暂停种子")
                                 delete_flag = False
-                                stop_from = True
+                                stop_flag = True
                                 break
                     if delete_flag:
                         logger.info(f"删除下载任务：{settings.DOWNLOADER} - {torrent_hash}")
@@ -771,11 +783,12 @@ class MediaSyncDel(_PluginBase):
                     else:
                         for dl_file in dl_files:
                             dl_file_name = dl_file.name
-                            if not stop_from:
+                            if not transfer_history or not stop_flag:
                                 torrent_file = os.path.join(src, os.path.basename(dl_file_name))
                                 if Path(torrent_file).exists():
                                     logger.info(f"种子有文件被删除，种子文件{torrent_file}暂未删除，暂停种子")
                                     delete_flag = False
+                                    stop_flag = True
                                     break
                     if delete_flag:
                         # 删除源下载任务或转种后下载任务
@@ -796,11 +809,12 @@ class MediaSyncDel(_PluginBase):
                     else:
                         for dl_file in dl_files:
                             dl_file_name = dl_file.get("name")
-                            if not stop_from:
+                            if not transfer_history or not stop_flag:
                                 torrent_file = os.path.join(src, os.path.basename(dl_file_name))
                                 if Path(torrent_file).exists():
                                     logger.info(f"种子有文件被删除，种子文件{torrent_file}暂未删除，暂停种子")
                                     delete_flag = False
+                                    stop_flag = True
                                     break
 
                     if delete_flag:
@@ -822,7 +836,7 @@ class MediaSyncDel(_PluginBase):
         if not delete_flag:
             logger.error("开始暂停种子")
             # 暂停种子
-            if stop_from:
+            if stop_flag:
                 # 暂停源种
                 self.chain.stop_torrents(torrent_hash)
                 logger.info(f"种子：{settings.DOWNLOADER} - {torrent_hash} 暂停")
@@ -837,6 +851,8 @@ class MediaSyncDel(_PluginBase):
                         logger.info(f"转种：{download} - {download_id} 暂停")
                 # 暂停辅种
                 self.__del_seed(download=download, download_id=download_id, action_flag="stop")
+
+        return delete_flag, stop_flag
 
     def __del_seed(self, download, download_id, action_flag):
         """
