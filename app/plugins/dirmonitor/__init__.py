@@ -1,5 +1,5 @@
-import os
 import re
+import shutil
 import threading
 import time
 import traceback
@@ -22,6 +22,7 @@ from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 from app.schemas import Notification, NotificationType, TransferInfo
 from app.schemas.types import EventType
+from app.utils.system import SystemUtils
 
 lock = threading.Lock()
 
@@ -263,7 +264,7 @@ class DirMonitor(_PluginBase):
                         return
 
                     # 获取downloadhash
-                    download_hash = self.get_download_hash(src=event_path,
+                    download_hash = self.get_download_hash(src=file_path,
                                                            tmdb_id=mediainfo.tmdb_id)
 
                     # 新增转移成功历史记录
@@ -302,14 +303,25 @@ class DirMonitor(_PluginBase):
                         'transferinfo': transferinfo
                     })
 
+                    # 移动模式删除空目录
+                    if self._transfer_type == "move":
+                        for file_dir in file_path.parents:
+                            if len(str(file_dir)) <= len(str(Path(mon_path))):
+                                # 重要，删除到监控目录为止
+                                break
+                            files = SystemUtils.list_files_with_extensions(file_dir, settings.RMT_MEDIAEXT)
+                            if not files:
+                                logger.warn(f"移动模式，删除空目录：{file_dir}")
+                                shutil.rmtree(file_dir, ignore_errors=True)
+
             except Exception as e:
                 logger.error("目录监控发生错误：%s - %s" % (str(e), traceback.format_exc()))
 
-    def get_download_hash(self, src, tmdb_id):
+    def get_download_hash(self, src: Path, tmdb_id: int):
         """
         获取download_hash
         """
-        file_name = os.path.basename(src)
+        file_name = src.name
         downloadHis = self.downloadhis.get_last_by(tmdbid=tmdb_id)
         if downloadHis:
             for his in downloadHis:
@@ -319,7 +331,7 @@ class DirMonitor(_PluginBase):
                     if files:
                         for file in files:
                             torrent_file_name = file.get("name")
-                            if str(file_name) == str(os.path.basename(torrent_file_name)):
+                            if file_name == Path(torrent_file_name).name:
                                 return his.download_hash
                 # tr
                 if settings.DOWNLOADER == "transmission":
@@ -327,7 +339,7 @@ class DirMonitor(_PluginBase):
                     if files:
                         for file in files:
                             torrent_file_name = file.name
-                            if str(file_name) == str(os.path.basename(torrent_file_name)):
+                            if file_name == Path(torrent_file_name).name:
                                 return his.download_hash
 
         # 尝试获取下载任务补充download_hash
@@ -349,7 +361,7 @@ class DirMonitor(_PluginBase):
                 if files:
                     for file in files:
                         torrent_file_name = file.get("name")
-                        if str(file_name) == str(os.path.basename(torrent_file_name)):
+                        if file_name == Path(torrent_file_name).name:
                             return torrent.get("hash")
 
         # 处理辅种器 遍历所有种子，按照添加时间升序
@@ -362,7 +374,7 @@ class DirMonitor(_PluginBase):
                 if files:
                     for file in files:
                         torrent_file_name = file.name
-                        if str(file_name) == str(os.path.basename(torrent_file_name)):
+                        if file_name == Path(torrent_file_name).name:
                             return torrent.get("hashString")
         return None
 
