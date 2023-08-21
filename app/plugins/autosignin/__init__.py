@@ -571,3 +571,44 @@ class AutoSignIn(_PluginBase):
                 self._scheduler = None
         except Exception as e:
             logger.error("退出插件失败：%s" % str(e))
+
+    @eventmanager.register(EventType.SiteDeleted)
+    def site_deleted(self, event):
+        """
+        删除对应站点选中
+        """
+        plugin_id = event.event_data.get("plugin_id")
+        site_id = event.event_data.get("site_id")
+        if not plugin_id:
+            return
+        if self.__class__.__name__ not in plugin_id:
+            return
+        config = self.get_config()
+        if config:
+            sign_sites = config.get("sign_sites")
+            if sign_sites:
+                if isinstance(sign_sites, str):
+                    sign_sites = [sign_sites]
+
+                # 删除对应站点
+                if site_id:
+                    sign_sites = [site for site in sign_sites if int(site) != int(site_id)]
+                else:
+                    # 清空
+                    sign_sites = []
+
+                # 若无站点，则停止
+                if len(sign_sites) == 0:
+                    self._enabled = False
+
+                # 保存配置
+                self.update_config(
+                    {
+                        "enabled": self._enabled,
+                        "notify": self._notify,
+                        "cron": self._cron,
+                        "onlyonce": self._onlyonce,
+                        "queue_cnt": self._queue_cnt,
+                        "sign_sites": sign_sites
+                    }
+                )
