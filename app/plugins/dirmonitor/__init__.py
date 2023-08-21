@@ -345,22 +345,25 @@ class DirMonitor(_PluginBase):
         for torrent in qb_torrents:
             if str(torrent.get("name")) == str(torrent_name) \
                     or str(torrent.get("name")) == str(torrent_name2):
-                return torrent.get("hash")
+                files = self.qb.get_files(tid=torrent.get("hash"))
+                if files:
+                    for file in files:
+                        torrent_file_name = file.get("name")
+                        if str(file_name) == str(os.path.basename(torrent_file_name)):
+                            return torrent.get("hash")
 
-        # 处理辅种器 遍历所有种子，按照添加升序升序，第一个种子是初始种子
-        mate_torrents = []
+        # 处理辅种器 遍历所有种子，按照添加时间升序
+        if len(tr_torrents) > 0:
+            tr_torrents = sorted(tr_torrents, key=lambda x: x.added_date)
         for torrent in tr_torrents:
             if str(torrent.get("name")) == str(torrent_name) \
                     or str(torrent.get("name")) == str(torrent_name2):
-                mate_torrents.append(torrent)
-
-        # 匹配上则按照时间升序
-        if mate_torrents:
-            if len(mate_torrents) > 1:
-                mate_torrents = sorted(mate_torrents, key=lambda x: x.added_date)
-            # 最早添加的hash是下载的hash
-            return mate_torrents[0].get("hashString")
-
+                files = self.tr.get_files(tid=torrent.get("hashString"))
+                if files:
+                    for file in files:
+                        torrent_file_name = file.name
+                        if str(file_name) == str(os.path.basename(torrent_file_name)):
+                            return torrent.get("hashString")
         return None
 
     def get_state(self) -> bool:
@@ -375,149 +378,149 @@ class DirMonitor(_PluginBase):
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         return [
-                   {
-                       'component': 'VForm',
-                       'content': [
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 6
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'enabled',
-                                                   'label': '启用插件',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 6
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'notify',
-                                                   'label': '发送通知',
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 6
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSelect',
-                                               'props': {
-                                                   'model': 'mode',
-                                                   'label': '监控模式',
-                                                   'items': [
-                                                       {'title': '兼容模式', 'value': 'compatibility'},
-                                                       {'title': '性能模式', 'value': 'fast'}
-                                                   ]
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 6
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSelect',
-                                               'props': {
-                                                   'model': 'transfer_type',
-                                                   'label': '转移方式',
-                                                   'items': [
-                                                       {'title': '移动', 'value': 'move'},
-                                                       {'title': '复制', 'value': 'copy'},
-                                                       {'title': '硬链接', 'value': 'link'},
-                                                       {'title': '软链接', 'value': 'softlink'}
-                                                   ]
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextarea',
-                                               'props': {
-                                                   'model': 'monitor_dirs',
-                                                   'label': '监控目录',
-                                                   'rows': 5,
-                                                   'placeholder': '每一行一个目录，支持两种配置方式：\n'
-                                                                  '监控目录\n'
-                                                                  '监控目录:转移目的目录'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextarea',
-                                               'props': {
-                                                   'model': 'exclude_keywords',
-                                                   'label': '排除关键词',
-                                                   'rows': 2,
-                                                   'placeholder': '每一行一个关键词'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           }
-                       ]
-                   }
-               ], {
-                   "enabled": False,
-                   "notify": False,
-                   "mode": "fast",
-                   "transfer_type": settings.TRANSFER_TYPE,
-                   "monitor_dirs": "",
-                   "exclude_keywords": ""
-               }
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'notify',
+                                            'label': '发送通知',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'mode',
+                                            'label': '监控模式',
+                                            'items': [
+                                                {'title': '兼容模式', 'value': 'compatibility'},
+                                                {'title': '性能模式', 'value': 'fast'}
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'transfer_type',
+                                            'label': '转移方式',
+                                            'items': [
+                                                {'title': '移动', 'value': 'move'},
+                                                {'title': '复制', 'value': 'copy'},
+                                                {'title': '硬链接', 'value': 'link'},
+                                                {'title': '软链接', 'value': 'softlink'}
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'monitor_dirs',
+                                            'label': '监控目录',
+                                            'rows': 5,
+                                            'placeholder': '每一行一个目录，支持两种配置方式：\n'
+                                                           '监控目录\n'
+                                                           '监控目录:转移目的目录'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'exclude_keywords',
+                                            'label': '排除关键词',
+                                            'rows': 2,
+                                            'placeholder': '每一行一个关键词'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "notify": False,
+            "mode": "fast",
+            "transfer_type": settings.TRANSFER_TYPE,
+            "monitor_dirs": "",
+            "exclude_keywords": ""
+        }
 
     def get_page(self) -> List[dict]:
         pass
