@@ -505,7 +505,7 @@ class FileTransferModule(_ModuleBase):
             # 标题
             "title": mediainfo.title,
             # 原文件名
-            "original_name": meta.org_string,
+            "original_name": f"{meta.org_string}{file_ext}",
             # 原语种标题
             "original_title": mediainfo.original_title,
             # 识别名称

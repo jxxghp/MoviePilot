@@ -15,7 +15,7 @@ class FilterModule(_ModuleBase):
 
     # 内置规则集
     rule_set: Dict[str, dict] = {
-        # 蓝光
+        # 蓝光原盘
         "BLU": {
             "include": [r'Blu-?Ray.+VC-?1|Blu-?Ray.+AVC|UHD.+blu-?ray.+HEVC|MiniBD'],
             "exclude": []
@@ -57,12 +57,12 @@ class FilterModule(_ModuleBase):
         },
         # H265
         "H265": {
-            "include": [r'[Hx].?265'],
+            "include": [r'[Hx].?265|HEVC'],
             "exclude": []
         },
         # H264
         "H264": {
-            "include": [r'[Hx].?264'],
+            "include": [r'[Hx].?264|AVC'],
             "exclude": []
         },
         # 杜比

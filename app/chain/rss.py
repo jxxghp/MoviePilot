@@ -103,7 +103,7 @@ class RssChain(ChainBase):
             logger.error(f'{mediainfo.title_year} 添加自定义订阅失败')
             return None, "添加自定义订阅失败"
         else:
-            logger.info(f'{mediainfo.title_year}{metainfo.season} 添加订阅成功')
+            logger.info(f'{mediainfo.title_year} {metainfo.season} 添加订阅成功')
 
         # 返回结果
         return sid, ""

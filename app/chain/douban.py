@@ -41,7 +41,7 @@ class DoubanChain(ChainBase):
         if not mediainfo:
             logger.warn(f'{meta.name} 未识别到TMDB媒体信息')
             return Context(meta_info=meta, media_info=MediaInfo(douban_info=doubaninfo))
-        logger.info(f'识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}{meta.season}')
+        logger.info(f'识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year} {meta.season}')
         mediainfo.set_douban_info(doubaninfo)
         return Context(meta_info=meta, media_info=mediainfo)
 

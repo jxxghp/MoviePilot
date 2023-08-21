@@ -107,13 +107,13 @@ class SubscribeChain(ChainBase):
                 # 发回原用户
                 self.post_message(Notification(channel=channel,
                                                mtype=NotificationType.Subscribe,
-                                               title=f"{mediainfo.title_year}{metainfo.season} "
+                                               title=f"{mediainfo.title_year} {metainfo.season} "
                                                      f"添加订阅失败！",
                                                text=f"{err_msg}",
                                                image=mediainfo.get_message_image(),
                                                userid=userid))
         elif message:
-            logger.info(f'{mediainfo.title_year}{metainfo.season} 添加订阅成功')
+            logger.info(f'{mediainfo.title_year} {metainfo.season} 添加订阅成功')
             if username or userid:
                 text = f"评分：{mediainfo.vote_average}，来自用户：{username or userid}"
             else:
@@ -121,7 +121,7 @@ class SubscribeChain(ChainBase):
             # 广而告之
             self.post_message(Notification(channel=channel,
                                            mtype=NotificationType.Subscribe,
-                                           title=f"{mediainfo.title_year}{metainfo.season} 已添加订阅",
+                                           title=f"{mediainfo.title_year} {metainfo.season} 已添加订阅",
                                            text=text,
                                            image=mediainfo.get_message_image()))
         # 返回结果
@@ -213,7 +213,7 @@ class SubscribeChain(ChainBase):
                     self.subscribeoper.delete(subscribe.id)
                     # 发送通知
                     self.post_message(Notification(mtype=NotificationType.Subscribe,
-                                                   title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
+                                                   title=f'{mediainfo.title_year} {meta.season} 已完成订阅',
                                                    image=mediainfo.get_message_image()))
                     continue
                 # 电视剧订阅
@@ -231,7 +231,7 @@ class SubscribeChain(ChainBase):
                     if no_exists and no_exists.get(subscribe.tmdbid):
                         no_exists_info = no_exists.get(subscribe.tmdbid).get(subscribe.season)
                         if no_exists_info:
-                            logger.info(f'订阅 {mediainfo.title_year}{meta.season} 缺失集：{no_exists_info.episodes}')
+                            logger.info(f'订阅 {mediainfo.title_year} {meta.season} 缺失集：{no_exists_info.episodes}')
             else:
                 # 洗版状态
                 if meta.type == MediaType.TV:
@@ -341,7 +341,7 @@ class SubscribeChain(ChainBase):
             self.subscribeoper.delete(subscribe.id)
             # 发送通知
             self.post_message(Notification(mtype=NotificationType.Subscribe,
-                                           title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
+                                           title=f'{mediainfo.title_year} {meta.season} 已完成订阅',
                                            image=mediainfo.get_message_image()))
         else:
             # 当前下载资源的优先级
@@ -351,7 +351,7 @@ class SubscribeChain(ChainBase):
                 self.subscribeoper.delete(subscribe.id)
                 # 发送通知
                 self.post_message(Notification(mtype=NotificationType.Subscribe,
-                                               title=f'{mediainfo.title_year}{meta.season} 已洗版完成',
+                                               title=f'{mediainfo.title_year} {meta.season} 已洗版完成',
                                                image=mediainfo.get_message_image()))
             else:
                 # 正在洗版，更新资源优先级
@@ -461,7 +461,7 @@ class SubscribeChain(ChainBase):
                     self.subscribeoper.delete(subscribe.id)
                     # 发送通知
                     self.post_message(Notification(mtype=NotificationType.Subscribe,
-                                                   title=f'{mediainfo.title_year}{meta.season} 已完成订阅',
+                                                   title=f'{mediainfo.title_year} {meta.season} 已完成订阅',
                                                    image=mediainfo.get_message_image()))
                     continue
                 # 电视剧订阅
@@ -479,7 +479,7 @@ class SubscribeChain(ChainBase):
                     if no_exists and no_exists.get(subscribe.tmdbid):
                         no_exists_info = no_exists.get(subscribe.tmdbid).get(subscribe.season)
                         if no_exists_info:
-                            logger.info(f'订阅 {mediainfo.title_year}{meta.season} 缺失集：{no_exists_info.episodes}')
+                            logger.info(f'订阅 {mediainfo.title_year} {meta.season} 缺失集：{no_exists_info.episodes}')
             else:
                 # 洗版
                 if meta.type == MediaType.TV:
