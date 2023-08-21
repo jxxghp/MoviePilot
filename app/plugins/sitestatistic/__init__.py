@@ -1099,3 +1099,31 @@ class SiteStatistic(_PluginBase):
             "statistic_type": self._statistic_type,
             "statistic_sites": self._statistic_sites,
         })
+
+    @eventmanager.register(EventType.SiteDeleted)
+    def site_deleted(self, event):
+        """
+        删除对应站点选中
+        """
+        site_id = event.event_data.get("site_id")
+        config = self.get_config()
+        if config:
+            statistic_sites = config.get("statistic_sites")
+            if statistic_sites:
+                if isinstance(statistic_sites, str):
+                    statistic_sites = [statistic_sites]
+
+                # 删除对应站点
+                if site_id:
+                    statistic_sites = [site for site in statistic_sites if int(site) != int(site_id)]
+                else:
+                    # 清空
+                    statistic_sites = []
+
+                # 若无站点，则停止
+                if len(statistic_sites) == 0:
+                    self._enabled = False
+
+                self._statistic_sites = statistic_sites
+                # 保存配置
+                self.__update_config()

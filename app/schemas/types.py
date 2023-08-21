@@ -22,6 +22,8 @@ class EventType(Enum):
     SiteSignin = "site.signin"
     # 站点数据统计
     SiteStatistic = "site.statistic"
+    # 站点删除
+    SiteDeleted = "site.deleted"
     # 豆瓣想看
     DoubanSync = "douban.sync"
     # Webhook消息
@@ -38,6 +40,7 @@ class EventType(Enum):
     UserMessage = "user.message"
     # 通知消息
     NoticeMessage = "notice.message"
+
 
 
 # 系统配置Key字典
