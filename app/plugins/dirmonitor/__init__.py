@@ -263,8 +263,8 @@ class DirMonitor(_PluginBase):
                         return
 
                     # 获取downloadhash
-                    download_hash = self.get_download_hash(file_name=os.path.basename(event_path),
-                                                           tmdb_id=mediainfo.tmdb_id,)
+                    download_hash = self.get_download_hash(src=event_path,
+                                                           tmdb_id=mediainfo.tmdb_id)
 
                     # 新增转移成功历史记录
                     self.transferhis.add_force(
@@ -305,10 +305,11 @@ class DirMonitor(_PluginBase):
             except Exception as e:
                 logger.error("目录监控发生错误：%s - %s" % (str(e), traceback.format_exc()))
 
-    def get_download_hash(self, file_name, tmdb_id):
+    def get_download_hash(self, src, tmdb_id):
         """
         获取download_hash
         """
+        file_name = os.path.basename(src)
         downloadHis = self.downloadhis.get_last_by(tmdbid=tmdb_id)
         if downloadHis:
             for his in downloadHis:
@@ -329,6 +330,40 @@ class DirMonitor(_PluginBase):
                             if str(file_name) == str(os.path.basename(torrent_file_name)):
                                 return his.download_hash
 
+        # 尝试获取下载任务补充download_hash
+        logger.debug(f"转移记录 {src} 缺失download_hash，尝试补充……")
+
+        # 获取tr、qb所有种子
+        qb_torrents, _ = self.qb.get_torrents()
+        tr_torrents, _ = self.tr.get_torrents()
+
+        # 种子名称
+        torrent_name = str(src).split("/")[-1]
+        torrent_name2 = str(src).split("/")[-2]
+
+        # 处理下载器
+        for torrent in qb_torrents:
+            if str(torrent.get("name")) == str(torrent_name) \
+                    or str(torrent.get("name")) == str(torrent_name2):
+                files = self.qb.get_files(tid=torrent.get("hash"))
+                if files:
+                    for file in files:
+                        torrent_file_name = file.get("name")
+                        if str(file_name) == str(os.path.basename(torrent_file_name)):
+                            return torrent.get("hash")
+
+        # 处理辅种器 遍历所有种子，按照添加时间升序
+        if len(tr_torrents) > 0:
+            tr_torrents = sorted(tr_torrents, key=lambda x: x.added_date)
+        for torrent in tr_torrents:
+            if str(torrent.get("name")) == str(torrent_name) \
+                    or str(torrent.get("name")) == str(torrent_name2):
+                files = self.tr.get_files(tid=torrent.get("hashString"))
+                if files:
+                    for file in files:
+                        torrent_file_name = file.name
+                        if str(file_name) == str(os.path.basename(torrent_file_name)):
+                            return torrent.get("hashString")
         return None
 
     def get_state(self) -> bool:
