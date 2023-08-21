@@ -329,37 +329,37 @@ class DirMonitor(_PluginBase):
                             torrent_file_name = file.name
                             if str(file_name) == str(os.path.basename(torrent_file_name)):
                                 return his.download_hash
-        else:
-            # 尝试获取下载任务补充download_hash
-            logger.debug(f"转移记录 {src} 缺失download_hash，尝试补充……")
 
-            # 获取tr、qb所有种子
-            qb_torrents, _ = self.qb.get_torrents()
-            tr_torrents, _ = self.tr.get_torrents()
+        # 尝试获取下载任务补充download_hash
+        logger.debug(f"转移记录 {src} 缺失download_hash，尝试补充……")
 
-            # 种子名称
-            torrent_name = str(src).split("/")[-1]
-            torrent_name2 = str(src).split("/")[-2]
+        # 获取tr、qb所有种子
+        qb_torrents, _ = self.qb.get_torrents()
+        tr_torrents, _ = self.tr.get_torrents()
 
-            # 处理下载器
-            for torrent in qb_torrents:
-                if str(torrent.get("name")) == str(torrent_name) \
-                        or str(torrent.get("name")) == str(torrent_name2):
-                    return torrent.get("hash")
+        # 种子名称
+        torrent_name = str(src).split("/")[-1]
+        torrent_name2 = str(src).split("/")[-2]
 
-            # 处理辅种器 遍历所有种子，按照添加升序升序，第一个种子是初始种子
-            mate_torrents = []
-            for torrent in tr_torrents:
-                if str(torrent.get("name")) == str(torrent_name) \
-                        or str(torrent.get("name")) == str(torrent_name2):
-                    mate_torrents.append(torrent)
+        # 处理下载器
+        for torrent in qb_torrents:
+            if str(torrent.get("name")) == str(torrent_name) \
+                    or str(torrent.get("name")) == str(torrent_name2):
+                return torrent.get("hash")
 
-            # 匹配上则按照时间升序
-            if mate_torrents:
-                if len(mate_torrents) > 1:
-                    mate_torrents = sorted(mate_torrents, key=lambda x: x.added_date)
-                # 最早添加的hash是下载的hash
-                return mate_torrents[0].get("hashString")
+        # 处理辅种器 遍历所有种子，按照添加升序升序，第一个种子是初始种子
+        mate_torrents = []
+        for torrent in tr_torrents:
+            if str(torrent.get("name")) == str(torrent_name) \
+                    or str(torrent.get("name")) == str(torrent_name2):
+                mate_torrents.append(torrent)
+
+        # 匹配上则按照时间升序
+        if mate_torrents:
+            if len(mate_torrents) > 1:
+                mate_torrents = sorted(mate_torrents, key=lambda x: x.added_date)
+            # 最早添加的hash是下载的hash
+            return mate_torrents[0].get("hashString")
 
         return None
 
