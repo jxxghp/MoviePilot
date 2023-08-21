@@ -89,7 +89,7 @@ class TheMovieDbModule(_ModuleBase):
                                                    year=meta.year,
                                                    mtype=MediaType.TV)
                         if not info:
-                            # 非严格模式下去掉年份和类型再查一次
+                            # 去掉年份和类型再查一次
                             info = self.tmdb.match_multi(name=meta.name)
 
                 if not info:

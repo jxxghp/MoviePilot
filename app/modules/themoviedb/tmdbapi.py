@@ -191,8 +191,7 @@ class TmdbHelper:
             if not info:
                 logger.debug(
                     f"正在识别{mtype.value}：{name}, 年份={year} ...")
-                info = self.__search_tv_by_name(name,
-                                                year)
+                info = self.__search_tv_by_name(name, year)
             if info:
                 info['media_type'] = MediaType.TV
         # 返回
@@ -222,31 +221,22 @@ class TmdbHelper:
             logger.debug(f"{name} 未找到相关电影信息!")
             return {}
         else:
-            # 匹配标题、原标题
-            if year:
-                for movie in movies:
-                    if movie.get('release_date'):
-                        if self.__compare_names(name, movie.get('title')) \
-                                and movie.get('release_date')[0:4] == str(year):
-                            return movie
-                        if self.__compare_names(name, movie.get('original_title')) \
-                                and movie.get('release_date')[0:4] == str(year):
-                            return movie
-                        # 匹配别名、译名
-                        if not movie.get("names"):
-                            movie = self.get_info(mtype=MediaType.MOVIE, tmdbid=movie.get("id"))
-                        if movie and self.__compare_names(name, movie.get("names")):
-                            return movie
-            else:
-                for movie in movies:
-                    if self.__compare_names(name, movie.get('title')) \
-                            or self.__compare_names(name, movie.get('original_title')):
-                        return movie
-                    # 匹配别名、译名
-                    if not movie.get("names"):
-                        movie = self.get_info(mtype=MediaType.MOVIE, tmdbid=movie.get("id"))
-                    if movie and self.__compare_names(name, movie.get("names")):
-                        return movie
+            for movie in movies:
+                # 年份
+                movie_year = movie.get('release_date')[0:4] if movie.get('release_date') else None
+                if year and movie_year != year:
+                    # 年份不匹配
+                    continue
+                # 匹配标题、原标题
+                if self.__compare_names(name, movie.get('title')):
+                    return movie
+                if self.__compare_names(name, movie.get('original_title')):
+                    return movie
+                # 匹配别名、译名
+                if not movie.get("names"):
+                    movie = self.get_info(mtype=MediaType.MOVIE, tmdbid=movie.get("id"))
+                if movie and self.__compare_names(name, movie.get("names")):
+                    return movie
         return {}
 
     def __search_tv_by_name(self, name: str, year: str) -> Optional[dict]:
@@ -273,32 +263,21 @@ class TmdbHelper:
             logger.debug(f"{name} 未找到相关剧集信息!")
             return {}
         else:
-            # 匹配标题、原标题
-            if year:
-                for tv in tvs:
-                    if tv.get('first_air_date'):
-                        if self.__compare_names(name, tv.get('name')) \
-                                and tv.get('first_air_date')[0:4] == str(year):
-                            return tv
-                        if self.__compare_names(name, tv.get('original_name')) \
-                                and tv.get('first_air_date')[0:4] == str(year):
-                            return tv
-                    # 匹配别名、译名
-                    if not tv.get("names"):
-                        tv = self.get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
-                    if tv and self.__compare_names(name, tv.get("names")):
-                        return tv
-            else:
-                for tv in tvs:
-                    if self.__compare_names(name, tv.get('name')) \
-                            or self.__compare_names(name, tv.get('original_name')):
-                        return tv
-                    # 匹配别名、译名
-                    if not tv.get("names"):
-                        tv = self.get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
-                    if tv and self.__compare_names(name, tv.get("names")):
-                        return tv
-
+            for tv in tvs:
+                tv_year = tv.get('first_air_date')[0:4] if tv.get('first_air_date') else None
+                if year and tv_year != year:
+                    # 年份不匹配
+                    continue
+                # 匹配标题、原标题
+                if self.__compare_names(name, tv.get('name')):
+                    return tv
+                if self.__compare_names(name, tv.get('original_name')):
+                    return tv
+                # 匹配别名、译名
+                if not tv.get("names"):
+                    tv = self.get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
+                if tv and self.__compare_names(name, tv.get("names")):
+                    return tv
         return {}
 
     def __search_tv_by_season(self, name: str, season_year: str, season_number: int) -> Optional[dict]:
@@ -342,9 +321,11 @@ class TmdbHelper:
         else:
             # 匹配标题、原标题
             for tv in tvs:
+                # 年份
+                tv_year = tv.get('first_air_date')[0:4] if tv.get('first_air_date') else None
                 if (self.__compare_names(name, tv.get('name'))
                     or self.__compare_names(name, tv.get('original_name'))) \
-                        and (tv.get('first_air_date') and tv.get('first_air_date')[0:4] == str(season_year)):
+                        and (tv_year == str(season_year)):
                     return tv
                 # 匹配别名、译名
                 if not tv.get("names"):
