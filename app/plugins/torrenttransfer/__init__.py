@@ -588,7 +588,7 @@ class TorrentTransfer(_PluginBase):
                             fastresume_trackers = torrent_fastresume.get("trackers")
                             if fastresume_trackers:
                                 # 重新赋值
-                                torrent_main.announce_urls = fastresume_trackers[0]
+                                torrent_main.announce_urls = fastresume_trackers
                                 # 替换种子文件路径
                                 torrent_file = settings.TEMP_PATH / f"{hash_item.get('hash')}.torrent"
                                 # 编码并保存到临时文件
@@ -606,6 +606,7 @@ class TorrentTransfer(_PluginBase):
                 if not download_id:
                     # 下载失败
                     fail += 1
+                    logger.error(f"添加下载任务失败：{torrent_file}")
                     continue
                 else:
                     # 追加校验任务
