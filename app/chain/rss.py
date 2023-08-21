@@ -185,7 +185,7 @@ class RssChain(ChainBase):
                     enclosure=item.get("enclosure"),
                     page_url=item.get("link"),
                     size=item.get("size"),
-                    pubdate=time.strftime("%Y-%m-%d %H:%M:%S", item.get("pubdate")) if item.get("pubdate") else None,
+                    pubdate=item["pubdate"].strftime("%Y-%m-%d %H:%M:%S") if item.get("pubdate") else None,
                 )
                 # 过滤种子
                 if rss_task.filter:
