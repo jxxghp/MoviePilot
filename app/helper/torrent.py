@@ -188,7 +188,12 @@ class TorrentHelper:
             # 季数
             _season_len = str(len(_meta.season_list)).rjust(2, '0')
             # 集数
-            _episode_len = str(9999 - len(_meta.episode_list)).rjust(4, '0')
+            if not _meta.episode_list:
+                # 无集数的排最前面
+                _episode_len = "9999"
+            else:
+                # 集数越多的排越前面
+                _episode_len = str(len(_meta.episode_list)).rjust(4, '0')
             # 优先规则
             priority = self.system_config.get(SystemConfigKey.TorrentsPriority)
             if priority != "site":
