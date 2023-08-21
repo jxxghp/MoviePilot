@@ -353,12 +353,13 @@ class TmdbHelper:
         else:
             # 匹配标题、原标题
             for tv in tvs:
+                # 获取别名
                 if (self.__compare_names(name, tv.get('name'))
                     or self.__compare_names(name, tv.get('original_name'))) \
                         and (tv.get('first_air_date') and tv.get('first_air_date')[0:4] == str(season_year)):
                     return tv
-            # 匹配别名、译名
-            for tv in tvs[:5]:
+                
+                # 匹配别名、译名
                 if not tv.get("names"):
                     tv = self.get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
                 if not tv or not self.__compare_names(name, tv.get("names")):
