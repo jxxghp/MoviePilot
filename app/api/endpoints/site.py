@@ -8,13 +8,14 @@ from app import schemas
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.search import SearchChain
 from app.chain.site import SiteChain
+from app.core.event import EventManager
 from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey, EventType
 from app.utils.string import StringUtils
 
 router = APIRouter()
@@ -90,6 +91,11 @@ def delete_site(
     删除站点
     """
     Site.delete(db, site_id)
+    # 插件站点删除
+    EventManager().send_event(EventType.SiteDeleted,
+                              {
+                                  "site_id": site_id
+                              })
     return schemas.Response(success=True)
 
 
@@ -113,6 +119,11 @@ def cookie_cloud_sync(db: Session = Depends(get_db),
     Site.reset(db)
     SystemConfigOper(db).set(SystemConfigKey.IndexerSites, [])
     CookieCloudChain(db).process(manual=True)
+    # 插件站点删除
+    EventManager().send_event(EventType.SiteDeleted,
+                              {
+                                  "site_id": None
+                              })
     return schemas.Response(success=True, message="站点已重置！")
 
 
