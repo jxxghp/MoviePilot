@@ -1105,12 +1105,7 @@ class SiteStatistic(_PluginBase):
         """
         删除对应站点选中
         """
-        plugin_id = event.event_data.get("plugin_id")
         site_id = event.event_data.get("site_id")
-        if not plugin_id:
-            return
-        if self.__class__.__name__ not in plugin_id:
-            return
         config = self.get_config()
         if config:
             statistic_sites = config.get("statistic_sites")

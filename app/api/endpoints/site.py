@@ -94,7 +94,6 @@ def delete_site(
     # 插件站点删除
     EventManager().send_event(EventType.SiteDeleted,
                               {
-                                  "plugin_id": ['AutoSignIn', 'SiteStatistic'],
                                   "site_id": site_id
                               })
     return schemas.Response(success=True)
@@ -123,7 +122,6 @@ def cookie_cloud_sync(db: Session = Depends(get_db),
     # 插件站点删除
     EventManager().send_event(EventType.SiteDeleted,
                               {
-                                  "plugin_id": ['AutoSignIn', 'SiteStatistic'],
                                   "site_id": None
                               })
     return schemas.Response(success=True, message="站点已重置！")
