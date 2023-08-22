@@ -1,6 +1,5 @@
 import datetime
 import re
-import time
 from pathlib import Path
 from threading import Lock
 from typing import Optional, Any, List, Dict, Tuple
@@ -559,7 +558,7 @@ class RssSubscribe(_PluginBase):
                     enclosure = result.get("enclosure")
                     link = result.get("link")
                     sise = result.get("sise")
-                    pubdate = result.get("pubdate")
+                    pubdate: datetime.datetime = result.get("pubdate")
                     # 检查是否处理过
                     if not title or title in [h.get("key") for h in history]:
                         continue
@@ -588,7 +587,7 @@ class RssSubscribe(_PluginBase):
                         enclosure=enclosure,
                         page_url=link,
                         size=sise,
-                        pubdate=time.strftime("%Y-%m-%d %H:%M:%S", pubdate) if pubdate else None,
+                        pubdate=pubdate.strftime("%Y-%m-%d %H:%M:%S") if pubdate else None,
                     )
                     # 过滤种子
                     if self._filter:
