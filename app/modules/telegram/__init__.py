@@ -78,17 +78,15 @@ class TelegramModule(_ModuleBase):
                             and str(user_id) not in settings.TELEGRAM_ADMINS.split(',') \
                             and str(user_id) != settings.TELEGRAM_CHAT_ID:
                         self.telegram.send_msg(title="只有管理员才有权限执行此命令", userid=user_id)
-                        return CommingMessage(channel=MessageChannel.Wechat,
-                                              userid=user_id, username=user_id, text="")
+                        return None
                 else:
                     if settings.TELEGRAM_USERS \
                             and not str(user_id) in settings.TELEGRAM_USERS.split(','):
                         logger.info(f"用户{user_id}不在用户白名单中，无法使用此机器人")
                         self.telegram.send_msg(title="你不在用户白名单中，无法使用此机器人", userid=user_id)
-                        return CommingMessage(channel=MessageChannel.Wechat,
-                                              userid=user_id, username=user_id, text="")
+                        return None
                 return CommingMessage(channel=MessageChannel.Telegram,
-                                      userid=user_id, username=user_id, text=text)
+                                      userid=user_id, username=user_name, text=text)
         return None
 
     @checkMessage(MessageChannel.Telegram)
