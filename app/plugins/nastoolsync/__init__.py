@@ -51,9 +51,9 @@ class NAStoolSync(_PluginBase):
     tr = None
 
     def init_plugin(self, config: dict = None):
-        self._transferhistory = TransferHistoryOper()
-        self._plugindata = PluginDataOper()
-        self._downloadhistory = DownloadHistoryOper()
+        self._transferhistory = TransferHistoryOper(self.db)
+        self._plugindata = PluginDataOper(self.db)
+        self._downloadhistory = DownloadHistoryOper(self.db)
 
         if config:
             self._clear = config.get("clear")

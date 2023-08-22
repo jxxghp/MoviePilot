@@ -12,6 +12,7 @@ from app.chain.transfer import TransferChain
 from app.core.event import Event as ManagerEvent
 from app.core.event import eventmanager, EventManager
 from app.core.plugin import PluginManager
+from app.db import SessionLocal
 from app.log import logger
 from app.schemas.types import EventType, MessageChannel
 from app.utils.object import ObjectUtils
@@ -38,6 +39,8 @@ class Command(metaclass=Singleton):
     _event = Event()
 
     def __init__(self):
+        # 数据库连接
+        self._db = SessionLocal()
         # 事件管理器
         self.eventmanager = EventManager()
         # 插件管理器
@@ -45,67 +48,67 @@ class Command(metaclass=Singleton):
         # 内置命令
         self._commands = {
             "/cookiecloud": {
-                "func": CookieCloudChain().remote_sync,
+                "func": CookieCloudChain(self._db).remote_sync,
                 "description": "同步站点",
                 "data": {}
             },
             "/sites": {
-                "func": SiteChain().remote_list,
+                "func": SiteChain(self._db).remote_list,
                 "description": "查询站点",
                 "data": {}
             },
             "/site_cookie": {
-                "func": SiteChain().remote_cookie,
+                "func": SiteChain(self._db).remote_cookie,
                 "description": "更新站点Cookie",
                 "data": {}
             },
             "/site_enable": {
-                "func": SiteChain().remote_enable,
+                "func": SiteChain(self._db).remote_enable,
                 "description": "启用站点",
                 "data": {}
             },
             "/site_disable": {
-                "func": SiteChain().remote_disable,
+                "func": SiteChain(self._db).remote_disable,
                 "description": "禁用站点",
                 "data": {}
             },
             "/mediaserver_sync": {
-                "func": MediaServerChain().remote_sync,
+                "func": MediaServerChain(self._db).remote_sync,
                 "description": "同步媒体服务器",
                 "data": {}
             },
             "/subscribes": {
-                "func": SubscribeChain().remote_list,
+                "func": SubscribeChain(self._db).remote_list,
                 "description": "查询订阅",
                 "data": {}
             },
             "/subscribe_refresh": {
-                "func": SubscribeChain().remote_refresh,
+                "func": SubscribeChain(self._db).remote_refresh,
                 "description": "刷新订阅",
                 "data": {}
             },
             "/subscribe_search": {
-                "func": SubscribeChain().remote_search,
+                "func": SubscribeChain(self._db).remote_search,
                 "description": "搜索订阅",
                 "data": {}
             },
             "/subscribe_delete": {
-                "func": SubscribeChain().remote_delete,
+                "func": SubscribeChain(self._db).remote_delete,
                 "description": "删除订阅",
                 "data": {}
             },
             "/downloading": {
-                "func": DownloadChain().remote_downloading,
+                "func": DownloadChain(self._db).remote_downloading,
                 "description": "正在下载",
                 "data": {}
             },
             "/transfer": {
-                "func": TransferChain().process,
+                "func": TransferChain(self._db).process,
                 "description": "下载文件整理",
                 "data": {}
             },
             "/redo": {
-                "func": TransferChain().remote_transfer,
+                "func": TransferChain(self._db).remote_transfer,
                 "description": "手动整理",
                 "data": {}
             }
@@ -123,7 +126,7 @@ class Command(metaclass=Singleton):
                 }
             )
         # 处理链
-        self.chain = CommandChian()
+        self.chain = CommandChian(self._db)
         # 广播注册命令菜单
         self.chain.register_commands(commands=self.get_commands())
         # 消息处理线程
@@ -233,3 +236,7 @@ class Command(metaclass=Singleton):
             args = " ".join(event_str.split()[1:])
             if self.get(cmd):
                 self.execute(cmd, args, event_channel, event_user)
+
+    def __del__(self):
+        if self._db:
+            self._db.close()

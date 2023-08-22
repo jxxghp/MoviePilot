@@ -61,7 +61,7 @@ class MediaSyncDel(_PluginBase):
     tr = None
 
     def init_plugin(self, config: dict = None):
-        self._transferhis = TransferHistoryOper()
+        self._transferhis = TransferHistoryOper(self.db)
         self.episode = Episode()
         self.qb = Qbittorrent()
         self.tr = Transmission()

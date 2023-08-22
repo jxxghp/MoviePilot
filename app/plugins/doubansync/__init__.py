@@ -66,9 +66,9 @@ class DoubanSync(_PluginBase):
 
     def init_plugin(self, config: dict = None):
         self.rsshelper = RssHelper()
-        self.downloadchain = DownloadChain()
-        self.searchchain = SearchChain()
-        self.subscribechain = SubscribeChain()
+        self.downloadchain = DownloadChain(self.db)
+        self.searchchain = SearchChain(self.db)
+        self.subscribechain = SubscribeChain(self.db)
 
         # 停止现有任务
         self.stop_service()

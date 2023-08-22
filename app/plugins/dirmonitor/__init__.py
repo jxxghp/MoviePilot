@@ -90,9 +90,9 @@ class DirMonitor(_PluginBase):
     tr = None
 
     def init_plugin(self, config: dict = None):
-        self.transferhis = TransferHistoryOper()
-        self.downloadhis = DownloadHistoryOper()
-        self.transferchian = TransferChain()
+        self.transferhis = TransferHistoryOper(self.db)
+        self.downloadhis = DownloadHistoryOper(self.db)
+        self.transferchian = TransferChain(self.db)
 
         # 清空配置
         self._dirconf = {}
