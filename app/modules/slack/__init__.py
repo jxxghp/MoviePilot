@@ -182,14 +182,14 @@ class SlackModule(_ModuleBase):
         return None
 
     @checkMessage(MessageChannel.Slack)
-    def post_message(self, message: Notification) -> Optional[bool]:
+    def post_message(self, message: Notification) -> None:
         """
         发送消息
         :param message: 消息
         :return: 成功或失败
         """
-        return self.slack.send_msg(title=message.title, text=message.text,
-                                   image=message.image, userid=message.userid)
+        self.slack.send_msg(title=message.title, text=message.text,
+                            image=message.image, userid=message.userid)
 
     @checkMessage(MessageChannel.Slack)
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:

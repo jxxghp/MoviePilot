@@ -42,7 +42,6 @@ class EventType(Enum):
     NoticeMessage = "notice.message"
 
 
-
 # 系统配置Key字典
 class SystemConfigKey(Enum):
     # 用户已安装的插件

@@ -114,14 +114,14 @@ class WechatModule(_ModuleBase):
         return None
 
     @checkMessage(MessageChannel.Wechat)
-    def post_message(self, message: Notification) -> Optional[bool]:
+    def post_message(self, message: Notification) -> None:
         """
         发送消息
         :param message: 消息内容
         :return: 成功或失败
         """
-        return self.wechat.send_msg(title=message.title, text=message.text,
-                                    image=message.image, userid=message.userid)
+        self.wechat.send_msg(title=message.title, text=message.text,
+                             image=message.image, userid=message.userid)
 
     @checkMessage(MessageChannel.Wechat)
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:

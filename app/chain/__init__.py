@@ -97,8 +97,8 @@ class ChainBase(metaclass=ABCMeta):
                     if isinstance(temp, list):
                         result.extend(temp)
                 else:
-                    # 返回结果非列表也非空，则继续执行下一模块
-                    result = func(*args, **kwargs)
+                    # 中止继续执行
+                    break
             except Exception as err:
                 logger.error(f"运行模块 {method} 出错：{module.__class__.__name__} - {err}\n{traceback.print_exc()}")
         return result
@@ -345,7 +345,7 @@ class ChainBase(metaclass=ABCMeta):
             return self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
         return None
 
-    def post_message(self, message: Notification) -> Optional[bool]:
+    def post_message(self, message: Notification) -> None:
         """
         发送消息
         :param message:  消息体
@@ -364,7 +364,7 @@ class ChainBase(metaclass=ABCMeta):
                     f"title={message.title}, "
                     f"text={message.text}，"
                     f"userid={message.userid}")
-        return self.run_module("post_message", message=message)
+        self.run_module("post_message", message=message)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
         """

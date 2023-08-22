@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from app.db import DbOper
 from app.db.models.downloadhistory import DownloadHistory

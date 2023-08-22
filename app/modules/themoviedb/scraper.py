@@ -271,11 +271,11 @@ class TmdbScraper:
         # 添加时间
         DomUtils.add_node(doc, root, "dateadded", time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
         # TMDBID
-        uniqueid = DomUtils.add_node(doc, root, "uniqueid", tmdbid)
+        uniqueid = DomUtils.add_node(doc, root, "uniqueid", str(tmdbid))
         uniqueid.setAttribute("type", "tmdb")
         uniqueid.setAttribute("default", "true")
         # tmdbid
-        DomUtils.add_node(doc, root, "tmdbid", tmdbid)
+        DomUtils.add_node(doc, root, "tmdbid", str(tmdbid))
         # 标题
         DomUtils.add_node(doc, root, "title", episodeinfo.get("name") or "第 %s 集" % episode)
         # 简介
