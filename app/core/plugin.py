@@ -80,8 +80,8 @@ class PluginManager(metaclass=Singleton):
         """
         # 停止所有插件
         for plugin in self._running_plugins.values():
-            if hasattr(plugin, "stop"):
-                plugin.stop()
+            if hasattr(plugin, "stop_service"):
+                plugin.stop_service()
 
     def get_plugin_config(self, pid: str) -> dict:
         """
