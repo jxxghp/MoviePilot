@@ -100,8 +100,7 @@ class WechatModule(_ModuleBase):
                 if wechat_admins and not any(
                         user_id == admin_user for admin_user in wechat_admins):
                     self.wechat.send_msg(title="用户无权限执行菜单命令", userid=user_id)
-                    return CommingMessage(channel=MessageChannel.Wechat,
-                                          userid=user_id, username=user_id, text="")
+                    return None
             elif msg_type == "text":
                 # 文本消息
                 content = DomUtils.tag_value(root_node, "Content", default="")
