@@ -389,3 +389,10 @@ class TheMovieDbModule(_ModuleBase):
         :param page:  页码
         """
         return self.tmdb.get_person_credits(person_id=person_id, page=page)
+
+    def clear_cache(self):
+        """
+        清除缓存
+        """
+        self.tmdb.clear_cache()
+        self.cache.clear()

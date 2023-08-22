@@ -1124,3 +1124,9 @@ class TmdbHelper:
         except Exception as e:
             print(str(e))
             return []
+
+    def clear_cache(self):
+        """
+        清除缓存
+        """
+        self.tmdb.cache_clear()

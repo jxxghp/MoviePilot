@@ -406,3 +406,9 @@ class ChainBase(metaclass=ABCMeta):
         定时任务，每10分钟调用一次，模块实现该接口以实现定时服务
         """
         return self.run_module("scheduler_job")
+
+    def clear_cache(self) -> None:
+        """
+        清理缓存，模块实现该接口响应清理缓存事件
+        """
+        return self.run_module("clear_cache")

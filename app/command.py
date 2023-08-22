@@ -8,6 +8,7 @@ from app.chain.download import DownloadChain
 from app.chain.mediaserver import MediaServerChain
 from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
+from app.chain.system import SystemChain
 from app.chain.transfer import TransferChain
 from app.core.event import Event as ManagerEvent
 from app.core.event import eventmanager, EventManager
@@ -45,6 +46,8 @@ class Command(metaclass=Singleton):
         self.eventmanager = EventManager()
         # 插件管理器
         self.pluginmanager = PluginManager()
+        # 处理链
+        self.chain = CommandChian(self._db)
         # 内置命令
         self._commands = {
             "/cookiecloud": {
@@ -111,6 +114,11 @@ class Command(metaclass=Singleton):
                 "func": TransferChain(self._db).remote_transfer,
                 "description": "手动整理",
                 "data": {}
+            },
+            "/clear_cache": {
+                "func": SystemChain(self._db).remote_clear_cache,
+                "description": "清理缓存",
+                "data": {}
             }
         }
         # 汇总插件命令
@@ -125,8 +133,6 @@ class Command(metaclass=Singleton):
                     'data': command.get('data')
                 }
             )
-        # 处理链
-        self.chain = CommandChian(self._db)
         # 广播注册命令菜单
         self.chain.register_commands(commands=self.get_commands())
         # 消息处理线程
