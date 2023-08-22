@@ -334,3 +334,15 @@ class Qbittorrent(metaclass=Singleton):
         except Exception as err:
             logger.error(f"重新校验种子出错：{err}")
             return False
+
+    def add_trackers(self, ids: Union[str, list], trackers: list):
+        """
+        添加tracker
+        """
+        if not self.qbc:
+            return False
+        try:
+            return self.qbc.torrents_add_trackers(torrent_hashes=ids, urls=trackers)
+        except Exception as err:
+            logger.error(f"添加tracker出错：{err}")
+            return False

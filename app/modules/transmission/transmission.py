@@ -244,7 +244,6 @@ class Transmission(metaclass=Singleton):
         if not self.trc:
             return
         try:
-            session = self.trc.get_session()
             download_limit_enabled = True if download_limit else False
             upload_limit_enabled = True if upload_limit else False
             self.trc.set_session(
@@ -267,4 +266,16 @@ class Transmission(metaclass=Singleton):
             return self.trc.verify_torrent(ids=ids)
         except Exception as err:
             logger.error(f"重新校验种子出错：{err}")
+            return False
+
+    def add_trackers(self, ids: Union[str, list], trackers: list):
+        """
+        添加Tracker
+        """
+        if not self.trc:
+            return False
+        try:
+            return self.trc.change_torrent(ids=ids, tracker_list=[trackers])
+        except Exception as err:
+            logger.error(f"添加Tracker出错：{err}")
             return False
