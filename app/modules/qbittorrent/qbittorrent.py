@@ -24,7 +24,7 @@ class Qbittorrent(metaclass=Singleton):
         self._host, self._port = StringUtils.get_domain_address(address=settings.QB_HOST, prefix=True)
         self._username = settings.QB_USER
         self._password = settings.QB_PASSWORD
-        if self._host and self._port and self._username and self._password:
+        if self._host and self._port:
             self.qbc = self.__login_qbittorrent()
 
     def __login_qbittorrent(self) -> Optional[Client]:
@@ -83,7 +83,8 @@ class Qbittorrent(metaclass=Singleton):
         """
         if not self.qbc:
             return None
-        torrents, error = self.get_torrents(status=["completed"], ids=ids, tags=tags)
+        # completed会包含移动状态 更改为获取活动上传状态和正在做种状态
+        torrents, error = self.get_torrents(status=["stalled_uploading", "stalled"], ids=ids, tags=tags)
         return None if error else torrents or []
 
     def get_downloading_torrents(self, ids: Union[str, list] = None,
