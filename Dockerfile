@@ -1,5 +1,5 @@
 FROM python:3.11.4-slim-bullseye
-ARG MOVIEPILOT_FRONTEND_VERSION
+ARG MOVIEPILOT_VERSION
 ENV LANG="C.UTF-8" \
     HOME="/moviepilot" \
     TERM="xterm" \
@@ -69,7 +69,8 @@ RUN apt-get update \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && locale-gen zh_CN.UTF-8 \
-    && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/v${MOVIEPILOT_FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
+    && FRONTEND_VERSION=$(curl -sL "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name) \
+    && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/v${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
     && mv /dist /public \
     && apt-get remove -y build-essential \
     && apt-get autoremove -y \

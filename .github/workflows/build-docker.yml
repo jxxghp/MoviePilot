@@ -55,7 +55,7 @@ jobs:
             linux/arm64
           push: true
           build-args: |
-            MOVIEPILOT_FRONTEND_VERSION=${{ env.app_version }}
+            MOVIEPILOT_VERSION=${{ env.app_version }}
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/moviepilot:latest
             ${{ secrets.DOCKER_USERNAME }}/moviepilot:${{ env.app_version }}
