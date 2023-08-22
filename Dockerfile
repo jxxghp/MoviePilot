@@ -70,7 +70,7 @@ RUN apt-get update \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && locale-gen zh_CN.UTF-8 \
     && FRONTEND_VERSION=$(curl -sL "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name) \
-    && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/v${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
+    && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
     && mv /dist /public \
     && apt-get remove -y build-essential \
     && apt-get autoremove -y \
