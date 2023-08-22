@@ -98,7 +98,7 @@ class ChainBase(metaclass=ABCMeta):
                         result.extend(temp)
                 else:
                     # 返回结果非列表也非空，则继续执行下一模块
-                    continue
+                    result = func(*args, **kwargs)
             except Exception as err:
                 logger.error(f"运行模块 {method} 出错：{module.__class__.__name__} - {err}\n{traceback.print_exc()}")
         return result
