@@ -595,11 +595,12 @@ class TorrentTransfer(_PluginBase):
                         # 从源下载任务信息中获取Tracker
                         torrent = torrent_item.get('torrent')
                         # 源trackers
-                        trackers = [tracker.get("url") for tracker in torrent.trackers]
+                        trackers = [tracker.get("url") for tracker in torrent.trackers
+                                    if str(tracker.get("url")).startswith('http')]
                         logger.info(f"获取到源tracker：{trackers}")
 
                 # 发送到另一个下载器中下载：默认暂停、传输下载路径、关闭自动管理模式
-                logger.info(f"添加转移做种任务到下载器 {todownloader}：{torrent_file} ...")
+                logger.info(f"添加转移做种任务到下载器 {todownloader}：{torrent_file}")
                 download_id = self.__download(downloader=todownloader,
                                               content=torrent_file.read_bytes(),
                                               save_path=download_dir)
