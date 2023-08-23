@@ -24,8 +24,8 @@ file_handler = RotatingFileHandler(filename=settings.LOG_PATH / 'moviepilot.log'
                                    encoding='utf-8')
 file_handler.setLevel(logging.INFO)
 level_name_colors = {
-    logging.DEBUG: lambda level_name: click.style(str(level_name), fg="green"),
-    logging.INFO: lambda level_name: click.style(str(level_name), fg="blue"),
+    logging.DEBUG: lambda level_name: click.style(str(level_name), fg="cyan"),
+    logging.INFO: lambda level_name: click.style(str(level_name), fg="green"),
     logging.WARNING: lambda level_name: click.style(str(level_name), fg="orange"),
     logging.ERROR: lambda level_name: click.style(str(level_name), fg="red"),
     logging.CRITICAL: lambda level_name: click.style(
