@@ -152,7 +152,7 @@ class TransmissionModule(_ModuleBase):
                 logger.info(f"移动模式删除种子成功：{hashs} ")
             # 删除残留文件
             if transinfo.path and transinfo.path.exists():
-                files = SystemUtils.list_files_with_extensions(transinfo.path, settings.RMT_MEDIAEXT)
+                files = SystemUtils.list_files(transinfo.path, settings.RMT_MEDIAEXT)
                 if not files:
                     logger.warn(f"删除残留文件夹：{transinfo.path}")
                     shutil.rmtree(transinfo.path, ignore_errors=True)

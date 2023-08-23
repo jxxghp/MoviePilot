@@ -108,7 +108,7 @@ class SubtitleModule(_ModuleBase):
                         # 解压文件
                         shutil.unpack_archive(zip_file, zip_path, format='zip')
                         # 遍历转移文件
-                        for sub_file in SystemUtils.list_files_with_extensions(zip_path, settings.RMT_SUBEXT):
+                        for sub_file in SystemUtils.list_files(zip_path, settings.RMT_SUBEXT):
                             target_sub_file = download_dir / sub_file.name
                             if target_sub_file.exists():
                                 logger.info(f"字幕文件已存在：{target_sub_file}")

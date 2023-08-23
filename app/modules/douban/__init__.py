@@ -167,7 +167,7 @@ class DoubanModule(_ModuleBase):
         if settings.SCRAP_SOURCE != "douban":
             return None
         # 目录下的所有文件
-        for file in SystemUtils.list_files_with_extensions(path, settings.RMT_MEDIAEXT):
+        for file in SystemUtils.list_files(path, settings.RMT_MEDIAEXT):
             if not file:
                 continue
             logger.info(f"开始刮削媒体库文件：{file} ...")

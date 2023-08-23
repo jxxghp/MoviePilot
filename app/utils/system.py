@@ -91,10 +91,13 @@ class SystemUtils:
             return -1, str(err)
 
     @staticmethod
-    def list_files_with_extensions(directory: Path, extensions: list) -> List[Path]:
+    def list_files(directory: Path, extensions: list) -> List[Path]:
         """
-        获取目录下所有指定扩展名的文件
+        获取目录下所有指定扩展名的文件（包括子目录）
         """
+        if not directory.exists():
+            return []
+
         if directory.is_file():
             return [directory]
 
@@ -107,6 +110,47 @@ class SystemUtils:
                 files.append(path)
 
         return files
+
+    @staticmethod
+    def list_sub_files(directory: Path, extensions: list) -> List[Path]:
+        """
+        列出当前目录下的所有指定扩展名的文件(不包括子目录)
+        """
+        if not directory.exists():
+            return []
+
+        if directory.is_file():
+            return [directory]
+
+        files = []
+        pattern = r".*(" + "|".join(extensions) + ")$"
+
+        # 遍历目录
+        for path in directory.iterdir():
+            if path.is_file() and re.match(pattern, path.name, re.IGNORECASE):
+                files.append(path)
+
+        return files
+
+    @staticmethod
+    def list_sub_directory(directory: Path) -> List[Path]:
+        """
+        列出当前目录下的所有子目录（不递归）
+        """
+        if not directory.exists():
+            return []
+
+        if directory.is_file():
+            return []
+
+        dirs = []
+
+        # 遍历目录
+        for path in directory.iterdir():
+            if path.is_dir():
+                dirs.append(path)
+
+        return dirs
 
     @staticmethod
     def get_directory_size(path: Path) -> float:

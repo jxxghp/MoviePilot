@@ -121,7 +121,7 @@ class FileTransferModule(_ModuleBase):
 
         # 比对文件名并转移字幕
         org_dir: Path = org_path.parent
-        file_list: List[Path] = SystemUtils.list_files_with_extensions(org_dir, settings.RMT_SUBEXT)
+        file_list: List[Path] = SystemUtils.list_files(org_dir, settings.RMT_SUBEXT)
         if len(file_list) == 0:
             logger.debug(f"{org_dir} 目录下没有找到字幕文件...")
         else:
@@ -207,7 +207,7 @@ class FileTransferModule(_ModuleBase):
         """
         dir_name = org_path.parent
         file_name = org_path.name
-        file_list: List[Path] = SystemUtils.list_files_with_extensions(dir_name, ['.mka'])
+        file_list: List[Path] = SystemUtils.list_files(dir_name, ['.mka'])
         pending_file_list: List[Path] = [file for file in file_list if org_path.stem == file.stem]
         if len(pending_file_list) == 0:
             logger.debug(f"{dir_name} 目录下没有找到匹配的音轨文件")
@@ -409,7 +409,7 @@ class FileTransferModule(_ModuleBase):
                                     file_list_new=[])
         else:
             # 获取文件清单
-            transfer_files: List[Path] = SystemUtils.list_files_with_extensions(in_path, settings.RMT_MEDIAEXT)
+            transfer_files: List[Path] = SystemUtils.list_files(in_path, settings.RMT_MEDIAEXT)
             if len(transfer_files) == 0:
                 return TransferInfo(message=f"{in_path} 目录下没有找到可转移的文件")
             if not in_meta:

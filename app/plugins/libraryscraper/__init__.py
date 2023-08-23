@@ -258,7 +258,7 @@ class LibraryScraper(_PluginBase):
         """
         exclude_paths = self._exclude_paths.split("\n")
         # 查找目录下所有的文件
-        files = SystemUtils.list_files_with_extensions(path, settings.RMT_MEDIAEXT)
+        files = SystemUtils.list_files(path, settings.RMT_MEDIAEXT)
         for file in files:
             if self._event.is_set():
                 logger.info(f"媒体库刮削服务停止")
