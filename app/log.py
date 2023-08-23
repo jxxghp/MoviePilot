@@ -43,7 +43,7 @@ class CustomFormatter(logging.Formatter):
 
 
 # 终端日志
-console_formatter = CustomFormatter("%(leveltext)s %(asctime)s - %(filename)s - %(message)s")
+console_formatter = CustomFormatter("%(leveltext)s%(filename)s - %(message)s")
 console_handler.setFormatter(console_formatter)
 logger.addHandler(console_handler)
 
