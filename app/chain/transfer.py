@@ -330,7 +330,7 @@ class TransferChain(ChainBase):
         """
         新增转移成功历史记录
         """
-        self.transferhis.add_force(
+        self.transferhis.add(
             src=str(src_path),
             dest=str(transferinfo.target_path),
             mode=settings.TRANSFER_TYPE,
@@ -356,7 +356,7 @@ class TransferChain(ChainBase):
         新增转移失败历史记录，不能按download_hash判重
         """
         if mediainfo and transferinfo:
-            his = self.transferhis.add_force(
+            his = self.transferhis.add(
                 src=str(src_path),
                 dest=str(transferinfo.target_path),
                 mode=settings.TRANSFER_TYPE,
@@ -377,7 +377,7 @@ class TransferChain(ChainBase):
                 files=json.dumps(transferinfo.file_list)
             )
         else:
-            his = self.transferhis.add_force(
+            his = self.transferhis.add(
                 src=str(src_path),
                 mode=settings.TRANSFER_TYPE,
                 seasons=meta.season,

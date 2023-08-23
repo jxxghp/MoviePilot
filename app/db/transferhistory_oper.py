@@ -35,10 +35,6 @@ class TransferHistoryOper(DbOper):
         """
         新增转移历史
         """
-        if kwargs.get("download_hash"):
-            transferhistory = TransferHistory.get_by_hash(self._db, kwargs.get("download_hash"))
-            if transferhistory:
-                transferhistory.delete(self._db, transferhistory.id)
         kwargs.update({
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         })
@@ -76,7 +72,7 @@ class TransferHistoryOper(DbOper):
 
     def add_force(self, **kwargs):
         """
-        新增转移历史
+        新增转移历史，相同源目录的记录会被删除
         """
         if kwargs.get("src"):
             transferhistory = TransferHistory.get_by_src(self._db, kwargs.get("src"))

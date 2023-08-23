@@ -424,7 +424,7 @@ class SubscribeChain(ChainBase):
                 # 回收资源
                 del torrents
             else:
-                logger.info(f'{indexer.get("name")} 获取到种子')
+                logger.info(f'{indexer.get("name")} 没有获取到种子')
         # 从缓存中匹配订阅
         self.match(torrents_cache)
         # 保存缓存到本地
