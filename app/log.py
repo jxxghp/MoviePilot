@@ -1,6 +1,8 @@
 import logging
 from logging.handlers import RotatingFileHandler
 
+import click
+
 from app.core.config import settings
 
 # logger
@@ -21,19 +23,31 @@ file_handler = RotatingFileHandler(filename=settings.LOG_PATH / 'moviepilot.log'
                                    backupCount=3,
                                    encoding='utf-8')
 file_handler.setLevel(logging.INFO)
+level_name_colors = {
+    logging.DEBUG: lambda level_name: click.style(str(level_name), fg="green"),
+    logging.INFO: lambda level_name: click.style(str(level_name), fg="blue"),
+    logging.WARNING: lambda level_name: click.style(str(level_name), fg="orange"),
+    logging.ERROR: lambda level_name: click.style(str(level_name), fg="red"),
+    logging.CRITICAL: lambda level_name: click.style(
+        str(level_name), fg="bright_red"
+    ),
+}
 
 
 # 定义日志输出格式
 class CustomFormatter(logging.Formatter):
     def format(self, record):
-        record.levelname = record.levelname + ':'
+        seperator = " " * (8 - len(record.levelname))
+        record.leveltext = level_name_colors[record.levelno](record.levelname + ":") + seperator
         return super().format(record)
 
 
-formatter = CustomFormatter("%(levelname)-10s%(asctime)s - %(filename)s - %(message)s")
-console_handler.setFormatter(formatter)
-file_handler.setFormatter(formatter)
-
-# 将Handler添加到Logger
+# 终端日志
+console_formatter = CustomFormatter("%(leveltext)s %(asctime)s - %(filename)s - %(message)s")
+console_handler.setFormatter(console_formatter)
 logger.addHandler(console_handler)
+
+# 文件日志
+file_formater = CustomFormatter("%(levelname)s: %(asctime)s - %(filename)s - %(message)s")
+file_handler.setFormatter(file_formater)
 logger.addHandler(file_handler)
