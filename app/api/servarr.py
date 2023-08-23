@@ -76,7 +76,7 @@ def arr_system_status(apikey: str) -> Any:
     }
 
 
-@arr_router.get("/qualityprofile", summary="质量配置")
+@arr_router.get("/qualityProfile", summary="质量配置")
 def arr_qualityProfile(apikey: str) -> Any:
     """
     模拟Radarr、Sonarr质量配置
