@@ -48,6 +48,6 @@ console_handler.setFormatter(console_formatter)
 logger.addHandler(console_handler)
 
 # 文件日志
-file_formater = CustomFormatter("%(levelname)s: %(asctime)s - %(filename)s - %(message)s")
+file_formater = CustomFormatter("【%(levelname)s】%(asctime)s - %(filename)s - %(message)s")
 file_handler.setFormatter(file_formater)
 logger.addHandler(file_handler)
