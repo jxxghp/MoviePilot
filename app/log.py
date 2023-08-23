@@ -22,8 +22,15 @@ file_handler = RotatingFileHandler(filename=settings.LOG_PATH / 'moviepilot.log'
                                    encoding='utf-8')
 file_handler.setLevel(logging.INFO)
 
+
 # 定义日志输出格式
-formatter = logging.Formatter("%(levelname)s: %(asctime)s - %(filename)s - %(message)s")
+class CustomFormatter(logging.Formatter):
+    def format(self, record):
+        record.levelname = record.levelname + ':'
+        return super().format(record)
+
+
+formatter = CustomFormatter("%(levelname)-10s%(asctime)s - %(filename)s - %(message)s")
 console_handler.setFormatter(formatter)
 file_handler.setFormatter(formatter)
 
