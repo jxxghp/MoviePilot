@@ -26,7 +26,7 @@ file_handler.setLevel(logging.INFO)
 level_name_colors = {
     logging.DEBUG: lambda level_name: click.style(str(level_name), fg="cyan"),
     logging.INFO: lambda level_name: click.style(str(level_name), fg="green"),
-    logging.WARNING: lambda level_name: click.style(str(level_name), fg="orange"),
+    logging.WARNING: lambda level_name: click.style(str(level_name), fg="yellow"),
     logging.ERROR: lambda level_name: click.style(str(level_name), fg="red"),
     logging.CRITICAL: lambda level_name: click.style(
         str(level_name), fg="bright_red"

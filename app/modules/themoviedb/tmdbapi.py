@@ -78,7 +78,7 @@ class TmdbHelper:
                 ret_infos.append(movie)
         return ret_infos
 
-    def search_tv_tmdbinfos(self, title: str, year: str) -> List[dict]:
+    def search_tvs(self, title: str, year: str) -> List[dict]:
         """
         查询模糊匹配的所有电视剧TMDB信息
         """
