@@ -737,8 +737,8 @@ class SubscribeChain(ChainBase):
             if no_exist_season:
                 # 原季集列表
                 episode_list = no_exist_season.episodes
-                # 整季缺失的不处理
-                if not episode_list:
+                # 整季缺失且没有开始集数的的不处理
+                if not episode_list and not start_episode:
                     return no_exists
                 # 原总集数
                 total = no_exist_season.total_episode
