@@ -221,6 +221,8 @@ class TmdbHelper:
             logger.debug(f"{name} 未找到相关电影信息!")
             return {}
         else:
+            # 按年份降序排列
+            movies = sorted(movies, key=lambda x: x.get('release_date'), reverse=True)
             for movie in movies:
                 # 年份
                 movie_year = movie.get('release_date')[0:4] if movie.get('release_date') else None
@@ -263,6 +265,8 @@ class TmdbHelper:
             logger.debug(f"{name} 未找到相关剧集信息!")
             return {}
         else:
+            # 按年份降序排列
+            tvs = sorted(tvs, key=lambda x: x.get('first_air_date'), reverse=True)
             for tv in tvs:
                 tv_year = tv.get('first_air_date')[0:4] if tv.get('first_air_date') else None
                 if year and tv_year != year:
@@ -319,7 +323,8 @@ class TmdbHelper:
             logger.debug("%s 未找到季%s相关信息!" % (name, season_number))
             return {}
         else:
-            # 匹配标题、原标题
+            # 按年份降序排列
+            tvs = sorted(tvs, key=lambda x: x.get('first_air_date'), reverse=True)
             for tv in tvs:
                 # 年份
                 tv_year = tv.get('first_air_date')[0:4] if tv.get('first_air_date') else None
