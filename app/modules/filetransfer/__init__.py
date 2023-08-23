@@ -473,7 +473,7 @@ class FileTransferModule(_ModuleBase):
                     # 目的文件清单
                     file_list_new.append(str(new_file))
                     # 计算总大小
-                    total_filesize += transfer_file.stat().st_size
+                    total_filesize += new_file.stat().st_size
                 except Exception as err:
                     err_msgs.append(f"{transfer_file.name}：{err}")
                     logger.error(f"{transfer_file}转移失败：{err}")

@@ -124,14 +124,16 @@ class DirMonitor(_PluginBase):
 
                 # 存储目的目录
                 paths = mon_path.split(":")
+                target_path = None
                 if len(paths) > 1:
                     mon_path = paths[0]
-                    self._dirconf[mon_path] = Path(paths[1])
+                    target_path = Path(paths[1])
+                    self._dirconf[mon_path] = target_path
 
                 # 检查目录是不是媒体库目录的子目录
                 try:
-                    if Path(mon_path).is_relative_to(settings.LIBRARY_PATH):
-                        logger.warn(f"{mon_path} 是媒体库目录的子目录，无法监控")
+                    if Path(mon_path).is_relative_to(target_path or settings.LIBRARY_PATH):
+                        logger.warn(f"{mon_path} 是媒体库目录/目的目录的子目录，无法监控")
                         self.systemmessage.put(f"{mon_path} 是媒体库目录的子目录，无法监控")
                         continue
                 except Exception as e:
