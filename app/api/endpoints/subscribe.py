@@ -121,9 +121,15 @@ def subscribe_mediaid(
     根据TMDBID或豆瓣ID查询订阅 tmdb:/douban:
     """
     if mediaid.startswith("tmdb:"):
-        result = Subscribe.exists(db, int(mediaid[5:]), season)
+        tmdbid = mediaid[5:]
+        if not tmdbid or not str(tmdbid).isdigit():
+            return Subscribe()
+        result = Subscribe.exists(db, int(tmdbid), season)
     elif mediaid.startswith("douban:"):
-        result = Subscribe.get_by_doubanid(db, mediaid[7:])
+        doubanid = mediaid[7:]
+        if not doubanid:
+            return Subscribe()
+        result = Subscribe.get_by_doubanid(db, doubanid)
     else:
         result = None
     if result and result.sites:
@@ -157,9 +163,15 @@ def delete_subscribe_by_mediaid(
     根据TMDBID或豆瓣ID删除订阅 tmdb:/douban:
     """
     if mediaid.startswith("tmdb:"):
-        Subscribe().delete_by_tmdbid(db, int(mediaid[5:]), season)
+        tmdbid = mediaid[5:]
+        if not tmdbid or not str(tmdbid).isdigit():
+            return schemas.Response(success=False)
+        Subscribe().delete_by_tmdbid(db, int(tmdbid), season)
     elif mediaid.startswith("douban:"):
-        Subscribe().delete_by_doubanid(db, mediaid[7:])
+        doubanid = mediaid[7:]
+        if not doubanid:
+            return schemas.Response(success=False)
+        Subscribe().delete_by_doubanid(db, doubanid)
 
     return schemas.Response(success=True)
 
