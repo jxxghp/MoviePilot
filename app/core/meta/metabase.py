@@ -243,7 +243,7 @@ class MetaBase(object):
         else:
             return [self.begin_season]
 
-    @ property
+    @property
     def episode(self) -> str:
         """
         返回开始集、结束集字符串
