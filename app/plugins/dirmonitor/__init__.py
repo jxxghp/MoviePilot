@@ -433,7 +433,7 @@ class DirMonitor(_PluginBase):
                     # 处理文件多，说明是剧集，显示季入库消息
                     if mediainfo.type == MediaType.TV and file_count > 1:
                         file_meta.begin_episode = file_meta.begin_episode
-                        file_meta.end_episode = media_files[-1].get("file_meta").end_episode
+                        file_meta.end_episode = media_files[-1].get("file_meta").begin_episode
 
                     self.transferchian.send_transfer_message(meta=file_meta,
                                                              mediainfo=mediainfo,
