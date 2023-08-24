@@ -135,7 +135,6 @@ class MessageChain(ChainBase):
                     "type": "Torrent",
                     "items": contexts
                 }
-                _current_page = 0
                 # 发送种子数据
                 logger.info(f"搜索到 {len(contexts)} 条数据，开始发送选择消息 ...")
                 self.__post_torrents_message(channel=channel,
