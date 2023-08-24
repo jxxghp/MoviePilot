@@ -32,17 +32,18 @@ class SearchChain(ChainBase):
         self.systemconfig = SystemConfigOper(self._db)
         self.torrenthelper = TorrentHelper()
 
-    def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None) -> List[Context]:
+    def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None, area: str = "title") -> List[Context]:
         """
         根据TMDB ID搜索资源，精确匹配，但不不过滤本地存在的资源
         :param tmdbid: TMDB ID
         :param mtype: 媒体，电影 or 电视剧
+        :param area: 搜索范围，title or imdbid
         """
         mediainfo = self.recognize_media(tmdbid=tmdbid, mtype=mtype)
         if not mediainfo:
             logger.error(f'{tmdbid} 媒体信息识别失败！')
             return []
-        results = self.process(mediainfo=mediainfo)
+        results = self.process(mediainfo=mediainfo, area=area)
         # 保存眲结果
         bytes_results = pickle.dumps(results)
         self.systemconfig.set(SystemConfigKey.SearchResults, bytes_results)
@@ -95,7 +96,8 @@ class SearchChain(ChainBase):
                 keyword: str = None,
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
                 sites: List[int] = None,
-                filter_rule: str = None) -> List[Context]:
+                filter_rule: str = None,
+                area: str = "title") -> List[Context]:
         """
         根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
         :param mediainfo: 媒体信息
@@ -103,6 +105,7 @@ class SearchChain(ChainBase):
         :param no_exists: 缺失的媒体信息
         :param sites: 站点ID列表，为空时搜索所有站点
         :param filter_rule: 过滤规则，为空是使用默认过滤规则
+        :param area: 搜索范围，title or imdbid
         """
         logger.info(f'开始搜索资源，关键词：{keyword or mediainfo.title} ...')
         # 补充媒体信息
@@ -132,7 +135,8 @@ class SearchChain(ChainBase):
             torrents = self.__search_all_sites(
                 mediainfo=mediainfo,
                 keyword=keyword,
-                sites=sites
+                sites=sites,
+                area=area
             )
             if torrents:
                 break
@@ -233,13 +237,15 @@ class SearchChain(ChainBase):
     def __search_all_sites(self, mediainfo: Optional[MediaInfo] = None,
                            keyword: str = None,
                            sites: List[int] = None,
-                           page: int = 0) -> Optional[List[TorrentInfo]]:
+                           page: int = 0,
+                           area: str = "title") -> Optional[List[TorrentInfo]]:
         """
         多线程搜索多个站点
         :param mediainfo:  识别的媒体信息
         :param keyword:  搜索关键词，如有按关键词搜索，否则按媒体信息名称搜索
         :param sites:  指定站点ID列表，如有则只搜索指定站点，否则搜索所有站点
         :param page:  搜索页码
+        :param area:  搜索区域 title or imdbid
         :reutrn: 资源列表
         """
         # 未开启的站点不搜索
@@ -278,7 +284,7 @@ class SearchChain(ChainBase):
         all_task = []
         for site in indexer_sites:
             task = executor.submit(self.search_torrents, mediainfo=mediainfo,
-                                   site=site, keyword=keyword, page=page)
+                                   site=site, keyword=keyword, page=page, area=area)
             all_task.append(task)
         # 结果集
         results = []

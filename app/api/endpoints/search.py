@@ -26,6 +26,7 @@ async def search_latest(db: Session = Depends(get_db),
 @router.get("/media/{mediaid}", summary="精确搜索资源", response_model=List[schemas.Context])
 def search_by_tmdbid(mediaid: str,
                      mtype: str = None,
+                     area: str = "title",
                      db: Session = Depends(get_db),
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -35,7 +36,7 @@ def search_by_tmdbid(mediaid: str,
         tmdbid = int(mediaid.replace("tmdb:", ""))
         if mtype:
             mtype = MediaType(mtype)
-        torrents = SearchChain(db).search_by_tmdbid(tmdbid=tmdbid, mtype=mtype)
+        torrents = SearchChain(db).search_by_tmdbid(tmdbid=tmdbid, mtype=mtype, area=area)
     elif mediaid.startswith("douban:"):
         doubanid = mediaid.replace("douban:", "")
         # 识别豆瓣信息
@@ -43,7 +44,8 @@ def search_by_tmdbid(mediaid: str,
         if not context or not context.media_info or not context.media_info.tmdb_id:
             raise HTTPException(status_code=404, detail="无法识别TMDB媒体信息！")
         torrents = SearchChain(db).search_by_tmdbid(tmdbid=context.media_info.tmdb_id,
-                                                    mtype=context.media_info.type)
+                                                    mtype=context.media_info.type,
+                                                    area=area)
     else:
         return []
     return [torrent.to_dict() for torrent in torrents]

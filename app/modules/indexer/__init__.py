@@ -28,13 +28,14 @@ class IndexerModule(_ModuleBase):
         return "INDEXER", "builtin"
 
     def search_torrents(self, site: CommentedMap, mediainfo: MediaInfo = None,
-                        keyword: str = None, page: int = 0) -> List[TorrentInfo]:
+                        keyword: str = None, page: int = 0, area: str = "title") -> List[TorrentInfo]:
         """
         搜索一个站点
         :param mediainfo:  识别的媒体信息
         :param site:  站点
         :param keyword:  搜索关键词，如有按关键词搜索，否则按媒体信息名称搜索
         :param page:  页码
+        :param area:  搜索区域 title or imdbid
         :return: 资源列表
         """
         # 确认搜索的名字
@@ -57,10 +58,11 @@ class IndexerModule(_ModuleBase):
         # 开始计时
         start_time = datetime.now()
         try:
+            imdbid = mediainfo.imdb_id if mediainfo and area == "imdbid" else None
             if site.get('parser') == "TNodeSpider":
                 error_flag, result_array = TNodeSpider(site).search(
                     keyword=search_word,
-                    # imdbid=mediainfo.imdb_id if mediainfo else None,
+                    imdbid=imdbid,
                     page=page
                 )
             elif site.get('parser') == "TorrentLeech":
@@ -71,7 +73,7 @@ class IndexerModule(_ModuleBase):
             else:
                 error_flag, result_array = self.__spider_search(
                     keyword=search_word,
-                    # imdbid=mediainfo.imdb_id if mediainfo else None,
+                    imdbid=imdbid,
                     indexer=site,
                     mtype=mediainfo.type if mediainfo else None,
                     page=page
