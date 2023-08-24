@@ -84,7 +84,7 @@ class Qbittorrent(metaclass=Singleton):
         if not self.qbc:
             return None
         # completed会包含移动状态 更改为获取活动上传状态和正在做种状态
-        torrents, error = self.get_torrents(status=["stalled_uploading", "stalled"], ids=ids, tags=tags)
+        torrents, error = self.get_torrents(status=["completed"], ids=ids, tags=tags)
         return None if error else torrents or []
 
     def get_downloading_torrents(self, ids: Union[str, list] = None,
