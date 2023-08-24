@@ -697,17 +697,19 @@ class TorrentTransfer(_PluginBase):
                     can_seeding_torrents.append(hash_str)
 
             if can_seeding_torrents:
-                logger.info(f"共 {len(can_seeding_torrents)} 个任务校验完成，开始做种 ...")
+                logger.info(f"共 {len(can_seeding_torrents)} 个任务校验完成，开始做种")
                 # 开始做种
                 downloader_obj.start_torrents(ids=can_seeding_torrents)
                 # 去除已经处理过的种子
                 self._recheck_torrents[downloader] = list(
                     set(recheck_torrents).difference(set(can_seeding_torrents)))
+            else:
+                logger.info(f"没有新的任务校验完成，将在下次个周期继续检查 ...")
 
         elif torrents is None:
             logger.info(f"下载器 {downloader} 查询校验任务失败，将在下次继续查询 ...")
         else:
-            logger.info(f"下载器 {downloader} 中没有需要检查的校验任务，清空待处理列表 ...")
+            logger.info(f"下载器 {downloader} 中没有需要检查的校验任务，清空待处理列表")
             self._recheck_torrents[downloader] = []
 
         self._is_recheck_running = False
@@ -752,8 +754,8 @@ class TorrentTransfer(_PluginBase):
         判断种子是否可以做种并处于暂停状态
         """
         try:
-            return torrent.get("state") == "pausedUP" and torrent.get("tracker") if dl_type == "qbittorrent" \
-                else (torrent.status.stopped and torrent.percent_done == 1 and torrent.trackers)
+            return (torrent.get("state") == "pausedUP") if dl_type == "qbittorrent" \
+                else (torrent.status.stopped and torrent.percent_done == 1)
         except Exception as e:
             print(str(e))
             return False
