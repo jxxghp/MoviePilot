@@ -311,19 +311,6 @@ class FileTransferModule(_ModuleBase):
                                            transfer_type=transfer_type,
                                            over_flag=over_flag)
 
-    @staticmethod
-    def __is_bluray_dir(dir_path: Path) -> bool:
-        """
-        判断是否为蓝光原盘目录
-        """
-        # 蓝光原盘目录必备的文件或文件夹
-        required_files = ['BDMV', 'CERTIFICATE']
-        # 检查目录下是否存在所需文件或文件夹
-        for item in required_files:
-            if (dir_path / item).exists():
-                return True
-        return False
-
     def transfer_media(self,
                        in_path: Path,
                        mediainfo: MediaInfo,
@@ -381,7 +368,7 @@ class FileTransferModule(_ModuleBase):
         err_msgs = []
 
         # 判断是否为蓝光原盘
-        bluray_flag = self.__is_bluray_dir(in_path)
+        bluray_flag = SystemUtils.is_bluray_dir(in_path)
         if bluray_flag:
             # 识别目录名称，不包括后缀
             meta = MetaInfo(in_path.stem)

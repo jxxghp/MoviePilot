@@ -188,7 +188,12 @@ class TransferChain(ChainBase):
             logger.warn(f"目录不存在：{directory}")
             return []
 
+        # 单文件
         if directory.is_file():
+            return [directory]
+
+        # 蓝光原盘
+        if SystemUtils.is_bluray_dir(directory):
             return [directory]
 
         # 需要转移的路径列表

@@ -244,3 +244,16 @@ class SystemUtils:
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
         return processes
+
+    @staticmethod
+    def is_bluray_dir(dir_path: Path) -> bool:
+        """
+        判断是否为蓝光原盘目录
+        """
+        # 蓝光原盘目录必备的文件或文件夹
+        required_files = ['BDMV', 'CERTIFICATE']
+        # 检查目录下是否存在所需文件或文件夹
+        for item in required_files:
+            if (dir_path / item).exists():
+                return True
+        return False
