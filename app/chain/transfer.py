@@ -362,8 +362,8 @@ class TransferChain(ChainBase):
                 mode=settings.TRANSFER_TYPE,
                 type=mediainfo.type.value,
                 category=mediainfo.category,
-                title=mediainfo.title,
-                year=mediainfo.year,
+                title=mediainfo.title or meta.name,
+                year=mediainfo.year or meta.year,
                 tmdbid=mediainfo.tmdb_id,
                 imdbid=mediainfo.imdb_id,
                 tvdbid=mediainfo.tvdb_id,
@@ -378,6 +378,8 @@ class TransferChain(ChainBase):
             )
         else:
             his = self.transferhis.add(
+                title=meta.name,
+                year=meta.year,
                 src=str(src_path),
                 mode=settings.TRANSFER_TYPE,
                 seasons=meta.season,
