@@ -209,6 +209,7 @@ class TransferChain(ChainBase):
             trans_paths.extend(
                 SystemUtils.list_sub_files(directory, extensions=settings.RMT_MEDIAEXT)
             )
+        return trans_paths
 
     def remote_transfer(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
         """
