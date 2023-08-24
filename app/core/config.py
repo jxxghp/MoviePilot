@@ -144,7 +144,7 @@ class Settings(BaseSettings):
     # 转移方式 link/copy/move/softlink
     TRANSFER_TYPE: str = "copy"
     # CookieCloud服务器地址
-    COOKIECLOUD_HOST: str = "https://nastool.org/cookiecloud"
+    COOKIECLOUD_HOST: str = "https://movie-pilot.org/cookiecloud"
     # CookieCloud用户KEY
     COOKIECLOUD_KEY: str = None
     # CookieCloud端对端加密密码
