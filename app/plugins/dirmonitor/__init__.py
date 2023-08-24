@@ -5,11 +5,10 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
+from threading import Event
 from typing import List, Tuple, Dict, Any
 
-from threading import Event
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
@@ -175,7 +174,7 @@ class DirMonitor(_PluginBase):
                     self.systemmessage.put(f"{mon_path} 启动目录监控失败：{err_msg}")
 
             # 追加入库消息统一发送服务
-            self._scheduler.add_job(self.send_msg, trigger='interval', seconds=5)
+            self._scheduler.add_job(self.send_msg, trigger='interval', seconds=15)
             # 启动服务
             self._scheduler.print_jobs()
             self._scheduler.start()
