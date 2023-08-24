@@ -21,7 +21,7 @@ Docker：https://hub.docker.com/r/jxxghp/moviepilot
 
 2. **安装CookieCloud服务端（可选）**
 
-MoviePilot内置了NAStool使用的公共CookieCloud服务器，如果需要自建服务，可参考 [CookieCloud](https://github.com/easychen/CookieCloud) 项目进行搭建。
+MoviePilot内置了公共CookieCloud服务器(https://movie-pilot.org/cookiecloud) ，如果需要自建服务，可参考 [CookieCloud](https://github.com/easychen/CookieCloud) 项目进行搭建。
 ```shell
 docker pull easychen/cookiecloud:latest
 ```
@@ -30,7 +30,7 @@ docker pull easychen/cookiecloud:latest
 
 3. **安装配套管理软件**
 
-MoviePilot跟NAStool一样，需要配套下载器和媒体服务器使用。
+MoviePilot需要配套下载器和媒体服务器配合使用。
 - 下载器支持：qBittorrent、Transmission，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，推荐使用QB。
 - 媒体服务器支持：Jellyfin、Emby、Plex，推荐使用Emby。
 
