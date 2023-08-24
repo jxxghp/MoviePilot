@@ -18,7 +18,7 @@ class FilterModule(_ModuleBase):
         # 蓝光原盘
         "BLU": {
             "include": [r'Blu-?Ray.+VC-?1|Blu-?Ray.+AVC|UHD.+blu-?ray.+HEVC|MiniBD'],
-            "exclude": []
+            "exclude": [r'[Hx].?264|[Hx].?265|WEB-?DL|WEB-?RIP|REMUX']
         },
         # 4K
         "4K": {
