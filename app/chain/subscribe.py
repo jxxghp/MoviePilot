@@ -650,16 +650,20 @@ class SubscribeChain(ChainBase):
             season = season_info.season
             if season == subscribe.season:
                 left_episodes = season_info.episodes
-                logger.info(f'{mediainfo.title_year} 季 {season} 更新缺失集数为{len(left_episodes)} ...')
+                if not left_episodes:
+                    lack_episode = season_info.total_episode
+                else:
+                    lack_episode = len(left_episodes)
+                logger.info(f'{mediainfo.title_year} 季 {season} 更新缺失集数为{lack_episode} ...')
                 if update_date:
                     # 同时更新最后时间
                     self.subscribeoper.update(subscribe.id, {
-                        "lack_episode": len(left_episodes),
+                        "lack_episode": lack_episode,
                         "last_update": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     })
                 else:
                     self.subscribeoper.update(subscribe.id, {
-                        "lack_episode": len(left_episodes)
+                        "lack_episode": lack_episode
                     })
 
     def remote_list(self, channel: MessageChannel, userid: Union[str, int] = None):
