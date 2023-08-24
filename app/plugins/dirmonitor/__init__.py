@@ -284,10 +284,12 @@ class DirMonitor(_PluginBase):
                     download_hash = self.get_download_hash(src=file_path,
                                                            tmdb_id=mediainfo.tmdb_id)
 
+                    target_path = str(transferinfo.file_list_new[0]) if transferinfo.file_list_new else str(
+                        transferinfo.target_path)
                     # 新增转移成功历史记录
                     self.transferhis.add_force(
                         src=event_path,
-                        dest=str(transferinfo.target_path),
+                        dest=target_path,
                         mode=settings.TRANSFER_TYPE,
                         type=mediainfo.type.value,
                         category=mediainfo.category,
@@ -306,7 +308,7 @@ class DirMonitor(_PluginBase):
                     )
 
                     # 刮削元数据
-                    self.chain.scrape_metadata(path=transferinfo.target_path, mediainfo=mediainfo)
+                    self.chain.scrape_metadata(path=Path(target_path), mediainfo=mediainfo)
 
                     """
                     {
@@ -368,7 +370,7 @@ class DirMonitor(_PluginBase):
                     self._medias[mediainfo.title_year + " " + meta.season] = media_list
 
                     # 刷新媒体库
-                    self.chain.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
+                    self.chain.refresh_mediaserver(mediainfo=mediainfo, file_path=target_path)
                     # 广播事件
                     self.eventmanager.send_event(EventType.TransferComplete, {
                         'meta': file_meta,
