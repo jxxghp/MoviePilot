@@ -287,7 +287,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("transfer", path=path, mediainfo=mediainfo,
                                transfer_type=transfer_type, target=target, meta=meta)
 
-    def transfer_completed(self, hashs: Union[str, list], transinfo: TransferInfo) -> None:
+    def transfer_completed(self, hashs: Union[str, list], transinfo: TransferInfo = None) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash

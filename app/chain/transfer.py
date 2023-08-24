@@ -102,7 +102,7 @@ class TransferChain(ChainBase):
                               f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别转移。"
                     ))
                     # 设置种子状态，避免一直报错
-                    self.transfer_completed(hashs=torrent.hash, transinfo=transferinfo)
+                    self.transfer_completed(hashs=torrent.hash)
                     continue
 
                 logger.info(f"{torrent.title} 识别为：{mediainfo.type.value} {mediainfo.title_year}")

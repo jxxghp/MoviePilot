@@ -138,7 +138,8 @@ class TransmissionModule(_ModuleBase):
             return None
         return ret_torrents
 
-    def transfer_completed(self, hashs: Union[str, list], transinfo: TransferInfo) -> None:
+    def transfer_completed(self, hashs: Union[str, list],
+                           transinfo: TransferInfo = None) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash
@@ -151,7 +152,7 @@ class TransmissionModule(_ModuleBase):
             if self.remove_torrents(hashs):
                 logger.info(f"移动模式删除种子成功：{hashs} ")
             # 删除残留文件
-            if transinfo.path and transinfo.path.exists():
+            if transinfo and transinfo.path and transinfo.path.exists():
                 files = SystemUtils.list_files(transinfo.path, settings.RMT_MEDIAEXT)
                 if not files:
                     logger.warn(f"删除残留文件夹：{transinfo.path}")
