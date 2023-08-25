@@ -78,6 +78,7 @@ docker pull jxxghp/moviepilot:latest
 - **COOKIECLOUD_PASSWORD：** CookieCloud端对端加密密码
 - **COOKIECLOUD_INTERVAL：** CookieCloud同步间隔（分钟）
 - **USER_AGENT：** CookieCloud对应的浏览器UA，可选，设置后可增加连接站点的成功率，同步站点后可以在管理界面中修改
+- **AUTO_DOWNLOAD_USER：** 交互搜索自动下载用户ID，使用,分割
 - **MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
 
   - `wechat`设置项：

@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     INDEXER: str = "builtin"
     # 用户认证站点 hhclub/audiences/hddolby/zmpt/freefarm/hdfans/wintersakura/leaves/1ptba/icc2022/iyuu
     AUTH_SITE: str = ""
+    # 交互搜索自动下载用户ID，使用,分割
+    AUTO_DOWNLOAD_USER: str = None
     # 消息通知渠道 telegram/wechat/slack
     MESSAGER: str = "telegram"
     # WeChat企业ID
