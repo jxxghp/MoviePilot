@@ -130,18 +130,29 @@ class MessageChain(ChainBase):
                     return
                 # 搜索结果排序
                 contexts = self.torrenthelper.sort_torrents(contexts)
-                # 更新缓存
-                user_cache[userid] = {
-                    "type": "Torrent",
-                    "items": contexts
-                }
-                # 发送种子数据
-                logger.info(f"搜索到 {len(contexts)} 条数据，开始发送选择消息 ...")
-                self.__post_torrents_message(channel=channel,
-                                             title=mediainfo.title,
-                                             items=contexts[:self._page_size],
-                                             userid=userid,
-                                             total=len(contexts))
+                # 判断是否设置自动下载
+                auto_download_user = settings.AUTO_DOWNLOAD_USER
+                # 匹配到自动下载用户
+                if auto_download_user and any(userid == user for user in auto_download_user.split(",")):
+                    logger.info(f"用户 {userid} 在自动下载用户中，开始自动择优下载")
+                    # 自动选择下载
+                    self.__auto_download(channel=channel,
+                                         cache_list=contexts,
+                                         userid=userid,
+                                         username=username)
+                else:
+                    # 更新缓存
+                    user_cache[userid] = {
+                        "type": "Torrent",
+                        "items": contexts
+                    }
+                    # 发送种子数据
+                    logger.info(f"搜索到 {len(contexts)} 条数据，开始发送选择消息 ...")
+                    self.__post_torrents_message(channel=channel,
+                                                 title=mediainfo.title,
+                                                 items=contexts[:self._page_size],
+                                                 userid=userid,
+                                                 total=len(contexts))
 
             elif cache_type == "Subscribe":
                 # 订阅媒体
@@ -168,36 +179,10 @@ class MessageChain(ChainBase):
             elif cache_type == "Torrent":
                 if int(text) == 0:
                     # 自动选择下载
-                    # 查询缺失的媒体信息
-                    exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=_current_meta,
-                                                                                  mediainfo=_current_media)
-                    if exist_flag:
-                        self.post_message(Notification(
-                            channel=channel,
-                            title=f"{_current_media.title_year}"
-                                  f"{_current_meta.sea} 媒体库中已存在",
-                            userid=userid))
-                        return
-                    # 批量下载
-                    downloads, lefts = self.downloadchain.batch_download(contexts=cache_list,
-                                                                         no_exists=no_exists,
-                                                                         userid=userid)
-                    if downloads and not lefts:
-                        # 全部下载完成
-                        logger.info(f'{_current_media.title_year} 下载完成')
-                    else:
-                        # 未完成下载
-                        logger.info(f'{_current_media.title_year} 未下载未完整，添加订阅 ...')
-                        # 添加订阅，状态为R
-                        self.subscribechain.add(title=_current_media.title,
-                                                year=_current_media.year,
-                                                mtype=_current_media.type,
-                                                tmdbid=_current_media.tmdb_id,
-                                                season=_current_meta.begin_season,
-                                                channel=channel,
-                                                userid=userid,
-                                                username=username,
-                                                state="R")
+                    self.__auto_download(channel=channel,
+                                         cache_list=cache_list,
+                                         userid=userid,
+                                         username=username)
                 else:
                     # 下载种子
                     context: Context = cache_list[int(text) - 1]
@@ -335,6 +320,41 @@ class MessageChain(ChainBase):
 
         # 保存缓存
         self.save_cache(user_cache, self._cache_file)
+
+    def __auto_download(self, channel, cache_list, userid, username):
+        """
+        自动择优下载
+        """
+        # 查询缺失的媒体信息
+        exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=_current_meta,
+                                                                      mediainfo=_current_media)
+        if exist_flag:
+            self.post_message(Notification(
+                channel=channel,
+                title=f"{_current_media.title_year}"
+                      f"{_current_meta.sea} 媒体库中已存在",
+                userid=userid))
+            return
+        # 批量下载
+        downloads, lefts = self.downloadchain.batch_download(contexts=cache_list,
+                                                             no_exists=no_exists,
+                                                             userid=userid)
+        if downloads and not lefts:
+            # 全部下载完成
+            logger.info(f'{_current_media.title_year} 下载完成')
+        else:
+            # 未完成下载
+            logger.info(f'{_current_media.title_year} 未下载未完整，添加订阅 ...')
+            # 添加订阅，状态为R
+            self.subscribechain.add(title=_current_media.title,
+                                    year=_current_media.year,
+                                    mtype=_current_media.type,
+                                    tmdbid=_current_media.tmdb_id,
+                                    season=_current_meta.begin_season,
+                                    channel=channel,
+                                    userid=userid,
+                                    username=username,
+                                    state="R")
 
     def __post_medias_message(self, channel: MessageChannel,
                               title: str, items: list, userid: str, total: int):
