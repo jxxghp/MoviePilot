@@ -241,10 +241,10 @@ class DownloadChain(ChainBase):
             获取需要的季的集数
             """
             if not no_exists.get(tmdbid):
-                return 0
+                return 9999
             no_exist = no_exists.get(tmdbid)
             if not no_exist.get(season):
-                return 0
+                return 9999
             return no_exist[season].total_episode
 
         # 分组排序
@@ -298,9 +298,9 @@ class DownloadChain(ChainBase):
                                 if not torrent_path:
                                     continue
                                 torrent_episodes = self.torrent.get_torrent_episodes(torrent_files)
-                                if not torrent_episodes \
-                                        or len(torrent_episodes) >= __get_season_episodes(need_tmdbid,
-                                                                                          torrent_season[0]):
+                                if torrent_episodes \
+                                        and len(torrent_episodes) >= __get_season_episodes(need_tmdbid,
+                                                                                           torrent_season[0]):
                                     # 下载
                                     download_id = self.download_single(context=context,
                                                                        torrent_file=torrent_path,

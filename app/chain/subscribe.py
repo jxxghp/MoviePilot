@@ -283,7 +283,7 @@ class SubscribeChain(ChainBase):
                     # 如果是电视剧过滤掉已经下载的集数
                     if torrent_mediainfo.type == MediaType.TV:
                         if self.__check_subscribe_note(subscribe, torrent_meta.episode_list):
-                            logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episodes} 已下载过')
+                            logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episode_list} 已下载过')
                             continue
                 else:
                     # 洗版时，非整季不要
@@ -488,11 +488,11 @@ class SubscribeChain(ChainBase):
                                                 set(torrent_meta.episode_list)
                                             ):
                                         logger.info(
-                                            f'{torrent_info.title} 对应剧集 {torrent_meta.episodes} 未包含缺失的剧集')
+                                            f'{torrent_info.title} 对应剧集 {torrent_meta.episode_list} 未包含缺失的剧集')
                                         continue
                             # 过滤掉已经下载的集数
                             if self.__check_subscribe_note(subscribe, torrent_meta.episode_list):
-                                logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episodes} 已下载过')
+                                logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episode_list} 已下载过')
                                 continue
                         else:
                             # 洗版时，非整季不要
@@ -670,8 +670,8 @@ class SubscribeChain(ChainBase):
         :param no_exists: 缺失季集列表
         :param tmdb_id: TMDB ID
         :param begin_season: 开始季
-        :param total_episode: 总集数
-        :param start_episode: 开始集数
+        :param total_episode: 订阅设定总集数
+        :param start_episode: 订阅设定开始集数
         """
         # 使用订阅的总集数和开始集数替换no_exists
         if no_exists \
@@ -696,7 +696,7 @@ class SubscribeChain(ChainBase):
                 elif not total_episode:
                     # 有开始集没有总集数
                     episodes = list(range(start_episode, max(episode_list or [total]) + 1))
-                    total_episode = max(episode_list or [total])
+                    total_episode = no_exist_season.total_episode
                 else:
                     return no_exists
                 # 与原有集取交集
