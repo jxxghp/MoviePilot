@@ -41,7 +41,6 @@ chardet~=4.0.0
 starlette~=0.27.0
 PyVirtualDisplay~=3.0
 Cython~=0.29.35
-tvdb_api~=3.1
 psutil~=5.9.4
 python_hosts~=1.0.3
 watchdog~=3.0.0

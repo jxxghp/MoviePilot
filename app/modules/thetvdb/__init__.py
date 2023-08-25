@@ -1,18 +1,21 @@
 from typing import Optional, Tuple, Union
 
-import tvdb_api
 
 from app.core.config import settings
 from app.log import logger
 from app.modules import _ModuleBase
+from app.modules.thetvdb import tvdbapi
 
 
 class TheTvDbModule(_ModuleBase):
 
-    tvdb: tvdb_api.Tvdb = None
+    tvdb: tvdbapi.Tvdb = None
 
     def init_module(self) -> None:
-        self.tvdb = tvdb_api.Tvdb(apikey=settings.TVDB_API_KEY, cache=False, select_first=True)
+        self.tvdb = tvdbapi.Tvdb(apikey=settings.TVDB_API_KEY,
+                                 cache=False,
+                                 select_first=True,
+                                 proxies=settings.PROXY)
 
     def stop(self):
         pass
