@@ -13,3 +13,4 @@ from .message import *
 from .tmdb import *
 from .transfer import *
 from .rss import *
+from .file import *
