@@ -91,7 +91,7 @@ class SystemUtils:
             return -1, str(err)
 
     @staticmethod
-    def list_files(directory: Path, extensions: list) -> List[Path]:
+    def list_files(directory: Path, extensions: list, min_filesize: int = 0) -> List[Path]:
         """
         获取目录下所有指定扩展名的文件（包括子目录）
         """
@@ -106,7 +106,9 @@ class SystemUtils:
 
         # 遍历目录及子目录
         for path in directory.rglob('**/*'):
-            if path.is_file() and re.match(pattern, path.name, re.IGNORECASE):
+            if path.is_file() \
+                    and re.match(pattern, path.name, re.IGNORECASE) \
+                    and path.stat().st_size >= min_filesize * 1024 * 1024:
                 files.append(path)
 
         return files

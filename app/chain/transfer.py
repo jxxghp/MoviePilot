@@ -17,7 +17,7 @@ from app.db.models.transferhistory import TransferHistory
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.progress import ProgressHelper
 from app.log import logger
-from app.schemas import TransferInfo, TransferTorrent, Notification
+from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat
 from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -220,6 +220,7 @@ class TransferChain(ChainBase):
         """
         远程重新转移，参数 历史记录ID TMDBID|类型
         """
+
         def args_error():
             self.post_message(Notification(channel=channel,
                                            title="请输入正确的命令格式：/redo [id] [tmdbid]|[类型]，"
@@ -331,8 +332,62 @@ class TransferChain(ChainBase):
 
         return True, ""
 
-    def __insert_sucess_history(self, src_path: Path, download_hash: str, meta: MetaBase,
-                                mediainfo: MediaInfo, transferinfo: TransferInfo):
+    def manual_transfer(self, in_path: Path,
+                        mediainfo: MediaInfo,
+                        transfer_type: str = settings.TRANSFER_TYPE,
+                        target: Path = None,
+                        meta: MetaBase = None,
+                        epformat: EpisodeFormat = None,
+                        min_filesize: int = 0) -> Tuple[bool, str]:
+        """
+        手动转移
+        :param in_path: 源文件路径
+        :param mediainfo: 媒体信息
+        :param transfer_type: 转移类型
+        :param target: 目标路径
+        :param meta: 元数据
+        :param epformat: 剧集格式
+        :param min_filesize: 最小文件大小(MB)
+        """
+        # 开始转移
+        transferinfo: TransferInfo = self.transfer(
+            path=in_path,
+            mediainfo=mediainfo,
+            transfer_type=transfer_type,
+            target=target,
+            meta=meta,
+            epformat=epformat,
+            min_filesize=min_filesize
+        )
+        if not transferinfo:
+            return False, "文件转移模块运行失败"
+        if not transferinfo.target_path:
+            return False, transferinfo.message
+
+        # 新增转移成功历史记录
+        self.__insert_sucess_history(
+            src_path=in_path,
+            meta=meta,
+            mediainfo=mediainfo,
+            transferinfo=transferinfo
+        )
+        # 刮削元数据
+        self.scrape_metadata(path=transferinfo.target_path, mediainfo=mediainfo)
+        # 刷新媒体库
+        self.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
+        # 发送通知
+        self.send_transfer_message(meta=meta, mediainfo=mediainfo, transferinfo=transferinfo)
+        # 广播事件
+        self.eventmanager.send_event(EventType.TransferComplete, {
+            'meta': meta,
+            'mediainfo': mediainfo,
+            'transferinfo': transferinfo
+        })
+        return True, ""
+
+    def __insert_sucess_history(self, src_path: Path, meta: MetaBase,
+                                mediainfo: MediaInfo, transferinfo: TransferInfo,
+                                download_hash: str = None):
         """
         新增转移成功历史记录
         """

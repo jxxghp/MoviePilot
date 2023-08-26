@@ -18,7 +18,7 @@ from app.core.meta import MetaBase
 from app.core.module import ModuleManager
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
-    WebhookEventInfo
+    WebhookEventInfo, EpisodeFormat
 from app.schemas.types import TorrentStatus, MediaType, MediaImageType, EventType
 from app.utils.object import ObjectUtils
 
@@ -274,7 +274,9 @@ class ChainBase(metaclass=ABCMeta):
     def transfer(self, path: Path, mediainfo: MediaInfo,
                  transfer_type: str,
                  target: Path = None,
-                 meta: MetaBase = None) -> Optional[TransferInfo]:
+                 meta: MetaBase = None,
+                 epformat: EpisodeFormat = None,
+                 min_filesize: int = 0) -> Optional[TransferInfo]:
         """
         文件转移
         :param path:  文件路径
@@ -282,10 +284,13 @@ class ChainBase(metaclass=ABCMeta):
         :param transfer_type:  转移模式
         :param target:  转移目标路径
         :param meta: 预识别的元数据，仅单文件转移时传递
+        :param epformat:  自定义剧集识别格式
+        :param min_filesize:  最小文件大小
         :return: {path, target_path, message}
         """
         return self.run_module("transfer", path=path, mediainfo=mediainfo,
-                               transfer_type=transfer_type, target=target, meta=meta)
+                               transfer_type=transfer_type, target=target, meta=meta,
+                               epformat=epformat, min_filesize=min_filesize)
 
     def transfer_completed(self, hashs: Union[str, list], transinfo: TransferInfo = None) -> None:
         """

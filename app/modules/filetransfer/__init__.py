@@ -11,7 +11,8 @@ from app.core.config import settings
 from app.core.meta import MetaBase
 from app.log import logger
 from app.modules import _ModuleBase
-from app.schemas import TransferInfo
+from app.modules.filetransfer.format_parser import FormatParser
+from app.schemas import TransferInfo, EpisodeFormat
 from app.utils.system import SystemUtils
 from app.schemas.types import MediaType
 
@@ -30,7 +31,10 @@ class FileTransferModule(_ModuleBase):
         pass
 
     def transfer(self, path: Path, mediainfo: MediaInfo,
-                 transfer_type: str, target: Path = None, meta: MetaBase = None) -> TransferInfo:
+                 transfer_type: str, target: Path = None,
+                 meta: MetaBase = None,
+                 epformat: EpisodeFormat = None,
+                 min_filesize: int = 0) -> TransferInfo:
         """
         文件转移
         :param path:  文件路径
@@ -38,6 +42,8 @@ class FileTransferModule(_ModuleBase):
         :param transfer_type:  转移方式
         :param target:  目标路径
         :param meta: 预识别的元数据，仅单文件转移时传递
+        :param epformat: 集识别格式
+        :param min_filesize: 最小文件大小(MB)
         :return: {path, target_path, message}
         """
         # 获取目标路径
@@ -51,7 +57,9 @@ class FileTransferModule(_ModuleBase):
                                    mediainfo=mediainfo,
                                    transfer_type=transfer_type,
                                    target_dir=target,
-                                   in_meta=meta)
+                                   in_meta=meta,
+                                   epformat=epformat,
+                                   min_filesize=min_filesize)
 
     @staticmethod
     def __transfer_command(file_item: Path, target_file: Path, transfer_type: str) -> int:
@@ -316,7 +324,9 @@ class FileTransferModule(_ModuleBase):
                        mediainfo: MediaInfo,
                        transfer_type: str,
                        target_dir: Path = None,
-                       in_meta: MetaBase = None
+                       in_meta: MetaBase = None,
+                       epformat: EpisodeFormat = None,
+                       min_filesize: int = 0
                        ) -> TransferInfo:
         """
         识别并转移一个文件、多个文件或者目录
@@ -325,6 +335,8 @@ class FileTransferModule(_ModuleBase):
         :param target_dir: 目的文件夹，非空的转移到该文件夹，为空时则按类型转移到配置文件中的媒体库文件夹
         :param transfer_type: 文件转移方式
         :param in_meta：预识别元数，为空则重新识别
+        :param epformat: 识别的剧集格式
+        :param min_filesize: 最小文件大小（MB），小于该值的文件不转移
         :return: TransferInfo、错误信息
         """
         # 检查目录路径
@@ -397,9 +409,24 @@ class FileTransferModule(_ModuleBase):
                                     file_list_new=[])
         else:
             # 获取文件清单
-            transfer_files: List[Path] = SystemUtils.list_files(in_path, settings.RMT_MEDIAEXT)
+            transfer_files: List[Path] = SystemUtils.list_files(
+                directory=in_path,
+                extensions=settings.RMT_MEDIAEXT,
+                min_filesize=min_filesize
+            )
             if len(transfer_files) == 0:
                 return TransferInfo(message=f"{in_path} 目录下没有找到可转移的文件")
+            # 有集自定义格式
+            formaterHandler = FormatParser(eformat=epformat.format,
+                                           details=epformat.detail,
+                                           part=epformat.part,
+                                           offset=epformat.offset) if epformat else None
+            # 过滤出符合自定义剧集格式的文件
+            if formaterHandler:
+                transfer_files = [x for x in transfer_files if formaterHandler.match(x.name)]
+            if len(transfer_files) == 0:
+                return TransferInfo(message=f"{in_path} 目录下没有找到符合自定义剧集格式的文件")
+
             if not in_meta:
                 # 识别目录名称，不包括后缀
                 meta = MetaInfo(in_path.stem)
@@ -431,6 +458,16 @@ class FileTransferModule(_ModuleBase):
                         file_meta.total_episode = 1
                         file_meta.end_episode = None
 
+                    # 自定义识别
+                    if formaterHandler:
+                        # 开始集、结束集、PART
+                        begin_ep, end_ep, part = formaterHandler.split_episode(transfer_file.stem)
+                        if begin_ep is not None:
+                            file_meta.begin_episode = begin_ep
+                            file_meta.part = part
+                        if end_ep is not None:
+                            file_meta.end_episode = end_ep
+
                     # 目的文件名
                     new_file = self.get_rename_path(
                         path=target_dir,
@@ -446,6 +483,7 @@ class FileTransferModule(_ModuleBase):
                         if new_file.stat().st_size < transfer_file.stat().st_size:
                             logger.info(f"目标文件已存在，但文件大小更小，将覆盖：{new_file}")
                             overflag = True
+
                     # 转移文件
                     retcode = self.__transfer_file(file_item=transfer_file,
                                                    new_file=new_file,

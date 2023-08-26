@@ -62,3 +62,13 @@ class TransferInfo(BaseModel):
         dicts["path"] = str(self.path) if self.path else None
         dicts["target_path"] = str(self.target_path) if self.target_path else None
         return dicts
+
+
+class EpisodeFormat(BaseModel):
+    """
+    剧集自定义识别格式
+    """
+    format: Optional[str] = None
+    detail: Optional[str] = None
+    part: Optional[str] = None
+    offset: Optional[int] = None
