@@ -145,6 +145,7 @@ class DirMonitor(_PluginBase):
                         self.systemmessage.put(f"{target_path} 是下载目录 {mon_path} 的子目录，无法监控")
                         continue
                 except Exception as e:
+                    logger.debug(str(e))
                     pass
 
                 try:
@@ -237,8 +238,11 @@ class DirMonitor(_PluginBase):
                     file_meta.merge(meta)
 
                     if not file_meta.name:
-                        logger.warn(f"{file_path.name} 无法识别有效信息")
+                        logger.error(f"{file_path.name} 无法识别有效信息")
                         return
+
+                    # 查询转移目的目录
+                    target: Path = self._dirconf.get(mon_path)
 
                     # 识别媒体信息
                     mediainfo: MediaInfo = self.chain.recognize_media(meta=file_meta)
@@ -249,14 +253,24 @@ class DirMonitor(_PluginBase):
                                 mtype=NotificationType.Manual,
                                 title=f"{file_path.name} 未识别到媒体信息，无法入库！"
                             ))
+                        # 新增转移成功历史记录
+                        self.transferhis.add_force(
+                            src=event_path,
+                            dest=str(target),
+                            mode=self._transfer_type,
+                            title=meta.name,
+                            year=meta.year,
+                            seasons=file_meta.season,
+                            episodes=file_meta.episode,
+                            status=0,
+                            errmsg="未识别到媒体信息",
+                            date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                        )
                         return
                     logger.info(f"{file_path.name} 识别为：{mediainfo.type.value} {mediainfo.title_year}")
 
                     # 更新媒体图片
                     self.chain.obtain_images(mediainfo=mediainfo)
-
-                    # 查询转移目的目录
-                    target = self._dirconf.get(mon_path)
 
                     # 转移
                     transferinfo: TransferInfo = self.chain.transfer(mediainfo=mediainfo,
@@ -285,11 +299,12 @@ class DirMonitor(_PluginBase):
 
                     target_path = str(transferinfo.file_list_new[0]) if transferinfo.file_list_new else str(
                         transferinfo.target_path)
+
                     # 新增转移成功历史记录
                     self.transferhis.add_force(
                         src=event_path,
                         dest=target_path,
-                        mode=settings.TRANSFER_TYPE,
+                        mode=self._transfer_type,
                         type=mediainfo.type.value,
                         category=mediainfo.category,
                         title=mediainfo.title,
