@@ -189,14 +189,16 @@ class SearchChain(ChainBase):
                 # 比对年份
                 if mediainfo.year:
                     if mediainfo.type == MediaType.TV:
-                        # 需要剧集
+                        # 剧集年份，每季的年份可能不同
                         if torrent_meta.year and torrent_meta.year not in [year for year in
                                                                            mediainfo.season_years.values()]:
                             logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
                             continue
                     else:
-                        # 需要电影
-                        if torrent_meta.year != mediainfo.year:
+                        # 电影年份，上下浮动1年
+                        if torrent_meta.year not in [str(int(mediainfo.year) - 1),
+                                                     mediainfo.year,
+                                                     str(int(mediainfo.year) + 1)]:
                             logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
                             continue
                 # 比对标题
