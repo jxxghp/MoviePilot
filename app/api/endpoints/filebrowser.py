@@ -13,6 +13,8 @@ from app.utils.system import SystemUtils
 
 router = APIRouter()
 
+IMAGE_TYPES = [".jpg", ".png", ".gif", ".bmp", ".jpeg", ".webp"]
+
 
 @router.get("/list", summary="所有插件", response_model=List[schemas.FileItem])
 def list_path(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -50,7 +52,8 @@ def list_path(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any
     for item in SystemUtils.list_sub_files(path_obj,
                                            settings.RMT_MEDIAEXT
                                            + settings.RMT_SUBEXT
-                                           + [".jpg", ".png", ".nfo"]):
+                                           + IMAGE_TYPES
+                                           + [".nfo"]):
         ret_items.append(schemas.FileItem(
             type="file",
             path=str(item),
@@ -148,6 +151,6 @@ def image(path: str, token: str) -> Any:
     if not path_obj.is_file():
         return None
     # 判断是否图片文件
-    if path_obj.suffix.lower() not in [".jpg", ".png", ".gif", ".bmp", ".jpeg", ".webp"]:
+    if path_obj.suffix.lower() not in IMAGE_TYPES:
         return None
     return Response(content=path_obj.read_bytes(), media_type="image/jpeg")
