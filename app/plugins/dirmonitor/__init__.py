@@ -423,22 +423,52 @@ class DirMonitor(_PluginBase):
                     # 汇总处理文件总大小
                     total_size = 0
                     file_count = 0
+
+                    # 剧集汇总
+                    episodes = []
                     for file in media_files:
                         transferinfo = file.get("transferinfo")
                         total_size += transferinfo.total_size
                         file_count += 1
+
+                        file_meta = file.get("file_meta")
+                        if file_meta and file_meta.begin_episode:
+                            episodes.append(file_meta.begin_episode)
+
                     transferinfo.total_size = total_size
                     # 汇总处理文件数量
                     transferinfo.file_count = file_count
 
+                    # 剧集季集信息 S01 E01-E04 || S01 E01、E02、E04
+                    season_episode = None
                     # 处理文件多，说明是剧集，显示季入库消息
-                    if mediainfo.type == MediaType.TV and file_count > 1:
-                        file_meta.begin_episode = file_meta.begin_episode
-                        file_meta.end_episode = media_files[-1].get("file_meta").begin_episode
+                    if mediainfo.type == MediaType.TV and len(episodes) > 1:
+                        # 剧集季
+                        season = "S%s" % str(file_meta.begin_season).rjust(2, "0")
+
+                        # 剧集按照升序排序
+                        episodes.sort()
+                        # 开始、结束index
+                        start = int(episodes[0])
+                        end = int(episodes[len(episodes) - 1])
+
+                        # 开始结束间所有的元素 1,2,3,4
+                        all_ele = [i for i in range(start, end + 1)]
+                        # 本次剧集组所有的元素 1,2,4
+                        episode_ele = [int(e) for e in episodes]
+
+                        # 如果本次剧集组所有元素=开始结束间所有元素，则表示区间内 S01 E01-E04
+                        if all_ele == episode_ele:
+                            season_episode = f"{season} E{str(episodes[start - 1]).rjust(2, '0')}-E{str(episodes[end - 1]).rjust(2, '0')}"
+                        else:
+                            # 否则所有剧集组逗号分隔显示 S01 E01、E02、E04
+                            episodes = ["E%s" % str(episode).rjust(2, "0") for episode in episodes]
+                            season_episode = f"{season} {'、'.join(episodes)}"
 
                     self.transferchian.send_transfer_message(meta=file_meta,
                                                              mediainfo=mediainfo,
-                                                             transferinfo=transferinfo)
+                                                             transferinfo=transferinfo,
+                                                             season_episode=season_episode)
                 # 发送完消息，移出key
                 del self._medias[medis_title_year_season]
                 continue

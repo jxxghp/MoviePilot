@@ -396,11 +396,12 @@ class TransferChain(ChainBase):
             )
         return his
 
-    def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo, transferinfo: TransferInfo):
+    def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo, transferinfo: TransferInfo,
+                              season_episode: str = None):
         """
         发送入库成功的消息
         """
-        msg_title = f"{mediainfo.title_year} {meta.season_episode} 已入库"
+        msg_title = f"{mediainfo.title_year} {meta.season_episode if not season_episode else season_episode} 已入库"
         if mediainfo.vote_average:
             msg_str = f"评分：{mediainfo.vote_average}，类型：{mediainfo.type.value}"
         else:
