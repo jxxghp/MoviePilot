@@ -27,7 +27,7 @@ def manual_transfer(path: str,
                     episode_format: str = None,
                     episode_detail: str = None,
                     episode_part: str = None,
-                    episode_offset: int = None,
+                    episode_offset: int = 0,
                     min_filesize: int = 0,
                     db: Session = Depends(get_db),
                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
