@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, List
 
 from fastapi import APIRouter, Depends
-from starlette.responses import FileResponse
+from starlette.responses import FileResponse, Response
 
 from app import schemas
 from app.core.config import settings
@@ -94,26 +94,60 @@ def delete(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/download", summary="下载文件或目录")
-def download(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def download(path: str, token: str) -> Any:
     """
     下载文件或目录
     """
     if not path:
         return schemas.Response(success=False)
+    # 认证token
+    if not verify_token(token):
+        return None
     path_obj = Path(path)
     if not path_obj.exists():
         return schemas.Response(success=False)
     if path_obj.is_file():
         # 做为文件流式下载
-        return FileResponse(path_obj, headers={
-            "Content-Disposition": f"attachment; filename={path_obj.name}"
-        }, filename=path_obj.name)
+        return FileResponse(path_obj)
     else:
         # 做为压缩包下载
         shutil.make_archive(base_name=path_obj.stem, format="zip", root_dir=path_obj)
-        reponse = FileResponse(f"{path_obj.stem}.zip", headers={
-            "Content-Disposition": f"attachment; filename={path_obj.stem}.zip"
-        }, filename=f"{path_obj.stem}.zip")
+        reponse = Response(content=path_obj.read_bytes(), media_type="application/zip")
         # 删除压缩包
         Path(f"{path_obj.stem}.zip").unlink()
         return reponse
+
+
+@router.get("/rename", summary="重命名文件或目录", response_model=schemas.Response)
+def rename(path: str, new_name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    重命名文件或目录
+    """
+    if not path or not new_name:
+        return schemas.Response(success=False)
+    path_obj = Path(path)
+    if not path_obj.exists():
+        return schemas.Response(success=False)
+    path_obj.rename(path_obj.parent / new_name)
+    return schemas.Response(success=True)
+
+
+@router.get("/image", summary="读取图片")
+def image(path: str, token: str) -> Any:
+    """
+    读取图片
+    """
+    if not path:
+        return None
+    # 认证token
+    if not verify_token(token):
+        return None
+    path_obj = Path(path)
+    if not path_obj.exists():
+        return None
+    if not path_obj.is_file():
+        return None
+    # 判断是否图片文件
+    if path_obj.suffix.lower() not in [".jpg", ".png", ".gif", ".bmp", ".jpeg", ".webp"]:
+        return None
+    return Response(content=path_obj.read_bytes(), media_type="image/jpeg")
