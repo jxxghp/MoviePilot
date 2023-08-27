@@ -2,9 +2,11 @@
 
 if [ -n "${PROXY_HOST}" ]; then
     CURL_OPTIONS="-sL -x ${PROXY_HOST}"
+    PIP_OPTIONS="-r --proxy=${PROXY_HOST}"
     echo "使用代理更新程序"
 else
     CURL_OPTIONS="-sL"
+    PIP_OPTIONS="-r"
     echo "不使用代理更新程序"
 fi
 
@@ -34,22 +36,12 @@ if [[ "${old_version}" == *APP_VERSION* ]]; then
                     rm -rf /public
                     mv /tmp/dist /public
                     # 重新安装依赖
-                    if [ -n "${PROXY_HOST}" ]; then
-                        pip install -r /app/requirements.txt --proxy=${PROXY_HOST}
-                        if [ $? -eq 0 ]; then
-                            echo "安装依赖成功"
-                            echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
-                        else
-                            echo "安装依赖失败，请重新拉取镜像"
-                        fi
+                    pip install ${PIP_OPTIONS} /app/requirements.txt
+                    if [ $? -eq 0 ]; then
+                        echo "安装依赖成功"
+                        echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
                     else
-                        pip install -r /app/requirements.txt
-                        if [ $? -eq 0 ]; then
-                            echo "安装依赖成功"
-                            echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
-                        else
-                            echo "安装依赖失败，请重新拉取镜像"
-                        fi
+                        echo "安装依赖失败，请重新拉取镜像"
                     fi
                 else
                     echo "前端程序下载失败，继续使用旧的程序来启动..."
