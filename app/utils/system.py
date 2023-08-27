@@ -259,3 +259,15 @@ class SystemUtils:
             if (dir_path / item).exists():
                 return True
         return False
+
+    @staticmethod
+    def get_windows_drives():
+        """
+        获取Windows所有盘符
+        """
+        vols = []
+        for i in range(65, 91):
+            vol = chr(i) + ':'
+            if os.path.isdir(vol):
+                vols.append(vol)
+        return vols

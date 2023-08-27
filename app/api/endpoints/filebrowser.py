@@ -21,33 +21,52 @@ def list_path(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any
     """
     查询当前目录下所有目录和文件
     """
-    if not path:
-        path = "/"
+    # 返回结果
+    ret_items = []
+    if not path or path == "/":
+        if SystemUtils.is_windows():
+            partitions = SystemUtils.get_windows_drives() or ["C:/"]
+            for partition in partitions:
+                ret_items.append(schemas.FileItem(
+                    type="dir",
+                    path=partition + "/",
+                    name=partition,
+                    basename=partition
+                ))
+            return ret_items
+        else:
+            path = "/"
+    else:
+        if not SystemUtils.is_windows() and not path.startswith("/"):
+            path = "/" + path
+
+    # 遍历目录
     path_obj = Path(path)
     if not path_obj.exists():
         logger.error(f"目录不存在：{path}")
         return []
-    ret_items = []
+
     # 如果是文件
     if path_obj.is_file():
         ret_items.append(schemas.FileItem(
             type="file",
-            path=str(path_obj),
+            path=str(path_obj).replace("\\", "/"),
             name=path_obj.name,
             basename=path_obj.stem,
             extension=path_obj.suffix,
             size=path_obj.stat().st_size,
         ))
         return ret_items
+
     # 扁历所有目录
     for item in SystemUtils.list_sub_directory(path_obj):
         ret_items.append(schemas.FileItem(
             type="dir",
-            path=str(item) + "/",
+            path=str(item).replace("\\", "/") + "/",
             name=item.name,
             basename=item.stem,
-            extension=item.suffix,
         ))
+
     # 遍历所有文件，不含子目录
     for item in SystemUtils.list_sub_files(path_obj,
                                            settings.RMT_MEDIAEXT
@@ -56,12 +75,13 @@ def list_path(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any
                                            + [".nfo"]):
         ret_items.append(schemas.FileItem(
             type="file",
-            path=str(item),
+            path=str(item).replace("\\", "/"),
             name=item.name,
             basename=item.stem,
             extension=item.suffix,
             size=item.stat().st_size,
         ))
+
     return ret_items
 
 
