@@ -681,12 +681,15 @@ class SubscribeChain(ChainBase):
             if no_exist_season:
                 # 原季集列表
                 episode_list = no_exist_season.episodes
-                # 整季缺失且没有开始集数的的不处理
-                if not episode_list and not start_episode:
-                    return no_exists
                 # 原总集数
                 total = no_exist_season.total_episode
-                if total_episode and start_episode:
+                # 更新剧集列表、开始集数、总集数
+                if not episode_list and not start_episode:
+                    # 整季缺失且没有开始集
+                    episodes = []
+                    start_episode = 1
+                    total_episode = total_episode or total
+                elif total_episode and start_episode:
                     # 有开始集和总集数
                     episodes = list(range(start_episode, total_episode + 1))
                 elif not start_episode:
@@ -699,9 +702,6 @@ class SubscribeChain(ChainBase):
                     total_episode = no_exist_season.total_episode
                 else:
                     return no_exists
-                # 与原有集取交集
-                if episode_list:
-                    episodes = list(set(episodes).intersection(set(episode_list)))
                 # 处理集合
                 no_exists[tmdb_id][begin_season] = NotExistMediaInfo(
                     season=begin_season,
