@@ -50,4 +50,3 @@ cacheout~=0.14.1
 click~=8.1.6
 requests_cache~=0.5.2
 parse==1.19.0
-PySocks~=1.7.1
