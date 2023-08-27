@@ -74,10 +74,10 @@ class AutoBackup(_PluginBase):
                     logger.error(f"定时任务配置错误：{err}")
 
             if self._onlyonce:
-                logger.info(f"Cloudflare CDN优选服务启动，立即运行一次")
+                logger.info(f"自动备份服务启动，立即运行一次")
                 self._scheduler.add_job(func=self.__backup, trigger='date',
                                         run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
-                                        name="Cloudflare优选")
+                                        name="自动备份")
                 # 关闭一次性开关
                 self._onlyonce = False
                 self.update_config({
