@@ -122,6 +122,8 @@ class TransmissionModule(_ModuleBase):
             torrents = self.transmission.get_downloading_torrents(tags=settings.TORRENT_TAG)
             for torrent in torrents or []:
                 meta = MetaInfo(torrent.name)
+                dlspeed = torrent.rate_download if hasattr(torrent, "rate_download") else torrent.rateDownload
+                upspeed = torrent.rate_upload if hasattr(torrent, "rate_upload") else torrent.rateUpload
                 ret_torrents.append(DownloadingTorrent(
                     hash=torrent.hashString,
                     title=torrent.name,
@@ -131,8 +133,8 @@ class TransmissionModule(_ModuleBase):
                     progress=torrent.progress,
                     size=torrent.total_size,
                     state="paused" if torrent.status == "stopped" else "downloading",
-                    dlspeed=StringUtils.str_filesize(torrent.download_speed),
-                    ulspeed=StringUtils.str_filesize(torrent.upload_speed),
+                    dlspeed=StringUtils.str_filesize(dlspeed),
+                    upspeed=StringUtils.str_filesize(upspeed),
                 ))
         else:
             return None
