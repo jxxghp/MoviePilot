@@ -474,7 +474,7 @@ class DirMonitor(_PluginBase):
 
                         # 如果本次剧集组所有元素=开始结束间所有元素，则表示区间内 S01 E01-E04
                         if all_ele == episode_ele:
-                            season_episode = f"{season} E{str(episodes[start - 1]).rjust(2, '0')}-E{str(episodes[end - 1]).rjust(2, '0')}"
+                            season_episode = f"{season} E{str(episodes[0]).rjust(2, '0')}-E{str(episodes[len(episodes) - 1]).rjust(2, '0')}"
                         else:
                             # 否则所有剧集组逗号分隔显示 S01 E01、E02、E04
                             episodes = ["E%s" % str(episode).rjust(2, "0") for episode in episodes]
