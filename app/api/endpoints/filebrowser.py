@@ -53,7 +53,7 @@ def list_path(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any
             path=str(path_obj).replace("\\", "/"),
             name=path_obj.name,
             basename=path_obj.stem,
-            extension=path_obj.suffix,
+            extension=path_obj.suffix[1:],
             size=path_obj.stat().st_size,
         ))
         return ret_items
@@ -78,7 +78,7 @@ def list_path(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any
             path=str(item).replace("\\", "/"),
             name=item.name,
             basename=item.stem,
-            extension=item.suffix,
+            extension=item.suffix[1:],
             size=item.stat().st_size,
         ))
 
