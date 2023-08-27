@@ -33,6 +33,8 @@ if [[ "${old_version}" == *APP_VERSION* ]]; then
                     mv /tmp/MoviePilot* /app
                     rm -rf /public
                     mv /tmp/dist /public
+                    # 重新安装依赖
+                    pip install -r /app/requirements.txt
                     echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
                 else
                     echo "前端程序下载失败，继续使用旧的程序来启动..."
