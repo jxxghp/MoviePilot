@@ -39,10 +39,10 @@ if [[ "${old_version}" == *APP_VERSION* ]]; then
                         mv /tmp/MoviePilot* /app
                         rm -rf /public
                         mv /tmp/dist /public
+                        echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
                     else
                         echo "前端程序下载失败，继续使用旧的程序来启动..."
                     fi
-                    echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
                 else
                     echo "安装依赖失败，请重新拉取镜像"
                 fi
