@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     RMT_AUDIO_TRACK_EXT: list = ['.mka']
     # 索引器
     INDEXER: str = "builtin"
+    # 订阅搜索开关
+    SUBSCRIBE_SEARCH: bool = False
     # 用户认证站点 hhclub/audiences/hddolby/zmpt/freefarm/hdfans/wintersakura/leaves/1ptba/icc2022/iyuu
     AUTH_SITE: str = ""
     # 交互搜索自动下载用户ID，使用,分割

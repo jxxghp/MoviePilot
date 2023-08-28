@@ -63,9 +63,10 @@ class Scheduler(metaclass=Singleton):
         self._scheduler.add_job(SubscribeChain(self._db).search, "interval",
                                 minutes=5, kwargs={'state': 'N'})
 
-        # 订阅状态每隔12小时搜索一次
-        self._scheduler.add_job(SubscribeChain(self._db).search, "interval",
-                                hours=12, kwargs={'state': 'R'}, name="订阅搜索")
+        # 订阅状态每隔24小时搜索一次
+        if settings.SUBSCRIBE_SEARCH:
+            self._scheduler.add_job(SubscribeChain(self._db).search, "interval",
+                                    hours=24, kwargs={'state': 'R'}, name="订阅搜索")
 
         # 站点首页种子定时刷新缓存并匹配订阅
         triggers = TimerUtils.random_scheduler(num_executions=30)
