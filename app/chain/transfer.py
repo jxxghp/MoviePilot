@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple, Union
 from sqlalchemy.orm import Session
 
 from app.chain import ChainBase
+from app.chain.media import MediaChain
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
@@ -35,6 +36,7 @@ class TransferChain(ChainBase):
         self.downloadhis = DownloadHistoryOper(self._db)
         self.transferhis = TransferHistoryOper(self._db)
         self.progress = ProgressHelper()
+        self.mediachain = MediaChain(self._db)
 
     def process(self) -> bool:
         """
@@ -51,21 +53,8 @@ class TransferChain(ChainBase):
                 return False
 
             logger.info(f"获取到 {len(torrents)} 个已完成的下载任务")
-            # 开始进度
-            self.progress.start(ProgressKey.FileTransfer)
-            # 总数
-            total_num = len(torrents)
-            # 已处理数量
-            processed_num = 0
-            self.progress.update(value=0,
-                                 text=f"开始转移下载任务文件，共 {total_num} 个任务 ...",
-                                 key=ProgressKey.FileTransfer)
 
             for torrent in torrents:
-                # 更新进度
-                self.progress.update(value=processed_num / total_num * 100,
-                                     text=f"正在转移 {torrent.title} ...",
-                                     key=ProgressKey.FileTransfer)
                 # 识别元数据
                 meta: MetaBase = MetaInfo(title=torrent.title)
                 if not meta.name:
@@ -166,15 +155,7 @@ class TransferChain(ChainBase):
 
                 # 转移完成
                 self.transfer_completed(hashs=torrent.hash, transinfo=transferinfo)
-
-                # 计数
-                processed_num += 1
-                # 更新进度
-                self.progress.update(value=processed_num / total_num * 100,
-                                     text=f"{torrent.title} 转移完成",
-                                     key=ProgressKey.FileTransfer)
-            # 结束进度
-            self.progress.end(ProgressKey.FileTransfer)
+            # 结束
             logger.info("下载器文件转移执行完成")
             return True
 
@@ -333,56 +314,190 @@ class TransferChain(ChainBase):
         return True, ""
 
     def manual_transfer(self, in_path: Path,
-                        mediainfo: MediaInfo,
-                        transfer_type: str = settings.TRANSFER_TYPE,
                         target: Path = None,
-                        meta: MetaBase = None,
+                        tmdbid: int = None,
+                        mtype: MediaType = None,
+                        season: int = None,
+                        transfer_type: str = None,
                         epformat: EpisodeFormat = None,
                         min_filesize: int = 0) -> Tuple[bool, str]:
         """
         手动转移
         :param in_path: 源文件路径
-        :param mediainfo: 媒体信息
-        :param transfer_type: 转移类型
         :param target: 目标路径
-        :param meta: 元数据
+        :param tmdbid: TMDB ID
+        :param mtype: 媒体类型
+        :param season: 季度
+        :param transfer_type: 转移类型
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
         """
-        # 开始转移
-        transferinfo: TransferInfo = self.transfer(
-            path=in_path,
-            mediainfo=mediainfo,
-            transfer_type=transfer_type,
-            target=target,
-            epformat=epformat,
-            min_filesize=min_filesize
-        )
-        if not transferinfo:
-            return False, "文件转移模块运行失败"
-        if not transferinfo.target_path:
-            return False, transferinfo.message
+        logger.info(f"手动转移：{in_path} ...")
 
-        # 新增转移成功历史记录
-        self.__insert_sucess_history(
-            src_path=in_path,
-            meta=meta,
-            mediainfo=mediainfo,
-            transferinfo=transferinfo
-        )
-        # 刮削元数据
-        self.scrape_metadata(path=transferinfo.target_path, mediainfo=mediainfo)
-        # 刷新媒体库
-        self.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
-        # 发送通知
-        self.send_transfer_message(meta=meta, mediainfo=mediainfo, transferinfo=transferinfo)
-        # 广播事件
-        self.eventmanager.send_event(EventType.TransferComplete, {
-            'meta': meta,
-            'mediainfo': mediainfo,
-            'transferinfo': transferinfo
-        })
-        return True, ""
+        # 默认转移类型
+        if not transfer_type:
+            transfer_type = settings.TRANSFER_TYPE
+
+        if tmdbid:
+            # 有输入TMDBID时单个识别
+            meta = MetaInfo(in_path.stem)
+            # 整合数据
+            if mtype:
+                meta.type = mtype
+            if season:
+                meta.begin_season = season
+            # 识别媒体信息
+            mediainfo: MediaInfo = self.mediachain.recognize_media(tmdbid=tmdbid, mtype=mtype)
+            if not mediainfo:
+                return False, f"媒体信息识别失败，tmdbid: {tmdbid}, type: {mtype.value}"
+            # 开始进度
+            self.progress.start(ProgressKey.FileTransfer)
+            self.progress.update(value=0,
+                                 text=f"开始转移 {in_path} ...",
+                                 key=ProgressKey.FileTransfer)
+            # 开始转移
+            transferinfo: TransferInfo = self.transfer(
+                path=in_path,
+                mediainfo=mediainfo,
+                transfer_type=transfer_type,
+                target=target,
+                epformat=epformat,
+                min_filesize=min_filesize
+            )
+            if not transferinfo:
+                return False, "文件转移模块运行失败"
+            if not transferinfo.target_path:
+                return False, transferinfo.message
+
+            # 新增转移成功历史记录
+            self.__insert_sucess_history(
+                src_path=in_path,
+                meta=meta,
+                mediainfo=mediainfo,
+                transferinfo=transferinfo
+            )
+            # 刮削元数据
+            self.scrape_metadata(path=transferinfo.target_path, mediainfo=mediainfo)
+            # 刷新媒体库
+            self.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
+            # 发送通知
+            self.send_transfer_message(meta=meta, mediainfo=mediainfo, transferinfo=transferinfo)
+            # 广播事件
+            self.eventmanager.send_event(EventType.TransferComplete, {
+                'meta': meta,
+                'mediainfo': mediainfo,
+                'transferinfo': transferinfo
+            })
+            self.progress.end(ProgressKey.FileTransfer)
+            logger.info(f"{in_path} 转移完成")
+            return True, ""
+        else:
+            # 错误信息
+            errmsgs = []
+            # 自动识别所有文件
+            transfer_files = SystemUtils.list_files(directory=in_path,
+                                                    extensions=settings.RMT_MEDIAEXT,
+                                                    min_filesize=min_filesize)
+            if not transfer_files:
+                return False, "没有找到可转移的文件"
+            # 开始进度
+            self.progress.start(ProgressKey.FileTransfer)
+            # 总数
+            total_num = len(transfer_files)
+            # 已处理数量
+            processed_num = 0
+            self.progress.update(value=0,
+                                 text=f"开始转移 {in_path}，共 {total_num} 个文件 ...",
+                                 key=ProgressKey.FileTransfer)
+            for transfer_file in transfer_files:
+                # 更新进度
+                self.progress.update(value=processed_num / total_num * 100,
+                                     text=f"正在转移 {transfer_file.name} ...",
+                                     key=ProgressKey.FileTransfer)
+                # 上级目录元数据
+                meta = MetaInfo(title=transfer_file.parent.name)
+                # 文件元数据，不包含后缀
+                file_meta = MetaInfo(title=transfer_file.stem)
+                # 合并元数据
+                file_meta.merge(meta)
+
+                if not file_meta.name:
+                    logger.error(f"{transfer_file} 无法识别有效信息")
+                    errmsgs.append(f"{transfer_file.name} 无法识别有效信息")
+                    # 更新进度
+                    processed_num += 1
+                    self.progress.update(value=processed_num / total_num * 100,
+                                         text=f"{transfer_file.name} 无法识别有效信息",
+                                         key=ProgressKey.FileTransfer)
+                    continue
+                # 整合数据
+                if mtype:
+                    file_meta.type = mtype
+                if season:
+                    file_meta.begin_season = season
+                # 识别媒体信息
+                mediainfo: MediaInfo = self.mediachain.recognize_media(meta=file_meta)
+                if not mediainfo:
+                    logger.error(f"{transfer_file} 媒体信息识别失败")
+                    errmsgs.append(f"{transfer_file.name} 媒体信息识别失败")
+                    # 更新进度
+                    processed_num += 1
+                    self.progress.update(value=processed_num / total_num * 100,
+                                         text=f"{transfer_file.name} 媒体信息识别失败！",
+                                         key=ProgressKey.FileTransfer)
+                    continue
+                # 开始转移
+                transferinfo: TransferInfo = self.transfer(
+                    path=in_path,
+                    mediainfo=mediainfo,
+                    transfer_type=transfer_type,
+                    target=target,
+                    meta=file_meta,
+                    epformat=epformat,
+                    min_filesize=min_filesize
+                )
+                if not transferinfo:
+                    return False, "文件转移模块运行失败"
+                if not transferinfo.target_path:
+                    logger.error(f"{transfer_file} 转移失败：{transferinfo.message}")
+                    errmsgs.append(f"{transfer_file.name} 转移失败：{transferinfo.message}")
+                    # 更新进度
+                    processed_num += 1
+                    self.progress.update(value=processed_num / total_num * 100,
+                                         text=f"{transfer_file.name} 转移失败：{transferinfo.message}",
+                                         key=ProgressKey.FileTransfer)
+                    continue
+
+                # 新增转移成功历史记录
+                self.__insert_sucess_history(
+                    src_path=transfer_file,
+                    meta=file_meta,
+                    mediainfo=mediainfo,
+                    transferinfo=transferinfo
+                )
+                # 刮削元数据
+                self.scrape_metadata(path=transferinfo.target_path, mediainfo=mediainfo)
+                # 刷新媒体库
+                self.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
+                # 发送通知
+                self.send_transfer_message(meta=file_meta, mediainfo=mediainfo, transferinfo=transferinfo)
+                # 广播事件
+                self.eventmanager.send_event(EventType.TransferComplete, {
+                    'meta': file_meta,
+                    'mediainfo': mediainfo,
+                    'transferinfo': transferinfo
+                })
+                # 更新进度
+                processed_num += 1
+                self.progress.update(value=processed_num / total_num * 100,
+                                     text=f"{transfer_file.name} 转移完成",
+                                     key=ProgressKey.FileTransfer)
+            # 结束进度
+            logger.info(f"转移完成，共 {total_num} 个文件，成功 {total_num - len(errmsgs)} 个，失败 {len(errmsgs)} 个")
+            self.progress.end(ProgressKey.FileTransfer)
+            if errmsgs:
+                return False, "\n".join(errmsgs)
+            return True, ""
 
     def __insert_sucess_history(self, src_path: Path, meta: MetaBase,
                                 mediainfo: MediaInfo, transferinfo: TransferInfo,
