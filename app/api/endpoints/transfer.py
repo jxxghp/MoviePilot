@@ -72,6 +72,8 @@ def manual_transfer(path: str,
     )
     # 失败
     if not state:
+        if isinstance(errormsg, list):
+            errormsg = f"整理完成，{len(errormsg)} 个文件转移失败！"
         return schemas.Response(success=False, message=errormsg)
     # 成功
     return schemas.Response(success=True)

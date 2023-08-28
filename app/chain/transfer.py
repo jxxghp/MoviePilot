@@ -320,7 +320,7 @@ class TransferChain(ChainBase):
                         season: int = None,
                         transfer_type: str = None,
                         epformat: EpisodeFormat = None,
-                        min_filesize: int = 0) -> Tuple[bool, str]:
+                        min_filesize: int = 0) -> Tuple[bool, Union[str, list]]:
         """
         手动转移
         :param in_path: 源文件路径
@@ -496,7 +496,7 @@ class TransferChain(ChainBase):
             logger.info(f"转移完成，共 {total_num} 个文件，成功 {total_num - len(errmsgs)} 个，失败 {len(errmsgs)} 个")
             self.progress.end(ProgressKey.FileTransfer)
             if errmsgs:
-                return False, "\n".join(errmsgs)
+                return False, errmsgs
             return True, ""
 
     def __insert_sucess_history(self, src_path: Path, meta: MetaBase,
