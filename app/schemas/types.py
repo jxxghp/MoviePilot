@@ -50,6 +50,8 @@ class SystemConfigKey(Enum):
     SearchResults = "SearchResults"
     # 索引站点范围
     IndexerSites = "IndexerSites"
+    # 订阅站点范围
+    RssSites = "RssSites"
     # 种子优先级规则
     TorrentsPriority = "TorrentsPriority"
     # 通知消息渠道设置
