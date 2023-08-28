@@ -355,7 +355,6 @@ class TransferChain(ChainBase):
             mediainfo=mediainfo,
             transfer_type=transfer_type,
             target=target,
-            meta=meta,
             epformat=epformat,
             min_filesize=min_filesize
         )
