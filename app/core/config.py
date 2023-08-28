@@ -167,6 +167,8 @@ class Settings(BaseSettings):
     LIBRARY_ANIME_NAME: str = None
     # 二级分类
     LIBRARY_CATEGORY: bool = True
+    # 电视剧动漫的分类genre_ids
+    ANIME_GENREIDS = [16]
     # 电影重命名格式
     MOVIE_RENAME_FORMAT: str = "{{title}}{% if year %} ({{year}}){% endif %}" \
                                "/{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if videoFormat %} - {{videoFormat}}{% endif %}" \

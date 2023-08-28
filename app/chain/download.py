@@ -113,7 +113,9 @@ class DownloadChain(ChainBase):
                 if _media.type == MediaType.MOVIE:
                     download_dir = Path(settings.DOWNLOAD_MOVIE_PATH or settings.DOWNLOAD_PATH) / _media.category
                 else:
-                    if settings.DOWNLOAD_ANIME_PATH and _media.category and str(_media.category) == '动漫':
+                    media_genrs_ids = _media.tmdb_info.get("genre_ids")
+                    if settings.DOWNLOAD_ANIME_PATH and media_genrs_ids and set(media_genrs_ids).intersection(
+                            set(settings.ANIME_GENREIDS)):
                         download_dir = Path(settings.DOWNLOAD_ANIME_PATH)
                     else:
                         download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH) / _media.category
@@ -121,7 +123,9 @@ class DownloadChain(ChainBase):
                 if _media.type == MediaType.MOVIE:
                     download_dir = Path(settings.DOWNLOAD_MOVIE_PATH or settings.DOWNLOAD_PATH)
                 else:
-                    if settings.DOWNLOAD_ANIME_PATH and _media.category and str(_media.category) == '动漫':
+                    media_genrs_ids = _media.tmdb_info.get("genre_ids")
+                    if settings.DOWNLOAD_ANIME_PATH and media_genrs_ids and set(media_genrs_ids).intersection(
+                            set(settings.ANIME_GENREIDS)):
                         download_dir = Path(settings.DOWNLOAD_ANIME_PATH)
                     else:
                         download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH)

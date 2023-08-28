@@ -354,8 +354,10 @@ class FileTransferModule(_ModuleBase):
                 target_dir = target_dir / mediainfo.type.value / mediainfo.category
 
         if mediainfo.type == MediaType.TV:
-            if settings.LIBRARY_ANIME_NAME:
-                target_dir = target_dir / settings.LIBRARY_ANIME_NAME
+            media_genrs_ids = mediainfo.tmdb_info.get("genre_ids")
+            if settings.LIBRARY_ANIME_NAME and media_genrs_ids and set(media_genrs_ids).intersection(
+                    set(settings.ANIME_GENREIDS)):
+                target_dir = target_dir / settings.LIBRARY_ANIME_NAME / mediainfo.category
             elif settings.LIBRARY_TV_NAME:
                 target_dir = target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
             else:
