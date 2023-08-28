@@ -371,6 +371,8 @@ class MetaVideo(MetaBase):
                 self.type = MediaType.TV
         elif token.upper() == "SEASON" and self.begin_season is None:
             self._last_token_type = "SEASON"
+        elif self.type == MediaType.TV and self.begin_season is None:
+            self.begin_season = 1
 
     def __init_episode(self, token: str):
         re_res = re.findall(r"%s" % self._episode_re, token, re.IGNORECASE)
