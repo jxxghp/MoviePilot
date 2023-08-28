@@ -219,6 +219,7 @@ class Qbittorrent(metaclass=Singleton):
                                             is_paused=is_paused,
                                             tags=tags,
                                             use_auto_torrent_management=is_auto,
+                                            is_sequential_download=True,
                                             cookie=cookie)
             return True if qbc_ret and str(qbc_ret).find("Ok") != -1 else False
         except Exception as err:
