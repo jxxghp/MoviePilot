@@ -52,8 +52,8 @@ class TorrentsChain(ChainBase):
 
         # 所有站点索引
         indexers = self.siteshelper.get_indexers()
-        # 配置的索引站点
-        config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.IndexerSites) or []]
+        # 配置的Rss站点
+        config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.RssSites) or []]
         # 遍历站点缓存资源
         for indexer in indexers:
             # 未开启的站点不搜索

@@ -118,6 +118,7 @@ def cookie_cloud_sync(db: Session = Depends(get_db),
     """
     Site.reset(db)
     SystemConfigOper(db).set(SystemConfigKey.IndexerSites, [])
+    SystemConfigOper(db).set(SystemConfigKey.RssSites, [])
     CookieCloudChain(db).process(manual=True)
     # 插件站点删除
     EventManager().send_event(EventType.SiteDeleted,
@@ -225,6 +226,23 @@ def read_site_by_domain(
             detail=f"站点 {domain} 不存在",
         )
     return site
+
+
+@router.get("/rss", summary="所有订阅站点", response_model=List[schemas.Site])
+def read_rss_sites(db: Session = Depends(get_db)) -> List[dict]:
+    """
+    获取站点列表
+    """
+    # 选中的rss站点
+    rss_sites = SystemConfigOper(db).get(SystemConfigKey.RssSites)
+    # 所有站点
+    all_site = Site.list_order_by_pri(db)
+    if not rss_sites or not all_site:
+        return []
+
+    # 选中的rss站点
+    rss_sites = [site for site in all_site if site and site.id in rss_sites]
+    return rss_sites
 
 
 @router.get("/{site_id}", summary="站点详情", response_model=schemas.Site)
