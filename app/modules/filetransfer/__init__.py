@@ -347,6 +347,7 @@ class FileTransferModule(_ModuleBase):
             return TransferInfo(message=f"{target_dir} 目标路径不存在")
 
         if mediainfo.type == MediaType.MOVIE:
+            # 电影
             if settings.LIBRARY_MOVIE_NAME:
                 target_dir = target_dir / settings.LIBRARY_MOVIE_NAME / mediainfo.category
             else:
@@ -354,11 +355,14 @@ class FileTransferModule(_ModuleBase):
                 target_dir = target_dir / mediainfo.type.value / mediainfo.category
 
         if mediainfo.type == MediaType.TV:
-            media_genrs_ids = mediainfo.tmdb_info.get("genre_ids")
-            if settings.LIBRARY_ANIME_NAME and media_genrs_ids and set(media_genrs_ids).intersection(
-                    set(settings.ANIME_GENREIDS)):
+            # 电视剧
+            if settings.LIBRARY_ANIME_NAME \
+                    and mediainfo.genre_ids \
+                    and set(mediainfo.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
+                # 动漫
                 target_dir = target_dir / settings.LIBRARY_ANIME_NAME / mediainfo.category
             elif settings.LIBRARY_TV_NAME:
+                # 电视剧
                 target_dir = target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
             else:
                 # 目的目录加上类型和二级分类
@@ -609,6 +613,7 @@ class FileTransferModule(_ModuleBase):
                         max_length = len(relative)
                         target_path = path
                 except Exception as e:
+                    logger.debug(f"计算目标路径时出错：{e}")
                     continue
             if target_path:
                 return Path(target_path)

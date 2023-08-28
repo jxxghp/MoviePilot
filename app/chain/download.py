@@ -110,29 +110,40 @@ class DownloadChain(ChainBase):
         # 下载目录
         if not save_path:
             if settings.DOWNLOAD_CATEGORY and _media and _media.category:
+                # 开启下载二级目录
                 if _media.type == MediaType.MOVIE:
+                    # 电影
                     download_dir = Path(settings.DOWNLOAD_MOVIE_PATH or settings.DOWNLOAD_PATH) / _media.category
                 else:
-                    media_genrs_ids = _media.tmdb_info.get("genre_ids")
-                    if settings.DOWNLOAD_ANIME_PATH and media_genrs_ids and set(media_genrs_ids).intersection(
-                            set(settings.ANIME_GENREIDS)):
+                    if settings.DOWNLOAD_ANIME_PATH \
+                            and _media.genre_ids \
+                            and set(_media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
+                        # 动漫
                         download_dir = Path(settings.DOWNLOAD_ANIME_PATH)
                     else:
+                        # 电视剧
                         download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH) / _media.category
             elif _media:
+                # 未开启下载二级目录
                 if _media.type == MediaType.MOVIE:
+                    # 电影
                     download_dir = Path(settings.DOWNLOAD_MOVIE_PATH or settings.DOWNLOAD_PATH)
                 else:
-                    media_genrs_ids = _media.tmdb_info.get("genre_ids")
-                    if settings.DOWNLOAD_ANIME_PATH and media_genrs_ids and set(media_genrs_ids).intersection(
-                            set(settings.ANIME_GENREIDS)):
+                    if settings.DOWNLOAD_ANIME_PATH \
+                            and _media.genre_ids \
+                            and set(_media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
+                        # 动漫
                         download_dir = Path(settings.DOWNLOAD_ANIME_PATH)
                     else:
+                        # 电视剧
                         download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH)
             else:
+                # 未识别
                 download_dir = Path(settings.DOWNLOAD_PATH)
         else:
+            # 自定义下载目录
             download_dir = Path(save_path)
+
         # 添加下载
         result: Optional[tuple] = self.download(torrent_path=torrent_file,
                                                 cookie=_torrent.site_cookie,

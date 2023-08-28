@@ -148,6 +148,8 @@ class MediaInfo:
     vote_average: int = 0
     # 描述
     overview: str = None
+    # 风格ID
+    genre_ids: list = field(default_factory=list)
     # 所有别名和译名
     names: list = field(default_factory=list)
     # 各季的剧集清单信息
@@ -338,6 +340,8 @@ class MediaInfo:
         self.vote_average = round(float(info.get('vote_average')), 1) if info.get('vote_average') else 0
         # 描述
         self.overview = info.get('overview')
+        # 风格
+        self.genre_ids = info.get('genre_ids') or []
         # 原语种
         self.original_language = info.get('original_language')
         if self.type == MediaType.MOVIE:
