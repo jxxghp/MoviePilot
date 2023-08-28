@@ -354,7 +354,9 @@ class FileTransferModule(_ModuleBase):
                 target_dir = target_dir / mediainfo.type.value / mediainfo.category
 
         if mediainfo.type == MediaType.TV:
-            if settings.LIBRARY_TV_NAME:
+            if settings.LIBRARY_ANIME_NAME:
+                target_dir = target_dir / settings.LIBRARY_ANIME_NAME
+            elif settings.LIBRARY_TV_NAME:
                 target_dir = target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
             else:
                 # 目的目录加上类型和二级分类
