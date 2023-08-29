@@ -1,0 +1,35 @@
+name: MoviePilot Release
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - version.py
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build Docker Image
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v3
+
+      -
+        name: Release Version
+        id: release_version
+        run: |
+          app_version=$(cat version.py |sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
+          echo "app_version=$app_version" >> $GITHUB_ENV
+
+      -
+        name: Generate Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.app_version }}
+          name: ${{ env.app_version }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
