@@ -101,7 +101,20 @@ class AutoSignIn(_PluginBase):
             # 定时服务
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
 
-            if self._cron:
+            # 立即运行一次
+            if self._onlyonce:
+                logger.info(f"站点自动{self._action}服务启动，立即运行一次")
+                self._scheduler.add_job(func=self.sign_in, trigger='date',
+                                        run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+                                        name=f"站点自动{self._action}")
+
+                # 关闭一次性开关
+                self._onlyonce = False
+                # 保存配置
+                self.__update_config()
+
+            # 周期运行
+            if self._enabled and self._cron:
                 try:
                     if self._cron.strip().count(" ") == 4:
                         self._scheduler.add_job(func=self.sign_in,
@@ -146,17 +159,6 @@ class AutoSignIn(_PluginBase):
                     self._scheduler.add_job(self.sign_in, "cron",
                                             hour=trigger.hour, minute=trigger.minute,
                                             name=f"站点自动{self._action}")
-
-            if self._onlyonce:
-                logger.info(f"站点自动{self._action}服务启动，立即运行一次")
-                self._scheduler.add_job(func=self.sign_in, trigger='date',
-                                        run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
-                                        name=f"站点自动{self._action}")
-
-                # 关闭一次性开关
-                self._onlyonce = False
-                # 保存配置
-                self.__update_config()
 
             # 启动任务
             if self._scheduler.get_jobs():
