@@ -27,8 +27,8 @@ jobs:
         name: Generate Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ env.app_version }}
-          name: ${{ env.app_version }}
+          tag_name: v${{ env.app_version }}
+          name: v${{ env.app_version }}
           draft: false
           prerelease: false
         env:
