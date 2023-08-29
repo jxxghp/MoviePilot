@@ -31,7 +31,7 @@ class AutoSignIn(_PluginBase):
     # 插件名称
     plugin_name = "站点自动签到"
     # 插件描述
-    plugin_desc = "自动模拟登录站点并签到。"
+    plugin_desc = "自动模拟登录站点或签到。"
     # 插件图标
     plugin_icon = "signin.png"
     # 主题色
@@ -61,6 +61,7 @@ class AutoSignIn(_PluginBase):
     # 配置属性
     _enabled: bool = False
     _cron: str = ""
+    _sign_type: str = ""
     _onlyonce: bool = False
     _notify: bool = False
     _queue_cnt: int = 5
@@ -69,6 +70,7 @@ class AutoSignIn(_PluginBase):
     _clean: bool = False
     _start_time: int = None
     _end_time: int = None
+    _action: str = ""
 
     def init_plugin(self, config: dict = None):
         self.sites = SitesHelper()
@@ -87,6 +89,8 @@ class AutoSignIn(_PluginBase):
             self._sign_sites = config.get("sign_sites")
             self._retry_keyword = config.get("retry_keyword")
             self._clean = config.get("clean")
+            self._sign_type = config.get("sign_type") or "sign"
+            self._action = "签到" if str(self._sign_type) == "sign" else "模拟登陆"
 
         # 加载模块
         if self._enabled or self._onlyonce:
@@ -102,8 +106,8 @@ class AutoSignIn(_PluginBase):
                     if self._cron.strip().count(" ") == 4:
                         self._scheduler.add_job(func=self.sign_in,
                                                 trigger=CronTrigger.from_crontab(self._cron),
-                                                name="站点自动签到")
-                        logger.info(f"站点自动签到服务启动，执行周期 {self._cron}")
+                                                name=f"站点自动{self._action}")
+                        logger.info(f"站点自动{self._action}服务启动，执行周期 {self._cron}")
                     else:
                         # 2.3/9-23
                         crons = self._cron.strip().split("/")
@@ -121,10 +125,10 @@ class AutoSignIn(_PluginBase):
                             self._scheduler.add_job(func=self.sign_in,
                                                     trigger="interval",
                                                     hours=float(self._cron.strip()),
-                                                    name="站点自动签到")
-                            logger.info(f"站点自动签到服务启动，执行周期 {self._cron}")
+                                                    name=f"站点自动{self._action}")
+                            logger.info(f"站点自动{self._action}服务启动，执行周期 {self._cron}")
                         else:
-                            logger.error("站点自动签到服务启动失败，周期格式错误")
+                            logger.error(f"站点自动{self._action}服务启动失败，周期格式错误")
                             # 推送实时消息
                             self.systemmessage.put(f"执行周期配置错误")
                 except Exception as err:
@@ -141,13 +145,13 @@ class AutoSignIn(_PluginBase):
                 for trigger in triggers:
                     self._scheduler.add_job(self.sign_in, "cron",
                                             hour=trigger.hour, minute=trigger.minute,
-                                            name="站点自动签到")
+                                            name=f"站点自动{self._action}")
 
             if self._onlyonce:
-                logger.info(f"站点自动签到服务启动，立即运行一次")
+                logger.info(f"站点自动{self._action}服务启动，立即运行一次")
                 self._scheduler.add_job(func=self.sign_in, trigger='date',
                                         run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
-                                        name="站点自动签到")
+                                        name=f"站点自动{self._action}")
 
                 # 关闭一次性开关
                 self._onlyonce = False
@@ -174,6 +178,7 @@ class AutoSignIn(_PluginBase):
                 "sign_sites": self._sign_sites,
                 "retry_keyword": self._retry_keyword,
                 "clean": self._clean,
+                "sign_type": self._sign_type,
             }
         )
 
@@ -216,188 +221,209 @@ class AutoSignIn(_PluginBase):
         site_options = [{"title": site.get("name"), "value": site.get("id")}
                         for site in self.sites.get_indexers()]
         return [
-                   {
-                       'component': 'VForm',
-                       'content': [
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 3
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'enabled',
-                                                   'label': '启用插件',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 3
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'notify',
-                                                   'label': '发送通知',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 3
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'onlyonce',
-                                                   'label': '立即运行一次',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 3
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'clean',
-                                                   'label': '清理本日已签到',
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'cron',
-                                                   'label': '执行周期',
-                                                   'placeholder': '5位cron表达式，留空自动'
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'queue_cnt',
-                                                   'label': '队列数量'
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'retry_keyword',
-                                                   'label': '重试关键词',
-                                                   'placeholder': '重新签到关键词，支持正则表达式；每天首次全签，后续如果设置了重试词则只签到命中重试词的站点，否则全签。'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'content': [
-                                           {
-                                               'component': 'VSelect',
-                                               'props': {
-                                                   'chips': True,
-                                                   'multiple': True,
-                                                   'model': 'sign_sites',
-                                                   'label': '签到站点',
-                                                   'items': site_options
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VAlert',
-                                               'props': {
-                                                   'text': '签到周期支持：'
-                                                           '1、5位cron表达式；'
-                                                           '2、配置间隔（小时），如2.3/9-23（9-23点之间每隔2.3小时执行一次）；'
-                                                           '3、周期不填默认9-23点随机执行2次。'
-                                                           '每天首次签到全量签到，其余执行命中重试关键词的站点。'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           }
-                       ]
-                   }
-               ], {
-                   "enabled": False,
-                   "notify": True,
-                   "cron": "",
-                   "onlyonce": False,
-                   "clean": False,
-                   "queue_cnt": 5,
-                   "sign_sites": [],
-                   "retry_keyword": "错误|失败"
-               }
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'notify',
+                                            'label': '发送通知',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'clean',
+                                            'label': '清理本日已签到',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'sign_type',
+                                            'label': '签到方式',
+                                            'items': [
+                                                {'title': '签到', 'value': 'sign'},
+                                                {'title': '登录', 'value': 'login'}
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cron',
+                                            'label': '执行周期',
+                                            'placeholder': '5位cron表达式，留空自动'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'queue_cnt',
+                                            'label': '队列数量'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'retry_keyword',
+                                            'label': '重试关键词',
+                                            'placeholder': '重新签到关键词，支持正则表达式；每天首次全签，后续如果设置了重试词则只签到命中重试词的站点，否则全签。'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'chips': True,
+                                            'multiple': True,
+                                            'model': 'sign_sites',
+                                            'label': '签到站点',
+                                            'items': site_options
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '执行周期支持：'
+                                                    '1、5位cron表达式；'
+                                                    '2、配置间隔（小时），如2.3/9-23（9-23点之间每隔2.3小时执行一次）；'
+                                                    '3、周期不填默认9-23点随机执行2次。'
+                                                    '每天首次全量执行，其余执行命中重试关键词的站点。'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "notify": True,
+            "sign_type": "sign",
+            "cron": "",
+            "onlyonce": False,
+            "clean": False,
+            "queue_cnt": 5,
+            "sign_sites": [],
+            "retry_keyword": "错误|失败"
+        }
 
     def get_page(self) -> List[dict]:
         """
@@ -502,19 +528,19 @@ class AutoSignIn(_PluginBase):
     @eventmanager.register(EventType.SiteSignin)
     def sign_in(self, event: Event = None):
         """
-        自动签到
+        自动签到|模拟登陆
         """
         # 日期
         today = datetime.today()
         if self._start_time and self._end_time:
             if int(datetime.today().hour) < self._start_time or int(datetime.today().hour) > self._end_time:
                 logger.error(
-                    f"当前时间 {int(datetime.today().hour)} 不在 {self._start_time}-{self._end_time} 范围内，暂不签到")
+                    f"当前时间 {int(datetime.today().hour)} 不在 {self._start_time}-{self._end_time} 范围内，暂不{self._action}")
                 return
         if event:
-            logger.info("收到命令，开始站点签到 ...")
+            logger.info(f"收到命令，开始站点{self._action} ...")
             self.post_message(channel=event.event_data.get("channel"),
-                              title="开始站点签到 ...",
+                              title=f"开始站点{self._action} ...",
                               userid=event.event_data.get("user"))
 
         yesterday = today - timedelta(days=1)
@@ -534,7 +560,7 @@ class AutoSignIn(_PluginBase):
 
         # 今日没数据
         if not today_history or self._clean:
-            logger.info(f"今日 {today} 未签到，开始签到已选站点")
+            logger.info(f"今日 {today} 未{self._action}，开始{self._action}已选站点")
             # 过滤删除的站点
             self._sign_sites = [site.get("id") for site in sign_sites if site]
             if self._clean:
@@ -551,24 +577,28 @@ class AutoSignIn(_PluginBase):
                              site.get("id") not in already_sign_sites or site.get("id") in retry_sites]
 
             if not no_sign_sites:
-                logger.info(f"今日 {today} 已签到，无重新签到站点，本次任务结束")
+                logger.info(f"今日 {today} 已{self._action}，无重新{self._action}站点，本次任务结束")
                 return
 
             # 签到站点 = 需要重签+今日未签
             sign_sites = no_sign_sites
-            logger.info(f"今日 {today} 已签到，开始重签重试站点、特殊站点、未签站点")
+            logger.info(f"今日 {today} 已{self._action}，开始重试命中关键词站点")
 
         if not sign_sites:
-            logger.info("没有需要签到的站点")
+            logger.info(f"没有需要{self._action}的站点")
             return
 
         # 执行签到
-        logger.info("开始执行签到任务 ...")
-        with ThreadPool(min(len(sign_sites), int(self._queue_cnt))) as p:
-            status = p.map(self.signin_site, sign_sites)
+        logger.info(f"开始执行{self._action}任务 ...")
+        if str(self._sign_type) == "sign":
+            with ThreadPool(min(len(sign_sites), int(self._queue_cnt))) as p:
+                status = p.map(self.signin_site, sign_sites)
+        else:
+            with ThreadPool(min(len(sign_sites), int(self._queue_cnt))) as p:
+                status = p.map(self.login_site, sign_sites)
 
         if status:
-            logger.info("站点签到任务完成！")
+            logger.info(f"站点{self._action}任务完成！")
             # 获取今天的日期
             key = f"{datetime.now().month}月{datetime.now().day}日"
             # 保存数据
@@ -624,7 +654,7 @@ class AutoSignIn(_PluginBase):
             if not self._retry_keyword:
                 # 没设置重试关键词则重试已选站点
                 retry_sites = self._sign_sites
-            logger.debug(f"下次签到重试站点 {retry_sites}")
+            logger.debug(f"下次{self._action}重试站点 {retry_sites}")
 
             # 存入历史
             self.save_data(key=today,
@@ -640,21 +670,22 @@ class AutoSignIn(_PluginBase):
                 if len(retry_msg) > 0:
                     signin_message += retry_msg
 
-                self.post_message(title="站点自动签到",
+                signin_message = "\n".join([f'【{s[0]}】{s[1]}' for s in signin_message if s])
+                self.post_message(title=f"站点自动{self._action}",
                                   mtype=NotificationType.SiteMessage,
-                                  text=f"全部签到数量: {len(list(self._sign_sites))} \n"
-                                       f"本次签到数量: {len(sign_sites)} \n"
-                                       f"下次签到数量: {len(retry_sites) if self._retry_keyword else 0} \n"
+                                  text=f"全部{self._action}数量: {len(list(self._sign_sites))} \n"
+                                       f"本次{self._action}数量: {len(sign_sites)} \n"
+                                       f"下次{self._action}数量: {len(retry_sites) if self._retry_keyword else 0} \n"
                                        f"{signin_message}"
                                   )
             if event:
                 self.post_message(channel=event.event_data.get("channel"),
-                                  title="站点签到完成！", userid=event.event_data.get("user"))
+                                  title=f"站点{self._action}完成！", userid=event.event_data.get("user"))
         else:
-            logger.error("站点签到任务失败！")
+            logger.error(f"站点{self._action}任务失败！")
             if event:
                 self.post_message(channel=event.event_data.get("channel"),
-                                  title="站点签到任务失败！", userid=event.event_data.get("user"))
+                                  title=f"站点{self._action}任务失败！", userid=event.event_data.get("user"))
         # 保存配置
         self.__update_config()
 
@@ -736,6 +767,8 @@ class AutoSignIn(_PluginBase):
                     if under_challenge(page_source):
                         return f"无法通过Cloudflare！"
                     return f"仿真登录失败，Cookie已失效！"
+                else:
+                    return "仿真签到成功"
             else:
                 res = RequestUtils(cookies=site_cookie,
                                    ua=ua,
@@ -771,6 +804,77 @@ class AutoSignIn(_PluginBase):
             logger.warn("%s 签到失败：%s" % (site, str(e)))
             traceback.print_exc()
             return f"签到失败：{str(e)}！"
+
+    def login_site(self, site_info: CommentedMap) -> Tuple[str, str]:
+        """
+        模拟登陆一个站点
+        """
+        return site_info.get("name"), self.__login_base(site_info)
+
+    @staticmethod
+    def __login_base(site_info: CommentedMap) -> str:
+        """
+        模拟登陆通用处理
+        :param site_info: 站点信息
+        :return: 签到结果信息
+        """
+        if not site_info:
+            return ""
+        site = site_info.get("name")
+        site_url = site_info.get("url")
+        site_cookie = site_info.get("cookie")
+        ua = site_info.get("ua")
+        render = site_info.get("render")
+        proxies = settings.PROXY if site_info.get("proxy") else None
+        proxy_server = settings.PROXY_SERVER if site_info.get("proxy") else None
+        if not site_url or not site_cookie:
+            logger.warn(f"未配置 {site} 的站点地址或Cookie，无法签到")
+            return ""
+        # 模拟登录
+        try:
+            # 访问链接
+            site_url = str(site_url).replace("attendance.php", "")
+            logger.info(f"开始站点模拟登陆：{site}，地址：{site_url}...")
+            if render:
+                page_source = PlaywrightHelper().get_page_source(url=site_url,
+                                                                 cookies=site_cookie,
+                                                                 ua=ua,
+                                                                 proxies=proxy_server)
+                if not SiteUtils.is_logged_in(page_source):
+                    if under_challenge(page_source):
+                        return f"无法通过Cloudflare！"
+                    return f"仿真登录失败，Cookie已失效！"
+                else:
+                    return "模拟登陆成功"
+            else:
+                res = RequestUtils(cookies=site_cookie,
+                                   ua=ua,
+                                   proxies=proxies
+                                   ).get_res(url=site_url)
+                # 判断登录状态
+                if res and res.status_code in [200, 500, 403]:
+                    if not SiteUtils.is_logged_in(res.text):
+                        if under_challenge(res.text):
+                            msg = "站点被Cloudflare防护，请打开站点浏览器仿真"
+                        elif res.status_code == 200:
+                            msg = "Cookie已失效"
+                        else:
+                            msg = f"状态码：{res.status_code}"
+                        logger.warn(f"{site} 模拟登陆失败，{msg}")
+                        return f"模拟登陆失败，{msg}！"
+                    else:
+                        logger.info(f"{site} 模拟登陆成功")
+                        return f"模拟登陆成功"
+                elif res is not None:
+                    logger.warn(f"{site} 模拟登陆失败，状态码：{res.status_code}")
+                    return f"模拟登陆失败，状态码：{res.status_code}！"
+                else:
+                    logger.warn(f"{site} 模拟登陆失败，无法打开网站")
+                    return f"模拟登陆失败，无法打开网站！"
+        except Exception as e:
+            logger.warn("%s 模拟登陆失败：%s" % (site, str(e)))
+            traceback.print_exc()
+            return f"模拟登陆失败：{str(e)}！"
 
     def stop_service(self):
         """
