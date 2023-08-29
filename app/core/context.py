@@ -553,13 +553,13 @@ class MediaInfo:
         dicts["type"] = self.type.value if self.type else None
         dicts["detail_link"] = self.detail_link
         dicts["title_year"] = self.title_year
-        dicts["tmdb_info"] = self.tmdb_info if self.tmdb_info else None
         return dicts
 
     def clear(self):
         """
         去除多余数据，减小体积
         """
+        self.tmdb_info = {}
         self.douban_info = {}
         self.seasons = {}
         self.genres = []

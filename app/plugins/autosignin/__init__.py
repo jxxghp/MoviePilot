@@ -139,7 +139,7 @@ class AutoSignIn(_PluginBase):
                                                     trigger="interval",
                                                     hours=float(self._cron.strip()),
                                                     name=f"站点自动{self._action}")
-                            logger.info(f"站点自动{self._action}服务启动，执行周期 {self._cron}")
+                            logger.info(f"站点自动{self._action}服务启动，执行周期 {self._cron} {self._start_time}-{self._end_time}")
                         else:
                             logger.error(f"站点自动{self._action}服务启动失败，周期格式错误")
                             # 推送实时消息
