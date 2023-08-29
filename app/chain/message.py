@@ -270,7 +270,7 @@ class MessageChain(ChainBase):
             elif text.startswith("#") \
                     or re.search(r"^请[问帮你]", text) \
                     or re.search(r"[?？]$", text) \
-                    or StringUtils.count_words(text) > 10 \
+                    or StringUtils.count_words(text) > 15 \
                     or text.find("继续") != -1:
                 # 聊天
                 content = text

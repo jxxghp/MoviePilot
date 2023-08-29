@@ -418,21 +418,31 @@ class StringUtils:
         return curr + format(amount, ",")
 
     @staticmethod
-    def count_words(s: str) -> int:
+    def count_words(text: str) -> int:
         """
-        计算字符串中包含的单词数量，只适用于简单的单行文本
-        :param s: 要计算的字符串
-        :return: 字符串中包含的单词数量
+        计算字符串中包含的单词或汉字的数量，需要兼容中英文混合的情况
+        :param text: 要计算的字符串
+        :return: 字符串中包含的词数量
         """
-        # 匹配英文单词
-        if re.match(r'^[A-Za-z0-9\s]+$', s):
-            # 如果是英文字符串，则按空格分隔单词，并计算单词数量
-            num_words = len(s.split())
-        else:
-            # 如果不是英文字符串，则计算字符数量
-            num_words = len(s)
+        if not text:
+            return 0
+        # 使用正则表达式匹配汉字和英文单词
+        chinese_pattern = '[\u4e00-\u9fa5]'
+        english_pattern = '[a-zA-Z]+'
 
-        return num_words
+        # 匹配汉字和英文单词
+        chinese_matches = re.findall(chinese_pattern, text)
+        english_matches = re.findall(english_pattern, text)
+
+        # 过滤掉空格和数字
+        chinese_words = [word for word in chinese_matches if word.isalpha()]
+        english_words = [word for word in english_matches if word.isalpha()]
+
+        # 计算汉字和英文单词的数量
+        chinese_count = len(chinese_words)
+        english_count = len(english_words)
+
+        return chinese_count + english_count
 
     @staticmethod
     def split_text(text: str, max_length: int) -> Generator:
