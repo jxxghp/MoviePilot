@@ -393,7 +393,7 @@ class TmdbHelper:
 
     def match_multi(self, name: str) -> Optional[dict]:
         """
-        根据名称同时查询电影和电视剧，不带年份
+        根据名称同时查询电影和电视剧，没有类型也没有年份时使用
         :param name: 识别的文件名或种子名
         :return: 匹配的媒体信息
         """
@@ -407,35 +407,50 @@ class TmdbHelper:
             print(traceback.print_exc())
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
+        # 返回结果
+        ret_info = {}
         if len(multis) == 0:
             logger.debug(f"{name} 未找到相关媒体息!")
+            return {}
         else:
-            # 按年份降序排列
+            # 按年份降序排列，电影在前面
             multis = sorted(
                 multis,
-                key=lambda x: x.get('release_date') or x.get('first_air_date') or '0000-00-00',
+                key=lambda x: ("1"
+                               if x.get("media_type") == "movie"
+                               else "0") + (x.get('release_date')
+                                            or x.get('first_air_date')
+                                            or '0000-00-00'),
                 reverse=True
             )
             for multi in multis:
                 if multi.get("media_type") == "movie":
                     if self.__compare_names(name, multi.get('title')) \
                             or self.__compare_names(name, multi.get('original_title')):
-                        return multi
+                        ret_info = multi
+                        break
                     # 匹配别名、译名
                     if not multi.get("names"):
                         multi = self.get_info(mtype=MediaType.MOVIE, tmdbid=multi.get("id"))
                     if multi and self.__compare_names(name, multi.get("names")):
-                        return multi
+                        ret_info = multi
+                        break
                 elif multi.get("media_type") == "tv":
                     if self.__compare_names(name, multi.get('name')) \
                             or self.__compare_names(name, multi.get('original_name')):
-                        return multi
+                        ret_info = multi
+                        break
                     # 匹配别名、译名
                     if not multi.get("names"):
                         multi = self.get_info(mtype=MediaType.TV, tmdbid=multi.get("id"))
                     if multi and self.__compare_names(name, multi.get("names")):
-                        return multi
-        return {}
+                        ret_info = multi
+                        break
+            # 类型变更
+            if ret_info:
+                ret_info['media_type'] = MediaType.MOVIE if ret_info.get("media_type") == "movie" else MediaType.TV
+
+            return ret_info
 
     @lru_cache(maxsize=settings.CACHE_CONF.get('tmdb'))
     def match_web(self, name: str, mtype: MediaType) -> Optional[dict]:
