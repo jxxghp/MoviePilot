@@ -344,7 +344,7 @@ class TransferChain(ChainBase):
             # 整合数据
             if mtype:
                 meta.type = mtype
-            if season:
+            if season is not None:
                 meta.begin_season = season
             # 识别媒体信息
             mediainfo: MediaInfo = self.mediachain.recognize_media(tmdbid=tmdbid, mtype=mtype)
