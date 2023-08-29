@@ -53,6 +53,10 @@ class IndexerModule(_ModuleBase):
             logger.warn(f"{site.get('name')} 不支持中文搜索")
             return []
 
+        # 去除搜索关键字中的特殊字符
+        if search_word:
+            search_word = StringUtils.clear(search_word, replace_word=" ", allow_space=True)
+
         # 开始索引
         result_array = []
         # 开始计时
