@@ -602,7 +602,7 @@ class DownloadChain(ChainBase):
                             continue
                         # 添加不存在的季集信息
                         __append_no_exists(_season=season, _episodes=lack_episodes,
-                                           _total=season_total, _start=min(episodes))
+                                           _total=season_total, _start=min(lack_episodes))
                     else:
                         # 全季不存在
                         __append_no_exists(_season=season, _episodes=[],
