@@ -559,14 +559,15 @@ class DownloadChain(ChainBase):
             itemid = self.mediaserver.get_item_id(mtype=mediainfo.type.value,
                                                   tmdbid=mediainfo.tmdb_id,
                                                   season=mediainfo.season)
+            # 媒体库已存在的剧集
             exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if not exists_tvs:
-                # 所有剧集均缺失
+                # 所有季集均缺失
                 for season, episodes in mediainfo.seasons.items():
                     if not episodes:
                         continue
                     # 全季不存在
-                    if meta.begin_season \
+                    if meta.season_list \
                             and season not in meta.season_list:
                         continue
                     # 总集数
@@ -591,7 +592,8 @@ class DownloadChain(ChainBase):
                         if totals.get(season):
                             # 按总集数计算缺失集（开始集为TMDB中的最小集）
                             lack_episodes = list(set(range(min(episodes),
-                                                           season_total + 1)).difference(set(exist_episodes)))
+                                                           season_total + min(episodes))
+                                                     ).difference(set(exist_episodes)))
                         else:
                             # 按TMDB集数计算缺失集
                             lack_episodes = list(set(episodes).difference(set(exist_episodes)))
