@@ -319,17 +319,26 @@ class DownloadChain(ChainBase):
                                 if not torrent_path:
                                     continue
                                 torrent_episodes = self.torrent.get_torrent_episodes(torrent_files)
-                                if torrent_episodes \
-                                        and len(torrent_episodes) >= __get_season_episodes(need_tmdbid,
-                                                                                           torrent_season[0]):
-                                    # 下载
-                                    download_id = self.download_single(context=context,
-                                                                       torrent_file=torrent_path,
-                                                                       save_path=save_path,
-                                                                       userid=userid)
+                                if torrent_episodes:
+                                    # 总集数
+                                    need_total = __get_season_episodes(need_tmdbid, torrent_season[0])
+                                    if len(torrent_episodes) < need_total:
+                                        # 更新集数范围
+                                        begin_ep = min(torrent_episodes)
+                                        end_ep = max(torrent_episodes)
+                                        meta.set_episodes(begin=begin_ep, end=end_ep)
+                                        logger.info(
+                                            f"{meta.org_string} 解析文件集数为 [{begin_ep}-{end_ep}]，不是完整合集")
+                                        continue
+                                    else:
+                                        # 下载
+                                        download_id = self.download_single(context=context,
+                                                                           torrent_file=torrent_path,
+                                                                           save_path=save_path,
+                                                                           userid=userid)
                                 else:
                                     logger.info(
-                                        f"{meta.org_string} 解析文件集数为 {len(torrent_episodes)}，未含所需集数")
+                                        f"{meta.org_string} 解析文件集数为 {len(torrent_episodes)}，不是完整合集")
                                     continue
                             else:
                                 # 下载

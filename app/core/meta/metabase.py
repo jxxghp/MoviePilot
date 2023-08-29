@@ -440,9 +440,21 @@ class MetaBase(object):
             elif len(ep) > 1 and str(ep[0]).isdigit() and str(ep[-1]).isdigit():
                 self.begin_episode = int(ep[0])
                 self.end_episode = int(ep[-1])
+                self.total_episode = (self.end_episode - self.begin_episode) + 1
         elif str(ep).isdigit():
             self.begin_episode = int(ep)
             self.end_episode = None
+
+    def set_episodes(self, begin: int, end: int):
+        """
+        设置开始集结束集
+        """
+        if begin:
+            self.begin_episode = begin
+        if end:
+            self.end_episode = end
+        if self.begin_episode and self.end_episode:
+            self.total_episode = (self.end_episode - self.begin_episode) + 1
             
     def merge(self, meta: Self):
         """
