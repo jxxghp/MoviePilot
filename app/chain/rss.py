@@ -219,6 +219,13 @@ class RssChain(ChainBase):
                 rss_meta.year = rss_task.year
                 rss_meta.begin_season = rss_task.season
                 rss_meta.type = MediaType(rss_task.type)
+                # 每季总集数
+                totals = {}
+                if rss_task.season and rss_task.total_episode:
+                    totals = {
+                        rss_task.season: rss_task.total_episode
+                    }
+                # 检查缺失
                 exist_flag, no_exists = self.downloadchain.get_no_exists_info(
                     meta=rss_meta,
                     mediainfo=MediaInfo(
@@ -227,6 +234,7 @@ class RssChain(ChainBase):
                         tmdb_id=rss_task.tmdbid,
                         season=rss_task.season
                     ),
+                    totals=totals
                 )
                 if exist_flag:
                     logger.info(f'{rss_task.name} 媒体库中已存在，完成订阅')

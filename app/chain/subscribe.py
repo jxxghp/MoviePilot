@@ -202,8 +202,18 @@ class SubscribeChain(ChainBase):
 
             # 非洗版状态
             if not subscribe.best_version:
+                # 每季总集数
+                totals = {}
+                if subscribe.season and subscribe.total_episode:
+                    totals = {
+                        subscribe.season: subscribe.total_episode
+                    }
                 # 查询缺失的媒体信息
-                exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
+                exist_flag, no_exists = self.downloadchain.get_no_exists_info(
+                    meta=meta,
+                    mediainfo=mediainfo,
+                    totals=totals
+                )
                 if exist_flag:
                     logger.info(f'{mediainfo.title_year} 媒体库中已存在，完成订阅')
                     self.subscribeoper.delete(subscribe.id)
@@ -394,8 +404,18 @@ class SubscribeChain(ChainBase):
                 continue
             # 非洗版
             if not subscribe.best_version:
+                # 每季总集数
+                totals = {}
+                if subscribe.season and subscribe.total_episode:
+                    totals = {
+                        subscribe.season: subscribe.total_episode
+                    }
                 # 查询缺失的媒体信息
-                exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
+                exist_flag, no_exists = self.downloadchain.get_no_exists_info(
+                    meta=meta,
+                    mediainfo=mediainfo,
+                    totals=totals
+                )
                 if exist_flag:
                     logger.info(f'{mediainfo.title_year} 媒体库中已存在，完成订阅')
                     self.subscribeoper.delete(subscribe.id)
@@ -677,32 +697,38 @@ class SubscribeChain(ChainBase):
         if no_exists \
                 and no_exists.get(tmdb_id) \
                 and (total_episode or start_episode):
+            # 该季原缺失信息
             no_exist_season = no_exists.get(tmdb_id).get(begin_season)
             if no_exist_season:
-                # 原季集列表
+                # 原集列表
                 episode_list = no_exist_season.episodes
                 # 原总集数
                 total = no_exist_season.total_episode
+                # 原开始集数
+                start = no_exist_season.start_episode
+
                 # 更新剧集列表、开始集数、总集数
-                if not episode_list and not start_episode:
-                    # 整季缺失且没有开始集
+                if not episode_list:
+                    # 整季缺失
                     episodes = []
-                    start_episode = 1
+                    start_episode = start_episode or start
                     total_episode = total_episode or total
-                elif total_episode and start_episode:
-                    # 有开始集和总集数
-                    episodes = list(range(start_episode, total_episode + 1))
-                elif not start_episode:
-                    # 有总集数没有开始集
-                    episodes = list(range(min(episode_list or [1]), total_episode + 1))
-                    start_episode = min(episode_list or [1])
-                elif not total_episode:
-                    # 有开始集没有总集数
-                    episodes = list(range(start_episode, max(episode_list or [total]) + 1))
-                    total_episode = no_exist_season.total_episode
                 else:
-                    return no_exists
-                # 处理集合
+                    # 部分缺失
+                    if not start_episode \
+                            and not total_episode:
+                        # 无需调整
+                        return no_exists
+                    if not start_episode:
+                        # 没有自定义开始集
+                        start_episode = start
+                    if not total_episode:
+                        # 没有自定义总集数
+                        total_episode = total
+                    # 新的集列表
+                    episodes = list(range(start_episode, total_episode + 1))
+
+                # 更新集合
                 no_exists[tmdb_id][begin_season] = NotExistMediaInfo(
                     season=begin_season,
                     episodes=episodes,
