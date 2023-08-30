@@ -35,13 +35,15 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         self.__SYSTEMCONF[key] = value
         # 写入数据库
         if ObjectUtils.is_obj(value):
-            if value is not None:
-                value = json.dumps(value)
-            else:
-                value = ''
+            value = json.dumps(value)
+        elif value is None:
+            value = ''
         conf = SystemConfig.get_by_key(self._db, key)
         if conf:
-            conf.update(self._db, {"value": value})
+            if value:
+                conf.update(self._db, {"value": value})
+            else:
+                conf.delete(self._db, conf.id)
         else:
             conf = SystemConfig(key=key, value=value)
             conf.create(self._db)
