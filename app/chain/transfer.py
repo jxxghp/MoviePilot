@@ -137,8 +137,9 @@ class TransferChain(ChainBase):
 
         # 处理所有待转移目录或文件，默认一个转移路径或文件只有一个媒体信息
         for trans_path in trans_paths:
-            # 如果是目录，获取所有文件并转移
-            if trans_path.is_dir():
+            # 如果是目录且不是⼀蓝光原盘，获取所有文件并转移
+            if (not trans_path.is_file()
+                    and not SystemUtils.is_bluray_dir(trans_path)):
                 # 遍历获取下载目录所有文件
                 file_paths = SystemUtils.list_files(directory=trans_path,
                                                     extensions=settings.RMT_MEDIAEXT,
@@ -312,10 +313,12 @@ class TransferChain(ChainBase):
 
         # 先检查当前目录的下级目录，以支持合集的情况
         for sub_dir in SystemUtils.list_sub_directory(directory):
+            # 如果是蓝光原盘
+            if SystemUtils.is_bluray_dir(sub_dir):
+                trans_paths.append(sub_dir)
             # 没有媒体文件的目录跳过
-            if not SystemUtils.list_files(sub_dir, extensions=settings.RMT_MEDIAEXT):
-                continue
-            trans_paths.append(sub_dir)
+            elif SystemUtils.list_files(sub_dir, extensions=settings.RMT_MEDIAEXT):
+                trans_paths.append(sub_dir)
 
         if not trans_paths:
             # 没有有效子目录，直接转移当前目录
