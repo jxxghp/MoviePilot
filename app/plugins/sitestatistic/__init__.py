@@ -370,7 +370,7 @@ class SiteStatistic(_PluginBase):
                     {
                         'component': 'td',
                         'props': {
-                            'class': 'whitespace-nowrap break-keep'
+                            'class': 'whitespace-nowrap break-keep text-high-emphasis'
                         },
                         'text': site
                     },
@@ -384,10 +384,16 @@ class SiteStatistic(_PluginBase):
                     },
                     {
                         'component': 'td',
+                        'props': {
+                            'class': 'text-success'
+                        },
                         'text': StringUtils.str_filesize(data.get("upload"))
                     },
                     {
                         'component': 'td',
+                        'props': {
+                            'class': 'text-error'
+                        },
                         'text': StringUtils.str_filesize(data.get("download"))
                     },
                     {
@@ -396,7 +402,7 @@ class SiteStatistic(_PluginBase):
                     },
                     {
                         'component': 'td',
-                        'text': data.get('bonus')
+                        'text': '{:,.1f}'.format(data.get('bonus') or 0)
                     },
                     {
                         'component': 'td',
@@ -587,7 +593,7 @@ class SiteStatistic(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/cloud.png'
+                                                            'src': '/plugin/seed.png'
                                                         }
                                                     }
                                                 ]
@@ -657,7 +663,7 @@ class SiteStatistic(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/seed_size.png'
+                                                            'src': '/plugin/database.png'
                                                         }
                                                     }
                                                 ]
