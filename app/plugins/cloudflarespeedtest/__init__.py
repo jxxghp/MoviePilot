@@ -79,7 +79,7 @@ class CloudflareSpeedTest(_PluginBase):
         if self.get_state() or self._onlyonce:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
 
-            if self._cron:
+            if self.get_state() and self._cron:
                 logger.info(f"Cloudflare CDN优选服务启动，周期：{self._cron}")
                 self._scheduler.add_job(func=self.__cloudflareSpeedTest,
                                         trigger=CronTrigger.from_crontab(self._cron),
@@ -390,7 +390,7 @@ class CloudflareSpeedTest(_PluginBase):
         })
 
     def get_state(self) -> bool:
-        return self._cf_ip and True if self._cron else False
+        return True if self._cf_ip and self._cron else False
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
