@@ -10,7 +10,7 @@ from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.transmission.transmission import Transmission
-from app.schemas import TransferInfo, TransferTorrent, DownloadingTorrent
+from app.schemas import TransferTorrent, DownloadingTorrent
 from app.schemas.types import TorrentStatus
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -141,11 +141,11 @@ class TransmissionModule(_ModuleBase):
         return ret_torrents
 
     def transfer_completed(self, hashs: Union[str, list],
-                           transinfo: TransferInfo = None) -> None:
+                           path: Path = None) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash
-        :param transinfo:  转移信息
+        :param path:  源目录
         :return: None
         """
         self.transmission.set_torrent_tag(ids=hashs, tags=['已整理'])
@@ -154,11 +154,11 @@ class TransmissionModule(_ModuleBase):
             if self.remove_torrents(hashs):
                 logger.info(f"移动模式删除种子成功：{hashs} ")
             # 删除残留文件
-            if transinfo and transinfo.path and transinfo.path.exists():
-                files = SystemUtils.list_files(transinfo.path, settings.RMT_MEDIAEXT)
+            if path and path.exists():
+                files = SystemUtils.list_files(path, settings.RMT_MEDIAEXT)
                 if not files:
-                    logger.warn(f"删除残留文件夹：{transinfo.path}")
-                    shutil.rmtree(transinfo.path, ignore_errors=True)
+                    logger.warn(f"删除残留文件夹：{path}")
+                    shutil.rmtree(path, ignore_errors=True)
 
     def remove_torrents(self, hashs: Union[str, list]) -> bool:
         """

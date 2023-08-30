@@ -383,7 +383,7 @@ class DirMonitor(_PluginBase):
                         }
                     self._medias[mediainfo.title_year + " " + meta.season] = media_list
 
-                    # 刷新媒体库
+                    # 汇总刷新媒体库
                     self.chain.refresh_mediaserver(mediainfo=mediainfo, file_path=target_path)
                     # 广播事件
                     self.eventmanager.send_event(EventType.TransferComplete, {
