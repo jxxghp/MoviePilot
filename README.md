@@ -21,10 +21,7 @@ Docker：https://hub.docker.com/r/jxxghp/moviepilot
 
 2. **安装CookieCloud服务端（可选）**
 
-MoviePilot内置了公共CookieCloud服务器(https://movie-pilot.org/cookiecloud) ，如果需要自建服务，可参考 [CookieCloud](https://github.com/easychen/CookieCloud) 项目进行搭建。
-```shell
-docker pull easychen/cookiecloud:latest
-```
+MoviePilot内置了公共CookieCloud服务器，如果需要自建服务，可参考 [CookieCloud](https://github.com/easychen/CookieCloud) 项目进行搭建，docker镜像请点击 [这里](https://hub.docker.com/r/easychen/cookiecloud)。
 
 **声明：** 本项目不会收集用户敏感数据，Cookie同步也是基于CookieCloud项目实现，非本项目提供的能力。技术角度上CookieCloud采用端到端加密，在个人不泄露`用户KEY`和`端对端加密密码`的情况下第三方无法窃取任何用户信息（包括服务器持有者）。如果你不放心，可以不使用公共服务或者不使用本项目，但如果使用后发生了任何信息泄露与本项目无关！
 
@@ -36,7 +33,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 4. **安装MoviePilot**
 
-目前仅提供docker镜像，后续可能会提供更多安装方式。
+目前仅提供docker镜像，点击 [这里](https://hub.docker.com/r/jxxghp/moviepilot) 或执行命令：
 
 ```shell
 docker pull jxxghp/moviepilot:latest
@@ -75,10 +72,11 @@ docker pull jxxghp/moviepilot:latest
 - **LIBRARY_ANIME_NAME：** 动漫媒体库目录名，默认`电视剧/动漫`
 - **LIBRARY_CATEGORY：** 媒体库二级分类开关，`true`/`false`，默认`false`，开启后会根据配置`category.yaml`自动在媒体库目录下建立二级目录分类
 - **TRANSFER_TYPE：** 转移方式，支持`link`/`copy`/`move`/`softlink`  **注意：在`link`和`softlink`转移方式下，转移后的文件会继承源文件的权限掩码，不受`UMASK`影响**
-- **COOKIECLOUD_HOST：** CookieCloud服务器地址，格式：`http://ip:port`，必须配置，否则无法添加站点
+- **COOKIECLOUD_HOST：** CookieCloud服务器地址，格式：`http(s)://ip:port`，不配置默认使用内建服务器`https://movie-pilot.org/cookiecloud`
 - **COOKIECLOUD_KEY：** CookieCloud用户KEY
 - **COOKIECLOUD_PASSWORD：** CookieCloud端对端加密密码
 - **COOKIECLOUD_INTERVAL：** CookieCloud同步间隔（分钟）
+- **OCR_HOST：** OCR识别服务器地址，格式：`http(s)://ip:port`，用于识别站点二维码实现自动登录获取Cookie等，不配置默认使用内建服务器`https://movie-pilot.org`，可使用 [这个镜像](https://hub.docker.com/r/jxxghp/moviepilot-ocr) 自行搭建。
 - **USER_AGENT：** CookieCloud对应的浏览器UA，可选，设置后可增加连接站点的成功率，同步站点后可以在管理界面中修改
 - **AUTO_DOWNLOAD_USER：** 交互搜索自动下载用户ID，使用,分割
 - **SUBSCRIBE_SEARCH：** 订阅搜索，`true`/`false`，默认`false`，开启后会每隔24小时对所有订阅进行全量搜索，以补齐缺失剧集（一般情况下正常订阅即可，订阅搜索只做为兜底，会增加站点压力，不建议开启）。
