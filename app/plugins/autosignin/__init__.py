@@ -134,20 +134,37 @@ class AutoSignIn(_PluginBase):
                                 self._start_time = int(times[0])
                                 # 23
                                 self._end_time = int(times[1])
-                        if self._start_time and self._end_time:
+                            if self._start_time and self._end_time:
+                                self._scheduler.add_job(func=self.sign_in,
+                                                        trigger="interval",
+                                                        hours=float(self._cron.strip()),
+                                                        name=f"站点自动{self._action}")
+                                logger.info(
+                                    f"站点自动{self._action}服务启动，执行周期 {self._start_time}点-{self._end_time}点 每{self._cron}小时执行一次")
+                            else:
+                                logger.error(f"站点自动{self._action}服务启动失败，周期格式错误")
+                                # 推送实时消息
+                                self.systemmessage.put(f"执行周期配置错误")
+                                self._cron = ""
+                                self._enabled = False
+                                self.__update_config()
+                        else:
+                            # 默认0-24 按照周期运行
+                            self._start_time = 0
+                            self._end_time = 24
                             self._scheduler.add_job(func=self.sign_in,
                                                     trigger="interval",
                                                     hours=float(self._cron.strip()),
                                                     name=f"站点自动{self._action}")
-                            logger.info(f"站点自动{self._action}服务启动，执行周期 {self._cron} {self._start_time}-{self._end_time}")
-                        else:
-                            logger.error(f"站点自动{self._action}服务启动失败，周期格式错误")
-                            # 推送实时消息
-                            self.systemmessage.put(f"执行周期配置错误")
+                            logger.info(
+                                f"站点自动{self._action}服务启动，执行周期 {self._start_time}点-{self._end_time}点 每{self._cron}小时执行一次")
                 except Exception as err:
                     logger.error(f"定时任务配置错误：{err}")
                     # 推送实时消息
                     self.systemmessage.put(f"执行周期配置错误：{err}")
+                    self._cron = ""
+                    self._enabled = False
+                    self.__update_config()
             else:
                 # 随机时间
                 triggers = TimerUtils.random_scheduler(num_executions=2,
