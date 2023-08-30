@@ -354,7 +354,7 @@ class FileTransferModule(_ModuleBase):
                     and mediainfo.genre_ids \
                     and set(mediainfo.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
                 # 动漫
-                target_dir = target_dir / settings.LIBRARY_ANIME_NAME / mediainfo.category
+                target_dir = target_dir / settings.LIBRARY_ANIME_NAME
             elif settings.LIBRARY_TV_NAME:
                 # 电视剧
                 target_dir = target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
@@ -390,7 +390,7 @@ class FileTransferModule(_ModuleBase):
             # 返回转移后的路径
             return TransferInfo(path=in_path,
                                 target_path=new_path,
-                                total_size=in_path.stat().st_size,
+                                total_size=new_path.stat().st_size,
                                 is_bluray=bluray_flag)
         else:
             # 转移单个文件
@@ -444,9 +444,9 @@ class FileTransferModule(_ModuleBase):
 
             logger.info(f"文件 {in_path} 转移成功")
             return TransferInfo(path=in_path,
-                                target_path=new_file,
+                                target_path=new_file.parent,
                                 file_count=1,
-                                total_size=in_path.stat().st_size,
+                                total_size=new_file.stat().st_size,
                                 is_bluray=False,
                                 file_list=[in_path],
                                 file_list_new=[new_file])

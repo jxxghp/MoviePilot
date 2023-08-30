@@ -255,19 +255,19 @@ class TransferChain(ChainBase):
                     medias[file_mediainfo.tmdb_id] = file_mediainfo
                     transfers[file_mediainfo.tmdb_id] = transferinfo
                 else:
-                    # 合并元数据剧集
+                    # 合并元数据集
                     if (metas[file_mediainfo.tmdb_id].begin_episode or 0) > (file_meta.begin_episode or 0):
                         metas[file_mediainfo.tmdb_id].begin_episode = file_meta.begin_episode
                     if (metas[file_mediainfo.tmdb_id].end_episode or 0) < (file_meta.end_episode or 0):
                         metas[file_mediainfo.tmdb_id].end_episode = file_meta.end_episode
                     metas[file_mediainfo.tmdb_id].total_episode += file_meta.total_episode
-                    # 合并元数据季度
+                    # 合并元数据季
                     if (metas[file_mediainfo.tmdb_id].begin_season or 0) > (file_meta.begin_season or 0):
                         metas[file_mediainfo.tmdb_id].begin_season = file_meta.begin_season
                     if (metas[file_mediainfo.tmdb_id].end_season or 0) < (file_meta.end_season or 0):
                         metas[file_mediainfo.tmdb_id].end_season = file_meta.end_season
                     metas[file_mediainfo.tmdb_id].total_season += file_meta.total_season
-                    # 合并转移
+                    # 合并转移数据
                     transfers[file_mediainfo.tmdb_id].file_count += transferinfo.file_count
                     transfers[file_mediainfo.tmdb_id].file_list.extend(transferinfo.file_list)
                     transfers[file_mediainfo.tmdb_id].file_list_new.extend(transferinfo.file_list_new)
@@ -502,7 +502,7 @@ class TransferChain(ChainBase):
         """
         新增转移成功历史记录
         """
-        self.transferhis.add(
+        self.transferhis.add_force(
             src=str(src_path),
             dest=str(transferinfo.target_path),
             mode=settings.TRANSFER_TYPE,
@@ -525,10 +525,10 @@ class TransferChain(ChainBase):
     def __insert_fail_history(self, src_path: Path, download_hash: str, meta: MetaBase,
                               transferinfo: TransferInfo = None, mediainfo: MediaInfo = None):
         """
-        新增转移失败历史记录，不能按download_hash判重
+        新增转移失败历史记录
         """
         if mediainfo and transferinfo:
-            his = self.transferhis.add(
+            his = self.transferhis.add_force(
                 src=str(src_path),
                 dest=str(transferinfo.target_path),
                 mode=settings.TRANSFER_TYPE,
@@ -549,7 +549,7 @@ class TransferChain(ChainBase):
                 files=json.dumps(transferinfo.file_list)
             )
         else:
-            his = self.transferhis.add(
+            his = self.transferhis.add_force(
                 title=meta.name,
                 year=meta.year,
                 src=str(src_path),
@@ -562,8 +562,8 @@ class TransferChain(ChainBase):
             )
         return his
 
-    def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo, transferinfo: TransferInfo,
-                              season_episode: str = None):
+    def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo,
+                              transferinfo: TransferInfo, season_episode: str = None):
         """
         发送入库成功的消息
         """

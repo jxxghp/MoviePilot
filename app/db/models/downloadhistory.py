@@ -89,3 +89,36 @@ class DownloadHistory(Base):
                                                     DownloadHistory.seasons == season,
                                                     DownloadHistory.episodes == episode).order_by(
                 DownloadHistory.id.desc()).all()
+
+
+class DownloadFiles(Base):
+    """
+    下载文件记录
+    """
+    id = Column(Integer, Sequence('id'), primary_key=True, index=True)
+    # 下载任务Hash
+    download_hash = Column(String, index=True)
+    # 下载器
+    downloader = Column(String)
+    # 完整路径
+    fullpath = Column(String, index=True)
+    # 保存路径
+    savepath = Column(String, index=True)
+    # 文件相对路径/名称
+    filepath = Column(String)
+    # 种子名称
+    torrentname = Column(String)
+    # 状态 0-已删除 1-正常
+    state = Column(Integer, nullable=False, default=1)
+
+    @staticmethod
+    def get_by_hash(db: Session, download_hash: str):
+        return db.query(DownloadFiles).filter(DownloadFiles.download_hash == download_hash).all()
+
+    @staticmethod
+    def get_by_full_path(db: Session, fullpath: str):
+        return db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath).first()
+
+    @staticmethod
+    def get_by_save_path(db: Session, savepath: str):
+        return db.query(DownloadFiles).filter(DownloadFiles.savepath == savepath).all()

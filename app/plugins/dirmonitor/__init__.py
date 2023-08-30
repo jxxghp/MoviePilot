@@ -490,7 +490,7 @@ class DirMonitor(_PluginBase):
 
     def get_download_hash(self, src: Path, tmdb_id: int):
         """
-        获取download_hash
+        FIXME 从表中获取download_hash，避免连接下载器
         """
         file_name = src.name
         downloadHis = self.downloadhis.get_last_by(tmdbid=tmdb_id)
