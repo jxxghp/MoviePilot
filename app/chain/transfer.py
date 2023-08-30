@@ -115,6 +115,8 @@ class TransferChain(ChainBase):
 
         # 汇总错误信息
         err_msgs = []
+        # 汇总元数据
+        metas = {}
         # 汇总媒体信息
         medias = {}
         # 汇总转移信息
@@ -233,10 +235,16 @@ class TransferChain(ChainBase):
                 # 汇总信息
                 if file_mediainfo.tmdb_id not in medias:
                     # 新增信息
+                    metas[file_mediainfo.tmdb_id] = file_meta
                     medias[file_mediainfo.tmdb_id] = file_mediainfo
                     transfers[file_mediainfo.tmdb_id] = transferinfo
                 else:
-                    # 合并信息
+                    # 合并元数据剧集
+                    if (metas[file_mediainfo.tmdb_id].begin_episode or 0) > (file_meta.begin_episode or 0):
+                        metas[file_mediainfo.tmdb_id].begin_episode = file_meta.begin_episode
+                    if (metas[file_mediainfo.tmdb_id].end_episode or 0) < (file_meta.end_episode or 0):
+                        metas[file_mediainfo.tmdb_id].end_episode = file_meta.end_episode
+                    # 合并转移
                     transfers[file_mediainfo.tmdb_id].file_count += transferinfo.file_count
                     transfers[file_mediainfo.tmdb_id].file_list.extend(transferinfo.file_list)
                     transfers[file_mediainfo.tmdb_id].file_list_new.extend(transferinfo.file_list_new)
@@ -271,7 +279,7 @@ class TransferChain(ChainBase):
                 # 刮削
                 self.scrape_metadata(path=transfers[tmdbid].target_path, mediainfo=media)
                 # 发送通知
-                self.send_transfer_message(meta=meta,
+                self.send_transfer_message(meta=metas[tmdbid],
                                            mediainfo=mediainfo,
                                            transferinfo=transfers[tmdbid])
             # 结束进度
