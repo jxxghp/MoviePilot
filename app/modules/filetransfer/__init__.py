@@ -5,16 +5,16 @@ from typing import Optional, List, Tuple, Union
 
 from jinja2 import Template
 
-from app.core.context import MediaInfo
-from app.core.metainfo import MetaInfo
 from app.core.config import settings
+from app.core.context import MediaInfo
 from app.core.meta import MetaBase
+from app.core.metainfo import MetaInfo
+from app.helper.format import FormatParser
 from app.log import logger
 from app.modules import _ModuleBase
-from app.modules.filetransfer.format_parser import FormatParser
-from app.schemas import TransferInfo, EpisodeFormat
-from app.utils.system import SystemUtils
+from app.schemas import TransferInfo
 from app.schemas.types import MediaType
+from app.utils.system import SystemUtils
 
 lock = Lock()
 
@@ -32,7 +32,7 @@ class FileTransferModule(_ModuleBase):
 
     def transfer(self, path: Path, meta: MetaBase, mediainfo: MediaInfo,
                  transfer_type: str, target: Path = None,
-                 epformat: EpisodeFormat = None) -> TransferInfo:
+                 formater: FormatParser = None) -> TransferInfo:
         """
         文件转移
         :param path:  文件路径
@@ -40,7 +40,7 @@ class FileTransferModule(_ModuleBase):
         :param mediainfo:  识别的媒体信息
         :param transfer_type:  转移方式
         :param target:  目标路径
-        :param epformat: 集识别格式
+        :param formater: 集识别格式
         :return: {path, target_path, message}
         """
         # 获取目标路径
@@ -55,7 +55,7 @@ class FileTransferModule(_ModuleBase):
                                    mediainfo=mediainfo,
                                    transfer_type=transfer_type,
                                    target_dir=target,
-                                   epformat=epformat)
+                                   formater=formater)
 
     @staticmethod
     def __transfer_command(file_item: Path, target_file: Path, transfer_type: str) -> int:
@@ -321,7 +321,7 @@ class FileTransferModule(_ModuleBase):
                        mediainfo: MediaInfo,
                        transfer_type: str,
                        target_dir: Path,
-                       epformat: EpisodeFormat = None,
+                       formater: FormatParser = None,
                        ) -> TransferInfo:
         """
         识别并转移一个文件或者一个目录下的所有文件
@@ -330,7 +330,7 @@ class FileTransferModule(_ModuleBase):
         :param mediainfo: 媒体信息
         :param target_dir: 目的文件夹，非空的转移到该文件夹，为空时则按类型转移到配置文件中的媒体库文件夹
         :param transfer_type: 文件转移方式
-        :param epformat: 识别的剧集格式
+        :param formater: 识别的剧集格式
         :return: TransferInfo、错误信息
         """
         # 检查目录路径
@@ -404,16 +404,10 @@ class FileTransferModule(_ModuleBase):
                 in_meta.total_episode = 1
                 in_meta.end_episode = None
 
-            # 有集自定义格式
-            formaterHandler = FormatParser(eformat=epformat.format,
-                                           details=epformat.detail,
-                                           part=epformat.part,
-                                           offset=epformat.offset) if epformat else None
-
             # 自定义识别集数、PART
-            if formaterHandler:
+            if formater:
                 # 开始集、结束集、PART
-                begin_ep, end_ep, part = formaterHandler.split_episode(in_path.stem)
+                begin_ep, end_ep, part = formater.split_episode(in_path.stem)
                 if begin_ep is not None:
                     in_meta.begin_episode = begin_ep
                     in_meta.part = part

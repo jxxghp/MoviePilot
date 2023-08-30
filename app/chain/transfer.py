@@ -16,6 +16,7 @@ from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
 from app.db.transferhistory_oper import TransferHistoryOper
+from app.helper.format import FormatParser
 from app.helper.progress import ProgressHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat
@@ -122,12 +123,22 @@ class TransferChain(ChainBase):
         # 汇总转移信息
         transfers = {}
 
+        # 有集自定义格式
+        formaterHandler = FormatParser(eformat=epformat.format,
+                                       details=epformat.detail,
+                                       part=epformat.part,
+                                       offset=epformat.offset) if epformat else None
+
         # 开始进度
         self.progress.start(ProgressKey.FileTransfer)
         # 总数
         transfer_files = SystemUtils.list_files(directory=path,
                                                 extensions=settings.RMT_MEDIAEXT,
                                                 min_filesize=min_filesize)
+        if formaterHandler:
+            # 有集自定义格式，过滤文件
+            transfer_files = [f for f in transfer_files if formaterHandler.match(f.name)]
+        # 总数
         total_num = len(transfer_files)
         # 已处理数量
         processed_num = 0
@@ -146,6 +157,10 @@ class TransferChain(ChainBase):
                                                     min_filesize=min_filesize)
             else:
                 file_paths = [trans_path]
+
+            if formaterHandler:
+                # 有集自定义格式，过滤文件
+                file_paths = [f for f in file_paths if formaterHandler.match(f.name)]
 
             # 转移所有文件
             for file_path in file_paths:
@@ -209,7 +224,7 @@ class TransferChain(ChainBase):
                                                            path=file_path,
                                                            transfer_type=transfer_type,
                                                            target=target,
-                                                           epformat=epformat)
+                                                           formater=formaterHandler)
                 if not transferinfo:
                     logger.error("文件转移模块运行失败")
                     return False, "文件转移模块运行失败"
@@ -245,6 +260,13 @@ class TransferChain(ChainBase):
                         metas[file_mediainfo.tmdb_id].begin_episode = file_meta.begin_episode
                     if (metas[file_mediainfo.tmdb_id].end_episode or 0) < (file_meta.end_episode or 0):
                         metas[file_mediainfo.tmdb_id].end_episode = file_meta.end_episode
+                    metas[file_mediainfo.tmdb_id].total_episode += file_meta.total_episode
+                    # 合并元数据季度
+                    if (metas[file_mediainfo.tmdb_id].begin_season or 0) > (file_meta.begin_season or 0):
+                        metas[file_mediainfo.tmdb_id].begin_season = file_meta.begin_season
+                    if (metas[file_mediainfo.tmdb_id].end_season or 0) < (file_meta.end_season or 0):
+                        metas[file_mediainfo.tmdb_id].end_season = file_meta.end_season
+                    metas[file_mediainfo.tmdb_id].total_season += file_meta.total_season
                     # 合并转移
                     transfers[file_mediainfo.tmdb_id].file_count += transferinfo.file_count
                     transfers[file_mediainfo.tmdb_id].file_list.extend(transferinfo.file_list)
@@ -281,7 +303,7 @@ class TransferChain(ChainBase):
                 self.scrape_metadata(path=transfers[tmdbid].target_path, mediainfo=media)
                 # 发送通知
                 self.send_transfer_message(meta=metas[tmdbid],
-                                           mediainfo=mediainfo,
+                                           mediainfo=media,
                                            transferinfo=transfers[tmdbid])
             # 结束进度
             logger.info(f"{path} 转移完成，共 {total_num} 个文件，"
