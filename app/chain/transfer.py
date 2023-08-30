@@ -540,6 +540,8 @@ class TransferChain(ChainBase):
         # 统一发送通知
         transferinfo.total_size = total_size
         transferinfo.file_count = total_num
+        if errmsg:
+            transferinfo.message = "\n".join(errmsg)
         file_meta.begin_episode = None
         self.send_transfer_message(meta=file_meta, mediainfo=mediainfo, transferinfo=transferinfo)
         self.progress.end(ProgressKey.FileTransfer)
