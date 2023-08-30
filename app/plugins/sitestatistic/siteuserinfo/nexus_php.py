@@ -62,7 +62,7 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
 
     def _parse_user_base_info(self, html_text: str):
         # 合并解析，减少额外请求调用
-        self.__parse_user_traffic_info(html_text)
+        self._parse_user_traffic_info(html_text)
         self._user_traffic_page = None
 
         self._parse_message_unread(html_text)
@@ -84,7 +84,7 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
             self.username = str(ret[0])
             return
 
-    def __parse_user_traffic_info(self, html_text):
+    def _parse_user_traffic_info(self, html_text):
         html_text = self._prepare_html_text(html_text)
         upload_match = re.search(r"[^总]上[传傳]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
                                  re.IGNORECASE)
@@ -102,7 +102,7 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
         self.leeching = StringUtils.str_int(leeching_match.group(2)) if leeching_match and leeching_match.group(
             2).strip() else 0
         html = etree.HTML(html_text)
-        has_ucoin, self.bonus = self.__parse_ucoin(html)
+        has_ucoin, self.bonus = self._parse_ucoin(html)
         if has_ucoin:
             return
         tmps = html.xpath('//a[contains(@href,"mybonus")]/text()') if html else None
@@ -126,7 +126,7 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
             logger.error(f"{self.site_name} 解析魔力值出错, 错误信息: {err}")
 
     @staticmethod
-    def __parse_ucoin(html):
+    def _parse_ucoin(html):
         """
         解析ucoin, 统一转换为铜币
         :param html:
@@ -150,14 +150,6 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
                 copper = copper if copper else 0
                 return True, gold * 100 * 100 + silver * 100 + copper
         return False, 0.0
-
-    def _parse_user_traffic_info(self, html_text: str):
-        """
-        上传/下载/分享率 [做种数/魔力值]
-        :param html_text:
-        :return:
-        """
-        pass
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Optional[str]:
         """
@@ -238,9 +230,9 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
         if not html:
             return
 
-        self.__get_user_level(html)
+        self._get_user_level(html)
 
-        self.__fixup_traffic_info(html)
+        self._fixup_traffic_info(html)
 
         # 加入日期
         join_at_text = html.xpath(
@@ -285,9 +277,9 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
         if not self.seeding:
             self.seeding = tmp_seeding
 
-        self.__fixup_torrent_seeding_page(html)
+        self._fixup_torrent_seeding_page(html)
 
-    def __fixup_torrent_seeding_page(self, html):
+    def _fixup_torrent_seeding_page(self, html):
         """
         修正种子页面链接
         :param html:
@@ -320,7 +312,7 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
         # if seeding_url_text:
         #    self._torrent_seeding_page = seeding_url_text
 
-    def __get_user_level(self, html):
+    def _get_user_level(self, html):
         # 等级 获取同一行等级数据，图片格式等级，取title信息，否则取文本信息
         user_levels_text = html.xpath('//tr/td[text()="等級" or text()="等级" or *[text()="等级"]]/'
                                       'following-sibling::td[1]/img[1]/@title')
@@ -392,7 +384,7 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
 
         return message_head_text, message_date_text, message_content_text
 
-    def __fixup_traffic_info(self, html):
+    def _fixup_traffic_info(self, html):
         # fixup bonus
         if not self.bonus:
             bonus_text = html.xpath('//tr/td[text()="魔力值" or text()="猫粮"]/following-sibling::td[1]/text()')

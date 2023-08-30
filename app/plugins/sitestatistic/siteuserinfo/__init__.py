@@ -26,6 +26,7 @@ class SiteSchema(Enum):
     NexusPhp = "NexusPhp"
     NexusProject = "NexusProject"
     NexusRabbit = "NexusRabbit"
+    NexusHhanclub = "NexusHhanclub"
     SmallHorse = "Small Horse"
     Unit3d = "Unit3d"
     TorrentLeech = "TorrentLeech"
