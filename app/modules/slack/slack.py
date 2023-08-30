@@ -146,7 +146,7 @@ class Slack:
             # 发送
             result = self._client.chat_postMessage(
                 channel=channel,
-                text=message_text,
+                text=message_text[:1000],
                 blocks=blocks,
                 mrkdwn=True
             )
