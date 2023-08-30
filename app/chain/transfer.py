@@ -338,7 +338,7 @@ class TransferChain(ChainBase):
         if not transfer_type:
             transfer_type = settings.TRANSFER_TYPE
 
-        if tmdbid:
+        if tmdbid and settings.DOWNLOADER_MONITOR:
             # 有输入TMDBID时单个识别
             meta = MetaInfo(in_path.stem)
             # 整合数据
@@ -392,6 +392,13 @@ class TransferChain(ChainBase):
             logger.info(f"{in_path} 转移完成")
             return True, ""
         else:
+            # 识别媒体信息
+            mediainfo = None
+            if tmdbid:
+                mediainfo: MediaInfo = self.mediachain.recognize_media(tmdbid=tmdbid, mtype=mtype)
+                if not mediainfo:
+                    return False, f"媒体信息识别失败，tmdbid: {tmdbid}, type: {mtype.value}"
+
             # 错误信息
             errmsgs = []
             # 自动识别所有文件
@@ -409,6 +416,7 @@ class TransferChain(ChainBase):
             self.progress.update(value=0,
                                  text=f"开始转移 {in_path}，共 {total_num} 个文件 ...",
                                  key=ProgressKey.FileTransfer)
+
             for transfer_file in transfer_files:
                 # 更新进度
                 self.progress.update(value=processed_num / total_num * 100,
@@ -435,17 +443,20 @@ class TransferChain(ChainBase):
                     file_meta.type = mtype
                 if season:
                     file_meta.begin_season = season
+
                 # 识别媒体信息
-                mediainfo: MediaInfo = self.mediachain.recognize_media(meta=file_meta)
                 if not mediainfo:
-                    logger.error(f"{transfer_file} 媒体信息识别失败")
-                    errmsgs.append(f"{transfer_file.name} 媒体信息识别失败")
-                    # 更新进度
-                    processed_num += 1
-                    self.progress.update(value=processed_num / total_num * 100,
-                                         text=f"{transfer_file.name} 媒体信息识别失败！",
-                                         key=ProgressKey.FileTransfer)
-                    continue
+                    mediainfo: MediaInfo = self.mediachain.recognize_media(meta=file_meta)
+                    if not mediainfo:
+                        logger.error(f"{transfer_file} 媒体信息识别失败")
+                        errmsgs.append(f"{transfer_file.name} 媒体信息识别失败")
+                        # 更新进度
+                        processed_num += 1
+                        self.progress.update(value=processed_num / total_num * 100,
+                                             text=f"{transfer_file.name} 媒体信息识别失败！",
+                                             key=ProgressKey.FileTransfer)
+                        continue
+
                 # 开始转移
                 transferinfo: TransferInfo = self.transfer(
                     path=in_path,
