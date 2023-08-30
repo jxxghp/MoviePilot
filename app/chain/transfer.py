@@ -318,7 +318,8 @@ class TransferChain(ChainBase):
             # 目录监控多集 转移文件夹
             return self.__transfer_directory(in_path=src_path,
                                              mtype=mtype,
-                                             mediainfo=mediainfo)
+                                             mediainfo=mediainfo,
+                                             download_hash=history.download_hash)
 
     def manual_transfer(self, in_path: Path,
                         target: Path = None,
@@ -418,7 +419,7 @@ class TransferChain(ChainBase):
 
     def __transfer_directory(self, in_path: Path, min_filesize: int = 0, mtype: MediaType = None,
                              season: int = None, transfer_type: str = None, epformat: EpisodeFormat = None,
-                             target: Path = None, mediainfo: MediaInfo = None):
+                             target: Path = None, mediainfo: MediaInfo = None, download_hash: str = None):
         """
         转移文件夹
         """
@@ -510,7 +511,8 @@ class TransferChain(ChainBase):
                 src_path=transfer_file,
                 meta=file_meta,
                 mediainfo=mediainfo,
-                transferinfo=transferinfo
+                transferinfo=transferinfo,
+                download_hash=download_hash
             )
             # 刮削元数据
             self.scrape_metadata(path=transferinfo.target_path, mediainfo=mediainfo)
