@@ -69,7 +69,23 @@ class NAStoolSync(_PluginBase):
                 self.tr = Transmission()
 
                 # 读取sqlite数据
-                gradedb = sqlite3.connect(self._nt_db_path)
+                try:
+                    gradedb = sqlite3.connect(self._nt_db_path)
+                except Exception as e:
+                    self.update_config(
+                        {
+                            "transfer": False,
+                            "clear": False,
+                            "nt_db_path": None,
+                            "path": self._path,
+                            "downloader": self._downloader,
+                            "site": self._site,
+                            "supp": self._supp,
+                        }
+                    )
+                    logger.error(f"无法打开数据库文件 {self._nt_db_path}，请检查路径是否正确：{e}")
+                    return
+
                 # 创建游标cursor来执行executeＳＱＬ语句
                 cursor = gradedb.cursor()
 
@@ -520,180 +536,180 @@ class NAStoolSync(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         return [
-                   {
-                       'component': 'VForm',
-                       'content': [
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'transfer',
-                                                   'label': '同步记录'
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'clear',
-                                                   'label': '清空记录'
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'supp',
-                                                   'label': '补充数据'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'nt_db_path',
-                                                   'label': 'NAStool数据库user.db路径',
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextarea',
-                                               'props': {
-                                                   'model': 'path',
-                                                   'rows': '2',
-                                                   'label': '历史记录路径映射',
-                                                   'placeholder': 'NAStool路径:MoviePilot路径（一行一个）'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextarea',
-                                               'props': {
-                                                   'model': 'downloader',
-                                                   'rows': '2',
-                                                   'label': '插件数据下载器映射',
-                                                   'placeholder': 'NAStool下载器id:qbittorrent|transmission（一行一个）'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextarea',
-                                               'props': {
-                                                   'model': 'site',
-                                                   'label': '下载历史站点映射',
-                                                   'placeholder': 'NAStool站点名:MoviePilot站点名（一行一个）'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VAlert',
-                                               'props': {
-                                                   'text': '开启清空记录时，会在导入历史数据之前删除MoviePilot之前的记录。'
-                                                           '如果转移记录很多，同步时间可能会长（3-10分钟），'
-                                                           '所以点击确定后页面没反应是正常现象，后台正在处理。'
-                                                           '如果开启补充数据，会获取tr、qb种子，补充转移记录中download_hash缺失的情况（同步删除需要）。'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           }
-                       ]
-                   }
-               ], {
-                   "transfer": False,
-                   "clear": False,
-                   "supp": False,
-                   "nt_db_path": "",
-                   "path": "",
-                   "downloader": "",
-                   "site": "",
-               }
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'transfer',
+                                            'label': '同步记录'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'clear',
+                                            'label': '清空记录'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'supp',
+                                            'label': '补充数据'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'nt_db_path',
+                                            'label': 'NAStool数据库user.db路径',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'path',
+                                            'rows': '2',
+                                            'label': '历史记录路径映射',
+                                            'placeholder': 'NAStool路径:MoviePilot路径（一行一个）'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'downloader',
+                                            'rows': '2',
+                                            'label': '插件数据下载器映射',
+                                            'placeholder': 'NAStool下载器id:qbittorrent|transmission（一行一个）'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'site',
+                                            'label': '下载历史站点映射',
+                                            'placeholder': 'NAStool站点名:MoviePilot站点名（一行一个）'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '开启清空记录时，会在导入历史数据之前删除MoviePilot之前的记录。'
+                                                    '如果转移记录很多，同步时间可能会长（3-10分钟），'
+                                                    '所以点击确定后页面没反应是正常现象，后台正在处理。'
+                                                    '如果开启补充数据，会获取tr、qb种子，补充转移记录中download_hash缺失的情况（同步删除需要）。'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "transfer": False,
+            "clear": False,
+            "supp": False,
+            "nt_db_path": "",
+            "path": "",
+            "downloader": "",
+            "site": "",
+        }
 
     def get_page(self) -> List[dict]:
         pass
