@@ -157,6 +157,8 @@ class Settings(BaseSettings):
     COOKIECLOUD_PASSWORD: str = None
     # CookieCloud同步间隔（分钟）
     COOKIECLOUD_INTERVAL: int = 60 * 24
+    # OCR服务器地址
+    OCR_HOST: str = "https://movie-pilot.org"
     # CookieCloud对应的浏览器UA
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.57"
     # 媒体库目录
