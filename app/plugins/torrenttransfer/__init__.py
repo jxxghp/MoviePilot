@@ -550,6 +550,8 @@ class TorrentTransfer(_PluginBase):
             success = 0
             # 总失败数
             fail = 0
+            # 跳过数
+            skip = 0
 
             for torrent_item in trans_torrents:
                 # 检查种子文件是否存在
@@ -565,6 +567,8 @@ class TorrentTransfer(_PluginBase):
                 torrent_info, _ = todownloader_obj.get_torrents(ids=[torrent_item.get('hash')])
                 if torrent_info:
                     logger.info(f"{torrent_item.get('hash')} 已在目的下载器中，跳过 ...")
+                    # 跳过计数
+                    skip += 1
                     continue
 
                 # 转换保存路径
@@ -653,7 +657,7 @@ class TorrentTransfer(_PluginBase):
                 self.post_message(
                     mtype=NotificationType.SiteMessage,
                     title="【转移做种任务执行完成】",
-                    text=f"总数：{total}，成功：{success}，失败：{fail}"
+                    text=f"总数：{total}，成功：{success}，失败：{fail}，跳过：{skip}"
                 )
         else:
             logger.info(f"没有需要转移的种子")
