@@ -45,6 +45,21 @@ def recognize_doubanid(doubanid: str,
         return schemas.Context()
 
 
+@router.get("/showing", summary="豆瓣正在热映", response_model=List[schemas.MediaInfo])
+def movie_showing(page: int = 1,
+                  count: int = 30,
+                  db: Session = Depends(get_db),
+                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    浏览豆瓣正在热映
+    """
+    movies = DoubanChain(db).movie_showing(page=page, count=count)
+    if not movies:
+        return []
+    medias = [MediaInfo(douban_info=movie) for movie in movies]
+    return [media.to_dict() for media in medias]
+
+
 @router.get("/movies", summary="豆瓣电影", response_model=List[schemas.MediaInfo])
 def douban_movies(sort: str = "R",
                   tags: str = "",

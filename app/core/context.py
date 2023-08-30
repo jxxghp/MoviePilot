@@ -446,6 +446,8 @@ class MediaInfo:
             self.poster_path = info.get("pic", {}).get("large")
             if not self.poster_path and info.get("cover_url"):
                 self.poster_path = info.get("cover_url")
+            if not self.poster_path and info.get("cover"):
+                self.poster_path = info.get("cover").get("url")
         # 简介
         if not self.overview:
             self.overview = info.get("intro") or info.get("card_subtitle") or ""

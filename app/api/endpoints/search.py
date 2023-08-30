@@ -42,7 +42,7 @@ def search_by_tmdbid(mediaid: str,
         # 识别豆瓣信息
         context = DoubanChain(db).recognize_by_doubanid(doubanid)
         if not context or not context.media_info or not context.media_info.tmdb_id:
-            raise HTTPException(status_code=404, detail="无法识别TMDB媒体信息！")
+            return []
         torrents = SearchChain(db).search_by_tmdbid(tmdbid=context.media_info.tmdb_id,
                                                     mtype=context.media_info.type,
                                                     area=area)
