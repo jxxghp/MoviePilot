@@ -87,14 +87,31 @@ class SiteStatistic(_PluginBase):
             # 加载模块
             self._site_schema = ModuleHelper.load('app.plugins.sitestatistic.siteuserinfo',
                                                   filter_func=lambda _, obj: hasattr(obj, 'schema'))
+
+            # 定时服务
+            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+
             self._site_schema.sort(key=lambda x: x.order)
             # 站点上一次更新时间
             self._last_update_time = None
             # 站点数据
             self._sites_data = {}
-            # 定时服务
-            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-            if self._cron:
+
+            # 立即运行一次
+            if self._onlyonce:
+                logger.info(f"站点数据统计服务启动，立即运行一次")
+                self._scheduler.add_job(self.refresh_all_site_data, 'date',
+                                        run_date=datetime.now(
+                                            tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3)
+                                        )
+                # 关闭一次性开关
+                self._onlyonce = False
+
+                # 保存配置
+                self.__update_config()
+
+            # 周期运行
+            if self._enabled and self._cron:
                 try:
                     self._scheduler.add_job(func=self.refresh_all_site_data,
                                             trigger=CronTrigger.from_crontab(self._cron),
@@ -113,17 +130,6 @@ class SiteStatistic(_PluginBase):
                     self._scheduler.add_job(self.refresh_all_site_data, "cron",
                                             hour=trigger.hour, minute=trigger.minute,
                                             name="站点数据统计")
-            if self._onlyonce:
-                logger.info(f"站点数据统计服务启动，立即运行一次")
-                self._scheduler.add_job(self.refresh_all_site_data, 'date',
-                                        run_date=datetime.now(
-                                            tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3)
-                                        )
-                # 关闭一次性开关
-                self._onlyonce = False
-
-                # 保存配置
-                self.__update_config()
 
             # 启动任务
             if self._scheduler.get_jobs():
@@ -1028,6 +1034,9 @@ class SiteStatistic(_PluginBase):
                 refresh_sites = [site for site in self.sites.get_indexers() if
                                  site.get("id") in self._statistic_sites]
 
+                # 过滤掉已删除的站点
+                self._statistic_sites = [site.get("id") for site in refresh_sites if site]
+                self.__update_config()
             if not refresh_sites:
                 return
 
