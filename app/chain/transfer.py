@@ -505,9 +505,14 @@ class TransferChain(ChainBase):
         """
         新增转移成功历史记录
         """
+        if settings.DOWNLOADER_MONITOR:
+            target_path = str(transferinfo.target_path)
+        else:
+            target_path = str(transferinfo.file_list_new[0]) if transferinfo.file_list_new else str(
+                transferinfo.target_path)
         self.transferhis.add(
             src=str(src_path),
-            dest=str(transferinfo.target_path),
+            dest=target_path,
             mode=settings.TRANSFER_TYPE,
             type=mediainfo.type.value,
             category=mediainfo.category,
