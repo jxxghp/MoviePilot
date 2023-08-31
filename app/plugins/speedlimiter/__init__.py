@@ -76,24 +76,27 @@ class SpeedLimiter(_PluginBase):
             except Exception:
                 self._bandwidth = 0
 
-            # 限速服务开关
-            self._limit_enabled = True if self._play_up_speed or self._play_down_speed or self._auto_limit else False
-            allocation_ratio = config.get("allocation_ratio")
-            if allocation_ratio:
-                try:
-                    self._allocation_ratio = [int(i) for i in allocation_ratio.split(":")]
-                except Exception:
-                    logger.warn("分配比例含有:外非数字字符，执行均分")
-                    self._allocation_ratio = []
-            else:
-                self._allocation_ratio = []
-
             self._downloader = config.get("downloader") or []
             if self._downloader:
                 if 'qbittorrent' in self._downloader:
                     self._qb = Qbittorrent()
                 if 'transmission' in self._downloader:
                     self._tr = Transmission()
+
+            # 限速服务开关
+            self._limit_enabled = True if self._play_up_speed or self._play_down_speed or self._auto_limit else False
+            allocation_ratio = config.get("allocation_ratio")
+            if allocation_ratio:
+                try:
+                    self._allocation_ratio = [int(i) for i in allocation_ratio.split(":")]
+                    if len(self._allocation_ratio) != len(self._downloader):
+                        logger.warn("分配比例与选择下载器数量不一致，执行均分")
+                        self._allocation_ratio = []
+                except Exception:
+                    logger.warn("分配比例含有:外非数字字符，执行均分")
+                    self._allocation_ratio = []
+            else:
+                self._allocation_ratio = []
 
         # 移出现有任务
         self.stop_service()
