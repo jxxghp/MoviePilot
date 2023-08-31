@@ -79,3 +79,9 @@ class TransferHistoryOper(DbOper):
             if transferhistory:
                 transferhistory.delete(self._db, transferhistory.id)
         return TransferHistory(**kwargs).create(self._db)
+
+    def update_download_hash(self, historyid, download_hash):
+        """
+        补充转移记录download_hash
+        """
+        TransferHistory.update_download_hash(self._db, historyid, download_hash)
