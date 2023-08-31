@@ -52,7 +52,7 @@ class SpeedLimiter(_PluginBase):
     _noplay_up_speed: float = 0
     _noplay_down_speed: float = 0
     _bandwidth: float = 0
-    _allocation_ratio: str = ""
+    _allocation_ratio: list = []
     _auto_limit: bool = False
     _limit_enabled: bool = False
     # 当前限速状态
@@ -78,7 +78,16 @@ class SpeedLimiter(_PluginBase):
 
             # 限速服务开关
             self._limit_enabled = True if self._play_up_speed or self._play_down_speed or self._auto_limit else False
-            self._allocation_ratio = config.get("allocation_ratio") or ""
+            allocation_ratio = config.get("allocation_ratio")
+            if allocation_ratio:
+                try:
+                    self._allocation_ratio = [int(i) for i in allocation_ratio.split(":")]
+                except Exception:
+                    logger.warn("分配比例含有:外非数字字符，执行均分")
+                    self._allocation_ratio = []
+            else:
+                self._allocation_ratio = []
+
             self._downloader = config.get("downloader") or []
             if self._downloader:
                 if 'qbittorrent' in self._downloader:
