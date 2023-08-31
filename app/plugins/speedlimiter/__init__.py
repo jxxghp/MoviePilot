@@ -54,7 +54,7 @@ class SpeedLimiter(_PluginBase):
     _bandwidth: float = 0
     _allocation_ratio: str = ""
     _auto_limit: bool = False
-    _limit_enabled: bool = True
+    _limit_enabled: bool = False
     # 不限速地址
     _unlimited_ips = {"ipv4": "0.0.0.0/0", "ipv6": "::/0"}
     # 当前限速状态
@@ -76,6 +76,9 @@ class SpeedLimiter(_PluginBase):
                 self._auto_limit = True
             except Exception:
                 self._bandwidth = 0
+
+            # 限速服务开关
+            self._limit_enabled = True if self._play_up_speed or self._play_down_speed or self._auto_limit else False
             self._allocation_ratio = config.get("allocation_ratio") or ""
             # 不限速地址
             self._unlimited_ips["ipv4"] = config.get("ipv4") or "0.0.0.0/0"
@@ -445,7 +448,7 @@ class SpeedLimiter(_PluginBase):
         if residual_bandwidth < 0:
             play_up_speed = 10
         else:
-            play_up_speed = residual_bandwidth / 8 / 1024
+            play_up_speed = round(residual_bandwidth / 8 / 1024, 2)
 
         return play_up_speed
 
