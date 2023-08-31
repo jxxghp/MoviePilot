@@ -397,7 +397,7 @@ class SyncDownloadFiles(_PluginBase):
                                         'component': 'VSwitch',
                                         'props': {
                                             'model': 'history',
-                                            'label': '同时补充整理历史记录',
+                                            'label': '补充整理历史记录',
                                         }
                                     }
                                 ]
@@ -411,26 +411,23 @@ class SyncDownloadFiles(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
+                                    'md': 6
                                 },
                                 'content': [
                                     {
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'time',
-                                            'label': '时间间隔'
+                                            'label': '同步时间间隔'
                                         }
                                     }
                                 ]
                             },
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
                             {
                                 'component': 'VCol',
                                 'props': {
-                                    'cols': 12
+                                    'cols': 12,
+                                    'md': 6
                                 },
                                 'content': [
                                     {
