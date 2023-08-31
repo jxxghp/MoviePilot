@@ -215,8 +215,9 @@ class TransferChain(ChainBase):
                 self.obtain_images(mediainfo=file_mediainfo)
 
                 if not download_hash:
-                    # TODO 查找下载记录 download_hash
-                    pass
+                    download_file = self.downloadhis.get_file_by_fullpath(file_path_str)
+                    if download_file:
+                        download_hash = download_file.download_hash
 
                 # 执行转移
                 transferinfo: TransferInfo = self.transfer(meta=file_meta,

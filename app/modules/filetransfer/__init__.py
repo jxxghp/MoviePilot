@@ -440,7 +440,7 @@ class FileTransferModule(_ModuleBase):
             if retcode != 0:
                 logger.error(f"文件 {in_path} 转移失败，错误码：{retcode}")
                 return TransferInfo(message=f"文件 {in_path.name} 转移失败，错误码：{retcode}",
-                                    fail_list=[in_path])
+                                    fail_list=[str(in_path)])
 
             logger.info(f"文件 {in_path} 转移成功")
             return TransferInfo(path=in_path,
@@ -448,8 +448,8 @@ class FileTransferModule(_ModuleBase):
                                 file_count=1,
                                 total_size=new_file.stat().st_size,
                                 is_bluray=False,
-                                file_list=[in_path],
-                                file_list_new=[new_file])
+                                file_list=[str(in_path)],
+                                file_list_new=[str(new_file)])
 
     @staticmethod
     def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None) -> dict:
