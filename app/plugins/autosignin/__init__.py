@@ -320,7 +320,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 3
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -340,7 +340,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 3
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -357,7 +357,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 3
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -373,7 +373,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 3
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -381,7 +381,7 @@ class AutoSignIn(_PluginBase):
                                         'props': {
                                             'model': 'retry_keyword',
                                             'label': '重试关键词',
-                                            'placeholder': '重新签到关键词，支持正则表达式；每天首次全签，后续如果设置了重试词则只签到命中重试词的站点，否则全签。'
+                                            'placeholder': '支持正则表达式，命中才重签'
                                         }
                                     }
                                 ]
