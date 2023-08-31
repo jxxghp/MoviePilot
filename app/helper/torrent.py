@@ -139,7 +139,7 @@ class TorrentHelper:
             # 获取目录名
             folder_name = torrentinfo.name
             # 获取文件清单
-            if len(torrentinfo.files) <= 1:
+            if not torrentinfo.files:
                 # 单文件种子
                 file_list = [torrentinfo.name]
             else:
