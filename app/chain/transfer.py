@@ -117,7 +117,7 @@ class TransferChain(ChainBase):
         # 汇总错误信息
         err_msgs: List[str] = []
         # 汇总季集清单
-        season_episodes: Dict[Tuple, List[int]] = []
+        season_episodes: Dict[Tuple, List[int]] = {}
         # 汇总元数据
         metas: Dict[Tuple, MetaBase] = {}
         # 汇总媒体信息
