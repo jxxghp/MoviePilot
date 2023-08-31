@@ -37,6 +37,7 @@ class PluginManager(metaclass=Singleton):
         """
         启动加载插件
         """
+
         # 扫描插件目录
         plugins = ModuleHelper.load(
             "app.plugins",
@@ -80,8 +81,14 @@ class PluginManager(metaclass=Singleton):
         """
         # 停止所有插件
         for plugin in self._running_plugins.values():
+            # 关闭数据库
+            plugin.close()
+            # 关闭插件
             if hasattr(plugin, "stop_service"):
                 plugin.stop_service()
+        # 清空对像
+        self._plugins = {}
+        self._running_plugins = {}
 
     def get_plugin_config(self, pid: str) -> dict:
         """
