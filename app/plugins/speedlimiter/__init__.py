@@ -72,8 +72,9 @@ class SpeedLimiter(_PluginBase):
             try:
                 # 总带宽
                 self._bandwidth = int(float(config.get("bandwidth") or 0)) * 1000000
-                # 自动限速开关
-                self._auto_limit = True
+                if self._bandwidth > 0:
+                    # 自动限速开关
+                    self._auto_limit = True
             except Exception:
                 self._bandwidth = 0
 
