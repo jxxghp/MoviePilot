@@ -1,4 +1,3 @@
-import datetime
 import os
 import time
 from pathlib import Path
@@ -77,11 +76,11 @@ class SyncDownloadFiles(_PluginBase):
             logger.error("未选择同步下载器，停止运行")
             return
 
-        # 获取最后同步时间
-        last_sync_time = self.get_data("last_sync_time")
-
         # 遍历下载器同步记录
         for downloader in self._downloaders:
+            # 获取最后同步时间
+            last_sync_time = self.get_data(f"last_sync_time_{downloader}")
+
             logger.info(f"开始扫描下载器 {downloader} ...")
             downloader_obj = self.__get_downloader(downloader)
             # 获取下载器中已完成的种子
@@ -153,7 +152,8 @@ class SyncDownloadFiles(_PluginBase):
                 logger.info(f"种子 {hash_str} 同步完成")
 
             logger.info(f"下载器种子文件同步完成！")
-            self.save_data("last_sync_time", datetime.datetime.now())
+            self.save_data(f"last_sync_time_{downloader}",
+                           time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
 
     @staticmethod
     def __compare_time(torrent: Any, dl_tpe: str, last_sync_time: str = None):
@@ -166,7 +166,7 @@ class SyncDownloadFiles(_PluginBase):
                 torrent_date = torrent.added_date
 
             # 之后的种子已经同步了
-            if last_sync_time > torrent_date:
+            if last_sync_time > str(torrent_date):
                 return False
 
         return True
