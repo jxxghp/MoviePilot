@@ -2,7 +2,6 @@ import json
 from typing import Any
 
 from app.db import DbOper
-from app.db.models import Base
 from app.db.models.plugin import PluginData
 from app.utils.object import ObjectUtils
 
@@ -12,7 +11,7 @@ class PluginDataOper(DbOper):
     插件数据管理
     """
 
-    def save(self, plugin_id: str, key: str, value: Any) -> Base:
+    def save(self, plugin_id: str, key: str, value: Any) -> PluginData:
         """
         保存插件数据
         :param plugin_id: 插件id

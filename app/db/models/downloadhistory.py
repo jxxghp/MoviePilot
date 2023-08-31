@@ -116,9 +116,9 @@ class DownloadFiles(Base):
         return db.query(DownloadFiles).filter(DownloadFiles.download_hash == download_hash).all()
 
     @staticmethod
-    def get_by_full_path(db: Session, fullpath: str):
+    def get_by_fullpath(db: Session, fullpath: str):
         return db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath).first()
 
     @staticmethod
-    def get_by_save_path(db: Session, savepath: str):
+    def get_by_savepath(db: Session, savepath: str):
         return db.query(DownloadFiles).filter(DownloadFiles.savepath == savepath).all()

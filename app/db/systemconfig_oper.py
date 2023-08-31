@@ -48,7 +48,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             conf = SystemConfig(key=key, value=value)
             conf.create(self._db)
 
-    def get(self, key: Union[str, SystemConfigKey] = None):
+    def get(self, key: Union[str, SystemConfigKey] = None) -> Any:
         """
         获取系统设置
         """

@@ -32,7 +32,7 @@ class SubscribeOper(DbOper):
         else:
             return subscribe.id, "订阅已存在"
 
-    def exists(self, tmdbid: int, season: int):
+    def exists(self, tmdbid: int, season: int) -> bool:
         """
         判断是否存在
         """
@@ -61,7 +61,7 @@ class SubscribeOper(DbOper):
         """
         Subscribe.delete(self._db, rid=sid)
 
-    def update(self, sid: int, payload: dict):
+    def update(self, sid: int, payload: dict) -> Subscribe:
         """
         更新订阅
         """

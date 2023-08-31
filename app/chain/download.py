@@ -104,9 +104,12 @@ class DownloadChain(ChainBase):
         _folder_name = ""
         if not torrent_file:
             # 下载种子文件
-            torrent_file, _folder_name, _ = self.download_torrent(_torrent, userid=userid)
+            torrent_file, _folder_name, _file_list = self.download_torrent(_torrent, userid=userid)
             if not torrent_file:
                 return
+        else:
+            # 获取种子文件的文件夹名和文件清单
+            _folder_name, _file_list = self.torrent.get_torrent_info(torrent_file)
         # 下载目录
         if not save_path:
             if settings.DOWNLOAD_CATEGORY and _media and _media.category:
@@ -173,6 +176,17 @@ class DownloadChain(ChainBase):
                 torrent_description=_torrent.description,
                 torrent_site=_torrent.site_name
             )
+            # 登记下载文件
+            self.downloadhis.add_files([
+                {
+                    "download_hash": _hash,
+                    "downloader": settings.DOWNLOADER,
+                    "fullpath": download_dir / _folder_name / file,
+                    "savepath": str(download_dir / _folder_name),
+                    "filepath": file,
+                    "torrentname": _meta.org_string,
+                } for file in _file_list if file
+            ])
             # 发送消息
             self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, channel=channel)
             # 下载成功后处理

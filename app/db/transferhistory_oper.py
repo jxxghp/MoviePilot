@@ -1,5 +1,5 @@
 import time
-from typing import Any
+from typing import Any, List
 
 from app.db import DbOper
 from app.db.models.transferhistory import TransferHistory
@@ -10,28 +10,28 @@ class TransferHistoryOper(DbOper):
     转移历史管理
     """
 
-    def get(self, historyid: int) -> Any:
+    def get(self, historyid: int) -> TransferHistory:
         """
         获取转移历史
         :param historyid: 转移历史id
         """
         return TransferHistory.get(self._db, historyid)
 
-    def get_by_title(self, title: str) -> Any:
+    def get_by_title(self, title: str) -> List[TransferHistory]:
         """
         按标题查询转移记录
         :param title: 数据key
         """
         return TransferHistory.list_by_title(self._db, title)
 
-    def get_by_src(self, src: str) -> Any:
+    def get_by_src(self, src: str) -> TransferHistory:
         """
         按源查询转移记录
         :param src: 数据key
         """
         return TransferHistory.get_by_src(self._db, src)
 
-    def add(self, **kwargs):
+    def add(self, **kwargs) -> TransferHistory:
         """
         新增转移历史
         """
@@ -40,14 +40,14 @@ class TransferHistoryOper(DbOper):
         })
         return TransferHistory(**kwargs).create(self._db)
 
-    def statistic(self, days: int = 7):
+    def statistic(self, days: int = 7) -> List[Any]:
         """
         统计最近days天的下载历史数量
         """
         return TransferHistory.statistic(self._db, days)
 
     def get_by(self, title: str = None, year: str = None,
-               season: str = None, episode: str = None, tmdbid: str = None) -> Any:
+               season: str = None, episode: str = None, tmdbid: str = None) -> List[TransferHistory]:
         """
         按类型、标题、年份、季集查询转移记录
         """
@@ -70,7 +70,7 @@ class TransferHistoryOper(DbOper):
         """
         TransferHistory.truncate(self._db)
 
-    def add_force(self, **kwargs):
+    def add_force(self, **kwargs) -> TransferHistory:
         """
         新增转移历史，相同源目录的记录会被删除
         """
