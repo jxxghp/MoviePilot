@@ -30,7 +30,7 @@ class MediaSyncDel(_PluginBase):
     # 插件名称
     plugin_name = "媒体库同步删除"
     # 插件描述
-    plugin_desc = "媒体库删除媒体后同步删除历史记录或源文件。"
+    plugin_desc = "媒体库删除媒体后同步删除历史记录、源文件和下载任务。"
     # 插件图标
     plugin_icon = "mediasyncdel.png"
     # 主题色
