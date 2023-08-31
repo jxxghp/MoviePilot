@@ -20,8 +20,6 @@ from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
-from app.modules.qbittorrent import Qbittorrent
-from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 from app.schemas import Notification, NotificationType, TransferInfo
 from app.schemas.types import EventType, MediaType
@@ -90,8 +88,6 @@ class DirMonitor(_PluginBase):
     _exclude_keywords = ""
     # 存储源目录与目的目录关系
     _dirconf: Dict[str, Path] = {}
-    qb = None
-    tr = None
     _medias = {}
     # 退出事件
     _event = Event()
@@ -117,8 +113,6 @@ class DirMonitor(_PluginBase):
         self.stop_service()
 
         if self._enabled:
-            self.qb = Qbittorrent()
-            self.tr = Transmission()
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
 
             # 启动任务
@@ -294,8 +288,7 @@ class DirMonitor(_PluginBase):
                         return
 
                     # 获取downloadhash
-                    download_hash = self.get_download_hash(src=file_path,
-                                                           tmdb_id=mediainfo.tmdb_id)
+                    download_hash = self.get_download_hash(src=str(file_path))
 
                     target_path = str(transferinfo.file_list_new[0]) if transferinfo.file_list_new else str(
                         transferinfo.target_path)
@@ -488,65 +481,13 @@ class DirMonitor(_PluginBase):
                 del self._medias[medis_title_year_season]
                 continue
 
-    def get_download_hash(self, src: Path, tmdb_id: int):
+    def get_download_hash(self, src: str):
         """
-        FIXME 从表中获取download_hash，避免连接下载器
+        从表中获取download_hash，避免连接下载器
         """
-        file_name = src.name
-        downloadHis = self.downloadhis.get_last_by(tmdbid=tmdb_id)
+        downloadHis = self.downloadhis.get_file_by_fullpath(src)
         if downloadHis:
-            for his in downloadHis:
-                # qb
-                if settings.DOWNLOADER == "qbittorrent":
-                    files = self.qb.get_files(tid=his.download_hash)
-                    if files:
-                        for file in files:
-                            torrent_file_name = file.get("name")
-                            if file_name == Path(torrent_file_name).name:
-                                return his.download_hash
-                # tr
-                if settings.DOWNLOADER == "transmission":
-                    files = self.tr.get_files(tid=his.download_hash)
-                    if files:
-                        for file in files:
-                            torrent_file_name = file.name
-                            if file_name == Path(torrent_file_name).name:
-                                return his.download_hash
-
-        # 尝试获取下载任务补充download_hash
-        logger.debug(f"转移记录 {src} 缺失download_hash，尝试补充……")
-
-        # 获取tr、qb所有种子
-        qb_torrents, _ = self.qb.get_torrents()
-        tr_torrents, _ = self.tr.get_torrents()
-
-        # 种子名称
-        torrent_name = str(src).split("/")[-1]
-        torrent_name2 = str(src).split("/")[-2]
-
-        # 处理下载器
-        for torrent in qb_torrents:
-            if str(torrent.get("name")) == str(torrent_name) \
-                    or str(torrent.get("name")) == str(torrent_name2):
-                files = self.qb.get_files(tid=torrent.get("hash"))
-                if files:
-                    for file in files:
-                        torrent_file_name = file.get("name")
-                        if file_name == Path(torrent_file_name).name:
-                            return torrent.get("hash")
-
-        # 处理辅种器 遍历所有种子，按照添加时间升序
-        if len(tr_torrents) > 0:
-            tr_torrents = sorted(tr_torrents, key=lambda x: x.added_date)
-        for torrent in tr_torrents:
-            if str(torrent.get("name")) == str(torrent_name) \
-                    or str(torrent.get("name")) == str(torrent_name2):
-                files = self.tr.get_files(tid=torrent.get("hashString"))
-                if files:
-                    for file in files:
-                        torrent_file_name = file.name
-                        if file_name == Path(torrent_file_name).name:
-                            return torrent.get("hashString")
+            return downloadHis.download_hash
         return None
 
     def get_state(self) -> bool:
