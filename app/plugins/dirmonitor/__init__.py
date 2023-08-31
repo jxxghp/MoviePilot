@@ -452,10 +452,8 @@ class DirMonitor(_PluginBase):
                     season_episode = None
                     # 处理文件多，说明是剧集，显示季入库消息
                     if mediainfo.type == MediaType.TV and len(episodes) > 1:
-                        # 剧集季
-                        season = "S%s" % str(file_meta.begin_season).rjust(2, "0")
                         # 季集文本
-                        season_episode = f"{season} {StringUtils.format_ep(episodes)}"
+                        season_episode = f"{file_meta.season} {StringUtils.format_ep(episodes)}"
                     # 发送消息
                     self.transferchian.send_transfer_message(meta=file_meta,
                                                              mediainfo=mediainfo,

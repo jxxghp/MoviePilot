@@ -2,7 +2,7 @@ import json
 import shutil
 import threading
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict
 
 from sqlalchemy.orm import Session
 
@@ -115,13 +115,15 @@ class TransferChain(ChainBase):
             return False, f"{path.name} 没有找到可转移的媒体文件"
 
         # 汇总错误信息
-        err_msgs = []
+        err_msgs: List[str] = []
+        # 汇总季集清单
+        season_episodes: Dict[Tuple, List[int]] = []
         # 汇总元数据
-        metas = {}
+        metas: Dict[Tuple, MetaBase] = {}
         # 汇总媒体信息
-        medias = {}
+        medias: Dict[Tuple, MediaInfo] = {}
         # 汇总转移信息
-        transfers = {}
+        transfers: Dict[Tuple, TransferInfo] = {}
 
         # 有集自定义格式
         formaterHandler = FormatParser(eformat=epformat.format,
@@ -250,30 +252,22 @@ class TransferChain(ChainBase):
                     continue
 
                 # 汇总信息
-                if file_mediainfo.tmdb_id not in medias:
+                mkey = (file_mediainfo.tmdb_id, meta.begin_season)
+                if mkey not in medias:
                     # 新增信息
-                    metas[file_mediainfo.tmdb_id] = file_meta
-                    medias[file_mediainfo.tmdb_id] = file_mediainfo
-                    transfers[file_mediainfo.tmdb_id] = transferinfo
+                    metas[mkey] = file_meta
+                    medias[mkey] = file_mediainfo
+                    season_episodes[mkey] = file_meta.episode_list
+                    transfers[mkey] = transferinfo
                 else:
-                    # 合并元数据集
-                    if (metas[file_mediainfo.tmdb_id].begin_episode or 0) > (file_meta.begin_episode or 0):
-                        metas[file_mediainfo.tmdb_id].begin_episode = file_meta.begin_episode
-                    if (metas[file_mediainfo.tmdb_id].end_episode or 0) < (file_meta.end_episode or 0):
-                        metas[file_mediainfo.tmdb_id].end_episode = file_meta.end_episode
-                    metas[file_mediainfo.tmdb_id].total_episode += file_meta.total_episode
-                    # 合并元数据季
-                    if (metas[file_mediainfo.tmdb_id].begin_season or 0) > (file_meta.begin_season or 0):
-                        metas[file_mediainfo.tmdb_id].begin_season = file_meta.begin_season
-                    if (metas[file_mediainfo.tmdb_id].end_season or 0) < (file_meta.end_season or 0):
-                        metas[file_mediainfo.tmdb_id].end_season = file_meta.end_season
-                    metas[file_mediainfo.tmdb_id].total_season += file_meta.total_season
+                    # 合并季集清单
+                    season_episodes[mkey] = list(set(season_episodes[mkey] + file_meta.episode_list))
                     # 合并转移数据
-                    transfers[file_mediainfo.tmdb_id].file_count += transferinfo.file_count
-                    transfers[file_mediainfo.tmdb_id].file_list.extend(transferinfo.file_list)
-                    transfers[file_mediainfo.tmdb_id].file_list_new.extend(transferinfo.file_list_new)
-                    transfers[file_mediainfo.tmdb_id].fail_list.extend(transferinfo.fail_list)
-                    transfers[file_mediainfo.tmdb_id].total_size += transferinfo.total_size
+                    transfers[mkey].file_count += transferinfo.file_count
+                    transfers[mkey].total_size += transferinfo.total_size
+                    transfers[mkey].file_list.extend(transferinfo.file_list)
+                    transfers[mkey].file_list_new.extend(transferinfo.file_list_new)
+                    transfers[mkey].fail_list.extend(transferinfo.fail_list)
 
                 # 新增转移成功历史记录
                 self.__insert_sucess_history(
@@ -297,15 +291,21 @@ class TransferChain(ChainBase):
                                      key=ProgressKey.FileTransfer)
 
             # 目录或文件转移完成
-            for tmdbid, media in medias.items():
+            for mkey, media in medias.items():
+                meta = metas[mkey]
+                transferinfo = transfers[mkey]
                 # 刷新媒体库
-                self.refresh_mediaserver(mediainfo=media, file_path=transfers[tmdbid].target_path)
+                self.refresh_mediaserver(mediainfo=media, file_path=transferinfo.target_path)
                 # 刮削
-                self.scrape_metadata(path=transfers[tmdbid].target_path, mediainfo=media)
+                self.scrape_metadata(path=transferinfo.target_path, mediainfo=media)
                 # 发送通知
-                self.send_transfer_message(meta=metas[tmdbid],
+                se_str = None
+                if mediainfo.type == MediaType.TV:
+                    se_str = f"{meta.season} {StringUtils.format_ep(season_episodes[mkey])}"
+                self.send_transfer_message(meta=meta,
                                            mediainfo=media,
-                                           transferinfo=transfers[tmdbid])
+                                           transferinfo=transferinfo,
+                                           season_episode=se_str)
             # 结束进度
             logger.info(f"{path} 转移完成，共 {total_num} 个文件，"
                         f"成功 {total_num - len(err_msgs)} 个，失败 {len(err_msgs)} 个")
