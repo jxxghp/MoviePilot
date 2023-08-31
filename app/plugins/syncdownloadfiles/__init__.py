@@ -1,13 +1,18 @@
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from app.core.config import settings
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.modules.qbittorrent import Qbittorrent
 from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
-from typing import Any, List, Dict, Tuple
+from typing import Any, List, Dict, Tuple, Optional
 from app.log import logger
 
 
@@ -34,6 +39,9 @@ class SyncDownloadFiles(_PluginBase):
     auth_level = 2
 
     # 私有属性
+    _enabled = False
+    # 任务执行间隔
+    _time = None
     qb = None
     tr = None
     _onlyonce = False
@@ -43,8 +51,16 @@ class SyncDownloadFiles(_PluginBase):
     downloadhis = None
     transferhis = None
 
+    # 定时器
+    _scheduler: Optional[BackgroundScheduler] = None
+
     def init_plugin(self, config: dict = None):
+        # 停止现有任务
+        self.stop_service()
+
         if config:
+            self._enabled = config.get('enabled')
+            self._time = config.get('time') or 6
             self._history = config.get('history')
             self._onlyonce = config.get("onlyonce")
             self._downloaders = config.get('downloaders') or []
@@ -59,19 +75,38 @@ class SyncDownloadFiles(_PluginBase):
 
             # 关闭onlyonce
             self._onlyonce = False
-            self.update_config({
-                "history": self._history,
-                "onlyonce": self._onlyonce,
-                "downloaders": self._downloaders,
-                "dirs": self._dirs
-            })
+            self.__update_config()
 
             self.sync()
+
+        if self._enabled:
+            # 定时服务
+            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+            if self._time:
+                try:
+                    self._scheduler.add_job(func=self.sync,
+                                            trigger="interval",
+                                            hours=float(self._time.strip()),
+                                            name="自动同步下载器文件记录")
+                    logger.info(f"自动同步下载器文件记录服务启动，时间间隔 {self._time} 小时")
+                except Exception as err:
+                    logger.error(f"定时任务配置错误：{err}")
+
+                # 启动任务
+                if self._scheduler.get_jobs():
+                    self._scheduler.print_jobs()
+                    self._scheduler.start()
+            else:
+                self._enabled = False
+                self.__update_config()
 
     def sync(self):
         """
         同步所选下载器种子记录
         """
+        start_time = datetime.now()
+        logger.info("开始同步下载器任务文件记录")
+
         if not self._downloaders:
             logger.error("未选择同步下载器，停止运行")
             return
@@ -85,18 +120,15 @@ class SyncDownloadFiles(_PluginBase):
             downloader_obj = self.__get_downloader(downloader)
             # 获取下载器中已完成的种子
             torrents = downloader_obj.get_completed_torrents()
-
-            # 排序种子，根据种子添加时间倒序
-            if downloader == "qbittorrent":
-                torrents = sorted(torrents, key=lambda x: x.get("added_on"), reverse=True)
-            else:
-                torrents = sorted(torrents, key=lambda x: x.added_date, reverse=True)
-
             if torrents:
                 logger.info(f"下载器 {downloader} 已完成种子数：{len(torrents)}")
             else:
                 logger.info(f"下载器 {downloader} 没有已完成种子")
                 continue
+
+            # 把种子按照名称和种子大小分组，获取添加时间最早的一个，认定为是源种子，其余为辅种
+            torrents = self.__get_origin_torrents(torrents, downloader)
+            logger.info(f"下载器 {downloader} 去除辅种，获取到源种子数：{len(torrents)}")
 
             for torrent in torrents:
                 # 返回false，标识后续种子已被同步
@@ -108,6 +140,15 @@ class SyncDownloadFiles(_PluginBase):
 
                 # 获取种子hash
                 hash_str = self.__get_hash(torrent, downloader)
+
+                # 判断是否是mp下载，判断download_hash是否在downloadhistory表中，是则不处理
+                downloadhis = self.downloadhis.get_by_hash(hash_str)
+                if downloadhis:
+                    downlod_files = self.downloadhis.get_files_by_hash(hash_str)
+                    if downlod_files:
+                        logger.info(f"种子 {hash_str} 通过MoviePilot下载，跳过处理")
+                        continue
+
                 # 获取种子download_dir
                 download_dir = self.__get_download_dir(torrent, downloader)
                 # 获取种子name
@@ -154,6 +195,61 @@ class SyncDownloadFiles(_PluginBase):
             logger.info(f"下载器种子文件同步完成！")
             self.save_data(f"last_sync_time_{downloader}",
                            time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+
+            # 计算耗时
+            end_time = datetime.now()
+
+            logger.info(f"下载器任务文件记录已同步完成。总耗时 {(end_time - start_time).seconds} 秒")
+
+    def __update_config(self):
+        self.update_config({
+            "enabled": self._enabled,
+            "time": self._time,
+            "history": self._history,
+            "onlyonce": self._onlyonce,
+            "downloaders": self._downloaders,
+            "dirs": self._dirs
+        })
+
+    @staticmethod
+    def __get_origin_torrents(torrents: Any, dl_tpe: str):
+        # 把种子按照名称和种子大小分组，获取添加时间最早的一个，认定为是源种子，其余为辅种
+        grouped_data = {}
+
+        # 排序种子，根据种子添加时间倒序
+        if dl_tpe == "qbittorrent":
+            torrents = sorted(torrents, key=lambda x: x.get("added_on"), reverse=True)
+            # 遍历原始数组，按照size和name进行分组
+            for torrent in torrents:
+                size = torrent.get('size')
+                name = torrent.get('name')
+                key = (size, name)  # 使用元组作为字典的键
+
+                # 如果分组键不存在，则将当前元素作为最小元素添加到字典中
+                if key not in grouped_data:
+                    grouped_data[key] = torrent
+                else:
+                    # 如果分组键已存在，则比较当前元素的time是否更小，如果更小则更新字典中的元素
+                    if torrent.get('added_on') < grouped_data[key].get('added_on'):
+                        grouped_data[key] = torrent
+        else:
+            torrents = sorted(torrents, key=lambda x: x.added_date, reverse=True)
+            # 遍历原始数组，按照size和name进行分组
+            for torrent in torrents:
+                size = torrent.total_size
+                name = torrent.name
+                key = (size, name)  # 使用元组作为字典的键
+
+                # 如果分组键不存在，则将当前元素作为最小元素添加到字典中
+                if key not in grouped_data:
+                    grouped_data[key] = torrent
+                else:
+                    # 如果分组键已存在，则比较当前元素的time是否更小，如果更小则更新字典中的元素
+                    if torrent.added_date < grouped_data[key].added_date:
+                        grouped_data[key] = torrent
+
+        # 新的数组
+        return list(grouped_data.values())
 
     @staticmethod
     def __compare_time(torrent: Any, dl_tpe: str, last_sync_time: str = None):
@@ -238,7 +334,7 @@ class SyncDownloadFiles(_PluginBase):
             return None
 
     def get_state(self) -> bool:
-        return False
+        return self._enabled
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -262,7 +358,23 @@ class SyncDownloadFiles(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '开启插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -278,7 +390,7 @@ class SyncDownloadFiles(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -286,6 +398,26 @@ class SyncDownloadFiles(_PluginBase):
                                         'props': {
                                             'model': 'history',
                                             'label': '同时补充整理历史记录',
+                                        }
+                                    }
+                                ]
+                            },
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'time',
+                                            'label': '时间间隔'
                                         }
                                     }
                                 ]
@@ -352,7 +484,7 @@ class SyncDownloadFiles(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
-                                            'text': '适用于非MoviePilot下载的任务，下载器种子数据较多时，同步时间将会较长，请耐心等候，可查看实时日志了解同步进度。'
+                                            'text': '适用于非MoviePilot下载的任务；下载器种子数据较多时，同步时间将会较长，请耐心等候，可查看实时日志了解同步进度；时间间隔建议最少每6小时执行一次，防止上次任务没处理完。'
                                         }
                                     }
                                 ]
@@ -362,8 +494,10 @@ class SyncDownloadFiles(_PluginBase):
                 ]
             }
         ], {
+            "enabled": False,
             "onlyonce": False,
             "history": False,
+            "time": 6,
             "dirs": "",
             "downloaders": []
         }
@@ -375,4 +509,11 @@ class SyncDownloadFiles(_PluginBase):
         """
         退出插件
         """
-        pass
+        try:
+            if self._scheduler:
+                self._scheduler.remove_all_jobs()
+                if self._scheduler.running:
+                    self._scheduler.shutdown()
+                self._scheduler = None
+        except Exception as e:
+            logger.error("退出插件失败：%s" % str(e))
