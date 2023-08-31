@@ -255,29 +255,32 @@ class NAStoolSync(_PluginBase):
 
         # 转种后种子hash
         transfer_hash = []
+        qb_torrents = []
+        tr_torrents = []
+        tr_torrents_all = []
+        if self._supp:
+            # 获取所有的转种数据
+            transfer_datas = self._plugindata.get_data_all("TorrentTransfer")
+            if transfer_datas:
+                if not isinstance(transfer_datas, list):
+                    transfer_datas = [transfer_datas]
 
-        # 获取所有的转种数据
-        transfer_datas = self._plugindata.get_data_all("TorrentTransfer")
-        if transfer_datas:
-            if not isinstance(transfer_datas, list):
-                transfer_datas = [transfer_datas]
-
-            for transfer_data in transfer_datas:
-                if not transfer_data or not isinstance(transfer_data, PluginData):
-                    continue
-                # 转移后种子hash
-                transfer_value = transfer_data.value
-                transfer_value = json.loads(transfer_value)
-                if not isinstance(transfer_value, dict):
+                for transfer_data in transfer_datas:
+                    if not transfer_data or not isinstance(transfer_data, PluginData):
+                        continue
+                    # 转移后种子hash
+                    transfer_value = transfer_data.value
                     transfer_value = json.loads(transfer_value)
-                to_hash = transfer_value.get("to_download_id")
-                # 转移前种子hash
-                transfer_hash.append(to_hash)
+                    if not isinstance(transfer_value, dict):
+                        transfer_value = json.loads(transfer_value)
+                    to_hash = transfer_value.get("to_download_id")
+                    # 转移前种子hash
+                    transfer_hash.append(to_hash)
 
-        # 获取tr、qb所有种子
-        qb_torrents, _ = self.qb.get_torrents()
-        tr_torrents, _ = self.tr.get_torrents(ids=transfer_hash)
-        tr_torrents_all, _ = self.tr.get_torrents()
+            # 获取tr、qb所有种子
+            qb_torrents, _ = self.qb.get_torrents()
+            tr_torrents, _ = self.tr.get_torrents(ids=transfer_hash)
+            tr_torrents_all, _ = self.tr.get_torrents()
 
         # 处理数据，存入mp数据库
         for history in transfer_history:

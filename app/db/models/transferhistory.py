@@ -114,3 +114,11 @@ class TransferHistory(Base):
                                                     TransferHistory.year == year,
                                                     TransferHistory.seasons == season,
                                                     TransferHistory.episodes == episode).all()
+
+    @staticmethod
+    def update_download_hash(db: Session, historyid: int = None, download_hash: str = None):
+        db.query(TransferHistory).filter(TransferHistory.id == historyid).update(
+            {
+                "download_hash": download_hash
+            }
+        )
