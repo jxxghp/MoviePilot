@@ -22,8 +22,8 @@ class Jellyfin(metaclass=Singleton):
             if not self._host.startswith("http"):
                 self._host = "http://" + self._host
         self._apikey = settings.JELLYFIN_API_KEY
-        self._user = self.get_user()
-        self._serverid = self.get_server_id()
+        self.user = self.get_user()
+        self.serverid = self.get_server_id()
 
     def __get_jellyfin_librarys(self) -> List[dict]:
         """
@@ -31,7 +31,7 @@ class Jellyfin(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return []
-        req_url = f"{self._host}Users/{self._user}/Views?api_key={self._apikey}"
+        req_url = f"{self._host}Users/{self.user}/Views?api_key={self._apikey}"
         try:
             res = RequestUtils().get_res(req_url)
             if res:
@@ -222,10 +222,10 @@ class Jellyfin(metaclass=Singleton):
         """
         根据名称查询Jellyfin中剧集的SeriesId
         """
-        if not self._host or not self._apikey or not self._user:
+        if not self._host or not self._apikey or not self.user:
             return None
         req_url = "%sUsers/%s/Items?api_key=%s&searchTerm=%s&IncludeItemTypes=Series&Limit=10&Recursive=true" % (
-            self._host, self._user, self._apikey, name)
+            self._host, self.user, self._apikey, name)
         try:
             res = RequestUtils().get_res(req_url)
             if res:
@@ -247,10 +247,10 @@ class Jellyfin(metaclass=Singleton):
         :param year: 年份，为空则不过滤
         :return: 含title、year属性的字典列表
         """
-        if not self._host or not self._apikey or not self._user:
+        if not self._host or not self._apikey or not self.user:
             return None
         req_url = "%sUsers/%s/Items?api_key=%s&searchTerm=%s&IncludeItemTypes=Movie&Limit=10&Recursive=true" % (
-            self._host, self._user, self._apikey, title)
+            self._host, self.user, self._apikey, title)
         try:
             res = RequestUtils().get_res(req_url)
             if res:
@@ -283,7 +283,7 @@ class Jellyfin(metaclass=Singleton):
         :param season: 季
         :return: 集号的列表
         """
-        if not self._host or not self._apikey or not self._user:
+        if not self._host or not self._apikey or not self.user:
             return None
         # 查TVID
         if not item_id:
@@ -301,7 +301,7 @@ class Jellyfin(metaclass=Singleton):
             season = ""
         try:
             req_url = "%sShows/%s/Episodes?season=%s&&userId=%s&isMissing=false&api_key=%s" % (
-                self._host, item_id, season, self._user, self._apikey)
+                self._host, item_id, season, self.user, self._apikey)
             res_json = RequestUtils().get_res(req_url)
             if res_json:
                 res_items = res_json.json().get("Items")
@@ -400,7 +400,7 @@ class Jellyfin(metaclass=Singleton):
         if not self._host or not self._apikey:
             return {}
         req_url = "%sUsers/%s/Items/%s?api_key=%s" % (
-            self._host, self._user, itemid, self._apikey)
+            self._host, self.user, itemid, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
             if res and res.status_code == 200:
@@ -417,7 +417,7 @@ class Jellyfin(metaclass=Singleton):
             yield {}
         if not self._host or not self._apikey:
             yield {}
-        req_url = "%sUsers/%s/Items?parentId=%s&api_key=%s" % (self._host, self._user, parent, self._apikey)
+        req_url = "%sUsers/%s/Items?parentId=%s&api_key=%s" % (self._host, self.user, parent, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
             if res and res.status_code == 200:
@@ -454,7 +454,7 @@ class Jellyfin(metaclass=Singleton):
             return None
         url = url.replace("{HOST}", self._host)\
             .replace("{APIKEY}", self._apikey)\
-            .replace("{USER}", self._user)
+            .replace("{USER}", self.user)
         try:
             return RequestUtils().get_res(url=url)
         except Exception as e:

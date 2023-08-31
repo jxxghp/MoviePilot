@@ -24,8 +24,8 @@ class Emby(metaclass=Singleton):
             if not self._host.startswith("http"):
                 self._host = "http://" + self._host
         self._apikey = settings.EMBY_API_KEY
-        self._user = self.get_user()
-        self._folders = self.get_emby_folders()
+        self.user = self.get_user()
+        self.folders = self.get_emby_folders()
 
     def get_emby_folders(self) -> List[dict]:
         """
@@ -51,7 +51,7 @@ class Emby(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return []
-        req_url = f"{self._host}emby/Users/{self._user}/Views?api_key={self._apikey}"
+        req_url = f"{self._host}emby/Users/{self.user}/Views?api_key={self._apikey}"
         try:
             res = RequestUtils().get_res(req_url)
             if res:
@@ -452,7 +452,7 @@ class Emby(metaclass=Singleton):
                 return None
         # 查找需要刷新的媒体库ID
         item_path = Path(item.target_path)
-        for folder in self._folders:
+        for folder in self.folders:
             # 找同级路径最多的媒体库（要求容器内映射路径与实际一致）
             max_comm_path = ""
             match_num = 0
@@ -494,7 +494,7 @@ class Emby(metaclass=Singleton):
             return {}
         if not self._host or not self._apikey:
             return {}
-        req_url = "%semby/Users/%s/Items/%s?api_key=%s" % (self._host, self._user, itemid, self._apikey)
+        req_url = "%semby/Users/%s/Items/%s?api_key=%s" % (self._host, self.user, itemid, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
             if res and res.status_code == 200:
@@ -511,7 +511,7 @@ class Emby(metaclass=Singleton):
             yield {}
         if not self._host or not self._apikey:
             yield {}
-        req_url = "%semby/Users/%s/Items?ParentId=%s&api_key=%s" % (self._host, self._user, parent, self._apikey)
+        req_url = "%semby/Users/%s/Items?ParentId=%s&api_key=%s" % (self._host, self.user, parent, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
             if res and res.status_code == 200:
@@ -851,7 +851,7 @@ class Emby(metaclass=Singleton):
             return None
         url = url.replace("{HOST}", self._host)\
             .replace("{APIKEY}", self._apikey)\
-            .replace("{USER}", self._user)
+            .replace("{USER}", self.user)
         try:
             return RequestUtils().get_res(url=url)
         except Exception as e:

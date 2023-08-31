@@ -28,6 +28,14 @@ class TransmissionModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "DOWNLOADER", "transmission"
 
+    def scheduler_job(self) -> None:
+        """
+        定时任务，每10分钟调用一次
+        """
+        # 定时重连
+        if not self.transmission.trc:
+            self.transmission = Transmission()
+
     def download(self, torrent_path: Path, download_dir: Path, cookie: str,
                  episodes: Set[int] = None) -> Optional[Tuple[Optional[str], str]]:
         """

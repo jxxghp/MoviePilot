@@ -17,11 +17,19 @@ class JellyfinModule(_ModuleBase):
     def init_module(self) -> None:
         self.jellyfin = Jellyfin()
 
-    def stop(self):
-        pass
-
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "jellyfin"
+
+    def scheduler_job(self) -> None:
+        """
+        定时任务，每10分钟调用一次
+        """
+        # 定时重连
+        if not self.jellyfin.user:
+            self.jellyfin = Jellyfin()
+
+    def stop(self):
+        pass
 
     def user_authenticate(self, name: str, password: str) -> Optional[str]:
         """

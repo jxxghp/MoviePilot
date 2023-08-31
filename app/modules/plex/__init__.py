@@ -23,6 +23,14 @@ class PlexModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "plex"
 
+    def scheduler_job(self) -> None:
+        """
+        定时任务，每10分钟调用一次
+        """
+        # 定时重连
+        if not self.plex.get_plex():
+            self.plex = Plex()
+
     def webhook_parser(self, body: Any, form: Any, args: Any) -> WebhookEventInfo:
         """
         解析Webhook报文体

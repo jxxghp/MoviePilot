@@ -23,6 +23,14 @@ class EmbyModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "emby"
 
+    def scheduler_job(self) -> None:
+        """
+        定时任务，每10分钟调用一次
+        """
+        # 定时重连
+        if not self.emby.user:
+            self.emby = Emby()
+
     def user_authenticate(self, name: str, password: str) -> Optional[str]:
         """
         使用Emby用户辅助完成用户认证
