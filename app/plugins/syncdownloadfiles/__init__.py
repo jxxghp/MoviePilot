@@ -85,18 +85,15 @@ class SyncDownloadFiles(_PluginBase):
             downloader_obj = self.__get_downloader(downloader)
             # 获取下载器中已完成的种子
             torrents = downloader_obj.get_completed_torrents()
-
-            # 排序种子，根据种子添加时间倒序
-            if downloader == "qbittorrent":
-                torrents = sorted(torrents, key=lambda x: x.get("added_on"), reverse=True)
-            else:
-                torrents = sorted(torrents, key=lambda x: x.added_date, reverse=True)
-
             if torrents:
                 logger.info(f"下载器 {downloader} 已完成种子数：{len(torrents)}")
             else:
                 logger.info(f"下载器 {downloader} 没有已完成种子")
                 continue
+
+            # 把种子按照名称和种子大小分组，获取添加时间最早的一个，认定为是源种子，其余为辅种
+            torrents = self.__get_origin_torrents(torrents, downloader)
+            logger.info(f"下载器 {downloader} 去除辅种，获取到源种子数：{len(torrents)}")
 
             for torrent in torrents:
                 # 返回false，标识后续种子已被同步
@@ -108,6 +105,15 @@ class SyncDownloadFiles(_PluginBase):
 
                 # 获取种子hash
                 hash_str = self.__get_hash(torrent, downloader)
+
+                # 判断是否是mp下载，判断download_hash是否在downloadhistory表中，是则不处理
+                downloadhis = self.downloadhis.get_by_hash(hash_str)
+                if downloadhis:
+                    downlod_files = self.downloadhis.get_files_by_hash(hash_str)
+                    if downlod_files:
+                        logger.info(f"种子 {hash_str} 通过MoviePilot下载，跳过处理")
+                        continue
+
                 # 获取种子download_dir
                 download_dir = self.__get_download_dir(torrent, downloader)
                 # 获取种子name
@@ -154,6 +160,46 @@ class SyncDownloadFiles(_PluginBase):
             logger.info(f"下载器种子文件同步完成！")
             self.save_data(f"last_sync_time_{downloader}",
                            time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+
+    @staticmethod
+    def __get_origin_torrents(torrents: Any, dl_tpe: str):
+        # 把种子按照名称和种子大小分组，获取添加时间最早的一个，认定为是源种子，其余为辅种
+        grouped_data = {}
+
+        # 排序种子，根据种子添加时间倒序
+        if dl_tpe == "qbittorrent":
+            torrents = sorted(torrents, key=lambda x: x.get("added_on"), reverse=True)
+            # 遍历原始数组，按照size和name进行分组
+            for torrent in torrents:
+                size = torrent.get('size')
+                name = torrent.get('name')
+                key = (size, name)  # 使用元组作为字典的键
+
+                # 如果分组键不存在，则将当前元素作为最小元素添加到字典中
+                if key not in grouped_data:
+                    grouped_data[key] = torrent
+                else:
+                    # 如果分组键已存在，则比较当前元素的time是否更小，如果更小则更新字典中的元素
+                    if torrent.get('added_on') < grouped_data[key].get('added_on'):
+                        grouped_data[key] = torrent
+        else:
+            torrents = sorted(torrents, key=lambda x: x.added_date, reverse=True)
+            # 遍历原始数组，按照size和name进行分组
+            for torrent in torrents:
+                size = torrent.total_size
+                name = torrent.name
+                key = (size, name)  # 使用元组作为字典的键
+
+                # 如果分组键不存在，则将当前元素作为最小元素添加到字典中
+                if key not in grouped_data:
+                    grouped_data[key] = torrent
+                else:
+                    # 如果分组键已存在，则比较当前元素的time是否更小，如果更小则更新字典中的元素
+                    if torrent.added_date < grouped_data[key].added_date:
+                        grouped_data[key] = torrent
+
+        # 新的数组
+        return list(grouped_data.values())
 
     @staticmethod
     def __compare_time(torrent: Any, dl_tpe: str, last_sync_time: str = None):
