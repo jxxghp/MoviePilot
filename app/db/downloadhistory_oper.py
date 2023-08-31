@@ -39,12 +39,13 @@ class DownloadHistoryOper(DbOper):
             downloadfile = DownloadFiles(**file_item)
             downloadfile.create(self._db)
 
-    def get_files_by_hash(self, download_hash: str) -> List[DownloadFiles]:
+    def get_files_by_hash(self, download_hash: str, state: int = None) -> List[DownloadFiles]:
         """
         按Hash查询下载文件记录
         :param download_hash: 数据key
+        :param state: 删除状态
         """
-        return DownloadFiles.get_by_hash(self._db, download_hash)
+        return DownloadFiles.get_by_hash(self._db, download_hash, state)
 
     def get_file_by_fullpath(self, fullpath: str) -> DownloadFiles:
         """
@@ -59,6 +60,13 @@ class DownloadHistoryOper(DbOper):
         :param fullpath: 数据key
         """
         return DownloadFiles.get_by_savepath(self._db, fullpath)
+
+    def delete_file_by_fullpath(self, fullpath: str):
+        """
+        按fullpath删除下载文件记录
+        :param fullpath: 数据key
+        """
+        DownloadFiles.delete_file_by_fullpath(self._db, fullpath)
 
     def list_by_page(self, page: int = 1, count: int = 30) -> List[DownloadHistory]:
         """

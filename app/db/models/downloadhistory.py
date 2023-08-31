@@ -112,13 +112,27 @@ class DownloadFiles(Base):
     state = Column(Integer, nullable=False, default=1)
 
     @staticmethod
-    def get_by_hash(db: Session, download_hash: str):
-        return db.query(DownloadFiles).filter(DownloadFiles.download_hash == download_hash).all()
+    def get_by_hash(db: Session, download_hash: str, state: int = None):
+        if state:
+            return db.query(DownloadFiles).filter(DownloadFiles.download_hash == download_hash,
+                                                  DownloadFiles.state == state).all()
+        else:
+            return db.query(DownloadFiles).filter(DownloadFiles.download_hash == download_hash).all()
 
     @staticmethod
     def get_by_fullpath(db: Session, fullpath: str):
-        return db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath).first()
+        return db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath).order_by(
+            DownloadHistory.id.desc()).first()
 
     @staticmethod
     def get_by_savepath(db: Session, savepath: str):
         return db.query(DownloadFiles).filter(DownloadFiles.savepath == savepath).all()
+
+    @staticmethod
+    def delete_by_fullpath(db: Session, fullpath: str):
+        return db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath,
+                                              DownloadFiles.state == 1).update(
+            {
+                "state": 0
+            }
+        )
