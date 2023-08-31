@@ -181,7 +181,7 @@ class DownloadChain(ChainBase):
                 {
                     "download_hash": _hash,
                     "downloader": settings.DOWNLOADER,
-                    "fullpath": download_dir / _folder_name / file,
+                    "fullpath": str(download_dir / _folder_name / file),
                     "savepath": str(download_dir / _folder_name),
                     "filepath": file,
                     "torrentname": _meta.org_string,
