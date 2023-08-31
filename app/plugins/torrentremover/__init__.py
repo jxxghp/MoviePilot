@@ -383,8 +383,8 @@ class TorrentRemover(_PluginBase):
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'errorkeywords',
-                                            'label': '错误信息关键词',
-                                            'placeholder': '支持正式表达式'
+                                            'label': '错误信息关键词（TR）',
+                                            'placeholder': '支持正式表达式，仅适用于TR'
                                         }
                                     }
                                 ]
@@ -399,8 +399,8 @@ class TorrentRemover(_PluginBase):
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'torrentstates',
-                                            'label': '任务状态',
-                                            'placeholder': '用,分隔多个状态'
+                                            'label': '任务状态（QB）',
+                                            'placeholder': '用,分隔多个状态，仅适用于QB'
                                         }
                                     }
                                 ]
@@ -470,6 +470,25 @@ class TorrentRemover(_PluginBase):
                                         'props': {
                                             'model': 'onlyonce',
                                             'label': '立即运行一次',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '自动删种存在风险，如设置不当可能导致数据丢失！建议动作先选择暂停，确定条件正确后再改成删除。'
                                         }
                                     }
                                 ]
