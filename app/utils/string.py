@@ -608,3 +608,32 @@ class StringUtils:
             result.append(f"{start}-{end}")
 
         return ",".join(result)
+
+    @staticmethod
+    def format_ep(nums: list) -> str:
+        """
+        将剧集列表格式化为连续区间
+        """
+        nums.sort()  # 将数组排序
+
+        formatted_ranges = []
+        start = nums[0]
+        end = nums[0]
+
+        for i in range(1, len(nums)):
+            if nums[i] == end + 1:
+                end = nums[i]
+            else:
+                if start == end:
+                    formatted_ranges.append(f"E{start:02d}")
+                else:
+                    formatted_ranges.append(f"E{start:02d}-E{end:02d}")
+                start = end = nums[i]
+
+        if start == end:
+            formatted_ranges.append(f"E{start:02d}")
+        else:
+            formatted_ranges.append(f"E{start:02d}-E{end:02d}")
+
+        formatted_string = "、".join(formatted_ranges)
+        return formatted_string
