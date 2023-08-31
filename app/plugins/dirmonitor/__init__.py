@@ -23,6 +23,7 @@ from app.log import logger
 from app.plugins import _PluginBase
 from app.schemas import Notification, NotificationType, TransferInfo
 from app.schemas.types import EventType, MediaType
+from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
 lock = threading.Lock()
@@ -453,26 +454,9 @@ class DirMonitor(_PluginBase):
                     if mediainfo.type == MediaType.TV and len(episodes) > 1:
                         # 剧集季
                         season = "S%s" % str(file_meta.begin_season).rjust(2, "0")
-
-                        # 剧集按照升序排序
-                        episodes.sort()
-                        # 开始、结束index
-                        start = int(episodes[0])
-                        end = int(episodes[len(episodes) - 1])
-
-                        # 开始结束间所有的元素 1,2,3,4
-                        all_ele = [i for i in range(start, end + 1)]
-                        # 本次剧集组所有的元素 1,2,4
-                        episode_ele = [int(e) for e in episodes]
-
-                        # 如果本次剧集组所有元素=开始结束间所有元素，则表示区间内 S01 E01-E04
-                        if all_ele == episode_ele:
-                            season_episode = f"{season} E{str(episodes[0]).rjust(2, '0')}-E{str(episodes[len(episodes) - 1]).rjust(2, '0')}"
-                        else:
-                            # 否则所有剧集组逗号分隔显示 S01 E01、E02、E04
-                            episodes = ["E%s" % str(episode).rjust(2, "0") for episode in episodes]
-                            season_episode = f"{season} {'、'.join(episodes)}"
-
+                        # 季集文本
+                        season_episode = f"{season} {StringUtils.format_ep(episodes)}"
+                    # 发送消息
                     self.transferchian.send_transfer_message(meta=file_meta,
                                                              mediainfo=mediainfo,
                                                              transferinfo=transferinfo,

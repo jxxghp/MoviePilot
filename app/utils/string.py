@@ -610,12 +610,16 @@ class StringUtils:
         return ",".join(result)
 
     @staticmethod
-    def format_ep(nums: list) -> str:
+    def format_ep(nums: List[int]) -> str:
         """
         将剧集列表格式化为连续区间
         """
-        nums.sort()  # 将数组排序
-
+        if not nums:
+            return ""
+        if len(nums) == 1:
+            return f"E{nums[0]:02d}"
+        # 将数组升序排序
+        nums.sort()
         formatted_ranges = []
         start = nums[0]
         end = nums[0]
