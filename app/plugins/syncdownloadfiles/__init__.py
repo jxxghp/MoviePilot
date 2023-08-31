@@ -340,6 +340,25 @@ class SyncDownloadFiles(_PluginBase):
                             }
                         ]
                     },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '如果所选下载器种子很多的话，时间会有点久，请耐心等候，可查看日志。'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
                 ]
             }
         ], {
