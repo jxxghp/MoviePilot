@@ -17,9 +17,7 @@ class PluginChian(ChainBase):
     """
     插件处理链
     """
-
-    def process(self, *args, **kwargs):
-        pass
+    pass
 
 
 class _PluginBase(metaclass=ABCMeta):
@@ -185,3 +183,13 @@ class _PluginBase(metaclass=ABCMeta):
             channel=channel, mtype=mtype, title=title, text=text,
             image=image, link=link, userid=userid
         ))
+
+    def close(self):
+        """
+        关闭数据库连接
+        """
+        if self.db:
+            self.db.close()
+
+    def __del__(self):
+        self.close()

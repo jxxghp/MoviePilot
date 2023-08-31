@@ -18,13 +18,13 @@ from app.log import logger
 
 class SyncDownloadFiles(_PluginBase):
     # 插件名称
-    plugin_name = "SyncDownloadFiles"
+    plugin_name = "下载器文件同步"
     # 插件描述
-    plugin_desc = "同步下载器文件记录。"
+    plugin_desc = "同步下载器的文件信息到数据库，删除文件时联动删除下载任务。"
     # 插件图标
     plugin_icon = "sync_file.png"
     # 主题色
-    plugin_color = "bg-blue"
+    plugin_color = "#4686E3"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者
@@ -381,7 +381,7 @@ class SyncDownloadFiles(_PluginBase):
                                         'component': 'VSwitch',
                                         'props': {
                                             'model': 'onlyonce',
-                                            'label': '运行一次',
+                                            'label': '立即运行一次',
                                         }
                                     }
                                 ]
@@ -397,7 +397,7 @@ class SyncDownloadFiles(_PluginBase):
                                         'component': 'VSwitch',
                                         'props': {
                                             'model': 'history',
-                                            'label': '补充转移记录',
+                                            'label': '同时补充整理历史记录',
                                         }
                                     }
                                 ]
@@ -465,7 +465,7 @@ class SyncDownloadFiles(_PluginBase):
                                             'model': 'dirs',
                                             'label': '目录映射',
                                             'rows': 5,
-                                            'placeholder': '每一行一个目录，下载器地址:mp地址'
+                                            'placeholder': '每一行一个目录，下载器保存目录:MoviePilot映射目录'
                                         }
                                     }
                                 ]
@@ -484,8 +484,7 @@ class SyncDownloadFiles(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
-                                            'text': '如果所选下载器种子很多的话，时间会有点久，请耐心等候，可查看日志。'
-                                                    '时间间隔建议最少每6小时执行一次，防止上次任务没处理完。'
+                                            'text': '适用于非MoviePilot下载的任务；下载器种子数据较多时，同步时间将会较长，请耐心等候，可查看实时日志了解同步进度；时间间隔建议最少每6小时执行一次，防止上次任务没处理完。'
                                         }
                                     }
                                 ]
