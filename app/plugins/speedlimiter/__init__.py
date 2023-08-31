@@ -1,3 +1,4 @@
+import ipaddress
 from typing import List, Tuple, Dict, Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -50,6 +51,10 @@ class SpeedLimiter(_PluginBase):
     _play_down_speed: float = 0
     _noplay_up_speed: float = 0
     _noplay_down_speed: float = 0
+    _bandwidth: float = 0
+    _allocation_ratio: str = ""
+    _auto_limit: bool = False
+    _limit_enabled: bool = False
     # 当前限速状态
     _current_state = ""
 
@@ -62,6 +67,18 @@ class SpeedLimiter(_PluginBase):
             self._play_down_speed = float(config.get("play_down_speed")) if config.get("play_down_speed") else 0
             self._noplay_up_speed = float(config.get("noplay_up_speed")) if config.get("noplay_up_speed") else 0
             self._noplay_down_speed = float(config.get("noplay_down_speed")) if config.get("noplay_down_speed") else 0
+            try:
+                # 总带宽
+                self._bandwidth = int(float(config.get("bandwidth") or 0)) * 1000000
+                if self._bandwidth > 0:
+                    # 自动限速开关
+                    self._auto_limit = True
+            except Exception:
+                self._bandwidth = 0
+
+            # 限速服务开关
+            self._limit_enabled = True if self._play_up_speed or self._play_down_speed or self._auto_limit else False
+            self._allocation_ratio = config.get("allocation_ratio") or ""
             self._downloader = config.get("downloader") or []
             if self._downloader:
                 if 'qbittorrent' in self._downloader:
@@ -73,7 +90,7 @@ class SpeedLimiter(_PluginBase):
         self.stop_service()
 
         # 启动限速任务
-        if self._enabled:
+        if self._enabled and self._limit_enabled:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             self._scheduler.add_job(func=self.check_playing_sessions,
                                     trigger='interval',
@@ -95,158 +112,199 @@ class SpeedLimiter(_PluginBase):
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         return [
-            {
-                'component': 'VForm',
-                'content': [
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'enabled',
-                                            'label': '启用插件',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'notify',
-                                            'label': '发送通知',
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'content': [
-                                    {
-                                        'component': 'VSelect',
-                                        'props': {
-                                            'chips': True,
-                                            'multiple': True,
-                                            'model': 'downloader',
-                                            'label': '下载器',
-                                            'items': [
-                                                {'title': 'Qbittorrent', 'value': 'qbittorrent'},
-                                                {'title': 'Transmission', 'value': 'transmission'},
-                                            ]
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'play_up_speed',
-                                            'label': '播放限速（上传）',
-                                            'placeholder': 'KB/s'
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'play_down_speed',
-                                            'label': '播放限速（下载）',
-                                            'placeholder': 'KB/s'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'noplay_up_speed',
-                                            'label': '未播放限速（上传）',
-                                            'placeholder': 'KB/s'
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'noplay_down_speed',
-                                            'label': '未播放限速（下载）',
-                                            'placeholder': 'KB/s'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        ], {
-            "enabled": False,
-            "notify": True,
-            "downloader": [],
-            "play_up_speed": 0,
-            "play_down_speed": 0,
-            "noplay_up_speed": 0,
-            "noplay_down_speed": 0,
-        }
+                   {
+                       'component': 'VForm',
+                       'content': [
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'enabled',
+                                                   'label': '启用插件',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'notify',
+                                                   'label': '发送通知',
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'content': [
+                                           {
+                                               'component': 'VSelect',
+                                               'props': {
+                                                   'chips': True,
+                                                   'multiple': True,
+                                                   'model': 'downloader',
+                                                   'label': '下载器',
+                                                   'items': [
+                                                       {'title': 'Qbittorrent', 'value': 'qbittorrent'},
+                                                       {'title': 'Transmission', 'value': 'transmission'},
+                                                   ]
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'play_up_speed',
+                                                   'label': '播放限速（上传）',
+                                                   'placeholder': 'KB/s'
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'play_down_speed',
+                                                   'label': '播放限速（下载）',
+                                                   'placeholder': 'KB/s'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'noplay_up_speed',
+                                                   'label': '未播放限速（上传）',
+                                                   'placeholder': 'KB/s'
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'noplay_down_speed',
+                                                   'label': '未播放限速（下载）',
+                                                   'placeholder': 'KB/s'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'bandwidth',
+                                                   'label': '智能限速上行带宽',
+                                                   'placeholder': '设置上行带宽后，媒体服务器有媒体播放时根据上行带宽和媒体播放占用带宽计算上传限速数值。'
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'allocation_ratio',
+                                                   'label': '智能限速分配比例',
+                                                   'placeholder': '多个下载器设置分配比例，如两个下载器设置1:2,留空均分'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                       ]
+                   }
+               ], {
+                   "enabled": False,
+                   "notify": True,
+                   "downloader": [],
+                   "play_up_speed": 0,
+                   "play_down_speed": 0,
+                   "noplay_up_speed": 0,
+                   "noplay_down_speed": 0,
+                   "bandwidth": 0,
+                   "allocation_ratio": "",
+               }
 
     def get_page(self) -> List[dict]:
         pass
@@ -313,18 +371,36 @@ class SpeedLimiter(_PluginBase):
                     })
                 # 计算有效比特率
                 for session in playing_sessions:
-                    if not IpUtils.is_private_ip(session.get("address")) \
+                    if IpUtils.is_private_ip(session.get("address")) \
                             and session.get("type") == "Video":
                         total_bit_rate += int(session.get("bitrate") or 0)
 
         if total_bit_rate:
+            # 开启智能限速计算上传限速
+            if self._auto_limit:
+                play_up_speed = self.__calc_limit(total_bit_rate)
+            else:
+                play_up_speed = self._play_up_speed
+
             # 当前正在播放，开始限速
-            self.__set_limiter(limit_type="播放", upload_limit=self._play_up_speed,
+            self.__set_limiter(limit_type="播放", upload_limit=play_up_speed,
                                download_limit=self._play_down_speed)
         else:
-            # 当前没有播放，开始限速
+            # 当前没有播放，取消限速
             self.__set_limiter(limit_type="未播放", upload_limit=self._noplay_up_speed,
                                download_limit=self._noplay_down_speed)
+
+    def __calc_limit(self, total_bit_rate):
+        """
+        计算智能上传限速
+        """
+        residual_bandwidth = (self._bandwidth - total_bit_rate)
+        if residual_bandwidth < 0:
+            play_up_speed = 10
+        else:
+            play_up_speed = round(residual_bandwidth / 8 / 1024, 2)
+
+        return play_up_speed
 
     def __set_limiter(self, limit_type: str, upload_limit: float, download_limit: float):
         """
@@ -348,42 +424,55 @@ class SpeedLimiter(_PluginBase):
         else:
             text = f"{text}\n下载：未限速"
         try:
-            if self._qb:
-                self._qb.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
-                # 发送通知
-                if self._notify:
-                    title = "【播放限速】"
-                    if upload_limit or download_limit:
-                        subtitle = f"Qbittorrent 开始{limit_type}限速"
-                        self.post_message(
-                            mtype=NotificationType.MediaServer,
-                            title=title,
-                            text=f"{subtitle}\n{text}"
-                        )
+            cnt = 0
+            for download in self._downloader:
+                if self._auto_limit and limit_type == "播放":
+                    # 开启了播放智能限速
+                    allocation_count = sum(self._allocation_ratio) if self._allocation_ratio else len(self._downloader)
+                    if not self._allocation_ratio:
+                        upload_limit = int(upload_limit / allocation_count)
                     else:
-                        self.post_message(
-                            mtype=NotificationType.MediaServer,
-                            title=title,
-                            text=f"Qbittorrent 已取消限速"
-                        )
-            if self._tr:
-                self._tr.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
-                # 发送通知
-                if self._notify:
-                    title = "【播放限速】"
-                    if upload_limit or download_limit:
-                        subtitle = f"Transmission 开始{limit_type}限速"
-                        self.post_message(
-                            mtype=NotificationType.MediaServer,
-                            title=title,
-                            text=f"{subtitle}\n{text}"
-                        )
+                        upload_limit = int(upload_limit * float(self._allocation_ratio[cnt]) / allocation_count)
+                        cnt += 1
+
+                if str(download) == 'qbittorrent':
+                    if self._qb:
+                        self._qb.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
+                        # 发送通知
+                        if self._notify:
+                            title = "【播放限速】"
+                            if upload_limit or download_limit:
+                                subtitle = f"Qbittorrent 开始{limit_type}限速"
+                                self.post_message(
+                                    mtype=NotificationType.MediaServer,
+                                    title=title,
+                                    text=f"{subtitle}\n{text}"
+                                )
+                            else:
+                                self.post_message(
+                                    mtype=NotificationType.MediaServer,
+                                    title=title,
+                                    text=f"Qbittorrent 已取消限速"
+                                )
                     else:
-                        self.post_message(
-                            mtype=NotificationType.MediaServer,
-                            title=title,
-                            text=f"Transmission 已取消限速"
-                        )
+                        if self._tr:
+                            self._tr.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
+                            # 发送通知
+                            if self._notify:
+                                title = "【播放限速】"
+                                if upload_limit or download_limit:
+                                    subtitle = f"Transmission 开始{limit_type}限速"
+                                    self.post_message(
+                                        mtype=NotificationType.MediaServer,
+                                        title=title,
+                                        text=f"{subtitle}\n{text}"
+                                    )
+                                else:
+                                    self.post_message(
+                                        mtype=NotificationType.MediaServer,
+                                        title=title,
+                                        text=f"Transmission 已取消限速"
+                                    )
         except Exception as e:
             logger.error(f"设置限速失败：{str(e)}")
 
