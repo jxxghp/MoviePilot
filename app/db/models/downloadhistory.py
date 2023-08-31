@@ -122,7 +122,7 @@ class DownloadFiles(Base):
     @staticmethod
     def get_by_fullpath(db: Session, fullpath: str):
         return db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath).order_by(
-            DownloadHistory.id.desc()).first()
+            DownloadFiles.id.desc()).first()
 
     @staticmethod
     def get_by_savepath(db: Session, savepath: str):
