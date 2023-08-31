@@ -451,7 +451,7 @@ class DirMonitor(_PluginBase):
                     # 剧集季集信息 S01 E01-E04 || S01 E01、E02、E04
                     season_episode = None
                     # 处理文件多，说明是剧集，显示季入库消息
-                    if mediainfo.type == MediaType.TV and len(episodes) > 1:
+                    if mediainfo.type == MediaType.TV:
                         # 季集文本
                         season_episode = f"{file_meta.season} {StringUtils.format_ep(episodes)}"
                     # 发送消息
