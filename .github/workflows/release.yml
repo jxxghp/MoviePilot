@@ -25,10 +25,11 @@ jobs:
 
       -
         name: Generate Release
-        uses: softprops/action-gh-release@v1
+        uses: actions/create-release@latest
         with:
           tag_name: v${{ env.app_version }}
           name: v${{ env.app_version }}
+          body: ${{ github.event.commits[0].message }}
           draft: false
           prerelease: false
         env:
