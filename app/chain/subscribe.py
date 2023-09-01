@@ -564,6 +564,55 @@ class SubscribeChain(ChainBase):
                     # 未搜索到资源，但本地缺失可能有变化，更新订阅剩余集数
                     self.__upate_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
 
+    def check(self):
+        """
+        定时检查订阅，更新订阅信息
+        """
+        # 查询所有订阅
+        subscribes = self.subscribeoper.list()
+        if not subscribes:
+            # 没有订阅不运行
+            return
+        # 遍历订阅
+        for subscribe in subscribes:
+            logger.info(f'开始检查订阅：{subscribe.name} ...')
+            # 生成元数据
+            meta = MetaInfo(subscribe.name)
+            meta.year = subscribe.year
+            meta.begin_season = subscribe.season or None
+            meta.type = MediaType(subscribe.type)
+            # 识别媒体信息
+            mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type, tmdbid=subscribe.tmdbid)
+            if not mediainfo:
+                logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
+                continue
+            if not mediainfo.seasons:
+                continue
+            # 获取当前季的总集数
+            episodes = mediainfo.seasons.get(subscribe.season) or []
+            if len(episodes) > subscribe.total_episode or 0:
+                total_episode = len(episodes)
+                lack_episode = subscribe.lack_episode + (total_episode - subscribe.total_episode)
+                logger.info(f'订阅 {subscribe.name} 总集数变化，更新总集数为{total_episode}，缺失集数为{lack_episode} ...')
+            else:
+                total_episode = subscribe.total_episode
+                lack_episode = subscribe.lack_episode
+                logger.info(f'订阅 {subscribe.name} 总集数未变化')
+            # 更新TMDB信息
+            self.subscribeoper.update(subscribe.id, {
+                "name": mediainfo.title,
+                "year": mediainfo.year,
+                "vote": mediainfo.vote_average,
+                "poster": mediainfo.get_poster_image(),
+                "backdrop": mediainfo.get_backdrop_image(),
+                "description": mediainfo.overview,
+                "imdbid": mediainfo.imdb_id,
+                "tvdbid": mediainfo.tvdb_id,
+                "total_episode": total_episode,
+                "lack_episode": lack_episode
+            })
+            logger.info(f'订阅 {subscribe.name} 更新完成')
+
     def __update_subscribe_note(self, subscribe: Subscribe, downloads: List[Context]):
         """
         更新已下载集数到note字段

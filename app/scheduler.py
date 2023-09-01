@@ -63,6 +63,9 @@ class Scheduler(metaclass=Singleton):
         self._scheduler.add_job(SubscribeChain(self._db).search, "interval",
                                 minutes=5, kwargs={'state': 'N'})
 
+        # 检查更新订阅TMDB数据（每隔24小时）
+        self._scheduler.add_job(SubscribeChain(self._db).check, "interval", hours=24)
+
         # 订阅状态每隔24小时搜索一次
         if settings.SUBSCRIBE_SEARCH:
             self._scheduler.add_job(SubscribeChain(self._db).search, "interval",
