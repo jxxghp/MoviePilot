@@ -14,6 +14,9 @@ Engine = create_engine(f"sqlite:///{settings.CONFIG_PATH}/user.db",
 # 数据库会话
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=Engine)
 
+# 全局使用的数据库会话
+GlobalDB = SessionLocal()
+
 
 def get_db():
     """
@@ -37,7 +40,7 @@ class DbOper:
         if db:
             self._db = db
         else:
-            self._db = SessionLocal()
+            self._db = GlobalDB
 
     def __del__(self):
         if self._db:

@@ -12,7 +12,7 @@ from app.chain.rss import RssChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
-from app.db import SessionLocal
+from app.db import GlobalDB
 from app.log import logger
 from app.utils.singleton import Singleton
 from app.utils.timer import TimerUtils
@@ -40,7 +40,7 @@ class Scheduler(metaclass=Singleton):
 
     def __init__(self):
         # 数据库连接
-        self._db = SessionLocal()
+        self._db = GlobalDB
         # 调试模式不启动定时服务
         if settings.DEV:
             return
