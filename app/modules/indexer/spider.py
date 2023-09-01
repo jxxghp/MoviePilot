@@ -262,7 +262,12 @@ class TorrentSpider:
                         # 解码为字符串
                         page_source = raw_data.decode(encoding)
                     except Exception as e:
-                        logger.error(f"chardet解码失败：{e}")
+                        logger.debug(f"chardet解码失败：{e}")
+                        # 探测utf-8解码
+                        if re.search(r"charset=\"?utf-8\"?", ret.text, re.IGNORECASE):
+                            ret.encoding = "utf-8"
+                        else:
+                            ret.encoding = ret.apparent_encoding
                         page_source = ret.text
                 else:
                     page_source = ret.text

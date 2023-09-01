@@ -1,3 +1,4 @@
+import re
 import warnings
 from datetime import datetime, timedelta
 from multiprocessing.dummy import Pool as ThreadPool
@@ -853,8 +854,8 @@ class SiteStatistic(_PluginBase):
                                proxies=proxies
                                ).get_res(url=url)
             if res and res.status_code == 200:
-                if "charset=utf-8" in res.text or "charset=UTF-8" in res.text:
-                    res.encoding = "UTF-8"
+                if re.search(r"charset=\"?utf-8\"?", res.text, re.IGNORECASE):
+                    res.encoding = "utf-8"
                 else:
                     res.encoding = res.apparent_encoding
                 html_text = res.text
@@ -893,8 +894,8 @@ class SiteStatistic(_PluginBase):
                                        proxies=proxies
                                        ).get_res(url=url + "/index.php")
                     if res and res.status_code == 200:
-                        if "charset=utf-8" in res.text or "charset=UTF-8" in res.text:
-                            res.encoding = "UTF-8"
+                        if re.search(r"charset=\"?utf-8\"?", res.text, re.IGNORECASE):
+                            res.encoding = "utf-8"
                         else:
                             res.encoding = res.apparent_encoding
                         html_text = res.text
