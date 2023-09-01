@@ -66,7 +66,7 @@ class DownloadHistoryOper(DbOper):
         按fullpath删除下载文件记录
         :param fullpath: 数据key
         """
-        DownloadFiles.delete_file_by_fullpath(self._db, fullpath)
+        DownloadFiles.delete_by_fullpath(self._db, fullpath)
 
     def list_by_page(self, page: int = 1, count: int = 30) -> List[DownloadHistory]:
         """
