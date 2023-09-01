@@ -256,7 +256,10 @@ class MediaInfo:
         """
         获取图片地址
         """
-        return getattr(self, f"{name}_path")
+        try:
+            return getattr(self, f"{name}_path")
+        except AttributeError:
+            return None
 
     def set_category(self, cat: str):
         """

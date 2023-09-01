@@ -252,7 +252,7 @@ class TransferChain(ChainBase):
                     continue
 
                 # 汇总信息
-                mkey = (file_mediainfo.tmdb_id, meta.begin_season)
+                mkey = (file_mediainfo.tmdb_id, file_meta.begin_season)
                 if mkey not in medias:
                     # 新增信息
                     metas[mkey] = file_meta
