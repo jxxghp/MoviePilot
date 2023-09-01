@@ -78,6 +78,9 @@ class TransferHistoryOper(DbOper):
             transferhistory = TransferHistory.get_by_src(self._db, kwargs.get("src"))
             if transferhistory:
                 transferhistory.delete(self._db, transferhistory.id)
+        kwargs.update({
+            "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        })
         return TransferHistory(**kwargs).create(self._db)
 
     def update_download_hash(self, historyid, download_hash):
