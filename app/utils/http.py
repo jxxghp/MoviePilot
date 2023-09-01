@@ -177,26 +177,36 @@ class RequestUtils:
 
 
 class WebUtils:
-
     @staticmethod
-    def get_location(ip):
+    def get_location(ip: str):
         """
-        根据IP址查询真实地址
+        https://api.mir6.com/api/ip
+        {
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "ip": "240e:97c:2f:1::5c",
+                "dec": "47925092370311863177116789888333643868",
+                "country": "中国",
+                "countryCode": "CN",
+                "province": "广东省",
+                "city": "广州市",
+                "districts": "",
+                "idc": "",
+                "isp": "中国电信",
+                "net": "数据中心",
+                "zipcode": "510000",
+                "areacode": "020",
+                "protocol": "IPv6",
+                "location": "中国[CN] 广东省 广州市",
+                "myip": "125.89.7.89",
+                "time": "2023-09-01 17:28:23"
+            }
+        }
         """
-        if not IpUtils.is_ipv4(ip):
-            return ""
-        url = 'https://sp0.baidu.com/8aQDcjqpAAV3otqbppnN2DJv/api.php?co=&resource_id=6006&t=1529895387942&ie=utf8' \
-              '&oe=gbk&cb=op_aladdin_callback&format=json&tn=baidu&' \
-              'cb=jQuery110203920624944751099_1529894588086&_=1529894588088&query=%s' % ip
         try:
-            r = RequestUtils().get_res(url)
+            r = RequestUtils().get_res(f"https://api.mir6.com/api/ip?ip={ip}&type=json")
             if r:
-                r.encoding = 'gbk'
-                html = r.text
-                c1 = html.split('location":"')[1]
-                c2 = c1.split('","')[0]
-                return c2
-            else:
-                return ""
+                return r.json().get("data", {}).get("location") or ''
         except Exception as err:
             return str(err)
