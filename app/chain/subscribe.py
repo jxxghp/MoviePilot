@@ -185,6 +185,13 @@ class SubscribeChain(ChainBase):
             subscribes = self.subscribeoper.list(state)
         # 遍历订阅
         for subscribe in subscribes:
+            # 校验当前时间减订阅创建时间是否大于1分钟，否则跳过先，留出编辑订阅的时间
+            if subscribe.date:
+                now = datetime.now()
+                subscribe_time = datetime.strptime(subscribe.date, '%Y-%m-%d %H:%M:%S')
+                if (now - subscribe_time).total_seconds() < 60:
+                    logger.debug(f"订阅标题：{subscribe.name} 新增小于1分钟，暂不搜索...")
+                    continue
             logger.info(f'开始搜索订阅，标题：{subscribe.name} ...')
             # 如果状态为N则更新为R
             if subscribe.state == 'N':

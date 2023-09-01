@@ -104,6 +104,9 @@ class SystemUtils:
 
         if directory.is_file():
             return [directory]
+            
+        if not min_filesize:
+            min_filesize = 0
 
         files = []
         pattern = r".*(" + "|".join(extensions) + ")$"
