@@ -74,7 +74,8 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
         if not history:
             return schemas.Response(success=False, msg="记录不存在")
         # 册除文件
-        TransferChain(db).delete_files(Path(history.dest))
+        if history.dest:
+            TransferChain(db).delete_files(Path(history.dest))
     # 删除记录
     TransferHistory.delete(db, history_in.id)
     return schemas.Response(success=True)

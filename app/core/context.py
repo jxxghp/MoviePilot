@@ -252,6 +252,12 @@ class MediaInfo:
         """
         setattr(self, f"{name}_path", image)
 
+    def get_image(self, name: str):
+        """
+        获取图片地址
+        """
+        return getattr(self, f"{name}_path")
+
     def set_category(self, cat: str):
         """
         设置二级分类

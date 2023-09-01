@@ -47,7 +47,10 @@ class FanartModule(_ModuleBase):
                 continue
             # 按欢迎程度倒排
             images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
-            mediainfo.set_image(self.__name(name), images[0].get('url'))
+            # 图片属性xx_path
+            image_name = self.__name(name)
+            if not mediainfo.get_image(image_name):
+                mediainfo.set_image(image_name, images[0].get('url'))
 
         return mediainfo
 
