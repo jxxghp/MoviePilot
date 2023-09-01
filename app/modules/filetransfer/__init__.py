@@ -354,7 +354,7 @@ class FileTransferModule(_ModuleBase):
                     and mediainfo.genre_ids \
                     and set(mediainfo.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
                 # 动漫
-                target_dir = target_dir / settings.LIBRARY_ANIME_NAME
+                target_dir = target_dir / settings.LIBRARY_ANIME_NAME / mediainfo.category
             elif settings.LIBRARY_TV_NAME:
                 # 电视剧
                 target_dir = target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
