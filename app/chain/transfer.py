@@ -59,28 +59,17 @@ class TransferChain(ChainBase):
                 # 查询下载记录识别情况
                 downloadhis: DownloadHistory = self.downloadhis.get_by_hash(torrent.hash)
                 if downloadhis:
-                    # MoviePilot下载的任务，识别元数据
-                    meta: MetaBase = MetaInfo(title=torrent.title)
-                    if not meta.name:
-                        logger.error(f'未识别到元数据，标题：{torrent.title}')
-                        continue
                     # 类型
                     mtype = MediaType(downloadhis.type)
-                    # 补充剧集信息
-                    if mtype == MediaType.TV \
-                            and ((not meta.season_list and downloadhis.seasons)
-                                 or (not meta.episode_list and downloadhis.episodes)):
-                        meta = MetaInfo(f"{torrent.title} {downloadhis.seasons} {downloadhis.episodes}")
                     # 按TMDBID识别
                     mediainfo = self.recognize_media(mtype=mtype,
                                                      tmdbid=downloadhis.tmdbid)
                 else:
                     # 非MoviePilot下载的任务，按文件识别
-                    meta = None
                     mediainfo = None
 
                 # 执行转移
-                self.do_transfer(path=torrent.path, meta=meta, mediainfo=mediainfo,
+                self.do_transfer(path=torrent.path, mediainfo=mediainfo,
                                  download_hash=torrent.hash)
 
                 # 设置下载任务状态
