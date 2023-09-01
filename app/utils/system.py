@@ -95,6 +95,10 @@ class SystemUtils:
         """
         获取目录下所有指定扩展名的文件（包括子目录）
         """
+
+        if not min_filesize:
+            min_filesize = 0
+
         if not directory.exists():
             return []
 

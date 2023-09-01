@@ -92,7 +92,7 @@ class TransferChain(ChainBase):
     def do_transfer(self, path: Path, meta: MetaBase = None,
                     mediainfo: MediaInfo = None, download_hash: str = None,
                     target: Path = None, transfer_type: str = None,
-                    epformat: EpisodeFormat = None, min_filesize: int = None) -> Tuple[bool, str]:
+                    epformat: EpisodeFormat = None, min_filesize: int = 0) -> Tuple[bool, str]:
         """
         执行一个复杂目录的转移操作
         :param path: 待转移目录或文件
