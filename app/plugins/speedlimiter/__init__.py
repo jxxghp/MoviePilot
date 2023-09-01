@@ -268,7 +268,7 @@ class SpeedLimiter(_PluginBase):
                                         'props': {
                                             'model': 'bandwidth',
                                             'label': '智能限速上行带宽',
-                                            'placeholder': 'MB/s'
+                                            'placeholder': 'Mbps'
                                         }
                                     }
                                 ]

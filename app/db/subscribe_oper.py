@@ -1,3 +1,4 @@
+import time
 from typing import Tuple, List
 
 from app.core.context import MediaInfo
@@ -26,6 +27,7 @@ class SubscribeOper(DbOper):
                                   backdrop=mediainfo.get_backdrop_image(),
                                   vote=mediainfo.vote_average,
                                   description=mediainfo.overview,
+                                  date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                                   **kwargs)
             subscribe.create(self._db)
             return subscribe.id, "新增订阅成功"
