@@ -2,59 +2,91 @@
 
 if [ -n "${PROXY_HOST}" ]; then
     CURL_OPTIONS="-sL -x ${PROXY_HOST}"
-    PIP_OPTIONS="-r --proxy=${PROXY_HOST}"
+    PIP_OPTIONS="--proxy=${PROXY_HOST}"
     echo "使用代理更新程序"
 else
     CURL_OPTIONS="-sL"
-    PIP_OPTIONS="-r"
     echo "不使用代理更新程序"
 fi
 
-old_version=$(cat /app/version.py)
-if [[ "${old_version}" == *APP_VERSION* ]]; then
-    current_version=v$(echo ${old_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
-    echo "当前版本号：${current_version}"
-    # 检查后端最新版本
-    new_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" | jq -r .tag_name)
-    if [[ "${new_version}" == *v* ]]; then
-        release_version=${new_version}
-        echo "最新版本号：${release_version}"
-        if [ "${current_version}" != "${release_version}" ]; then
-            echo "发现新版本，开始自动升级..."
-            echo "正在下载后端程序 ${release_version}..."
-            curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot/archive/refs/tags/${release_version}.zip" | busybox unzip -d /tmp -
+if [ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]; then
+    curl -sL ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot/archive/refs/heads/main.zip" | busybox unzip -d /tmp -
+    if [ $? -eq 0 ]; then
+        mv /tmp/MoviePilot-main /tmp/app
+        echo "后端程序下载成功"
+        # 重新安装依赖
+        pip install ${PIP_OPTIONS} --upgrade pip
+        pip install ${PIP_OPTIONS} -r /tmp/app/requirements.txt
+        if [ $? -eq 0 ]; then
+            echo "安装依赖成功"
+            # 检查前端最新版本
+            frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name)
+            echo "正在下载前端程序 ${frontend_version}..."
+            curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" | busybox unzip -d /tmp -
             if [ $? -eq 0 ]; then
-                echo "后端程序下载成功"
-                # 重新安装依赖
-                pip install ${PIP_OPTIONS} /tmp/MoviePilot*/requirements.txt
-                if [ $? -eq 0 ]; then
-                    echo "安装依赖成功"
-                    # 检查前端最新版本
-                    frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name)
-                    echo "正在下载前端程序 ${frontend_version}..."
-                    curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" | busybox unzip -d /tmp -
-                    if [ $? -eq 0 ]; then
-                        echo "前端程序下载成功"
-                        rm -rf /app
-                        mv /tmp/MoviePilot* /app
-                        rm -rf /public
-                        mv /tmp/dist /public
-                        echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
-                    else
-                        echo "前端程序下载失败，继续使用旧的程序来启动..."
-                    fi
-                else
-                    echo "安装依赖失败，请重新拉取镜像"
-                fi
+                echo "前端程序下载成功"
+                rm -rf /app
+                mv /tmp/MoviePilot* /app
+                rm -rf /public
+                mv /tmp/dist /public
+                echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
             else
-                echo "后端程序下载失败，继续使用旧的程序来启动..."
+                echo "前端程序下载失败，继续使用旧的程序来启动..."
             fi
         else
-            echo "未发现新版本，跳过更新步骤..."
+            echo "安装依赖失败，请重新拉取镜像"
         fi
     else
-        echo "最新版本号获取失败，继续启动..."
+        echo "后端程序下载失败，继续使用旧的程序来启动..."
     fi
 else
-    echo "当前版本号获取失败，继续启动..."
+    old_version=$(cat /app/version.py)
+    if [[ "${old_version}" == *APP_VERSION* ]]; then
+        current_version=v$(echo ${old_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
+        echo "当前版本号：${current_version}"
+        # 检查后端最新版本
+        new_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" | jq -r .tag_name)
+        if [[ "${new_version}" == *v* ]]; then
+            release_version=${new_version}
+            echo "最新版本号：${release_version}"
+            if [ "${current_version}" != "${release_version}" ]; then
+                echo "发现新版本，开始自动升级..."
+                echo "正在下载后端程序 ${release_version}..."
+                curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot/archive/refs/tags/${release_version}.zip" | busybox unzip -d /tmp -
+                if [ $? -eq 0 ]; then
+                    echo "后端程序下载成功"
+                    # 重新安装依赖
+                    pip install ${PIP_OPTIONS} --upgrade pip
+                    pip install ${PIP_OPTIONS} -r /tmp/MoviePilot*/requirements.txt
+                    if [ $? -eq 0 ]; then
+                        echo "安装依赖成功"
+                        # 检查前端最新版本
+                        frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name)
+                        echo "正在下载前端程序 ${frontend_version}..."
+                        curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" | busybox unzip -d /tmp -
+                        if [ $? -eq 0 ]; then
+                            echo "前端程序下载成功"
+                            rm -rf /app
+                            mv /tmp/MoviePilot* /app
+                            rm -rf /public
+                            mv /tmp/dist /public
+                            echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
+                        else
+                            echo "前端程序下载失败，继续使用旧的程序来启动..."
+                        fi
+                    else
+                        echo "安装依赖失败，请重新拉取镜像"
+                    fi
+                else
+                    echo "后端程序下载失败，继续使用旧的程序来启动..."
+                fi
+            else
+                echo "未发现新版本，跳过更新步骤..."
+            fi
+        else
+            echo "最新版本号获取失败，继续启动..."
+        fi
+    else
+        echo "当前版本号获取失败，继续启动..."
+    fi
 fi
