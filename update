@@ -9,7 +9,8 @@ else
     echo "不使用代理更新程序"
 fi
 
-if [ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]; then
+if [ "${MOVIEPILOT_AUTO_UPDATE_DEV}" = "true" ]; then
+    echo "Dev 更新模式"
     curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot/archive/refs/heads/main.zip" | busybox unzip -d /tmp -
     if [ $? -eq 0 ]; then
         mv /tmp/MoviePilot-main /tmp/app
