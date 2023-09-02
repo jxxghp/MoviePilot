@@ -10,7 +10,7 @@ else
 fi
 
 if [ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]; then
-    curl -sL ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot/archive/refs/heads/main.zip" | busybox unzip -d /tmp -
+    curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot/archive/refs/heads/main.zip" | busybox unzip -d /tmp -
     if [ $? -eq 0 ]; then
         mv /tmp/MoviePilot-main /tmp/app
         echo "后端程序下载成功"
