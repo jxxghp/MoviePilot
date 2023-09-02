@@ -1,4 +1,3 @@
-import json
 import shutil
 import threading
 from pathlib import Path
@@ -188,10 +187,11 @@ class TransferChain(ChainBase):
                 if not file_mediainfo:
                     logger.warn(f'{file_path} 未识别到媒体信息')
                     # 新增转移失败历史记录
-                    his = self.__insert_fail_history(
+                    his = self.transferhis.add_fail(
                         src_path=file_path,
-                        download_hash=download_hash,
-                        meta=file_meta
+                        mode=settings.TRANSFER_TYPE,
+                        meta=file_meta,
+                        download_hash=download_hash
                     )
                     self.post_message(Notification(
                         mtype=NotificationType.Manual,
@@ -225,8 +225,9 @@ class TransferChain(ChainBase):
                     logger.warn(f"{file_path.name} 入库失败：{transferinfo.message}")
                     err_msgs.append(f"{file_path.name} {transferinfo.message}")
                     # 新增转移失败历史记录
-                    self.__insert_fail_history(
+                    self.transferhis.add_fail(
                         src_path=file_path,
+                        mode=settings.TRANSFER_TYPE,
                         download_hash=download_hash,
                         meta=file_meta,
                         mediainfo=file_mediainfo,
@@ -259,8 +260,9 @@ class TransferChain(ChainBase):
                     transfers[mkey].fail_list.extend(transferinfo.fail_list)
 
                 # 新增转移成功历史记录
-                self.__insert_sucess_history(
+                self.transferhis.add_success(
                     src_path=file_path,
+                    mode=settings.TRANSFER_TYPE,
                     download_hash=download_hash,
                     meta=file_meta,
                     mediainfo=file_mediainfo,
@@ -485,72 +487,6 @@ class TransferChain(ChainBase):
                                              epformat=epformat,
                                              min_filesize=min_filesize)
             return state, errmsg
-
-    def __insert_sucess_history(self, src_path: Path, meta: MetaBase,
-                                mediainfo: MediaInfo, transferinfo: TransferInfo,
-                                download_hash: str = None):
-        """
-        新增转移成功历史记录
-        """
-        self.transferhis.add_force(
-            src=str(src_path),
-            dest=str(transferinfo.target_path),
-            mode=settings.TRANSFER_TYPE,
-            type=mediainfo.type.value,
-            category=mediainfo.category,
-            title=mediainfo.title,
-            year=mediainfo.year,
-            tmdbid=mediainfo.tmdb_id,
-            imdbid=mediainfo.imdb_id,
-            tvdbid=mediainfo.tvdb_id,
-            doubanid=mediainfo.douban_id,
-            seasons=meta.season,
-            episodes=meta.episode,
-            image=mediainfo.get_poster_image(),
-            download_hash=download_hash,
-            status=1,
-            files=json.dumps(transferinfo.file_list)
-        )
-
-    def __insert_fail_history(self, src_path: Path, download_hash: str, meta: MetaBase,
-                              transferinfo: TransferInfo = None, mediainfo: MediaInfo = None):
-        """
-        新增转移失败历史记录
-        """
-        if mediainfo and transferinfo:
-            his = self.transferhis.add_force(
-                src=str(src_path),
-                dest=str(transferinfo.target_path),
-                mode=settings.TRANSFER_TYPE,
-                type=mediainfo.type.value,
-                category=mediainfo.category,
-                title=mediainfo.title or meta.name,
-                year=mediainfo.year or meta.year,
-                tmdbid=mediainfo.tmdb_id,
-                imdbid=mediainfo.imdb_id,
-                tvdbid=mediainfo.tvdb_id,
-                doubanid=mediainfo.douban_id,
-                seasons=meta.season,
-                episodes=meta.episode,
-                image=mediainfo.get_poster_image(),
-                download_hash=download_hash,
-                status=0,
-                errmsg=transferinfo.message or '未知错误',
-                files=json.dumps(transferinfo.file_list)
-            )
-        else:
-            his = self.transferhis.add_force(
-                title=meta.name,
-                year=meta.year,
-                src=str(src_path),
-                mode=settings.TRANSFER_TYPE,
-                seasons=meta.season,
-                episodes=meta.episode,
-                download_hash=download_hash,
-                status=0,
-                errmsg="未识别到媒体信息"
-            )
-        return his
 
     def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo,
                               transferinfo: TransferInfo, season_episode: str = None):
