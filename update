@@ -22,17 +22,21 @@ if [ "${MOVIEPILOT_AUTO_UPDATE_DEV}" = "true" ]; then
             echo "安装依赖成功"
             # 检查前端最新版本
             frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name)
-            echo "正在下载前端程序 ${frontend_version}..."
-            curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" | busybox unzip -d /tmp -
-            if [ $? -eq 0 ]; then
-                echo "前端程序下载成功"
-                rm -rf /app
-                mv /tmp/MoviePilot* /app
-                rm -rf /public
-                mv /tmp/dist /public
-                echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
+            if [[ "${frontend_version}" == *v* ]]; then
+                echo "正在下载前端程序 ${frontend_version}..."
+                curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" | busybox unzip -d /tmp -
+                if [ $? -eq 0 ]; then
+                    echo "前端程序下载成功"
+                    rm -rf /app
+                    mv /tmp/MoviePilot* /app
+                    rm -rf /public
+                    mv /tmp/dist /public
+                    echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
+                else
+                    echo "前端程序下载失败，继续使用旧的程序来启动..."
+                fi
             else
-                echo "前端程序下载失败，继续使用旧的程序来启动..."
+                echo "前端最新版本号获取失败，继续启动..."
             fi
         else
             echo "安装依赖失败，请重新拉取镜像"
@@ -63,17 +67,21 @@ else
                         echo "安装依赖成功"
                         # 检查前端最新版本
                         frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name)
-                        echo "正在下载前端程序 ${frontend_version}..."
-                        curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" | busybox unzip -d /tmp -
-                        if [ $? -eq 0 ]; then
-                            echo "前端程序下载成功"
-                            rm -rf /app
-                            mv /tmp/MoviePilot* /app
-                            rm -rf /public
-                            mv /tmp/dist /public
-                            echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
+                        if [[ "${frontend_version}" == *v* ]]; then
+                            echo "正在下载前端程序 ${frontend_version}..."
+                            curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" | busybox unzip -d /tmp -
+                            if [ $? -eq 0 ]; then
+                                echo "前端程序下载成功"
+                                rm -rf /app
+                                mv /tmp/MoviePilot* /app
+                                rm -rf /public
+                                mv /tmp/dist /public
+                                echo "程序更新成功，前端版本：${frontend_version}，后端版本：${release_version}"
+                            else
+                                echo "前端程序下载失败，继续使用旧的程序来启动..."
+                            fi
                         else
-                            echo "前端程序下载失败，继续使用旧的程序来启动..."
+                            echo "前端最新版本号获取失败，继续启动..."
                         fi
                     else
                         echo "安装依赖失败，请重新拉取镜像"
