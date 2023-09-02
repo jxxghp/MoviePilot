@@ -8,6 +8,7 @@ ENV LANG="C.UTF-8" \
     PGID=0 \
     UMASK=000 \
     MOVIEPILOT_AUTO_UPDATE=true \
+    MOVIEPILOT_AUTO_UPDATE_DEV=false \
     NGINX_PORT=3000 \
     CONFIG_DIR="/config" \
     API_TOKEN="moviepilot" \
