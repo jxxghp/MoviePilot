@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine, QueuePool
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, scoped_session
 
 from app.core.config import settings
 
@@ -11,11 +11,11 @@ Engine = create_engine(f"sqlite:///{settings.CONFIG_PATH}/user.db",
                        pool_size=1000,
                        pool_recycle=60 * 10,
                        max_overflow=0)
-# 数据库会话
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=Engine)
+# 会话工厂
+SessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=Engine)
 
-# 全局使用的数据库会话
-GlobalDB = SessionLocal()
+# 多线程全局使用的数据库会话
+ScopedSession = scoped_session(SessionFactory)
 
 
 def get_db():
@@ -25,7 +25,7 @@ def get_db():
     """
     db = None
     try:
-        db = SessionLocal()
+        db = SessionFactory()
         yield db
     finally:
         if db:
@@ -40,7 +40,7 @@ class DbOper:
         if db:
             self._db = db
         else:
-            self._db = GlobalDB
+            self._db = ScopedSession()
 
     def __del__(self):
         if self._db:

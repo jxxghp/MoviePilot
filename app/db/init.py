@@ -6,7 +6,7 @@ from alembic.config import Config
 
 from app.core.config import settings
 from app.core.security import get_password_hash
-from app.db import Engine, GlobalDB
+from app.db import Engine, ScopedSession
 from app.db.models import Base
 from app.db.models.user import User
 from app.log import logger
@@ -22,14 +22,16 @@ def init_db():
     # 全量建表
     Base.metadata.create_all(bind=Engine)
     # 初始化超级管理员
-    user = User.get_by_name(db=GlobalDB, name=settings.SUPERUSER)
+    db = ScopedSession()
+    user = User.get_by_name(db=db, name=settings.SUPERUSER)
     if not user:
         user = User(
             name=settings.SUPERUSER,
             hashed_password=get_password_hash(settings.SUPERUSER_PASSWORD),
             is_superuser=True,
         )
-        user.create(GlobalDB)
+        user.create(db)
+    db.close()
 
 
 def update_db():

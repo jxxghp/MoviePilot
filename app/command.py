@@ -13,7 +13,7 @@ from app.chain.transfer import TransferChain
 from app.core.event import Event as ManagerEvent
 from app.core.event import eventmanager, EventManager
 from app.core.plugin import PluginManager
-from app.db import GlobalDB
+from app.db import ScopedSession
 from app.log import logger
 from app.schemas.types import EventType, MessageChannel
 from app.utils.object import ObjectUtils
@@ -41,7 +41,7 @@ class Command(metaclass=Singleton):
 
     def __init__(self):
         # 数据库连接
-        self._db = GlobalDB
+        self._db = ScopedSession()
         # 事件管理器
         self.eventmanager = EventManager()
         # 插件管理器
