@@ -109,6 +109,8 @@ class Settings(BaseSettings):
     QB_USER: str = None
     # Qbittorrent密码
     QB_PASSWORD: str = None
+    # Qbittorrent分类自动管理
+    QB_CATEGORY: bool = False
     # Transmission地址，IP:PORT
     TR_HOST: str = None
     # Transmission用户名

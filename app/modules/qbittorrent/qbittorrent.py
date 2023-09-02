@@ -177,6 +177,7 @@ class Qbittorrent(metaclass=Singleton):
                     is_paused: bool = False,
                     download_dir: str = None,
                     tag: Union[str, list] = None,
+                    category: str = None,
                     cookie=None
                     ) -> bool:
         """
@@ -184,6 +185,7 @@ class Qbittorrent(metaclass=Singleton):
         :param content: 种子urls或文件内容
         :param is_paused: 添加后暂停
         :param tag: 标签
+        :param category: 种子分类
         :param download_dir: 下载路径
         :param cookie: 站点Cookie用于辅助下载种子
         :return: bool
@@ -191,6 +193,7 @@ class Qbittorrent(metaclass=Singleton):
         if not self.qbc or not content:
             return False
 
+        # 下载内容
         if isinstance(content, str):
             urls = content
             torrent_files = None
@@ -198,20 +201,26 @@ class Qbittorrent(metaclass=Singleton):
             urls = None
             torrent_files = content
 
+        # 保存目录
         if download_dir:
             save_path = download_dir
-            is_auto = False
         else:
             save_path = None
-            is_auto = None
 
+        # 标签
         if tag:
             tags = tag
         else:
             tags = None
 
-        try:
+        # 分类自动管理
+        if category and settings.QB_CATEGORY:
+            is_auto = True
+        else:
+            is_auto = False
+            category = None
 
+        try:
             # 添加下载
             qbc_ret = self.qbc.torrents_add(urls=urls,
                                             torrent_files=torrent_files,
@@ -220,7 +229,8 @@ class Qbittorrent(metaclass=Singleton):
                                             tags=tags,
                                             use_auto_torrent_management=is_auto,
                                             is_sequential_download=True,
-                                            cookie=cookie)
+                                            cookie=cookie,
+                                            category=category)
             return True if qbc_ret and str(qbc_ret).find("Ok") != -1 else False
         except Exception as err:
             logger.error(f"添加种子出错：{err}")

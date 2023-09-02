@@ -235,7 +235,7 @@ class ChainBase(metaclass=ABCMeta):
                                torrent_list=torrent_list, season_episodes=season_episodes)
 
     def download(self, torrent_path: Path, download_dir: Path, cookie: str,
-                 episodes: Set[int] = None,
+                 episodes: Set[int] = None, category: str = None
                  ) -> Optional[Tuple[Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
@@ -243,10 +243,11 @@ class ChainBase(metaclass=ABCMeta):
         :param download_dir:  下载目录
         :param cookie:  cookie
         :param episodes:  需要下载的集数
+        :param category:  种子分类
         :return: 种子Hash，错误信息
         """
         return self.run_module("download", torrent_path=torrent_path, download_dir=download_dir,
-                               cookie=cookie, episodes=episodes, )
+                               cookie=cookie, episodes=episodes, category=category)
 
     def download_added(self, context: Context, torrent_path: Path, download_dir: Path) -> None:
         """

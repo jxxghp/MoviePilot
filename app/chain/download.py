@@ -151,7 +151,8 @@ class DownloadChain(ChainBase):
         result: Optional[tuple] = self.download(torrent_path=torrent_file,
                                                 cookie=_torrent.site_cookie,
                                                 episodes=episodes,
-                                                download_dir=download_dir)
+                                                download_dir=download_dir,
+                                                category=_media.category)
         if result:
             _hash, error_msg = result
         else:
