@@ -1,3 +1,4 @@
+import json
 import re
 import shutil
 import threading
@@ -16,6 +17,7 @@ from watchdog.observers.polling import PollingObserver
 from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.context import MediaInfo
+from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.transferhistory_oper import TransferHistoryOper
@@ -267,6 +269,9 @@ class DirMonitor(_PluginBase):
                     # 更新媒体图片
                     self.chain.obtain_images(mediainfo=mediainfo)
 
+                    # 获取downloadhash
+                    download_hash = self.get_download_hash(src=str(file_path))
+
                     # 转移
                     transferinfo: TransferInfo = self.chain.transfer(mediainfo=mediainfo,
                                                                      path=file_path,
@@ -280,6 +285,14 @@ class DirMonitor(_PluginBase):
                     if not transferinfo.target_path:
                         # 转移失败
                         logger.warn(f"{file_path.name} 入库失败：{transferinfo.message}")
+                        # 新增转移失败历史记录
+                        self.__insert_fail_history(
+                            src_path=file_path,
+                            download_hash=download_hash,
+                            meta=file_meta,
+                            mediainfo=mediainfo,
+                            transferinfo=transferinfo
+                        )
                         if self._notify:
                             self.chain.post_message(Notification(
                                 title=f"{mediainfo.title_year}{file_meta.season_episode} 入库失败！",
@@ -288,35 +301,17 @@ class DirMonitor(_PluginBase):
                             ))
                         return
 
-                    # 获取downloadhash
-                    download_hash = self.get_download_hash(src=str(file_path))
-
-                    target_path = str(transferinfo.file_list_new[0]) if transferinfo.file_list_new else str(
-                        transferinfo.target_path)
-
                     # 新增转移成功历史记录
-                    self.transferhis.add_force(
-                        src=event_path,
-                        dest=target_path,
-                        mode=self._transfer_type,
-                        type=mediainfo.type.value,
-                        category=mediainfo.category,
-                        title=mediainfo.title,
-                        year=mediainfo.year,
-                        tmdbid=mediainfo.tmdb_id,
-                        imdbid=mediainfo.imdb_id,
-                        tvdbid=mediainfo.tvdb_id,
-                        doubanid=mediainfo.douban_id,
-                        seasons=file_meta.season,
-                        episodes=file_meta.episode,
-                        image=mediainfo.get_poster_image(),
+                    self.__insert_sucess_history(
+                        src_path=file_path,
                         download_hash=download_hash,
-                        status=1,
-                        date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                        meta=file_meta,
+                        mediainfo=mediainfo,
+                        transferinfo=transferinfo
                     )
 
                     # 刮削元数据
-                    self.chain.scrape_metadata(path=Path(target_path), mediainfo=mediainfo)
+                    self.chain.scrape_metadata(path=transferinfo.target_path, mediainfo=mediainfo)
 
                     """
                     {
@@ -378,7 +373,7 @@ class DirMonitor(_PluginBase):
                     self._medias[mediainfo.title_year + " " + meta.season] = media_list
 
                     # 汇总刷新媒体库
-                    self.chain.refresh_mediaserver(mediainfo=mediainfo, file_path=target_path)
+                    self.chain.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
                     # 广播事件
                     self.eventmanager.send_event(EventType.TransferComplete, {
                         'meta': file_meta,
@@ -471,6 +466,72 @@ class DirMonitor(_PluginBase):
         if downloadHis:
             return downloadHis.download_hash
         return None
+
+    def __insert_sucess_history(self, src_path: Path, meta: MetaBase,
+                                mediainfo: MediaInfo, transferinfo: TransferInfo,
+                                download_hash: str = None):
+        """
+        新增转移成功历史记录
+        """
+        self.transferhis.add_force(
+            src=str(src_path),
+            dest=str(transferinfo.target_path),
+            mode=self._transfer_type,
+            type=mediainfo.type.value,
+            category=mediainfo.category,
+            title=mediainfo.title,
+            year=mediainfo.year,
+            tmdbid=mediainfo.tmdb_id,
+            imdbid=mediainfo.imdb_id,
+            tvdbid=mediainfo.tvdb_id,
+            doubanid=mediainfo.douban_id,
+            seasons=meta.season,
+            episodes=meta.episode,
+            image=mediainfo.get_poster_image(),
+            download_hash=download_hash,
+            status=1,
+            files=json.dumps(transferinfo.file_list)
+        )
+
+    def __insert_fail_history(self, src_path: Path, download_hash: str, meta: MetaBase,
+                              transferinfo: TransferInfo = None, mediainfo: MediaInfo = None):
+        """
+        新增转移失败历史记录
+        """
+        if mediainfo and transferinfo:
+            his = self.transferhis.add_force(
+                src=str(src_path),
+                dest=str(transferinfo.target_path),
+                mode=settings.TRANSFER_TYPE,
+                type=mediainfo.type.value,
+                category=mediainfo.category,
+                title=mediainfo.title or meta.name,
+                year=mediainfo.year or meta.year,
+                tmdbid=mediainfo.tmdb_id,
+                imdbid=mediainfo.imdb_id,
+                tvdbid=mediainfo.tvdb_id,
+                doubanid=mediainfo.douban_id,
+                seasons=meta.season,
+                episodes=meta.episode,
+                image=mediainfo.get_poster_image(),
+                download_hash=download_hash,
+                status=0,
+                errmsg=transferinfo.message or '未知错误',
+                files=json.dumps(transferinfo.file_list)
+            )
+        else:
+            his = self.transferhis.add_force(
+                title=meta.name,
+                year=meta.year,
+                src=str(src_path),
+                mode=settings.TRANSFER_TYPE,
+                seasons=meta.season,
+                episodes=meta.episode,
+                download_hash=download_hash,
+                status=0,
+                errmsg="未识别到媒体信息"
+            )
+        return his
 
     def get_state(self) -> bool:
         return self._enabled
