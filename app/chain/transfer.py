@@ -178,6 +178,16 @@ class TransferChain(ChainBase):
                     err_msgs.append(f"{file_path} 无法识别有效信息")
                     continue
 
+                # 自定义识别
+                if formaterHandler:
+                    # 开始集、结束集、PART
+                    begin_ep, end_ep, part = formaterHandler.split_episode(file_path.stem)
+                    if begin_ep is not None:
+                        file_meta.begin_episode = begin_ep
+                        file_meta.part = part
+                    if end_ep is not None:
+                        file_meta.end_episode = end_ep
+
                 if not mediainfo:
                     # 识别媒体信息
                     file_mediainfo = self.recognize_media(meta=file_meta)
@@ -202,6 +212,28 @@ class TransferChain(ChainBase):
 
                 logger.info(f"{file_path.name} 识别为：{file_mediainfo.type.value} {file_mediainfo.title_year}")
 
+                # 电视剧没有集无法转移
+                if file_mediainfo.type == MediaType.TV and not file_meta.episode:
+                    # 转移失败
+                    logger.warn(f"{file_path.name} 入库失败：未识别到集数")
+                    err_msgs.append(f"{file_path.name} 未识别到集数")
+                    # 新增转移失败历史记录
+                    self.transferhis.add_fail(
+                        src_path=file_path,
+                        mode=settings.TRANSFER_TYPE,
+                        download_hash=download_hash,
+                        meta=file_meta,
+                        mediainfo=file_mediainfo
+                    )
+                    # 发送消息
+                    self.post_message(Notification(
+                        mtype=NotificationType.Manual,
+                        title=f"{file_path.name} 入库失败！",
+                        text=f"原因：未识别到集数",
+                        image=file_mediainfo.get_message_image()
+                    ))
+                    continue
+
                 # 更新媒体图片
                 self.obtain_images(mediainfo=file_mediainfo)
 
@@ -215,8 +247,7 @@ class TransferChain(ChainBase):
                                                            mediainfo=file_mediainfo,
                                                            path=file_path,
                                                            transfer_type=transfer_type,
-                                                           target=target,
-                                                           formater=formaterHandler)
+                                                           target=target)
                 if not transferinfo:
                     logger.error("文件转移模块运行失败")
                     return False, "文件转移模块运行失败"
@@ -235,6 +266,7 @@ class TransferChain(ChainBase):
                     )
                     # 发送消息
                     self.post_message(Notification(
+                        mtype=NotificationType.Manual,
                         title=f"{file_mediainfo.title_year} {file_meta.season_episode} 入库失败！",
                         text=f"原因：{transferinfo.message or '未知'}",
                         image=file_mediainfo.get_message_image()

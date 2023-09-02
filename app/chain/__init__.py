@@ -16,7 +16,6 @@ from app.core.context import MediaInfo, TorrentInfo
 from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.core.module import ModuleManager
-from app.helper.format import FormatParser
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
     WebhookEventInfo
@@ -273,9 +272,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("list_torrents", status=status, hashs=hashs)
 
     def transfer(self, path: Path, meta: MetaBase, mediainfo: MediaInfo,
-                 transfer_type: str,
-                 target: Path = None,
-                 formater: FormatParser = None) -> Optional[TransferInfo]:
+                 transfer_type: str, target: Path = None) -> Optional[TransferInfo]:
         """
         文件转移
         :param path:  文件路径
@@ -283,12 +280,10 @@ class ChainBase(metaclass=ABCMeta):
         :param mediainfo:  识别的媒体信息
         :param transfer_type:  转移模式
         :param target:  转移目标路径
-        :param formater:  自定义剧集识别格式
         :return: {path, target_path, message}
         """
         return self.run_module("transfer", path=path, meta=meta, mediainfo=mediainfo,
-                               transfer_type=transfer_type, target=target,
-                               formater=formater)
+                               transfer_type=transfer_type, target=target)
 
     def transfer_completed(self, hashs: Union[str, list], path: Path = None) -> None:
         """
