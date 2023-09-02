@@ -567,7 +567,7 @@ class TorrentRemover(_PluginBase):
                                 return
                             text_item = f"{torrent.get('name')} " \
                                         f"来自站点：{torrent.get('site')} " \
-                                        f"大小：{StringUtils.str_filesize(torrent.get('size'))} GB"
+                                        f"大小：{StringUtils.str_filesize(torrent.get('size'))}"
                             # 暂停种子
                             downlader_obj.stop_torrents(ids=[torrent.get("id")])
                             logger.info(f"自动删种任务 暂停种子：{text_item}")
@@ -580,7 +580,7 @@ class TorrentRemover(_PluginBase):
                                 return
                             text_item = f"{torrent.get('name')} " \
                                         f"来自站点：{torrent.get('site')} " \
-                                        f"大小：{StringUtils.str_filesize(torrent.get('size'))} GB"
+                                        f"大小：{StringUtils.str_filesize(torrent.get('size'))}"
                             # 删除种子
                             downlader_obj.delete_torrents(delete_file=False,
                                                           ids=[torrent.get("id")])
@@ -594,7 +594,7 @@ class TorrentRemover(_PluginBase):
                                 return
                             text_item = f"{torrent.get('name')} " \
                                         f"来自站点：{torrent.get('site')} " \
-                                        f"大小：{StringUtils.str_filesize(torrent.get('size'))} GB"
+                                        f"大小：{StringUtils.str_filesize(torrent.get('size'))}"
                             # 删除种子
                             downlader_obj.delete_torrents(delete_file=True,
                                                           ids=[torrent.get("id")])
