@@ -444,7 +444,7 @@ class FileTransferModule(_ModuleBase):
 
             logger.info(f"文件 {in_path} 转移成功")
             return TransferInfo(path=in_path,
-                                target_path=new_file.parent,
+                                target_path=new_file,
                                 file_count=1,
                                 total_size=new_file.stat().st_size,
                                 is_bluray=False,
