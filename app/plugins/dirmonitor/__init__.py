@@ -411,8 +411,8 @@ class DirMonitor(_PluginBase):
             transferinfo = media_files[0].get("transferinfo")
             file_meta = media_files[0].get("file_meta")
             mediainfo = media_files[0].get("mediainfo")
-            # 判断最后更新时间距现在是已超过3秒，超过则发送消息
-            if (datetime.now() - last_update_time).total_seconds() > 3:
+            # 判断最后更新时间距现在是已超过5秒，超过则发送消息
+            if (datetime.now() - last_update_time).total_seconds() > 5:
                 # 发送通知
                 if self._notify:
 
