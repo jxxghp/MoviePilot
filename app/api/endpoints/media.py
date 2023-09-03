@@ -17,7 +17,7 @@ from app.schemas import MediaType
 router = APIRouter()
 
 
-@router.get("/recognize", summary="识别媒体信息", response_model=schemas.Context)
+@router.get("/recognize", summary="识别媒体信息（种子）", response_model=schemas.Context)
 def recognize(title: str,
               subtitle: str = None,
               db: Session = Depends(get_db),
@@ -27,6 +27,20 @@ def recognize(title: str,
     """
     # 识别媒体信息
     context = MediaChain(db).recognize_by_title(title=title, subtitle=subtitle)
+    if context:
+        return context.to_dict()
+    return schemas.Context()
+
+
+@router.get("/recognize_file", summary="识别媒体信息（文件）", response_model=schemas.Context)
+def recognize(path: str,
+              db: Session = Depends(get_db),
+              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据文件路径识别媒体信息
+    """
+    # 识别媒体信息
+    context = MediaChain(db).recognize_by_path(path)
     if context:
         return context.to_dict()
     return schemas.Context()

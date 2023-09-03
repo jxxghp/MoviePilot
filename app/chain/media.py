@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional, List, Tuple
 
 from app.chain import ChainBase
@@ -30,6 +31,29 @@ class MediaChain(ChainBase):
         self.obtain_images(mediainfo=mediainfo)
         # 返回上下文
         return Context(meta_info=metainfo, media_info=mediainfo)
+
+    def recognize_by_path(self, path: str) -> Optional[Context]:
+        """
+        根据文件路径识别媒体信息
+        """
+        logger.info(f'开始识别媒体信息，文件：{path} ...')
+        file_path = Path(path)
+        # 上级目录元数据
+        dir_meta = MetaInfo(title=file_path.parent.name)
+        # 文件元数据，不包含后缀
+        file_meta = MetaInfo(title=file_path.stem)
+        # 合并元数据
+        file_meta.merge(dir_meta)
+        # 识别媒体信息
+        mediainfo = self.recognize_media(meta=file_meta)
+        if not mediainfo:
+            logger.warn(f'{path} 未识别到媒体信息')
+            return Context(meta_info=file_meta)
+        logger.info(f'{path} 识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year}')
+        # 更新媒体图片
+        self.obtain_images(mediainfo=mediainfo)
+        # 返回上下文
+        return Context(meta_info=file_meta, media_info=mediainfo)
 
     def search(self, title: str) -> Tuple[MetaBase, List[MediaInfo]]:
         """
