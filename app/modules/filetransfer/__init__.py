@@ -264,6 +264,9 @@ class FileTransferModule(_ModuleBase):
         """
         retcode = 0
         for file in src_dir.glob("**/*"):
+            # 过滤掉目录
+            if file.is_dir():
+                continue
             # 使用target_dir的父目录作为新的父目录
             new_file = target_dir.joinpath(file.relative_to(src_dir))
             if new_file.exists():
