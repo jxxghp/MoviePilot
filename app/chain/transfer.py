@@ -464,16 +464,16 @@ class TransferChain(ChainBase):
         # 更新媒体图片
         self.obtain_images(mediainfo=mediainfo)
 
+        # 删除旧的已整理文件
+        if history.dest:
+            self.delete_files(Path(history.dest))
+
         # 转移
         state, errmsg = self.do_transfer(path=src_path,
                                          mediainfo=mediainfo,
                                          download_hash=history.download_hash)
         if not state:
             return False, errmsg
-
-        # 删除旧的已整理文件
-        if history.dest:
-            self.delete_files(Path(history.dest))
 
         # 删除旧历史记录
         self.transferhis.delete(logid)
