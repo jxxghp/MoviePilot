@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.chain import ChainBase
 from app.core.config import settings
+from app.db import SessionFactory
 from app.db.mediaserver_oper import MediaServerOper
 from app.log import logger
 from app.schemas import MessageChannel, Notification
@@ -21,7 +22,6 @@ class MediaServerChain(ChainBase):
 
     def __init__(self, db: Session = None):
         super().__init__(db)
-        self.mediaserverdb = MediaServerOper(db)
 
     def librarys(self) -> List[schemas.MediaServerLibrary]:
         """
@@ -56,11 +56,14 @@ class MediaServerChain(ChainBase):
         同步媒体库所有数据到本地数据库
         """
         with lock:
+            # 媒体服务器同步使用独立的会话
+            _db = SessionFactory()
+            _dbOper = MediaServerOper(_db)
             logger.info("开始同步媒体库数据 ...")
             # 汇总统计
             total_count = 0
             # 清空登记薄
-            self.mediaserverdb.empty(server=settings.MEDIASERVER)
+            _dbOper.empty(server=settings.MEDIASERVER)
             for library in self.librarys():
                 logger.info(f"正在同步媒体库 {library.name} ...")
                 library_count = 0
@@ -83,8 +86,11 @@ class MediaServerChain(ChainBase):
                     item_dict = item.dict()
                     item_dict['seasoninfo'] = json.dumps(seasoninfo)
                     item_dict['item_type'] = item_type
-                    self.mediaserverdb.add(**item_dict)
+                    _dbOper.add(**item_dict)
                 logger.info(f"媒体库 {library.name} 同步完成，共同步数量：{library_count}")
                 # 总数累加
                 total_count += library_count
+            # 关闭数据库连接
+            if _db:
+                _db.close()
             logger.info("【MediaServer】媒体库数据同步完成，同步数量：%s" % total_count)
