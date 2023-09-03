@@ -127,7 +127,7 @@ class AutoSignIn(_PluginBase):
                             crons = self._cron.strip().split("/")
                             if len(crons) == 2:
                                 # 2.3
-                                self._cron = crons[0]
+                                cron = crons[0]
                                 # 9-23
                                 times = crons[1].split("-")
                                 if len(times) == 2:
@@ -138,10 +138,10 @@ class AutoSignIn(_PluginBase):
                                 if self._start_time and self._end_time:
                                     self._scheduler.add_job(func=self.sign_in,
                                                             trigger="interval",
-                                                            hours=float(self._cron.strip()),
+                                                            hours=float(cron.strip()),
                                                             name=f"站点自动{self._action}")
                                     logger.info(
-                                        f"站点自动{self._action}服务启动，执行周期 {self._start_time}点-{self._end_time}点 每{self._cron}小时执行一次")
+                                        f"站点自动{self._action}服务启动，执行周期 {self._start_time}点-{self._end_time}点 每{cron}小时执行一次")
                                 else:
                                     logger.error(f"站点自动{self._action}服务启动失败，周期格式错误")
                                     # 推送实时消息
