@@ -22,7 +22,7 @@ class TmdbScraper:
         """
         生成刮削文件
         :param mediainfo: 媒体信息
-        :param file_path: 文件路径
+        :param file_path: 文件路径或者目录路径
         """
 
         def __get_episode_detail(_seasoninfo: dict, _episode: int):
@@ -37,7 +37,7 @@ class TmdbScraper:
         try:
             # 电影
             if mediainfo.type == MediaType.MOVIE:
-                # 强制或者不已存在时才处理
+                # 不已存在时才处理
                 if not file_path.with_name("movie.nfo").exists() \
                         and not file_path.with_suffix(".nfo").exists():
                     #  生成电影描述文件

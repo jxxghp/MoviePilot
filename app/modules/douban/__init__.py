@@ -166,22 +166,42 @@ class DoubanModule(_ModuleBase):
         """
         if settings.SCRAP_SOURCE != "douban":
             return None
-        # 目录下的所有文件
-        for file in SystemUtils.list_files(path, settings.RMT_MEDIAEXT):
-            if not file:
-                continue
-            logger.info(f"开始刮削媒体库文件：{file} ...")
-            try:
-                meta = MetaInfo(file.stem)
-                if not meta.name:
+        if SystemUtils.is_bluray_dir(path):
+            # 蓝光原盘
+            logger.info(f"开始刮削蓝光原盘：{path} ...")
+            meta = MetaInfo(path.stem)
+            if not meta.name:
+                return
+            # 根据名称查询豆瓣数据
+            doubaninfo = self.__match(name=mediainfo.title, year=mediainfo.year, season=meta.begin_season)
+            if not doubaninfo:
+                logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
+                return
+            scrape_path = path / path.name
+            self.scraper.gen_scraper_files(meta=meta,
+                                           mediainfo=MediaInfo(douban_info=doubaninfo),
+                                           file_path=scrape_path)
+        else:
+            # 目录下的所有文件
+            for file in SystemUtils.list_files(path, settings.RMT_MEDIAEXT):
+                if not file:
                     continue
-                # 根据名称查询豆瓣数据
-                doubaninfo = self.__match(name=mediainfo.title, year=mediainfo.year, season=meta.begin_season)
-                if not doubaninfo:
-                    logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
-                    break
-                # 刮削
-                self.scraper.gen_scraper_files(meta, MediaInfo(douban_info=doubaninfo), file)
-            except Exception as e:
-                logger.error(f"刮削文件 {file} 失败，原因：{e}")
-            logger.info(f"{file} 刮削完成")
+                logger.info(f"开始刮削媒体库文件：{file} ...")
+                try:
+                    meta = MetaInfo(file.stem)
+                    if not meta.name:
+                        continue
+                    # 根据名称查询豆瓣数据
+                    doubaninfo = self.__match(name=mediainfo.title,
+                                              year=mediainfo.year,
+                                              season=meta.begin_season)
+                    if not doubaninfo:
+                        logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
+                        break
+                    # 刮削
+                    self.scraper.gen_scraper_files(meta=meta,
+                                                   mediainfo=MediaInfo(douban_info=doubaninfo),
+                                                   file_path=file)
+                except Exception as e:
+                    logger.error(f"刮削文件 {file} 失败，原因：{e}")
+        logger.info(f"{path} 刮削完成")

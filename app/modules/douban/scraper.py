@@ -17,7 +17,7 @@ class DoubanScraper:
         生成刮削文件
         :param meta: 元数据
         :param mediainfo: 媒体信息
-        :param file_path: 文件路径
+        :param file_path: 文件路径或者目录路径
         """
 
         try:

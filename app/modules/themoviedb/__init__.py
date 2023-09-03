@@ -187,14 +187,22 @@ class TheMovieDbModule(_ModuleBase):
         """
         if settings.SCRAP_SOURCE != "themoviedb":
             return None
-        # 目录下的所有文件
-        for file in SystemUtils.list_files(path, settings.RMT_MEDIAEXT):
-            if not file:
-                continue
-            logger.info(f"开始刮削媒体库文件：{file} ...")
+
+        if SystemUtils.is_bluray_dir(path):
+            # 蓝光原盘
+            logger.info(f"开始刮削蓝光原盘：{path} ...")
+            scrape_path = path / path.name
             self.scraper.gen_scraper_files(mediainfo=mediainfo,
-                                           file_path=file)
-            logger.info(f"{file} 刮削完成")
+                                           file_path=scrape_path)
+        else:
+            # 目录下的所有文件
+            for file in SystemUtils.list_files(path, settings.RMT_MEDIAEXT):
+                if not file:
+                    continue
+                logger.info(f"开始刮削媒体库文件：{file} ...")
+                self.scraper.gen_scraper_files(mediainfo=mediainfo,
+                                               file_path=file)
+        logger.info(f"{path} 刮削完成")
 
     def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,
                       page: int = 1) -> Optional[List[dict]]:

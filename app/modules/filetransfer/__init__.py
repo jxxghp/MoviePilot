@@ -368,6 +368,8 @@ class FileTransferModule(_ModuleBase):
             # 转移整个目录
             # 是否蓝光原盘
             bluray_flag = SystemUtils.is_bluray_dir(in_path)
+            if bluray_flag:
+                logger.info(f"{in_path} 是蓝光原盘文件夹")
             # 目的路径
             new_path = self.get_rename_path(
                 path=target_dir,
