@@ -318,7 +318,7 @@ class Emby(metaclass=Singleton):
             if not item_id:
                 return {}
         # 验证tmdbid是否相同
-        item_tmdbid = self.get_iteminfo(item_id).get("ProviderIds", {}).get("Tmdb")
+        item_tmdbid = (self.get_iteminfo(item_id).get("ProviderIds") or {}).get("Tmdb")
         if tmdb_id and item_tmdbid:
             if str(tmdb_id) != str(item_tmdbid):
                 return {}
@@ -849,8 +849,8 @@ class Emby(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return None
-        url = url.replace("{HOST}", self._host)\
-            .replace("{APIKEY}", self._apikey)\
+        url = url.replace("{HOST}", self._host) \
+            .replace("{APIKEY}", self._apikey) \
             .replace("{USER}", self.user)
         try:
             return RequestUtils().get_res(url=url)
