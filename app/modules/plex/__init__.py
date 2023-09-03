@@ -28,7 +28,7 @@ class PlexModule(_ModuleBase):
         定时任务，每10分钟调用一次
         """
         # 定时重连
-        if not self.plex.get_plex():
+        if not self.plex.is_inactive():
             self.plex = Plex()
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> WebhookEventInfo:

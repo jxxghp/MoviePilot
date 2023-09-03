@@ -25,7 +25,7 @@ class JellyfinModule(_ModuleBase):
         定时任务，每10分钟调用一次
         """
         # 定时重连
-        if not self.jellyfin.user:
+        if not self.jellyfin.is_inactive():
             self.jellyfin = Jellyfin()
 
     def stop(self):

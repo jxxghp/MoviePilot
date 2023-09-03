@@ -25,6 +25,14 @@ class Jellyfin(metaclass=Singleton):
         self.user = self.get_user()
         self.serverid = self.get_server_id()
 
+    def is_inactive(self) -> bool:
+        """
+        判断是否需要重连
+        """
+        if not self._host or not self._apikey:
+            return False
+        return True if not self.user else False
+
     def __get_jellyfin_librarys(self) -> List[dict]:
         """
         获取Jellyfin媒体库的信息

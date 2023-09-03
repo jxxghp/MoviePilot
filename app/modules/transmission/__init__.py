@@ -33,7 +33,7 @@ class TransmissionModule(_ModuleBase):
         定时任务，每10分钟调用一次
         """
         # 定时重连
-        if not self.transmission.trc:
+        if not self.transmission.is_inactive():
             self.transmission = Transmission()
 
     def download(self, torrent_path: Path, download_dir: Path, cookie: str,

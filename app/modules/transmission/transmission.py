@@ -28,7 +28,7 @@ class Transmission(metaclass=Singleton):
         self._host, self._port = StringUtils.get_domain_address(address=settings.TR_HOST, prefix=False)
         self._username = settings.TR_USER
         self._password = settings.TR_PASSWORD
-        if self._host and self._port and self._username and self._password:
+        if self._host and self._port:
             self.trc = self.__login_transmission()
 
     def __login_transmission(self) -> Optional[Client]:
@@ -47,6 +47,14 @@ class Transmission(metaclass=Singleton):
         except Exception as err:
             logger.error(f"transmission 连接出错：{err}")
             return None
+
+    def is_inactive(self) -> bool:
+        """
+        判断是否需要重连
+        """
+        if not self._host or not self._port:
+            return False
+        return True if not self.trc else False
 
     def get_torrents(self, ids: Union[str, list] = None, status: Union[str, list] = None,
                      tags: Union[str, list] = None) -> Tuple[List[Torrent], bool]:

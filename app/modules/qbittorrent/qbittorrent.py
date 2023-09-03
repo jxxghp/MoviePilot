@@ -27,6 +27,14 @@ class Qbittorrent(metaclass=Singleton):
         if self._host and self._port:
             self.qbc = self.__login_qbittorrent()
 
+    def is_inactive(self) -> bool:
+        """
+        判断是否需要重连
+        """
+        if not self._host or not self._port:
+            return False
+        return True if not self.qbc else False
+
     def __login_qbittorrent(self) -> Optional[Client]:
         """
         连接qbittorrent

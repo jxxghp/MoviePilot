@@ -33,7 +33,7 @@ class QbittorrentModule(_ModuleBase):
         定时任务，每10分钟调用一次
         """
         # 定时重连
-        if not self.qbittorrent.qbc:
+        if self.qbittorrent.is_inactive():
             self.qbittorrent = Qbittorrent()
 
     def download(self, torrent_path: Path, download_dir: Path, cookie: str,

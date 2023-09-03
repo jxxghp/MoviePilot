@@ -27,6 +27,14 @@ class Emby(metaclass=Singleton):
         self.user = self.get_user()
         self.folders = self.get_emby_folders()
 
+    def is_inactive(self) -> bool:
+        """
+        判断是否需要重连
+        """
+        if not self._host or not self._apikey:
+            return False
+        return True if not self.user else False
+
     def get_emby_folders(self) -> List[dict]:
         """
         获取Emby媒体库路径列表
