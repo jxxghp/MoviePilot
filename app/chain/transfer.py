@@ -173,7 +173,9 @@ class TransferChain(ChainBase):
 
                 # 整理屏蔽词不处理
                 if transfer_exclude_words:
-                    for keyword in transfer_exclude_words.split("\n"):
+                    for keyword in transfer_exclude_words:
+                        if not keyword:
+                            continue
                         if keyword and re.findall(keyword, file_path_str):
                             logger.info(f"{file_path} 命中整理屏蔽词 {keyword}，不处理")
                             continue
