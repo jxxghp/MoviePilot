@@ -453,6 +453,10 @@ class TransferChain(ChainBase):
         if not state:
             return False, errmsg
 
+        # 删除旧的已整理文件
+        if history.dest:
+            self.delete_files(Path(history.dest))
+
         # 删除旧历史记录
         self.transferhis.delete(logid)
 
