@@ -217,7 +217,9 @@ class DirMonitor(_PluginBase):
                     # 整理屏蔽词不处理
                     transfer_exclude_words = self.systemconfig.get(SystemConfigKey.TransferExcludeWords)
                     if transfer_exclude_words:
-                        for keyword in transfer_exclude_words.split("\n"):
+                        for keyword in transfer_exclude_words:
+                            if not keyword:
+                                continue
                             if keyword and re.findall(keyword, event_path):
                                 logger.info(f"{event_path} 命中整理屏蔽词 {keyword}，不处理")
                                 return
