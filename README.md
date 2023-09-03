@@ -113,7 +113,7 @@ docker pull jxxghp/moviepilot:latest
     - **QB_HOST：** qbittorrent地址，格式：`ip:port`，https需要添加`https://`前缀
     - **QB_USER：** qbittorrent用户名
     - **QB_PASSWORD：** qbittorrent密码
-    - **QB_CATEGORY：** qbittorrent分类自动管理，`true`/`false`，默认`flase`，开启后会将下载二级分类传递到下载器，由下载器管理下载目录，需要同步开启`DOWNLOAD_CATEGORY`
+    - **QB_CATEGORY：** qbittorrent分类自动管理，`true`/`false`，默认`false`，开启后会将下载二级分类传递到下载器，由下载器管理下载目录，需要同步开启`DOWNLOAD_CATEGORY`
 
   - `transmission`设置项：
 
