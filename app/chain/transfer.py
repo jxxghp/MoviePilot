@@ -1,3 +1,4 @@
+import re
 import shutil
 import threading
 from pathlib import Path
@@ -14,12 +15,14 @@ from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
+from app.db.systemconfig_oper import SystemConfigOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.format import FormatParser
 from app.helper.progress import ProgressHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat
-from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel
+from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
+    SystemConfigKey
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
@@ -37,6 +40,7 @@ class TransferChain(ChainBase):
         self.transferhis = TransferHistoryOper(self._db)
         self.progress = ProgressHelper()
         self.mediachain = MediaChain(self._db)
+        self.systemconfig = SystemConfigOper()
 
     def process(self) -> bool:
         """
@@ -136,6 +140,9 @@ class TransferChain(ChainBase):
                              text=f"开始转移 {path}，共 {total_num} 个文件 ...",
                              key=ProgressKey.FileTransfer)
 
+        # 整理屏蔽词
+        transfer_exclude_words = self.systemconfig.get(SystemConfigKey.TransferExcludeWords)
+
         # 处理所有待转移目录或文件，默认一个转移路径或文件只有一个媒体信息
         for trans_path in trans_paths:
             # 如果是目录且不是⼀蓝光原盘，获取所有文件并转移
@@ -154,6 +161,7 @@ class TransferChain(ChainBase):
 
             # 转移所有文件
             for file_path in file_paths:
+
                 # 回收站及隐藏的文件不处理
                 file_path_str = str(file_path)
                 if file_path_str.find('/@Recycle/') != -1 \
@@ -162,6 +170,13 @@ class TransferChain(ChainBase):
                         or file_path_str.find('/@eaDir') != -1:
                     logger.debug(f"{file_path_str} 是回收站或隐藏的文件")
                     continue
+
+                # 整理屏蔽词不处理
+                if transfer_exclude_words:
+                    for keyword in transfer_exclude_words.split("\n"):
+                        if keyword and re.findall(keyword, file_path_str):
+                            logger.info(f"{file_path} 命中整理屏蔽词 {keyword}，不处理")
+                            continue
 
                 if not meta:
                     # 上级目录元数据

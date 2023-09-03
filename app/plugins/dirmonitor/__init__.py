@@ -21,7 +21,7 @@ from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
 from app.plugins import _PluginBase
 from app.schemas import Notification, NotificationType, TransferInfo
-from app.schemas.types import EventType, MediaType
+from app.schemas.types import EventType, MediaType, SystemConfigKey
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
@@ -199,13 +199,6 @@ class DirMonitor(_PluginBase):
                         logger.debug("文件已处理过：%s" % event_path)
                         return
 
-                    # 命中过滤关键字不处理
-                    if self._exclude_keywords:
-                        for keyword in self._exclude_keywords.split("\n"):
-                            if keyword and re.findall(keyword, event_path):
-                                logger.debug(f"{event_path} 命中过滤关键字 {keyword}")
-                                return
-
                     # 回收站及隐藏的文件不处理
                     if event_path.find('/@Recycle/') != -1 \
                             or event_path.find('/#recycle/') != -1 \
@@ -213,6 +206,21 @@ class DirMonitor(_PluginBase):
                             or event_path.find('/@eaDir') != -1:
                         logger.debug(f"{event_path} 是回收站或隐藏的文件")
                         return
+
+                    # 命中过滤关键字不处理
+                    if self._exclude_keywords:
+                        for keyword in self._exclude_keywords.split("\n"):
+                            if keyword and re.findall(keyword, event_path):
+                                logger.info(f"{event_path} 命中过滤关键字 {keyword}，不处理")
+                                return
+
+                    # 整理屏蔽词不处理
+                    transfer_exclude_words = self.systemconfig.get(SystemConfigKey.TransferExcludeWords)
+                    if transfer_exclude_words:
+                        for keyword in transfer_exclude_words.split("\n"):
+                            if keyword and re.findall(keyword, event_path):
+                                logger.info(f"{event_path} 命中整理屏蔽词 {keyword}，不处理")
+                                return
 
                     # 不是媒体文件不处理
                     if file_path.suffix not in settings.RMT_MEDIAEXT:
