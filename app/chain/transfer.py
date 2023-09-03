@@ -84,7 +84,8 @@ class TransferChain(ChainBase):
     def do_transfer(self, path: Path, meta: MetaBase = None,
                     mediainfo: MediaInfo = None, download_hash: str = None,
                     target: Path = None, transfer_type: str = None,
-                    epformat: EpisodeFormat = None, min_filesize: int = 0) -> Tuple[bool, str]:
+                    season: int = None, epformat: EpisodeFormat = None,
+                    min_filesize: int = 0) -> Tuple[bool, str]:
         """
         执行一个复杂目录的转移操作
         :param path: 待转移目录或文件
@@ -93,6 +94,7 @@ class TransferChain(ChainBase):
         :param download_hash: 下载记录hash
         :param target: 目标路径
         :param transfer_type: 转移类型
+        :param season: 季
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
         返回：成功标识，错误信息
@@ -189,6 +191,10 @@ class TransferChain(ChainBase):
                     file_meta.merge(dir_meta)
                 else:
                     file_meta = meta
+
+                # 合并季
+                if season:
+                    file_meta.begin_season = season
 
                 if not file_meta:
                     logger.error(f"{file_path} 无法识别有效信息")
@@ -449,10 +455,6 @@ class TransferChain(ChainBase):
         src_path = Path(history.src)
         if not src_path.exists():
             return False, f"源目录不存在：{src_path}"
-        # 识别元数据
-        meta = MetaInfo(title=src_path.stem)
-        if not meta.name:
-            return False, f"未识别到元数据，标题：{src_path.stem}"
         # 查询媒体信息
         mediainfo = self.recognize_media(mtype=mtype, tmdbid=tmdbid)
         if not mediainfo:
@@ -464,7 +466,6 @@ class TransferChain(ChainBase):
 
         # 转移
         state, errmsg = self.do_transfer(path=src_path,
-                                         meta=meta,
                                          mediainfo=mediainfo,
                                          download_hash=history.download_hash)
         if not state:
@@ -502,12 +503,6 @@ class TransferChain(ChainBase):
 
         if tmdbid:
             # 有输入TMDBID时单个识别
-            meta = MetaInfo(in_path.stem)
-            # 整合数据
-            if mtype:
-                meta.type = mtype
-            if season is not None:
-                meta.begin_season = season
             # 识别媒体信息
             mediainfo: MediaInfo = self.mediachain.recognize_media(tmdbid=tmdbid, mtype=mtype)
             if not mediainfo:
@@ -520,9 +515,9 @@ class TransferChain(ChainBase):
             # 开始转移
             state, errmsg = self.do_transfer(
                 path=in_path,
-                meta=meta,
                 mediainfo=mediainfo,
                 target=target,
+                season=season,
                 epformat=epformat,
                 min_filesize=min_filesize
             )
@@ -537,6 +532,7 @@ class TransferChain(ChainBase):
             state, errmsg = self.do_transfer(path=in_path,
                                              target=target,
                                              transfer_type=transfer_type,
+                                             season=season,
                                              epformat=epformat,
                                              min_filesize=min_filesize)
             return state, errmsg
