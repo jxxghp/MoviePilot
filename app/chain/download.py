@@ -166,7 +166,7 @@ class DownloadChain(ChainBase):
                 download_path = download_dir / _file_list[0] if _file_list else download_dir
             # 登记下载记录
             self.downloadhis.add(
-                path=download_path,
+                path=str(download_path),
                 type=_media.type.value,
                 title=_media.title,
                 year=_media.year,
