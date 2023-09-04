@@ -177,6 +177,12 @@ class DownloadChain(ChainBase):
                 torrent_description=_torrent.description,
                 torrent_site=_torrent.site_name
             )
+
+            # 电影单文件无目录的情况
+            if Path(_folder_name).is_file() \
+                    or Path(_folder_name).suffix in settings.RMT_MEDIAEXT:
+                _folder_name = ""
+
             # 登记下载文件
             self.downloadhis.add_files([
                 {
