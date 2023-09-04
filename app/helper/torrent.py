@@ -148,7 +148,7 @@ class TorrentHelper:
                 # 目录名
                 folder_name = torrentinfo.name
                 # 文件清单
-                file_list = [fileinfo.name for fileinfo in torrentinfo.files]
+                file_list = [str(fileinfo.name).replace(folder_name, "") for fileinfo in torrentinfo.files]
             logger.debug(f"{torrent_path.stem} -> 目录：{folder_name}，文件清单：{file_list}")
             return folder_name, file_list
         except Exception as err:
