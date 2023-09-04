@@ -166,11 +166,13 @@ class SyncDownloadFiles(_PluginBase):
 
                 download_files = []
                 for file in torrent_files:
-                    file_name = self.__get_file_name(file, downloader)
+                    file_path = self.__get_file_path(file, downloader)
+                    file_name = os.path.basename(file_path)
+                    file_path = str(file_path).replace(file_name, "")
                     # 只处理视频格式
                     if not Path(file_name).suffix in settings.RMT_MEDIAEXT:
                         continue
-                    full_path = Path(download_dir).joinpath(torrent_name, file_name)
+                    full_path = Path(download_dir).joinpath(file_path, file_name)
                     if self._history:
                         transferhis = self.transferhis.get_by_src(str(full_path))
                         if transferhis and not transferhis.download_hash:
@@ -184,7 +186,7 @@ class SyncDownloadFiles(_PluginBase):
                             "download_hash": hash_str,
                             "downloader": downloader,
                             "fullpath": str(full_path),
-                            "savepath": str(Path(download_dir).joinpath(torrent_name)),
+                            "savepath": str(Path(download_dir).joinpath(file_path)),
                             "filepath": file_name,
                             "torrentname": torrent_name,
                         }
@@ -271,12 +273,12 @@ class SyncDownloadFiles(_PluginBase):
         return True
 
     @staticmethod
-    def __get_file_name(file: Any, dl_type: str):
+    def __get_file_path(file: Any, dl_type: str):
         """
         获取文件名
         """
         try:
-            return os.path.basename(file.get("name")) if dl_type == "qbittorrent" else os.path.basename(file.name)
+            return file.get("name") if dl_type == "qbittorrent" else file.name
         except Exception as e:
             print(str(e))
             return ""

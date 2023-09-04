@@ -1,3 +1,4 @@
+import os
 import re
 from pathlib import Path
 from typing import List, Optional, Tuple, Set, Dict, Union
@@ -183,16 +184,23 @@ class DownloadChain(ChainBase):
                 torrent_site=_torrent.site_name
             )
             # 登记下载文件
-            self.downloadhis.add_files([
-                {
-                    "download_hash": _hash,
-                    "downloader": settings.DOWNLOADER,
-                    "fullpath": str(download_dir / _folder_name / file),
-                    "savepath": str(download_dir / _folder_name),
-                    "filepath": file,
-                    "torrentname": _meta.org_string,
-                } for file in _file_list if file
-            ])
+            download_files = []
+            for file in _file_list:
+                file_name = os.path.basename(file)
+                file_path = str(file).replace(file_name, "")
+                # 种子文件记录
+                download_files.append(
+                    {
+                        "download_hash": _hash,
+                        "downloader": settings.DOWNLOADER,
+                        "fullpath": str(download_dir / file_path / file_name),
+                        "savepath": str(download_dir / file_path),
+                        "filepath": file_name,
+                        "torrentname": _meta.org_string,
+                    }
+                )
+            if download_files:
+                self.downloadhis.add_files(download_files)
             # 发送消息
             self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, channel=channel)
             # 下载成功后处理
