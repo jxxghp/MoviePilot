@@ -278,3 +278,17 @@ class SystemUtils:
             if os.path.isdir(vol):
                 vols.append(vol)
         return vols
+
+    @staticmethod
+    def cpu_usage():
+        """
+        获取CPU使用率
+        """
+        return psutil.cpu_percent()
+
+    @staticmethod
+    def memory_usage():
+        """
+        获取内存使用大小
+        """
+        return psutil.virtual_memory().used

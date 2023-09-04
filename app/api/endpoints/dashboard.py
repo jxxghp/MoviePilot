@@ -124,3 +124,19 @@ def transfer(days: int = 7, db: Session = Depends(get_db),
     """
     transfer_stat = TransferHistory.statistic(db, days)
     return [stat[1] for stat in transfer_stat]
+
+
+@router.get("/cpu", summary="获取当前CPU使用率", response_model=int)
+def cpu(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    获取当前CPU使用率
+    """
+    return SystemUtils.cpu_usage()
+
+
+@router.get("/memory", summary="获取当前内存使用率", response_model=int)
+def memory(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    获取当前内存使用率
+    """
+    return SystemUtils.memory_usage()
