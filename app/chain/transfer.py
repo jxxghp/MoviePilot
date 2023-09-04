@@ -475,9 +475,6 @@ class TransferChain(ChainBase):
         if not state:
             return False, errmsg
 
-        # 删除旧历史记录
-        self.transferhis.delete(logid)
-
         return True, ""
 
     def manual_transfer(self, in_path: Path,
