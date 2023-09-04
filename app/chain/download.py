@@ -159,9 +159,14 @@ class DownloadChain(ChainBase):
             _hash, error_msg = None, "未知错误"
 
         if _hash:
+            # 下载文件路径
+            if _folder_name:
+                download_path = download_dir / _folder_name
+            else:
+                download_path = download_dir / _file_list[0] if _file_list else download_dir
             # 登记下载记录
             self.downloadhis.add(
-                path=_folder_name or _torrent.title,
+                path=download_path,
                 type=_media.type.value,
                 title=_media.title,
                 year=_media.year,

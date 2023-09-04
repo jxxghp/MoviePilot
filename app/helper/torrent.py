@@ -130,19 +130,22 @@ class TorrentHelper:
         """
         获取种子文件的文件夹名和文件清单
         :param torrent_path: 种子文件路径
-        :return: 文件夹名、文件清单
+        :return: 文件夹名、文件清单，单文件种子返回空文件夹名
         """
         if not torrent_path or not torrent_path.exists():
             return "", []
         try:
             torrentinfo = Torrent.from_file(torrent_path)
-            # 获取目录名
-            folder_name = torrentinfo.name
             # 获取文件清单
             if not torrentinfo.files:
+                # 单文件种子目录名返回空
+                folder_name = ""
                 # 单文件种子
                 file_list = [torrentinfo.name]
             else:
+                # 目录名
+                folder_name = torrentinfo.name
+                # 文件清单
                 file_list = [fileinfo.name for fileinfo in torrentinfo.files]
             logger.debug(f"{torrent_path.stem} -> 目录：{folder_name}，文件清单：{file_list}")
             return folder_name, file_list
