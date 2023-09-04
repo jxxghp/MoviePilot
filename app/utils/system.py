@@ -287,8 +287,8 @@ class SystemUtils:
         return psutil.cpu_percent()
 
     @staticmethod
-    def memory_usage():
+    def memory_usage() -> List[int]:
         """
-        获取内存使用大小
+        获取内存使用量和使用率
         """
-        return psutil.virtual_memory().used
+        return [psutil.virtual_memory().used, int(psutil.virtual_memory().percent)]

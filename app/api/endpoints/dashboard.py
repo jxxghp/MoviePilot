@@ -134,7 +134,7 @@ def cpu(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return SystemUtils.cpu_usage()
 
 
-@router.get("/memory", summary="获取当前内存使用率", response_model=int)
+@router.get("/memory", summary="获取当前内存使用量和使用率", response_model=List[int])
 def memory(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取当前内存使用率
