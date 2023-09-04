@@ -1,3 +1,4 @@
+import ipaddress
 from typing import List, Tuple, Dict, Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -54,6 +55,8 @@ class SpeedLimiter(_PluginBase):
     _allocation_ratio: str = ""
     _auto_limit: bool = False
     _limit_enabled: bool = False
+    # 不限速地址
+    _unlimited_ips = {}
     # 当前限速状态
     _current_state = ""
 
@@ -79,6 +82,10 @@ class SpeedLimiter(_PluginBase):
             # 限速服务开关
             self._limit_enabled = True if self._play_up_speed or self._play_down_speed or self._auto_limit else False
             self._allocation_ratio = config.get("allocation_ratio") or ""
+            # 不限速地址
+            self._unlimited_ips["ipv4"] = config.get("ipv4") or ""
+            self._unlimited_ips["ipv6"] = config.get("ipv6") or ""
+
             self._downloader = config.get("downloader") or []
             if self._downloader:
                 if 'qbittorrent' in self._downloader:
@@ -302,6 +309,45 @@ class SpeedLimiter(_PluginBase):
                             }
                         ]
                     },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'ipv4',
+                                            'label': '不限速地址范围（ipv4）',
+                                            'placeholder': '留空默认不限速内网ipv4'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'ipv6',
+                                            'label': '不限速地址范围（ipv6）',
+                                            'placeholder': '留空默认不限速内网ipv6'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
                 ]
             }
         ], {
@@ -314,6 +360,8 @@ class SpeedLimiter(_PluginBase):
             "noplay_down_speed": None,
             "bandwidth": None,
             "allocation_ratio": "",
+            "ipv4": "",
+            "ipv6": ""
         }
 
     def get_page(self) -> List[dict]:
@@ -347,7 +395,13 @@ class SpeedLimiter(_PluginBase):
                 logger.error(f"获取Emby播放会话失败：{str(e)}")
             # 计算有效比特率
             for session in playing_sessions:
-                if not IpUtils.is_private_ip(session.get("RemoteEndPoint")) \
+                # 设置了不限速范围则判断session ip是否在不限速范围内
+                if self._unlimited_ips["ipv4"] or self._unlimited_ips["ipv6"]:
+                    if not self.__allow_access(self._unlimited_ips, session.get("RemoteEndPoint")) \
+                            and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
+                        total_bit_rate += int(session.get("NowPlayingItem", {}).get("Bitrate") or 0)
+                # 未设置不限速范围，则默认不限速内网ip
+                elif not IpUtils.is_private_ip(session.get("RemoteEndPoint")) \
                         and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
                     total_bit_rate += int(session.get("NowPlayingItem", {}).get("Bitrate") or 0)
         elif settings.MEDIASERVER == "jellyfin":
@@ -363,7 +417,15 @@ class SpeedLimiter(_PluginBase):
                 logger.error(f"获取Jellyfin播放会话失败：{str(e)}")
             # 计算有效比特率
             for session in playing_sessions:
-                if not IpUtils.is_private_ip(session.get("RemoteEndPoint")) \
+                # 设置了不限速范围则判断session ip是否在不限速范围内
+                if self._unlimited_ips["ipv4"] or self._unlimited_ips["ipv6"]:
+                    if not self.__allow_access(self._unlimited_ips, session.get("RemoteEndPoint")) \
+                            and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
+                        media_streams = session.get("NowPlayingItem", {}).get("MediaStreams") or []
+                        for media_stream in media_streams:
+                            total_bit_rate += int(media_stream.get("BitRate") or 0)
+                # 未设置不限速范围，则默认不限速内网ip
+                elif not IpUtils.is_private_ip(session.get("RemoteEndPoint")) \
                         and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
                     media_streams = session.get("NowPlayingItem", {}).get("MediaStreams") or []
                     for media_stream in media_streams:
@@ -381,7 +443,13 @@ class SpeedLimiter(_PluginBase):
                     })
                 # 计算有效比特率
                 for session in playing_sessions:
-                    if IpUtils.is_private_ip(session.get("address")) \
+                    # 设置了不限速范围则判断session ip是否在不限速范围内
+                    if self._unlimited_ips["ipv4"] or self._unlimited_ips["ipv6"]:
+                        if not self.__allow_access(self._unlimited_ips, session.get("address")) \
+                                and session.get("type") == "Video":
+                            total_bit_rate += int(session.get("bitrate") or 0)
+                    # 未设置不限速范围，则默认不限速内网ip
+                    elif not IpUtils.is_private_ip(session.get("address")) \
                             and session.get("type") == "Video":
                         total_bit_rate += int(session.get("bitrate") or 0)
 
@@ -492,6 +560,42 @@ class SpeedLimiter(_PluginBase):
                                     )
         except Exception as e:
             logger.error(f"设置限速失败：{str(e)}")
+
+    @staticmethod
+    def __allow_access(allow_ips, ip):
+        """
+        判断IP是否合法
+        :param allow_ips: 充许的IP范围 {"ipv4":, "ipv6":}
+        :param ip: 需要检查的ip
+        """
+        if not allow_ips:
+            return True
+        try:
+            ipaddr = ipaddress.ip_address(ip)
+            if ipaddr.version == 4:
+                if not allow_ips.get('ipv4'):
+                    return True
+                allow_ipv4s = allow_ips.get('ipv4').split(",")
+                for allow_ipv4 in allow_ipv4s:
+                    if ipaddr in ipaddress.ip_network(allow_ipv4, strict=False):
+                        return True
+            elif ipaddr.ipv4_mapped:
+                if not allow_ips.get('ipv4'):
+                    return True
+                allow_ipv4s = allow_ips.get('ipv4').split(",")
+                for allow_ipv4 in allow_ipv4s:
+                    if ipaddr.ipv4_mapped in ipaddress.ip_network(allow_ipv4, strict=False):
+                        return True
+            else:
+                if not allow_ips.get('ipv6'):
+                    return True
+                allow_ipv6s = allow_ips.get('ipv6').split(",")
+                for allow_ipv6 in allow_ipv6s:
+                    if ipaddr in ipaddress.ip_network(allow_ipv6, strict=False):
+                        return True
+        except Exception:
+            return False
+        return False
 
     def stop_service(self):
         """
