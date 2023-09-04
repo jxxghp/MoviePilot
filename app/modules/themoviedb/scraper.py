@@ -2,11 +2,14 @@ import time
 from pathlib import Path
 from xml.dom import minidom
 
+from requests import RequestException
+
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.schemas.types import MediaType
+from app.utils.common import retry
 from app.utils.dom import DomUtils
 from app.utils.http import RequestUtils
 
@@ -312,6 +315,7 @@ class TmdbScraper:
         self.__save_nfo(doc, file_path.with_suffix(".nfo"))
 
     @staticmethod
+    @retry(RequestException, logger=logger)
     def __save_image(url: str, file_path: Path):
         """
         下载图片并保存
@@ -320,7 +324,7 @@ class TmdbScraper:
             return
         try:
             logger.info(f"正在下载{file_path.stem}图片：{url} ...")
-            r = RequestUtils().get_res(url=url)
+            r = RequestUtils().get_res(url=url, raise_exception=True)
             if r:
                 file_path.write_bytes(r.content)
                 logger.info(f"图片已保存：{file_path}")
