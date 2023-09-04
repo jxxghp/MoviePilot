@@ -1051,11 +1051,6 @@ class SiteStatistic(_PluginBase):
             with ThreadPool(min(len(refresh_sites), int(self._queue_cnt or 5))) as p:
                 p.map(self.__refresh_site_data, refresh_sites)
 
-            # 获取今天的日期
-            key = datetime.now().strftime('%Y-%m-%d')
-            # 保存数据
-            self.save_data(key, self._sites_data)
-
             # 通知刷新完成
             if self._notify:
                 yesterday_sites_data = {}
@@ -1101,9 +1096,14 @@ class SiteStatistic(_PluginBase):
                     self.post_message(mtype=NotificationType.SiteMessage,
                                       title="站点数据统计", text="\n".join(messages))
 
-        # 更新时间
-        self.save_data("last_update_time", key)
-        logger.info("站点数据刷新完成")
+            # 获取今天的日期
+            key = datetime.now().strftime('%Y-%m-%d')
+            # 保存数据
+            self.save_data(key, self._sites_data)
+
+            # 更新时间
+            self.save_data("last_update_time", key)
+            logger.info("站点数据刷新完成")
 
     def __update_config(self):
         self.update_config({
