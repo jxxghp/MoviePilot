@@ -106,7 +106,3 @@ class Scheduler(metaclass=Singleton):
         """
         if self._scheduler.running:
             self._scheduler.shutdown()
-
-    def __del__(self):
-        if self._db:
-            self._db.close()

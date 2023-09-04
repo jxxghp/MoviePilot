@@ -242,7 +242,3 @@ class Command(metaclass=Singleton):
             args = " ".join(event_str.split()[1:])
             if self.get(cmd):
                 self.execute(cmd, args, event_channel, event_user)
-
-    def __del__(self):
-        if self._db:
-            self._db.close()

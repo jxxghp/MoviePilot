@@ -41,7 +41,3 @@ class DbOper:
             self._db = db
         else:
             self._db = ScopedSession()
-
-    def __del__(self):
-        if self._db:
-            self._db.close()
