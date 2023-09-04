@@ -119,6 +119,8 @@ class Settings(BaseSettings):
     TR_PASSWORD: str = None
     # 种子标签
     TORRENT_TAG: str = "MOVIEPILOT"
+    # 文件管理默认打开目录
+    FILE_MANAGE_DEFAULT_PATH: str = None
     # 下载保存目录，容器内映射路径需要一致
     DOWNLOAD_PATH: str = "/downloads"
     # 电影下载保存目录，容器内映射路径需要一致
@@ -260,6 +262,9 @@ class Settings(BaseSettings):
         with self.LOG_PATH as p:
             if not p.exists():
                 p.mkdir(parents=True, exist_ok=True)
+        # 若未配置FILE_MANAGE_DEFAULT_PATH，则使用DOWNLOAD_PATH路径
+        if not self.FILE_MANAGE_DEFAULT_PATH:
+            self.FILE_MANAGE_DEFAULT_PATH = self.DOWNLOAD_PATH
 
     class Config:
         case_sensitive = True
