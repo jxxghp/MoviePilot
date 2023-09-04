@@ -137,7 +137,9 @@ class TorrentHelper:
         try:
             torrentinfo = Torrent.from_file(torrent_path)
             # 获取文件清单
-            if not torrentinfo.files:
+            if (not torrentinfo.files
+                    or (len(torrentinfo.files) == 1
+                        and torrentinfo.files[0].name == torrentinfo.name)):
                 # 单文件种子目录名返回空
                 folder_name = ""
                 # 单文件种子
