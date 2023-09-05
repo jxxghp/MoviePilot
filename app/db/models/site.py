@@ -61,4 +61,4 @@ class Site(Base):
     @staticmethod
     def reset(db: Session):
         db.query(Site).delete()
-        db.commit()
+        Base.commit(db)

@@ -47,7 +47,7 @@ class MediaServerItem(Base):
     @staticmethod
     def empty(db: Session, server: str):
         db.query(MediaServerItem).filter(MediaServerItem.server == server).delete()
-        db.commit()
+        Base.commit(db)
 
     @staticmethod
     def exist_by_tmdbid(db: Session, tmdbid: int, mtype: str):

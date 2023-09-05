@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy.orm import as_declarative, declared_attr
+from sqlalchemy.orm import as_declarative, declared_attr, Session
 
 
 @as_declarative()
@@ -8,33 +8,41 @@ class Base:
     id: Any
     __name__: str
 
-    def create(self, db):
+    @staticmethod
+    def commit(db: Session):
+        try:
+            db.commit()
+        except Exception as err:
+            db.rollback()
+            raise err
+
+    def create(self, db: Session):
         db.add(self)
-        db.commit()
+        self.commit(db)
         return self
 
     @classmethod
-    def get(cls, db, rid: int):
+    def get(cls, db: Session, rid: int):
         return db.query(cls).filter(cls.id == rid).first()
 
-    def update(self, db, payload: dict):
+    def update(self, db: Session, payload: dict):
         payload = {k: v for k, v in payload.items() if v is not None}
         for key, value in payload.items():
             setattr(self, key, value)
-        db.commit()
+        Base.commit(db)
 
     @classmethod
-    def delete(cls, db, rid):
+    def delete(cls, db: Session, rid):
         db.query(cls).filter(cls.id == rid).delete()
-        db.commit()
+        Base.commit(db)
 
     @classmethod
-    def truncate(cls, db):
+    def truncate(cls, db: Session):
         db.query(cls).delete()
-        db.commit()
+        Base.commit(db)
 
     @classmethod
-    def list(cls, db):
+    def list(cls, db: Session):
         return db.query(cls).all()
 
     def to_dict(self):

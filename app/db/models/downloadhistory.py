@@ -136,4 +136,4 @@ class DownloadFiles(Base):
                 "state": 0
             }
         )
-        db.commit()
+        Base.commit(db)
