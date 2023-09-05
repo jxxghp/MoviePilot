@@ -336,10 +336,10 @@ class TransferChain(ChainBase):
             for mkey, media in medias.items():
                 transfer_meta = metas[mkey]
                 transfer_info = transfers[mkey]
-                # 刷新媒体库
-                self.refresh_mediaserver(mediainfo=media, file_path=transfer_info.target_path)
                 # 刮削
                 self.scrape_metadata(path=transfer_info.target_path, mediainfo=media)
+                # 刷新媒体库
+                self.refresh_mediaserver(mediainfo=media, file_path=transfer_info.target_path)
                 # 发送通知
                 se_str = None
                 if media.type == MediaType.TV:
