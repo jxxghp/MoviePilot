@@ -122,3 +122,4 @@ class TransferHistory(Base):
                 "download_hash": download_hash
             }
         )
+        db.commit()
