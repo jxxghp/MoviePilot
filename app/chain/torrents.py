@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, List, Union
 
 from requests import Session
@@ -12,6 +13,7 @@ from app.log import logger
 from app.schemas import Notification
 from app.schemas.types import SystemConfigKey, MessageChannel
 from app.utils.string import StringUtils
+from app.utils.timer import TimerUtils
 
 
 class TorrentsChain(ChainBase):
@@ -20,6 +22,7 @@ class TorrentsChain(ChainBase):
     """
 
     _cache_file = "__torrents_cache__"
+    _last_refresh_time = None
 
     def __init__(self, db: Session = None):
         super().__init__(db)
@@ -47,6 +50,14 @@ class TorrentsChain(ChainBase):
         """
         刷新站点最新资源
         """
+        # 控制刷新频率不能小于10分钟
+        if self._last_refresh_time and TimerUtils.diff_minutes(self._last_refresh_time) < 10:
+            logger.warn(f'种子刷新频率过快，跳过本次刷新')
+            return self.get_torrents()
+
+        # 记录刷新时间
+        self._last_refresh_time = datetime.now()
+
         # 读取缓存
         torrents_cache = self.get_torrents()
 

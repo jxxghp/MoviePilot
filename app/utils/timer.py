@@ -64,3 +64,13 @@ class TimerUtils:
             time_difference_string += f"{minutes}分钟"
 
         return time_difference_string
+
+    @staticmethod
+    def diff_minutes(input_datetime: datetime) -> int:
+        """
+        计算当前时间与输入时间的分钟差
+        """
+        if not input_datetime:
+            return 0
+        time_difference = datetime.datetime.now() - input_datetime
+        return int(time_difference.total_seconds() / 60)
