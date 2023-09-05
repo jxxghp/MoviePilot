@@ -117,14 +117,14 @@ class AutoSignIn(_PluginBase):
             if self._enabled:
                 if self._cron:
                     try:
-                        if self._cron.strip().count(" ") == 4:
+                        if str(self._cron).strip().count(" ") == 4:
                             self._scheduler.add_job(func=self.sign_in,
                                                     trigger=CronTrigger.from_crontab(self._cron),
                                                     name=f"站点自动{self._action}")
                             logger.info(f"站点自动{self._action}服务启动，执行周期 {self._cron}")
                         else:
                             # 2.3/9-23
-                            crons = self._cron.strip().split("/")
+                            crons = str(self._cron).strip().split("/")
                             if len(crons) == 2:
                                 # 2.3
                                 cron = crons[0]
@@ -138,7 +138,7 @@ class AutoSignIn(_PluginBase):
                                 if self._start_time and self._end_time:
                                     self._scheduler.add_job(func=self.sign_in,
                                                             trigger="interval",
-                                                            hours=float(cron.strip()),
+                                                            hours=float(str(cron).strip()),
                                                             name=f"站点自动{self._action}")
                                     logger.info(
                                         f"站点自动{self._action}服务启动，执行周期 {self._start_time}点-{self._end_time}点 每{cron}小时执行一次")
@@ -155,7 +155,7 @@ class AutoSignIn(_PluginBase):
                                 self._end_time = 24
                                 self._scheduler.add_job(func=self.sign_in,
                                                         trigger="interval",
-                                                        hours=float(self._cron.strip()),
+                                                        hours=float(str(self._cron).strip()),
                                                         name=f"站点自动{self._action}")
                                 logger.info(
                                     f"站点自动{self._action}服务启动，执行周期 {self._start_time}点-{self._end_time}点 每{self._cron}小时执行一次")
