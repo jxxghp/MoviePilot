@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 from threading import Lock
-from typing import Optional, List, Tuple, Union
+from typing import Optional, List, Tuple, Union, Dict
 
 from jinja2 import Template
 
@@ -11,7 +11,7 @@ from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
-from app.schemas import TransferInfo
+from app.schemas import TransferInfo, ExistMediaInfo
 from app.schemas.types import MediaType
 from app.utils.system import SystemUtils
 
@@ -314,6 +314,34 @@ class FileTransferModule(_ModuleBase):
                                            transfer_type=transfer_type,
                                            over_flag=over_flag)
 
+    @staticmethod
+    def __get_library_dir(mediainfo: MediaInfo, target_dir: Path) -> Path:
+        """
+        根据设置并装媒体库目录
+        """
+        if mediainfo.type == MediaType.MOVIE:
+            # 电影
+            if settings.LIBRARY_MOVIE_NAME:
+                target_dir = target_dir / settings.LIBRARY_MOVIE_NAME / mediainfo.category
+            else:
+                # 目的目录加上类型和二级分类
+                target_dir = target_dir / mediainfo.type.value / mediainfo.category
+
+        if mediainfo.type == MediaType.TV:
+            # 电视剧
+            if settings.LIBRARY_ANIME_NAME \
+                    and mediainfo.genre_ids \
+                    and set(mediainfo.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
+                # 动漫
+                target_dir = target_dir / settings.LIBRARY_ANIME_NAME / mediainfo.category
+            elif settings.LIBRARY_TV_NAME:
+                # 电视剧
+                target_dir = target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
+            else:
+                # 目的目录加上类型和二级分类
+                target_dir = target_dir / mediainfo.type.value / mediainfo.category
+        return target_dir
+
     def transfer_media(self,
                        in_path: Path,
                        in_meta: MetaBase,
@@ -337,27 +365,8 @@ class FileTransferModule(_ModuleBase):
         if not target_dir.exists():
             return TransferInfo(message=f"{target_dir} 目标路径不存在")
 
-        if mediainfo.type == MediaType.MOVIE:
-            # 电影
-            if settings.LIBRARY_MOVIE_NAME:
-                target_dir = target_dir / settings.LIBRARY_MOVIE_NAME / mediainfo.category
-            else:
-                # 目的目录加上类型和二级分类
-                target_dir = target_dir / mediainfo.type.value / mediainfo.category
-
-        if mediainfo.type == MediaType.TV:
-            # 电视剧
-            if settings.LIBRARY_ANIME_NAME \
-                    and mediainfo.genre_ids \
-                    and set(mediainfo.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
-                # 动漫
-                target_dir = target_dir / settings.LIBRARY_ANIME_NAME / mediainfo.category
-            elif settings.LIBRARY_TV_NAME:
-                # 电视剧
-                target_dir = target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
-            else:
-                # 目的目录加上类型和二级分类
-                target_dir = target_dir / mediainfo.type.value / mediainfo.category
+        # 媒体库目录
+        target_dir = self.__get_library_dir(mediainfo=mediainfo, target_dir=target_dir)
 
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \
@@ -540,3 +549,69 @@ class FileTransferModule(_ModuleBase):
                     return Path(path)
         # 默认返回第1个
         return Path(dest_paths[0])
+
+    def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
+        """
+        判断媒体文件是否存在于本地文件系统
+        :param mediainfo:  识别的媒体信息
+        :param itemid:  媒体服务器ItemID
+        :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
+        """
+        if not settings.LIBRARY_PATH:
+            return None
+        # 目的路径，多路径以,分隔
+        dest_paths = str(settings.LIBRARY_PATH).split(",")
+        # 检查每一个媒体库目录
+        for dest_path in dest_paths:
+            # 媒体库路径
+            target_dir = self.get_target_path(Path(dest_path))
+            if not target_dir:
+                continue
+            # 媒体分类路径
+            target_dir = self.__get_library_dir(mediainfo=mediainfo, target_dir=target_dir)
+            # 重命名格式
+            rename_format = settings.TV_RENAME_FORMAT \
+                if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+            # 媒体完整路径
+            media_path = self.get_rename_path(
+                path=target_dir,
+                template_string=rename_format,
+                rename_dict=self.__get_naming_dict(meta=MetaInfo(mediainfo.title),
+                                                   mediainfo=mediainfo)
+            )
+
+            if mediainfo.type == MediaType.MOVIE:
+                # 电影取父目录
+                media_path = media_path.parent
+            else:
+                # 电视剧取上两级目录
+                media_path = media_path.parent.parent
+            if not media_path.exists():
+                continue
+
+            # 检索媒体文件
+            media_files = SystemUtils.list_files(directory=media_path, extensions=settings.RMT_VIDEOEXT)
+            if not media_files:
+                continue
+
+            if mediainfo.type == MediaType.MOVIE:
+                # 电影存在任何文件为存在
+                logger.info(f"文件系统已存在：{mediainfo.title_year}")
+                return ExistMediaInfo(type=MediaType.MOVIE)
+            else:
+                # 电视剧检索集数
+                seasons: Dict[int, list] = {}
+                for media_file in media_files:
+                    file_meta = MetaInfo(media_file.stem)
+                    season_index = file_meta.begin_season or 1
+                    episode_index = file_meta.begin_episode
+                    if not episode_index:
+                        continue
+                    if season_index not in seasons:
+                        seasons[season_index] = []
+                    seasons[season_index].append(episode_index)
+                # 返回剧集情况
+                logger.info(f"{mediainfo.title_year} 文件系统已存在：{seasons}")
+                return ExistMediaInfo(type=MediaType.TV, seasons=seasons)
+        # 不存在
+        return None
