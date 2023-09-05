@@ -243,14 +243,14 @@ class Transmission(metaclass=Singleton):
             logger.error(f"获取传输信息出错：{err}")
             return None
 
-    def set_speed_limit(self, download_limit: float = None, upload_limit: float = None):
+    def set_speed_limit(self, download_limit: float = None, upload_limit: float = None) -> bool:
         """
         设置速度限制
         :param download_limit: 下载速度限制，单位KB/s
         :param upload_limit: 上传速度限制，单位kB/s
         """
         if not self.trc:
-            return
+            return False
         try:
             download_limit_enabled = True if download_limit else False
             upload_limit_enabled = True if upload_limit else False
@@ -260,6 +260,7 @@ class Transmission(metaclass=Singleton):
                 speed_limit_down_enabled=download_limit_enabled,
                 speed_limit_up_enabled=upload_limit_enabled
             )
+            return True
         except Exception as err:
             logger.error(f"设置速度限制出错：{err}")
             return False
