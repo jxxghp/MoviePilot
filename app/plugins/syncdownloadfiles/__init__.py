@@ -149,13 +149,6 @@ class SyncDownloadFiles(_PluginBase):
 
                 # 获取种子download_dir
                 download_dir = self.__get_download_dir(torrent, downloader)
-                # 获取种子name
-                torrent_name = self.__get_torrent_name(torrent, downloader)
-                # 种子保存目录
-                save_path = Path(download_dir).joinpath(torrent_name)
-                # 获取种子文件
-                torrent_files = self.__get_torrent_files(torrent, downloader, downloader_obj)
-                logger.info(f"开始同步种子 {hash_str}, 文件数 {len(torrent_files)}")
 
                 # 处理路径映射
                 if self._dirs:
@@ -163,6 +156,14 @@ class SyncDownloadFiles(_PluginBase):
                     for path in paths:
                         sub_paths = path.split(":")
                         download_dir = download_dir.replace(sub_paths[0], sub_paths[1]).replace('\\', '/')
+
+                # 获取种子name
+                torrent_name = self.__get_torrent_name(torrent, downloader)
+                # 种子保存目录
+                save_path = Path(download_dir).joinpath(torrent_name)
+                # 获取种子文件
+                torrent_files = self.__get_torrent_files(torrent, downloader, downloader_obj)
+                logger.info(f"开始同步种子 {hash_str}, 文件数 {len(torrent_files)}")
 
                 download_files = []
                 for file in torrent_files:

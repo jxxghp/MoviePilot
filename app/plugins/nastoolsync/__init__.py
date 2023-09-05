@@ -387,7 +387,7 @@ class NAStoolSync(_PluginBase):
                     mdest = mdest.replace(sub_paths[0], sub_paths[1]).replace('\\', '/')
 
             # 存库
-            self._transferhistory.add_force(
+            self._transferhistory.add(
                 src=msrc,
                 dest=mdest,
                 mode=mmode,
