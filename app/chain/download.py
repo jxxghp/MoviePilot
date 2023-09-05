@@ -643,7 +643,8 @@ class DownloadChain(ChainBase):
             self.post_message(Notification(
                 channel=channel,
                 mtype=NotificationType.Download,
-                title="没有正在下载的任务！"))
+                title="没有正在下载的任务！",
+                userid=userid))
             return
         # 发送消息
         title = f"共 {len(torrents)} 个任务正在下载："

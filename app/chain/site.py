@@ -91,7 +91,8 @@ class SiteChain(ChainBase):
         if not site_list:
             self.post_message(Notification(
                 channel=channel,
-                title="没有维护任何站点信息！"))
+                title="没有维护任何站点信息！",
+                userid=userid))
         title = f"共有 {len(site_list)} 个站点，回复对应指令操作：" \
                 f"\n- 禁用站点：/site_disable [id]" \
                 f"\n- 启用站点：/site_enable [id]" \
@@ -221,8 +222,8 @@ class SiteChain(ChainBase):
                 title=f"站点编号 {site_id} 不存在！", userid=userid))
             return
         self.post_message(Notification(
-                channel=channel,
-                title=f"开始更新【{site_info.name}】Cookie&UA ...", userid=userid))
+            channel=channel,
+            title=f"开始更新【{site_info.name}】Cookie&UA ...", userid=userid))
         # 用户名
         username = args[1]
         # 密码
