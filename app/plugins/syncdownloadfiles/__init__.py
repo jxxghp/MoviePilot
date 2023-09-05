@@ -167,6 +167,9 @@ class SyncDownloadFiles(_PluginBase):
 
                 download_files = []
                 for file in torrent_files:
+                    # 过滤掉没下载的文件
+                    if not self.__is_download(file, downloader):
+                        continue
                     # 种子文件路径
                     file_path_str = self.__get_file_path(file, downloader)
                     file_path = Path(file_path_str)
@@ -281,6 +284,20 @@ class SyncDownloadFiles(_PluginBase):
                 return False
 
         return True
+
+    @staticmethod
+    def __is_download(file: Any, dl_type: str):
+        """
+        判断文件是否被下载
+        """
+        try:
+            if dl_type == "qbittorrent":
+                return True
+            else:
+                return file.completed and file.completed > 0
+        except Exception as e:
+            print(str(e))
+            return True
 
     @staticmethod
     def __get_file_path(file: Any, dl_type: str):
