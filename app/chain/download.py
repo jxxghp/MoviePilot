@@ -339,27 +339,25 @@ class DownloadChain(ChainBase):
                                 if not torrent_path:
                                     continue
                                 torrent_episodes = self.torrent.get_torrent_episodes(torrent_files)
-                                if torrent_episodes:
-                                    # 总集数
-                                    need_total = __get_season_episodes(need_tmdbid, torrent_season[0])
-                                    if len(torrent_episodes) < need_total:
-                                        # 更新集数范围
-                                        begin_ep = min(torrent_episodes)
-                                        end_ep = max(torrent_episodes)
-                                        meta.set_episodes(begin=begin_ep, end=end_ep)
-                                        logger.info(
-                                            f"{meta.org_string} 解析文件集数为 [{begin_ep}-{end_ep}]，不是完整合集")
-                                        continue
-                                    else:
-                                        # 下载
-                                        download_id = self.download_single(context=context,
-                                                                           torrent_file=torrent_path,
-                                                                           save_path=save_path,
-                                                                           userid=userid)
-                                else:
-                                    logger.info(
-                                        f"{meta.org_string} 解析文件集数为 {len(torrent_episodes)}，不是完整合集")
+                                logger.info(f"{meta.org_string} 解析文件集数为 {torrent_episodes}")
+                                if not torrent_episodes:
                                     continue
+                                # 总集数
+                                need_total = __get_season_episodes(need_tmdbid, torrent_season[0])
+                                if len(torrent_episodes) < need_total:
+                                    # 更新集数范围
+                                    begin_ep = min(torrent_episodes)
+                                    end_ep = max(torrent_episodes)
+                                    meta.set_episodes(begin=begin_ep, end=end_ep)
+                                    logger.info(
+                                        f"{meta.org_string} 解析文件集数发现不是完整合集")
+                                    continue
+                                else:
+                                    # 下载
+                                    download_id = self.download_single(context=context,
+                                                                       torrent_file=torrent_path,
+                                                                       save_path=save_path,
+                                                                       userid=userid)
                             else:
                                 # 下载
                                 download_id = self.download_single(context, save_path=save_path, userid=userid)
@@ -481,11 +479,13 @@ class DownloadChain(ChainBase):
                                 continue
                             # 种子全部集
                             torrent_episodes = self.torrent.get_torrent_episodes(torrent_files)
+                            logger.info(f"{torrent.site_name} - {meta.org_string} 解析文件集数：{torrent_episodes}")
                             # 选中的集
                             selected_episodes = set(torrent_episodes).intersection(set(need_episodes))
                             if not selected_episodes:
                                 logger.info(f"{torrent.site_name} - {torrent.title} 没有需要的集，跳过...")
                                 continue
+                            logger.info(f"{torrent.site_name} - {torrent.title} 选中集数：{selected_episodes}")
                             # 添加下载
                             download_id = self.download_single(context=context,
                                                                torrent_file=torrent_path,

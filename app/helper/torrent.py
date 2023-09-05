@@ -147,9 +147,17 @@ class TorrentHelper:
             else:
                 # 目录名
                 folder_name = torrentinfo.name
-                # 文件清单
-                file_list = [fileinfo.name for fileinfo in torrentinfo.files]
-            logger.debug(f"{torrent_path.stem} -> 目录：{folder_name}，文件清单：{file_list}")
+                # 文件清单，如果一级目录与种子名相同则去掉
+                file_list = []
+                for fileinfo in torrentinfo.files:
+                    file_path = Path(fileinfo.name)
+                    # 根路径
+                    root_path = file_path.parts[0]
+                    if root_path == folder_name:
+                        file_list.append(str(file_path.relative_to(root_path)))
+                    else:
+                        file_list.append(fileinfo.name)
+            logger.info(f"解析种子：{torrent_path.name} => 目录：{folder_name}，文件清单：{file_list}")
             return folder_name, file_list
         except Exception as err:
             logger.error(f"种子文件解析失败：{err}")
@@ -259,9 +267,11 @@ class TorrentHelper:
         for file in files:
             if not file:
                 continue
-            if Path(file).suffix not in settings.RMT_MEDIAEXT:
+            file_path = Path(file)
+            if file_path.suffix not in settings.RMT_MEDIAEXT:
                 continue
-            meta = MetaInfo(file)
+            # 只使用文件名识别
+            meta = MetaInfo(file_path.stem)
             if not meta.begin_episode:
                 continue
             episodes = list(set(episodes).union(set(meta.episode_list)))

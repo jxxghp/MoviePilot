@@ -1,19 +1,17 @@
-import os
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any, List, Dict, Tuple, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.transferhistory_oper import TransferHistoryOper
+from app.log import logger
 from app.modules.qbittorrent import Qbittorrent
 from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
-from typing import Any, List, Dict, Tuple, Optional
-from app.log import logger
 
 
 class SyncDownloadFiles(_PluginBase):
@@ -153,6 +151,8 @@ class SyncDownloadFiles(_PluginBase):
                 download_dir = self.__get_download_dir(torrent, downloader)
                 # 获取种子name
                 torrent_name = self.__get_torrent_name(torrent, downloader)
+                # 种子保存目录
+                save_path = Path(download_dir).joinpath(torrent_name)
                 # 获取种子文件
                 torrent_files = self.__get_torrent_files(torrent, downloader, downloader_obj)
                 logger.info(f"开始同步种子 {hash_str}, 文件数 {len(torrent_files)}")
@@ -166,12 +166,26 @@ class SyncDownloadFiles(_PluginBase):
 
                 download_files = []
                 for file in torrent_files:
-                    file_name = self.__get_file_name(file, downloader)
-                    full_path = Path(download_dir).joinpath(torrent_name, file_name)
+                    # 种子文件路径
+                    file_path_str = self.__get_file_path(file, downloader)
+                    file_path = Path(file_path_str)
+                    # 只处理视频格式
+                    if not file_path.suffix \
+                            or file_path.suffix not in settings.RMT_MEDIAEXT:
+                        continue
+                    # 种子文件根路程
+                    root_path = file_path.parts[0]
+                    # 不含种子名称的种子文件相对路径
+                    if root_path == torrent_name:
+                        rel_path = str(file_path.relative_to(root_path))
+                    else:
+                        rel_path = str(file_path)
+                    # 完整路径
+                    full_path = save_path.joinpath(rel_path)
                     if self._history:
                         transferhis = self.transferhis.get_by_src(str(full_path))
                         if transferhis and not transferhis.download_hash:
-                            logger.info(f"开始补充转移记录 {transferhis.id} download_hash {hash_str}")
+                            logger.info(f"开始补充转移记录：{transferhis.id} download_hash {hash_str}")
                             self.transferhis.update_download_hash(historyid=transferhis.id,
                                                                   download_hash=hash_str)
 
@@ -181,8 +195,8 @@ class SyncDownloadFiles(_PluginBase):
                             "download_hash": hash_str,
                             "downloader": downloader,
                             "fullpath": str(full_path),
-                            "savepath": str(Path(download_dir).joinpath(torrent_name)),
-                            "filepath": file_name,
+                            "savepath": str(save_path),
+                            "filepath": rel_path,
                             "torrentname": torrent_name,
                         }
                     )
@@ -268,12 +282,12 @@ class SyncDownloadFiles(_PluginBase):
         return True
 
     @staticmethod
-    def __get_file_name(file: Any, dl_type: str):
+    def __get_file_path(file: Any, dl_type: str):
         """
-        获取文件名
+        获取文件路径
         """
         try:
-            return os.path.basename(file.get("name")) if dl_type == "qbittorrent" else os.path.basename(file.name)
+            return file.get("name") if dl_type == "qbittorrent" else file.name
         except Exception as e:
             print(str(e))
             return ""
