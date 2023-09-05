@@ -328,7 +328,7 @@ class WeChat(metaclass=Singleton):
                 "button": [
                     {
                         "name": "操作",
-                        "sub_button": []
+                        "sub_button": buttons
                     }
                 ]
             }
