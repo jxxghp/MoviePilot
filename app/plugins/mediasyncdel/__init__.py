@@ -194,6 +194,7 @@ class MediaSyncDel(_PluginBase):
                                                    'model': 'sync_type',
                                                    'label': '同步方式',
                                                    'items': [
+                                                       {'title': 'webhook', 'value': 'webhook'},
                                                        {'title': '日志', 'value': 'log'},
                                                        {'title': 'Scripter X', 'value': 'plugin'}
                                                    ]
@@ -248,7 +249,9 @@ class MediaSyncDel(_PluginBase):
                                            {
                                                'component': 'VAlert',
                                                'props': {
-                                                   'text': '同步方式分为日志同步和Scripter X。日志同步需要配置执行周期，默认30分钟执行一次。'
+                                                   'text': '同步方式分为webhook、日志同步和Scripter X。'
+                                                           'webhook需要Emby4.8.0.45及以上开启媒体删除的webhook。'
+                                                           '日志同步需要配置执行周期，默认30分钟执行一次。'
                                                            'Scripter X方式需要emby安装并配置Scripter X插件，无需配置执行周期。'
                                                }
                                            }
@@ -262,7 +265,7 @@ class MediaSyncDel(_PluginBase):
                    "enabled": False,
                    "notify": True,
                    "del_source": False,
-                   "sync_type": "log",
+                   "sync_type": "webhook",
                    "cron": "*/30 * * * *",
                    "exclude_path": "",
                }
@@ -420,35 +423,36 @@ class MediaSyncDel(_PluginBase):
         ]
 
     @eventmanager.register(EventType.WebhookMessage)
-    def sync_del_by_plugin(self, event):
+    def sync_del_by_plugin_or_webhook(self, event):
         """
         emby删除媒体库同步删除历史记录
-        Scripter X插件
+        Scripter X插件 ｜ webhook
         """
         if not self._enabled:
             return
         event_data = event.event_data
         event_type = event_data.event
-        if not event_type or str(event_type) != 'media_del':
+        if not event_type or (str(event_type) != 'media_del' and str(event_type) != 'library.deleted'):
             return
 
-        # 是否虚拟标识
-        item_isvirtual = event_data.item_isvirtual
-        if not item_isvirtual:
-            logger.error("item_isvirtual参数未配置，为防止误删除，暂停插件运行")
-            self.update_config({
-                "enabled": False,
-                "del_source": self._del_source,
-                "exclude_path": self._exclude_path,
-                "notify": self._notify,
-                "cron": self._cron,
-                "sync_type": self._sync_type,
-            })
-            return
+        # Scripter X插件 需要是否虚拟标识
+        if str(event_type) == 'media_del':
+            item_isvirtual = event_data.item_isvirtual
+            if not item_isvirtual:
+                logger.error("item_isvirtual参数未配置，为防止误删除，暂停插件运行")
+                self.update_config({
+                    "enabled": False,
+                    "del_source": self._del_source,
+                    "exclude_path": self._exclude_path,
+                    "notify": self._notify,
+                    "cron": self._cron,
+                    "sync_type": self._sync_type,
+                })
+                return
 
-        # 如果是虚拟item，则直接return，不进行删除
-        if item_isvirtual == 'True':
-            return
+            # 如果是虚拟item，则直接return，不进行删除
+            if item_isvirtual == 'True':
+                return
 
         # 读取历史记录
         history = self.get_data('history') or []
