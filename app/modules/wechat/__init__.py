@@ -101,11 +101,17 @@ class WechatModule(_ModuleBase):
                         user_id == admin_user for admin_user in wechat_admins):
                     self.wechat.send_msg(title="用户无权限执行菜单命令", userid=user_id)
                     return None
+                # 根据Event执行命令
+                content = event
+                logger.info(f"收到微信事件：userid={user_id}, event={content}")
             elif msg_type == "text":
                 # 文本消息
                 content = DomUtils.tag_value(root_node, "Content", default="")
-                if content:
-                    logger.info(f"收到微信消息：userid={user_id}, text={content}")
+                logger.info(f"收到微信消息：userid={user_id}, text={content}")
+            else:
+                return None
+
+            if content:
                 # 处理消息内容
                 return CommingMessage(channel=MessageChannel.Wechat,
                                       userid=user_id, username=user_id, text=content)
@@ -145,3 +151,10 @@ class WechatModule(_ModuleBase):
         :return: 成功或失败
         """
         return self.wechat.send_torrents_msg(title=message.title, torrents=torrents, userid=message.userid)
+
+    def register_commands(self, commands: dict):
+        """
+        注册命令，实现这个函数接收系统可用的命令菜单
+        :param commands: 命令字典
+        """
+        self.wechat.create_menus(commands)

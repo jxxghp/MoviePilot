@@ -33,6 +33,8 @@ class WeChat(metaclass=Singleton):
     _send_msg_url = f"{settings.WECHAT_PROXY}/cgi-bin/message/send?access_token=%s"
     # 企业微信获取TokenURL
     _token_url = f"{settings.WECHAT_PROXY}/cgi-bin/gettoken?corpid=%s&corpsecret=%s"
+    # 企业微信创新菜单URL
+    _create_menu_url = f"{settings.WECHAT_PROXY}/cgi-bin/menu/create?access_token=%s&agentid=%s"
 
     def __init__(self):
         """
@@ -69,6 +71,10 @@ class WeChat(metaclass=Singleton):
                         self._access_token = ret_json.get('access_token')
                         self._expires_in = ret_json.get('expires_in')
                         self._access_token_time = datetime.now()
+                elif res is not None:
+                    logger.error(f"获取微信access_token失败，错误码：{res.status_code}，错误原因：{res.reason}")
+                else:
+                    logger.error(f"获取微信access_token失败，未获取到返回信息")
             except Exception as e:
                 logger.error(f"获取微信access_token失败，错误信息：{e}")
                 return None
@@ -255,14 +261,76 @@ class WeChat(metaclass=Singleton):
                 else:
                     if ret_json.get('errcode') == 42001:
                         self.__get_access_token(force=True)
-                    logger.error(f"发送消息失败，错误信息：{ret_json.get('errmsg')}")
+                    logger.error(f"发送请求失败，错误信息：{ret_json.get('errmsg')}")
                     return False
             elif res is not None:
-                logger.error(f"发送消息失败，错误码：{res.status_code}，错误原因：{res.reason}")
+                logger.error(f"发送请求失败，错误码：{res.status_code}，错误原因：{res.reason}")
                 return False
             else:
-                logger.error(f"发送消息失败，未获取到返回信息")
+                logger.error(f"发送请求失败，未获取到返回信息")
                 return False
         except Exception as err:
-            logger.error(f"发送消息失败，错误信息：{err}")
+            logger.error(f"发送请求失败，错误信息：{err}")
             return False
+
+    def create_menus(self, commands: dict):
+        """
+        自动注册微信菜单
+        :param commands: 命令字典
+        命令字典：
+        {
+            "/cookiecloud": {
+                "func": CookieCloudChain(self._db).remote_sync,
+                "description": "同步站点",
+                "data": {}
+            }
+        }
+        注册报文格式：
+        {
+           "button":[
+               {
+                   "type":"click",
+                   "name":"今日歌曲",
+                   "key":"V1001_TODAY_MUSIC"
+               },
+               {
+                   "name":"菜单",
+                   "sub_button":[
+                       {
+                           "type":"view",
+                           "name":"搜索",
+                           "url":"http://www.soso.com/"
+                       },
+                       {
+                           "type":"click",
+                           "name":"赞一下我们",
+                           "key":"V1001_GOOD"
+                       }
+                   ]
+              }
+           ]
+        }
+        """
+        # 请求URL
+        req_url = self._create_menu_url % (self.__get_access_token(), self._appid)
+        # 按钮
+        buttons = []
+        for key, value in commands.items():
+            buttons.append({
+                "type": "click",
+                "name": value.get("description"),
+                "key": key
+            })
+
+        if buttons:
+            # 请求参数
+            menus = {
+                "button": [
+                    {
+                        "name": "操作",
+                        "sub_button": []
+                    }
+                ]
+            }
+            # 发送请求
+            self.__post_request(req_url, menus)
