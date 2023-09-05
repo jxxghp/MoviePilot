@@ -339,6 +339,7 @@ class Qbittorrent(metaclass=Singleton):
         try:
             self.qbc.transfer.upload_limit = int(upload_limit)
             self.qbc.transfer.download_limit = int(download_limit)
+            return True
         except Exception as err:
             logger.error(f"设置速度限制出错：{err}")
             return False

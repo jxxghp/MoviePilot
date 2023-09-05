@@ -539,25 +539,25 @@ class SpeedLimiter(_PluginBase):
                                     title=title,
                                     text=f"Qbittorrent 已取消限速"
                                 )
-                    else:
-                        if self._tr:
-                            self._tr.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
-                            # 发送通知
-                            if self._notify:
-                                title = "【播放限速】"
-                                if upload_limit or download_limit:
-                                    subtitle = f"Transmission 开始{limit_type}限速"
-                                    self.post_message(
-                                        mtype=NotificationType.MediaServer,
-                                        title=title,
-                                        text=f"{subtitle}\n{text}"
-                                    )
-                                else:
-                                    self.post_message(
-                                        mtype=NotificationType.MediaServer,
-                                        title=title,
-                                        text=f"Transmission 已取消限速"
-                                    )
+                else:
+                    if self._tr:
+                        self._tr.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
+                        # 发送通知
+                        if self._notify:
+                            title = "【播放限速】"
+                            if upload_limit or download_limit:
+                                subtitle = f"Transmission 开始{limit_type}限速"
+                                self.post_message(
+                                    mtype=NotificationType.MediaServer,
+                                    title=title,
+                                    text=f"{subtitle}\n{text}"
+                                )
+                            else:
+                                self.post_message(
+                                    mtype=NotificationType.MediaServer,
+                                    title=title,
+                                    text=f"Transmission 已取消限速"
+                                )
         except Exception as e:
             logger.error(f"设置限速失败：{str(e)}")
 

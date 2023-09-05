@@ -8,9 +8,11 @@ Engine = create_engine(f"sqlite:///{settings.CONFIG_PATH}/user.db",
                        pool_pre_ping=True,
                        echo=False,
                        poolclass=QueuePool,
-                       pool_size=1000,
-                       pool_recycle=60 * 10,
-                       max_overflow=0)
+                       pool_size=1024,
+                       pool_recycle=600,
+                       pool_timeout=180,
+                       max_overflow=0,
+                       connect_args={"timeout": 60})
 # 会话工厂
 SessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=Engine)
 
@@ -33,7 +35,6 @@ def get_db():
 
 
 class DbOper:
-
     _db: Session = None
 
     def __init__(self, db: Session = None):

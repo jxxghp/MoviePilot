@@ -130,9 +130,10 @@ class DownloadFiles(Base):
 
     @staticmethod
     def delete_by_fullpath(db: Session, fullpath: str):
-        return db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath,
-                                              DownloadFiles.state == 1).update(
+        db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath,
+                                       DownloadFiles.state == 1).update(
             {
                 "state": 0
             }
         )
+        db.commit()

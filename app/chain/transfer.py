@@ -323,13 +323,6 @@ class TransferChain(ChainBase):
                     mediainfo=file_mediainfo,
                     transferinfo=transferinfo
                 )
-
-                # 广播事件
-                self.eventmanager.send_event(EventType.TransferComplete, {
-                    'meta': file_meta,
-                    'mediainfo': file_mediainfo,
-                    'transferinfo': transferinfo
-                })
                 # 更新进度
                 processed_num += 1
                 self.progress.update(value=processed_num / total_num * 100,
@@ -337,21 +330,30 @@ class TransferChain(ChainBase):
                                      key=ProgressKey.FileTransfer)
 
             # 目录或文件转移完成
+            self.progress.update(value=100,
+                                 text=f"所有文件转移完成，正在执行后续处理 ...",
+                                 key=ProgressKey.FileTransfer)
             for mkey, media in medias.items():
-                meta = metas[mkey]
-                transferinfo = transfers[mkey]
-                # 刷新媒体库
-                self.refresh_mediaserver(mediainfo=media, file_path=transferinfo.target_path)
+                transfer_meta = metas[mkey]
+                transfer_info = transfers[mkey]
                 # 刮削
-                self.scrape_metadata(path=transferinfo.target_path, mediainfo=media)
+                self.scrape_metadata(path=transfer_info.target_path, mediainfo=media)
+                # 刷新媒体库
+                self.refresh_mediaserver(mediainfo=media, file_path=transfer_info.target_path)
                 # 发送通知
                 se_str = None
                 if media.type == MediaType.TV:
-                    se_str = f"{meta.season} {StringUtils.format_ep(season_episodes[mkey])}"
-                self.send_transfer_message(meta=meta,
+                    se_str = f"{transfer_meta.season} {StringUtils.format_ep(season_episodes[mkey])}"
+                self.send_transfer_message(meta=transfer_meta,
                                            mediainfo=media,
-                                           transferinfo=transferinfo,
+                                           transferinfo=transfer_info,
                                            season_episode=se_str)
+                # 广播事件
+                self.eventmanager.send_event(EventType.TransferComplete, {
+                    'meta': transfer_meta,
+                    'mediainfo': media,
+                    'transferinfo': transfer_info
+                })
             # 结束进度
             logger.info(f"{path} 转移完成，共 {total_num} 个文件，"
                         f"成功 {total_num - len(err_msgs)} 个，失败 {len(err_msgs)} 个")
