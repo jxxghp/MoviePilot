@@ -102,8 +102,8 @@ class WechatModule(_ModuleBase):
                             user_id == admin_user for admin_user in wechat_admins):
                         self.wechat.send_msg(title="用户无权限执行菜单命令", userid=user_id)
                         return None
-                # 根据Event执行命令
-                content = event
+                # 根据EventKey执行命令
+                content = DomUtils.tag_value(root_node, "EventKey")
                 logger.info(f"收到微信事件：userid={user_id}, event={content}")
             elif msg_type == "text":
                 # 文本消息
