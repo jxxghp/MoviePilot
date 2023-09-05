@@ -212,6 +212,7 @@ class AutoSignIn(_PluginBase):
             "cmd": "/site_signin",
             "event": EventType.SiteSignin,
             "desc": "站点签到",
+            "category": "站点",
             "data": {}
         }]
 

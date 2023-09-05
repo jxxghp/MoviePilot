@@ -2,7 +2,7 @@ import json
 import re
 import threading
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from app.core.config import settings
 from app.core.context import MediaInfo, Context
@@ -273,7 +273,7 @@ class WeChat(metaclass=Singleton):
             logger.error(f"发送请求失败，错误信息：{err}")
             return False
 
-    def create_menus(self, commands: dict):
+    def create_menus(self, commands: Dict[str, dict]):
         """
         自动注册微信菜单
         :param commands: 命令字典
@@ -282,10 +282,11 @@ class WeChat(metaclass=Singleton):
             "/cookiecloud": {
                 "func": CookieCloudChain(self._db).remote_sync,
                 "description": "同步站点",
+                "category": "站点",
                 "data": {}
             }
         }
-        注册报文格式：
+        注册报文格式，子菜单最多只有5条：
         {
            "button":[
                {
@@ -313,24 +314,34 @@ class WeChat(metaclass=Singleton):
         """
         # 请求URL
         req_url = self._create_menu_url % (self.__get_access_token(), self._appid)
-        # 按钮
-        buttons = []
+
+        # 对commands按category分组
+        category_dict = {}
         for key, value in commands.items():
+            category: Dict[str, dict] = value.get("category")
+            if category:
+                if not category_dict.get(category):
+                    category_dict[category] = {}
+                category_dict[category][key] = value
+
+        # 一级菜单
+        buttons = []
+        for category, menu in category_dict.items():
+            # 二级菜单
+            sub_buttons = []
+            for key, value in menu.items():
+                sub_buttons.append({
+                    "type": "click",
+                    "name": value.get("description"),
+                    "key": key
+                })
             buttons.append({
-                "type": "click",
-                "name": value.get("description"),
-                "key": key
+                "name": category,
+                "sub_button": sub_buttons
             })
 
         if buttons:
-            # 请求参数
-            menus = {
-                "button": [
-                    {
-                        "name": "操作",
-                        "sub_button": buttons
-                    }
-                ]
-            }
             # 发送请求
-            self.__post_request(req_url, menus)
+            self.__post_request(req_url, {
+                "button": buttons
+            })

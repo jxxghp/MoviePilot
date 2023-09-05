@@ -396,7 +396,7 @@ class ChainBase(metaclass=ABCMeta):
             return self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
         return None
 
-    def register_commands(self, commands: dict) -> None:
+    def register_commands(self, commands: Dict[str, dict]) -> None:
         """
         注册菜单命令
         """

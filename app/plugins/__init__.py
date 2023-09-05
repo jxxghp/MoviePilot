@@ -65,7 +65,8 @@ class _PluginBase(metaclass=ABCMeta):
         [{
             "cmd": "/xx",
             "event": EventType.xx,
-            "desc": "xxxx",
+            "desc": "名称",
+            "category": "分类，需要注册到Wechat时必须有分类",
             "data": {}
         }]
         """

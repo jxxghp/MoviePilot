@@ -2,7 +2,7 @@ import re
 import threading
 from pathlib import Path
 from threading import Event
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 import telebot
 from telebot import apihelper
@@ -198,7 +198,7 @@ class Telegram(metaclass=Singleton):
 
         return True if ret else False
 
-    def register_commands(self, commands: dict):
+    def register_commands(self, commands: Dict[str, dict]):
         """
         注册菜单命令
         """

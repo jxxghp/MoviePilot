@@ -1,5 +1,5 @@
 import json
-from typing import Optional, Union, List, Tuple, Any
+from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.core.context import MediaInfo, Context
 from app.core.config import settings
@@ -120,7 +120,7 @@ class TelegramModule(_ModuleBase):
         """
         return self.telegram.send_torrents_msg(title=message.title, torrents=torrents, userid=message.userid)
 
-    def register_commands(self, commands: dict):
+    def register_commands(self, commands: Dict[str, dict]):
         """
         注册命令，实现这个函数接收系统可用的命令菜单
         :param commands: 命令字典

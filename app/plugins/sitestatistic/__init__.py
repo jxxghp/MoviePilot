@@ -150,6 +150,7 @@ class SiteStatistic(_PluginBase):
             "cmd": "/site_statistic",
             "event": EventType.SiteStatistic,
             "desc": "站点数据统计",
+            "category": "站点",
             "data": {}
         }]
 

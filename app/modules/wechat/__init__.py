@@ -1,5 +1,5 @@
 import xml.dom.minidom
-from typing import Optional, Union, List, Tuple, Any
+from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.core.config import settings
 from app.core.context import Context, MediaInfo
@@ -152,7 +152,7 @@ class WechatModule(_ModuleBase):
         """
         return self.wechat.send_torrents_msg(title=message.title, torrents=torrents, userid=message.userid)
 
-    def register_commands(self, commands: dict):
+    def register_commands(self, commands: Dict[str, dict]):
         """
         注册命令，实现这个函数接收系统可用的命令菜单
         :param commands: 命令字典

@@ -133,6 +133,7 @@ class DoubanSync(_PluginBase):
             "cmd": "/douban_sync",
             "event": EventType.DoubanSync,
             "desc": "同步豆瓣想看",
+            "category": "订阅",
             "data": {}
         }]
 

@@ -110,6 +110,7 @@ class MediaSyncDel(_PluginBase):
             "cmd": "/sync_del",
             "event": EventType.HistoryDeleted,
             "desc": "媒体库同步删除",
+            "category": "管理",
             "data": {}
         }]
 

@@ -53,11 +53,13 @@ class Command(metaclass=Singleton):
             "/cookiecloud": {
                 "func": CookieCloudChain(self._db).remote_sync,
                 "description": "同步站点",
+                "category": "站点",
                 "data": {}
             },
             "/sites": {
                 "func": SiteChain(self._db).remote_list,
                 "description": "查询站点",
+                "category": "站点",
                 "data": {}
             },
             "/site_cookie": {
@@ -78,21 +80,25 @@ class Command(metaclass=Singleton):
             "/mediaserver_sync": {
                 "func": MediaServerChain(self._db).remote_sync,
                 "description": "同步媒体服务器",
+                "category": "管理",
                 "data": {}
             },
             "/subscribes": {
                 "func": SubscribeChain(self._db).remote_list,
                 "description": "查询订阅",
+                "category": "订阅",
                 "data": {}
             },
             "/subscribe_refresh": {
                 "func": SubscribeChain(self._db).remote_refresh,
                 "description": "刷新订阅",
+                "category": "订阅",
                 "data": {}
             },
             "/subscribe_search": {
                 "func": SubscribeChain(self._db).remote_search,
                 "description": "搜索订阅",
+                "category": "订阅",
                 "data": {}
             },
             "/subscribe_delete": {
@@ -103,11 +109,13 @@ class Command(metaclass=Singleton):
             "/downloading": {
                 "func": DownloadChain(self._db).remote_downloading,
                 "description": "正在下载",
+                "category": "下载",
                 "data": {}
             },
             "/transfer": {
                 "func": TransferChain(self._db).process,
                 "description": "下载文件整理",
+                "category": "下载",
                 "data": {}
             },
             "/redo": {
@@ -118,6 +126,7 @@ class Command(metaclass=Singleton):
             "/clear_cache": {
                 "func": SystemChain(self._db).remote_clear_cache,
                 "description": "清理缓存",
+                "category": "管理",
                 "data": {}
             }
         }
@@ -128,6 +137,7 @@ class Command(metaclass=Singleton):
                 cmd=command.get('cmd'),
                 func=Command.send_plugin_event,
                 desc=command.get('desc'),
+                category=command.get('category'),
                 data={
                     'etype': command.get('event'),
                     'data': command.get('data')
@@ -171,13 +181,15 @@ class Command(metaclass=Singleton):
         """
         return self._commands
 
-    def register(self, cmd: str, func: Any, data: dict = None, desc: str = None) -> None:
+    def register(self, cmd: str, func: Any, data: dict = None,
+                 desc: str = None, category: str = None) -> None:
         """
         注册命令
         """
         self._commands[cmd] = {
             "func": func,
             "description": desc,
+            "category": category,
             "data": data or {}
         }
 
