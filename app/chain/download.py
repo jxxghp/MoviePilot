@@ -8,6 +8,7 @@ from app.chain import ChainBase
 from app.core.config import settings
 from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.meta import MetaBase
+from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.mediaserver_oper import MediaServerOper
 from app.helper.torrent import TorrentHelper
@@ -164,6 +165,7 @@ class DownloadChain(ChainBase):
                 download_path = download_dir / _folder_name
             else:
                 download_path = download_dir / _file_list[0] if _file_list else download_dir
+
             # 登记下载记录
             self.downloadhis.add(
                 path=str(download_path),
@@ -182,17 +184,27 @@ class DownloadChain(ChainBase):
                 torrent_description=_torrent.description,
                 torrent_site=_torrent.site_name
             )
+
             # 登记下载文件
-            self.downloadhis.add_files([
-                {
+            files_to_add = []
+            for file in _file_list:
+                if episodes:
+                    # 识别文件集
+                    file_meta = MetaInfo(Path(file).stem)
+                    if not file_meta.begin_episode \
+                            or file_meta.begin_episode not in episodes:
+                        continue
+                files_to_add.append({
                     "download_hash": _hash,
                     "downloader": settings.DOWNLOADER,
                     "fullpath": str(download_dir / _folder_name / file),
                     "savepath": str(download_dir / _folder_name),
                     "filepath": file,
                     "torrentname": _meta.org_string,
-                } for file in _file_list if file
-            ])
+                })
+            if files_to_add:
+                self.downloadhis.add_files(files_to_add)
+
             # 发送消息
             self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, channel=channel)
             # 下载成功后处理
