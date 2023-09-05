@@ -96,11 +96,12 @@ class WechatModule(_ModuleBase):
             # 解析消息内容
             if msg_type == "event" and event == "click":
                 # 校验用户有权限执行交互命令
-                wechat_admins = settings.WECHAT_ADMINS.split(',')
-                if wechat_admins and not any(
-                        user_id == admin_user for admin_user in wechat_admins):
-                    self.wechat.send_msg(title="用户无权限执行菜单命令", userid=user_id)
-                    return None
+                if settings.WECHAT_ADMINS:
+                    wechat_admins = settings.WECHAT_ADMINS.split(',')
+                    if wechat_admins and not any(
+                            user_id == admin_user for admin_user in wechat_admins):
+                        self.wechat.send_msg(title="用户无权限执行菜单命令", userid=user_id)
+                        return None
                 # 根据Event执行命令
                 content = event
                 logger.info(f"收到微信事件：userid={user_id}, event={content}")

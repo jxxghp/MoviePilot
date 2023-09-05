@@ -286,7 +286,7 @@ class WeChat(metaclass=Singleton):
                 "data": {}
             }
         }
-        注册报文格式，子菜单最多只有5条：
+        注册报文格式，一级菜单只有最多3条，子菜单最多只有5条：
         {
            "button":[
                {

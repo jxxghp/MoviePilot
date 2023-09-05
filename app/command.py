@@ -109,13 +109,12 @@ class Command(metaclass=Singleton):
             "/downloading": {
                 "func": DownloadChain(self._db).remote_downloading,
                 "description": "正在下载",
-                "category": "下载",
                 "data": {}
             },
             "/transfer": {
                 "func": TransferChain(self._db).process,
                 "description": "下载文件整理",
-                "category": "下载",
+                "category": "管理",
                 "data": {}
             },
             "/redo": {
