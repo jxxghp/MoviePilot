@@ -517,7 +517,7 @@ class SpeedLimiter(_PluginBase):
                         else:
                             # 按比例
                             allocation_count = sum([int(i) for i in self._allocation_ratio.split(":")])
-                            upload_limit = int(upload_limit * int(self._allocation_ratio[cnt]) / allocation_count)
+                            upload_limit = int(upload_limit * int(self._allocation_ratio.split(":")[cnt]) / allocation_count)
                             cnt += 1
 
                 if str(download) == 'qbittorrent':
