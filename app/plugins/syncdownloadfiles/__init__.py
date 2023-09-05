@@ -149,13 +149,6 @@ class SyncDownloadFiles(_PluginBase):
 
                 # 获取种子download_dir
                 download_dir = self.__get_download_dir(torrent, downloader)
-                # 获取种子name
-                torrent_name = self.__get_torrent_name(torrent, downloader)
-                # 种子保存目录
-                save_path = Path(download_dir).joinpath(torrent_name)
-                # 获取种子文件
-                torrent_files = self.__get_torrent_files(torrent, downloader, downloader_obj)
-                logger.info(f"开始同步种子 {hash_str}, 文件数 {len(torrent_files)}")
 
                 # 处理路径映射
                 if self._dirs:
@@ -164,8 +157,19 @@ class SyncDownloadFiles(_PluginBase):
                         sub_paths = path.split(":")
                         download_dir = download_dir.replace(sub_paths[0], sub_paths[1]).replace('\\', '/')
 
+                # 获取种子name
+                torrent_name = self.__get_torrent_name(torrent, downloader)
+                # 种子保存目录
+                save_path = Path(download_dir).joinpath(torrent_name)
+                # 获取种子文件
+                torrent_files = self.__get_torrent_files(torrent, downloader, downloader_obj)
+                logger.info(f"开始同步种子 {hash_str}, 文件数 {len(torrent_files)}")
+
                 download_files = []
                 for file in torrent_files:
+                    # 过滤掉没下载的文件
+                    if not self.__is_download(file, downloader):
+                        continue
                     # 种子文件路径
                     file_path_str = self.__get_file_path(file, downloader)
                     file_path = Path(file_path_str)
@@ -280,6 +284,20 @@ class SyncDownloadFiles(_PluginBase):
                 return False
 
         return True
+
+    @staticmethod
+    def __is_download(file: Any, dl_type: str):
+        """
+        判断文件是否被下载
+        """
+        try:
+            if dl_type == "qbittorrent":
+                return True
+            else:
+                return file.completed and file.completed > 0
+        except Exception as e:
+            print(str(e))
+            return True
 
     @staticmethod
     def __get_file_path(file: Any, dl_type: str):
