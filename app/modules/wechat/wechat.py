@@ -337,11 +337,11 @@ class WeChat(metaclass=Singleton):
                 })
             buttons.append({
                 "name": category,
-                "sub_button": sub_buttons
+                "sub_button": sub_buttons[:5]
             })
 
         if buttons:
             # 发送请求
             self.__post_request(req_url, {
-                "button": buttons
+                "button": buttons[:3]
             })
