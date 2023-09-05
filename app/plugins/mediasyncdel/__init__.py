@@ -488,15 +488,15 @@ class MediaSyncDel(_PluginBase):
             return
 
         # 删除电影
-        if media_type == "Movie":
+        if media_type == "Movie" or media_type == "MOV":
             msg = f'电影 {media_name} {tmdb_id}'
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id)
         # 删除电视剧
-        elif media_type == "Series":
+        elif (media_type == "Series" or media_type == "TV") and not season_num and not episode_num:
             msg = f'剧集 {media_name} {tmdb_id}'
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id)
         # 删除季 S02
-        elif media_type == "Season":
+        elif (media_type == "Season" or media_type == "TV") and season_num and not episode_num:
             if not season_num or not str(season_num).isdigit():
                 logger.error(f"{media_name} 季同步删除失败，未获取到具体季")
                 return
@@ -504,7 +504,7 @@ class MediaSyncDel(_PluginBase):
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
                                                                                season=f'S{season_num}')
         # 删除剧集S02E02
-        elif media_type == "Episode":
+        elif (media_type == "Episode" or media_type == "TV") and season_num and episode_num:
             if not season_num or not str(season_num).isdigit() or not episode_num or not str(episode_num).isdigit():
                 logger.error(f"{media_name} 集同步删除失败，未获取到具体集")
                 return
