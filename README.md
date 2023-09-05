@@ -220,12 +220,12 @@ docker pull jxxghp/moviepilot:latest
 
 ## 使用
 
-- 通过CookieCloud同步快速同步站点，不需要使用的站点可在WEB管理界面中禁用。
-- 通过下载器监控实现自动整理入库刮削。
-- 通过微信/Telegram/Slack远程管理，其中Telegram将会自动添加操作菜单。微信回调相对路径为`/api/v1/message/`。
-- 通过WEB进行管理，将WEB添加到手机桌面获得类App使用效果，管理界面端口：`3000`。
-- 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`。
-- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，可使用Overseerr/Jellyseerr浏览订阅。
+- 通过CookieCloud同步快速同步站点，不需要使用的站点可在WEB管理界面中禁用，无法同步的站点可手动新增。
+- 通过WEB进行管理，将WEB添加到手机桌面获得类App使用效果，管理界面端口：`3000`，后台API端口：`3001`。
+- 通过下载器监控或使用目录监控插件实现自动整理入库刮削（二选一）。
+- 通过微信/Telegram/Slack远程管理，其中微信/Telegram将会自动添加操作菜单（微信菜单条数有限制，部分菜单不显示），微信需要在官方页面设置回调地址，地址相对路径为：`/api/v1/message/`。
+- 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`（`3001`端口），其中`moviepilot`为设置的`API_TOKEN`。
+- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr（`3001`端口），可使用Overseerr/Jellyseerr浏览订阅。
 
 **注意**
 
