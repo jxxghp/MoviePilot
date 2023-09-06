@@ -36,7 +36,7 @@ class MediaSyncDel(_PluginBase):
     # 主题色
     plugin_color = "#ff1a1a"
     # 插件版本
-    plugin_version = "1.0"
+    plugin_version = "1.1"
     # 插件作者
     plugin_author = "thsrite"
     # 作者主页
@@ -106,13 +106,7 @@ class MediaSyncDel(_PluginBase):
         定义远程控制命令
         :return: 命令关键字、事件、描述、附带数据
         """
-        return [{
-            "cmd": "/sync_del",
-            "event": EventType.HistoryDeleted,
-            "desc": "媒体库同步删除",
-            "category": "管理",
-            "data": {}
-        }]
+        pass
 
     def get_api(self) -> List[Dict[str, Any]]:
         pass
@@ -250,7 +244,8 @@ class MediaSyncDel(_PluginBase):
                                                'component': 'VAlert',
                                                'props': {
                                                    'text': '同步方式分为webhook、日志同步和Scripter X。'
-                                                           'webhook需要Emby4.8.0.45及以上开启媒体删除的webhook。'
+                                                           'webhook需要Emby4.8.0.45及以上开启媒体删除的webhook'
+                                                           '（建议使用媒体库刮削插件覆盖元数据重新刮削剧集路径）。'
                                                            '日志同步需要配置执行周期，默认30分钟执行一次。'
                                                            'Scripter X方式需要emby安装并配置Scripter X插件，无需配置执行周期。'
                                                }
@@ -423,46 +418,20 @@ class MediaSyncDel(_PluginBase):
         ]
 
     @eventmanager.register(EventType.WebhookMessage)
-    def sync_del_by_plugin_or_webhook(self, event):
+    def sync_del_by_webhook(self, event):
         """
         emby删除媒体库同步删除历史记录
-        Scripter X插件 ｜ webhook
+        webhook
         """
-        if not self._enabled or (str(self._sync_type) != "plugin" and str(self._sync_type) != "webhook"):
+        if not self._enabled or str(self._sync_type) != "webhook":
             return
 
         event_data = event.event_data
         event_type = event_data.event
 
-        # Scripter X插件 event_type = media_del
-        if str(self._sync_type) == "plugin" and (not event_type or str(event_type) != 'media_del'):
-            return
-
         # Emby Webhook event_type = library.deleted
-        if str(self._sync_type) == "webhook" and (not event_type or str(event_type) != 'library.deleted'):
+        if not event_type or str(event_type) != 'library.deleted':
             return
-
-        # Scripter X插件 需要是否虚拟标识
-        if str(self._sync_type) == "plugin":
-            item_isvirtual = event_data.item_isvirtual
-            if not item_isvirtual:
-                logger.error("Scripter X插件方式，item_isvirtual参数未配置，为防止误删除，暂停插件运行")
-                self.update_config({
-                    "enabled": False,
-                    "del_source": self._del_source,
-                    "exclude_path": self._exclude_path,
-                    "notify": self._notify,
-                    "cron": self._cron,
-                    "sync_type": self._sync_type,
-                })
-                return
-
-            # 如果是虚拟item，则直接return，不进行删除
-            if item_isvirtual == 'True':
-                return
-
-        # 读取历史记录
-        history = self.get_data('history') or []
 
         # 媒体类型
         media_type = event_data.item_type
@@ -474,13 +443,74 @@ class MediaSyncDel(_PluginBase):
         tmdb_id = event_data.tmdb_id
         # 季数
         season_num = event_data.season_id
-        if season_num and str(season_num).isdigit() and int(season_num) < 10:
-            season_num = f'0{season_num}'
         # 集数
         episode_num = event_data.episode_id
-        if episode_num and str(episode_num).isdigit() and int(episode_num) < 10:
-            episode_num = f'0{episode_num}'
 
+        self.__sync_del(media_type=media_type,
+                        media_name=media_name,
+                        media_path=media_path,
+                        tmdb_id=tmdb_id,
+                        season_num=season_num,
+                        episode_num=episode_num)
+
+    @eventmanager.register(EventType.WebhookMessage)
+    def sync_del_by_plugin(self, event):
+        """
+        emby删除媒体库同步删除历史记录
+        Scripter X插件
+        """
+        if not self._enabled or str(self._sync_type) != "plugin":
+            return
+
+        event_data = event.event_data
+        event_type = event_data.event
+
+        # Scripter X插件 event_type = media_del
+        if not event_type or str(event_type) != 'media_del':
+            return
+
+        # Scripter X插件 需要是否虚拟标识
+        item_isvirtual = event_data.item_isvirtual
+        if not item_isvirtual:
+            logger.error("Scripter X插件方式，item_isvirtual参数未配置，为防止误删除，暂停插件运行")
+            self.update_config({
+                "enabled": False,
+                "del_source": self._del_source,
+                "exclude_path": self._exclude_path,
+                "notify": self._notify,
+                "cron": self._cron,
+                "sync_type": self._sync_type,
+            })
+            return
+
+        # 如果是虚拟item，则直接return，不进行删除
+        if item_isvirtual == 'True':
+            return
+
+        # 媒体类型
+        media_type = event_data.item_type
+        # 媒体名称
+        media_name = event_data.item_name
+        # 媒体路径
+        media_path = event_data.item_path
+        # tmdb_id
+        tmdb_id = event_data.tmdb_id
+        # 季数
+        season_num = event_data.season_id
+        # 集数
+        episode_num = event_data.episode_id
+
+        self.__sync_del(media_type=media_type,
+                        media_name=media_name,
+                        media_path=media_path,
+                        tmdb_id=tmdb_id,
+                        season_num=season_num,
+                        episode_num=episode_num)
+
+    def __sync_del(self, media_type, media_name, media_path, tmdb_id, season_num, episode_num):
+        """
+        执行删除逻辑
+        """
         if not media_type:
             logger.error(f"{media_name} 同步删除失败，未获取到媒体类型")
             return
@@ -494,38 +524,24 @@ class MediaSyncDel(_PluginBase):
             logger.info(f"媒体路径 {media_path} 已被排除，暂不处理")
             return
 
-        # 删除电影
-        if media_type == "Movie" or media_type == "MOV":
-            msg = f'电影 {media_name} {tmdb_id}'
-            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id)
-        # 删除电视剧
-        elif (media_type == "Series" or media_type == "TV") and not season_num and not episode_num:
-            msg = f'剧集 {media_name} {tmdb_id}'
-            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id)
-        # 删除季 S02
-        elif (media_type == "Season" or media_type == "TV") and season_num and not episode_num:
-            if not season_num or not str(season_num).isdigit():
-                logger.error(f"{media_name} 季同步删除失败，未获取到具体季")
-                return
-            msg = f'剧集 {media_name} S{season_num} {tmdb_id}'
-            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
-                                                                               season=f'S{season_num}')
-        # 删除剧集S02E02
-        elif (media_type == "Episode" or media_type == "TV") and season_num and episode_num:
-            if not season_num or not str(season_num).isdigit() or not episode_num or not str(episode_num).isdigit():
-                logger.error(f"{media_name} 集同步删除失败，未获取到具体集")
-                return
-            msg = f'剧集 {media_name} S{season_num}E{episode_num} {tmdb_id}'
-            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
-                                                                               season=f'S{season_num}',
-                                                                               episode=f'E{episode_num}')
-        else:
-            return
+        # 季数
+        if season_num and str(season_num).isdigit() and int(season_num) < 10:
+            season_num = f'0{season_num}'
+        # 集数
+        if episode_num and str(episode_num).isdigit() and int(episode_num) < 10:
+            episode_num = f'0{episode_num}'
+
+        # 查询转移记录
+        msg, transfer_history = self.__get_transfer_his(media_type=media_type,
+                                                        media_name=media_name,
+                                                        tmdb_id=tmdb_id,
+                                                        season_num=season_num,
+                                                        episode_num=episode_num)
 
         logger.info(f"正在同步删除{msg}")
 
         if not transfer_history:
-            logger.warn(f"{media_type} {media_name} 未获取到可删除数据")
+            logger.warn(f"{media_type} {media_name} 未获取到可删除数据，可使用媒体库刮削插件覆盖所有元数据")
             return
 
         # 开始删除
@@ -535,6 +551,11 @@ class MediaSyncDel(_PluginBase):
         stop_cnt = 0
         error_cnt = 0
         for transferhis in transfer_history:
+            title = transferhis.title
+            if title not in media_name:
+                logger.warn(
+                    f"当前转移记录 {transferhis.id} {title} {transferhis.tmdbid} 与删除媒体{media_name}不符，防误删，暂不自动删除")
+                continue
             image = transferhis.image
             year = transferhis.year
 
@@ -587,8 +608,11 @@ class MediaSyncDel(_PluginBase):
                      f"时间 {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}"
             )
 
+        # 读取历史记录
+        history = self.get_data('history') or []
+
         history.append({
-            "type": "电影" if media_type == "Movie" else "电视剧",
+            "type": "电影" if media_type == "Movie" or media_type == "MOV" else "电视剧",
             "title": media_name,
             "year": year,
             "path": media_path,
@@ -600,6 +624,40 @@ class MediaSyncDel(_PluginBase):
 
         # 保存历史
         self.save_data("history", history)
+
+    def __get_transfer_his(self, media_type, media_name, tmdb_id, season_num, episode_num):
+        """
+        查询转移记录
+        """
+        # 删除电影
+        if media_type == "Movie" or media_type == "MOV":
+            msg = f'电影 {media_name} {tmdb_id}'
+            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id)
+        # 删除电视剧
+        elif (media_type == "Series" or media_type == "TV") and not season_num and not episode_num:
+            msg = f'剧集 {media_name} {tmdb_id}'
+            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id)
+        # 删除季 S02
+        elif (media_type == "Season" or media_type == "TV") and season_num and not episode_num:
+            if not season_num or not str(season_num).isdigit():
+                logger.error(f"{media_name} 季同步删除失败，未获取到具体季")
+                return
+            msg = f'剧集 {media_name} S{season_num} {tmdb_id}'
+            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
+                                                                               season=f'S{season_num}')
+        # 删除剧集S02E02
+        elif (media_type == "Episode" or media_type == "TV") and season_num and episode_num:
+            if not season_num or not str(season_num).isdigit() or not episode_num or not str(episode_num).isdigit():
+                logger.error(f"{media_name} 集同步删除失败，未获取到具体集")
+                return
+            msg = f'剧集 {media_name} S{season_num}E{episode_num} {tmdb_id}'
+            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
+                                                                               season=f'S{season_num}',
+                                                                               episode=f'E{episode_num}')
+        else:
+            return "", []
+
+        return msg, transfer_history
 
     def sync_del_by_log(self):
         """
@@ -693,6 +751,11 @@ class MediaSyncDel(_PluginBase):
             stop_cnt = 0
             error_cnt = 0
             for transferhis in transfer_history:
+                title = transferhis.title
+                if title not in media_name:
+                    logger.warn(
+                        f"当前转移记录 {transferhis.id} {title} {transferhis.tmdbid} 与删除媒体{media_name}不符，防误删，暂不自动删除")
+                    continue
                 image = transferhis.image
                 # 0、删除转移记录
                 self._transferhis.delete(transferhis.id)
@@ -768,11 +831,22 @@ class MediaSyncDel(_PluginBase):
             # 删除本次种子记录
             self._downloadhis.delete_file_by_fullpath(fullpath=src)
 
-            # 根据种子hash查询剩余未删除的记录
-            downloadHisNoDel = self._downloadhis.get_files_by_hash(download_hash=torrent_hash, state=1)
-            if downloadHisNoDel and len(downloadHisNoDel) > 0:
+            # 根据种子hash查询所有下载器文件记录
+            download_files = self._downloadhis.get_files_by_hash(download_hash=torrent_hash)
+            if not download_files:
+                logger.error(
+                    f"未查询到种子任务 {torrent_hash} 存在文件记录，未执行下载器文件同步或该种子已被删除")
+                return False, False
+
+            # 查询未删除数
+            no_del_cnt = 0
+            for download_file in download_files:
+                if download_file and download_file.state and int(download_file.state) == 1:
+                    no_del_cnt += 1
+
+            if no_del_cnt > 0:
                 logger.info(
-                    f"查询种子任务 {torrent_hash} 存在 {len(downloadHisNoDel)} 个未删除文件，执行暂停种子操作")
+                    f"查询种子任务 {torrent_hash} 存在 {no_del_cnt} 个未删除文件，执行暂停种子操作")
                 delete_flag = False
             else:
                 logger.info(
