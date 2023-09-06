@@ -492,15 +492,7 @@ class SpeedLimiter(_PluginBase):
             return
         else:
             self._current_state = state
-
-        if upload_limit:
-            text = f"上传：{upload_limit} KB/s"
-        else:
-            text = f"上传：未限速"
-        if download_limit:
-            text = f"{text}\n下载：{download_limit} KB/s"
-        else:
-            text = f"{text}\n下载：未限速"
+            
         try:
             cnt = 0
             for download in self._downloader:
@@ -519,7 +511,14 @@ class SpeedLimiter(_PluginBase):
                             allocation_count = sum([int(i) for i in self._allocation_ratio.split(":")])
                             upload_limit = int(upload_limit * int(self._allocation_ratio.split(":")[cnt]) / allocation_count)
                             cnt += 1
-
+                if upload_limit:
+                    text = f"上传：{upload_limit} KB/s"
+                else:
+                    text = f"上传：未限速"
+                if download_limit:
+                    text = f"{text}\n下载：{download_limit} KB/s"
+                else:
+                    text = f"{text}\n下载：未限速"
                 if str(download) == 'qbittorrent':
                     if self._qb:
                         self._qb.set_speed_limit(download_limit=download_limit, upload_limit=upload_limit)
