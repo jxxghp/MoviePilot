@@ -5,6 +5,8 @@ import re
 import shutil
 from pathlib import Path
 from typing import List, Union, Tuple
+
+import docker
 import psutil
 from app import schemas
 
@@ -292,3 +294,26 @@ class SystemUtils:
         获取内存使用量和使用率
         """
         return [psutil.virtual_memory().used, int(psutil.virtual_memory().percent)]
+
+    @staticmethod
+    def can_restart() -> bool:
+        """
+        判断是否可以内部重启
+        """
+        if not SystemUtils.is_docker():
+            return False
+        return Path("/var/run/docker.sock").exists()
+
+    @staticmethod
+    def restart_docker():
+        """
+        执行Docker重启操作
+        """
+        # 创建 Docker 客户端
+        client = docker.from_env()
+        # 获取当前容器的 ID
+        container_id = open("/proc/self/cgroup", "r").read().split("/")[-1]
+        if not container_id:
+            return
+        # 重启当前容器
+        client.containers.get(container_id.strip()).restart()

@@ -18,6 +18,7 @@ from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
+from app.utils.system import SystemUtils
 from version import APP_VERSION
 
 router = APIRouter()
@@ -198,3 +199,14 @@ def ruletest(title: str,
     return schemas.Response(success=True, data={
         "priority": 100 - result[0].pri_order + 1
     })
+
+
+@router.get("/restart", summary="重启系统", response_model=schemas.Response)
+def restart_system(_: schemas.TokenPayload = Depends(verify_token)):
+    """
+    重启系统
+    """
+    if not SystemUtils.can_restart():
+        return schemas.Response(success=False, message="当前运行环境不支持重启操作！")
+    SystemUtils.restart_docker()
+    return schemas.Response(success=True)

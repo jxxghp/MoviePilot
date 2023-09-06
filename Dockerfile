@@ -82,5 +82,5 @@ RUN apt-get update \
         /var/lib/apt/lists/* \
         /var/tmp/*
 EXPOSE 3000
-VOLUME ["/config"]
+VOLUME ["/config", "/var/run/docker.sock"]
 ENTRYPOINT [ "/entrypoint" ]

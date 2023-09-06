@@ -49,4 +49,5 @@ openai~=0.27.2
 cacheout~=0.14.1
 click~=8.1.6
 requests_cache~=0.5.2
-parse==1.19.0
+parse~=1.19.0
+docker~=6.1.3
