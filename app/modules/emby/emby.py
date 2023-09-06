@@ -770,6 +770,7 @@ class Emby(metaclass=Singleton):
         }
         """
         message = json.loads(message_str)
+        logger.info(f"接收到emby webhook：{message}")
         eventItem = WebhookEventInfo(event=message.get('Event', ''), channel="emby")
         if message.get('Item'):
             if message.get('Item', {}).get('Type') == 'Episode':
@@ -798,9 +799,9 @@ class Emby(metaclass=Singleton):
                 eventItem.item_type = "MOV"
                 eventItem.item_name = "%s %s" % (
                     message.get('Item', {}).get('Name'), "(" + str(message.get('Item', {}).get('ProductionYear')) + ")")
-                eventItem.item_path = message.get('Item', {}).get('Path')
                 eventItem.item_id = message.get('Item', {}).get('Id')
 
+            eventItem.item_path = message.get('Item', {}).get('Path')
             eventItem.tmdb_id = message.get('Item', {}).get('ProviderIds', {}).get('Tmdb')
             if message.get('Item', {}).get('Overview') and len(message.get('Item', {}).get('Overview')) > 100:
                 eventItem.overview = str(message.get('Item', {}).get('Overview'))[:100] + "..."
