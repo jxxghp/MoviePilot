@@ -428,18 +428,25 @@ class MediaSyncDel(_PluginBase):
         emby删除媒体库同步删除历史记录
         Scripter X插件 ｜ webhook
         """
-        if not self._enabled:
+        if not self._enabled or (str(self._sync_type) != "plugin" and str(self._sync_type) != "webhook"):
             return
+
         event_data = event.event_data
         event_type = event_data.event
-        if not event_type or (str(event_type) != 'media_del' and str(event_type) != 'library.deleted'):
+
+        # Scripter X插件 event_type = media_del
+        if str(self._sync_type) == "plugin" and (not event_type or str(event_type) != 'media_del'):
+            return
+
+        # Emby Webhook event_type = library.deleted
+        if str(self._sync_type) == "webhook" and (not event_type or str(event_type) != 'library.deleted'):
             return
 
         # Scripter X插件 需要是否虚拟标识
-        if str(event_type) == 'media_del':
+        if str(self._sync_type) == "plugin":
             item_isvirtual = event_data.item_isvirtual
             if not item_isvirtual:
-                logger.error("item_isvirtual参数未配置，为防止误删除，暂停插件运行")
+                logger.error("Scripter X插件方式，item_isvirtual参数未配置，为防止误删除，暂停插件运行")
                 self.update_config({
                     "enabled": False,
                     "del_source": self._del_source,
