@@ -106,13 +106,7 @@ class MediaSyncDel(_PluginBase):
         定义远程控制命令
         :return: 命令关键字、事件、描述、附带数据
         """
-        return [{
-            "cmd": "/sync_del",
-            "event": EventType.HistoryDeleted,
-            "desc": "媒体库同步删除",
-            "category": "管理",
-            "data": {}
-        }]
+        pass
 
     def get_api(self) -> List[Dict[str, Any]]:
         pass
