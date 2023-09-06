@@ -4,11 +4,8 @@ import sqlite3
 from datetime import datetime
 
 from app.db.downloadhistory_oper import DownloadHistoryOper
-from app.db.models.plugin import PluginData
 from app.db.plugindata_oper import PluginDataOper
 from app.db.transferhistory_oper import TransferHistoryOper
-from app.modules.qbittorrent import Qbittorrent
-from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 from typing import Any, List, Dict, Tuple
 from app.log import logger
@@ -45,10 +42,7 @@ class NAStoolSync(_PluginBase):
     _path = None
     _site = None
     _downloader = None
-    _supp = False
     _transfer = False
-    qb = None
-    tr = None
 
     def init_plugin(self, config: dict = None):
         self._transferhistory = TransferHistoryOper(self.db)
@@ -61,13 +55,9 @@ class NAStoolSync(_PluginBase):
             self._path = config.get("path")
             self._site = config.get("site")
             self._downloader = config.get("downloader")
-            self._supp = config.get("supp")
             self._transfer = config.get("transfer")
 
             if self._nt_db_path and self._transfer:
-                self.qb = Qbittorrent()
-                self.tr = Transmission()
-
                 # 读取sqlite数据
                 try:
                     gradedb = sqlite3.connect(self._nt_db_path)
@@ -80,7 +70,6 @@ class NAStoolSync(_PluginBase):
                             "path": self._path,
                             "downloader": self._downloader,
                             "site": self._site,
-                            "supp": self._supp,
                         }
                     )
                     logger.error(f"无法打开数据库文件 {self._nt_db_path}，请检查路径是否正确：{e}")
@@ -116,7 +105,6 @@ class NAStoolSync(_PluginBase):
                         "path": self._path,
                         "downloader": self._downloader,
                         "site": self._site,
-                        "supp": self._supp,
                     }
                 )
 
@@ -270,35 +258,6 @@ class NAStoolSync(_PluginBase):
             logger.info("MoviePilot转移记录已清空")
             self._transferhistory.truncate()
 
-        # 转种后种子hash
-        transfer_hash = []
-        qb_torrents = []
-        tr_torrents = []
-        tr_torrents_all = []
-        if self._supp:
-            # 获取所有的转种数据
-            transfer_datas = self._plugindata.get_data_all("TorrentTransfer")
-            if transfer_datas:
-                if not isinstance(transfer_datas, list):
-                    transfer_datas = [transfer_datas]
-
-                for transfer_data in transfer_datas:
-                    if not transfer_data or not isinstance(transfer_data, PluginData):
-                        continue
-                    # 转移后种子hash
-                    transfer_value = transfer_data.value
-                    transfer_value = json.loads(transfer_value)
-                    if not isinstance(transfer_value, dict):
-                        transfer_value = json.loads(transfer_value)
-                    to_hash = transfer_value.get("to_download_id")
-                    # 转移前种子hash
-                    transfer_hash.append(to_hash)
-
-            # 获取tr、qb所有种子
-            qb_torrents, _ = self.qb.get_torrents()
-            tr_torrents, _ = self.tr.get_torrents(ids=transfer_hash)
-            tr_torrents_all, _ = self.tr.get_torrents()
-
         # 处理数据，存入mp数据库
         cnt = 0
         for history in transfer_history:
@@ -315,86 +274,13 @@ class NAStoolSync(_PluginBase):
             mseasons = history[10]
             mepisodes = history[11]
             mimage = history[12]
-            mdownload_hash = history[13]
-            mdate = history[14]
+            mdate = history[13]
 
             if not msrc_path or not mdest_path:
                 continue
 
             msrc = msrc_path + "/" + msrc_filename
             mdest = mdest_path + "/" + mdest_filename
-
-            # 尝试补充download_id
-            if self._supp and not mdownload_hash:
-                logger.debug(f"转移记录 {mtitle} 缺失download_hash，尝试补充……")
-                # 种子名称
-                torrent_name = str(msrc_path).split("/")[-1]
-                torrent_name2 = str(msrc_path).split("/")[-2]
-
-                # 处理下载器
-                for torrent in qb_torrents:
-                    if str(torrent.get("name")) == str(torrent_name) \
-                            or str(torrent.get("name")) == str(torrent_name2):
-                        mdownload_hash = torrent.get("hash")
-                        torrent_name = str(torrent.get("name"))
-                        break
-
-                # 处理辅种器
-                if not mdownload_hash:
-                    for torrent in tr_torrents:
-                        if str(torrent.get("name")) == str(torrent_name) \
-                                or str(torrent.get("name")) == str(torrent_name2):
-                            mdownload_hash = torrent.get("hashString")
-                            torrent_name = str(torrent.get("name"))
-                            break
-
-                # 继续补充 遍历所有种子，按照添加升序升序，第一个种子是初始种子
-                if not mdownload_hash:
-                    mate_torrents = []
-                    for torrent in tr_torrents_all:
-                        if str(torrent.get("name")) == str(torrent_name) \
-                                or str(torrent.get("name")) == str(torrent_name2):
-                            mate_torrents.append(torrent)
-
-                    # 匹配上则按照时间升序
-                    if mate_torrents:
-                        if len(mate_torrents) > 1:
-                            mate_torrents = sorted(mate_torrents, key=lambda x: x.added_date)
-                        # 最早添加的hash是下载的hash
-                        mdownload_hash = mate_torrents[0].get("hashString")
-                        torrent_name = str(mate_torrents[0].get("name"))
-                        # 补充转种记录
-                        self._plugindata.save(plugin_id="TorrentTransfer",
-                                              key=f"qbittorrent-{mdownload_hash}",
-                                              value={
-                                                  "to_download": "transmission",
-                                                  "to_download_id": mdownload_hash,
-                                                  "delete_source": True}
-                                              )
-                        # 补充辅种记录
-                        if len(mate_torrents) > 1:
-                            self._plugindata.save(plugin_id="IYUUAutoSeed",
-                                                  key=mdownload_hash,
-                                                  value=[{"downloader": "transmission",
-                                                          "torrents": [torrent.get("hashString") for torrent in
-                                                                       mate_torrents[1:]]}]
-                                                  )
-
-                # 补充下载历史
-                self._downloadhistory.add(
-                    path=msrc_filename,
-                    type=mtype,
-                    title=mtitle,
-                    year=myear,
-                    tmdbid=mtmdbid,
-                    seasons=mseasons,
-                    episodes=mepisodes,
-                    image=mimage,
-                    download_hash=mdownload_hash,
-                    torrent_name=torrent_name,
-                    torrent_description="",
-                    torrent_site=""
-                )
 
             # 处理路径映射
             if self._path:
@@ -417,11 +303,10 @@ class NAStoolSync(_PluginBase):
                 seasons=mseasons,
                 episodes=mepisodes,
                 image=mimage,
-                download_hash=mdownload_hash,
                 date=mdate
             )
             logger.debug(f"{mtitle} {myear} {mtmdbid} {mseasons} {mepisodes} 已同步")
-            
+
             cnt += 1
             if cnt % 100 == 0:
                 logger.info(f"转移记录同步进度 {cnt} / {len(transfer_history)}")
@@ -529,7 +414,6 @@ class NAStoolSync(_PluginBase):
                 NULL ELSE substr( t.SEASON_EPISODE, instr ( t.SEASON_EPISODE, ' ' ) + 1 ) 
             END AS episodes,
             d.POSTER AS image,
-            d.DOWNLOAD_ID AS download_hash,
             t.DATE AS date 
         FROM
             TRANSFER_HISTORY t
@@ -571,7 +455,7 @@ class NAStoolSync(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -587,7 +471,7 @@ class NAStoolSync(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -595,22 +479,6 @@ class NAStoolSync(_PluginBase):
                                         'props': {
                                             'model': 'clear',
                                             'label': '清空记录'
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'supp',
-                                            'label': '补充数据'
                                         }
                                     }
                                 ]
@@ -717,7 +585,6 @@ class NAStoolSync(_PluginBase):
                                             'text': '开启清空记录时，会在导入历史数据之前删除MoviePilot之前的记录。'
                                                     '如果转移记录很多，同步时间可能会长（3-10分钟），'
                                                     '所以点击确定后页面没反应是正常现象，后台正在处理。'
-                                                    '如果开启补充数据，会获取tr、qb种子，补充转移记录中download_hash缺失的情况（同步删除需要）。'
                                         }
                                     }
                                 ]
