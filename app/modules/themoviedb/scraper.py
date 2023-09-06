@@ -15,7 +15,6 @@ from app.utils.http import RequestUtils
 
 
 class TmdbScraper:
-
     tmdb = None
 
     def __init__(self, tmdb):
@@ -56,11 +55,11 @@ class TmdbScraper:
                         image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
                         self.__save_image(url=attr_value,
                                           file_path=file_path.with_name(image_name))
-            # 电视剧
+            # 电视剧，路径为每一季的文件名 名称/Season xx/名称 SxxExx.xxx
             else:
                 # 识别
                 meta = MetaInfo(file_path.stem)
-                # 不存在时才处理
+                # 根目录不存在时才处理
                 if not file_path.parent.with_name("tvshow.nfo").exists():
                     # 根目录描述文件
                     self.__gen_tv_nfo_file(mediainfo=mediainfo,
@@ -84,16 +83,25 @@ class TmdbScraper:
                         self.__gen_tv_season_nfo_file(seasoninfo=seasoninfo,
                                                       season=meta.begin_season,
                                                       season_path=file_path.parent)
-                    # 季的图片
+                    # TMDB季poster图片
+                    sea_seq = str(meta.begin_season).rjust(2, '0')
+                    if seasoninfo.get("poster_path"):
+                        # 后缀
+                        ext = Path(seasoninfo.get('poster_path')).suffix
+                        # URL
+                        url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{seasoninfo.get('poster_path')}"
+                        self.__save_image(url, file_path.parent.with_name(f"season{sea_seq}-poster{ext}"))
+                    # FIXME 季的其它图片
                     for attr_name, attr_value in vars(mediainfo).items():
                         if attr_value \
                                 and attr_name.startswith("season") \
+                                and not attr_name.endswith("poster") \
                                 and attr_value \
                                 and isinstance(attr_value, str) \
                                 and attr_value.startswith("http"):
                             image_name = attr_name.replace("_path",
                                                            "").replace("season",
-                                                                       f"{str(meta.begin_season).rjust(2, '0')}-") \
+                                                                       f"{sea_seq}-") \
                                          + Path(attr_value).suffix
                             self.__save_image(url=attr_value,
                                               file_path=file_path.parent.with_name(f"season{image_name}"))
