@@ -461,31 +461,15 @@ class Emby(metaclass=Singleton):
         # 查找需要刷新的媒体库ID
         item_path = Path(item.target_path)
         for folder in self.folders:
-            # 找同级路径最多的媒体库（要求容器内映射路径与实际一致）
-            max_comm_path = ""
-            match_num = 0
-            match_id = None
             # 匹配子目录
             for subfolder in folder.get("SubFolders"):
                 try:
-                    # 查询最大公共路径
+                    # 匹配子目录
                     subfolder_path = Path(subfolder.get("Path"))
-                    item_path_parents = list(item_path.parents)
-                    subfolder_path_parents = list(subfolder_path.parents)
-                    common_path = next(p1 for p1, p2 in zip(reversed(item_path_parents),
-                                                            reversed(subfolder_path_parents)
-                                                            ) if p1 == p2)
-                    if len(common_path) > len(max_comm_path):
-                        max_comm_path = common_path
-                        match_id = subfolder.get("Id")
-                        match_num += 1
-                except StopIteration:
-                    continue
+                    if item_path.is_relative_to(subfolder_path):
+                        return subfolder.get("Id")
                 except Exception as err:
                     print(str(err))
-            # 检查匹配情况
-            if match_id:
-                return match_id if match_num == 1 else folder.get("Id")
             # 如果找不到，只要路径中有分类目录名就命中
             for subfolder in folder.get("SubFolders"):
                 if subfolder.get("Path") and re.search(r"[/\\]%s" % item.category,
