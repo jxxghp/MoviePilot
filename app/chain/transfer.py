@@ -182,6 +182,11 @@ class TransferChain(ChainBase):
                             logger.info(f"{file_path} 命中整理屏蔽词 {keyword}，不处理")
                             continue
 
+                # 转移成功的不再处理
+                transferd = self.transferhis.get_by_src(file_path_str)
+                if transferd and transferd.status:
+                    continue
+
                 if not meta:
                     # 上级目录元数据
                     dir_meta = MetaInfo(title=file_path.parent.name)
