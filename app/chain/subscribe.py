@@ -782,8 +782,9 @@ class SubscribeChain(ChainBase):
                         # 没有自定义总集数
                         total_episode = total
                     # 新的集列表
-                    episodes = list(range(max(start_episode, start), total_episode + 1))
-
+                    new_episodes = list(range(max(start_episode, start), total_episode + 1))
+                    # 与原集列表取交集
+                    episodes = list(set(episode_list).intersection(set(new_episodes)))
                 # 更新集合
                 no_exists[tmdb_id][begin_season] = NotExistMediaInfo(
                     season=begin_season,
