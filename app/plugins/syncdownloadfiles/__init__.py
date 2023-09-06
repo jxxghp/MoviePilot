@@ -84,7 +84,7 @@ class SyncDownloadFiles(_PluginBase):
                 try:
                     self._scheduler.add_job(func=self.sync,
                                             trigger="interval",
-                                            hours=float(self._time.strip()),
+                                            hours=float(str(self._time).strip()),
                                             name="自动同步下载器文件记录")
                     logger.info(f"自动同步下载器文件记录服务启动，时间间隔 {self._time} 小时")
                 except Exception as err:
