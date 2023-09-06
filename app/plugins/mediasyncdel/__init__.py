@@ -932,9 +932,9 @@ class MediaSyncDel(_PluginBase):
                     torrents = [torrents]
 
                 # 删除辅种历史中与本下载器相同的辅种记录
-                if int(downloader) == download:
+                if str(downloader) == str(download):
                     for torrent in torrents:
-                        if download == "qbittorrent":
+                        if str(download) == "qbittorrent":
                             # 删除辅种
                             if action_flag == "del":
                                 logger.info(f"删除辅种：{downloader} - {torrent}")
