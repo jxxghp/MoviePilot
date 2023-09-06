@@ -303,7 +303,7 @@ class SystemUtils:
         return Path("/var/run/docker.sock").exists()
 
     @staticmethod
-    def restart():
+    def restart() -> Tuple[bool, str]:
         """
         执行Docker重启操作
         """
@@ -313,8 +313,10 @@ class SystemUtils:
             # 获取当前容器的 ID
             container_id = open("/proc/self/cgroup", "r").read().split("/")[-1]
             if not container_id:
-                return
+                return False, "获取容器ID失败！"
             # 重启当前容器
             client.containers.get(container_id.strip()).restart()
+            return True, ""
         except Exception as err:
             print(str(err))
+            return False, f"重启时发生错误：{str(err)}"

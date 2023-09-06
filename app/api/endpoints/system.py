@@ -209,5 +209,5 @@ def restart_system(_: schemas.TokenPayload = Depends(verify_token)):
     if not SystemUtils.can_restart():
         return schemas.Response(success=False, message="当前运行环境不支持重启操作！")
     # 执行重启
-    SystemUtils.restart()
-    return schemas.Response(success=True)
+    ret, msg = SystemUtils.restart()
+    return schemas.Response(success=ret, message=msg)
