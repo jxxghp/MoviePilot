@@ -144,6 +144,7 @@ class NAStoolSync(_PluginBase):
             logger.info("MoviePilot插件记录已清空")
             self._plugindata.truncate()
 
+        cnt = 0
         for history in plugin_history:
             plugin_id = history[1]
             plugin_key = history[2]
@@ -177,6 +178,8 @@ class NAStoolSync(_PluginBase):
                     if str(plugin_id) == "IYUUAutoSeed":
                         if isinstance(plugin_value, str):
                             plugin_value = json.loads(plugin_value)
+                        if not isinstance(plugin_value, list):
+                            plugin_value = [plugin_value]
                         for value in plugin_value:
                             if not str(value.get("downloader")).isdigit():
                                 continue
@@ -187,6 +190,9 @@ class NAStoolSync(_PluginBase):
             self._plugindata.save(plugin_id=plugin_id,
                                   key=plugin_key,
                                   value=plugin_value)
+            cnt += 1
+            if cnt % 100 == 0:
+                logger.info(f"插件记录同步进度 {cnt} / {len(plugin_history)}")
 
         # 计算耗时
         end_time = datetime.now()
@@ -205,6 +211,7 @@ class NAStoolSync(_PluginBase):
             logger.info("MoviePilot下载记录已清空")
             self._downloadhistory.truncate()
 
+        cnt = 0
         for history in download_history:
             mpath = history[0]
             mtype = history[1]
@@ -241,6 +248,9 @@ class NAStoolSync(_PluginBase):
                 torrent_description=mdesc,
                 torrent_site=msite
             )
+            cnt += 1
+            if cnt % 100 == 0:
+                logger.info(f"下载记录同步进度 {cnt} / {len(download_history)}")
 
         # 计算耗时
         end_time = datetime.now()
@@ -290,6 +300,7 @@ class NAStoolSync(_PluginBase):
             tr_torrents_all, _ = self.tr.get_torrents()
 
         # 处理数据，存入mp数据库
+        cnt = 0
         for history in transfer_history:
             msrc_path = history[0]
             msrc_filename = history[1]
@@ -410,6 +421,10 @@ class NAStoolSync(_PluginBase):
                 date=mdate
             )
             logger.debug(f"{mtitle} {myear} {mtmdbid} {mseasons} {mepisodes} 已同步")
+            
+            cnt += 1
+            if cnt % 100 == 0:
+                logger.info(f"转移记录同步进度 {cnt} / {len(transfer_history)}")
 
         # 计算耗时
         end_time = datetime.now()
