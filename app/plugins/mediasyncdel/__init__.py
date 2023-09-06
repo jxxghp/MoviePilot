@@ -831,11 +831,22 @@ class MediaSyncDel(_PluginBase):
             # 删除本次种子记录
             self._downloadhis.delete_file_by_fullpath(fullpath=src)
 
-            # 根据种子hash查询剩余未删除的记录
-            downloadHisNoDel = self._downloadhis.get_files_by_hash(download_hash=torrent_hash, state=1)
-            if downloadHisNoDel and len(downloadHisNoDel) > 0:
+            # 根据种子hash查询所有下载器文件记录
+            download_files = self._downloadhis.get_files_by_hash(download_hash=torrent_hash)
+            if not download_files:
+                logger.error(
+                    f"未查询到种子任务 {torrent_hash} 存在文件记录，未执行下载器文件同步或该种子已被删除")
+                return False, False
+
+            # 查询未删除数
+            no_del_cnt = 0
+            for download_file in download_files:
+                if download_file and download_file.state and int(download_file.state) == 1:
+                    no_del_cnt += 1
+
+            if no_del_cnt > 0:
                 logger.info(
-                    f"查询种子任务 {torrent_hash} 存在 {len(downloadHisNoDel)} 个未删除文件，执行暂停种子操作")
+                    f"查询种子任务 {torrent_hash} 存在 {no_del_cnt} 个未删除文件，执行暂停种子操作")
                 delete_flag = False
             else:
                 logger.info(
