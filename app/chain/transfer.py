@@ -187,6 +187,11 @@ class TransferChain(ChainBase):
                 if transferd and transferd.status:
                     continue
 
+                # 更新进度
+                self.progress.update(value=processed_num / total_num * 100,
+                                     text=f"正在转移 （{processed_num + 1}/{total_num}）{file_path.name} ...",
+                                     key=ProgressKey.FileTransfer)
+
                 if not meta:
                     # 上级目录元数据
                     dir_meta = MetaInfo(title=file_path.parent.name)
@@ -338,6 +343,8 @@ class TransferChain(ChainBase):
             self.progress.update(value=100,
                                  text=f"所有文件转移完成，正在执行后续处理 ...",
                                  key=ProgressKey.FileTransfer)
+
+            # 执行后续处理
             for mkey, media in medias.items():
                 transfer_meta = metas[mkey]
                 transfer_info = transfers[mkey]
