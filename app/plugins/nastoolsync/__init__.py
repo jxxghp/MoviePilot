@@ -153,7 +153,12 @@ class NAStoolSync(_PluginBase):
             if self._downloader:
                 downloaders = self._downloader.split("\n")
                 for downloader in downloaders:
+                    if not downloader:
+                        continue
                     sub_downloaders = downloader.split(":")
+                    if not str(sub_downloaders[0]).isdigit():
+                        logger.error(f"下载器映射配置错误：NAStool下载器id 应为数字！")
+                        continue
                     # 替换转种记录
                     if str(plugin_id) == "TorrentTransfer":
                         keys = str(plugin_key).split("-")
@@ -173,6 +178,8 @@ class NAStoolSync(_PluginBase):
                         if isinstance(plugin_value, str):
                             plugin_value = json.loads(plugin_value)
                         for value in plugin_value:
+                            if not str(value.get("downloader")).isdigit():
+                                continue
                             if str(value.get("downloader")).isdigit() and int(value.get("downloader")) == int(
                                     sub_downloaders[0]):
                                 value["downloader"] = sub_downloaders[1]
