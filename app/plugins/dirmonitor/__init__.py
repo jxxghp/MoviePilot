@@ -69,9 +69,6 @@ class DirMonitor(_PluginBase):
     # 可使用的用户级别
     auth_level = 1
 
-    # 已处理的文件清单
-    _synced_files = []
-
     # 私有属性
     _scheduler = None
     transferhis = None
@@ -193,9 +190,8 @@ class DirMonitor(_PluginBase):
 
                 # 全程加锁
                 with lock:
-                    if event_path not in self._synced_files:
-                        self._synced_files.append(event_path)
-                    else:
+                    transfer_history = self.transferhis.get_by_src(event_path)
+                    if transfer_history:
                         logger.debug("文件已处理过：%s" % event_path)
                         return
 
