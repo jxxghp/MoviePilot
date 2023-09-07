@@ -590,7 +590,7 @@ class FileTransferModule(_ModuleBase):
                 continue
 
             # 检索媒体文件
-            media_files = SystemUtils.list_files(directory=media_path, extensions=settings.RMT_VIDEOEXT)
+            media_files = SystemUtils.list_files(directory=media_path, extensions=settings.RMT_MEDIAEXT)
             if not media_files:
                 continue
 

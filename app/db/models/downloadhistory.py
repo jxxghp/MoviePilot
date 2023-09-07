@@ -52,7 +52,7 @@ class DownloadHistory(Base):
 
     @staticmethod
     def get_last_by(db: Session, mtype: str = None, title: str = None, year: int = None, season: str = None,
-                    episode: str = None, tmdbid: str = None):
+                    episode: str = None, tmdbid: int = None):
         """
         据tmdbid、season、season_episode查询转移记录
         """

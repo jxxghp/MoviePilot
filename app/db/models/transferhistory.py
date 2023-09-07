@@ -86,7 +86,7 @@ class TransferHistory(Base):
 
     @staticmethod
     def list_by(db: Session, type: str = None, title: str = None, year: int = None, season: str = None,
-                episode: str = None, tmdbid: str = None):
+                episode: str = None, tmdbid: int = None):
         """
         据tmdbid、season、season_episode查询转移记录
         """

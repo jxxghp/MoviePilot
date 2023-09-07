@@ -194,12 +194,17 @@ class TheMovieDbModule(_ModuleBase):
             scrape_path = path / path.name
             self.scraper.gen_scraper_files(mediainfo=mediainfo,
                                            file_path=scrape_path)
+        elif path.is_file():
+            # 单个文件
+            logger.info(f"开始刮削媒体库文件：{path} ...")
+            self.scraper.gen_scraper_files(mediainfo=mediainfo,
+                                           file_path=path)
         else:
             # 目录下的所有文件
+            logger.info(f"开始刮削目录：{path} ...")
             for file in SystemUtils.list_files(path, settings.RMT_MEDIAEXT):
                 if not file:
                     continue
-                logger.info(f"开始刮削媒体库文件：{file} ...")
                 self.scraper.gen_scraper_files(mediainfo=mediainfo,
                                                file_path=file)
         logger.info(f"{path} 刮削完成")

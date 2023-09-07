@@ -418,7 +418,7 @@ class MediaSyncDel(_PluginBase):
         ]
 
     @eventmanager.register(EventType.WebhookMessage)
-    def sync_del_by_webhook(self, event):
+    def sync_del_by_webhook(self, event: Event):
         """
         emby删除媒体库同步删除历史记录
         webhook
@@ -507,7 +507,8 @@ class MediaSyncDel(_PluginBase):
                         season_num=season_num,
                         episode_num=episode_num)
 
-    def __sync_del(self, media_type, media_name, media_path, tmdb_id, season_num, episode_num):
+    def __sync_del(self, media_type: str, media_name: str, media_path: str,
+                   tmdb_id: int, season_num: int, episode_num: int):
         """
         执行删除逻辑
         """
@@ -523,13 +524,6 @@ class MediaSyncDel(_PluginBase):
                 self._exclude_path.split(",")):
             logger.info(f"媒体路径 {media_path} 已被排除，暂不处理")
             return
-
-        # 季数
-        if season_num and str(season_num).isdigit() and int(season_num) < 10:
-            season_num = f'0{season_num}'
-        # 集数
-        if episode_num and str(episode_num).isdigit() and int(episode_num) < 10:
-            episode_num = f'0{episode_num}'
 
         # 查询转移记录
         msg, transfer_history = self.__get_transfer_his(media_type=media_type,
@@ -632,10 +626,19 @@ class MediaSyncDel(_PluginBase):
         # 保存历史
         self.save_data("history", history)
 
-    def __get_transfer_his(self, media_type, media_name, tmdb_id, season_num, episode_num):
+    def __get_transfer_his(self, media_type: str, media_name: str,
+                           tmdb_id: int, season_num: int, episode_num: int):
         """
         查询转移记录
         """
+
+        # 季数
+        if season_num:
+            season_num = str(season_num).rjust(2, '0')
+        # 集数
+        if episode_num:
+            episode_num = str(episode_num).rjust(2, '0')
+
         # 删除电影
         if media_type == "Movie" or media_type == "MOV":
             msg = f'电影 {media_name} {tmdb_id}'
@@ -1061,7 +1064,7 @@ class MediaSyncDel(_PluginBase):
         return del_medias
 
     @staticmethod
-    def parse_jellyfin_log(last_time):
+    def parse_jellyfin_log(last_time: datetime):
         # 根据加入日期 降序排序
         log_url = "{HOST}System/Logs/Log?name=log_%s.log&api_key={APIKEY}" % datetime.date.today().strftime("%Y%m%d")
         log_res = Jellyfin().get_data(log_url)
@@ -1134,7 +1137,7 @@ class MediaSyncDel(_PluginBase):
         return del_medias
 
     @staticmethod
-    def delete_media_file(filedir, filename):
+    def delete_media_file(filedir: str, filename: str):
         """
         删除媒体文件，空目录也会被删除
         """
@@ -1202,7 +1205,7 @@ class MediaSyncDel(_PluginBase):
                               title="媒体库同步删除完成！", userid=event.event_data.get("user"))
 
     @staticmethod
-    def get_tmdbimage_url(path, prefix="w500"):
+    def get_tmdbimage_url(path: str, prefix="w500"):
         if not path:
             return ""
         tmdb_image_url = f"https://{settings.TMDB_IMAGE_DOMAIN}"
