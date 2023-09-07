@@ -351,6 +351,11 @@ class TransferChain(ChainBase):
                 # 媒体目录
                 if transfer_info.target_path.is_file():
                     transfer_info.target_path = transfer_info.target_path.parent
+                # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
+                if not settings.SCRAP_FOLLOW_TMDB:
+                    transfer_historys = self.transferhis.get_by(tmdbid=str(mediainfo.tmdb_id))
+                    if not transfer_historys:
+                        mediainfo.title = transfer_historys[0].title
                 # 刮削
                 self.scrape_metadata(path=transfer_info.target_path, mediainfo=media)
                 # 刷新媒体库，根目录或季目录
