@@ -3,6 +3,7 @@ from typing import List, Any, Dict, Tuple
 
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.module import ModuleHelper
+from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.object import ObjectUtils
@@ -23,6 +24,7 @@ class PluginManager(metaclass=Singleton):
     _config_key: str = "plugin.%s"
 
     def __init__(self):
+        self.siteshelper = SitesHelper()
         self.init_config()
 
     def init_config(self):
@@ -196,6 +198,10 @@ class PluginManager(metaclass=Singleton):
                 conf.update({"state": plugin_obj.get_state()})
             else:
                 conf.update({"state": False})
+            # 权限
+            if hasattr(plugin, "auth_level"):
+                if self.siteshelper.auth_level < plugin.auth_level:
+                    continue
             # 名称
             if hasattr(plugin, "plugin_name"):
                 conf.update({"plugin_name": plugin.plugin_name})

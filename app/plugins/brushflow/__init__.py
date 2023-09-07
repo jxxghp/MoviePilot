@@ -1,20 +1,17 @@
-from app.plugins import _PluginBase
-from app.core.event import eventmanager
-from app.schemas.types import EventType
-from app.utils.http import RequestUtils
 from typing import Any, List, Dict, Tuple
-from app.log import logger
+
+from app.plugins import _PluginBase
 
 
-class WebHook(_PluginBase):
+class BrushFlow(_PluginBase):
     # 插件名称
-    plugin_name = "Webhook"
+    plugin_name = "站点刷流"
     # 插件描述
-    plugin_desc = "事件发生时向第三方地址发送请求。"
+    plugin_desc = "自动托管刷流，将会默认提高对应站点的种子刷新频率。"
     # 插件图标
-    plugin_icon = "webhook.png"
+    plugin_icon = "fileupload.png"
     # 主题色
-    plugin_color = "#C73A63"
+    plugin_color = "#EC5665"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者
@@ -22,22 +19,22 @@ class WebHook(_PluginBase):
     # 作者主页
     author_url = "https://github.com/jxxghp"
     # 插件配置项ID前缀
-    plugin_config_prefix = "webhook_"
+    plugin_config_prefix = "brushflow_"
     # 加载顺序
-    plugin_order = 14
+    plugin_order = 21
     # 可使用的用户级别
-    auth_level = 1
+    auth_level = 3
 
     # 私有属性
-    _webhook_url = None
-    _method = None
     _enabled = False
+    _notify = True
+    _onlyonce = False
 
     def init_plugin(self, config: dict = None):
         if config:
             self._enabled = config.get("enabled")
-            self._webhook_url = config.get("webhook_url")
-            self._method = config.get('request_method')
+            self._notify = config.get("notify")
+            self._onlyonce = config.get("onlyonce")
 
     def get_state(self) -> bool:
         return self._enabled
@@ -65,7 +62,7 @@ class WebHook(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -76,12 +73,7 @@ class WebHook(_PluginBase):
                                         }
                                     }
                                 ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
+                            },
                             {
                                 'component': 'VCol',
                                 'props': {
@@ -90,11 +82,10 @@ class WebHook(_PluginBase):
                                 },
                                 'content': [
                                     {
-                                        'component': 'VSelect',
+                                        'component': 'VSwitch',
                                         'props': {
-                                            'model': 'request_method',
-                                            'label': '请求方式',
-                                            'items': request_options
+                                            'model': 'enabled',
+                                            'label': '发送通知',
                                         }
                                     }
                                 ]
@@ -103,63 +94,36 @@ class WebHook(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 8
+                                    'md': 4
                                 },
                                 'content': [
                                     {
-                                        'component': 'VTextField',
+                                        'component': 'VSwitch',
                                         'props': {
-                                            'model': 'webhook_url',
-                                            'label': 'webhook地址'
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
                                         }
                                     }
                                 ]
                             }
                         ]
                     },
+                    {
+                        'component': 'VRow',
+                        'content': [
+
+                        ]
+                    },
                 ]
             }
         ], {
             "enabled": False,
-            "request_method": "POST",
-            "webhook_url": ""
+            "notify": True,
+            "onlyonce": False,
         }
 
     def get_page(self) -> List[dict]:
         pass
-
-    @eventmanager.register(EventType)
-    def send(self, event):
-        """
-        向第三方Webhook发送请求
-        """
-        if not self._enabled or not self._webhook_url:
-            return
-
-        def __to_dict(_event):
-            result = {}
-            for key, value in _event.items():
-                if hasattr(value, 'to_dict'):
-                    result[key] = value.to_dict()
-                else:
-                    result[key] = str(value)
-            return result
-
-        event_info = {
-            "type": event.event_type,
-            "data": __to_dict(event.event_data)
-        }
-
-        if self._method == 'POST':
-            ret = RequestUtils(content_type="application/json").post_res(self._webhook_url, json=event_info)
-        else:
-            ret = RequestUtils().get_res(self._webhook_url, params=event_info)
-        if ret:
-            logger.info("发送成功：%s" % self._webhook_url)
-        elif ret is not None:
-            logger.error(f"发送失败，状态码：{ret.status_code}，返回信息：{ret.text} {ret.reason}")
-        else:
-            logger.error("发送失败，未获取到返回信息")
 
     def stop_service(self):
         """
