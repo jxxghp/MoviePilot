@@ -984,6 +984,8 @@ class BrushFlow(_PluginBase):
         """
         添加下载任务
         """
+        up_speed = int(self._up_speed) if self._up_speed else None
+        down_speed = int(self._dl_speed) if self._dl_speed else None
         if self._downloader == "qbittorrent":
             if not self.qb:
                 return None
@@ -993,8 +995,8 @@ class BrushFlow(_PluginBase):
                                         download_dir=self._save_path or None,
                                         cookie=torrent.site_cookie,
                                         tag=["已整理", "刷流", tag],
-                                        upload_limit=self._up_speed or None,
-                                        download_limit=self._dl_speed or None)
+                                        upload_limit=up_speed,
+                                        download_limit=down_speed)
             if not state:
                 return None
             else:
@@ -1017,8 +1019,8 @@ class BrushFlow(_PluginBase):
             else:
                 if self._up_speed or self._dl_speed:
                     self.tr.change_torrent(hash_string=torrent.hashString,
-                                           upload_limit=self._up_speed,
-                                           download_limit=self._dl_speed)
+                                           upload_limit=up_speed,
+                                           download_limit=down_speed)
                 return torrent.hashString
         return None
 
