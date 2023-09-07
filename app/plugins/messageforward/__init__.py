@@ -275,8 +275,7 @@ class MessageForward(_PluginBase):
         return access_token, appid
 
     def __send_message(self, title: str, text: str = None, userid: str = None, access_token: str = None,
-                       appid: str = None, i: int = None) -> \
-            Optional[bool]:
+                       appid: str = None, i: int = None) -> Optional[bool]:
         """
         发送文本消息
         :param title: 消息标题
@@ -305,8 +304,8 @@ class MessageForward(_PluginBase):
         }
         return self.__post_request(message_url=message_url, req_json=req_json, i=i, title=title)
 
-    def __send_image_message(self, title: str, text: str, image_url: str, userid: str = None, access_token: str = None,
-                             appid: str = None, i: int = None) -> Optional[bool]:
+    def __send_image_message(self, title: str, text: str, image_url: str, userid: str = None,
+                             access_token: str = None, appid: str = None, i: int = None) -> Optional[bool]:
         """
         发送图文消息
         :param title: 消息标题
@@ -372,7 +371,7 @@ class MessageForward(_PluginBase):
             logger.error(f"转发消息 {title} 异常，错误信息：{err}")
             return False
 
-    def __get_access_token(self, corpid, appsecret):
+    def __get_access_token(self, corpid: str, appsecret: str):
         """
         获取微信Token
         :return： 微信Token

@@ -15,9 +15,9 @@ class MetaBase(object):
     """
     # 是否处理的文件
     isfile: bool = False
-    # 原标题字符串
+    # 原标题字符串（未经过识别词处理）
     title: str = ""
-    # 识别用字符串
+    # 识别用字符串（经过识别词处理后）
     org_string: Optional[str] = None
     # 副标题
     subtitle: Optional[str] = None

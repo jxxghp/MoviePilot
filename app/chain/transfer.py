@@ -242,12 +242,14 @@ class TransferChain(ChainBase):
                               f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别转移。"
                     ))
                     continue
+
                 # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
                 if not settings.SCRAP_FOLLOW_TMDB:
                     transfer_historys = self.transferhis.get_by(tmdbid=file_mediainfo.tmdb_id,
-                                                                type=file_mediainfo.type.value)
+                                                                mtype=file_mediainfo.type.value)
                     if transfer_historys:
                         file_mediainfo.title = transfer_historys[0].title
+
                 logger.info(f"{file_path.name} 识别为：{file_mediainfo.type.value} {file_mediainfo.title_year}")
 
                 # 电视剧没有集无法转移
@@ -338,6 +340,8 @@ class TransferChain(ChainBase):
                     mediainfo=file_mediainfo,
                     transferinfo=transferinfo
                 )
+                # 刮削单个文件
+                self.scrape_metadata(path=transferinfo.target_path, mediainfo=file_mediainfo)
                 # 更新进度
                 processed_num += 1
                 self.progress.update(value=processed_num / total_num * 100,
@@ -356,8 +360,6 @@ class TransferChain(ChainBase):
                 # 媒体目录
                 if transfer_info.target_path.is_file():
                     transfer_info.target_path = transfer_info.target_path.parent
-                # 刮削
-                self.scrape_metadata(path=transfer_info.target_path, mediainfo=media)
                 # 刷新媒体库，根目录或季目录
                 self.refresh_mediaserver(mediainfo=media, file_path=transfer_info.target_path)
                 # 发送通知
@@ -586,7 +588,6 @@ class TransferChain(ChainBase):
         """
         logger.info(f"开始删除文件以及空目录：{path} ...")
         if not path.exists():
-            logger.error(f"{path} 不存在")
             return
         elif path.is_file():
             # 删除文件

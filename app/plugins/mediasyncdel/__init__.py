@@ -22,7 +22,7 @@ from app.modules.qbittorrent import Qbittorrent
 from app.modules.themoviedb.tmdbv3api import Episode
 from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
-from app.schemas.types import NotificationType, EventType
+from app.schemas.types import NotificationType, EventType, MediaType
 from app.utils.path_utils import PathUtils
 
 
@@ -116,154 +116,154 @@ class MediaSyncDel(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         return [
-                   {
-                       'component': 'VForm',
-                       'content': [
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'enabled',
-                                                   'label': '启用插件',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'notify',
-                                                   'label': '发送通知',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'del_source',
-                                                   'label': '删除源文件',
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSelect',
-                                               'props': {
-                                                   'model': 'sync_type',
-                                                   'label': '同步方式',
-                                                   'items': [
-                                                       {'title': 'webhook', 'value': 'webhook'},
-                                                       {'title': '日志', 'value': 'log'},
-                                                       {'title': 'Scripter X', 'value': 'plugin'}
-                                                   ]
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'cron',
-                                                   'label': '执行周期',
-                                                   'placeholder': '5位cron表达式，留空自动'
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'exclude_path',
-                                                   'label': '排除路径'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VAlert',
-                                               'props': {
-                                                   'text': '同步方式分为webhook、日志同步和Scripter X。'
-                                                           'webhook需要Emby4.8.0.45及以上开启媒体删除的webhook'
-                                                           '（建议使用媒体库刮削插件覆盖元数据重新刮削剧集路径）。'
-                                                           '日志同步需要配置执行周期，默认30分钟执行一次。'
-                                                           'Scripter X方式需要emby安装并配置Scripter X插件，无需配置执行周期。'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           }
-                       ]
-                   }
-               ], {
-                   "enabled": False,
-                   "notify": True,
-                   "del_source": False,
-                   "sync_type": "webhook",
-                   "cron": "*/30 * * * *",
-                   "exclude_path": "",
-               }
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'notify',
+                                            'label': '发送通知',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'del_source',
+                                            'label': '删除源文件',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'sync_type',
+                                            'label': '同步方式',
+                                            'items': [
+                                                {'title': 'webhook', 'value': 'webhook'},
+                                                {'title': '日志', 'value': 'log'},
+                                                {'title': 'Scripter X', 'value': 'plugin'}
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cron',
+                                            'label': '执行周期',
+                                            'placeholder': '5位cron表达式，留空自动'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'exclude_path',
+                                            'label': '排除路径'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '同步方式分为webhook、日志同步和Scripter X。'
+                                                    'webhook需要Emby4.8.0.45及以上开启媒体删除的webhook'
+                                                    '（建议使用媒体库刮削插件覆盖元数据重新刮削剧集路径）。'
+                                                    '日志同步需要配置执行周期，默认30分钟执行一次。'
+                                                    'Scripter X方式需要emby安装并配置Scripter X插件，无需配置执行周期。'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "notify": True,
+            "del_source": False,
+            "sync_type": "webhook",
+            "cron": "*/30 * * * *",
+            "exclude_path": "",
+        }
 
     def get_page(self) -> List[dict]:
         """
@@ -639,29 +639,36 @@ class MediaSyncDel(_PluginBase):
         if episode_num:
             episode_num = str(episode_num).rjust(2, '0')
 
+        # 类型
+        mtype = MediaType.MOVIE if media_type in ["Movie", "MOV"] else MediaType.TV
+
         # 删除电影
-        if media_type == "Movie" or media_type == "MOV":
+        if mtype == MediaType.MOVIE:
             msg = f'电影 {media_name} {tmdb_id}'
-            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id)
+            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
+                                                                               mtype=mtype.value)
         # 删除电视剧
-        elif (media_type == "Series" or media_type == "TV") and not season_num and not episode_num:
+        elif mtype == MediaType.TV and not season_num and not episode_num:
             msg = f'剧集 {media_name} {tmdb_id}'
-            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id)
+            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
+                                                                               mtype=mtype.value)
         # 删除季 S02
-        elif (media_type == "Season" or media_type == "TV") and season_num and not episode_num:
+        elif mtype == MediaType.TV and season_num and not episode_num:
             if not season_num or not str(season_num).isdigit():
                 logger.error(f"{media_name} 季同步删除失败，未获取到具体季")
                 return
             msg = f'剧集 {media_name} S{season_num} {tmdb_id}'
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
+                                                                               mtype=mtype.value,
                                                                                season=f'S{season_num}')
         # 删除剧集S02E02
-        elif (media_type == "Episode" or media_type == "TV") and season_num and episode_num:
+        elif mtype == MediaType.TV and season_num and episode_num:
             if not season_num or not str(season_num).isdigit() or not episode_num or not str(episode_num).isdigit():
                 logger.error(f"{media_name} 集同步删除失败，未获取到具体集")
                 return
             msg = f'剧集 {media_name} S{season_num}E{episode_num} {tmdb_id}'
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
+                                                                               mtype=mtype.value,
                                                                                season=f'S{season_num}',
                                                                                episode=f'E{episode_num}')
         else:
