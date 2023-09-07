@@ -353,11 +353,11 @@ class TransferChain(ChainBase):
             for mkey, media in medias.items():
                 transfer_meta = metas[mkey]
                 transfer_info = transfers[mkey]
-                # 刮削
-                self.scrape_metadata(path=transfer_info.target_path, mediainfo=media)
                 # 媒体目录
                 if transfer_info.target_path.is_file():
                     transfer_info.target_path = transfer_info.target_path.parent
+                # 刮削
+                self.scrape_metadata(path=transfer_info.target_path, mediainfo=media)
                 # 刷新媒体库，根目录或季目录
                 self.refresh_mediaserver(mediainfo=media, file_path=transfer_info.target_path)
                 # 发送通知
