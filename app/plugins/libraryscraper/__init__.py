@@ -8,7 +8,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
-from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.helper.nfo import NfoReader
 from app.log import logger
@@ -311,6 +310,7 @@ class LibraryScraper(_PluginBase):
                     nfo_file.unlink()
                 except Exception as err:
                     print(str(err))
+
         # 覆盖模式时，提前删除图片文件
         if self._mode in ["force_all", "force_image"]:
             image_files = SystemUtils.list_files(path, [".jpg", ".png"])
@@ -323,41 +323,49 @@ class LibraryScraper(_PluginBase):
 
         # 目录识别
         dir_meta = MetaInfo(path.name)
+        # 媒体信息
+        mediainfo = None
+
         # 查找目录下所有的文件
         files = SystemUtils.list_files(path, settings.RMT_MEDIAEXT)
         for file in files:
             if self._event.is_set():
                 logger.info(f"媒体库刮削服务停止")
                 return
-            # 识别媒体文件
+
+            # 识别元数据
             meta_info = MetaInfo(file.name)
             # 合并
             meta_info.merge(dir_meta)
-            # 优先读取本地nfo文件
-            tmdbid = None
-            if meta_info.type == MediaType.MOVIE:
-                # 电影
-                movie_nfo = file.parent / "movie.nfo"
-                if movie_nfo.exists():
-                    tmdbid = self.__get_tmdbid_from_nfo(movie_nfo)
-                file_nfo = file.with_suffix(".nfo")
-                if not tmdbid and file_nfo.exists():
-                    tmdbid = self.__get_tmdbid_from_nfo(file_nfo)
-            else:
-                # 电视剧
-                tv_nfo = file.parent.parent / "tvshow.nfo"
-                if tv_nfo.exists():
-                    tmdbid = self.__get_tmdbid_from_nfo(tv_nfo)
-            if tmdbid:
-                logger.info(f"读取到本地nfo文件的tmdbid：{tmdbid}")
-                # 识别媒体信息
-                mediainfo: MediaInfo = self.chain.recognize_media(tmdbid=tmdbid, mtype=meta_info.type)
-            else:
-                # 识别媒体信息
-                mediainfo: MediaInfo = self.chain.recognize_media(meta=meta_info)
+
+            # 识别媒体信息
             if not mediainfo:
-                logger.warn(f"未识别到媒体信息：{file}")
-                continue
+                # 优先读取本地nfo文件
+                tmdbid = None
+                if meta_info.type == MediaType.MOVIE:
+                    # 电影
+                    movie_nfo = file.parent / "movie.nfo"
+                    if movie_nfo.exists():
+                        tmdbid = self.__get_tmdbid_from_nfo(movie_nfo)
+                    file_nfo = file.with_suffix(".nfo")
+                    if not tmdbid and file_nfo.exists():
+                        tmdbid = self.__get_tmdbid_from_nfo(file_nfo)
+                else:
+                    # 电视剧
+                    tv_nfo = file.parent.parent / "tvshow.nfo"
+                    if tv_nfo.exists():
+                        tmdbid = self.__get_tmdbid_from_nfo(tv_nfo)
+                if tmdbid:
+                    # 按TMDBID识别
+                    logger.info(f"读取到本地nfo文件的tmdbid：{tmdbid}")
+                    mediainfo = self.chain.recognize_media(tmdbid=tmdbid, mtype=meta_info.type)
+                else:
+                    # 按名称识别
+                    mediainfo = self.chain.recognize_media(meta=meta_info)
+                if not mediainfo:
+                    logger.warn(f"未识别到媒体信息：{file}")
+                    continue
+
             # 开始刮削
             self.chain.scrape_metadata(path=file, mediainfo=mediainfo)
 
