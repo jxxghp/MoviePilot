@@ -759,12 +759,15 @@ class BrushFlow(_PluginBase):
                 if not torrents:
                     logger.info(f"站点 {siteinfo.name} 没有获取到种子")
                     continue
+                # 按pubdate降序排列
+                torrents.sort(key=lambda x: x.pubdate or '', reverse=True)
                 # 过滤种子
                 for torrent in torrents:
                     # 保种体积（GB） 促销
                     if self._disksize \
-                            and (torrents_size + torrent.size) > self._size * 1024**3:
-                        logger.warn(f"当前做种体积 {StringUtils.str_filesize(torrents_size)} 已超过保种体积 {self._disksize}，停止新增任务")
+                            and (torrents_size + torrent.size) > float(self._size) * 1024**3:
+                        logger.warn(f"当前做种体积 {StringUtils.str_filesize(torrents_size)} "
+                                    f"已超过保种体积 {self._disksize}，停止新增任务")
                         return
                     # 促销
                     if self._freeleech and torrent.downloadvolumefactor != 0:
