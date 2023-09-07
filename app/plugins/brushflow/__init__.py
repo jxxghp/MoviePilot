@@ -850,8 +850,12 @@ class BrushFlow(_PluginBase):
                         continue
                     # 保存任务信息
                     task_info[hash_string] = {
-                        "site_name": torrent.site_name,
-                        "size": torrent.size
+                        "site": siteinfo.id,
+                        "site_name": siteinfo.name,
+                        "title": torrent.title,
+                        "size": torrent.size,
+                        "pubdate": torrent.pubdate,
+                        "state": "Y"
                     }
                     # 发送消息
                     self.__send_add_message(torrent)
@@ -988,7 +992,9 @@ class BrushFlow(_PluginBase):
             state = self.qb.add_torrent(content=torrent.enclosure,
                                         download_dir=self._save_path or None,
                                         cookie=torrent.site_cookie,
-                                        tag=["已整理", "刷流", tag])
+                                        tag=["已整理", "刷流", tag],
+                                        upload_limit=self._up_speed or None,
+                                        download_limit=self._dl_speed or None)
             if not state:
                 return None
             else:
@@ -1009,6 +1015,10 @@ class BrushFlow(_PluginBase):
             if not torrent:
                 return None
             else:
+                if self._up_speed or self._dl_speed:
+                    self.tr.change_torrent(hash_string=torrent.hashString,
+                                           upload_limit=self._up_speed,
+                                           download_limit=self._dl_speed)
                 return torrent.hashString
         return None
 

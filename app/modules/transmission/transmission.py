@@ -288,3 +288,58 @@ class Transmission(metaclass=Singleton):
         except Exception as err:
             logger.error(f"添加Tracker出错：{err}")
             return False
+
+    def change_torrent(self,
+                       hash_string: str,
+                       upload_limit=None,
+                       download_limit=None,
+                       ratio_limit=None,
+                       seeding_time_limit=None):
+        """
+        设置种子
+        :param hash_string: ID
+        :param upload_limit: 上传限速 Kb/s
+        :param download_limit: 下载限速 Kb/s
+        :param ratio_limit: 分享率限制
+        :param seeding_time_limit: 做种时间限制
+        :return: bool
+        """
+        if not hash_string:
+            return False
+        if upload_limit:
+            uploadLimited = True
+            uploadLimit = int(upload_limit)
+        else:
+            uploadLimited = False
+            uploadLimit = 0
+        if download_limit:
+            downloadLimited = True
+            downloadLimit = int(download_limit)
+        else:
+            downloadLimited = False
+            downloadLimit = 0
+        if ratio_limit:
+            seedRatioMode = 1
+            seedRatioLimit = round(float(ratio_limit), 2)
+        else:
+            seedRatioMode = 2
+            seedRatioLimit = 0
+        if seeding_time_limit:
+            seedIdleMode = 1
+            seedIdleLimit = int(seeding_time_limit)
+        else:
+            seedIdleMode = 2
+            seedIdleLimit = 0
+        try:
+            self.trc.change_torrent(ids=hash_string,
+                                    uploadLimited=uploadLimited,
+                                    uploadLimit=uploadLimit,
+                                    downloadLimited=downloadLimited,
+                                    downloadLimit=downloadLimit,
+                                    seedRatioMode=seedRatioMode,
+                                    seedRatioLimit=seedRatioLimit,
+                                    seedIdleMode=seedIdleMode,
+                                    seedIdleLimit=seedIdleLimit)
+        except Exception as err:
+            logger.error(f"设置种子出错：{err}")
+            return False

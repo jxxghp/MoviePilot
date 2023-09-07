@@ -186,7 +186,8 @@ class Qbittorrent(metaclass=Singleton):
                     download_dir: str = None,
                     tag: Union[str, list] = None,
                     category: str = None,
-                    cookie=None
+                    cookie=None,
+                    **kwargs
                     ) -> bool:
         """
         添加种子
@@ -238,7 +239,8 @@ class Qbittorrent(metaclass=Singleton):
                                             use_auto_torrent_management=is_auto,
                                             is_sequential_download=True,
                                             cookie=cookie,
-                                            category=category)
+                                            category=category,
+                                            **kwargs)
             return True if qbc_ret and str(qbc_ret).find("Ok") != -1 else False
         except Exception as err:
             logger.error(f"添加种子出错：{err}")
