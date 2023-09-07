@@ -1300,7 +1300,7 @@ class BrushFlow(_PluginBase):
                             continue
                     # 同时下载任务数
                     downloads = self.__get_downloading_count(self._downloader)
-                    if self._maxdlcount and downloads >= self._maxdlcount:
+                    if self._maxdlcount and downloads >= int(self._maxdlcount):
                         continue
                     # 获取下载器的下载信息
                     downloader_info = self.__get_downloader_info()
