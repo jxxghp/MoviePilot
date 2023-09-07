@@ -37,7 +37,7 @@ class TmdbScraper:
             return {}
 
         try:
-            # 电影
+            # 电影，路径为文件名 名称/名称.xxx 或者蓝光原盘目录 名称/名称
             if mediainfo.type == MediaType.MOVIE:
                 # 不已存在时才处理
                 if not file_path.with_name("movie.nfo").exists() \
@@ -91,20 +91,17 @@ class TmdbScraper:
                         # URL
                         url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{seasoninfo.get('poster_path')}"
                         self.__save_image(url, file_path.parent.with_name(f"season{sea_seq}-poster{ext}"))
-                    # FIXME 季的其它图片
+                    # 季的其它图片
                     for attr_name, attr_value in vars(mediainfo).items():
                         if attr_value \
                                 and attr_name.startswith("season") \
-                                and not attr_name.endswith("poster") \
+                                and not attr_name.endswith("poster_path") \
                                 and attr_value \
                                 and isinstance(attr_value, str) \
                                 and attr_value.startswith("http"):
-                            image_name = attr_name.replace("_path",
-                                                           "").replace("season",
-                                                                       f"{sea_seq}-") \
-                                         + Path(attr_value).suffix
+                            image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
                             self.__save_image(url=attr_value,
-                                              file_path=file_path.parent.with_name(f"season{image_name}"))
+                                              file_path=file_path.parent.with_name(image_name))
                 # 查询集详情
                 episodeinfo = __get_episode_detail(seasoninfo, meta.begin_episode)
                 if episodeinfo:

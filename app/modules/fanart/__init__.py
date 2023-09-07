@@ -333,7 +333,7 @@ class FanartModule(_ModuleBase):
         if not result or result.get('status') == 'error':
             logger.warn(f"没有获取到 {mediainfo.title_year} 的Fanart图片数据")
             return
-        # FIXME 季图片要区分季号
+        # 获取所有图片
         for name, images in result.items():
             if not images:
                 continue
@@ -341,10 +341,17 @@ class FanartModule(_ModuleBase):
                 continue
             # 按欢迎程度倒排
             images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
+            # 取第一张图片
+            image_obj = images[0]
             # 图片属性xx_path
             image_name = self.__name(name)
+            image_season = image_obj.get('season')
+            # 设置图片
+            if image_name.startswith("season") and image_season:
+                # 季图片格式 seasonxx-poster
+                image_name = f"season{str(image_season).rjust(2, '0')}-{image_name[6:]}"
             if not mediainfo.get_image(image_name):
-                mediainfo.set_image(image_name, images[0].get('url'))
+                mediainfo.set_image(image_name, image_obj.get('url'))
 
         return mediainfo
 
