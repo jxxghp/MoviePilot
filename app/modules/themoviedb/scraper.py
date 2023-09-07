@@ -22,7 +22,7 @@ class TmdbScraper:
 
     def gen_scraper_files(self, mediainfo: MediaInfo, file_path: Path):
         """
-        生成刮削文件
+        生成刮削文件，包括NFO和图片，传入路径为文件路径
         :param mediainfo: 媒体信息
         :param file_path: 文件路径或者目录路径
         """
@@ -113,10 +113,11 @@ class TmdbScraper:
                                                        episode=meta.begin_episode,
                                                        file_path=file_path)
                     # 集的图片
-                    if episodeinfo.get('still_path'):
+                    episode_image = episodeinfo.get("still_path")
+                    if episode_image:
                         self.__save_image(
-                            f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{episodeinfo.get('still_path')}",
-                            file_path.with_suffix(Path(episodeinfo.get('still_path')).suffix))
+                            f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{episode_image}",
+                            file_path.with_suffix(Path(episode_image).suffix))
         except Exception as e:
             logger.error(f"{file_path} 刮削失败：{e}")
 

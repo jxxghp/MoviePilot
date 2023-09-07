@@ -312,8 +312,9 @@ class DirMonitor(_PluginBase):
                         transferinfo=transferinfo
                     )
 
-                    # 刮削元数据
-                    self.chain.scrape_metadata(path=transferinfo.target_path, mediainfo=mediainfo)
+                    # 刮削元数据，根目录或季目录
+                    self.chain.scrape_metadata(path=transferinfo.target_path.parent,
+                                               mediainfo=mediainfo)
 
                     """
                     {

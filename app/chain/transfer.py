@@ -353,7 +353,7 @@ class TransferChain(ChainBase):
                     transfer_info.target_path = transfer_info.target_path.parent
                 # 刮削
                 self.scrape_metadata(path=transfer_info.target_path, mediainfo=media)
-                # 刷新媒体库
+                # 刷新媒体库，根目录或季目录
                 self.refresh_mediaserver(mediainfo=media, file_path=transfer_info.target_path)
                 # 发送通知
                 se_str = None
