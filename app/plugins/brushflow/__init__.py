@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta
+from threading import Event
 from typing import Any, List, Dict, Tuple
 
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from app.chain.torrents import TorrentsChain
 from app.core.config import settings
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -35,7 +37,13 @@ class BrushFlow(_PluginBase):
 
     # 私有属性
     sites = None
+    torrents = None
+    # 添加种子定时
     _cron = 10
+    # 检查种子定时
+    _check_interval = 5
+    # 退出事件
+    _event = Event()
     _scheduler = None
     _enabled = False
     _notify = True
@@ -64,6 +72,7 @@ class BrushFlow(_PluginBase):
 
     def init_plugin(self, config: dict = None):
         self.sites = SitesHelper()
+        self.torrents = TorrentsChain()
         if config:
             self._enabled = config.get("enabled")
             self._notify = config.get("notify")
@@ -201,6 +210,8 @@ class BrushFlow(_PluginBase):
                         "save_path": self._save_path
                     })
                 if self._scheduler.get_jobs():
+                    # 增加检查任务
+                    self._scheduler.add_job(self.check, 'interval', minutes=self._check_interval)
                     # 启动服务
                     self._scheduler.print_jobs()
                     self._scheduler.start()
@@ -677,10 +688,33 @@ class BrushFlow(_PluginBase):
         """
         退出插件
         """
-        pass
+        try:
+            if self._scheduler:
+                self._scheduler.remove_all_jobs()
+                if self._scheduler.running:
+                    self._event.set()
+                    self._scheduler.shutdown()
+                    self._event.clear()
+                self._scheduler = None
+        except Exception as e:
+            print(str(e))
 
     def brush(self):
         """
-        执行刷流动作
+        执行刷流动作，添加下载任务
         """
-        pass
+        if not self._brushsites or not self._downloader:
+            return
+        logger.info(f"开始执行刷流任务 ...")
+
+        logger.info(f"刷流任务执行完成")
+
+    def check(self):
+        """
+        定时检查，删除下载任务
+        """
+        if not self._downloader:
+            return
+        logger.info(f"开始检查刷流下载任务 ...")
+
+        logger.info(f"刷流下载任务检查完成")
