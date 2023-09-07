@@ -85,11 +85,14 @@ class TransferHistory(Base):
         return db.query(func.count(TransferHistory.id)).filter(TransferHistory.title.like(f'%{title}%')).first()[0]
 
     @staticmethod
-    def list_by(db: Session, title: str = None, year: int = None, season: str = None,
+    def list_by(db: Session, type: str = None, title: str = None, year: int = None, season: str = None,
                 episode: str = None, tmdbid: str = None):
         """
         据tmdbid、season、season_episode查询转移记录
         """
+        if tmdbid and type:
+            return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
+                                                    TransferHistory.type == type).all()
         if tmdbid and not season and not episode:
             return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid).all()
         if tmdbid and season and not episode:

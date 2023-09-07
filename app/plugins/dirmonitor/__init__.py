@@ -263,7 +263,8 @@ class DirMonitor(_PluginBase):
 
                     # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
                     if not settings.SCRAP_FOLLOW_TMDB:
-                        transfer_historys = self.transferhis.get_by(tmdbid=str(mediainfo.tmdb_id))
+                        transfer_historys = self.transferhis.get_by(tmdbid=mediainfo.tmdb_id,
+                                                                    type=mediainfo.type.value)
                         if transfer_historys:
                             mediainfo.title = transfer_historys[0].title
                     logger.info(f"{file_path.name} 识别为：{mediainfo.type.value} {mediainfo.title_year}")
