@@ -301,25 +301,6 @@ class LibraryScraper(_PluginBase):
         """
         削刮一个目录，该目录必须是媒体文件目录
         """
-        # 覆盖模式时，提前删除nfo
-        if self._mode in ["force_all", "force_nfo"]:
-            nfo_files = SystemUtils.list_files(path, [".nfo"])
-            for nfo_file in nfo_files:
-                try:
-                    logger.warn(f"删除nfo文件：{nfo_file}")
-                    nfo_file.unlink()
-                except Exception as err:
-                    print(str(err))
-
-        # 覆盖模式时，提前删除图片文件
-        if self._mode in ["force_all", "force_image"]:
-            image_files = SystemUtils.list_files(path, [".jpg", ".png"])
-            for image_file in image_files:
-                try:
-                    logger.warn(f"删除图片文件：{image_file}")
-                    image_file.unlink()
-                except Exception as err:
-                    print(str(err))
 
         # 目录识别
         dir_meta = MetaInfo(path.name)
@@ -365,6 +346,28 @@ class LibraryScraper(_PluginBase):
                 if not mediainfo:
                     logger.warn(f"未识别到媒体信息：{file}")
                     continue
+
+                # 覆盖模式时，提前删除nfo
+                if self._mode in ["force_all", "force_nfo"]:
+                    nfo_files = SystemUtils.list_files(path, [".nfo"])
+                    for nfo_file in nfo_files:
+                        try:
+                            logger.warn(f"删除nfo文件：{nfo_file}")
+                            nfo_file.unlink()
+                        except Exception as err:
+                            print(str(err))
+
+                # 覆盖模式时，提前删除图片文件
+                if self._mode in ["force_all", "force_image"]:
+                    image_files = SystemUtils.list_files(path, [".jpg", ".png"])
+                    for image_file in image_files:
+                        if ".actors" in str(image_file):
+                            continue
+                        try:
+                            logger.warn(f"删除图片文件：{image_file}")
+                            image_file.unlink()
+                        except Exception as err:
+                            print(str(err))
 
             # 开始刮削
             self.chain.scrape_metadata(path=file, mediainfo=mediainfo)
