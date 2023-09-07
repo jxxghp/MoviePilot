@@ -310,7 +310,7 @@ class LibraryScraper(_PluginBase):
             # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
             if not settings.SCRAP_FOLLOW_TMDB:
                 transfer_historys = self.transferhis.get_by(tmdbid=str(mediainfo.tmdb_id))
-                if not transfer_historys:
+                if transfer_historys:
                     mediainfo.title = transfer_historys[0].title
             # 开始刮削
             self.chain.scrape_metadata(path=file, mediainfo=mediainfo)
