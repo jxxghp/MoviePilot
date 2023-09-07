@@ -52,7 +52,7 @@ class TransferHistoryOper(DbOper):
         return TransferHistory.statistic(self._db, days)
 
     def get_by(self, title: str = None, year: str = None,
-               season: str = None, episode: str = None, tmdbid: str = None) -> List[TransferHistory]:
+               season: str = None, episode: str = None, tmdbid: int = None) -> List[TransferHistory]:
         """
         按类型、标题、年份、季集查询转移记录
         """

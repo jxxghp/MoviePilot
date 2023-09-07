@@ -47,6 +47,7 @@ class LibraryScraper(_PluginBase):
     _enabled = False
     _onlyonce = False
     _cron = None
+    _mode = ""
     _scraper_paths = ""
     _exclude_paths = ""
     # 退出事件
@@ -58,6 +59,7 @@ class LibraryScraper(_PluginBase):
             self._enabled = config.get("enabled")
             self._onlyonce = config.get("onlyonce")
             self._cron = config.get("cron")
+            self._mode = config.get("mode") or ""
             self._scraper_paths = config.get("scraper_paths") or ""
             self._exclude_paths = config.get("exclude_paths") or ""
 
@@ -92,6 +94,7 @@ class LibraryScraper(_PluginBase):
                     "onlyonce": False,
                     "enabled": self._enabled,
                     "cron": self._cron,
+                    "mode": self._mode,
                     "scraper_paths": self._scraper_paths,
                     "exclude_paths": self._exclude_paths
                 })
@@ -163,6 +166,28 @@ class LibraryScraper(_PluginBase):
                                 },
                                 'content': [
                                     {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'mode',
+                                            'label': '刮削模式',
+                                            'items': [
+                                                {'title': '仅刮削缺失元数据和图片', 'value': ''},
+                                                {'title': '覆盖所有元数据和图片', 'value': 'force_all'},
+                                                {'title': '覆盖所有元数据', 'value': 'force_nfo'},
+                                                {'title': '覆盖所有图片', 'value': 'force_image'},
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'cron',
@@ -189,7 +214,7 @@ class LibraryScraper(_PluginBase):
                                             'model': 'scraper_paths',
                                             'label': '削刮路径',
                                             'rows': 5,
-                                            'placeholder': '每一行一个目录'
+                                            'placeholder': '每一行一个目录，需配置到媒体文件的上级目录，即开了二级分类时需要配置到二级分类目录'
                                         }
                                     }
                                 ]
@@ -223,6 +248,7 @@ class LibraryScraper(_PluginBase):
         ], {
             "enabled": False,
             "cron": "0 0 */7 * *",
+            "mode": "",
             "scraper_paths": "",
             "err_hosts": ""
         }
@@ -236,49 +262,77 @@ class LibraryScraper(_PluginBase):
         """
         if not self._scraper_paths:
             return
+        # 排除目录
+        exclude_paths = self._exclude_paths.split("\n")
         # 已选择的目录
         paths = self._scraper_paths.split("\n")
         for path in paths:
             if not path:
                 continue
-            if not Path(path).exists():
+            scraper_path = Path(path)
+            if not scraper_path.exists():
                 logger.warning(f"媒体库刮削路径不存在：{path}")
                 continue
             logger.info(f"开始刮削媒体库：{path} ...")
-            if self._event.is_set():
-                logger.info(f"媒体库刮削服务停止")
-                return
-            # 刮削目录
-            self.__scrape_dir(Path(path))
-            logger.info(f"媒体库刮削完成")
+            # 遍历一层文件夹
+            for sub_path in scraper_path.iterdir():
+                if self._event.is_set():
+                    logger.info(f"媒体库刮削服务停止")
+                    return
+                # 排除目录
+                exclude_flag = False
+                for exclude_path in exclude_paths:
+                    try:
+                        if sub_path.is_relative_to(Path(exclude_path)):
+                            exclude_flag = True
+                            break
+                    except Exception as err:
+                        print(str(err))
+                if exclude_flag:
+                    logger.debug(f"{sub_path} 在排除目录中，跳过 ...")
+                    continue
+                # 开始刮削目录
+                if sub_path.is_dir():
+                    logger.info(f"开始刮削目录：{sub_path} ...")
+                    self.__scrape_dir(sub_path)
+                    logger.info(f"目录 {sub_path} 刮削完成")
+            logger.info(f"媒体库 {path} 刮削完成")
 
     def __scrape_dir(self, path: Path):
         """
-        削刮一个目录
+        削刮一个目录，该目录必须是媒体文件目录
         """
-        exclude_paths = self._exclude_paths.split("\n")
+        # 覆盖模式时，提前删除nfo
+        if self._mode in ["force_all", "force_nfo"]:
+            nfo_files = SystemUtils.list_files(path, [".nfo"])
+            for nfo_file in nfo_files:
+                try:
+                    logger.warn(f"删除nfo文件：{nfo_file}")
+                    nfo_file.unlink()
+                except Exception as err:
+                    print(str(err))
+        # 覆盖模式时，提前删除图片文件
+        if self._mode in ["force_all", "force_image"]:
+            image_files = SystemUtils.list_files(path, [".jpg", ".png"])
+            for image_file in image_files:
+                try:
+                    logger.warn(f"删除图片文件：{image_file}")
+                    image_file.unlink()
+                except Exception as err:
+                    print(str(err))
+
+        # 目录识别
+        dir_meta = MetaInfo(path.name)
         # 查找目录下所有的文件
         files = SystemUtils.list_files(path, settings.RMT_MEDIAEXT)
         for file in files:
             if self._event.is_set():
                 logger.info(f"媒体库刮削服务停止")
                 return
-            # 排除目录
-            exclude_flag = False
-            for exclude_path in exclude_paths:
-                if file.is_relative_to(Path(exclude_path)):
-                    exclude_flag = True
-                    break
-            if exclude_flag:
-                logger.debug(f"{file} 在排除目录中，跳过 ...")
-                continue
             # 识别媒体文件
             meta_info = MetaInfo(file.name)
-            if meta_info.type == MediaType.TV:
-                dir_info = MetaInfo(file.parent.parent.name)
-            else:
-                dir_info = MetaInfo(file.parent.name)
-            meta_info.merge(dir_info)
+            # 合并
+            meta_info.merge(dir_meta)
             # 优先读取本地nfo文件
             tmdbid = None
             if meta_info.type == MediaType.MOVIE:
