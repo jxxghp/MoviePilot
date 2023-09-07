@@ -242,6 +242,18 @@ location / {
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
+3) 新建的企业微信应用需要固定公网IP的代理才能收到消息，代理添加以下代码：
+```nginx configuration
+location /cgi-bin/gettoken {
+    proxy_pass https://qyapi.weixin.qq.com;
+}
+location /cgi-bin/message/send {
+    proxy_pass https://qyapi.weixin.qq.com;
+}
+location  /cgi-bin/menu/create {
+    proxy_pass https://qyapi.weixin.qq.com;
+}
+```
 
 ![image](https://github.com/jxxghp/MoviePilot/assets/51039935/b8f0238d-847f-4f9d-b210-e905837362b9)
 

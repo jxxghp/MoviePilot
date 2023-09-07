@@ -84,6 +84,7 @@ class BrushFlow(_PluginBase):
     _up_speed = 0
     _dl_speed = 0
     _save_path = ""
+    _clear_task = False
 
     def init_plugin(self, config: dict = None):
         self.siteshelper = SitesHelper()
@@ -115,6 +116,13 @@ class BrushFlow(_PluginBase):
             self._up_speed = config.get("up_speed")
             self._dl_speed = config.get("dl_speed")
             self._save_path = config.get("save_path")
+            self._clear_task = config.get("clear_task")
+
+            if self._clear_task:
+                # 清除统计数据
+                self.save_data("statistic", {})
+                # 清除种子记录
+                self.save_data("torrents", {})
 
             # 停止现有任务
             self.stop_service()
@@ -216,32 +224,7 @@ class BrushFlow(_PluginBase):
                                             ) + timedelta(seconds=3))
                     # 关闭一次性开关
                     self._onlyonce = False
-                    self.update_config({
-                        "onlyonce": False,
-                        "enabled": self._enabled,
-                        "notify": self._notify,
-                        "brushsites": self._brushsites,
-                        "downloader": self._downloader,
-                        "disksize": self._disksize,
-                        "freeleech": self._freeleech,
-                        "maxupspeed": self._maxupspeed,
-                        "maxdlspeed": self._maxdlspeed,
-                        "maxdlcount": self._maxdlcount,
-                        "include": self._include,
-                        "exclude": self._exclude,
-                        "size": self._size,
-                        "seeder": self._seeder,
-                        "pubtime": self._pubtime,
-                        "seed_time": self._seed_time,
-                        "seed_ratio": self._seed_ratio,
-                        "seed_size": self._seed_size,
-                        "download_time": self._download_time,
-                        "seed_avgspeed": self._seed_avgspeed,
-                        "seed_inactivetime": self._seed_inactivetime,
-                        "up_speed": self._up_speed,
-                        "dl_speed": self._dl_speed,
-                        "save_path": self._save_path
-                    })
+                    self.__update_config()
                 if self._scheduler.get_jobs():
                     # 增加检查任务
                     self._scheduler.add_job(self.check, 'interval', minutes=self._check_interval)
@@ -705,6 +688,27 @@ class BrushFlow(_PluginBase):
                             }
                         ]
                     },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'clear_task',
+                                            'label': '清除统计数据',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
                 ]
             }
         ], {
@@ -715,7 +719,441 @@ class BrushFlow(_PluginBase):
         }
 
     def get_page(self) -> List[dict]:
-        pass
+        # 种子明细
+        data_list = self.get_data("torrents") or {}
+        # 统计数据
+        stattistic_data: Dict[str, dict] = self.get_data("statistic") or {
+            "count": 0,
+            "deleted": 0,
+            "uploaded": 0,
+            "downloaded": 0,
+        }
+        if not data_list:
+            return [
+                {
+                    'component': 'div',
+                    'text': '暂无数据',
+                    'props': {
+                        'class': 'text-center',
+                    }
+                }
+            ]
+        else:
+            data_list = data_list.values()
+        # 总上传量格式化
+        total_upload = StringUtils.str_filesize(stattistic_data.get("uploaded"))
+        # 总下载量格式化
+        total_download = StringUtils.str_filesize(stattistic_data.get("downloaded"))
+        # 下载种子数
+        total_count = stattistic_data.get("count")
+        # 删除种子数
+        total_deleted = stattistic_data.get("deleted")
+        # 种子数据明细
+        torrent_trs = [
+            {
+                'component': 'tr',
+                'props': {
+                    'class': 'text-sm'
+                },
+                'content': [
+                    {
+                        'component': 'td',
+                        'props': {
+                            'class': 'whitespace-nowrap break-keep text-high-emphasis'
+                        },
+                        'text': data.get("site_name")
+                    },
+                    {
+                        'component': 'td',
+                        'text': data.get("title")
+                    },
+                    {
+                        'component': 'td',
+                        'text': StringUtils.str_filesize(data.get("size"))
+                    },
+                    {
+                        'component': 'td',
+                        'text': StringUtils.str_filesize(data.get("uploaded") or 0)
+                    },
+                    {
+                        'component': 'td',
+                        'text': StringUtils.str_filesize(data.get("downloaded") or 0)
+                    },
+                    {
+                        'component': 'td',
+                        'text': data.get('ratio')
+                    },
+                    {
+                        'component': 'td',
+                        'text': "已删除" if data.get("deleted") else "正常"
+                    }
+                ]
+            } for data in data_list
+        ]
+
+        # 拼装页面
+        return [
+            {
+                'component': 'VRow',
+                'content': [
+                    # 总上传量
+                    {
+                        'component': 'VCol',
+                        'props': {
+                            'cols': 12,
+                            'md': 3,
+                            'sm': 6
+                        },
+                        'content': [
+                            {
+                                'component': 'VCard',
+                                'props': {
+                                    'variant': 'tonal',
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VCardText',
+                                        'props': {
+                                            'class': 'd-flex align-center',
+                                        },
+                                        'content': [
+                                            {
+                                                'component': 'VAvatar',
+                                                'props': {
+                                                    'rounded': True,
+                                                    'variant': 'text',
+                                                    'class': 'me-3'
+                                                },
+                                                'content': [
+                                                    {
+                                                        'component': 'VImg',
+                                                        'props': {
+                                                            'src': '/plugin/upload.png'
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                'component': 'div',
+                                                'content': [
+                                                    {
+                                                        'component': 'span',
+                                                        'props': {
+                                                            'class': 'text-caption'
+                                                        },
+                                                        'text': '总上传量'
+                                                    },
+                                                    {
+                                                        'component': 'div',
+                                                        'props': {
+                                                            'class': 'd-flex align-center flex-wrap'
+                                                        },
+                                                        'content': [
+                                                            {
+                                                                'component': 'span',
+                                                                'props': {
+                                                                    'class': 'text-h6'
+                                                                },
+                                                                'text': total_upload
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                        ]
+                    },
+                    # 总下载量
+                    {
+                        'component': 'VCol',
+                        'props': {
+                            'cols': 12,
+                            'md': 3,
+                            'sm': 6
+                        },
+                        'content': [
+                            {
+                                'component': 'VCard',
+                                'props': {
+                                    'variant': 'tonal',
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VCardText',
+                                        'props': {
+                                            'class': 'd-flex align-center',
+                                        },
+                                        'content': [
+                                            {
+                                                'component': 'VAvatar',
+                                                'props': {
+                                                    'rounded': True,
+                                                    'variant': 'text',
+                                                    'class': 'me-3'
+                                                },
+                                                'content': [
+                                                    {
+                                                        'component': 'VImg',
+                                                        'props': {
+                                                            'src': '/plugin/download.png'
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                'component': 'div',
+                                                'content': [
+                                                    {
+                                                        'component': 'span',
+                                                        'props': {
+                                                            'class': 'text-caption'
+                                                        },
+                                                        'text': '总下载量'
+                                                    },
+                                                    {
+                                                        'component': 'div',
+                                                        'props': {
+                                                            'class': 'd-flex align-center flex-wrap'
+                                                        },
+                                                        'content': [
+                                                            {
+                                                                'component': 'span',
+                                                                'props': {
+                                                                    'class': 'text-h6'
+                                                                },
+                                                                'text': total_download
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                        ]
+                    },
+                    # 下载种子数
+                    {
+                        'component': 'VCol',
+                        'props': {
+                            'cols': 12,
+                            'md': 3,
+                            'sm': 6
+                        },
+                        'content': [
+                            {
+                                'component': 'VCard',
+                                'props': {
+                                    'variant': 'tonal',
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VCardText',
+                                        'props': {
+                                            'class': 'd-flex align-center',
+                                        },
+                                        'content': [
+                                            {
+                                                'component': 'VAvatar',
+                                                'props': {
+                                                    'rounded': True,
+                                                    'variant': 'text',
+                                                    'class': 'me-3'
+                                                },
+                                                'content': [
+                                                    {
+                                                        'component': 'VImg',
+                                                        'props': {
+                                                            'src': '/plugin/seed.png'
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                'component': 'div',
+                                                'content': [
+                                                    {
+                                                        'component': 'span',
+                                                        'props': {
+                                                            'class': 'text-caption'
+                                                        },
+                                                        'text': '下载种子数'
+                                                    },
+                                                    {
+                                                        'component': 'div',
+                                                        'props': {
+                                                            'class': 'd-flex align-center flex-wrap'
+                                                        },
+                                                        'content': [
+                                                            {
+                                                                'component': 'span',
+                                                                'props': {
+                                                                    'class': 'text-h6'
+                                                                },
+                                                                'text': total_count
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                        ]
+                    },
+                    # 删除种子数
+                    {
+                        'component': 'VCol',
+                        'props': {
+                            'cols': 12,
+                            'md': 3,
+                            'sm': 6
+                        },
+                        'content': [
+                            {
+                                'component': 'VCard',
+                                'props': {
+                                    'variant': 'tonal',
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VCardText',
+                                        'props': {
+                                            'class': 'd-flex align-center',
+                                        },
+                                        'content': [
+                                            {
+                                                'component': 'VAvatar',
+                                                'props': {
+                                                    'rounded': True,
+                                                    'variant': 'text',
+                                                    'class': 'me-3'
+                                                },
+                                                'content': [
+                                                    {
+                                                        'component': 'VImg',
+                                                        'props': {
+                                                            'src': '/plugin/torrentremover.png'
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                'component': 'div',
+                                                'content': [
+                                                    {
+                                                        'component': 'span',
+                                                        'props': {
+                                                            'class': 'text-caption'
+                                                        },
+                                                        'text': '删除种子数'
+                                                    },
+                                                    {
+                                                        'component': 'div',
+                                                        'props': {
+                                                            'class': 'd-flex align-center flex-wrap'
+                                                        },
+                                                        'content': [
+                                                            {
+                                                                'component': 'span',
+                                                                'props': {
+                                                                    'class': 'text-h6'
+                                                                },
+                                                                'text': total_deleted
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    # 种子明细
+                    {
+                        'component': 'VCol',
+                        'props': {
+                            'cols': 12,
+                        },
+                        'content': [
+                            {
+                                'component': 'VTable',
+                                'props': {
+                                    'hover': True
+                                },
+                                'content': [
+                                    {
+                                        'component': 'thead',
+                                        'content': [
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                    'class': 'text-start ps-4'
+                                                },
+                                                'text': '站点'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                    'class': 'text-start ps-4'
+                                                },
+                                                'text': '标题'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                    'class': 'text-start ps-4'
+                                                },
+                                                'text': '大小'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                    'class': 'text-start ps-4'
+                                                },
+                                                'text': '上传量'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                    'class': 'text-start ps-4'
+                                                },
+                                                'text': '下载量'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                    'class': 'text-start ps-4'
+                                                },
+                                                'text': '分享率'
+                                            },
+                                            {
+                                                'component': 'th',
+                                                'props': {
+                                                    'class': 'text-start ps-4'
+                                                },
+                                                'text': '状态'
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        'component': 'tbody',
+                                        'content': torrent_trs
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
 
     def stop_service(self):
         """
@@ -732,6 +1170,37 @@ class BrushFlow(_PluginBase):
         except Exception as e:
             print(str(e))
 
+    def __update_config(self):
+        """
+        更新配置
+        """
+        self.update_config({
+            "onlyonce": self._onlyonce,
+            "enabled": self._enabled,
+            "notify": self._notify,
+            "brushsites": self._brushsites,
+            "downloader": self._downloader,
+            "disksize": self._disksize,
+            "freeleech": self._freeleech,
+            "maxupspeed": self._maxupspeed,
+            "maxdlspeed": self._maxdlspeed,
+            "maxdlcount": self._maxdlcount,
+            "include": self._include,
+            "exclude": self._exclude,
+            "size": self._size,
+            "seeder": self._seeder,
+            "pubtime": self._pubtime,
+            "seed_time": self._seed_time,
+            "seed_ratio": self._seed_ratio,
+            "seed_size": self._seed_size,
+            "download_time": self._download_time,
+            "seed_avgspeed": self._seed_avgspeed,
+            "seed_inactivetime": self._seed_inactivetime,
+            "up_speed": self._up_speed,
+            "dl_speed": self._dl_speed,
+            "save_path": self._save_path
+        })
+
     def brush(self):
         """
         执行刷流动作，添加下载任务
@@ -742,12 +1211,16 @@ class BrushFlow(_PluginBase):
         with lock:
             logger.info(f"开始执行刷流任务 ...")
             # 读取种子记录
-            task_info = self.get_data("torrents") or {}
+            task_info: Dict[str, dict] = self.get_data("torrents") or {}
             if task_info:
                 # 当前保种大小
                 torrents_size = sum([task.get("size") or 0 for task in task_info.values()])
             else:
                 torrents_size = 0
+            # 读取统计数据
+            statistic_info = self.get_data("statistic") or {
+                "count": 0
+            }
             # 处理所有站点
             for siteid in self._brushsites:
                 siteinfo = self.siteoper.get(siteid)
@@ -808,12 +1281,8 @@ class BrushFlow(_PluginBase):
                         elif begin_seeder and end_seeder \
                                 and not int(begin_seeder) <= torrent.seeders <= int(end_seeder):
                             continue
-                    # 计算发布时间
-                    pubdate = StringUtils.get_time(pubdate)
-                    localtz = pytz.timezone(settings.TZ)
-                    localnowtime = datetime.now().astimezone(localtz)
-                    localpubdate = pubdate.astimezone(localtz)
-                    pudate_minutes = int(localnowtime.timestamp() - localpubdate.timestamp()) / 60
+                    # 计算发布时间，将字符串转换为时间
+                    pubdate_minutes = self.__get_pubminutes(torrent.pubdate)
                     # 发布时间（分钟）
                     if self._pubtime:
                         pubtimes = str(self._pubtime).split("-")
@@ -824,10 +1293,10 @@ class BrushFlow(_PluginBase):
                             end_pubtime = 0
                         # 将种子发布日志转换为与当前时间的差
                         if begin_pubtime and not end_pubtime \
-                                and pudate_minutes > int(begin_pubtime) * 60:
+                                and pubdate_minutes > int(begin_pubtime) * 60:
                             continue
                         elif begin_pubtime and end_pubtime \
-                                and not int(begin_pubtime) * 60 <= pudate_minutes <= int(end_pubtime) * 60:
+                                and not int(begin_pubtime) * 60 <= pubdate_minutes <= int(end_pubtime) * 60:
                             continue
                     # 同时下载任务数
                     downloads = self.__get_downloading_count(self._downloader)
@@ -858,13 +1327,20 @@ class BrushFlow(_PluginBase):
                         "title": torrent.title,
                         "size": torrent.size,
                         "pubdate": torrent.pubdate,
-                        "state": "Y"
+                        "ratio": 0,
+                        "downloaded": 0,
+                        "uploaded": 0,
+                        "deleted": False,
                     }
+                    # 统计数据
+                    statistic_info["count"] += 1
                     # 发送消息
                     self.__send_add_message(torrent)
 
             # 保存数据
             self.save_data("torrents", task_info)
+            # 保存统计数据
+            self.save_data("statistic", statistic_info)
             logger.info(f"刷流任务执行完成")
 
     def check(self):
@@ -883,17 +1359,24 @@ class BrushFlow(_PluginBase):
         with lock:
             logger.info(f"开始检查刷流下载任务 ...")
             # 读取种子记录
-            task_info = self.get_data("torrents") or {}
-            if not task_info:
-                logger.info(f"没有需要检查的刷流下载任务")
-                return
+            task_info: Dict[str, dict] = self.get_data("torrents") or {}
             # 种子Hash
             check_hashs = list(task_info.keys())
+            if not task_info or not check_hashs:
+                logger.info(f"没有需要检查的刷流下载任务")
+                return
             logger.info(f"共有 {len(check_hashs)} 个任务正在刷流，开始检查任务状态")
             # 获取下载器实例
             downloader = self.__get_downloader(self._downloader)
             if not downloader:
                 return
+            # 读取统计数据
+            statistic_info = self.get_data("statistic") or {
+                "count": 0,
+                "deleted": 0,
+                "uploaded": 0,
+                "downloaded": 0
+            }
             # 获取下载器中的种子
             torrents, state = downloader.get_torrents(ids=check_hashs)
             if not state:
@@ -904,15 +1387,26 @@ class BrushFlow(_PluginBase):
                 self.save_data("hashs", {})
                 return
             # 检查种子状态，判断是否要删种
+            remove_torrents = []
             for torrent in torrents:
                 site_name = task_info.get(self.__get_hash(torrent, self._downloader)).get("site_name")
                 torrent_info = self.__get_torrent_info(self._downloader, torrent)
+                # 更新上传量、下载量
+                if not task_info.get(torrent_info.get("hash")):
+                    task_info[torrent_info.get("hash")] = {
+                        "downloaded": torrent_info.get("downloaded"),
+                        "uploaded": torrent_info.get("uploaded"),
+                        "ratio": torrent_info.get("ratio"),
+                    }
+                else:
+                    task_info[torrent_info.get("hash")]["downloaded"] = torrent_info.get("downloaded")
+                    task_info[torrent_info.get("hash")]["uploaded"] = torrent_info.get("uploaded")
                 # 做种时间（小时）
                 if self._seed_time:
                     if torrent_info.get("seeding_time") >= float(self._seed_time) * 3600:
                         logger.info(f"做种时间达到 {self._seed_time} 小时，删除种子：{torrent_info.get('title')}")
                         downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
-                        task_info.pop(torrent_info.get('hash'))
+                        remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
                                                    reason=f"做种时间达到 {self._seed_time} 小时")
@@ -922,7 +1416,7 @@ class BrushFlow(_PluginBase):
                     if torrent_info.get("ratio") >= float(self._seed_ratio):
                         logger.info(f"分享率达到 {self._seed_ratio}，删除种子：{torrent_info.get('title')}")
                         downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
-                        task_info.pop(torrent_info.get('hash'))
+                        remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
                                                    reason=f"分享率达到 {self._seed_ratio}")
@@ -932,7 +1426,7 @@ class BrushFlow(_PluginBase):
                     if torrent_info.get("uploaded") >= float(self._seed_size) * 1024 * 1024 * 1024:
                         logger.info(f"上传量达到 {self._seed_size} GB，删除种子：{torrent_info.get('title')}")
                         downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
-                        task_info.pop(torrent_info.get('hash'))
+                        remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
                                                    reason=f"上传量达到 {self._seed_size} GB")
@@ -943,7 +1437,7 @@ class BrushFlow(_PluginBase):
                     if torrent_info.get("dltime") >= float(self._download_time) * 3600:
                         logger.info(f"下载耗时达到 {self._download_time} 小时，删除种子：{torrent_info.get('title')}")
                         downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
-                        task_info.pop(torrent_info.get('hash'))
+                        remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
                                                    reason=f"下载耗时达到 {self._download_time} 小时")
@@ -953,7 +1447,7 @@ class BrushFlow(_PluginBase):
                     if torrent_info.get("avg_upspeed") <= float(self._seed_avgspeed) * 1024:
                         logger.info(f"平均上传速度低于 {self._seed_avgspeed} KB/s，删除种子：{torrent_info.get('title')}")
                         downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
-                        task_info.pop(torrent_info.get('hash'))
+                        remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
                                                    reason=f"平均上传速度低于 {self._seed_avgspeed} KB/s")
@@ -964,11 +1458,31 @@ class BrushFlow(_PluginBase):
                         logger.info(
                             f"未活动时间达到 {self._seed_inactivetime} 分钟，删除种子：{torrent_info.get('title')}")
                         downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
-                        task_info.pop(torrent_info.get('hash'))
+                        remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
                                                    reason=f"未活动时间达到 {self._seed_inactivetime} 分钟")
                         continue
+            # 统计删除状态
+            if remove_torrents:
+                statistic_info["deleted"] += len(remove_torrents)
+                # 删除任务记录
+                for torrent in remove_torrents:
+                    task_info[torrent.get("hash")].update({
+                        "deleted": True,
+                    })
+            # 统计总上传量、下载量
+            total_uploaded = 0
+            total_downloaded = 0
+            for hash_str, task in task_info.items():
+                total_downloaded += task.get("downloaded") or 0
+                total_uploaded += task.get("uploaded") or 0
+            # 更新统计数据
+            statistic_info["uploaded"] = total_uploaded
+            statistic_info["downloaded"] = total_downloaded
+            # 保存统计数据
+            self.save_data("statistic", statistic_info)
+            # 保存任务记录
             self.save_data("torrents", task_info)
             logger.info(f"刷流下载任务检查完成")
 
@@ -987,7 +1501,9 @@ class BrushFlow(_PluginBase):
         """
         添加下载任务
         """
+        # 上传限速
         up_speed = int(self._up_speed) if self._up_speed else None
+        # 下载限速
         down_speed = int(self._dl_speed) if self._dl_speed else None
         if self._downloader == "qbittorrent":
             if not self.qb:
@@ -1217,3 +1733,20 @@ class BrushFlow(_PluginBase):
             return 0
         torrents = downlader.get_downloading_torrents()
         return len(torrents) or 0
+    
+    @staticmethod
+    def __get_pubminutes(pubdate: str) -> datetime:
+        """
+        将字符串转换为时间（分钟）
+        """
+        try:
+            pubdate = time.strptime(pubdate, "%Y-%m-%d %H:%M:%S")
+            localtz = pytz.timezone(settings.TZ)
+            localnowtime = datetime.now().astimezone(localtz)
+            localpubdate = pubdate.astimezone(localtz)
+            pudate_minutes = int(localnowtime.timestamp() - localpubdate.timestamp()) / 60
+            return pudate_minutes
+        except Exception as e:
+            print(str(e))
+            return 0
+    
