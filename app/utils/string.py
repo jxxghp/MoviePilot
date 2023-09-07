@@ -641,3 +641,16 @@ class StringUtils:
 
         formatted_string = "、".join(formatted_ranges)
         return formatted_string
+
+    @staticmethod
+    def is_number(text: str) -> bool:
+        """
+        判断字符是否为可以转换为整数或者浮点数
+        """
+        if not text:
+            return False
+        try:
+            float(text)
+            return True
+        except ValueError:
+            return False
