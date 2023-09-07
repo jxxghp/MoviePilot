@@ -65,6 +65,7 @@ docker pull jxxghp/moviepilot:latest
 - **DOWNLOAD_SUBTITLE：** 下载站点字幕，`true`/`false`，默认`true`
 - **REFRESH_MEDIASERVER：** 入库刷新媒体库，`true`/`false`，默认`true`
 - **SCRAP_METADATA：** 刮削入库的媒体文件，`true`/`false`，默认`true`
+- **SCRAP_FOLLOW_TMDB：** 新增已入库媒体是否跟随TMDB信息变化，`true`/`false`，默认`true`
 - **TORRENT_TAG：** 种子标签，默认为`MOVIEPILOT`，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
 - **LIBRARY_PATH：** 媒体库目录，多个目录使用`,`分隔
 - **LIBRARY_MOVIE_NAME：** 电影媒体库目录名，默认`电影`

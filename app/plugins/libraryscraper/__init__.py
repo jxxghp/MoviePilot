@@ -9,6 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
+from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.nfo import NfoReader
 from app.log import logger
 from app.plugins import _PluginBase
@@ -40,6 +41,7 @@ class LibraryScraper(_PluginBase):
     user_level = 1
 
     # 私有属性
+    transferhis = None
     _scheduler = None
     _scraper = None
     # 限速开关
@@ -67,6 +69,7 @@ class LibraryScraper(_PluginBase):
 
         # 启动定时任务 & 立即运行一次
         if self._enabled or self._onlyonce:
+            self.transferhis = TransferHistoryOper(self.db)
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             if self._cron:
                 logger.info(f"媒体库刮削服务启动，周期：{self._cron}")
@@ -346,6 +349,13 @@ class LibraryScraper(_PluginBase):
                 if not mediainfo:
                     logger.warn(f"未识别到媒体信息：{file}")
                     continue
+                    
+                # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
+                if not settings.SCRAP_FOLLOW_TMDB:
+                    transfer_historys = self.transferhis.get_by(tmdbid=mediainfo.tmdb_id,
+                                                                type=mediainfo.type.value)
+                    if transfer_historys:
+                        mediainfo.title = transfer_historys[0].title
 
                 # 覆盖模式时，提前删除nfo
                 if self._mode in ["force_all", "force_nfo"]:

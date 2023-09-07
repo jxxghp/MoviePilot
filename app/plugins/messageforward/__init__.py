@@ -303,7 +303,7 @@ class MessageForward(_PluginBase):
             "enable_id_trans": 0,
             "enable_duplicate_check": 0
         }
-        return self.__post_request(message_url, req_json, i, title)
+        return self.__post_request(message_url=message_url, req_json=req_json, i=i, title=title)
 
     def __send_image_message(self, title: str, text: str, image_url: str, userid: str = None, access_token: str = None,
                              appid: str = None, i: int = None) -> Optional[bool]:
@@ -335,9 +335,9 @@ class MessageForward(_PluginBase):
                 ]
             }
         }
-        return self.__post_request(message_url, req_json, i, title)
+        return self.__post_request(message_url=message_url, req_json=req_json, i=i, title=title)
 
-    def __post_request(self, message_url: str, req_json: dict, i: int, title: str) -> bool:
+    def __post_request(self, message_url: str, req_json: dict, i: int, title: str, retry: int = 0) -> bool:
         """
         向微信发送请求
         """
@@ -355,6 +355,11 @@ class MessageForward(_PluginBase):
                     if ret_json.get('errcode') == 42001:
                         # 重新获取token
                         self.__flush_access_token(i)
+                        retry += 1
+                        # 重发请求
+                        if retry <= 3:
+                            self.__post_request(message_url=message_url, req_json=req_json, i=i, title=title,
+                                                retry=retry)
                     logger.error(f"转发消息 {title} 失败，错误信息：{ret_json}")
                     return False
             elif res is not None:
@@ -364,7 +369,7 @@ class MessageForward(_PluginBase):
                 logger.error(f"转发消息 {title} 失败，未获取到返回信息")
                 return False
         except Exception as err:
-            logger.error(f"转发消息 {title} 失败，错误信息：{err}")
+            logger.error(f"转发消息 {title} 异常，错误信息：{err}")
             return False
 
     def __get_access_token(self, corpid, appsecret):
