@@ -25,7 +25,7 @@ class TransferHistory(Base):
     title = Column(String, index=True)
     # 年份
     year = Column(String)
-    tmdbid = Column(Integer)
+    tmdbid = Column(Integer, index=True)
     imdbid = Column(String)
     tvdbid = Column(Integer)
     doubanid = Column(String)
