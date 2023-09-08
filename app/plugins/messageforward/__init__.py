@@ -211,7 +211,7 @@ class MessageForward(_PluginBase):
                 expires_in = wechat_config['expires_in']
                 access_token = wechat_config['access_token']
                 # 判断token是否过期
-                if (datetime.now() - access_token_time).seconds < expires_in:
+                if (datetime.now() - datetime.strptime(access_token_time, "%Y-%m-%d %H:%M:%S")).seconds < expires_in:
                     # 已过期，重新获取token
                     access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
                                                                                           appsecret=appsecret)
