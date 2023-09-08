@@ -14,13 +14,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: ${{ secrets.DOCKER_USERNAME }}/moviepilot
+        uses: actions/checkout@v4
 
       -
         name: Release version
@@ -28,6 +22,16 @@ jobs:
         run: |
           app_version=$(cat version.py |sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
           echo "app_version=$app_version" >> $GITHUB_ENV
+
+      - 
+        name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/moviepilot
+          tags: |
+            type=raw,value=${{ env.app_version }}
+            type=raw,value=latest
 
       -
         name: Set Up QEMU
@@ -52,11 +56,9 @@ jobs:
           file: Dockerfile
           platforms: |
             linux/amd64
-            linux/arm64
+            linux/arm64/v8
           push: true
           build-args: |
             MOVIEPILOT_VERSION=${{ env.app_version }}
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/moviepilot:latest
-            ${{ secrets.DOCKER_USERNAME }}/moviepilot:${{ env.app_version }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
