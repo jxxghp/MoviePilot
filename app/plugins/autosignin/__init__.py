@@ -31,13 +31,13 @@ class AutoSignIn(_PluginBase):
     # 插件名称
     plugin_name = "站点自动签到"
     # 插件描述
-    plugin_desc = "自动模拟登录站点或签到。"
+    plugin_desc = "自动模拟登录站点、签到。"
     # 插件图标
     plugin_icon = "signin.png"
     # 主题色
     plugin_color = "#4179F4"
     # 插件版本
-    plugin_version = "1.0"
+    plugin_version = "1.1"
     # 插件作者
     plugin_author = "thsrite"
     # 作者主页
@@ -61,16 +61,15 @@ class AutoSignIn(_PluginBase):
     # 配置属性
     _enabled: bool = False
     _cron: str = ""
-    _sign_type: str = ""
     _onlyonce: bool = False
     _notify: bool = False
     _queue_cnt: int = 5
     _sign_sites: list = []
+    _login_sites: list = []
     _retry_keyword = None
     _clean: bool = False
     _start_time: int = None
     _end_time: int = None
-    _action: str = ""
 
     def init_plugin(self, config: dict = None):
         self.sites = SitesHelper()
@@ -87,10 +86,9 @@ class AutoSignIn(_PluginBase):
             self._notify = config.get("notify")
             self._queue_cnt = config.get("queue_cnt") or 5
             self._sign_sites = config.get("sign_sites")
+            self._login_sites = config.get("login_sites")
             self._retry_keyword = config.get("retry_keyword")
             self._clean = config.get("clean")
-            self._sign_type = config.get("sign_type") or "sign"
-            self._action = "签到" if str(self._sign_type) == "sign" else "模拟登陆"
 
         # 加载模块
         if self._enabled or self._onlyonce:
@@ -103,10 +101,10 @@ class AutoSignIn(_PluginBase):
 
             # 立即运行一次
             if self._onlyonce:
-                logger.info(f"站点自动{self._action}服务启动，立即运行一次")
+                logger.info("站点自动签到服务启动，立即运行一次")
                 self._scheduler.add_job(func=self.sign_in, trigger='date',
                                         run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
-                                        name=f"站点自动{self._action}")
+                                        name="站点自动签到")
 
                 # 关闭一次性开关
                 self._onlyonce = False
@@ -120,8 +118,8 @@ class AutoSignIn(_PluginBase):
                         if str(self._cron).strip().count(" ") == 4:
                             self._scheduler.add_job(func=self.sign_in,
                                                     trigger=CronTrigger.from_crontab(self._cron),
-                                                    name=f"站点自动{self._action}")
-                            logger.info(f"站点自动{self._action}服务启动，执行周期 {self._cron}")
+                                                    name="站点自动签到")
+                            logger.info(f"站点自动签到服务启动，执行周期 {self._cron}")
                         else:
                             # 2.3/9-23
                             crons = str(self._cron).strip().split("/")
@@ -139,11 +137,11 @@ class AutoSignIn(_PluginBase):
                                     self._scheduler.add_job(func=self.sign_in,
                                                             trigger="interval",
                                                             hours=float(str(cron).strip()),
-                                                            name=f"站点自动{self._action}")
+                                                            name="站点自动签到")
                                     logger.info(
-                                        f"站点自动{self._action}服务启动，执行周期 {self._start_time}点-{self._end_time}点 每{cron}小时执行一次")
+                                        f"站点自动签到服务启动，执行周期 {self._start_time}点-{self._end_time}点 每{cron}小时执行一次")
                                 else:
-                                    logger.error(f"站点自动{self._action}服务启动失败，周期格式错误")
+                                    logger.error("站点自动签到服务启动失败，周期格式错误")
                                     # 推送实时消息
                                     self.systemmessage.put(f"执行周期配置错误")
                                     self._cron = ""
@@ -156,9 +154,9 @@ class AutoSignIn(_PluginBase):
                                 self._scheduler.add_job(func=self.sign_in,
                                                         trigger="interval",
                                                         hours=float(str(self._cron).strip()),
-                                                        name=f"站点自动{self._action}")
+                                                        name="站点自动签到")
                                 logger.info(
-                                    f"站点自动{self._action}服务启动，执行周期 {self._start_time}点-{self._end_time}点 每{self._cron}小时执行一次")
+                                    f"站点自动签到服务启动，执行周期 {self._start_time}点-{self._end_time}点 每{self._cron}小时执行一次")
                     except Exception as err:
                         logger.error(f"定时任务配置错误：{err}")
                         # 推送实时消息
@@ -176,7 +174,7 @@ class AutoSignIn(_PluginBase):
                     for trigger in triggers:
                         self._scheduler.add_job(self.sign_in, "cron",
                                                 hour=trigger.hour, minute=trigger.minute,
-                                                name=f"站点自动{self._action}")
+                                                name="站点自动签到")
 
             # 启动任务
             if self._scheduler.get_jobs():
@@ -196,9 +194,9 @@ class AutoSignIn(_PluginBase):
                 "onlyonce": self._onlyonce,
                 "queue_cnt": self._queue_cnt,
                 "sign_sites": self._sign_sites,
+                "login_sites": self._login_sites,
                 "retry_keyword": self._retry_keyword,
                 "clean": self._clean,
-                "sign_type": self._sign_type,
             }
         )
 
@@ -321,27 +319,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSelect',
-                                        'props': {
-                                            'model': 'sign_type',
-                                            'label': '签到方式',
-                                            'items': [
-                                                {'title': '签到', 'value': 'sign'},
-                                                {'title': '登录', 'value': 'login'}
-                                            ]
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -358,7 +336,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -374,7 +352,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -414,6 +392,26 @@ class AutoSignIn(_PluginBase):
                         'content': [
                             {
                                 'component': 'VCol',
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'chips': True,
+                                            'multiple': True,
+                                            'model': 'login_sites',
+                                            'label': '登录站点',
+                                            'items': site_options
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
                                 'props': {
                                     'cols': 12,
                                 },
@@ -437,12 +435,12 @@ class AutoSignIn(_PluginBase):
         ], {
             "enabled": False,
             "notify": True,
-            "sign_type": "sign",
             "cron": "",
             "onlyonce": False,
             "clean": False,
             "queue_cnt": 5,
             "sign_sites": [],
+            "login_sites": [],
             "retry_keyword": "错误|失败"
         }
 
@@ -556,70 +554,84 @@ class AutoSignIn(_PluginBase):
         if self._start_time and self._end_time:
             if int(datetime.today().hour) < self._start_time or int(datetime.today().hour) > self._end_time:
                 logger.error(
-                    f"当前时间 {int(datetime.today().hour)} 不在 {self._start_time}-{self._end_time} 范围内，暂不{self._action}")
+                    f"当前时间 {int(datetime.today().hour)} 不在 {self._start_time}-{self._end_time} 范围内，暂不执行任务")
                 return
         if event:
-            logger.info(f"收到命令，开始站点{self._action} ...")
+            logger.info("收到命令，开始站点签到 ...")
             self.post_message(channel=event.event_data.get("channel"),
-                              title=f"开始站点{self._action} ...",
+                              title="开始站点签到 ...",
                               userid=event.event_data.get("user"))
 
+        if self._sign_sites:
+            self.__do(today=today, type="签到", do_sites=self._sign_sites, event=event)
+        if self._login_sites:
+            self.__do(today=today, type="登录", do_sites=self._login_sites, event=event)
+
+    def __do(self, today: datetime, type: str, do_sites: list, event: Event = None):
+        """
+        签到逻辑
+        """
         yesterday = today - timedelta(days=1)
         yesterday_str = yesterday.strftime('%Y-%m-%d')
         # 删除昨天历史
-        self.del_data(key=yesterday_str)
+        self.del_data(key=type + "-" + yesterday_str)
 
-        # 查看今天有没有签到历史
+        # 查看今天有没有签到|登录历史
         today = today.strftime('%Y-%m-%d')
-        today_history = self.get_data(key=today)
+        today_history = self.get_data(key=type + "-" + today)
 
-        # 查询签到站点
-        sign_sites = [site for site in self.sites.get_indexers() if not site.get("public")]
+        # 查询所有站点
+        all_sites = [site for site in self.sites.get_indexers() if not site.get("public")]
         # 过滤掉没有选中的站点
-        if self._sign_sites:
-            sign_sites = [site for site in sign_sites if site.get("id") in self._sign_sites]
+        if do_sites:
+            do_sites = [site for site in all_sites if site.get("id") in do_sites]
+        else:
+            do_sites = all_sites
 
         # 今日没数据
         if not today_history or self._clean:
-            logger.info(f"今日 {today} 未{self._action}，开始{self._action}已选站点")
+            logger.info(f"今日 {today} 未{type}，开始{type}已选站点")
             # 过滤删除的站点
-            self._sign_sites = [site.get("id") for site in sign_sites if site]
+            if type == "签到":
+                self._sign_sites = [site.get("id") for site in do_sites if site]
+            if type == "登录":
+                self._login_sites = [site.get("id") for site in do_sites if site]
             if self._clean:
                 # 关闭开关
                 self._clean = False
         else:
-            # 今天已签到需要重签站点
+            # 需要重试站点
             retry_sites = today_history.get("retry")
-            # 今天已签到站点
-            already_sign_sites = today_history.get("sign")
+            # 今天已签到|登录站点
+            already_sites = today_history.get("sign")
 
-            # 今日未签站点
-            no_sign_sites = [site for site in sign_sites if
-                             site.get("id") not in already_sign_sites or site.get("id") in retry_sites]
+            # 今日未签|登录站点
+            no_sites = [site for site in do_sites if
+                        site.get("id") not in already_sites or site.get("id") in retry_sites]
 
-            if not no_sign_sites:
-                logger.info(f"今日 {today} 已{self._action}，无重新{self._action}站点，本次任务结束")
+            if not no_sites:
+                logger.info(f"今日 {today} 已{type}，无重新{type}站点，本次任务结束")
                 return
 
-            # 签到站点 = 需要重签+今日未签
-            sign_sites = no_sign_sites
-            logger.info(f"今日 {today} 已{self._action}，开始重试命中关键词站点")
+            # 任务站点 = 需要重试+今日未do
+            do_sites = no_sites
+            logger.info(f"今日 {today} 已{type}，开始重试命中关键词站点")
 
-        if not sign_sites:
-            logger.info(f"没有需要{self._action}的站点")
+        if not do_sites:
+            logger.info(f"没有需要{type}的站点")
             return
 
         # 执行签到
-        logger.info(f"开始执行{self._action}任务 ...")
-        if str(self._sign_type) == "sign":
-            with ThreadPool(min(len(sign_sites), int(self._queue_cnt))) as p:
-                status = p.map(self.signin_site, sign_sites)
+        logger.info(f"开始执行{type}任务 ...")
+        if type == "签到":
+            with ThreadPool(min(len(do_sites), int(self._queue_cnt))) as p:
+                status = p.map(self.signin_site, do_sites)
         else:
-            with ThreadPool(min(len(sign_sites), int(self._queue_cnt))) as p:
-                status = p.map(self.login_site, sign_sites)
+            with ThreadPool(min(len(do_sites), int(self._queue_cnt))) as p:
+                status = p.map(self.login_site, do_sites)
 
         if status:
-            logger.info(f"站点{self._action}任务完成！")
+            logger.info(f"站点{type}任务完成！")
             # 获取今天的日期
             key = f"{datetime.now().month}月{datetime.now().day}日"
             # 保存数据
@@ -675,10 +687,10 @@ class AutoSignIn(_PluginBase):
             if not self._retry_keyword:
                 # 没设置重试关键词则重试已选站点
                 retry_sites = self._sign_sites
-            logger.debug(f"下次{self._action}重试站点 {retry_sites}")
+            logger.debug(f"下次{type}重试站点 {retry_sites}")
 
             # 存入历史
-            self.save_data(key=today,
+            self.save_data(key=type + "-" + today,
                            value={
                                "sign": self._sign_sites,
                                "retry": retry_sites
@@ -692,21 +704,21 @@ class AutoSignIn(_PluginBase):
                     signin_message += retry_msg
 
                 signin_message = "\n".join([f'【{s[0]}】{s[1]}' for s in signin_message if s])
-                self.post_message(title=f"站点自动{self._action}",
+                self.post_message(title=f"站点自动{type}",
                                   mtype=NotificationType.SiteMessage,
-                                  text=f"全部{self._action}数量: {len(list(self._sign_sites))} \n"
-                                       f"本次{self._action}数量: {len(sign_sites)} \n"
-                                       f"下次{self._action}数量: {len(retry_sites) if self._retry_keyword else 0} \n"
+                                  text=f"全部{type}数量: {len(list(self._sign_sites))} \n"
+                                       f"本次{type}数量: {len(do_sites)} \n"
+                                       f"下次{type}数量: {len(retry_sites) if self._retry_keyword else 0} \n"
                                        f"{signin_message}"
                                   )
             if event:
                 self.post_message(channel=event.event_data.get("channel"),
-                                  title=f"站点{self._action}完成！", userid=event.event_data.get("user"))
+                                  title=f"站点{type}完成！", userid=event.event_data.get("user"))
         else:
-            logger.error(f"站点{self._action}任务失败！")
+            logger.error(f"站点{type}任务失败！")
             if event:
                 self.post_message(channel=event.event_data.get("channel"),
-                                  title=f"站点{self._action}任务失败！", userid=event.event_data.get("user"))
+                                  title=f"站点{type}任务失败！", userid=event.event_data.get("user"))
         # 保存配置
         self.__update_config()
 
