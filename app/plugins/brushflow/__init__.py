@@ -143,74 +143,78 @@ class BrushFlow(_PluginBase):
                         self.systemmessage.put("站点刷流任务出错：Transmission未连接")
                         return
                 if self._disksize and not StringUtils.is_number(self._disksize):
-                    self._disksize = 0
                     logger.error(f"站点刷流任务出错，保种体积设置错误：{self._disksize}")
                     self.systemmessage.put(f"站点刷流任务出错，保种体积设置错误：{self._disksize}")
+                    self._disksize = 0
                     return
                 if self._maxupspeed and not StringUtils.is_number(self._maxupspeed):
-                    self._maxupspeed = 0
                     logger.error(f"站点刷流任务出错，总上传带宽设置错误：{self._maxupspeed}")
                     self.systemmessage.put(f"站点刷流任务出错，总上传带宽设置错误：{self._maxupspeed}")
+                    self._maxupspeed = 0
                     return
                 if self._maxdlspeed and not StringUtils.is_number(self._maxdlspeed):
-                    self._maxdlspeed = 0
                     logger.error(f"站点刷流任务出错，总下载带宽设置错误：{self._maxdlspeed}")
                     self.systemmessage.put(f"站点刷流任务出错，总下载带宽设置错误：{self._maxdlspeed}")
+                    self._maxdlspeed = 0
                     return
                 if self._maxdlcount and not StringUtils.is_number(self._maxdlcount):
-                    self._maxdlcount = 0
                     logger.error(f"站点刷流任务出错，同时下载任务数设置错误：{self._maxdlcount}")
                     self.systemmessage.put(f"站点刷流任务出错，同时下载任务数设置错误：{self._maxdlcount}")
+                    self._maxdlcount = 0
                     return
-                if self._size and not StringUtils.is_number(self._size):
-                    self._size = 0
-                    logger.error(f"站点刷流任务出错，种子大小设置错误：{self._size}")
-                    self.systemmessage.put(f"站点刷流任务出错，种子大小设置错误：{self._size}")
-                    return
-                if self._seeder and not StringUtils.is_number(self._seeder):
-                    self._seeder = 0
-                    logger.error(f"站点刷流任务出错，做种人数设置错误：{self._seeder}")
-                    self.systemmessage.put(f"站点刷流任务出错，做种人数设置错误：{self._seeder}")
-                    return
+                if self._size:
+                    size = str(self._size).split("-")[0]
+                    if not StringUtils.is_number(size):
+                        logger.error(f"站点刷流任务出错，种子大小设置错误：{self._size}")
+                        self.systemmessage.put(f"站点刷流任务出错，种子大小设置错误：{self._size}")
+                        self._size = 0
+                        return
+                if self._seeder:
+                    seeder = str(self._seeder).split("-")[0]
+                    if not StringUtils.is_number(seeder):
+                        logger.error(f"站点刷流任务出错，做种人数设置错误：{self._seeder}")
+                        self.systemmessage.put(f"站点刷流任务出错，做种人数设置错误：{self._seeder}")
+                        self._seeder = 0
+                        return
                 if self._seed_time and not StringUtils.is_number(self._seed_time):
-                    self._seed_time = 0
                     logger.error(f"站点刷流任务出错，做种时间设置错误：{self._seed_time}")
                     self.systemmessage.put(f"站点刷流任务出错，做种时间设置错误：{self._seed_time}")
+                    self._seed_time = 0
                     return
                 if self._seed_ratio and not StringUtils.is_number(self._seed_ratio):
-                    self._seed_ratio = 0
                     logger.error(f"站点刷流任务出错，分享率设置错误：{self._seed_ratio}")
                     self.systemmessage.put(f"站点刷流任务出错，分享率设置错误：{self._seed_ratio}")
+                    self._seed_ratio = 0
                     return
                 if self._seed_size and not StringUtils.is_number(self._seed_size):
-                    self._seed_size = 0
                     logger.error(f"站点刷流任务出错，上传量设置错误：{self._seed_size}")
                     self.systemmessage.put(f"站点刷流任务出错，上传量设置错误：{self._seed_size}")
+                    self._seed_size = 0
                     return
                 if self._download_time and not StringUtils.is_number(self._download_time):
-                    self._download_time = 0
                     logger.error(f"站点刷流任务出错，下载超时时间设置错误：{self._download_time}")
                     self.systemmessage.put(f"站点刷流任务出错，下载超时时间设置错误：{self._download_time}")
+                    self._download_time = 0
                     return
                 if self._seed_avgspeed and not StringUtils.is_number(self._seed_avgspeed):
-                    self._seed_avgspeed = 0
                     logger.error(f"站点刷流任务出错，平均上传速度设置错误：{self._seed_avgspeed}")
                     self.systemmessage.put(f"站点刷流任务出错，平均上传速度设置错误：{self._seed_avgspeed}")
+                    self._seed_avgspeed = 0
                     return
                 if self._seed_inactivetime and not StringUtils.is_number(self._seed_inactivetime):
-                    self._seed_inactivetime = 0
                     logger.error(f"站点刷流任务出错，未活动时间设置错误：{self._seed_inactivetime}")
                     self.systemmessage.put(f"站点刷流任务出错，未活动时间设置错误：{self._seed_inactivetime}")
+                    self._seed_inactivetime = 0
                     return
                 if self._up_speed and not StringUtils.is_number(self._up_speed):
-                    self._up_speed = 0
                     logger.error(f"站点刷流任务出错，单任务上传限速设置错误：{self._up_speed}")
                     self.systemmessage.put(f"站点刷流任务出错，单任务上传限速设置错误：{self._up_speed}")
+                    self._up_speed = 0
                     return
                 if self._dl_speed and not StringUtils.is_number(self._dl_speed):
-                    self._dl_speed = 0
                     logger.error(f"站点刷流任务出错，单任务下载限速设置错误：{self._dl_speed}")
                     self.systemmessage.put(f"站点刷流任务出错，单任务下载限速设置错误：{self._dl_speed}")
+                    self._dl_speed = 0
                     return
 
                 # 检查必要条件
