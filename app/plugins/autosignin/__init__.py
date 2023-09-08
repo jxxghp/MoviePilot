@@ -305,7 +305,7 @@ class AutoSignIn(_PluginBase):
                                         'component': 'VSwitch',
                                         'props': {
                                             'model': 'clean',
-                                            'label': '清理本日已签到',
+                                            'label': '清理本日缓存',
                                         }
                                     }
                                 ]
