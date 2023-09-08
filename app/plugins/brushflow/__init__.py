@@ -741,13 +741,13 @@ class BrushFlow(_PluginBase):
         else:
             data_list = data_list.values()
         # 总上传量格式化
-        total_upload = StringUtils.str_filesize(stattistic_data.get("uploaded"))
+        total_upload = StringUtils.str_filesize(stattistic_data.get("uploaded") or 0)
         # 总下载量格式化
-        total_download = StringUtils.str_filesize(stattistic_data.get("downloaded"))
+        total_download = StringUtils.str_filesize(stattistic_data.get("downloaded") or 0)
         # 下载种子数
-        total_count = stattistic_data.get("count")
+        total_count = stattistic_data.get("count") or 0
         # 删除种子数
-        total_deleted = stattistic_data.get("deleted")
+        total_deleted = stattistic_data.get("deleted") or 0
         # 种子数据明细
         torrent_trs = [
             {
@@ -765,6 +765,9 @@ class BrushFlow(_PluginBase):
                     },
                     {
                         'component': 'td',
+                        'props': {
+                            "class": "break-all"
+                        },
                         'text': data.get("title")
                     },
                     {
@@ -1091,6 +1094,9 @@ class BrushFlow(_PluginBase):
                                 'content': [
                                     {
                                         'component': 'thead',
+                                        'props': {
+                                          'class': 'break-keep'
+                                        },
                                         'content': [
                                             {
                                                 'component': 'th',
@@ -1214,7 +1220,10 @@ class BrushFlow(_PluginBase):
             task_info: Dict[str, dict] = self.get_data("torrents") or {}
             if task_info:
                 # 当前保种大小
-                torrents_size = sum([task.get("size") or 0 for task in task_info.values()])
+                torrents_size = sum([
+                    task.get("size") or 0
+                    for task in task_info.values() if not task.get("deleted")
+                ])
             else:
                 torrents_size = 0
             # 读取统计数据
@@ -1306,7 +1315,8 @@ class BrushFlow(_PluginBase):
                     # 同时下载任务数
                     downloads = self.__get_downloading_count(self._downloader)
                     if self._maxdlcount and downloads >= int(self._maxdlcount):
-                        continue
+                        logger.warn(f"当前同时下载任务数 {downloads} 已达到最大值 {self._maxdlcount}，停止新增任务")
+                        break
                     # 获取下载器的下载信息
                     downloader_info = self.__get_downloader_info()
                     if downloader_info:
@@ -1315,11 +1325,15 @@ class BrushFlow(_PluginBase):
                         # 总上传带宽(KB/s)
                         if self._maxupspeed \
                                 and current_upload_speed >= float(self._maxupspeed) * 1024:
-                            continue
+                            logger.warn(f"当前总上传带宽 {StringUtils.str_filesize(current_upload_speed)} "
+                                        f"已达到最大值 {self._maxupspeed} KB/s，暂时停止新增任务")
+                            break
                         # 总下载带宽(KB/s)
                         if self._maxdlspeed \
                                 and current_download_speed >= float(self._maxdlspeed) * 1024:
-                            continue
+                            logger.warn(f"当前总下载带宽 {StringUtils.str_filesize(current_download_speed)} "
+                                        f"已达到最大值 {self._maxdlspeed} KB/s，暂时停止新增任务")
+                            break
                     # 添加下载任务
                     hash_string = self.__download(torrent=torrent)
                     if not hash_string:
@@ -1383,8 +1397,8 @@ class BrushFlow(_PluginBase):
                 "downloaded": 0
             }
             # 获取下载器中的种子
-            torrents, state = downloader.get_torrents(ids=check_hashs)
-            if not state:
+            torrents, error = downloader.get_torrents(ids=check_hashs)
+            if error:
                 logger.warn("连接下载器出错，将在下个时间周期重试")
                 return
             if not torrents:
@@ -1513,6 +1527,9 @@ class BrushFlow(_PluginBase):
         if self._downloader == "qbittorrent":
             if not self.qb:
                 return None
+            # 限速值转为bytes
+            up_speed = up_speed * 1024 if up_speed else None
+            down_speed = down_speed * 1024 if down_speed else None
             # 生成随机Tag
             tag = StringUtils.generate_random_str(10)
             state = self.qb.add_torrent(content=torrent.enclosure,
@@ -1740,7 +1757,7 @@ class BrushFlow(_PluginBase):
         return len(torrents) or 0
     
     @staticmethod
-    def __get_pubminutes(pubdate: str) -> datetime:
+    def __get_pubminutes(pubdate: str) -> int:
         """
         将字符串转换为时间，并计算与当前时间差）（分钟）
         """
