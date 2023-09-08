@@ -39,6 +39,12 @@ class DownloadHistoryOper(DbOper):
             downloadfile = DownloadFiles(**file_item)
             downloadfile.create(self._db)
 
+    def truncate_files(self):
+        """
+        清空下载历史文件记录
+        """
+        DownloadFiles.truncate(self._db)
+
     def get_files_by_hash(self, download_hash: str, state: int = None) -> List[DownloadFiles]:
         """
         按Hash查询下载文件记录

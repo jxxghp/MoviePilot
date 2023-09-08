@@ -44,6 +44,7 @@ class SyncDownloadFiles(_PluginBase):
     tr = None
     _onlyonce = False
     _history = False
+    _clear = False
     _downloaders = []
     _dirs = None
     downloadhis = None
@@ -56,21 +57,33 @@ class SyncDownloadFiles(_PluginBase):
         # 停止现有任务
         self.stop_service()
 
+        self.qb = Qbittorrent()
+        self.tr = Transmission()
+        self.downloadhis = DownloadHistoryOper(self.db)
+        self.transferhis = TransferHistoryOper(self.db)
+
         if config:
             self._enabled = config.get('enabled')
             self._time = config.get('time') or 6
             self._history = config.get('history')
+            self._clear = config.get('clear')
             self._onlyonce = config.get("onlyonce")
             self._downloaders = config.get('downloaders') or []
             self._dirs = config.get("dirs") or ""
 
+        if self._clear:
+            # 清理下载器文件记录
+            self.downloadhis.truncate_files()
+            # 清理下载器最后处理记录
+            for downloader in self._downloaders:
+                # 获取最后同步时间
+                self.del_data(f"last_sync_time_{downloader}")
+            # 关闭clear
+            self._clear = False
+            self.__update_config()
+
         if self._onlyonce:
             # 执行一次
-            self.qb = Qbittorrent()
-            self.tr = Transmission()
-            self.downloadhis = DownloadHistoryOper(self.db)
-            self.transferhis = TransferHistoryOper(self.db)
-
             # 关闭onlyonce
             self._onlyonce = False
             self.__update_config()
@@ -224,6 +237,7 @@ class SyncDownloadFiles(_PluginBase):
             "enabled": self._enabled,
             "time": self._time,
             "history": self._history,
+            "clear": self._clear,
             "onlyonce": self._onlyonce,
             "downloaders": self._downloaders,
             "dirs": self._dirs
@@ -434,6 +448,22 @@ class SyncDownloadFiles(_PluginBase):
                                     }
                                 ]
                             },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'clear',
+                                            'label': '清理数据',
+                                        }
+                                    }
+                                ]
+                            },
                         ]
                     },
                     {
@@ -526,6 +556,7 @@ class SyncDownloadFiles(_PluginBase):
             "enabled": False,
             "onlyonce": False,
             "history": False,
+            "clear": False,
             "time": 6,
             "dirs": "",
             "downloaders": []
