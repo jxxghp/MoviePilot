@@ -52,7 +52,6 @@ jobs:
           file: Dockerfile
           platforms: |
             linux/amd64
-            linux/arm64
           push: true
           build-args: |
             MOVIEPILOT_VERSION=${{ env.app_version }}
