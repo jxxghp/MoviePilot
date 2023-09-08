@@ -296,6 +296,8 @@ class MessageForward(_PluginBase):
                 logger.error(f"wechat配置 appid = {appid} 获取token失败，请检查配置")
                 return None, None
 
+        if isinstance(access_token_time, datetime):
+            access_token_time = access_token_time.strftime('%Y-%m-%d %H:%M:%S')
         self._pattern_token[index] = {
             "appid": appid,
             "corpid": corpid,
