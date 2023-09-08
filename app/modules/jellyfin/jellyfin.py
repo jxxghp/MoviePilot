@@ -379,6 +379,7 @@ class Jellyfin(metaclass=Singleton):
         """
         解析Jellyfin报文
         """
+        logger.info(f"接收到jellyfin webhook：{message}")
         eventItem = WebhookEventInfo(
             event=message.get('NotificationType', ''),
             item_id=message.get('ItemId'),

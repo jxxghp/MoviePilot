@@ -339,6 +339,7 @@ class Plex(metaclass=Singleton):
         overview   剧情描述
         """
         message = json.loads(message_str)
+        logger.info(f"接收到plex webhook：{message}")
         eventItem = WebhookEventInfo(event=message.get('Event', ''), channel="plex")
         if message.get('Metadata'):
             if message.get('Metadata', {}).get('type') == 'episode':
