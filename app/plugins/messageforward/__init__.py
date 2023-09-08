@@ -220,10 +220,12 @@ class MessageForward(_PluginBase):
                 access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
                                                                                       appsecret=appsecret)
             if access_token:
+                if isinstance(access_token_time, datetime):
+                    access_token_time = access_token_time.strftime('%Y-%m-%d %H:%M:%S')
                 wechat_token_history[appid] = {
                     "access_token": access_token,
                     "expires_in": expires_in,
-                    "access_token_time": str(access_token_time),
+                    "access_token_time": access_token_time,
                     "corpid": corpid,
                     "appsecret": appsecret
                 }
@@ -258,7 +260,7 @@ class MessageForward(_PluginBase):
         appsecret = wechat_token['appsecret']
 
         # 判断token有效期
-        if (datetime.now() - access_token_time).seconds < expires_in:
+        if (datetime.now() - datetime.strptime(access_token_time, "%Y-%m-%d %H:%M:%S")).seconds < expires_in:
             # 重新获取token
             access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
                                                                                   appsecret=appsecret)
