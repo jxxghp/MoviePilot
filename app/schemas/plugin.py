@@ -32,3 +32,5 @@ class Plugin(BaseModel):
     installed: Optional[bool] = False
     # 运行状态
     state: Optional[bool] = False
+    # 是否有详情页面
+    has_page: Optional[bool] = False

@@ -35,7 +35,7 @@ class ObjectUtils:
         """
         检查函数是否已实现
         """
-        return func.__code__.co_code != b'd\x01S\x00'
+        return func.__code__.co_code not in [b'd\x01S\x00', b'\x97\x00d\x00S\x00']
 
     @staticmethod
     def check_signature(func: FunctionType, *args) -> bool:

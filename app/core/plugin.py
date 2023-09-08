@@ -183,6 +183,8 @@ class PluginManager(metaclass=Singleton):
         # 已安装插件
         installed_apps = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
         for pid, plugin in self._plugins.items():
+            # 运行状插件
+            plugin_obj = self._running_plugins.get(pid)
             # 基本属性
             conf = {}
             # ID
@@ -193,11 +195,16 @@ class PluginManager(metaclass=Singleton):
             else:
                 conf.update({"installed": False})
             # 运行状态
-            if pid in self._running_plugins.keys() and hasattr(plugin, "get_state"):
-                plugin_obj = self._running_plugins.get(pid)
+            if plugin_obj and hasattr(plugin, "get_state"):
                 conf.update({"state": plugin_obj.get_state()})
             else:
                 conf.update({"state": False})
+            # 是否有详情页面
+            if hasattr(plugin, "get_page"):
+                if ObjectUtils.check_method(plugin.get_page):
+                    conf.update({"has_page": True})
+                else:
+                    conf.update({"has_page": False})
             # 权限
             if hasattr(plugin, "auth_level"):
                 if self.siteshelper.auth_level < plugin.auth_level:

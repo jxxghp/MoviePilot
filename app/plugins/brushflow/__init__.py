@@ -28,11 +28,11 @@ class BrushFlow(_PluginBase):
     # 插件名称
     plugin_name = "站点刷流"
     # 插件描述
-    plugin_desc = "自动托管刷流，将会默认提高对应站点的种子刷新频率。"
+    plugin_desc = "自动托管刷流，将会提高对应站点的访问频率。"
     # 插件图标
-    plugin_icon = "fileupload.png"
+    plugin_icon = "brush.jpg"
     # 主题色
-    plugin_color = "#EC5665"
+    plugin_color = "#FFD54E"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者
@@ -1437,6 +1437,7 @@ class BrushFlow(_PluginBase):
                 else:
                     task_info[torrent_info.get("hash")]["downloaded"] = torrent_info.get("downloaded")
                     task_info[torrent_info.get("hash")]["uploaded"] = torrent_info.get("uploaded")
+                    task_info[torrent_info.get("hash")]["ratio"] = torrent_info.get("ratio")
                 # 做种时间（小时）
                 if self._seed_time:
                     if torrent_info.get("seeding_time") >= float(self._seed_time) * 3600:
