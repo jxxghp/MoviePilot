@@ -226,35 +226,22 @@ class MessageForward(_PluginBase):
             corpid = wechat_config[1]
             appsecret = wechat_config[2]
 
-            # 查询wechat token
-            wechat_token = self._pattern_token[index]
-            access_token = None
-            expires_in = None
-            access_token_time = None
-            if wechat_token:
-                access_token_time = wechat_token['access_token_time']
-                expires_in = wechat_token['expires_in']
-                access_token = wechat_token['access_token']
-                # 判断token是否过期
-                if (datetime.now() - access_token_time).seconds >= expires_in:
-                    # 已过期，重新获取token
-                    access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
-                                                                                          appsecret=appsecret)
+            # 已过期，重新获取token
+            access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
+                                                                                  appsecret=appsecret)
             if not access_token:
                 # 没有token，获取token
-                access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
-                                                                                      appsecret=appsecret)
-            if access_token:
-                self._pattern_token[index] = {
-                    "appid": appid,
-                    "corpid": corpid,
-                    "appsecret": appsecret,
-                    "access_token": access_token,
-                    "expires_in": expires_in,
-                    "access_token_time": access_token_time,
-                }
-            else:
                 logger.error(f"wechat配置 appid = {appid} 获取token失败，请检查配置")
+                continue
+
+            self._pattern_token[index] = {
+                "appid": appid,
+                "corpid": corpid,
+                "appsecret": appsecret,
+                "access_token": access_token,
+                "expires_in": expires_in,
+                "access_token_time": access_token_time,
+            }
 
     def __flush_access_token(self, index: int, force: bool = False):
         """
