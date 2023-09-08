@@ -132,75 +132,85 @@ class BrushFlow(_PluginBase):
                 self.qb = Qbittorrent()
                 self.tr = Transmission()
                 # 检查配置
+                if self._downloader == "qbittorrent":
+                    if self.qb.is_inactive():
+                        logger.error("站点刷流任务出错：Qbittorrent未连接")
+                        self.systemmessage.put("站点刷流任务出错：Qbittorrent未连接")
+                        return
+                elif self._downloader == "transmission":
+                    if self.tr.is_inactive():
+                        logger.error("站点刷流任务出错：Transmission未连接")
+                        self.systemmessage.put("站点刷流任务出错：Transmission未连接")
+                        return
                 if self._disksize and not StringUtils.is_number(self._disksize):
                     self._disksize = 0
-                    logger.error(f"保种体积设置错误：{self._disksize}")
-                    self.systemmessage.put(f"保种体积设置错误：{self._disksize}")
+                    logger.error(f"站点刷流任务出错，保种体积设置错误：{self._disksize}")
+                    self.systemmessage.put(f"站点刷流任务出错，保种体积设置错误：{self._disksize}")
                     return
                 if self._maxupspeed and not StringUtils.is_number(self._maxupspeed):
                     self._maxupspeed = 0
-                    logger.error(f"总上传带宽设置错误：{self._maxupspeed}")
-                    self.systemmessage.put(f"总上传带宽设置错误：{self._maxupspeed}")
+                    logger.error(f"站点刷流任务出错，总上传带宽设置错误：{self._maxupspeed}")
+                    self.systemmessage.put(f"站点刷流任务出错，总上传带宽设置错误：{self._maxupspeed}")
                     return
                 if self._maxdlspeed and not StringUtils.is_number(self._maxdlspeed):
                     self._maxdlspeed = 0
-                    logger.error(f"总下载带宽设置错误：{self._maxdlspeed}")
-                    self.systemmessage.put(f"总下载带宽设置错误：{self._maxdlspeed}")
+                    logger.error(f"站点刷流任务出错，总下载带宽设置错误：{self._maxdlspeed}")
+                    self.systemmessage.put(f"站点刷流任务出错，总下载带宽设置错误：{self._maxdlspeed}")
                     return
                 if self._maxdlcount and not StringUtils.is_number(self._maxdlcount):
                     self._maxdlcount = 0
-                    logger.error(f"同时下载任务数设置错误：{self._maxdlcount}")
-                    self.systemmessage.put(f"同时下载任务数设置错误：{self._maxdlcount}")
+                    logger.error(f"站点刷流任务出错，同时下载任务数设置错误：{self._maxdlcount}")
+                    self.systemmessage.put(f"站点刷流任务出错，同时下载任务数设置错误：{self._maxdlcount}")
                     return
                 if self._size and not StringUtils.is_number(self._size):
                     self._size = 0
-                    logger.error(f"种子大小设置错误：{self._size}")
-                    self.systemmessage.put(f"种子大小设置错误：{self._size}")
+                    logger.error(f"站点刷流任务出错，种子大小设置错误：{self._size}")
+                    self.systemmessage.put(f"站点刷流任务出错，种子大小设置错误：{self._size}")
                     return
                 if self._seeder and not StringUtils.is_number(self._seeder):
                     self._seeder = 0
-                    logger.error(f"做种人数设置错误：{self._seeder}")
-                    self.systemmessage.put(f"做种人数设置错误：{self._seeder}")
+                    logger.error(f"站点刷流任务出错，做种人数设置错误：{self._seeder}")
+                    self.systemmessage.put(f"站点刷流任务出错，做种人数设置错误：{self._seeder}")
                     return
                 if self._seed_time and not StringUtils.is_number(self._seed_time):
                     self._seed_time = 0
-                    logger.error(f"做种时间设置错误：{self._seed_time}")
-                    self.systemmessage.put(f"做种时间设置错误：{self._seed_time}")
+                    logger.error(f"站点刷流任务出错，做种时间设置错误：{self._seed_time}")
+                    self.systemmessage.put(f"站点刷流任务出错，做种时间设置错误：{self._seed_time}")
                     return
                 if self._seed_ratio and not StringUtils.is_number(self._seed_ratio):
                     self._seed_ratio = 0
-                    logger.error(f"分享率设置错误：{self._seed_ratio}")
-                    self.systemmessage.put(f"分享率设置错误：{self._seed_ratio}")
+                    logger.error(f"站点刷流任务出错，分享率设置错误：{self._seed_ratio}")
+                    self.systemmessage.put(f"站点刷流任务出错，分享率设置错误：{self._seed_ratio}")
                     return
                 if self._seed_size and not StringUtils.is_number(self._seed_size):
                     self._seed_size = 0
-                    logger.error(f"上传量设置错误：{self._seed_size}")
-                    self.systemmessage.put(f"上传量设置错误：{self._seed_size}")
+                    logger.error(f"站点刷流任务出错，上传量设置错误：{self._seed_size}")
+                    self.systemmessage.put(f"站点刷流任务出错，上传量设置错误：{self._seed_size}")
                     return
                 if self._download_time and not StringUtils.is_number(self._download_time):
                     self._download_time = 0
-                    logger.error(f"下载超时时间设置错误：{self._download_time}")
-                    self.systemmessage.put(f"下载超时时间设置错误：{self._download_time}")
+                    logger.error(f"站点刷流任务出错，下载超时时间设置错误：{self._download_time}")
+                    self.systemmessage.put(f"站点刷流任务出错，下载超时时间设置错误：{self._download_time}")
                     return
                 if self._seed_avgspeed and not StringUtils.is_number(self._seed_avgspeed):
                     self._seed_avgspeed = 0
-                    logger.error(f"平均上传速度设置错误：{self._seed_avgspeed}")
-                    self.systemmessage.put(f"平均上传速度设置错误：{self._seed_avgspeed}")
+                    logger.error(f"站点刷流任务出错，平均上传速度设置错误：{self._seed_avgspeed}")
+                    self.systemmessage.put(f"站点刷流任务出错，平均上传速度设置错误：{self._seed_avgspeed}")
                     return
                 if self._seed_inactivetime and not StringUtils.is_number(self._seed_inactivetime):
                     self._seed_inactivetime = 0
-                    logger.error(f"未活动时间设置错误：{self._seed_inactivetime}")
-                    self.systemmessage.put(f"未活动时间设置错误：{self._seed_inactivetime}")
+                    logger.error(f"站点刷流任务出错，未活动时间设置错误：{self._seed_inactivetime}")
+                    self.systemmessage.put(f"站点刷流任务出错，未活动时间设置错误：{self._seed_inactivetime}")
                     return
                 if self._up_speed and not StringUtils.is_number(self._up_speed):
                     self._up_speed = 0
-                    logger.error(f"单任务上传限速设置错误：{self._up_speed}")
-                    self.systemmessage.put(f"单任务上传限速设置错误：{self._up_speed}")
+                    logger.error(f"站点刷流任务出错，单任务上传限速设置错误：{self._up_speed}")
+                    self.systemmessage.put(f"站点刷流任务出错，单任务上传限速设置错误：{self._up_speed}")
                     return
                 if self._dl_speed and not StringUtils.is_number(self._dl_speed):
                     self._dl_speed = 0
-                    logger.error(f"单任务下载限速设置错误：{self._dl_speed}")
-                    self.systemmessage.put(f"单任务下载限速设置错误：{self._dl_speed}")
+                    logger.error(f"站点刷流任务出错，单任务下载限速设置错误：{self._dl_speed}")
+                    self.systemmessage.put(f"站点刷流任务出错，单任务下载限速设置错误：{self._dl_speed}")
                     return
 
                 # 检查必要条件
@@ -221,13 +231,16 @@ class BrushFlow(_PluginBase):
                     self._scheduler.add_job(self.brush, 'date',
                                             run_date=datetime.now(
                                                 tz=pytz.timezone(settings.TZ)
-                                            ) + timedelta(seconds=3))
+                                            ) + timedelta(seconds=3),
+                                            name="站点刷流服务")
                     # 关闭一次性开关
                     self._onlyonce = False
                     self.__update_config()
                 if self._scheduler.get_jobs():
                     # 增加检查任务
-                    self._scheduler.add_job(self.check, 'interval', minutes=self._check_interval)
+                    self._scheduler.add_job(self.check, 'interval',
+                                            minutes=self._check_interval,
+                                            name="站点刷流检查服务")
                     # 启动服务
                     self._scheduler.print_jobs()
                     self._scheduler.start()
@@ -788,6 +801,9 @@ class BrushFlow(_PluginBase):
                     },
                     {
                         'component': 'td',
+                        'props': {
+                            'class': 'text-no-wrap'
+                        },
                         'text': "已删除" if data.get("deleted") else "正常"
                     }
                 ]
@@ -1041,7 +1057,7 @@ class BrushFlow(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/torrentremover.png'
+                                                            'src': '/plugin/delete.png'
                                                         }
                                                     }
                                                 ]
@@ -1095,7 +1111,7 @@ class BrushFlow(_PluginBase):
                                     {
                                         'component': 'thead',
                                         'props': {
-                                          'class': 'break-keep'
+                                          'class': 'text-no-wrap'
                                         },
                                         'content': [
                                             {
@@ -1499,6 +1515,12 @@ class BrushFlow(_PluginBase):
             # 更新统计数据
             statistic_info["uploaded"] = total_uploaded
             statistic_info["downloaded"] = total_downloaded
+            # 打印统计数据
+            logger.info(f"刷流任务统计数据："
+                        f"总任务数：{len(task_info)}，"
+                        f"已删除：{statistic_info.get('deleted')}，"
+                        f"总上传量：{StringUtils.str_filesize(statistic_info.get('uploaded'))}，"
+                        f"总下载量：{StringUtils.str_filesize(statistic_info.get('downloaded'))}")
             # 保存统计数据
             self.save_data("statistic", statistic_info)
             # 保存任务记录
