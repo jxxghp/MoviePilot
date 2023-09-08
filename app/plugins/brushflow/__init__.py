@@ -782,9 +782,6 @@ class BrushFlow(_PluginBase):
                     },
                     {
                         'component': 'td',
-                        'props': {
-                            "class": "break-all"
-                        },
                         'text': data.get("title")
                     },
                     {
