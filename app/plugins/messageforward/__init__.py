@@ -80,98 +80,98 @@ class MessageForward(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         return [
-            {
-                'component': 'VForm',
-                'content': [
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'enabled',
-                                            'label': '开启转发'
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'clear',
-                                            'label': '清除缓存'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextarea',
-                                        'props': {
-                                            'model': 'wechat',
-                                            'rows': '3',
-                                            'label': '应用配置',
-                                            'placeholder': 'appid:corpid:appsecret（一行一个配置）'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextarea',
-                                        'props': {
-                                            'model': 'pattern',
-                                            'rows': '3',
-                                            'label': '正则配置',
-                                            'placeholder': '对应上方应用配置，一行一个，一一对应'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                ]
-            }
-        ], {
-            "enabled": False,
-            "clear": False,
-            "wechat": "",
-            "pattern": ""
-        }
+                   {
+                       'component': 'VForm',
+                       'content': [
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'enabled',
+                                                   'label': '开启转发'
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 6
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'clear',
+                                                   'label': '清除缓存'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextarea',
+                                               'props': {
+                                                   'model': 'wechat',
+                                                   'rows': '3',
+                                                   'label': '应用配置',
+                                                   'placeholder': 'appid:corpid:appsecret（一行一个配置）'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextarea',
+                                               'props': {
+                                                   'model': 'pattern',
+                                                   'rows': '3',
+                                                   'label': '正则配置',
+                                                   'placeholder': '对应上方应用配置，一行一个，一一对应'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                       ]
+                   }
+               ], {
+                   "enabled": False,
+                   "clear": False,
+                   "wechat": "",
+                   "pattern": ""
+               }
 
     def get_page(self) -> List[dict]:
         pass
@@ -215,9 +215,6 @@ class MessageForward(_PluginBase):
         """
         获取并存储wechat token
         """
-        # 查询历史
-        wechat_token_history = self.get_data("wechat_token") or {}
-
         # 解析配置
         wechats = self._wechat.split("\n")
         for index, wechat in enumerate(wechats):
@@ -229,17 +226,17 @@ class MessageForward(_PluginBase):
             corpid = wechat_config[1]
             appsecret = wechat_config[2]
 
-            # 查询历史是否存储token
-            wechat_config = wechat_token_history.get(appid)
+            # 查询wechat token
+            wechat_token = self._pattern_token[index]
             access_token = None
             expires_in = None
             access_token_time = None
-            if wechat_config:
-                access_token_time = wechat_config['access_token_time']
-                expires_in = wechat_config['expires_in']
-                access_token = wechat_config['access_token']
+            if wechat_token:
+                access_token_time = wechat_token['access_token_time']
+                expires_in = wechat_token['expires_in']
+                access_token = wechat_token['access_token']
                 # 判断token是否过期
-                if (datetime.now() - datetime.strptime(access_token_time, "%Y-%m-%d %H:%M:%S")).seconds >= expires_in:
+                if (datetime.now() - access_token_time).seconds >= expires_in:
                     # 已过期，重新获取token
                     access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
                                                                                           appsecret=appsecret)
@@ -248,15 +245,6 @@ class MessageForward(_PluginBase):
                 access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
                                                                                       appsecret=appsecret)
             if access_token:
-                if isinstance(access_token_time, datetime):
-                    access_token_time = access_token_time.strftime('%Y-%m-%d %H:%M:%S')
-                wechat_token_history[appid] = {
-                    "access_token": access_token,
-                    "expires_in": expires_in,
-                    "access_token_time": access_token_time,
-                    "corpid": corpid,
-                    "appsecret": appsecret
-                }
                 self._pattern_token[index] = {
                     "appid": appid,
                     "corpid": corpid,
@@ -267,10 +255,6 @@ class MessageForward(_PluginBase):
                 }
             else:
                 logger.error(f"wechat配置 appid = {appid} 获取token失败，请检查配置")
-
-        # 保存wechat token
-        if wechat_token_history:
-            self.save_data("wechat_token", wechat_token_history)
 
     def __flush_access_token(self, index: int, force: bool = False):
         """
@@ -288,7 +272,7 @@ class MessageForward(_PluginBase):
         appsecret = wechat_token['appsecret']
 
         # 判断token有效期
-        if force or (datetime.now() - datetime.strptime(access_token_time, "%Y-%m-%d %H:%M:%S")).seconds >= expires_in:
+        if force or (datetime.now() - access_token_time).seconds >= expires_in:
             # 重新获取token
             access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
                                                                                   appsecret=appsecret)
@@ -296,8 +280,6 @@ class MessageForward(_PluginBase):
                 logger.error(f"wechat配置 appid = {appid} 获取token失败，请检查配置")
                 return None, None
 
-        if isinstance(access_token_time, datetime):
-            access_token_time = access_token_time.strftime('%Y-%m-%d %H:%M:%S')
         self._pattern_token[index] = {
             "appid": appid,
             "corpid": corpid,
