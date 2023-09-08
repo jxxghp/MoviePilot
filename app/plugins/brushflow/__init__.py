@@ -1724,6 +1724,8 @@ class BrushFlow(_PluginBase):
             else:
                 size = torrent.size
             msg_text = f"{msg_text}\n大小：{size}"
+        if torrent.pubdate:
+            msg_text = f"{msg_text}\n发布时间：{torrent.pubdate}"
         if torrent.seeders:
             msg_text = f"{msg_text}\n做种数：{torrent.seeders}"
         if torrent.volume_factor:
