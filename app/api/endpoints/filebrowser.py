@@ -17,7 +17,7 @@ IMAGE_TYPES = [".jpg", ".png", ".gif", ".bmp", ".jpeg", ".webp"]
 
 
 @router.get("/list", summary="所有插件", response_model=List[schemas.FileItem])
-def list_path(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def list_path(path: str, orderby: str = 'time', _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询当前目录下所有目录和文件
     """
@@ -55,6 +55,7 @@ def list_path(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any
             basename=path_obj.stem,
             extension=path_obj.suffix[1:],
             size=path_obj.stat().st_size,
+            modify_time=path_obj.stat().st_mtime,
         ))
         return ret_items
 
@@ -65,6 +66,7 @@ def list_path(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any
             path=str(item).replace("\\", "/") + "/",
             name=item.name,
             basename=item.stem,
+            modify_time=item.stat().st_mtime,
         ))
 
     # 遍历所有文件，不含子目录
@@ -80,8 +82,13 @@ def list_path(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any
             basename=item.stem,
             extension=item.suffix[1:],
             size=item.stat().st_size,
+            modify_time=item.stat().st_mtime,
         ))
-
+    # 排序
+    if orderby == 'time':
+        ret_items.sort(key=lambda x: x.modify_time, reverse=True)
+    else:
+        ret_items.sort(key=lambda x: x.name, reverse=False)
     return ret_items
 
 

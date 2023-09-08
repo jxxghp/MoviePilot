@@ -16,3 +16,5 @@ class FileItem(BaseModel):
     extension: Optional[str] = None
     # 文件大小
     size: Optional[int] = None
+    # 修改时间
+    modify_time: Optional[float] = None
