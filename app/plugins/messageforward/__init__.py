@@ -239,7 +239,7 @@ class MessageForward(_PluginBase):
                 expires_in = wechat_config['expires_in']
                 access_token = wechat_config['access_token']
                 # 判断token是否过期
-                if (datetime.now() - datetime.strptime(access_token_time, "%Y-%m-%d %H:%M:%S")).seconds < expires_in:
+                if (datetime.now() - datetime.strptime(access_token_time, "%Y-%m-%d %H:%M:%S")).seconds >= expires_in:
                     # 已过期，重新获取token
                     access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
                                                                                           appsecret=appsecret)
@@ -272,7 +272,7 @@ class MessageForward(_PluginBase):
         if wechat_token_history:
             self.save_data("wechat_token", wechat_token_history)
 
-    def __flush_access_token(self, index: int):
+    def __flush_access_token(self, index: int, force: bool = False):
         """
         获取第i个配置wechat token
         """
@@ -288,7 +288,7 @@ class MessageForward(_PluginBase):
         appsecret = wechat_token['appsecret']
 
         # 判断token有效期
-        if (datetime.now() - datetime.strptime(access_token_time, "%Y-%m-%d %H:%M:%S")).seconds < expires_in:
+        if force or (datetime.now() - datetime.strptime(access_token_time, "%Y-%m-%d %H:%M:%S")).seconds >= expires_in:
             # 重新获取token
             access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
                                                                                   appsecret=appsecret)
@@ -386,7 +386,8 @@ class MessageForward(_PluginBase):
                     if ret_json.get('errcode') == 42001 or ret_json.get('errcode') == 40014:
                         logger.info("token已过期，正在重新刷新token重试")
                         # 重新获取token
-                        access_token, appid = self.__flush_access_token(index)
+                        access_token, appid = self.__flush_access_token(index=index,
+                                                                        force=True)
                         if access_token:
                             retry += 1
                             # 重发请求
