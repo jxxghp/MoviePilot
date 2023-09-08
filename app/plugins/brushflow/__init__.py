@@ -1236,9 +1236,14 @@ class BrushFlow(_PluginBase):
                 torrents.sort(key=lambda x: x.pubdate or '', reverse=True)
                 # 过滤种子
                 for torrent in torrents:
+                    # 控重
+                    if f"{torrent.site_name}{torrent.title}" in [
+                        f"{task.get('site_name')}{task.get('title')}" for task in task_info.values()
+                    ]:
+                        continue
                     # 保种体积（GB） 促销
                     if self._disksize \
-                            and (torrents_size + torrent.size) > float(self._size) * 1024**3:
+                            and (torrents_size + torrent.size) > float(self._disksize) * 1024**3:
                         logger.warn(f"当前做种体积 {StringUtils.str_filesize(torrents_size)} "
                                     f"已超过保种体积 {self._disksize}，停止新增任务")
                         return
@@ -1737,15 +1742,15 @@ class BrushFlow(_PluginBase):
     @staticmethod
     def __get_pubminutes(pubdate: str) -> datetime:
         """
-        将字符串转换为时间（分钟）
+        将字符串转换为时间，并计算与当前时间差）（分钟）
         """
         try:
-            pubdate = time.strptime(pubdate, "%Y-%m-%d %H:%M:%S")
-            localtz = pytz.timezone(settings.TZ)
-            localnowtime = datetime.now().astimezone(localtz)
-            localpubdate = pubdate.astimezone(localtz)
-            pudate_minutes = int(localnowtime.timestamp() - localpubdate.timestamp()) / 60
-            return pudate_minutes
+            if not pubdate:
+                return 0
+            pubdate = pubdate.replace("T", " ").replace("Z", "")
+            pubdate = datetime.strptime(pubdate, "%Y-%m-%d %H:%M:%S")
+            now = datetime.now()
+            return (now - pubdate).seconds // 60
         except Exception as e:
             print(str(e))
             return 0
