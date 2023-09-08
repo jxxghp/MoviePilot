@@ -185,6 +185,7 @@ class TransferChain(ChainBase):
                 # 转移成功的不再处理
                 transferd = self.transferhis.get_by_src(file_path_str)
                 if transferd and transferd.status:
+                    logger.info(f"{file_path} 已成功转移过，如需重新处理，请删除历史记录。")
                     continue
 
                 # 更新进度
