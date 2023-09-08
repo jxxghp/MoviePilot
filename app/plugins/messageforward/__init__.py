@@ -37,6 +37,7 @@ class MessageForward(_PluginBase):
     _enabled = False
     _wechat = None
     _pattern = None
+    _clean: bool = False
     _pattern_token = {}
 
     # 企业微信发送消息URL
@@ -47,9 +48,19 @@ class MessageForward(_PluginBase):
     def init_plugin(self, config: dict = None):
         if config:
             self._enabled = config.get("enabled")
+            self._clean = config.get("clear")
             self._wechat = config.get("wechat")
             self._pattern = config.get("pattern")
 
+            if self._clean:
+                # 清理已有缓存
+                self.del_data("wechat_token")
+                self.update_config({
+                    "enabled": self._enabled,
+                    "clean": False,
+                    "wechat": self._wechat,
+                    "pattern": self._pattern
+                })
             # 获取token存库
             if self._enabled and self._wechat:
                 self.__save_wechat_token()
@@ -87,6 +98,22 @@ class MessageForward(_PluginBase):
                                         'props': {
                                             'model': 'enabled',
                                             'label': '开启转发'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'clear',
+                                            'label': '清除缓存'
                                         }
                                     }
                                 ]
@@ -141,6 +168,7 @@ class MessageForward(_PluginBase):
             }
         ], {
             "enabled": False,
+            "clear": False,
             "wechat": "",
             "pattern": ""
         }
@@ -220,10 +248,12 @@ class MessageForward(_PluginBase):
                 access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
                                                                                       appsecret=appsecret)
             if access_token:
+                if isinstance(access_token_time, datetime):
+                    access_token_time = access_token_time.strftime('%Y-%m-%d %H:%M:%S')
                 wechat_token_history[appid] = {
                     "access_token": access_token,
                     "expires_in": expires_in,
-                    "access_token_time": str(access_token_time),
+                    "access_token_time": access_token_time,
                     "corpid": corpid,
                     "appsecret": appsecret
                 }
@@ -258,7 +288,7 @@ class MessageForward(_PluginBase):
         appsecret = wechat_token['appsecret']
 
         # 判断token有效期
-        if (datetime.now() - access_token_time).seconds < expires_in:
+        if (datetime.now() - datetime.strptime(access_token_time, "%Y-%m-%d %H:%M:%S")).seconds < expires_in:
             # 重新获取token
             access_token, expires_in, access_token_time = self.__get_access_token(corpid=corpid,
                                                                                   appsecret=appsecret)
