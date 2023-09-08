@@ -1246,7 +1246,7 @@ class BrushFlow(_PluginBase):
                             and (torrents_size + torrent.size) > float(self._disksize) * 1024**3:
                         logger.warn(f"当前做种体积 {StringUtils.str_filesize(torrents_size)} "
                                     f"已超过保种体积 {self._disksize}，停止新增任务")
-                        return
+                        break
                     # 促销
                     if self._freeleech and torrent.downloadvolumefactor != 0:
                         continue
