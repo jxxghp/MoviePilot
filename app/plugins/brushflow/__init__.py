@@ -798,7 +798,7 @@ class BrushFlow(_PluginBase):
                     },
                     {
                         'component': 'td',
-                        'text': data.get('ratio')
+                        'text': round(data.get('ratio') or 0, 2)
                     },
                     {
                         'component': 'td',

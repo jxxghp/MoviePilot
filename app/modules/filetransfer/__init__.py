@@ -283,7 +283,7 @@ class FileTransferModule(_ModuleBase):
         return retcode
 
     def __transfer_file(self, file_item: Path, new_file: Path, transfer_type: str,
-                        over_flag: bool = False, old_file: Path = None) -> int:
+                        over_flag: bool = False) -> int:
         """
         转移一个文件，同时处理其他相关文件
         :param file_item: 原文件路径
@@ -291,12 +291,13 @@ class FileTransferModule(_ModuleBase):
         :param transfer_type: RmtMode转移方式
         :param over_flag: 是否覆盖，为True时会先删除再转移
         """
-        if not over_flag and new_file.exists():
-            logger.warn(f"文件已存在：{new_file}")
-            return 0
-        if over_flag and old_file and old_file.exists():
-            logger.info(f"正在删除已存在的文件：{old_file}")
-            old_file.unlink()
+        if new_file.exists():
+            if not over_flag:
+                logger.warn(f"文件已存在：{new_file}")
+                return 0
+            else:
+                logger.info(f"正在删除已存在的文件：{new_file}")
+                new_file.unlink()
         logger.info(f"正在转移文件：{file_item} 到 {new_file}")
         # 创建父目录
         new_file.parent.mkdir(parents=True, exist_ok=True)
