@@ -59,7 +59,7 @@ RUN apt-get update \
     && cp -f /app/update /usr/local/bin/mp_update \
     && cp -f /app/entrypoint /entrypoint \
     && chmod +x /entrypoint /usr/local/bin/mp_update \
-    && mkdir -p ${HOME} \
+    && mkdir -p ${HOME} /var/lib/haproxy/server-state \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
     && apt-get install -y build-essential \
