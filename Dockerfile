@@ -48,6 +48,7 @@ RUN apt-get update \
         busybox \
         dumb-init \
         jq \
+        haproxy \
     && \
     if [ "$(uname -m)" = "x86_64" ]; \
         then ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
@@ -82,5 +83,5 @@ RUN apt-get update \
         /var/lib/apt/lists/* \
         /var/tmp/*
 EXPOSE 3000
-VOLUME ["/config", "/var/run/docker.sock"]
+VOLUME [ "/config" ]
 ENTRYPOINT [ "/entrypoint" ]

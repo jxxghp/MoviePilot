@@ -309,7 +309,7 @@ class SystemUtils:
         """
         try:
             # 创建 Docker 客户端
-            client = docker.from_env()
+            client = docker.DockerClient(base_url='tcp://127.0.0.1:2375')
             # 获取当前容器的 ID
             container_id = open("/proc/self/cgroup", "r").read().split("/")[-1]
             if not container_id:
