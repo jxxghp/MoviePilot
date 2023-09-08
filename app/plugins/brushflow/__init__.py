@@ -1330,7 +1330,7 @@ class BrushFlow(_PluginBase):
                                 and not int(begin_pubtime) * 60 <= pubdate_minutes <= int(end_pubtime) * 60:
                             continue
                     # 同时下载任务数
-                    downloads = self.__get_downloading_count(self._downloader)
+                    downloads = self.__get_downloading_count()
                     if self._maxdlcount and downloads >= int(self._maxdlcount):
                         logger.warn(f"当前同时下载任务数 {downloads} 已达到最大值 {self._maxdlcount}，停止新增任务")
                         break
@@ -1425,24 +1425,25 @@ class BrushFlow(_PluginBase):
             # 检查种子状态，判断是否要删种
             remove_torrents = []
             for torrent in torrents:
-                site_name = task_info.get(self.__get_hash(torrent, self._downloader)).get("site_name")
-                torrent_info = self.__get_torrent_info(self._downloader, torrent)
+                torrent_hash = self.__get_hash(torrent)
+                site_name = task_info.get(torrent_hash).get("site_name")
+                torrent_info = self.__get_torrent_info(torrent)
                 # 更新上传量、下载量
                 if not task_info.get(torrent_info.get("hash")):
-                    task_info[torrent_info.get("hash")] = {
+                    task_info[torrent_hash] = {
                         "downloaded": torrent_info.get("downloaded"),
                         "uploaded": torrent_info.get("uploaded"),
                         "ratio": torrent_info.get("ratio"),
                     }
                 else:
-                    task_info[torrent_info.get("hash")]["downloaded"] = torrent_info.get("downloaded")
-                    task_info[torrent_info.get("hash")]["uploaded"] = torrent_info.get("uploaded")
-                    task_info[torrent_info.get("hash")]["ratio"] = torrent_info.get("ratio")
+                    task_info[torrent_hash]["downloaded"] = torrent_info.get("downloaded")
+                    task_info[torrent_hash]["uploaded"] = torrent_info.get("uploaded")
+                    task_info[torrent_hash]["ratio"] = torrent_info.get("ratio")
                 # 做种时间（小时）
                 if self._seed_time:
                     if torrent_info.get("seeding_time") >= float(self._seed_time) * 3600:
                         logger.info(f"做种时间达到 {self._seed_time} 小时，删除种子：{torrent_info.get('title')}")
-                        downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
+                        downloader.delete_torrents(ids=torrent_hash, delete_file=True)
                         remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
@@ -1452,7 +1453,7 @@ class BrushFlow(_PluginBase):
                 if self._seed_ratio:
                     if torrent_info.get("ratio") >= float(self._seed_ratio):
                         logger.info(f"分享率达到 {self._seed_ratio}，删除种子：{torrent_info.get('title')}")
-                        downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
+                        downloader.delete_torrents(ids=torrent_hash, delete_file=True)
                         remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
@@ -1462,7 +1463,7 @@ class BrushFlow(_PluginBase):
                 if self._seed_size:
                     if torrent_info.get("uploaded") >= float(self._seed_size) * 1024 * 1024 * 1024:
                         logger.info(f"上传量达到 {self._seed_size} GB，删除种子：{torrent_info.get('title')}")
-                        downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
+                        downloader.delete_torrents(ids=torrent_hash, delete_file=True)
                         remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
@@ -1473,7 +1474,7 @@ class BrushFlow(_PluginBase):
                         and torrent_info.get("downloaded") < torrent_info.get("total_size"):
                     if torrent_info.get("dltime") >= float(self._download_time) * 3600:
                         logger.info(f"下载耗时达到 {self._download_time} 小时，删除种子：{torrent_info.get('title')}")
-                        downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
+                        downloader.delete_torrents(ids=torrent_hash, delete_file=True)
                         remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
@@ -1483,7 +1484,7 @@ class BrushFlow(_PluginBase):
                 if self._seed_avgspeed:
                     if torrent_info.get("avg_upspeed") <= float(self._seed_avgspeed) * 1024:
                         logger.info(f"平均上传速度低于 {self._seed_avgspeed} KB/s，删除种子：{torrent_info.get('title')}")
-                        downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
+                        downloader.delete_torrents(ids=torrent_hash, delete_file=True)
                         remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
@@ -1494,7 +1495,7 @@ class BrushFlow(_PluginBase):
                     if torrent_info.get("iatime") >= float(self._seed_inactivetime) * 60:
                         logger.info(
                             f"未活动时间达到 {self._seed_inactivetime} 分钟，删除种子：{torrent_info.get('title')}")
-                        downloader.delete_torrents(ids=torrent_info.get("hash"), delete_file=True)
+                        downloader.delete_torrents(ids=torrent_hash, delete_file=True)
                         remove_torrents.append(torrent_info)
                         self.__send_delete_message(site_name=site_name,
                                                    torrent_title=torrent_info.get("title"),
@@ -1589,36 +1590,33 @@ class BrushFlow(_PluginBase):
                 return torrent.hashString
         return None
 
-    @staticmethod
-    def __get_hash(torrent: Any, dl_type: str):
+    def __get_hash(self, torrent: Any):
         """
         获取种子hash
         """
         try:
-            return torrent.get("hash") if dl_type == "qbittorrent" else torrent.hashString
+            return torrent.get("hash") if self._downloader == "qbittorrent" else torrent.hashString
         except Exception as e:
             print(str(e))
             return ""
 
-    @staticmethod
-    def __get_label(torrent: Any, dl_type: str):
+    def __get_label(self, torrent: Any):
         """
         获取种子标签
         """
         try:
             return [str(tag).strip() for tag in torrent.get("tags").split(',')] \
-                if dl_type == "qbittorrent" else torrent.labels or []
+                if self._downloader == "qbittorrent" else torrent.labels or []
         except Exception as e:
             print(str(e))
             return []
 
-    @staticmethod
-    def __get_torrent_info(downloader_type: str, torrent: Any) -> dict:
+    def __get_torrent_info(self, torrent: Any) -> dict:
 
         # 当前时间戳
         date_now = int(time.time())
         # QB
-        if downloader_type == "qbittorrent":
+        if self._downloader == "qbittorrent":
             # ID
             torrent_id = torrent.get("hash")
             # 标题
@@ -1772,11 +1770,11 @@ class BrushFlow(_PluginBase):
                 upload_size=info.current_stats.uploaded_bytes
             )
 
-    def __get_downloading_count(self, dltype: str) -> int:
+    def __get_downloading_count(self) -> int:
         """
         获取正在下载的任务数量
         """
-        downlader = self.__get_downloader(dltype)
+        downlader = self.__get_downloader(self._downloader)
         if not downlader:
             return 0
         torrents = downlader.get_downloading_torrents()
