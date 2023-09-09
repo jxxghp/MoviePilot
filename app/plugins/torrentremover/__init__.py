@@ -624,7 +624,7 @@ class TorrentRemover(_PluginBase):
         # 平均上传速度
         torrent_upload_avs = torrent.uploaded / torrent_seeding_time if torrent_seeding_time else 0
         # 大小 单位：GB
-        sizes = self._size.split(',') if self._size else []
+        sizes = self._size.split('-') if self._size else []
         minsize = sizes[0] * 1024 * 1024 * 1024 if sizes else 0
         maxsize = sizes[-1] * 1024 * 1024 * 1024 if sizes else 0
         # 分享率
@@ -634,7 +634,7 @@ class TorrentRemover(_PluginBase):
         if self._time and torrent_seeding_time <= float(self._time) * 3600:
             return None
         # 文件大小
-        if self._size and (torrent.size >= maxsize or torrent.size <= minsize):
+        if self._size and (torrent.size >= int(maxsize) or torrent.size <= int(minsize)):
             return None
         if self._upspeed and torrent_upload_avs >= float(self._upspeed) * 1024:
             return None
@@ -668,7 +668,7 @@ class TorrentRemover(_PluginBase):
         # 平均上传速茺
         torrent_upload_avs = torrent_uploaded / torrent_seeding_time if torrent_seeding_time else 0
         # 大小 单位：GB
-        sizes = self._size.split(',') if self._size else []
+        sizes = self._size.split('-') if self._size else []
         minsize = sizes[0] * 1024 * 1024 * 1024 if sizes else 0
         maxsize = sizes[-1] * 1024 * 1024 * 1024 if sizes else 0
         # 分享率
@@ -676,7 +676,7 @@ class TorrentRemover(_PluginBase):
             return None
         if self._time and torrent_seeding_time <= float(self._time) * 3600:
             return None
-        if self._size and (torrent.total_size >= maxsize or torrent.total_size <= minsize):
+        if self._size and (torrent.total_size >= int(maxsize) or torrent.total_size <= int(minsize)):
             return None
         if self._upspeed and torrent_upload_avs >= float(self._upspeed) * 1024:
             return None
