@@ -590,20 +590,26 @@ class TransferChain(ChainBase):
         logger.info(f"开始删除文件以及空目录：{path} ...")
         if not path.exists():
             return
-        elif path.is_file():
+        if path.is_file():
             # 删除文件
             path.unlink()
             logger.warn(f"文件 {path} 已删除")
-            # 判断目录是否为空, 为空则删除
-            if str(path.parent.parent) != str(path.root):
-                # 父目录非根目录，才删除父目录
-                files = SystemUtils.list_files(path.parent, settings.RMT_MEDIAEXT)
-                if not files:
-                    shutil.rmtree(path.parent)
-                    logger.warn(f"目录 {path.parent} 已删除")
+            # 需要删除父目录
+        elif str(path.parent) == str(path.root):
+            # 根目录，不删除
+            logger.warn(f"根目录 {path} 不能删除！")
+            return
         else:
-            if str(path.parent) != str(path.root):
-                # 父目录非根目录，才删除目录
-                shutil.rmtree(path)
-                # 删除目录
-                logger.warn(f"目录 {path} 已删除")
+            # 非根目录，才删除目录
+            shutil.rmtree(path)
+            # 删除目录
+            logger.warn(f"目录 {path} 已删除")
+            # 需要删除父目录
+        # 判断父目录是否为空, 为空则删除
+        for parent_path in path.parents:
+            if str(parent_path.parent) != str(path.root):
+                # 父目录非根目录，才删除父目录
+                files = SystemUtils.list_files(parent_path, settings.RMT_MEDIAEXT)
+                if not files:
+                    shutil.rmtree(parent_path)
+                    logger.warn(f"目录 {parent_path} 已删除")
