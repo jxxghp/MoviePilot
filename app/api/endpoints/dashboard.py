@@ -41,12 +41,7 @@ def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询存储空间信息
     """
-    if settings.LIBRARY_PATH:
-        total_storage, free_storage = SystemUtils.space_usage(
-            [Path(path) for path in settings.LIBRARY_PATH.split(",")]
-        )
-    else:
-        total_storage, free_storage = 0, 0
+    total_storage, free_storage = SystemUtils.space_usage(settings.LIBRARY_PATHS)
     return schemas.Storage(
         total_storage=total_storage,
         used_storage=total_storage - free_storage

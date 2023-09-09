@@ -520,13 +520,13 @@ class FileTransferModule(_ModuleBase):
         计算一个最好的目的目录，有in_path时找与in_path同路径的，没有in_path时，顺序查找1个符合大小要求的，没有in_path和size时，返回第1个
         :param in_path: 源目录
         """
-        if not settings.LIBRARY_PATH:
+        if not settings.LIBRARY_PATHS:
             return None
         # 目的路径，多路径以,分隔
-        dest_paths = str(settings.LIBRARY_PATH).split(",")
+        dest_paths = settings.LIBRARY_PATHS
         # 只有一个路径，直接返回
         if len(dest_paths) == 1:
-            return Path(dest_paths[0])
+            return dest_paths[0]
         # 匹配有最长共同上级路径的目录
         max_length = 0
         target_path = None
@@ -541,15 +541,15 @@ class FileTransferModule(_ModuleBase):
                     logger.debug(f"计算目标路径时出错：{e}")
                     continue
             if target_path:
-                return Path(target_path)
+                return target_path
         # 顺序匹配第1个满足空间存储要求的目录
         if in_path.exists():
             file_size = in_path.stat().st_size
             for path in dest_paths:
-                if SystemUtils.free_space(Path(path)) > file_size:
-                    return Path(path)
+                if SystemUtils.free_space(path) > file_size:
+                    return path
         # 默认返回第1个
-        return Path(dest_paths[0])
+        return dest_paths[0]
 
     def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
         """
@@ -558,14 +558,14 @@ class FileTransferModule(_ModuleBase):
         :param itemid:  媒体服务器ItemID
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
-        if not settings.LIBRARY_PATH:
+        if not settings.LIBRARY_PATHS:
             return None
-        # 目的路径，多路径以,分隔
-        dest_paths = str(settings.LIBRARY_PATH).split(",")
+        # 目的路径
+        dest_paths = settings.LIBRARY_PATHS
         # 检查每一个媒体库目录
         for dest_path in dest_paths:
             # 媒体库路径
-            target_dir = self.get_target_path(Path(dest_path))
+            target_dir = self.get_target_path(dest_path)
             if not target_dir:
                 continue
             # 媒体分类路径

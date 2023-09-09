@@ -132,13 +132,10 @@ def arr_rootfolder(apikey: str) -> Any:
             status_code=403,
             detail="认证失败！",
         )
-    library_path = "/"
-    if settings.LIBRARY_PATH:
-        library_path = settings.LIBRARY_PATH.split(",")[0]
     return [
         {
             "id": 1,
-            "path": library_path,
+            "path": "/" if not settings.LIBRARY_PATHS else str(settings.LIBRARY_PATHS[0]),
             "accessible": True,
             "freeSpace": 0,
             "unmappedFolders": []

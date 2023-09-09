@@ -1,5 +1,6 @@
 import secrets
 from pathlib import Path
+from typing import List
 
 from pydantic import BaseSettings
 
@@ -165,7 +166,7 @@ class Settings(BaseSettings):
     OCR_HOST: str = "https://movie-pilot.org"
     # CookieCloud对应的浏览器UA
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.57"
-    # 媒体库目录
+    # 媒体库目录，多个目录使用,分隔
     LIBRARY_PATH: str = None
     # 电影媒体库目录名，默认"电影"
     LIBRARY_MOVIE_NAME: str = None
@@ -250,6 +251,12 @@ class Settings(BaseSettings):
             return {
                 "server": self.PROXY_HOST
             }
+
+    @property
+    def LIBRARY_PATHS(self) -> List[Path]:
+        if self.LIBRARY_PATH:
+            return [Path(path) for path in self.LIBRARY_PATH.split(",")]
+        return []
 
     def __init__(self):
         super().__init__()
