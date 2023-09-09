@@ -5,7 +5,7 @@ from typing import Any, List, Dict, Tuple
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.event import EventManager
-from app.db import ScopedSession
+from app.db import SessionFactory
 from app.db.models import Base
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -37,7 +37,7 @@ class _PluginBase(metaclass=ABCMeta):
 
     def __init__(self):
         # 数据库连接
-        self.db = ScopedSession()
+        self.db = SessionFactory()
         # 插件数据
         self.plugindata = PluginDataOper(self.db)
         # 处理链
