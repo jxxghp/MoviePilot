@@ -6,8 +6,8 @@ from starlette.background import BackgroundTasks
 
 from app import schemas
 from app.chain.cookiecloud import CookieCloudChain
-from app.chain.search import SearchChain
 from app.chain.site import SiteChain
+from app.chain.torrents import TorrentsChain
 from app.core.event import EventManager
 from app.core.security import verify_token
 from app.db import get_db
@@ -191,7 +191,7 @@ def site_icon(site_id: int,
 
 
 @router.get("/resource/{site_id}", summary="站点资源", response_model=List[schemas.TorrentInfo])
-def site_resource(site_id: int, keyword: str = None,
+def site_resource(site_id: int,
                   db: Session = Depends(get_db),
                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -203,7 +203,7 @@ def site_resource(site_id: int, keyword: str = None,
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
-    torrents = SearchChain(db).browse(site.domain, keyword)
+    torrents = TorrentsChain(db).browse(domain=site.domain)
     if not torrents:
         return []
     return [torrent.to_dict() for torrent in torrents]

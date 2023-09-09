@@ -1,6 +1,6 @@
-from datetime import datetime
 from typing import Dict, List, Union
 
+from cachetools import cached, TTLCache
 from requests import Session
 
 from app.chain import ChainBase
@@ -12,17 +12,16 @@ from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import Notification
 from app.schemas.types import SystemConfigKey, MessageChannel
+from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
-from app.utils.timer import TimerUtils
 
 
-class TorrentsChain(ChainBase):
+class TorrentsChain(ChainBase, metaclass=Singleton):
     """
-    种子刷新处理链
+    站点首页种子处理链，服务于订阅、刷流等
     """
 
     _cache_file = "__torrents_cache__"
-    _last_refresh_time = None
 
     def __init__(self, db: Session = None):
         super().__init__(db)
@@ -46,17 +45,23 @@ class TorrentsChain(ChainBase):
         # 读取缓存
         return self.load_cache(self._cache_file) or {}
 
+    @cached(cache=TTLCache(maxsize=128, ttl=600))
+    def browse(self, domain: str) -> List[TorrentInfo]:
+        """
+        浏览站点首页内容，返回种子清单，TTL缓存10分钟
+        :param domain: 站点域名
+        """
+        logger.info(f'开始获取站点 {domain} 最新种子 ...')
+        site = self.siteshelper.get_indexer(domain)
+        if not site:
+            logger.error(f'站点 {domain} 不存在！')
+            return []
+        return self.refresh_torrents(site=site)
+
     def refresh(self) -> Dict[str, List[Context]]:
         """
-        刷新站点最新资源
+        刷新站点最新资源，识别并缓存起来
         """
-        # 控制刷新频率不能小于10分钟
-        if self._last_refresh_time and TimerUtils.diff_minutes(self._last_refresh_time) < 10:
-            logger.warn(f'种子刷新频率过快，跳过本次刷新')
-            return self.get_torrents()
-
-        # 记录刷新时间
-        self._last_refresh_time = datetime.now()
 
         # 读取缓存
         torrents_cache = self.get_torrents()
@@ -70,9 +75,8 @@ class TorrentsChain(ChainBase):
             # 未开启的站点不搜索
             if config_indexers and str(indexer.get("id")) not in config_indexers:
                 continue
-            logger.info(f'开始刷新 {indexer.get("name")} 最新种子 ...')
             domain = StringUtils.get_url_domain(indexer.get("domain"))
-            torrents: List[TorrentInfo] = self.refresh_torrents(site=indexer)
+            torrents: List[TorrentInfo] = self.browse(domain=domain)
             # 按pubdate降序排列
             torrents.sort(key=lambda x: x.pubdate or '', reverse=True)
             # 取前N条

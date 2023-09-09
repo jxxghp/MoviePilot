@@ -9,7 +9,6 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app import schemas
-from app.chain.search import SearchChain
 from app.chain.torrents import TorrentsChain
 from app.core.config import settings
 from app.db.site_oper import SiteOper
@@ -50,7 +49,6 @@ class BrushFlow(_PluginBase):
     siteshelper = None
     siteoper = None
     torrents = None
-    searchchain = None
     qb = None
     tr = None
     # 添加种子定时
@@ -90,7 +88,6 @@ class BrushFlow(_PluginBase):
         self.siteshelper = SitesHelper()
         self.siteoper = SiteOper()
         self.torrents = TorrentsChain()
-        self.searchchain = SearchChain()
         if config:
             self._enabled = config.get("enabled")
             self._notify = config.get("notify")
@@ -1254,7 +1251,7 @@ class BrushFlow(_PluginBase):
                     logger.warn(f"站点不存在：{siteid}")
                     continue
                 logger.info(f"开始获取站点 {siteinfo.name} 的新种子 ...")
-                torrents = self.searchchain.browse(domain=siteinfo.domain)
+                torrents = self.torrents.browse(domain=siteinfo.domain)
                 if not torrents:
                     logger.info(f"站点 {siteinfo.name} 没有获取到种子")
                     continue

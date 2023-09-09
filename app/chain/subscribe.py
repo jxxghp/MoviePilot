@@ -375,14 +375,14 @@ class SubscribeChain(ChainBase):
 
     def refresh(self):
         """
-        刷新订阅
+        订阅刷新
         """
         # 查询所有订阅
         subscribes = self.subscribeoper.list('R')
         if not subscribes:
             # 没有订阅不运行
             return
-        # 刷新站点资源，从缓存中匹配订阅
+        # 触发刷新站点资源，从缓存中匹配订阅
         self.match(
             self.torrentschain.refresh()
         )

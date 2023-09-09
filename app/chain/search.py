@@ -76,22 +76,6 @@ class SearchChain(ChainBase):
             print(str(e))
             return []
 
-    def browse(self, domain: str, keyword: str = None) -> List[TorrentInfo]:
-        """
-        浏览站点首页内容
-        :param domain: 站点域名
-        :param keyword: 关键词，有值时为搜索
-        """
-        if not keyword:
-            logger.info(f'开始浏览站点首页内容，站点：{domain} ...')
-        else:
-            logger.info(f'开始搜索资源，关键词：{keyword}，站点：{domain} ...')
-        site = self.siteshelper.get_indexer(domain)
-        if not site:
-            logger.error(f'站点 {domain} 不存在！')
-            return []
-        return self.search_torrents(site=site, keyword=keyword)
-
     def process(self, mediainfo: MediaInfo,
                 keyword: str = None,
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,

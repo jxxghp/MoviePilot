@@ -197,7 +197,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("search_medias", meta=meta)
 
     def search_torrents(self, site: CommentedMap,
-                        mediainfo: Optional[MediaInfo] = None,
+                        mediainfo: MediaInfo,
                         keyword: str = None,
                         page: int = 0,
                         area: str = "title") -> List[TorrentInfo]:
