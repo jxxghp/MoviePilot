@@ -132,6 +132,11 @@ class TheMovieDbModule(_ModuleBase):
             else:
                 logger.info(f"{tmdbid} 识别结果：{mediainfo.type.value} "
                             f"{mediainfo.title_year}")
+
+            # 补充剧集年份
+            episode_years = self.tmdb.get_tv_episode_years(info.get("id"))
+            if episode_years:
+                mediainfo.season_years = episode_years
             return mediainfo
         else:
             logger.info(f"{meta.name if meta else tmdbid} 未匹配到媒体信息")

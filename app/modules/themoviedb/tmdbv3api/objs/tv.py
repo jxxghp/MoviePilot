@@ -33,6 +33,7 @@ class TV(TMDb):
         "on_the_air": "/tv/on_the_air",
         "popular": "/tv/popular",
         "top_rated": "/tv/top_rated",
+        "group_episodes": "/tv/episode_group/%s",
     }
 
     def details(self, tv_id, append_to_response="videos,trailers,images,credits,translations"):
@@ -128,6 +129,17 @@ class TV(TMDb):
         return self._request_obj(
             self._urls["episode_groups"] % tv_id,
             key="results"
+        )
+
+    def group_episodes(self, group_id):
+        """
+        查询剧集组所有剧集
+        :param group_id: int
+        :return:
+        """
+        return self._request_obj(
+            self._urls["group_episodes"] % group_id,
+            key="groups"
         )
 
     def external_ids(self, tv_id):
