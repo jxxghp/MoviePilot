@@ -1675,9 +1675,17 @@ class BrushFlow(_PluginBase):
             # 标题
             torrent_title = torrent.get("name")
             # 下载时间
-            dltime = date_now - torrent.get("added_on") if torrent.get("added_on") else 0
+            if (not torrent.get("added_on")
+                    or torrent.get("added_on") < 0):
+                dltime = 0
+            else:
+                dltime = date_now - torrent.get("added_on")
             # 做种时间
-            seeding_time = date_now - (torrent.get("completion_on") if torrent.get("completion_on") else 0)
+            if (not torrent.get("completion_on")
+                    or torrent.get("completion_on") < 0):
+                seeding_time = 0
+            else:
+                seeding_time = date_now - torrent.get("completion_on")
             # 分享率
             ratio = torrent.get("ratio") or 0
             # 上传量
@@ -1688,7 +1696,11 @@ class BrushFlow(_PluginBase):
             else:
                 avg_upspeed = uploaded
             # 已未活动 秒
-            iatime = date_now - (torrent.get("last_activity") if torrent.get("last_activity") else 0)
+            if (not torrent.get("last_activity")
+                    or torrent.get("last_activity") < 0):
+                iatime = 0
+            else:
+                iatime = date_now - torrent.get("last_activity")
             # 下载量
             downloaded = torrent.get("downloaded")
             # 种子大小
@@ -1702,12 +1714,14 @@ class BrushFlow(_PluginBase):
             # 标题
             torrent_title = torrent.name
             # 做种时间
-            if not torrent.date_done or torrent.date_done.timestamp() < 1:
+            if (not torrent.date_done
+                    or torrent.date_done.timestamp() < 1):
                 seeding_time = 0
             else:
                 seeding_time = date_now - int(torrent.date_done.timestamp())
             # 下载耗时
-            if not torrent.date_added or torrent.date_added.timestamp() < 1:
+            if (not torrent.date_added
+                    or torrent.date_added.timestamp() < 1):
                 dltime = 0
             else:
                 dltime = date_now - int(torrent.date_added.timestamp())
@@ -1723,7 +1737,8 @@ class BrushFlow(_PluginBase):
             else:
                 avg_upspeed = uploaded
             # 未活动时间
-            if not torrent.date_active or torrent.date_active.timestamp() < 1:
+            if (not torrent.date_active
+                    or torrent.date_active.timestamp() < 1):
                 iatime = 0
             else:
                 iatime = date_now - int(torrent.date_active.timestamp())
