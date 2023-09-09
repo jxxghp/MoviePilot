@@ -204,7 +204,7 @@ class TransferChain(ChainBase):
                     file_meta = meta
 
                 # 合并季
-                if season:
+                if season is not None:
                     file_meta.begin_season = season
 
                 if not file_meta:
