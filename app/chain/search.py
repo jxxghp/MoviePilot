@@ -29,7 +29,7 @@ class SearchChain(ChainBase):
         super().__init__(db)
         self.siteshelper = SitesHelper()
         self.progress = ProgressHelper()
-        self.systemconfig = SystemConfigOper(self._db)
+        self.systemconfig = SystemConfigOper()
         self.torrenthelper = TorrentHelper()
 
     def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None, area: str = "title") -> List[Context]:

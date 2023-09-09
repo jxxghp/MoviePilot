@@ -30,7 +30,7 @@ class RssChain(ChainBase):
         super().__init__(db)
         self.rssoper = RssOper(self._db)
         self.sites = SitesHelper()
-        self.systemconfig = SystemConfigOper(self._db)
+        self.systemconfig = SystemConfigOper()
         self.downloadchain = DownloadChain(self._db)
         self.message = MessageHelper()
 

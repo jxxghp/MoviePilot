@@ -22,28 +22,26 @@ def all_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
-def installed_plugins(db: Session = Depends(get_db),
-                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def installed_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询用户已安装插件清单
     """
-    return SystemConfigOper(db).get(SystemConfigKey.UserInstalledPlugins) or []
+    return SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
 
 
 @router.get("/install/{plugin_id}", summary="安装插件", response_model=schemas.Response)
 def install_plugin(plugin_id: str,
-                   db: Session = Depends(get_db),
                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     安装插件
     """
     # 已安装插件
-    install_plugins = SystemConfigOper(db).get(SystemConfigKey.UserInstalledPlugins) or []
+    install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
     # 安装插件
     if plugin_id not in install_plugins:
         install_plugins.append(plugin_id)
         # 保存设置
-        SystemConfigOper(db).set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+        SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
         # 重载插件管理器
         PluginManager().init_config()
     return schemas.Response(success=True)
@@ -93,19 +91,18 @@ def set_plugin_config(plugin_id: str, conf: dict,
 
 @router.delete("/{plugin_id}", summary="卸载插件", response_model=schemas.Response)
 def uninstall_plugin(plugin_id: str,
-                     db: Session = Depends(get_db),
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     卸载插件
     """
     # 删除已安装信息
-    install_plugins = SystemConfigOper(db).get(SystemConfigKey.UserInstalledPlugins) or []
+    install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
     for plugin in install_plugins:
         if plugin == plugin_id:
             install_plugins.remove(plugin)
             break
     # 保存
-    SystemConfigOper(db).set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+    SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
     # 重载插件管理器
     PluginManager().init_config()
     return schemas.Response(success=True)

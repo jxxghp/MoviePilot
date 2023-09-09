@@ -5,8 +5,6 @@ import urllib3
 from requests import Session, Response
 from urllib3.exceptions import InsecureRequestWarning
 
-from app.utils.ip import IpUtils
-
 urllib3.disable_warnings(InsecureRequestWarning)
 
 

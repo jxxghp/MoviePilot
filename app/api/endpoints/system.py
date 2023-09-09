@@ -63,24 +63,22 @@ def get_progress(process_type: str, token: str):
 
 @router.get("/setting/{key}", summary="查询系统设置", response_model=schemas.Response)
 def get_setting(key: str,
-                db: Session = Depends(get_db),
                 _: schemas.TokenPayload = Depends(verify_token)):
     """
     查询系统设置
     """
     return schemas.Response(success=True, data={
-        "value": SystemConfigOper(db).get(key)
+        "value": SystemConfigOper().get(key)
     })
 
 
 @router.post("/setting/{key}", summary="更新系统设置", response_model=schemas.Response)
 def set_setting(key: str, value: Union[list, dict, str, int] = None,
-                db: Session = Depends(get_db),
                 _: schemas.TokenPayload = Depends(verify_token)):
     """
     更新系统设置
     """
-    SystemConfigOper(db).set(key, value)
+    SystemConfigOper().set(key, value)
     return schemas.Response(success=True)
 
 
@@ -185,9 +183,9 @@ def ruletest(title: str,
         description=subtitle,
     )
     if ruletype == "2":
-        rule_string = SystemConfigOper(db).get(SystemConfigKey.FilterRules2)
+        rule_string = SystemConfigOper().get(SystemConfigKey.FilterRules2)
     else:
-        rule_string = SystemConfigOper(db).get(SystemConfigKey.FilterRules)
+        rule_string = SystemConfigOper().get(SystemConfigKey.FilterRules)
     if not rule_string:
         return schemas.Response(success=False, message="过滤规则未设置！")
 

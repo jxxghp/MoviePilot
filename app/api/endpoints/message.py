@@ -64,14 +64,13 @@ def wechat_verify(echostr: str, msg_signature: str,
 
 
 @router.get("/switchs", summary="查询通知消息渠道开关", response_model=List[NotificationSwitch])
-def read_switchs(db: Session = Depends(get_db),
-                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def read_switchs(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询通知消息渠道开关
     """
     return_list = []
     # 读取数据库
-    switchs = SystemConfigOper(db).get(SystemConfigKey.NotificationChannels)
+    switchs = SystemConfigOper().get(SystemConfigKey.NotificationChannels)
     if not switchs:
         for noti in NotificationType:
             return_list.append(NotificationSwitch(mtype=noti.value, wechat=True, telegram=True, slack=True))
@@ -83,7 +82,6 @@ def read_switchs(db: Session = Depends(get_db),
 
 @router.post("/switchs", summary="设置通知消息渠道开关", response_model=schemas.Response)
 def set_switchs(switchs: List[NotificationSwitch],
-                db: Session = Depends(get_db),
                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询通知消息渠道开关
@@ -92,6 +90,6 @@ def set_switchs(switchs: List[NotificationSwitch],
     for switch in switchs:
         switch_list.append(switch.dict())
     # 存入数据库
-    SystemConfigOper(db).set(SystemConfigKey.NotificationChannels, switch_list)
+    SystemConfigOper().set(SystemConfigKey.NotificationChannels, switch_list)
 
     return schemas.Response(success=True)

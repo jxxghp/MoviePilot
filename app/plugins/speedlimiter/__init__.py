@@ -592,7 +592,8 @@ class SpeedLimiter(_PluginBase):
                 for allow_ipv6 in allow_ipv6s:
                     if ipaddr in ipaddress.ip_network(allow_ipv6, strict=False):
                         return True
-        except Exception:
+        except Exception as err:
+            print(str(err))
             return False
         return False
 

@@ -33,7 +33,7 @@ class SubscribeChain(ChainBase):
         self.subscribeoper = SubscribeOper(self._db)
         self.torrentschain = TorrentsChain()
         self.message = MessageHelper()
-        self.systemconfig = SystemConfigOper(self._db)
+        self.systemconfig = SystemConfigOper()
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,

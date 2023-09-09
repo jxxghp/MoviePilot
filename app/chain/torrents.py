@@ -1,12 +1,12 @@
 from typing import Dict, List, Union
 
 from cachetools import cached, TTLCache
-from requests import Session
 
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.metainfo import MetaInfo
+from app.db import SessionFactory
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -23,10 +23,11 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
 
     _cache_file = "__torrents_cache__"
 
-    def __init__(self, db: Session = None):
-        super().__init__(db)
+    def __init__(self):
+        self._db = SessionFactory()
+        super().__init__(self._db)
         self.siteshelper = SitesHelper()
-        self.systemconfig = SystemConfigOper(self._db)
+        self.systemconfig = SystemConfigOper()
 
     def remote_refresh(self, channel: MessageChannel, userid: Union[str, int] = None):
         """
