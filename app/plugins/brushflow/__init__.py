@@ -1617,6 +1617,59 @@ class BrushFlow(_PluginBase):
         date_now = int(time.time())
         # QB
         if self._downloader == "qbittorrent":
+            """
+            {
+              "added_on": 1693359031,
+              "amount_left": 0,
+              "auto_tmm": false,
+              "availability": -1,
+              "category": "tJU",
+              "completed": 67759229411,
+              "completion_on": 1693609350,
+              "content_path": "/mnt/sdb/qb/downloads/Steel.Division.2.Men.of.Steel-RUNE",
+              "dl_limit": -1,
+              "dlspeed": 0,
+              "download_path": "",
+              "downloaded": 67767365851,
+              "downloaded_session": 0,
+              "eta": 8640000,
+              "f_l_piece_prio": false,
+              "force_start": false,
+              "hash": "116bc6f3efa6f3b21a06ce8f1cc71875",
+              "infohash_v1": "116bc6f306c40e072bde8f1cc71875",
+              "infohash_v2": "",
+              "last_activity": 1693609350,
+              "magnet_uri": "magnet:?xt=",
+              "max_ratio": -1,
+              "max_seeding_time": -1,
+              "name": "Steel.Division.2.Men.of.Steel-RUNE",
+              "num_complete": 1,
+              "num_incomplete": 0,
+              "num_leechs": 0,
+              "num_seeds": 0,
+              "priority": 0,
+              "progress": 1,
+              "ratio": 0,
+              "ratio_limit": -2,
+              "save_path": "/mnt/sdb/qb/downloads",
+              "seeding_time": 615035,
+              "seeding_time_limit": -2,
+              "seen_complete": 1693609350,
+              "seq_dl": false,
+              "size": 67759229411,
+              "state": "stalledUP",
+              "super_seeding": false,
+              "tags": "",
+              "time_active": 865354,
+              "total_size": 67759229411,
+              "tracker": "https://tracker",
+              "trackers_count": 2,
+              "up_limit": -1,
+              "uploaded": 0,
+              "uploaded_session": 0,
+              "upspeed": 0
+            }
+            """
             # ID
             torrent_id = torrent.get("hash")
             # 标题
@@ -1624,7 +1677,7 @@ class BrushFlow(_PluginBase):
             # 下载时间
             dltime = date_now - torrent.get("added_on") if torrent.get("added_on") else 0
             # 做种时间
-            seeding_time = date_now - torrent.get("completion_on") if torrent.get("completion_on") else 0
+            seeding_time = date_now - (torrent.get("completion_on") if torrent.get("completion_on") else 0)
             # 分享率
             ratio = torrent.get("ratio") or 0
             # 上传量
@@ -1635,7 +1688,7 @@ class BrushFlow(_PluginBase):
             else:
                 avg_upspeed = uploaded
             # 已未活动 秒
-            iatime = date_now - torrent.get("last_activity") if torrent.get("last_activity") else 0
+            iatime = date_now - (torrent.get("last_activity") if torrent.get("last_activity") else 0)
             # 下载量
             downloaded = torrent.get("downloaded")
             # 种子大小
