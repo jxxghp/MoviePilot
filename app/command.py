@@ -18,6 +18,7 @@ from app.log import logger
 from app.schemas.types import EventType, MessageChannel
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
+from app.utils.system import SystemUtils
 
 
 class CommandChian(ChainBase):
@@ -126,6 +127,12 @@ class Command(metaclass=Singleton):
             "/clear_cache": {
                 "func": SystemChain(self._db).remote_clear_cache,
                 "description": "清理缓存",
+                "category": "管理",
+                "data": {}
+            },
+            "/restart": {
+                "func": SystemUtils.restart,
+                "description": "重启系统",
                 "category": "管理",
                 "data": {}
             }
