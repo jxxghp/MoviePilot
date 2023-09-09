@@ -1174,9 +1174,9 @@ class TmdbHelper:
         """
         episode_groups = self.tv.episode_groups(tv_id)
         if not episode_groups:
-            return []
+            return {}
         try:
-            episode_years = []
+            episode_years = {}
             for episode_group in episode_groups:
                 logger.info(f"正在获取剧集组年份：{episode_group.get('id')}...")
                 if episode_group.get('type') != 6:
@@ -1194,8 +1194,8 @@ class TmdbHelper:
                     first_date = episodes[0].get("air_date")
                     if not first_date and str(first_date).split("-") != 3:
                         continue
-                    episode_years.append(str(first_date).split("-")[0])
+                    episode_years[order] = str(first_date).split("-")[0]
             return episode_years
         except Exception as e:
             print(str(e))
-            return []
+            return {}
