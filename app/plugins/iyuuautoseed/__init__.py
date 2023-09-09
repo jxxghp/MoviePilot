@@ -397,6 +397,11 @@ class IYUUAutoSeed(_PluginBase):
         if not self.iyuuhelper:
             return
         logger.info("开始辅种任务 ...")
+
+        # 排除已删除站点
+        self._sites = [site.get("id") for site in self.sites.get_indexers() if
+                       site.get("id") in self._sites]
+
         # 计数器初始化
         self.total = 0
         self.realtotal = 0
