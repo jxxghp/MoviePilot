@@ -56,3 +56,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         if not key:
             return self.__SYSTEMCONF
         return self.__SYSTEMCONF.get(key)
+
+    def __del__(self):
+        if self._db:
+            self._db.close()

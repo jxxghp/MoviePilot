@@ -181,6 +181,8 @@ class Command(metaclass=Singleton):
         """
         self._event.set()
         self._thread.join()
+        if self._db:
+            self._db.close()
 
     def get_commands(self):
         """
