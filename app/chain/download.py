@@ -62,10 +62,10 @@ class DownloadChain(ChainBase):
         self.post_message(Notification(
             channel=channel,
             mtype=NotificationType.Download,
-            title=f"{mediainfo.title_year} "
+            title=f"{mediainfo.title_year if mediainfo else meta.name} "
                   f"{meta.season_episode} 开始下载",
             text=msg_text,
-            image=mediainfo.get_message_image(),
+            image=mediainfo.get_message_image() if mediainfo else None,
             userid=userid))
 
     def download_torrent(self, torrent: TorrentInfo,
@@ -143,7 +143,12 @@ class DownloadChain(ChainBase):
                         download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH)
             else:
                 # 未识别
-                download_dir = Path(settings.DOWNLOAD_PATH)
+                if _meta.type == MediaType.MOVIE:
+                    download_dir = Path(settings.DOWNLOAD_MOVIE_PATH or settings.DOWNLOAD_PATH)
+                elif _meta.type == MediaType.TV:
+                    download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH)
+                else:
+                    download_dir = Path(settings.DOWNLOAD_PATH)
         else:
             # 自定义下载目录
             download_dir = Path(save_path)
@@ -153,57 +158,59 @@ class DownloadChain(ChainBase):
                                                 cookie=_torrent.site_cookie,
                                                 episodes=episodes,
                                                 download_dir=download_dir,
-                                                category=_media.category)
+                                                category=_media.category if _media else None)
         if result:
             _hash, error_msg = result
         else:
             _hash, error_msg = None, "未知错误"
 
         if _hash:
-            # 下载文件路径
-            if _folder_name:
-                download_path = download_dir / _folder_name
-            else:
-                download_path = download_dir / _file_list[0] if _file_list else download_dir
+            # 存在媒体信息时才登记下载记录
+            if _media:
+                # 下载文件路径
+                if _folder_name:
+                    download_path = download_dir / _folder_name
+                else:
+                    download_path = download_dir / _file_list[0] if _file_list else download_dir
 
-            # 登记下载记录
-            self.downloadhis.add(
-                path=str(download_path),
-                type=_media.type.value,
-                title=_media.title,
-                year=_media.year,
-                tmdbid=_media.tmdb_id,
-                imdbid=_media.imdb_id,
-                tvdbid=_media.tvdb_id,
-                doubanid=_media.douban_id,
-                seasons=_meta.season,
-                episodes=_meta.episode,
-                image=_media.get_backdrop_image(),
-                download_hash=_hash,
-                torrent_name=_torrent.title,
-                torrent_description=_torrent.description,
-                torrent_site=_torrent.site_name
-            )
+                # 登记下载记录
+                self.downloadhis.add(
+                    path=str(download_path),
+                    type=_media.type.value,
+                    title=_media.title,
+                    year=_media.year,
+                    tmdbid=_media.tmdb_id,
+                    imdbid=_media.imdb_id,
+                    tvdbid=_media.tvdb_id,
+                    doubanid=_media.douban_id,
+                    seasons=_meta.season,
+                    episodes=_meta.episode,
+                    image=_media.get_backdrop_image(),
+                    download_hash=_hash,
+                    torrent_name=_torrent.title,
+                    torrent_description=_torrent.description,
+                    torrent_site=_torrent.site_name
+                )
 
-            # 登记下载文件
-            files_to_add = []
-            for file in _file_list:
-                if episodes:
-                    # 识别文件集
-                    file_meta = MetaInfo(Path(file).stem)
-                    if not file_meta.begin_episode \
-                            or file_meta.begin_episode not in episodes:
-                        continue
-                files_to_add.append({
-                    "download_hash": _hash,
-                    "downloader": settings.DOWNLOADER,
-                    "fullpath": str(download_dir / _folder_name / file),
-                    "savepath": str(download_dir / _folder_name),
-                    "filepath": file,
-                    "torrentname": _meta.org_string,
-                })
-            if files_to_add:
-                self.downloadhis.add_files(files_to_add)
+                # 登记下载文件
+                files_to_add = []
+                for file in _file_list:
+                    if episodes:
+                        # 识别文件集
+                        file_meta = MetaInfo(Path(file).stem)
+                        if not file_meta.begin_episode \
+                                or file_meta.begin_episode not in episodes:
+                            continue
+                    files_to_add.append({
+                        "download_hash": _hash,
+                        "downloader": settings.DOWNLOADER,
+                        "fullpath": str(download_dir / _folder_name / file),
+                        "savepath": str(download_dir / _folder_name),
+                        "filepath": file,
+                        "torrentname": _meta.org_string,
+                    })
+                if files_to_add:
+                    self.downloadhis.add_files(files_to_add)
 
             # 发送消息
             self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, channel=channel)
@@ -217,18 +224,18 @@ class DownloadChain(ChainBase):
             })
         else:
             # 下载失败
-            logger.error(f"{_media.title_year} 添加下载任务失败："
+            logger.error(f"{_media.title_year if _media else _meta.name} 添加下载任务失败："
                          f"{_torrent.title} - {_torrent.enclosure}，{error_msg}")
             self.post_message(Notification(
                 channel=channel,
                 mtype=NotificationType.Manual,
-                title="添加下载任务失败：%s %s"
-                      % (_media.title_year, _meta.season_episode),
+                title=f"添加下载任务失败：{_media.title_year if _media else _meta.name} "
+                      f"{_meta.season_episode}",
                 text=f"站点：{_torrent.site_name}\n"
                      f"种子名称：{_meta.org_string}\n"
                      f"种子链接：{_torrent.enclosure}\n"
                      f"错误信息：{error_msg}",
-                image=_media.get_message_image(),
+                image=_media.get_message_image() if _media else None,
                 userid=userid))
         return _hash
 
