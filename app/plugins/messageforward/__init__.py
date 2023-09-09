@@ -37,7 +37,6 @@ class MessageForward(_PluginBase):
     _enabled = False
     _wechat = None
     _pattern = None
-    _clean: bool = False
     _pattern_token = {}
 
     # 企业微信发送消息URL
@@ -48,19 +47,9 @@ class MessageForward(_PluginBase):
     def init_plugin(self, config: dict = None):
         if config:
             self._enabled = config.get("enabled")
-            self._clean = config.get("clear")
             self._wechat = config.get("wechat")
             self._pattern = config.get("pattern")
 
-            if self._clean:
-                # 清理已有缓存
-                self.del_data("wechat_token")
-                self.update_config({
-                    "enabled": self._enabled,
-                    "clean": False,
-                    "wechat": self._wechat,
-                    "pattern": self._pattern
-                })
             # 获取token存库
             if self._enabled and self._wechat:
                 self.__save_wechat_token()
@@ -102,22 +91,6 @@ class MessageForward(_PluginBase):
                                            }
                                        ]
                                    },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 6
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'clear',
-                                                   'label': '清除缓存'
-                                               }
-                                           }
-                                       ]
-                                   }
                                ]
                            },
                            {
@@ -168,7 +141,6 @@ class MessageForward(_PluginBase):
                    }
                ], {
                    "enabled": False,
-                   "clear": False,
                    "wechat": "",
                    "pattern": ""
                }
