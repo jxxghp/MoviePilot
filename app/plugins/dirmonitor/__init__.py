@@ -1,4 +1,3 @@
-import platform
 import re
 import shutil
 import threading
@@ -123,8 +122,7 @@ class DirMonitor(_PluginBase):
                     continue
 
                 # 存储目的目录
-                system = platform.system()
-                if system == "Windows":
+                if SystemUtils.is_windows():
                     if mon_path.count(":") > 1:
                         paths = [mon_path.split(":")[0] + ":" + mon_path.split(":")[1],
                                  mon_path.split(":")[2] + ":" + mon_path.split(":")[3]]
