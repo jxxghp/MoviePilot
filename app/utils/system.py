@@ -311,11 +311,13 @@ class SystemUtils:
             # 创建 Docker 客户端
             client = docker.DockerClient(base_url='tcp://127.0.0.1:38379')
             # 获取当前容器的 ID
-            container_hostname = os.environ.get("HOSTNAME")
-            if not container_hostname:
-                return False, "无法获取容器的主机名！"
-            container = client.containers.get(container_hostname)
-            container_id = container.id
+            with open('/proc/self/mountinfo', 'r') as f:
+                data = f.read()
+                index_resolv_conf = data.find("resolv.conf")
+                if index_resolv_conf != -1:
+                    index_second_slash = data.rfind("/", 0, index_resolv_conf)
+                    index_first_slash = data.rfind("/", 0, index_second_slash) + 1
+                    container_id = data[index_first_slash:index_second_slash]
             if not container_id:
                 return False, "获取容器ID失败！"
             # 重启当前容器
