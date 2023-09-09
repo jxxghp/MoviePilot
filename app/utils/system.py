@@ -311,7 +311,11 @@ class SystemUtils:
             # 创建 Docker 客户端
             client = docker.DockerClient(base_url='tcp://127.0.0.1:38379')
             # 获取当前容器的 ID
-            container_id = open("/proc/self/cgroup", "r").read().split("/")[-1]
+            container_hostname = os.environ.get("HOSTNAME")
+            if not container_hostname:
+                return False, "无法获取容器的主机名！"
+            container = client.containers.get(container_hostname)
+            container_id = container.id
             if not container_id:
                 return False, "获取容器ID失败！"
             # 重启当前容器
