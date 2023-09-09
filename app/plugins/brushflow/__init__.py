@@ -1242,7 +1242,8 @@ class BrushFlow(_PluginBase):
                 torrents_size = 0
             # 读取统计数据
             statistic_info = self.get_data("statistic") or {
-                "count": 0
+                "count": 0,
+                "deleted": 0,
             }
             # 处理所有站点
             for siteid in self._brushsites:
@@ -1500,6 +1501,8 @@ class BrushFlow(_PluginBase):
                         continue
             # 统计删除状态
             if remove_torrents:
+                if not statistic_info.get("deleted"):
+                    statistic_info["deleted"] = 0
                 statistic_info["deleted"] += len(remove_torrents)
                 # 删除任务记录
                 for torrent in remove_torrents:
