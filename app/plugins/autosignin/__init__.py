@@ -469,7 +469,7 @@ class AutoSignIn(_PluginBase):
                         {
                             'component': 'td',
                             'props': {
-                                'class': 'whitespace-nowrap break-keep'
+                                'class': 'whitespace-nowrap break-keep text-high-emphasis'
                             },
                             'text': current_day
                         },
