@@ -119,7 +119,7 @@ class RssSubscribe(_PluginBase):
                 # 记录清理缓存设置
                 self._clearflag = self._clear
                 # 关闭清理缓存开关
-                self._clearflag = False
+                self._clear = False
                 # 保存设置
                 self.__update_config()
 
