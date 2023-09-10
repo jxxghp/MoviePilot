@@ -69,6 +69,7 @@ class SpeedLimiter(_PluginBase):
             self._play_down_speed = float(config.get("play_down_speed")) if config.get("play_down_speed") else 0
             self._noplay_up_speed = float(config.get("noplay_up_speed")) if config.get("noplay_up_speed") else 0
             self._noplay_down_speed = float(config.get("noplay_down_speed")) if config.get("noplay_down_speed") else 0
+            self._current_state = f"U:{self._noplay_up_speed},D:{self._noplay_down_speed}"
             try:
                 # 总带宽
                 self._bandwidth = int(float(config.get("bandwidth") or 0)) * 1000000
