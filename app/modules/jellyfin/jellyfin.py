@@ -378,25 +378,100 @@ class Jellyfin(metaclass=Singleton):
     def get_webhook_message(self, message: dict) -> WebhookEventInfo:
         """
         解析Jellyfin报文
+        {
+          "ServerId": "d79d3a6261614419a114595a585xxxxx",
+          "ServerName": "nyanmisaka-jellyfin1",
+          "ServerVersion": "10.8.10",
+          "ServerUrl": "http://xxxxxxxx:8098",
+          "NotificationType": "PlaybackStart",
+          "Timestamp": "2023-09-10T08:35:25.3996506+00:00",
+          "UtcTimestamp": "2023-09-10T08:35:25.3996527Z",
+          "Name": "慕灼华逃婚离开",
+          "Overview": "慕灼华假装在读书，她害怕大娘子说她不务正业。",
+          "Tagline": "",
+          "ItemId": "4b92551344f53b560fb55cd6700xxxxx",
+          "ItemType": "Episode",
+          "RunTimeTicks": 27074985984,
+          "RunTime": "00:45:07",
+          "Year": 2023,
+          "SeriesName": "灼灼风流",
+          "SeasonNumber": 1,
+          "SeasonNumber00": "01",
+          "SeasonNumber000": "001",
+          "EpisodeNumber": 1,
+          "EpisodeNumber00": "01",
+          "EpisodeNumber000": "001",
+          "Provider_tmdb": "229210",
+          "Video_0_Title": "4K HEVC SDR",
+          "Video_0_Type": "Video",
+          "Video_0_Codec": "hevc",
+          "Video_0_Profile": "Main",
+          "Video_0_Level": 150,
+          "Video_0_Height": 2160,
+          "Video_0_Width": 3840,
+          "Video_0_AspectRatio": "16:9",
+          "Video_0_Interlaced": false,
+          "Video_0_FrameRate": 25,
+          "Video_0_VideoRange": "SDR",
+          "Video_0_ColorSpace": "bt709",
+          "Video_0_ColorTransfer": "bt709",
+          "Video_0_ColorPrimaries": "bt709",
+          "Video_0_PixelFormat": "yuv420p",
+          "Video_0_RefFrames": 1,
+          "Audio_0_Title": "AAC - Stereo - Default",
+          "Audio_0_Type": "Audio",
+          "Audio_0_Language": "und",
+          "Audio_0_Codec": "aac",
+          "Audio_0_Channels": 2,
+          "Audio_0_Bitrate": 125360,
+          "Audio_0_SampleRate": 48000,
+          "Audio_0_Default": true,
+          "PlaybackPositionTicks": 1000000,
+          "PlaybackPosition": "00:00:00",
+          "MediaSourceId": "4b92551344f53b560fb55cd6700ebc86",
+          "IsPaused": false,
+          "IsAutomated": false,
+          "DeviceId": "TW96aWxsxxxxxjA",
+          "DeviceName": "Edge Chromium",
+          "ClientName": "Jellyfin Web",
+          "NotificationUsername": "Jeaven",
+          "UserId": "9783d2432b0d40a8a716b6aa46xxxxx"
+        }
         """
         logger.info(f"接收到jellyfin webhook：{message}")
         eventItem = WebhookEventInfo(
             event=message.get('NotificationType', ''),
-            item_id=message.get('ItemId'),
-            item_name=message.get('Name'),
-            item_type=message.get('ItemType'),
-            item_favorite=message.get('Favorite'),
-            save_reason=message.get('SaveReason'),
-            tmdb_id=message.get('Provider_tmdb'),
-            user_name=message.get('NotificationUsername'),
             channel="jellyfin"
         )
+        eventItem.item_id = message.get('ItemId')
+        eventItem.tmdb_id = message.get('Provider_tmdb')
+        eventItem.overview = message.get('Overview')
+        eventItem.device_name = message.get('DeviceName')
+        eventItem.user_name = message.get('NotificationUsername')
+        eventItem.client = message.get('ClientName')
+        if message.get("ItemType") == "Episode":
+            # 剧集
+            eventItem.item_type = "TV"
+            eventItem.season_id = message.get('SeasonNumber')
+            eventItem.episode_id = message.get('EpisodeNumber')
+            eventItem.item_name = "%s %s%s %s" % (
+                message.get('SeriesName'),
+                "S" + str(eventItem.season_id),
+                "E" + str(eventItem.episode_id),
+                message.get('Name'))
+        else:
+            # 电影
+            eventItem.item_type = "MOV"
+            eventItem.item_name = "%s %s" % (
+                message.get('Name'), "(" + str(message.get('Year')) + ")")
 
         # 获取消息图片
         if eventItem.item_id:
             # 根据返回的item_id去调用媒体服务器获取
-            eventItem.image_url = self.get_remote_image_by_id(item_id=eventItem.item_id,
-                                                              image_type="Backdrop")
+            eventItem.image_url = self.get_remote_image_by_id(
+                item_id=eventItem.item_id,
+                image_type="Backdrop"
+            )
 
         return eventItem
 
@@ -461,8 +536,8 @@ class Jellyfin(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return None
-        url = url.replace("{HOST}", self._host)\
-            .replace("{APIKEY}", self._apikey)\
+        url = url.replace("{HOST}", self._host) \
+            .replace("{APIKEY}", self._apikey) \
             .replace("{USER}", self.user)
         try:
             return RequestUtils().get_res(url=url)
