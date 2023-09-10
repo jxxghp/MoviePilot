@@ -85,7 +85,7 @@ class TransferChain(ChainBase):
                     mediainfo: MediaInfo = None, download_hash: str = None,
                     target: Path = None, transfer_type: str = None,
                     season: int = None, epformat: EpisodeFormat = None,
-                    min_filesize: int = 0) -> Tuple[bool, str]:
+                    min_filesize: int = 0, force: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的转移操作
         :param path: 待转移目录或文件
@@ -97,6 +97,7 @@ class TransferChain(ChainBase):
         :param season: 季
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
+        :param force: 是否强制转移
         返回：成功标识，错误信息
         """
         if not transfer_type:
@@ -183,10 +184,11 @@ class TransferChain(ChainBase):
                             continue
 
                 # 转移成功的不再处理
-                transferd = self.transferhis.get_by_src(file_path_str)
-                if transferd and transferd.status:
-                    logger.info(f"{file_path} 已成功转移过，如需重新处理，请删除历史记录。")
-                    continue
+                if not force:
+                    transferd = self.transferhis.get_by_src(file_path_str)
+                    if transferd and transferd.status:
+                        logger.info(f"{file_path} 已成功转移过，如需重新处理，请删除历史记录。")
+                        continue
 
                 # 更新进度
                 self.progress.update(value=processed_num / total_num * 100,
@@ -493,10 +495,11 @@ class TransferChain(ChainBase):
         if history.dest:
             self.delete_files(Path(history.dest))
 
-        # 转移
+        # 强制转移
         state, errmsg = self.do_transfer(path=src_path,
                                          mediainfo=mediainfo,
-                                         download_hash=history.download_hash)
+                                         download_hash=history.download_hash,
+                                         force=True)
         if not state:
             return False, errmsg
 
