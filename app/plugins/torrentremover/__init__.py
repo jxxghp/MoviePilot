@@ -605,7 +605,7 @@ class TorrentRemover(_PluginBase):
                     if torrents and message_text and self._notify:
                         self.post_message(
                             mtype=NotificationType.SiteMessage,
-                            title=f"【自动删种任务执行完成】",
+                            title=f"【自动删种任务完成】",
                             text=message_text
                         )
             except Exception as e:

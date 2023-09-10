@@ -966,6 +966,12 @@ class SiteStatistic(_PluginBase):
                 # 发送通知，存在未读消息
                 self.__notify_unread_msg(site_name, site_user_info, unread_msg_notify)
 
+                # 分享率接近1时，发送消息提醒
+                if site_user_info.ratio and float(site_user_info.ratio) < 1:
+                    self.post_message(mtype=NotificationType.SiteMessage,
+                                      title=f"【站点分享率低预警】",
+                                      text=f"站点 {site_user_info.site_name} 分享率 {site_user_info.ratio}，请注意！")
+
                 self._sites_data.update(
                     {
                         site_name: {

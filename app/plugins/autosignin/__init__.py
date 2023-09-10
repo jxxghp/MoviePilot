@@ -704,7 +704,7 @@ class AutoSignIn(_PluginBase):
                     signin_message += retry_msg
 
                 signin_message = "\n".join([f'【{s[0]}】{s[1]}' for s in signin_message if s])
-                self.post_message(title=f"站点自动{type}",
+                self.post_message(title=f"【站点自动{type}】",
                                   mtype=NotificationType.SiteMessage,
                                   text=f"全部{type}数量: {len(list(self._sign_sites))} \n"
                                        f"本次{type}数量: {len(do_sites)} \n"
