@@ -214,6 +214,11 @@ class MessageChain(ChainBase):
                 start = _current_page * self._page_size
                 end = start + self._page_size
             if cache_type == "Torrent":
+                # 更新缓存
+                user_cache[userid] = {
+                    "type": "Torrent",
+                    "items": cache_list[start:end]
+                }
                 # 发送种子数据
                 self.__post_torrents_message(channel=channel,
                                              title=_current_media.title,
@@ -251,6 +256,11 @@ class MessageChain(ChainBase):
                 # 加一页
                 _current_page += 1
                 if cache_type == "Torrent":
+                    # 更新缓存
+                    user_cache[userid] = {
+                        "type": "Torrent",
+                        "items": cache_list
+                    }
                     # 发送种子数据
                     self.__post_torrents_message(channel=channel,
                                                  title=_current_media.title,
