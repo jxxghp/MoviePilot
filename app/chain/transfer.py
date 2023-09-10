@@ -175,13 +175,18 @@ class TransferChain(ChainBase):
                     continue
 
                 # 整理屏蔽词不处理
+                is_blocked = False
                 if transfer_exclude_words:
                     for keyword in transfer_exclude_words:
                         if not keyword:
                             continue
-                        if keyword and re.findall(keyword, file_path_str):
+                        if keyword and re.search(r"%s" % keyword, file_path_str, re.IGNORECASE):
                             logger.info(f"{file_path} 命中整理屏蔽词 {keyword}，不处理")
-                            continue
+                            is_blocked = True
+                            break
+                if is_blocked:
+                    err_msgs.append(f"{file_path.name} 命中整理屏蔽词")
+                    continue
 
                 # 转移成功的不再处理
                 if not force:
