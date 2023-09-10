@@ -74,8 +74,8 @@ class TheMovieDbModule(_ModuleBase):
                                                mtype=meta.type,
                                                season_year=meta.year,
                                                season_number=meta.begin_season)
-                        if meta.year:
-                            # 非严格模式下去掉年份再查一次
+                        if not info:
+                            # 去掉年份再查一次
                             info = self.tmdb.match(name=meta.name,
                                                    mtype=meta.type)
                     else:
