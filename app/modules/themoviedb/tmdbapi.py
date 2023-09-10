@@ -1172,10 +1172,10 @@ class TmdbHelper:
         """
         查询剧集组年份
         """
-        episode_groups = self.tv.episode_groups(tv_id)
-        if not episode_groups:
-            return {}
         try:
+            episode_groups = self.tv.episode_groups(tv_id)
+            if not episode_groups:
+                return {}
             episode_years = {}
             for episode_group in episode_groups:
                 logger.info(f"正在获取剧集组年份：{episode_group.get('id')}...")
