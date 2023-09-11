@@ -10,6 +10,7 @@ from app.chain.site import SiteChain
 from app.core.config import settings
 from app.db.site_oper import SiteOper
 from app.db.siteicon_oper import SiteIconOper
+from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.cookiecloud import CookieCloudHelper
 from app.helper.message import MessageHelper
@@ -75,9 +76,15 @@ class CookieCloudChain(ChainBase):
             if site_info:
                 # 检查站点连通性
                 status, msg = self.sitechain.test(domain)
+
                 # 更新站点Cookie
                 if status:
                     logger.info(f"站点【{site_info.name}】连通性正常，不同步CookieCloud数据")
+                    if not site_info.public and not site_info.rss:
+                        # 自动生成rss地址
+                        rss_url = self.__get_rss(url=site_info.url, cookie=cookie, ua=settings.USER_AGENT)
+                        # 更新站点rss地址
+                        self.siteoper.update_rss(domain=domain, rss=rss_url)
                     continue
                 # 更新站点Cookie
                 self.siteoper.update_cookie(domain=domain, cookies=cookie)
@@ -104,10 +111,15 @@ class CookieCloudChain(ChainBase):
                     _fail_count += 1
                     logger.warn(f"站点 {indexer.get('name')} 连接失败，无法添加站点")
                     continue
+                rss_url = None
+                if not indexer.get("public") and indexer.get("domain"):
+                    # 自动生成rss地址
+                    rss_url = self.__get_rss(url=indexer.get("domain"), cookie=cookie, ua=settings.USER_AGENT)
                 self.siteoper.add(name=indexer.get("name"),
                                   url=indexer.get("domain"),
                                   domain=domain,
                                   cookie=cookie,
+                                  rss=rss_url,
                                   public=1 if indexer.get("public") else 0)
                 _add_count += 1
             # 保存站点图标
@@ -134,6 +146,88 @@ class CookieCloudChain(ChainBase):
             self.message.put(f"CookieCloud同步成功, {ret_msg}")
         logger.info(f"CookieCloud同步成功：{ret_msg}")
         return True, ret_msg
+
+    def __get_rss(self, url: str, cookie: str, ua: str) -> str:
+        """
+        获取站点rss地址
+        """
+        if "ourbits.club" in url:
+            return self.__get_rss_ourbits(url=url, cookie=cookie, ua=ua)
+
+        return self.__get_rss_base(url=url, cookie=cookie, ua=ua)
+
+    def __get_rss_base(self, url: str, cookie: str, ua: str) -> str:
+        """
+        默认获取站点rss地址
+        """
+        try:
+            get_rss_url = urljoin(url, "getrss.php")
+            rss_data = self.__get_rss_data(url)
+            res = RequestUtils(cookies=cookie, timeout=60, ua=ua).post_res(url=get_rss_url, data=rss_data)
+            if res:
+                html_text = res.text
+            else:
+                logger.error(f"获取rss失败：{url}")
+                return ""
+            html = etree.HTML(html_text)
+            if html:
+                rss_link = html.xpath("//a[@class='faqlink']/@href")
+                if rss_link:
+                    return str(rss_link[-1])
+            return ""
+        except Exception as e:
+            print(str(e))
+            return ""
+
+    def __get_rss_ourbits(self, url: str, cookie: str, ua: str) -> str:
+        """
+        获取我堡rss地址
+        """
+        try:
+            get_rss_url = urljoin(url, "getrss.php")
+            html_text = PlaywrightHelper().get_page_source(url=get_rss_url,
+                                                           cookies=cookie,
+                                                           ua=ua)
+            if html_text:
+                html = etree.HTML(html_text)
+                if html:
+                    rss_link = html.xpath("//a[@class='gen_rsslink']/@href")
+                    if rss_link:
+                        return str(rss_link[-1])
+            return ""
+        except Exception as e:
+            print(str(e))
+            return ""
+
+    @staticmethod
+    def __get_rss_data(url: str) -> dict:
+        """
+        获取请求rss的参数，有的站不太一样，后续不断维护
+        """
+        _rss_data = {
+            "inclbookmarked": 0,
+            "itemsmalldescr": 1,
+            "showrows": 50,
+            "search_mode": 1,
+        }
+
+        if 'audiences.me' in url:
+            # 种子类型 1新种与重置顶旧种 0只包含新种
+            _rss_data['torrent_type'] = 1
+            # RSS链接有效期： 180天
+            _rss_data['exp'] = 180
+
+        if 'leaves.red' in url:
+            # 下载需扣除魔力 0不需要 1需要 2全部
+            _rss_data['paid'] = 2
+
+        if 'u2.dmhy.org' in url:
+            # 显示自动通过的种子 0不显示自动通过的种子 1全部
+            _rss_data['inclautochecked'] = 1
+            # Tracker SSL 0不使用SSL 1使用SSL
+            _rss_data['trackerssl'] = 1
+
+        return _rss_data
 
     @staticmethod
     def __parse_favicon(url: str, cookie: str, ua: str) -> Tuple[str, Optional[str]]:
