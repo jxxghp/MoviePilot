@@ -8,7 +8,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.mediaserver import MediaServerChain
-from app.chain.rss import RssChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
@@ -71,15 +70,20 @@ class Scheduler(metaclass=Singleton):
             self._scheduler.add_job(SubscribeChain(self._db).search, "interval",
                                     hours=24, kwargs={'state': 'R'}, name="订阅搜索")
 
-        # 站点首页种子定时刷新缓存并匹配订阅
-        triggers = TimerUtils.random_scheduler(num_executions=30)
-        for trigger in triggers:
-            self._scheduler.add_job(SubscribeChain(self._db).refresh, "cron",
-                                    hour=trigger.hour, minute=trigger.minute, name="订阅刷新")
-
-        # 自定义订阅
-        self._scheduler.add_job(RssChain(self._db).refresh, "interval",
-                                minutes=30, name="自定义订阅刷新")
+        if settings.SUBSCRIBE_MODE == "spider":
+            # 站点首页种子定时刷新模式
+            triggers = TimerUtils.random_scheduler(num_executions=30)
+            for trigger in triggers:
+                self._scheduler.add_job(SubscribeChain(self._db).refresh, "cron",
+                                        hour=trigger.hour, minute=trigger.minute, name="订阅刷新")
+        else:
+            # RSS订阅模式
+            if not settings.SUBSCRIBE_RSS_INTERVAL:
+                settings.SUBSCRIBE_RSS_INTERVAL = 30
+            elif settings.SUBSCRIBE_RSS_INTERVAL < 5:
+                settings.SUBSCRIBE_RSS_INTERVAL = 5
+            self._scheduler.add_job(SubscribeChain(self._db).refresh, "interval",
+                                    minutes=settings.SUBSCRIBE_RSS_INTERVAL, name="订阅刷新")
 
         # 下载器文件转移（每5分钟）
         if settings.DOWNLOADER_MONITOR:

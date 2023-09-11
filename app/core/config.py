@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     RMT_AUDIO_TRACK_EXT: list = ['.mka']
     # 索引器
     INDEXER: str = "builtin"
+    # 订阅模式
+    SUBSCRIBE_MODE: str = "spider"
+    # RSS订阅模式刷新时间间隔（分钟）
+    SUBSCRIBE_RSS_INTERVAL: int = 30
     # 订阅搜索开关
     SUBSCRIBE_SEARCH: bool = False
     # 用户认证站点 hhclub/audiences/hddolby/zmpt/freefarm/hdfans/wintersakura/leaves/1ptba/icc2022/iyuu

@@ -24,7 +24,7 @@ lock = Lock()
 
 class RssSubscribe(_PluginBase):
     # 插件名称
-    plugin_name = "RSS订阅"
+    plugin_name = "自定义订阅"
     # 插件描述
     plugin_desc = "定时刷新RSS报文，识别内容后添加订阅或直接下载。"
     # 插件图标
