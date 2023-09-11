@@ -85,4 +85,4 @@ class SiteOper(DbOper):
         site.update(self._db, {
             "rss": rss
         })
-        return True, "更新站点rss成功"
+        return True, "更新站点RSS地址成功"
