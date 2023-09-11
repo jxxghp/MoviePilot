@@ -105,7 +105,7 @@ class TransmissionModule(_ModuleBase):
                     title=torrent.name,
                     path=Path(torrent.download_dir) / torrent.name,
                     hash=torrent.hashString,
-                    tags=torrent.labels
+                    tags=",".join(torrent.labels or [])
                 ))
         elif status == TorrentStatus.TRANSFER:
             # 获取已完成且未整理的
