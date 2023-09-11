@@ -10,10 +10,10 @@ from app.chain.site import SiteChain
 from app.core.config import settings
 from app.db.site_oper import SiteOper
 from app.db.siteicon_oper import SiteIconOper
-from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.cookiecloud import CookieCloudHelper
 from app.helper.message import MessageHelper
+from app.helper.rss import RssHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType, MessageChannel
@@ -31,6 +31,7 @@ class CookieCloudChain(ChainBase):
         self.siteoper = SiteOper(self._db)
         self.siteiconoper = SiteIconOper(self._db)
         self.siteshelper = SitesHelper()
+        self.rsshelper = RssHelper()
         self.sitechain = SiteChain(self._db)
         self.message = MessageHelper()
         self.cookiecloud = CookieCloudHelper(
@@ -82,10 +83,17 @@ class CookieCloudChain(ChainBase):
                     logger.info(f"站点【{site_info.name}】连通性正常，不同步CookieCloud数据")
                     if not site_info.public and not site_info.rss:
                         # 自动生成rss地址
-                        rss_url = self.__get_rss(url=site_info.url, cookie=cookie, ua=settings.USER_AGENT,
-                                                 proxy=site_info.proxy)
-                        # 更新站点rss地址
-                        self.siteoper.update_rss(domain=domain, rss=rss_url)
+                        rss_url, errmsg = self.rsshelper.get_rss_link(
+                            url=site_info.url,
+                            cookie=cookie,
+                            ua=settings.USER_AGENT,
+                            proxy=True if site_info.proxy else False
+                        )
+                        if rss_url:
+                            # 更新站点rss地址
+                            self.siteoper.update_rss(domain=domain, rss=rss_url)
+                        else:
+                            logger.warn(errmsg)
                     continue
                 # 更新站点Cookie
                 self.siteoper.update_cookie(domain=domain, cookies=cookie)
@@ -115,7 +123,12 @@ class CookieCloudChain(ChainBase):
                 rss_url = None
                 if not indexer.get("public") and indexer.get("domain"):
                     # 自动生成rss地址
-                    rss_url = self.__get_rss(url=indexer.get("domain"), cookie=cookie, ua=settings.USER_AGENT)
+                    rss_url, errmsg = self.rsshelper.get_rss_link(url=indexer.get("domain"),
+                                                                  cookie=cookie,
+                                                                  ua=settings.USER_AGENT)
+                    if errmsg:
+                        logger.warn(errmsg)
+                # 插入数据库
                 self.siteoper.add(name=indexer.get("name"),
                                   url=indexer.get("domain"),
                                   domain=domain,
@@ -147,223 +160,6 @@ class CookieCloudChain(ChainBase):
             self.message.put(f"CookieCloud同步成功, {ret_msg}")
         logger.info(f"CookieCloud同步成功：{ret_msg}")
         return True, ret_msg
-
-    def __get_rss(self, url: str, cookie: str, ua: str, proxy: int) -> str:
-        """
-        获取站点rss地址
-        """
-        if "ourbits.club" in url:
-            return self.__get_rss_ourbits(url=url, cookie=cookie, ua=ua, proxy=proxy)
-        if "totheglory.im" in url:
-            return self.__get_rss_ttg(url=url, cookie=cookie, ua=ua, proxy=proxy)
-        if "monikadesign.uk" in url:
-            return self.__get_rss_monika(url=url, cookie=cookie, ua=ua, proxy=proxy)
-        if "zhuque.in" in url:
-            return self.__get_rss_zhuque(url=url, cookie=cookie, ua=ua, proxy=proxy)
-
-        xpath = "//a[@class='faqlink']/@href"
-        if "club.hares.top" in url:
-            xpath = "//*[@id='layui-layer100001']/div[2]/div/p[4]/a/@href"
-        if "et8.org" in url:
-            xpath = "//*[@id='outer']/table/tbody/tr/td/table/tbody/tr/td/a[2]/@href"
-        if "pttime.org" in url:
-            xpath = "//*[@id='outer']/table/tbody/tr/td/table/tbody/tr/td/text()[5]"
-
-        return self.__get_rss_base(url=url, cookie=cookie, ua=ua, xpath=xpath, proxy=proxy)
-
-    def __get_rss_base(self, url: str, cookie: str, ua: str, xpath: str, proxy: int) -> str:
-        """
-        默认获取站点rss地址
-        """
-        try:
-            get_rss_url = urljoin(url, "getrss.php")
-            rss_data = self.__get_rss_data(url)
-            res = RequestUtils(cookies=cookie,
-                               timeout=60,
-                               ua=ua,
-                               proxies=settings.PROXY if proxy else None).post_res(
-                url=get_rss_url, data=rss_data)
-            if res:
-                html_text = res.text
-            else:
-                logger.error(f"获取rss失败：{url}")
-                return ""
-            html = etree.HTML(html_text)
-            if html:
-                rss_link = html.xpath(xpath)
-                if rss_link:
-                    return str(rss_link[-1])
-            return ""
-        except Exception as e:
-            print(str(e))
-            return ""
-
-    def __get_rss_ttg(self, url: str, cookie: str, ua: str, proxy: int) -> str:
-        """
-        获取ttg rss地址
-        """
-        try:
-            get_rss_url = urljoin(url,
-                                  "rsstools.php?c51=51&c52=52&c53=53&c54=54&c108=108&c109=109&c62=62&c63=63&c67=67&c69=69&c70=70&c73=73&c76=76&c75=75&c74=74&c87=87&c88=88&c99=99&c90=90&c58=58&c103=103&c101=101&c60=60")
-            res = RequestUtils(cookies=cookie,
-                               timeout=60,
-                               ua=ua,
-                               proxies=settings.PROXY if proxy else None).get_res(url=get_rss_url)
-            if res:
-                html_text = res.text
-            else:
-                logger.error(f"获取rss失败：{url}")
-                return ""
-            html = etree.HTML(html_text)
-            if html:
-                rss_link = html.xpath("//textarea/text()")
-                if rss_link:
-                    return str(rss_link[-1])
-            return ""
-        except Exception as e:
-            print(str(e))
-            return ""
-
-    def __get_rss_monika(self, url: str, cookie: str, ua: str, proxy: int) -> str:
-        """
-        获取monikadesign rss地址
-        """
-        try:
-            get_rss_url = urljoin(url, "rss")
-            res = RequestUtils(cookies=cookie,
-                               timeout=60,
-                               ua=ua,
-                               proxies=settings.PROXY if proxy else None).get_res(url=get_rss_url)
-            if res:
-                html_text = res.text
-            else:
-                logger.error(f"获取rss失败：{url}")
-                return ""
-            html = etree.HTML(html_text)
-            if html:
-                rss_link = html.xpath("//a/@href")
-                if rss_link:
-                    return str(rss_link[0])
-            return ""
-        except Exception as e:
-            print(str(e))
-            return ""
-
-    def __get_rss_ourbits(self, url: str, cookie: str, ua: str, proxy: int) -> str:
-        """
-        获取我堡rss地址
-        """
-        try:
-            get_rss_url = urljoin(url, "getrss.php")
-            html_text = PlaywrightHelper().get_page_source(url=get_rss_url,
-                                                           cookies=cookie,
-                                                           ua=ua,
-                                                           proxies=settings.PROXY if proxy else None)
-            if html_text:
-                html = etree.HTML(html_text)
-                if html:
-                    rss_link = html.xpath("//a[@class='gen_rsslink']/@href")
-                    if rss_link:
-                        return str(rss_link[-1])
-            return ""
-        except Exception as e:
-            print(str(e))
-            return ""
-
-    def __get_rss_zhuque(self, url: str, cookie: str, ua: str, proxy: int) -> str:
-        """
-        获取zhuque rss地址
-        """
-        try:
-            get_rss_url = urljoin(url, "user/rss")
-            html_text = PlaywrightHelper().get_page_source(url=get_rss_url,
-                                                           cookies=cookie,
-                                                           ua=ua,
-                                                           proxies=settings.PROXY if proxy else None)
-            if html_text:
-                html = etree.HTML(html_text)
-                if html:
-                    rss_link = html.xpath("//a/@href")
-                    if rss_link:
-                        return str(rss_link[-1])
-            return ""
-        except Exception as e:
-            print(str(e))
-            return ""
-
-    @staticmethod
-    def __get_rss_data(url: str) -> dict:
-        """
-        获取请求rss的参数，有的站不太一样，后续不断维护
-        """
-        _rss_data = {
-            "inclbookmarked": 0,
-            "itemsmalldescr": 1,
-            "showrows": 50,
-            "search_mode": 1,
-        }
-
-        if 'hdchina.org' in url:
-            # 显示下载框	0全部 1仅下载框
-            _rss_data['rsscart'] = 0
-
-        if 'audiences.me' in url:
-            # 种子类型 1新种与重置顶旧种 0只包含新种
-            _rss_data['torrent_type'] = 1
-            # RSS链接有效期： 180天
-            _rss_data['exp'] = 180
-
-        if 'shadowflow.org' in url:
-            # 下载需扣除魔力 0不需要 1需要 2全部
-            _rss_data['paid'] = 0
-            _rss_data['search_mode'] = 0
-            _rss_data['showrows'] = 30
-
-        if 'hddolby.com' in url:
-            # RSS链接有效期： 180天
-            _rss_data['exp'] = 180
-
-        if 'hdhome.org' in url:
-            # RSS链接有效期： 180天
-            _rss_data['exp'] = 180
-
-        if 'pthome.net' in url:
-            # RSS链接有效期： 180天
-            _rss_data['exp'] = 180
-
-        if 'ptsbao.club' in url:
-            _rss_data['size'] = 0
-
-        if 'leaves.red' in url:
-            # 下载需扣除魔力 0不需要 1需要 2全部
-            _rss_data['paid'] = 2
-            _rss_data['search_mode'] = 0
-
-        if 'hdtime.org' in url:
-            _rss_data['search_mode'] = 0
-
-        if 'kp.m-team.cc' in url:
-            _rss_data = {
-                "showrows": 50,
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "https": 1
-            }
-
-        if 'u2.dmhy.org' in url:
-            # 显示自动通过的种子 0不显示自动通过的种子 1全部
-            _rss_data['inclautochecked'] = 1
-            # Tracker SSL 0不使用SSL 1使用SSL
-            _rss_data['trackerssl'] = 1
-
-        if 'www.pttime.org' in url:
-            _rss_data = {
-                "showrows": 10,
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1
-            }
-
-        return _rss_data
 
     @staticmethod
     def __parse_favicon(url: str, cookie: str, ua: str) -> Tuple[str, Optional[str]]:
