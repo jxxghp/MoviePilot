@@ -67,7 +67,7 @@ class FilterModule(_ModuleBase):
         },
         # 杜比
         "DOLBY": {
-            "include": [r"Dolby\sVision|DOVI|[\s.]+DV[\s.]+|杜比视界"],
+            "include": [r"Dolby[\s.]+Vision|DOVI|[\s.]+DV[\s.]+|杜比视界"],
             "exclude": []
         },
         # HDR
