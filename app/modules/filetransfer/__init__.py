@@ -573,20 +573,17 @@ class FileTransferModule(_ModuleBase):
             # 重命名格式
             rename_format = settings.TV_RENAME_FORMAT \
                 if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
-            # 媒体完整路径
-            media_path = self.get_rename_path(
-                path=target_dir,
+            # 相对路径
+            rel_path = self.get_rename_path(
                 template_string=rename_format,
                 rename_dict=self.__get_naming_dict(meta=MetaInfo(mediainfo.title),
                                                    mediainfo=mediainfo)
             )
-
-            if mediainfo.type == MediaType.MOVIE:
-                # 电影取父目录
-                media_path = media_path.parent
+            # 取相对路径的第1层目录
+            if rel_path.parts:
+                media_path = target_dir / rel_path.parts[0]
             else:
-                # 电视剧取上两级目录
-                media_path = media_path.parent.parent
+                continue
 
             # 检查媒体文件夹是否存在
             if not media_path.exists():
