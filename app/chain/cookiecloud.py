@@ -160,12 +160,16 @@ class CookieCloudChain(ChainBase):
             return self.__get_rss_monika(url=url, cookie=cookie, ua=ua)
         if "zhuque.in" in url:
             return self.__get_rss_zhuque(url=url, cookie=cookie, ua=ua)
+
+        xpath = "//a[@class='faqlink']/@href"
         if "et8.org" in url or "club.hares.top" in url:
-            return self.__get_rss_tccf(url=url, cookie=cookie, ua=ua)
+            xpath = "//a/@href"
+        if "pttime.org" in url:
+            xpath = "//*[@id='outer']/table/tbody/tr/td/table/tbody/tr/td/text()[5]"
 
-        return self.__get_rss_base(url=url, cookie=cookie, ua=ua)
+        return self.__get_rss_base(url=url, cookie=cookie, ua=ua, xpath=xpath)
 
-    def __get_rss_base(self, url: str, cookie: str, ua: str) -> str:
+    def __get_rss_base(self, url: str, cookie: str, ua: str, xpath: str) -> str:
         """
         默认获取站点rss地址
         """
@@ -180,30 +184,7 @@ class CookieCloudChain(ChainBase):
                 return ""
             html = etree.HTML(html_text)
             if html:
-                rss_link = html.xpath("//a[@class='faqlink']/@href")
-                if rss_link:
-                    return str(rss_link[-1])
-            return ""
-        except Exception as e:
-            print(str(e))
-            return ""
-
-    def __get_rss_tccf(self, url: str, cookie: str, ua: str) -> str:
-        """
-        默认tccf rss地址
-        """
-        try:
-            get_rss_url = urljoin(url, "getrss.php")
-            rss_data = self.__get_rss_data(url)
-            res = RequestUtils(cookies=cookie, timeout=60, ua=ua).post_res(url=get_rss_url, data=rss_data)
-            if res:
-                html_text = res.text
-            else:
-                logger.error(f"获取rss失败：{url}")
-                return ""
-            html = etree.HTML(html_text)
-            if html:
-                rss_link = html.xpath("//a/@href")
+                rss_link = html.xpath(xpath)
                 if rss_link:
                     return str(rss_link[-1])
             return ""
@@ -321,6 +302,7 @@ class CookieCloudChain(ChainBase):
         if 'shadowflow.org' in url:
             # 下载需扣除魔力 0不需要 1需要 2全部
             _rss_data['paid'] = 0
+            _rss_data['search_mode'] = 0
 
         if 'hddolby.com' in url:
             # RSS链接有效期： 180天
@@ -330,15 +312,30 @@ class CookieCloudChain(ChainBase):
             # RSS链接有效期： 180天
             _rss_data['exp'] = 180
 
+        if 'pthome.net' in url:
+            # RSS链接有效期： 180天
+            _rss_data['exp'] = 180
+
         if 'leaves.red' in url:
             # 下载需扣除魔力 0不需要 1需要 2全部
             _rss_data['paid'] = 2
+            _rss_data['search_mode'] = 0
+
+        if 'hdtime.org' in url:
+            _rss_data['search_mode'] = 0
 
         if 'u2.dmhy.org' in url:
             # 显示自动通过的种子 0不显示自动通过的种子 1全部
             _rss_data['inclautochecked'] = 1
             # Tracker SSL 0不使用SSL 1使用SSL
             _rss_data['trackerssl'] = 1
+
+        if 'www.pttime.org' in url:
+            _rss_data = {
+                "showrows": 10,
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1
+            }
 
         return _rss_data
 
