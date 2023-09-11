@@ -587,6 +587,8 @@ class FileTransferModule(_ModuleBase):
             else:
                 # 电视剧取上两级目录
                 media_path = media_path.parent.parent
+
+            # 检查媒体文件夹是否存在
             if not media_path.exists():
                 continue
 

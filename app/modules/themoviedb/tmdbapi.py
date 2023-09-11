@@ -447,7 +447,8 @@ class TmdbHelper:
                         ret_info = multi
                         break
             # 类型变更
-            if ret_info:
+            if (ret_info
+                    and not isinstance(ret_info.get("media_type"), MediaType)):
                 ret_info['media_type'] = MediaType.MOVIE if ret_info.get("media_type") == "movie" else MediaType.TV
 
             return ret_info
