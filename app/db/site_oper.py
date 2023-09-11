@@ -74,3 +74,15 @@ class SiteOper(DbOper):
             "cookie": cookies
         })
         return True, "更新站点Cookie成功"
+
+    def update_rss(self, domain: str, rss: str) -> Tuple[bool, str]:
+        """
+        更新站点rss
+        """
+        site = Site.get_by_domain(self._db, domain)
+        if not site:
+            return False, "站点不存在"
+        site.update(self._db, {
+            "rss": rss
+        })
+        return True, "更新站点rss成功"

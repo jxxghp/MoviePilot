@@ -375,6 +375,8 @@ class SpeedLimiter(_PluginBase):
         """
         if not self._qb and not self._tr:
             return
+        if not self._enabled:
+            return
         if event:
             event_data: WebhookEventInfo = event.event_data
             if event_data.event not in ["playback.start", "PlaybackStart", "media.play"]:
