@@ -138,7 +138,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                 torrents: List[TorrentInfo] = self.browse(domain=domain)
             else:
                 # 刷新RSS种子
-                torrents: List[TorrentInfo] = self.rss(site=indexer)
+                torrents: List[TorrentInfo] = self.rss(domain=domain)
             # 按pubdate降序排列
             torrents.sort(key=lambda x: x.pubdate or '', reverse=True)
             # 取前N条
