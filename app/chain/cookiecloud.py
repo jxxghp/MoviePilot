@@ -83,6 +83,7 @@ class CookieCloudChain(ChainBase):
                     if not site_info.public and not site_info.rss:
                         # 自动生成rss地址
                         rss_url = self.__get_rss(url=site_info.url, cookie=cookie, ua=settings.USER_AGENT)
+                        logger.info(f"自动生成站点【{site_info.name}】 rss【{rss_url}】")
                         # 更新站点rss地址
                         self.siteoper.update_rss(domain=domain, rss=rss_url)
                     continue
@@ -153,6 +154,14 @@ class CookieCloudChain(ChainBase):
         """
         if "ourbits.club" in url:
             return self.__get_rss_ourbits(url=url, cookie=cookie, ua=ua)
+        if "totheglory.im" in url:
+            return self.__get_rss_ttg(url=url, cookie=cookie, ua=ua)
+        if "monikadesign.uk" in url:
+            return self.__get_rss_monika(url=url, cookie=cookie, ua=ua)
+        if "zhuque.in" in url:
+            return self.__get_rss_zhuque(url=url, cookie=cookie, ua=ua)
+        if "et8.org" in url or "club.hares.top" in url:
+            return self.__get_rss_tccf(url=url, cookie=cookie, ua=ua)
 
         return self.__get_rss_base(url=url, cookie=cookie, ua=ua)
 
@@ -179,6 +188,74 @@ class CookieCloudChain(ChainBase):
             print(str(e))
             return ""
 
+    def __get_rss_tccf(self, url: str, cookie: str, ua: str) -> str:
+        """
+        默认tccf rss地址
+        """
+        try:
+            get_rss_url = urljoin(url, "getrss.php")
+            rss_data = self.__get_rss_data(url)
+            res = RequestUtils(cookies=cookie, timeout=60, ua=ua).post_res(url=get_rss_url, data=rss_data)
+            if res:
+                html_text = res.text
+            else:
+                logger.error(f"获取rss失败：{url}")
+                return ""
+            html = etree.HTML(html_text)
+            if html:
+                rss_link = html.xpath("//a/@href")
+                if rss_link:
+                    return str(rss_link[-1])
+            return ""
+        except Exception as e:
+            print(str(e))
+            return ""
+
+    def __get_rss_ttg(self, url: str, cookie: str, ua: str) -> str:
+        """
+        获取ttg rss地址
+        """
+        try:
+            get_rss_url = urljoin(url,
+                                  "rsstools.php?c51=51&c52=52&c53=53&c54=54&c108=108&c109=109&c62=62&c63=63&c67=67&c69=69&c70=70&c73=73&c76=76&c75=75&c74=74&c87=87&c88=88&c99=99&c90=90&c58=58&c103=103&c101=101&c60=60")
+            res = RequestUtils(cookies=cookie, timeout=60, ua=ua).get_res(url=get_rss_url)
+            if res:
+                html_text = res.text
+            else:
+                logger.error(f"获取rss失败：{url}")
+                return ""
+            html = etree.HTML(html_text)
+            if html:
+                rss_link = html.xpath("//textarea/text()")
+                if rss_link:
+                    return str(rss_link[-1])
+            return ""
+        except Exception as e:
+            print(str(e))
+            return ""
+
+    def __get_rss_monika(self, url: str, cookie: str, ua: str) -> str:
+        """
+        获取monikadesign rss地址
+        """
+        try:
+            get_rss_url = urljoin(url, "rss")
+            res = RequestUtils(cookies=cookie, timeout=60, ua=ua).get_res(url=get_rss_url)
+            if res:
+                html_text = res.text
+            else:
+                logger.error(f"获取rss失败：{url}")
+                return ""
+            html = etree.HTML(html_text)
+            if html:
+                rss_link = html.xpath("//a/@href")
+                if rss_link:
+                    return str(rss_link[0])
+            return ""
+        except Exception as e:
+            print(str(e))
+            return ""
+
     def __get_rss_ourbits(self, url: str, cookie: str, ua: str) -> str:
         """
         获取我堡rss地址
@@ -199,6 +276,26 @@ class CookieCloudChain(ChainBase):
             print(str(e))
             return ""
 
+    def __get_rss_zhuque(self, url: str, cookie: str, ua: str) -> str:
+        """
+        获取zhuque rss地址
+        """
+        try:
+            get_rss_url = urljoin(url, "user/rss")
+            html_text = PlaywrightHelper().get_page_source(url=get_rss_url,
+                                                           cookies=cookie,
+                                                           ua=ua)
+            if html_text:
+                html = etree.HTML(html_text)
+                if html:
+                    rss_link = html.xpath("//a/@href")
+                    if rss_link:
+                        return str(rss_link[-1])
+            return ""
+        except Exception as e:
+            print(str(e))
+            return ""
+
     @staticmethod
     def __get_rss_data(url: str) -> dict:
         """
@@ -211,9 +308,25 @@ class CookieCloudChain(ChainBase):
             "search_mode": 1,
         }
 
+        if 'hdchina.org' in url:
+            # 显示下载框	0全部 1仅下载框
+            _rss_data['rsscart'] = 0
+
         if 'audiences.me' in url:
             # 种子类型 1新种与重置顶旧种 0只包含新种
             _rss_data['torrent_type'] = 1
+            # RSS链接有效期： 180天
+            _rss_data['exp'] = 180
+
+        if 'shadowflow.org' in url:
+            # 下载需扣除魔力 0不需要 1需要 2全部
+            _rss_data['paid'] = 0
+
+        if 'hddolby.com' in url:
+            # RSS链接有效期： 180天
+            _rss_data['exp'] = 180
+
+        if 'hdhome.org' in url:
             # RSS链接有效期： 180天
             _rss_data['exp'] = 180
 
