@@ -82,8 +82,8 @@ class CookieCloudChain(ChainBase):
                     logger.info(f"站点【{site_info.name}】连通性正常，不同步CookieCloud数据")
                     if not site_info.public and not site_info.rss:
                         # 自动生成rss地址
-                        rss_url = self.__get_rss(url=site_info.url, cookie=cookie, ua=settings.USER_AGENT)
-                        logger.info(f"自动生成站点【{site_info.name}】 rss【{rss_url}】")
+                        rss_url = self.__get_rss(url=site_info.url, cookie=cookie, ua=settings.USER_AGENT,
+                                                 proxy=site_info.proxy)
                         # 更新站点rss地址
                         self.siteoper.update_rss(domain=domain, rss=rss_url)
                     continue
@@ -148,35 +148,41 @@ class CookieCloudChain(ChainBase):
         logger.info(f"CookieCloud同步成功：{ret_msg}")
         return True, ret_msg
 
-    def __get_rss(self, url: str, cookie: str, ua: str) -> str:
+    def __get_rss(self, url: str, cookie: str, ua: str, proxy: int) -> str:
         """
         获取站点rss地址
         """
         if "ourbits.club" in url:
-            return self.__get_rss_ourbits(url=url, cookie=cookie, ua=ua)
+            return self.__get_rss_ourbits(url=url, cookie=cookie, ua=ua, proxy=proxy)
         if "totheglory.im" in url:
-            return self.__get_rss_ttg(url=url, cookie=cookie, ua=ua)
+            return self.__get_rss_ttg(url=url, cookie=cookie, ua=ua, proxy=proxy)
         if "monikadesign.uk" in url:
-            return self.__get_rss_monika(url=url, cookie=cookie, ua=ua)
+            return self.__get_rss_monika(url=url, cookie=cookie, ua=ua, proxy=proxy)
         if "zhuque.in" in url:
-            return self.__get_rss_zhuque(url=url, cookie=cookie, ua=ua)
+            return self.__get_rss_zhuque(url=url, cookie=cookie, ua=ua, proxy=proxy)
 
         xpath = "//a[@class='faqlink']/@href"
-        if "et8.org" in url or "club.hares.top" in url:
-            xpath = "//a/@href"
+        if "club.hares.top" in url:
+            xpath = "//*[@id='layui-layer100001']/div[2]/div/p[4]/a/@href"
+        if "et8.org" in url:
+            xpath = "//*[@id='outer']/table/tbody/tr/td/table/tbody/tr/td/a[2]/@href"
         if "pttime.org" in url:
             xpath = "//*[@id='outer']/table/tbody/tr/td/table/tbody/tr/td/text()[5]"
 
-        return self.__get_rss_base(url=url, cookie=cookie, ua=ua, xpath=xpath)
+        return self.__get_rss_base(url=url, cookie=cookie, ua=ua, xpath=xpath, proxy=proxy)
 
-    def __get_rss_base(self, url: str, cookie: str, ua: str, xpath: str) -> str:
+    def __get_rss_base(self, url: str, cookie: str, ua: str, xpath: str, proxy: int) -> str:
         """
         默认获取站点rss地址
         """
         try:
             get_rss_url = urljoin(url, "getrss.php")
             rss_data = self.__get_rss_data(url)
-            res = RequestUtils(cookies=cookie, timeout=60, ua=ua).post_res(url=get_rss_url, data=rss_data)
+            res = RequestUtils(cookies=cookie,
+                               timeout=60,
+                               ua=ua,
+                               proxies=settings.PROXY if proxy else None).post_res(
+                url=get_rss_url, data=rss_data)
             if res:
                 html_text = res.text
             else:
@@ -192,14 +198,17 @@ class CookieCloudChain(ChainBase):
             print(str(e))
             return ""
 
-    def __get_rss_ttg(self, url: str, cookie: str, ua: str) -> str:
+    def __get_rss_ttg(self, url: str, cookie: str, ua: str, proxy: int) -> str:
         """
         获取ttg rss地址
         """
         try:
             get_rss_url = urljoin(url,
                                   "rsstools.php?c51=51&c52=52&c53=53&c54=54&c108=108&c109=109&c62=62&c63=63&c67=67&c69=69&c70=70&c73=73&c76=76&c75=75&c74=74&c87=87&c88=88&c99=99&c90=90&c58=58&c103=103&c101=101&c60=60")
-            res = RequestUtils(cookies=cookie, timeout=60, ua=ua).get_res(url=get_rss_url)
+            res = RequestUtils(cookies=cookie,
+                               timeout=60,
+                               ua=ua,
+                               proxies=settings.PROXY if proxy else None).get_res(url=get_rss_url)
             if res:
                 html_text = res.text
             else:
@@ -215,13 +224,16 @@ class CookieCloudChain(ChainBase):
             print(str(e))
             return ""
 
-    def __get_rss_monika(self, url: str, cookie: str, ua: str) -> str:
+    def __get_rss_monika(self, url: str, cookie: str, ua: str, proxy: int) -> str:
         """
         获取monikadesign rss地址
         """
         try:
             get_rss_url = urljoin(url, "rss")
-            res = RequestUtils(cookies=cookie, timeout=60, ua=ua).get_res(url=get_rss_url)
+            res = RequestUtils(cookies=cookie,
+                               timeout=60,
+                               ua=ua,
+                               proxies=settings.PROXY if proxy else None).get_res(url=get_rss_url)
             if res:
                 html_text = res.text
             else:
@@ -237,7 +249,7 @@ class CookieCloudChain(ChainBase):
             print(str(e))
             return ""
 
-    def __get_rss_ourbits(self, url: str, cookie: str, ua: str) -> str:
+    def __get_rss_ourbits(self, url: str, cookie: str, ua: str, proxy: int) -> str:
         """
         获取我堡rss地址
         """
@@ -245,7 +257,8 @@ class CookieCloudChain(ChainBase):
             get_rss_url = urljoin(url, "getrss.php")
             html_text = PlaywrightHelper().get_page_source(url=get_rss_url,
                                                            cookies=cookie,
-                                                           ua=ua)
+                                                           ua=ua,
+                                                           proxies=settings.PROXY if proxy else None)
             if html_text:
                 html = etree.HTML(html_text)
                 if html:
@@ -257,7 +270,7 @@ class CookieCloudChain(ChainBase):
             print(str(e))
             return ""
 
-    def __get_rss_zhuque(self, url: str, cookie: str, ua: str) -> str:
+    def __get_rss_zhuque(self, url: str, cookie: str, ua: str, proxy: int) -> str:
         """
         获取zhuque rss地址
         """
@@ -265,7 +278,8 @@ class CookieCloudChain(ChainBase):
             get_rss_url = urljoin(url, "user/rss")
             html_text = PlaywrightHelper().get_page_source(url=get_rss_url,
                                                            cookies=cookie,
-                                                           ua=ua)
+                                                           ua=ua,
+                                                           proxies=settings.PROXY if proxy else None)
             if html_text:
                 html = etree.HTML(html_text)
                 if html:
@@ -303,6 +317,7 @@ class CookieCloudChain(ChainBase):
             # 下载需扣除魔力 0不需要 1需要 2全部
             _rss_data['paid'] = 0
             _rss_data['search_mode'] = 0
+            _rss_data['showrows'] = 30
 
         if 'hddolby.com' in url:
             # RSS链接有效期： 180天
@@ -316,6 +331,9 @@ class CookieCloudChain(ChainBase):
             # RSS链接有效期： 180天
             _rss_data['exp'] = 180
 
+        if 'ptsbao.club' in url:
+            _rss_data['size'] = 0
+
         if 'leaves.red' in url:
             # 下载需扣除魔力 0不需要 1需要 2全部
             _rss_data['paid'] = 2
@@ -323,6 +341,14 @@ class CookieCloudChain(ChainBase):
 
         if 'hdtime.org' in url:
             _rss_data['search_mode'] = 0
+
+        if 'kp.m-team.cc' in url:
+            _rss_data = {
+                "showrows": 50,
+                "inclbookmarked": 0,
+                "itemsmalldescr": 1,
+                "https": 1
+            }
 
         if 'u2.dmhy.org' in url:
             # 显示自动通过的种子 0不显示自动通过的种子 1全部
