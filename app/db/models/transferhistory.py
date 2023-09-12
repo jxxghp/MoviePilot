@@ -86,7 +86,7 @@ class TransferHistory(Base):
 
     @staticmethod
     def list_by(db: Session, mtype: str = None, title: str = None, year: str = None, season: str = None,
-                episode: str = None, tmdbid: int = None):
+                episode: str = None, tmdbid: int = None, dest: str = None):
         """
         据tmdbid、season、season_episode查询转移记录
         tmdbid + mtype 或 title + year 必输
@@ -98,16 +98,19 @@ class TransferHistory(Base):
                 return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
                                                         TransferHistory.type == mtype,
                                                         TransferHistory.seasons == season,
-                                                        TransferHistory.episodes == episode).all()
+                                                        TransferHistory.episodes == episode,
+                                                        TransferHistory.dest == dest).all()
             elif season:
                 # 查询一季
                 return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
                                                         TransferHistory.type == mtype,
-                                                        TransferHistory.seasons == season).all()
+                                                        TransferHistory.seasons == season,
+                                                        TransferHistory.dest == dest).all()
             else:
                 # 查询所有
                 return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
-                                                        TransferHistory.type == mtype).all()
+                                                        TransferHistory.type == mtype,
+                                                        TransferHistory.dest == dest).all()
         # 标题 + 年份
         elif title and year:
             # 电视剧某季某集
@@ -115,16 +118,19 @@ class TransferHistory(Base):
                 return db.query(TransferHistory).filter(TransferHistory.title == title,
                                                         TransferHistory.year == year,
                                                         TransferHistory.seasons == season,
-                                                        TransferHistory.episodes == episode).all()
+                                                        TransferHistory.episodes == episode,
+                                                        TransferHistory.dest == dest).all()
             # 电视剧某季
             elif season:
                 return db.query(TransferHistory).filter(TransferHistory.title == title,
                                                         TransferHistory.year == year,
-                                                        TransferHistory.seasons == season).all()
+                                                        TransferHistory.seasons == season,
+                                                        TransferHistory.dest == dest).all()
             # 电视剧所有季集｜电影
             else:
                 return db.query(TransferHistory).filter(TransferHistory.title == title,
-                                                        TransferHistory.year == year).all()
+                                                        TransferHistory.year == year,
+                                                        TransferHistory.dest == dest).all()
 
         return []
 
