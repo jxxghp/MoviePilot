@@ -215,8 +215,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                 if match:
                     new_passkey = match.group(1)
                     # 获取过期rss除去passkey部分
-                    old_rss = re.sub(r'&passkey=.*', '&passkey=', site.get("rss"))
-                    new_rss = old_rss + new_passkey
+                    new_rss = re.sub(r'&passkey=([a-zA-Z0-9]+)', f'&passkey={new_passkey}', site.get("rss"))
                     logger.info(f"更新站点 {domain} RSS地址 ...")
                     self.siteoper.update_rss(domain=domain, rss=new_rss)
                 else:
