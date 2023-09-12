@@ -65,6 +65,14 @@ class TransferHistoryOper(DbOper):
                                        episode=episode,
                                        tmdbid=tmdbid)
 
+    def get_by_type_tmdbid(self, mtype: str = None, tmdbid: int = None) -> TransferHistory:
+        """
+        按类型、tmdb查询转移记录
+        """
+        return TransferHistory.get_by_type_tmdbid(db=self._db,
+                                                  mtype=mtype,
+                                                  tmdbid=tmdbid)
+
     def delete(self, historyid):
         """
         删除转移记录

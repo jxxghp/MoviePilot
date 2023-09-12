@@ -135,6 +135,14 @@ class TransferHistory(Base):
         return []
 
     @staticmethod
+    def get_by_type_tmdbid(db: Session, mtype: str = None, tmdbid: int = None):
+        """
+        据tmdbid、type查询转移记录
+        """
+        return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
+                                                TransferHistory.type == mtype).first()
+
+    @staticmethod
     def update_download_hash(db: Session, historyid: int = None, download_hash: str = None):
         db.query(TransferHistory).filter(TransferHistory.id == historyid).update(
             {

@@ -354,10 +354,10 @@ class LibraryScraper(_PluginBase):
                     
                 # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
                 if not settings.SCRAP_FOLLOW_TMDB:
-                    transfer_historys = self.transferhis.get_by(tmdbid=mediainfo.tmdb_id,
-                                                                mtype=mediainfo.type.value)
-                    if transfer_historys:
-                        mediainfo.title = transfer_historys[0].title
+                    transfer_history = self.transferhis.get_by_type_tmdbid(tmdbid=mediainfo.tmdb_id,
+                                                                           mtype=mediainfo.type.value)
+                    if transfer_history:
+                        mediainfo.title = transfer_history.title
 
                 # 覆盖模式时，提前删除nfo
                 if self._mode in ["force_all", "force_nfo"]:
