@@ -676,6 +676,15 @@ class IYUUAutoSeed(_PluginBase):
                     "info_hash": "a444850638e7a6f6220e2efdde94099c53358159"
                 }
         """
+
+        def __is_special_site(url):
+            """
+            判断是否为特殊站点（是否需要添加https）
+            """
+            if "hdsky.me" in url:
+                return False
+            return True
+
         self.total += 1
         # 获取种子站点及下载地址模板
         site_url, download_page = self.iyuuhelper.get_torrent_url(seed.get("sid"))
@@ -720,10 +729,11 @@ class IYUUAutoSeed(_PluginBase):
             self.cached += 1
             return False
         # 强制使用Https
-        if "?" in torrent_url:
-            torrent_url += "&https=1"
-        else:
-            torrent_url += "?https=1"
+        if __is_special_site(torrent_url):
+            if "?" in torrent_url:
+                torrent_url += "&https=1"
+            else:
+                torrent_url += "?https=1"
         # 下载种子文件
         _, content, _, _, error_msg = self.torrent.download_torrent(
             url=torrent_url,
