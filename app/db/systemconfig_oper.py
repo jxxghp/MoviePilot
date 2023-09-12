@@ -3,6 +3,7 @@ from typing import Any, Union
 
 from app.db import DbOper, SessionFactory
 from app.db.models.systemconfig import SystemConfig
+from app.db.plugindata_oper import PluginDataOper
 from app.schemas.types import SystemConfigKey
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
@@ -17,8 +18,11 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         加载配置到内存
         """
         self._db = SessionFactory()
+        self._syscomconfig = SystemConfig()
+        # 插件数据
+        self.plugindata = PluginDataOper(self._db)
         super().__init__(self._db)
-        for item in SystemConfig.list(self._db):
+        for item in self._syscomconfig.list(self._db):
             if ObjectUtils.is_obj(item.value):
                 self.__SYSTEMCONF[item.key] = json.loads(item.value)
             else:
@@ -37,7 +41,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             value = json.dumps(value)
         elif value is None:
             value = ''
-        conf = SystemConfig.get_by_key(self._db, key)
+        conf = self._syscomconfig.get_by_key(self._db, key)
         if conf:
             if value:
                 conf.update(self._db, {"value": value})
@@ -56,6 +60,17 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         if not key:
             return self.__SYSTEMCONF
         return self.__SYSTEMCONF.get(key)
+
+    def delete_by_key(self, key: str = None) -> Any:
+        """
+        删除系统设置
+        """
+        if self.__SYSTEMCONF.get(f"plugin.{key}"):
+            del self.__SYSTEMCONF[f"plugin.{key}"]
+        # 删除系统配置
+        self._syscomconfig.delete_by_key(db=self._db, key=f"plugin.{key}")
+        # 删除插件数据
+        self.plugindata.del_data(plugin_id=key)
 
     def __del__(self):
         if self._db:

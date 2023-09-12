@@ -27,5 +27,10 @@ class PluginData(Base):
         Base.commit(db)
 
     @staticmethod
+    def del_plugin_data_by_plugin_id(db: Session, plugin_id: str):
+        db.query(PluginData).filter(PluginData.plugin_id == plugin_id).delete()
+        Base.commit(db)
+
+    @staticmethod
     def get_plugin_data_by_plugin_id(db: Session, plugin_id: str):
         return db.query(PluginData).filter(PluginData.plugin_id == plugin_id).all()

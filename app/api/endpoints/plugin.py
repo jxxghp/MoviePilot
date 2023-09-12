@@ -101,6 +101,8 @@ def uninstall_plugin(plugin_id: str,
         if plugin == plugin_id:
             install_plugins.remove(plugin)
             break
+    # 删除插件配置
+    SystemConfigOper().delete_by_key(plugin_id)
     # 保存
     SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
     # 重载插件管理器
