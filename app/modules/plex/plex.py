@@ -128,11 +128,15 @@ class Plex(metaclass=Singleton):
             "EpisodeCount": EpisodeCount
         }
 
-    def get_movies(self, title: str, year: str = None) -> Optional[List[dict]]:
+    def get_movies(self, 
+                   title: str, 
+                   year: str = None,
+                   tmdb_id: int = None) -> Optional[List[dict]]:
         """
         根据标题和年份，检查电影是否在Plex中存在，存在则返回列表
         :param title: 标题
         :param year: 年份，为空则不过滤
+        :param tmdb_id: TMDB ID
         :return: 含title、year属性的字典列表
         """
         if not self._plex:
@@ -143,6 +147,10 @@ class Plex(metaclass=Singleton):
         else:
             movies = self._plex.library.search(title=title, libtype="movie")
         for movie in movies:
+            movie_tmdbid = self.__get_ids(movie.guids).get("tmdb_id")
+            if tmdb_id and movie_tmdbid:
+                if str(movie_tmdbid) != str(tmdb_id):
+                    continue
             ret_movies.append({'title': movie.title, 'year': movie.year})
         return ret_movies
 
@@ -150,12 +158,14 @@ class Plex(metaclass=Singleton):
                         item_id: str = None,
                         title: str = None,
                         year: str = None,
+                        tmdb_id: int = None,
                         season: int = None) -> Optional[Dict[int, list]]:
         """
         根据标题、年份、季查询电视剧所有集信息
         :param item_id: 媒体ID
         :param title: 标题
         :param year: 年份，可以为空，为空时不按年份过滤
+        :param tmdb_id: TMDB ID
         :param season: 季号，数字
         :return: 所有集的列表
         """
@@ -164,13 +174,17 @@ class Plex(metaclass=Singleton):
         if item_id:
             videos = self._plex.fetchItem(item_id)
         else:
+            # 根据标题和年份模糊搜索，该结果不够准确
             videos = self._plex.library.search(title=title, year=year, libtype="show")
         if not videos:
             return {}
         if isinstance(videos, list):
-            episodes = videos[0].episodes()
-        else:
-            episodes = videos.episodes()
+            videos = videos[0]
+        video_tmdbid = self.__get_ids(videos.guids).get('tmdb_id')
+        if tmdb_id and video_tmdbid:
+            if str(video_tmdbid) != str(tmdb_id):
+                return {}
+        episodes = videos.episodes()
         season_episodes = {}
         for episode in episodes:
             if season and episode.seasonNumber != int(season):

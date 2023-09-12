@@ -248,11 +248,15 @@ class Jellyfin(metaclass=Singleton):
             return None
         return ""
 
-    def get_movies(self, title: str, year: str = None) -> Optional[List[dict]]:
+    def get_movies(self, 
+                   title: str, 
+                   year: str = None,
+                   tmdb_id: int = None) -> Optional[List[dict]]:
         """
         根据标题和年份，检查电影是否在Jellyfin中存在，存在则返回列表
         :param title: 标题
         :param year: 年份，为空则不过滤
+        :param tmdb_id: TMDB ID
         :return: 含title、year属性的字典列表
         """
         if not self._host or not self._apikey or not self.user:
@@ -266,11 +270,19 @@ class Jellyfin(metaclass=Singleton):
                 if res_items:
                     ret_movies = []
                     for res_item in res_items:
+                        item_tmdbid = res_item.get("ProviderIds", {}).get("Tmdb")
+                        if tmdb_id and item_tmdbid:
+                            if str(item_tmdbid) != str(tmdb_id):
+                                continue
+                            else:
+                                ret_movies.append(
+                                    {'title': res_item.get('Name'), 'year': str(res_item.get('ProductionYear'))})
+                                continue
                         if res_item.get('Name') == title and (
                                 not year or str(res_item.get('ProductionYear')) == str(year)):
                             ret_movies.append(
                                 {'title': res_item.get('Name'), 'year': str(res_item.get('ProductionYear'))})
-                            return ret_movies
+                    return ret_movies
         except Exception as e:
             logger.error(f"连接Items出错：" + str(e))
             return None
