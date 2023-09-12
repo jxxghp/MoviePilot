@@ -56,5 +56,6 @@ class NexusHhanclubSiteUserInfo(NexusPhpSiteUserInfo):
 
     def _get_user_level(self, html):
         super()._get_user_level(html)
-
-        self.user_level = html.xpath('//*[@id="mainContent"]/div/div[2]/div[2]/div[4]/img/@title')[0]
+        user_level_path = html.xpath('//*[@id="mainContent"]/div/div[2]/div[2]/div[4]/span[2]/img/@title')
+        if user_level_path:
+            self.user_level = user_level_path[0]
