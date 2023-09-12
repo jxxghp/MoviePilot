@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List, Union
 
 from cachetools import cached, TTLCache
@@ -7,12 +8,13 @@ from app.core.config import settings
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.db import SessionFactory
+from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.rss import RssHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import Notification
-from app.schemas.types import SystemConfigKey, MessageChannel
+from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
@@ -29,6 +31,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         self._db = SessionFactory()
         super().__init__(self._db)
         self.siteshelper = SitesHelper()
+        self.siteoper = SiteOper(self._db)
         self.rsshelper = RssHelper()
         self.systemconfig = SystemConfigOper()
 
@@ -85,6 +88,10 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
             logger.error(f'站点 {domain} 未配置RSS地址！')
             return []
         rss_items = self.rsshelper.parse(site.get("rss"), True if site.get("proxy") else False)
+        if rss_items is None:
+            # rss过期，尝试保留原配置生成新的rss
+            self.__renew_rss_url(domain=domain, site=site)
+            return []
         if not rss_items:
             logger.error(f'站点 {domain} 未获取到RSS数据！')
             return []
@@ -187,3 +194,38 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
             self.save_cache(torrents_cache, self._rss_file)
         # 返回
         return torrents_cache
+
+    def __renew_rss_url(self, domain: str, site: dict):
+        """
+        保留原配置生成新的rss地址
+        """
+        try:
+            # RSS链接过期
+            logger.error(f"站点 {domain} RSS链接已过期，正在尝试自动获取！")
+            # 自动生成rss地址
+            rss_url, errmsg = self.rsshelper.get_rss_link(
+                url=site.get("url"),
+                cookie=site.get("cookie"),
+                ua=site.get("ua") or settings.USER_AGENT,
+                proxy=True if site.get("proxy") else False
+            )
+            if rss_url:
+                # 获取新的日期的passkey
+                match = re.search(r'passkey=([a-zA-Z0-9]+)', rss_url)
+                if match:
+                    new_passkey = match.group(1)
+                    # 获取过期rss除去passkey部分
+                    old_rss = re.sub(r'&passkey=.*', '&passkey=', site.get("rss"))
+                    new_rss = old_rss + new_passkey
+                    logger.info(f"更新站点 {domain} RSS地址 ...")
+                    self.siteoper.update_rss(domain=domain, rss=new_rss)
+                else:
+                    # 发送消息
+                    self.post_message(
+                        Notification(mtype=NotificationType.SiteMessage, title=f"站点 {domain} RSS链接已过期"))
+            else:
+                self.post_message(
+                    Notification(mtype=NotificationType.SiteMessage, title=f"站点 {domain} RSS链接已过期"))
+        except Exception as e:
+            print(str(e))
+            self.post_message(Notification(mtype=NotificationType.SiteMessage, title=f"站点 {domain} RSS链接已过期"))

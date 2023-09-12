@@ -1,5 +1,5 @@
 import xml.dom.minidom
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from urllib.parse import urljoin
 
 from lxml import etree
@@ -221,7 +221,7 @@ class RssHelper:
     }
 
     @staticmethod
-    def parse(url, proxy: bool = False) -> List[dict]:
+    def parse(url, proxy: bool = False) -> Optional[List[dict], None]:
         """
         解析RSS订阅URL，获取RSS中的种子信息
         :param url: RSS地址
@@ -288,6 +288,13 @@ class RssHelper:
                         continue
             except Exception as e2:
                 print(str(e2))
+                # RSS过期 观众RSS 链接已过期，您需要获得一个新的！  pthome RSS Link has expired, You need to get a new one!
+                _rss_expired_msg = [
+                    "RSS 链接已过期, 您需要获得一个新的!",
+                    "RSS Link has expired, You need to get a new one!"
+                ]
+                if ret_xml in _rss_expired_msg:
+                    return None
         return ret_array
 
     def get_rss_link(self, url: str, cookie: str, ua: str, proxy: bool = False) -> Tuple[str, str]:
