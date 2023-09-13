@@ -30,15 +30,15 @@ class WordsMatcher(metaclass=Singleton):
             try:
                 if word.count(" => ") and word.count(" && ") and word.count(" >> ") and word.count(" <> "):
                     # 替换词
-                    thc = re.findall(r'(.*?)\s*=>', word)[0]
+                    thc = str(re.findall(r'(.*?)\s*=>', word)[0]).strip()
                     # 被替换词
-                    bthc = re.findall(r'=>\s*(.*?)\s*&&', word)[0]
+                    bthc = str(re.findall(r'=>\s*(.*?)\s*&&', word)[0]).strip()
                     # 集偏移前字段
-                    pyq = re.findall(r'&&\s*(.*?)\s*<>', word)[0]
+                    pyq = str(re.findall(r'&&\s*(.*?)\s*<>', word)[0]).strip()
                     # 集偏移后字段
-                    pyh = re.findall(r'<>(.*?)\s*>>', word)[0]
+                    pyh = str(re.findall(r'<>(.*?)\s*>>', word)[0]).strip()
                     # 集偏移
-                    offsets = re.findall(r'>>\s*(.*?)$', word)[0]
+                    offsets = str(re.findall(r'>>\s*(.*?)$', word)[0]).strip()
                     # 替换词
                     title, message, state = self.__replace_regex(title, thc, bthc)
                     if state:
