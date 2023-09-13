@@ -385,15 +385,15 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("post_torrents_message", message=message, torrents=torrents)
 
-    def scrape_metadata(self, path: Path, mediainfo: MediaInfo, scrap_metadata: bool = settings.SCRAP_METADATA) -> None:
+    def scrape_metadata(self, path: Path, mediainfo: MediaInfo, scrap: bool = settings.SCRAP_METADATA) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径
         :param mediainfo:  识别的媒体信息
-        :param scrap_metadata:  是否刮削
+        :param scrap:  是否刮削
         :return: 成功或失败
         """
-        if scrap_metadata:
+        if scrap:
             return self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
         return None
 
