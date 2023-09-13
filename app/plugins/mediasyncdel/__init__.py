@@ -502,6 +502,7 @@ class MediaSyncDel(_PluginBase):
                 "enabled": False,
                 "del_source": self._del_source,
                 "exclude_path": self._exclude_path,
+                "library_path": self._library_path,
                 "notify": self._notify,
                 "cron": self._cron,
                 "sync_type": self._sync_type,
@@ -679,8 +680,7 @@ class MediaSyncDel(_PluginBase):
         elif mtype == MediaType.TV and not season_num and not episode_num:
             msg = f'剧集 {media_name} {tmdb_id}'
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
-                                                                               mtype=mtype.value,
-                                                                               dest=media_path)
+                                                                               mtype=mtype.value)
         # 删除季 S02
         elif mtype == MediaType.TV and season_num and not episode_num:
             if not season_num or not str(season_num).isdigit():
@@ -689,8 +689,7 @@ class MediaSyncDel(_PluginBase):
             msg = f'剧集 {media_name} S{season_num} {tmdb_id}'
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
                                                                                mtype=mtype.value,
-                                                                               season=f'S{season_num}',
-                                                                               dest=media_path)
+                                                                               season=f'S{season_num}')
         # 删除剧集S02E02
         elif mtype == MediaType.TV and season_num and episode_num:
             if not season_num or not str(season_num).isdigit() or not episode_num or not str(episode_num).isdigit():
@@ -774,16 +773,14 @@ class MediaSyncDel(_PluginBase):
                 msg = f'剧集 {media_name}'
                 transfer_history: List[TransferHistory] = self._transferhis.get_by(
                     title=media_name,
-                    year=media_year,
-                    dest=media_path)
+                    year=media_year)
             # 删除季 S02
             elif media_type == "Season":
                 msg = f'剧集 {media_name} {media_season}'
                 transfer_history: List[TransferHistory] = self._transferhis.get_by(
                     title=media_name,
                     year=media_year,
-                    season=media_season,
-                    dest=media_path)
+                    season=media_season)
             # 删除剧集S02E02
             elif media_type == "Episode":
                 msg = f'剧集 {media_name} {media_season}{media_episode}'

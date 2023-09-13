@@ -93,24 +93,28 @@ class TransferHistory(Base):
         """
         # TMDBID + 类型
         if tmdbid and mtype:
+            # 电视剧某季某集
             if season and episode:
-                # 查询一集
                 return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
                                                         TransferHistory.type == mtype,
                                                         TransferHistory.seasons == season,
                                                         TransferHistory.episodes == episode,
                                                         TransferHistory.dest == dest).all()
+            # 电视剧某季
             elif season:
-                # 查询一季
                 return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
                                                         TransferHistory.type == mtype,
-                                                        TransferHistory.seasons == season,
-                                                        TransferHistory.dest == dest).all()
+                                                        TransferHistory.seasons == season).all()
             else:
-                # 查询所有
-                return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
-                                                        TransferHistory.type == mtype,
-                                                        TransferHistory.dest == dest).all()
+                if dest:
+                    # 电影
+                    return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
+                                                            TransferHistory.type == mtype,
+                                                            TransferHistory.dest == dest).all()
+                else:
+                    # 电视剧所有季集
+                    return db.query(TransferHistory).filter(TransferHistory.tmdbid == tmdbid,
+                                                            TransferHistory.type == mtype).all()
         # 标题 + 年份
         elif title and year:
             # 电视剧某季某集
@@ -124,14 +128,17 @@ class TransferHistory(Base):
             elif season:
                 return db.query(TransferHistory).filter(TransferHistory.title == title,
                                                         TransferHistory.year == year,
-                                                        TransferHistory.seasons == season,
-                                                        TransferHistory.dest == dest).all()
-            # 电视剧所有季集｜电影
+                                                        TransferHistory.seasons == season).all()
             else:
-                return db.query(TransferHistory).filter(TransferHistory.title == title,
-                                                        TransferHistory.year == year,
-                                                        TransferHistory.dest == dest).all()
-
+                if dest:
+                    # 电影
+                    return db.query(TransferHistory).filter(TransferHistory.title == title,
+                                                            TransferHistory.year == year,
+                                                            TransferHistory.dest == dest).all()
+                else:
+                    # 电视剧所有季集
+                    return db.query(TransferHistory).filter(TransferHistory.title == title,
+                                                            TransferHistory.year == year).all()
         return []
 
     @staticmethod
