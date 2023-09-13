@@ -885,6 +885,9 @@ class IYUUAutoSeed(_PluginBase):
         """
         从详情页面获取下载链接
         """
+        if not site.get('url'):
+            logger.warn(f"站点 {site.get('name')} 未获取站点地址，无法获取种子下载链接")
+            return None
         try:
             page_url = f"{site.get('url')}details.php?id={seed.get('torrent_id')}&hit=1"
             logger.info(f"正在获取种子下载链接：{page_url} ...")
