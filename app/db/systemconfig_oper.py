@@ -2,8 +2,8 @@ import json
 from typing import Any, Union
 
 from app.db import DbOper, SessionFactory
-from app.db.models.plugin import PluginData
 from app.db.models.systemconfig import SystemConfig
+from app.db.plugindata_oper import PluginDataOper
 from app.schemas.types import SystemConfigKey
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
@@ -19,7 +19,8 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         """
         self._db = SessionFactory()
         self._syscomconfig = SystemConfig()
-        self._plugindata = PluginData()
+        # 插件数据
+        self.plugindata = PluginDataOper(self._db)
         super().__init__(self._db)
         for item in self._syscomconfig.list(self._db):
             if ObjectUtils.is_obj(item.value):
@@ -69,7 +70,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         # 删除系统配置
         self._syscomconfig.delete_by_key(db=self._db, key=f"plugin.{key}")
         # 删除插件数据
-        self._plugindata.del_plugin_data_by_plugin_id(db=self._db, plugin_id=key)
+        self.plugindata.del_data(plugin_id=key)
 
     def __del__(self):
         if self._db:
