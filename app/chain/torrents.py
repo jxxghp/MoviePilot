@@ -118,10 +118,11 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
 
         return ret_torrents
 
-    def refresh(self, stype: str = None) -> Dict[str, List[Context]]:
+    def refresh(self, stype: str = None, subscribes: list = None) -> Dict[str, List[Context]]:
         """
         刷新站点最新资源，识别并缓存起来
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
+        :param subscribes: 订阅
         """
         # 刷新类型
         if not stype:
@@ -132,8 +133,8 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
 
         # 所有站点索引
         indexers = self.siteshelper.get_indexers()
-        # 配置的Rss站点
-        config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.RssSites) or []]
+        # 查询订阅站点
+        config_indexers = self.__get_rss_sites(subscribes)
         # 遍历站点缓存资源
         for indexer in indexers:
             # 未开启的站点不搜索
@@ -194,6 +195,32 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
             self.save_cache(torrents_cache, self._rss_file)
         # 返回
         return torrents_cache
+
+    def __get_rss_sites(self, subscribes: list = None):
+        """
+        获取rss站点（节约资源）
+        """
+        config_indexers = []
+        if subscribes:
+            # 刷新订阅选中的Rss站点
+            for subscribe in subscribes:
+                # 如果有一个订阅没有选择站点，则刷新所有订阅站点
+                if not subscribe.sites:
+                    # 配置的Rss站点
+                    config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.RssSites) or []]
+                    break
+                # 刷新选中的站点
+                rss_sites = subscribe.sites
+                if isinstance(subscribe.sites, str):
+                    rss_sites = eval(subscribe.sites)
+                for site in rss_sites:
+                    config_indexers.append(site)
+            config_indexers = list(set(config_indexers))
+        if not config_indexers:
+            # 配置的Rss站点
+            config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.RssSites) or []]
+
+        return config_indexers
 
     def __renew_rss_url(self, domain: str, site: dict):
         """

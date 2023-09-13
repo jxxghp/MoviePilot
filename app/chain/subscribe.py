@@ -384,7 +384,7 @@ class SubscribeChain(ChainBase):
             return
         # 触发刷新站点资源，从缓存中匹配订阅
         self.match(
-            self.torrentschain.refresh()
+            self.torrentschain.refresh(subscribes=subscribes)
         )
 
     def match(self, torrents: Dict[str, List[Context]]):
