@@ -572,6 +572,11 @@ class MediaSyncDel(_PluginBase):
         stop_cnt = 0
         error_cnt = 0
         for transferhis in transfer_history:
+            title = transferhis.title
+            if title not in media_name:
+                logger.warn(
+                    f"当前转移记录 {transferhis.id} {title} {transferhis.tmdbid} 与删除媒体{media_name}不符，防误删，暂不自动删除")
+                continue
             image = transferhis.image
             year = transferhis.year
 
@@ -807,6 +812,11 @@ class MediaSyncDel(_PluginBase):
             stop_cnt = 0
             error_cnt = 0
             for transferhis in transfer_history:
+                title = transferhis.title
+                if title not in media_name:
+                    logger.warn(
+                        f"当前转移记录 {transferhis.id} {title} {transferhis.tmdbid} 与删除媒体{media_name}不符，防误删，暂不自动删除")
+                    continue
                 image = transferhis.image
                 # 0、删除转移记录
                 self._transferhis.delete(transferhis.id)
