@@ -253,10 +253,10 @@ class TransferChain(ChainBase):
 
                 # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
                 if not settings.SCRAP_FOLLOW_TMDB:
-                    transfer_historys = self.transferhis.get_by(tmdbid=file_mediainfo.tmdb_id,
-                                                                mtype=file_mediainfo.type.value)
-                    if transfer_historys:
-                        file_mediainfo.title = transfer_historys[0].title
+                    transfer_history = self.transferhis.get_by_type_tmdbid(tmdbid=file_mediainfo.tmdb_id,
+                                                                           mtype=file_mediainfo.type.value)
+                    if transfer_history:
+                        file_mediainfo.title = transfer_history.title
 
                 logger.info(f"{file_path.name} 识别为：{file_mediainfo.type.value} {file_mediainfo.title_year}")
 

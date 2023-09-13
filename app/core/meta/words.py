@@ -28,7 +28,23 @@ class WordsMatcher(metaclass=Singleton):
             if not word:
                 continue
             try:
-                if word.count(" => "):
+                if word.count(" => ") and word.count(" && ") and word.count(" >> ") and word.count(" <> "):
+                    # 替换词
+                    thc = re.findall(r'(.*?)\s*=>', word)[0]
+                    # 被替换词
+                    bthc = re.findall(r'=>\s*(.*?)\s*&&', word)[0]
+                    # 集偏移前字段
+                    pyq = re.findall(r'&&\s*(.*?)\s*<>', word)[0]
+                    # 集偏移后字段
+                    pyh = re.findall(r'<>(.*?)\s*>>', word)[0]
+                    # 集偏移
+                    offsets = re.findall(r'>>\s*(.*?)$', word)[0]
+                    # 替换词
+                    title, message, state = self.__replace_regex(title, thc, bthc)
+                    if state:
+                        # 替换词成功再进行集偏移
+                        title, message, state = self.__episode_offset(title, pyq, pyh, offsets)
+                elif word.count(" => "):
                     # 替换词
                     strings = word.split(" => ")
                     title, message, state = self.__replace_regex(title, strings[0], strings[1])

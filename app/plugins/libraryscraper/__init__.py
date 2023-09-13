@@ -321,6 +321,8 @@ class LibraryScraper(_PluginBase):
             meta_info = MetaInfo(file.name)
             # 合并
             meta_info.merge(dir_meta)
+            # 是否刮削
+            scrap_metadata = settings.SCRAP_METADATA
 
             # 识别媒体信息
             if not mediainfo:
@@ -352,13 +354,14 @@ class LibraryScraper(_PluginBase):
                     
                 # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
                 if not settings.SCRAP_FOLLOW_TMDB:
-                    transfer_historys = self.transferhis.get_by(tmdbid=mediainfo.tmdb_id,
-                                                                mtype=mediainfo.type.value)
-                    if transfer_historys:
-                        mediainfo.title = transfer_historys[0].title
+                    transfer_history = self.transferhis.get_by_type_tmdbid(tmdbid=mediainfo.tmdb_id,
+                                                                           mtype=mediainfo.type.value)
+                    if transfer_history:
+                        mediainfo.title = transfer_history.title
 
                 # 覆盖模式时，提前删除nfo
                 if self._mode in ["force_all", "force_nfo"]:
+                    scrap_metadata = True
                     nfo_files = SystemUtils.list_files(path, [".nfo"])
                     for nfo_file in nfo_files:
                         try:
@@ -369,6 +372,7 @@ class LibraryScraper(_PluginBase):
 
                 # 覆盖模式时，提前删除图片文件
                 if self._mode in ["force_all", "force_image"]:
+                    scrap_metadata = True
                     image_files = SystemUtils.list_files(path, [".jpg", ".png"])
                     for image_file in image_files:
                         if ".actors" in str(image_file):
@@ -380,7 +384,7 @@ class LibraryScraper(_PluginBase):
                             print(str(err))
 
             # 刮削单个文件
-            self.chain.scrape_metadata(path=file, mediainfo=mediainfo)
+            self.chain.scrape_metadata(path=file, mediainfo=mediainfo, scrap=scrap_metadata)
 
     @staticmethod
     def __get_tmdbid_from_nfo(file_path: Path):

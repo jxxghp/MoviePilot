@@ -57,6 +57,7 @@ class MediaSyncDel(_PluginBase):
     _notify = False
     _del_source = False
     _exclude_path = None
+    _library_path = None
     _transferhis = None
     _downloadhis = None
     qb = None
@@ -80,6 +81,7 @@ class MediaSyncDel(_PluginBase):
             self._notify = config.get("notify")
             self._del_source = config.get("del_source")
             self._exclude_path = config.get("exclude_path")
+            self._library_path = config.get("library_path")
 
         if self._enabled and str(self._sync_type) == "log":
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
@@ -241,6 +243,28 @@ class MediaSyncDel(_PluginBase):
                                 },
                                 'content': [
                                     {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'library_path',
+                                            'rows': '2',
+                                            'label': '媒体库路径',
+                                            'placeholder': '媒体服务器路径:MoviePilot路径（一行一个）'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
                                         'component': 'VAlert',
                                         'props': {
                                             'text': '同步方式分为webhook、日志同步和Scripter X。'
@@ -260,6 +284,7 @@ class MediaSyncDel(_PluginBase):
             "enabled": False,
             "notify": True,
             "del_source": False,
+            "library_path": "",
             "sync_type": "webhook",
             "cron": "*/30 * * * *",
             "exclude_path": "",
@@ -528,6 +553,7 @@ class MediaSyncDel(_PluginBase):
         # 查询转移记录
         msg, transfer_history = self.__get_transfer_his(media_type=media_type,
                                                         media_name=media_name,
+                                                        media_path=media_path,
                                                         tmdb_id=tmdb_id,
                                                         season_num=season_num,
                                                         episode_num=episode_num)
@@ -545,11 +571,6 @@ class MediaSyncDel(_PluginBase):
         stop_cnt = 0
         error_cnt = 0
         for transferhis in transfer_history:
-            title = transferhis.title
-            if title not in media_name:
-                logger.warn(
-                    f"当前转移记录 {transferhis.id} {title} {transferhis.tmdbid} 与删除媒体{media_name}不符，防误删，暂不自动删除")
-                continue
             image = transferhis.image
             year = transferhis.year
 
@@ -626,12 +647,11 @@ class MediaSyncDel(_PluginBase):
         # 保存历史
         self.save_data("history", history)
 
-    def __get_transfer_his(self, media_type: str, media_name: str,
+    def __get_transfer_his(self, media_type: str, media_name: str, media_path: str,
                            tmdb_id: int, season_num: int, episode_num: int):
         """
         查询转移记录
         """
-
         # 季数
         if season_num:
             season_num = str(season_num).rjust(2, '0')
@@ -642,16 +662,25 @@ class MediaSyncDel(_PluginBase):
         # 类型
         mtype = MediaType.MOVIE if media_type in ["Movie", "MOV"] else MediaType.TV
 
+        # 处理路径映射 (处理同一媒体多分辨率的情况)
+        if self._library_path:
+            paths = self._library_path.split("\n")
+            for path in paths:
+                sub_paths = path.split(":")
+                media_path = media_path.replace(sub_paths[0], sub_paths[1]).replace('\\', '/')
+
         # 删除电影
         if mtype == MediaType.MOVIE:
             msg = f'电影 {media_name} {tmdb_id}'
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
-                                                                               mtype=mtype.value)
+                                                                               mtype=mtype.value,
+                                                                               dest=media_path)
         # 删除电视剧
         elif mtype == MediaType.TV and not season_num and not episode_num:
             msg = f'剧集 {media_name} {tmdb_id}'
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
-                                                                               mtype=mtype.value)
+                                                                               mtype=mtype.value,
+                                                                               dest=media_path)
         # 删除季 S02
         elif mtype == MediaType.TV and season_num and not episode_num:
             if not season_num or not str(season_num).isdigit():
@@ -660,7 +689,8 @@ class MediaSyncDel(_PluginBase):
             msg = f'剧集 {media_name} S{season_num} {tmdb_id}'
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
                                                                                mtype=mtype.value,
-                                                                               season=f'S{season_num}')
+                                                                               season=f'S{season_num}',
+                                                                               dest=media_path)
         # 删除剧集S02E02
         elif mtype == MediaType.TV and season_num and episode_num:
             if not season_num or not str(season_num).isdigit() or not episode_num or not str(episode_num).isdigit():
@@ -670,7 +700,8 @@ class MediaSyncDel(_PluginBase):
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
                                                                                mtype=mtype.value,
                                                                                season=f'S{season_num}',
-                                                                               episode=f'E{episode_num}')
+                                                                               episode=f'E{episode_num}',
+                                                                               dest=media_path)
         else:
             return "", []
 
@@ -723,26 +754,36 @@ class MediaSyncDel(_PluginBase):
                 logger.info(f"媒体路径 {media_path} 已被排除，暂不处理")
                 return
 
+            # 处理路径映射 (处理同一媒体多分辨率的情况)
+            if self._library_path:
+                paths = self._library_path.split("\n")
+                for path in paths:
+                    sub_paths = path.split(":")
+                    media_path = media_path.replace(sub_paths[0], sub_paths[1]).replace('\\', '/')
+
             # 获取删除的记录
             # 删除电影
             if media_type == "Movie":
                 msg = f'电影 {media_name}'
                 transfer_history: List[TransferHistory] = self._transferhis.get_by(
                     title=media_name,
-                    year=media_year)
+                    year=media_year,
+                    dest=media_path)
             # 删除电视剧
             elif media_type == "Series":
                 msg = f'剧集 {media_name}'
                 transfer_history: List[TransferHistory] = self._transferhis.get_by(
                     title=media_name,
-                    year=media_year)
+                    year=media_year,
+                    dest=media_path)
             # 删除季 S02
             elif media_type == "Season":
                 msg = f'剧集 {media_name} {media_season}'
                 transfer_history: List[TransferHistory] = self._transferhis.get_by(
                     title=media_name,
                     year=media_year,
-                    season=media_season)
+                    season=media_season,
+                    dest=media_path)
             # 删除剧集S02E02
             elif media_type == "Episode":
                 msg = f'剧集 {media_name} {media_season}{media_episode}'
@@ -750,7 +791,8 @@ class MediaSyncDel(_PluginBase):
                     title=media_name,
                     year=media_year,
                     season=media_season,
-                    episode=media_episode)
+                    episode=media_episode,
+                    dest=media_path)
             else:
                 continue
 
@@ -768,11 +810,6 @@ class MediaSyncDel(_PluginBase):
             stop_cnt = 0
             error_cnt = 0
             for transferhis in transfer_history:
-                title = transferhis.title
-                if title not in media_name:
-                    logger.warn(
-                        f"当前转移记录 {transferhis.id} {title} {transferhis.tmdbid} 与删除媒体{media_name}不符，防误删，暂不自动删除")
-                    continue
                 image = transferhis.image
                 # 0、删除转移记录
                 self._transferhis.delete(transferhis.id)
