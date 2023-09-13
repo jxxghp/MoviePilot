@@ -377,15 +377,38 @@ class SubscribeChain(ChainBase):
         """
         订阅刷新
         """
+        # 触发刷新站点资源，从缓存中匹配订阅
+        sites = self.get_subscribed_sites()
+        if sites is None:
+            return
+        self.match(
+            self.torrentschain.refresh(sites=sites)
+        )
+
+    def get_subscribed_sites(self) -> Optional[List[int]]:
+        """
+        获取订阅中涉及的所有站点清单（节约资源）
+        :return: 返回[]代表所有站点命中，返回None代表没有订阅
+        """
         # 查询所有订阅
         subscribes = self.subscribeoper.list('R')
         if not subscribes:
-            # 没有订阅不运行
-            return
-        # 触发刷新站点资源，从缓存中匹配订阅
-        self.match(
-            self.torrentschain.refresh(subscribes=subscribes)
-        )
+            return None
+        ret_sites = []
+        # 刷新订阅选中的Rss站点
+        for subscribe in subscribes:
+            # 如果有一个订阅没有选择站点，则刷新所有订阅站点
+            if not subscribe.sites:
+                return []
+            # 刷新选中的站点
+            sub_sites = json.loads(subscribe.sites)
+            if sub_sites:
+                ret_sites.extend(sub_sites)
+        # 去重
+        if ret_sites:
+            ret_sites = list(set(ret_sites))
+
+        return ret_sites
 
     def match(self, torrents: Dict[str, List[Context]]):
         """

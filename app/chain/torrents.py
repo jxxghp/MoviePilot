@@ -118,27 +118,29 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
 
         return ret_torrents
 
-    def refresh(self, stype: str = None, subscribes: list = None) -> Dict[str, List[Context]]:
+    def refresh(self, stype: str = None, sites: List[int] = None) -> Dict[str, List[Context]]:
         """
         刷新站点最新资源，识别并缓存起来
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
-        :param subscribes: 订阅
+        :param sites: 强制指定站点ID列表，为空则读取设置的订阅站点
         """
         # 刷新类型
         if not stype:
             stype = settings.SUBSCRIBE_MODE
+
+        # 刷新站点
+        if not sites:
+            sites = [str(sid) for sid in (self.systemconfig.get(SystemConfigKey.RssSites) or [])]
 
         # 读取缓存
         torrents_cache = self.get_torrents()
 
         # 所有站点索引
         indexers = self.siteshelper.get_indexers()
-        # 查询订阅站点
-        config_indexers = self.__get_rss_sites(subscribes)
         # 遍历站点缓存资源
         for indexer in indexers:
-            # 未开启的站点不搜索
-            if config_indexers and str(indexer.get("id")) not in config_indexers:
+            # 未开启的站点不刷新
+            if sites and str(indexer.get("id")) not in sites:
                 continue
             domain = StringUtils.get_url_domain(indexer.get("domain"))
             if stype == "spider":
@@ -188,39 +190,15 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                 del torrents
             else:
                 logger.info(f'{indexer.get("name")} 没有获取到种子')
+
         # 保存缓存到本地
         if stype == "spider":
             self.save_cache(torrents_cache, self._spider_file)
         else:
             self.save_cache(torrents_cache, self._rss_file)
+
         # 返回
         return torrents_cache
-
-    def __get_rss_sites(self, subscribes: list = None):
-        """
-        获取rss站点（节约资源）
-        """
-        config_indexers = []
-        if subscribes:
-            # 刷新订阅选中的Rss站点
-            for subscribe in subscribes:
-                # 如果有一个订阅没有选择站点，则刷新所有订阅站点
-                if not subscribe.sites:
-                    # 配置的Rss站点
-                    config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.RssSites) or []]
-                    break
-                # 刷新选中的站点
-                rss_sites = subscribe.sites
-                if isinstance(subscribe.sites, str):
-                    rss_sites = eval(subscribe.sites)
-                for site in rss_sites:
-                    config_indexers.append(site)
-            config_indexers = list(set(config_indexers))
-        if not config_indexers:
-            # 配置的Rss站点
-            config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.RssSites) or []]
-
-        return config_indexers
 
     def __renew_rss_url(self, domain: str, site: dict):
         """
