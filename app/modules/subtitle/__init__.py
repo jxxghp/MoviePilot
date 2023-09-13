@@ -42,6 +42,9 @@ class SubtitleModule(_ModuleBase):
         :param download_dir:  下载目录
         :return: None，该方法可被多个模块同时处理
         """
+        if not settings.DOWNLOAD_SUBTITLE:
+            return None
+
         # 种子信息
         torrent = context.torrent_info
         if not torrent.page_url:

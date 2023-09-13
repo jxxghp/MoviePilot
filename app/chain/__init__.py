@@ -257,10 +257,8 @@ class ChainBase(metaclass=ABCMeta):
         :param download_dir:  下载目录
         :return: None，该方法可被多个模块同时处理
         """
-        if settings.DOWNLOAD_SUBTITLE:
-            return self.run_module("download_added", context=context, torrent_path=torrent_path,
-                                   download_dir=download_dir)
-        return None
+        return self.run_module("download_added", context=context, torrent_path=torrent_path,
+                               download_dir=download_dir)
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
@@ -342,9 +340,7 @@ class ChainBase(metaclass=ABCMeta):
         :param file_path:  文件路径
         :return: 成功或失败
         """
-        if settings.REFRESH_MEDIASERVER:
-            return self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
-        return None
+        return self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
 
     def post_message(self, message: Notification) -> None:
         """
@@ -385,17 +381,14 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("post_torrents_message", message=message, torrents=torrents)
 
-    def scrape_metadata(self, path: Path, mediainfo: MediaInfo, scrap: bool = settings.SCRAP_METADATA) -> None:
+    def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径
         :param mediainfo:  识别的媒体信息
-        :param scrap:  是否刮削
         :return: 成功或失败
         """
-        if scrap:
-            return self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
-        return None
+        return self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
 
     def register_commands(self, commands: Dict[str, dict]) -> None:
         """

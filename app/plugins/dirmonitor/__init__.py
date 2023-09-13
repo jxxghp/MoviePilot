@@ -323,8 +323,9 @@ class DirMonitor(_PluginBase):
                     )
 
                     # 刮削单个文件
-                    self.chain.scrape_metadata(path=transferinfo.target_path,
-                                               mediainfo=mediainfo)
+                    if settings.SCRAP_METADATA:
+                        self.chain.scrape_metadata(path=transferinfo.target_path,
+                                                   mediainfo=mediainfo)
 
                     """
                     {
@@ -386,7 +387,8 @@ class DirMonitor(_PluginBase):
                     self._medias[mediainfo.title_year + " " + meta.season] = media_list
 
                     # 汇总刷新媒体库
-                    self.chain.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
+                    if settings.REFRESH_MEDIASERVER:
+                        self.chain.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
                     # 广播事件
                     self.eventmanager.send_event(EventType.TransferComplete, {
                         'meta': file_meta,

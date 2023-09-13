@@ -384,7 +384,8 @@ class LibraryScraper(_PluginBase):
                             print(str(err))
 
             # 刮削单个文件
-            self.chain.scrape_metadata(path=file, mediainfo=mediainfo, scrap=scrap_metadata)
+            if scrap_metadata:
+                self.chain.scrape_metadata(path=file, mediainfo=mediainfo)
 
     @staticmethod
     def __get_tmdbid_from_nfo(file_path: Path):

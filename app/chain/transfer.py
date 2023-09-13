@@ -349,7 +349,8 @@ class TransferChain(ChainBase):
                     transferinfo=transferinfo
                 )
                 # 刮削单个文件
-                self.scrape_metadata(path=transferinfo.target_path, mediainfo=file_mediainfo)
+                if settings.SCRAP_METADATA:
+                    self.scrape_metadata(path=transferinfo.target_path, mediainfo=file_mediainfo)
                 # 更新进度
                 processed_num += 1
                 self.progress.update(value=processed_num / total_num * 100,
@@ -369,7 +370,8 @@ class TransferChain(ChainBase):
                 if transfer_info.target_path.is_file():
                     transfer_info.target_path = transfer_info.target_path.parent
                 # 刷新媒体库，根目录或季目录
-                self.refresh_mediaserver(mediainfo=media, file_path=transfer_info.target_path)
+                if settings.REFRESH_MEDIASERVER:
+                    self.refresh_mediaserver(mediainfo=media, file_path=transfer_info.target_path)
                 # 发送通知
                 se_str = None
                 if media.type == MediaType.TV:
