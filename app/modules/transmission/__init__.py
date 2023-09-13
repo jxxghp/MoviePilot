@@ -36,17 +36,22 @@ class TransmissionModule(_ModuleBase):
         if not self.transmission.is_inactive():
             self.transmission = Transmission()
 
-    def download(self, torrent_path: Path, download_dir: Path, cookie: str,
+    def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None) -> Optional[Tuple[Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
-        :param torrent_path:  种子文件地址
+        :param content:  种子文件地址或者磁力链接
         :param download_dir:  下载目录
         :param cookie:  cookie
         :param episodes:  需要下载的集数
         :param category:  分类，TR中未使用
         :return: 种子Hash
         """
+        if not content:
+            return
+        if isinstance(content, Path) and not content.exists():
+            return None, f"种子文件不存在：{content}"
+
         # 如果要选择文件则先暂停
         is_paused = True if episodes else False
         # 标签
@@ -55,13 +60,15 @@ class TransmissionModule(_ModuleBase):
         else:
             labels = None
         # 添加任务
-        torrent = self.transmission.add_torrent(content=torrent_path.read_bytes(),
-                                                download_dir=str(download_dir),
-                                                is_paused=is_paused,
-                                                labels=labels,
-                                                cookie=cookie)
+        torrent = self.transmission.add_torrent(
+            content=content.read_bytes() if isinstance(content, Path) else content,
+            download_dir=str(download_dir),
+            is_paused=is_paused,
+            labels=labels,
+            cookie=cookie
+        )
         if not torrent:
-            return None, f"添加种子任务失败：{torrent_path}"
+            return None, f"添加种子任务失败：{content}"
         else:
             torrent_hash = torrent.hashString
             if is_paused:

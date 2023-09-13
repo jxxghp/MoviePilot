@@ -234,27 +234,27 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("filter_torrents", rule_string=rule_string,
                                torrent_list=torrent_list, season_episodes=season_episodes)
 
-    def download(self, torrent_path: Path, download_dir: Path, cookie: str,
+    def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None
                  ) -> Optional[Tuple[Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
-        :param torrent_path:  种子文件地址
+        :param content:  种子文件地址或者磁力链接
         :param download_dir:  下载目录
         :param cookie:  cookie
         :param episodes:  需要下载的集数
         :param category:  种子分类
         :return: 种子Hash，错误信息
         """
-        return self.run_module("download", torrent_path=torrent_path, download_dir=download_dir,
+        return self.run_module("download", content=content, download_dir=download_dir,
                                cookie=cookie, episodes=episodes, category=category)
 
-    def download_added(self, context: Context, torrent_path: Path, download_dir: Path) -> None:
+    def download_added(self, context: Context, download_dir: Path, torrent_path: Path = None) -> None:
         """
         添加下载任务成功后，从站点下载字幕，保存到下载目录
         :param context:  上下文，包括识别信息、媒体信息、种子信息
-        :param torrent_path:  种子文件地址
         :param download_dir:  下载目录
+        :param torrent_path:  种子文件地址
         :return: None，该方法可被多个模块同时处理
         """
         return self.run_module("download_added", context=context, torrent_path=torrent_path,

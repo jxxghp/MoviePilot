@@ -70,16 +70,22 @@ class DownloadChain(ChainBase):
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: MessageChannel = None,
-                         userid: Union[str, int] = None) -> Tuple[Optional[Path], str, list]:
+                         userid: Union[str, int] = None
+                         ) -> Tuple[Optional[Union[Path, str]], str, list]:
         """
-        下载种子文件
+        下载种子文件，如果是磁力链，会返回磁力链接本身
         :return: 种子路径，种子目录名，种子文件清单
         """
-        torrent_file, _, download_folder, files, error_msg = self.torrent.download_torrent(
+        torrent_file, content, download_folder, files, error_msg = self.torrent.download_torrent(
             url=torrent.enclosure,
             cookie=torrent.site_cookie,
             ua=torrent.site_ua,
             proxy=torrent.site_proxy)
+
+        if isinstance(content, str):
+            # 磁力链
+            return content, "", []
+
         if not torrent_file:
             logger.error(f"下载种子文件失败：{torrent.title} - {torrent.enclosure}")
             self.post_message(Notification(
@@ -89,6 +95,8 @@ class DownloadChain(ChainBase):
                 text=f"错误信息：{error_msg}\n站点：{torrent.site_name}",
                 userid=userid))
             return None, "", []
+
+        # 返回 种子文件路径，种子目录名，种子文件清单
         return torrent_file, download_folder, files
 
     def download_single(self, context: Context, torrent_file: Path = None,
@@ -98,19 +106,27 @@ class DownloadChain(ChainBase):
                         userid: Union[str, int] = None) -> Optional[str]:
         """
         下载及发送通知
+        :param context: 资源上下文
+        :param torrent_file: 种子文件路径
+        :param episodes: 需要下载的集数
+        :param channel: 通知渠道
+        :param save_path: 保存路径
+        :param userid: 用户ID
         """
         _torrent = context.torrent_info
         _media = context.media_info
         _meta = context.meta_info
         _folder_name = ""
         if not torrent_file:
-            # 下载种子文件
-            torrent_file, _folder_name, _file_list = self.download_torrent(_torrent, userid=userid)
-            if not torrent_file:
+            # 下载种子文件，得到的可能是文件也可能是磁力链
+            content, _folder_name, _file_list = self.download_torrent(_torrent, userid=userid)
+            if not content:
                 return
         else:
+            content = torrent_file
             # 获取种子文件的文件夹名和文件清单
             _folder_name, _file_list = self.torrent.get_torrent_info(torrent_file)
+
         # 下载目录
         if not save_path:
             if settings.DOWNLOAD_CATEGORY and _media and _media.category:
@@ -149,7 +165,7 @@ class DownloadChain(ChainBase):
             download_dir = Path(save_path)
 
         # 添加下载
-        result: Optional[tuple] = self.download(torrent_path=torrent_file,
+        result: Optional[tuple] = self.download(content=content,
                                                 cookie=_torrent.site_cookie,
                                                 episodes=episodes,
                                                 download_dir=download_dir,
@@ -208,11 +224,10 @@ class DownloadChain(ChainBase):
             # 发送消息
             self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, channel=channel)
             # 下载成功后处理
-            self.download_added(context=context, torrent_path=torrent_file, download_dir=download_dir)
+            self.download_added(context=context, download_dir=download_dir, torrent_path=torrent_file)
             # 广播事件
             self.eventmanager.send_event(EventType.DownloadAdded, {
                 "hash": _hash,
-                "torrent_file": torrent_file,
                 "context": context
             })
         else:
@@ -346,8 +361,11 @@ class DownloadChain(ChainBase):
                         if set(torrent_season).issubset(set(need_season)):
                             if len(torrent_season) == 1:
                                 # 只有一季的可能是命名错误，需要打开种子鉴别，只有实际集数大于等于总集数才下载
-                                torrent_path, _, torrent_files = self.download_torrent(torrent)
-                                if not torrent_path:
+                                content, _, torrent_files = self.download_torrent(torrent)
+                                if not content:
+                                    continue
+                                if isinstance(content, str):
+                                    logger.warn(f"{meta.org_string} 下载地址是磁力链，无法确定种子文件集数")
                                     continue
                                 torrent_episodes = self.torrent.get_torrent_episodes(torrent_files)
                                 logger.info(f"{meta.org_string} 解析文件集数为 {torrent_episodes}")
@@ -365,10 +383,12 @@ class DownloadChain(ChainBase):
                                     continue
                                 else:
                                     # 下载
-                                    download_id = self.download_single(context=context,
-                                                                       torrent_file=torrent_path,
-                                                                       save_path=save_path,
-                                                                       userid=userid)
+                                    download_id = self.download_single(
+                                        context=context,
+                                        torrent_file=content if isinstance(content, Path) else None,
+                                        save_path=save_path,
+                                        userid=userid
+                                    )
                             else:
                                 # 下载
                                 download_id = self.download_single(context, save_path=save_path, userid=userid)
@@ -485,8 +505,11 @@ class DownloadChain(ChainBase):
                                 and len(meta.season_list) == 1 \
                                 and meta.season_list[0] == need_season:
                             # 检查种子看是否有需要的集
-                            torrent_path, _, torrent_files = self.download_torrent(torrent, userid=userid)
-                            if not torrent_path:
+                            content, _, torrent_files = self.download_torrent(torrent, userid=userid)
+                            if not content:
+                                continue
+                            if isinstance(content, str):
+                                logger.warn(f"{meta.org_string} 下载地址是磁力链，无法解析种子文件集数")
                                 continue
                             # 种子全部集
                             torrent_episodes = self.torrent.get_torrent_episodes(torrent_files)
@@ -498,11 +521,13 @@ class DownloadChain(ChainBase):
                                 continue
                             logger.info(f"{torrent.site_name} - {torrent.title} 选中集数：{selected_episodes}")
                             # 添加下载
-                            download_id = self.download_single(context=context,
-                                                               torrent_file=torrent_path,
-                                                               episodes=selected_episodes,
-                                                               save_path=save_path,
-                                                               userid=userid)
+                            download_id = self.download_single(
+                                context=context,
+                                torrent_file=content if isinstance(content, Path) else None,
+                                episodes=selected_episodes,
+                                save_path=save_path,
+                                userid=userid
+                            )
                             if not download_id:
                                 continue
                             # 把识别的集更新到上下文

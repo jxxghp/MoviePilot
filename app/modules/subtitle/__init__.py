@@ -34,18 +34,22 @@ class SubtitleModule(_ModuleBase):
     def stop(self) -> None:
         pass
 
-    def download_added(self, context: Context, torrent_path: Path, download_dir: Path) -> None:
+    def download_added(self, context: Context, download_dir: Path, torrent_path: Path = None) -> None:
         """
         添加下载任务成功后，从站点下载字幕，保存到下载目录
         :param context:  上下文，包括识别信息、媒体信息、种子信息
-        :param torrent_path:  种子文件地址
         :param download_dir:  下载目录
+        :param torrent_path:  种子文件地址
         :return: None，该方法可被多个模块同时处理
         """
         if not settings.DOWNLOAD_SUBTITLE:
             return None
 
-        # 种子信息
+        # 没有种子文件不处理
+        if not torrent_path:
+            return
+
+        # 没有详情页不处理
         torrent = context.torrent_info
         if not torrent.page_url:
             return

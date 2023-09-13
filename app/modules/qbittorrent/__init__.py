@@ -36,19 +36,22 @@ class QbittorrentModule(_ModuleBase):
         if self.qbittorrent.is_inactive():
             self.qbittorrent = Qbittorrent()
 
-    def download(self, torrent_path: Path, download_dir: Path, cookie: str,
+    def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None) -> Optional[Tuple[Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
-        :param torrent_path:  种子文件地址
+        :param content:  种子文件地址或者磁力链接
         :param download_dir:  下载目录
         :param cookie:  cookie
         :param episodes:  需要下载的集数
         :param category:  分类
         :return: 种子Hash，错误信息
         """
-        if not torrent_path or not torrent_path.exists():
-            return None, f"种子文件不存在：{torrent_path}"
+        if not content:
+            return
+        if isinstance(content, Path) and not content.exists():
+            return None, f"种子文件不存在：{content}"
+
         # 生成随机Tag
         tag = StringUtils.generate_random_str(10)
         if settings.TORRENT_TAG:
@@ -58,19 +61,21 @@ class QbittorrentModule(_ModuleBase):
         # 如果要选择文件则先暂停
         is_paused = True if episodes else False
         # 添加任务
-        state = self.qbittorrent.add_torrent(content=torrent_path.read_bytes(),
-                                             download_dir=str(download_dir),
-                                             is_paused=is_paused,
-                                             tag=tags,
-                                             cookie=cookie,
-                                             category=category)
+        state = self.qbittorrent.add_torrent(
+            content=content.read_bytes() if isinstance(content, Path) else content,
+            download_dir=str(download_dir),
+            is_paused=is_paused,
+            tag=tags,
+            cookie=cookie,
+            category=category
+        )
         if not state:
-            return None, f"添加种子任务失败：{torrent_path}"
+            return None, f"添加种子任务失败：{content}"
         else:
             # 获取种子Hash
             torrent_hash = self.qbittorrent.get_torrent_id_by_tag(tags=tag)
             if not torrent_hash:
-                return None, f"获取种子Hash失败：{torrent_path}"
+                return None, f"获取种子Hash失败：{content}"
             else:
                 if is_paused:
                     # 种子文件
