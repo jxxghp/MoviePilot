@@ -601,9 +601,9 @@ class AutoSignIn(_PluginBase):
                 self._clean = False
         else:
             # 需要重试站点
-            retry_sites = today_history.get("retry")
+            retry_sites = today_history.get("retry") or []
             # 今天已签到|登录站点
-            already_sites = today_history.get("sign")
+            already_sites = today_history.get("do") or []
 
             # 今日未签|登录站点
             no_sites = [site for site in do_sites if
@@ -686,13 +686,13 @@ class AutoSignIn(_PluginBase):
 
             if not self._retry_keyword:
                 # 没设置重试关键词则重试已选站点
-                retry_sites = self._sign_sites
+                retry_sites = self._sign_sites if type == "签到" else self._login_sites
             logger.debug(f"下次{type}重试站点 {retry_sites}")
 
             # 存入历史
             self.save_data(key=type + "-" + today,
                            value={
-                               "sign": self._sign_sites,
+                               "do": self._sign_sites if type == "签到" else self._login_sites,
                                "retry": retry_sites
                            })
 
@@ -706,7 +706,7 @@ class AutoSignIn(_PluginBase):
                 signin_message = "\n".join([f'【{s[0]}】{s[1]}' for s in signin_message if s])
                 self.post_message(title=f"【站点自动{type}】",
                                   mtype=NotificationType.SiteMessage,
-                                  text=f"全部{type}数量: {len(list(self._sign_sites))} \n"
+                                  text=f"全部{type}数量: {len(self._sign_sites if type == '签到' else self._login_sites)} \n"
                                        f"本次{type}数量: {len(do_sites)} \n"
                                        f"下次{type}数量: {len(retry_sites) if self._retry_keyword else 0} \n"
                                        f"{signin_message}"
