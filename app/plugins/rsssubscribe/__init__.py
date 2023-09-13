@@ -65,7 +65,6 @@ class RssSubscribe(_PluginBase):
     _clear: bool = False
     _clearflag: bool = False
     _action: str = "subscribe"
-    _recognization: str = "Y"
     _save_path: str = ""
 
     def init_plugin(self, config: dict = None):
@@ -90,7 +89,6 @@ class RssSubscribe(_PluginBase):
             self._filter = config.get("filter")
             self._clear = config.get("clear")
             self._action = config.get("action")
-            self._recognization = config.get("recognization")
             self._save_path = config.get("save_path")
 
         if self._enabled or self._onlyonce:
@@ -221,7 +219,7 @@ class RssSubscribe(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -238,7 +236,7 @@ class RssSubscribe(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -249,26 +247,6 @@ class RssSubscribe(_PluginBase):
                                             'items': [
                                                 {'title': '订阅', 'value': 'subscribe'},
                                                 {'title': '下载', 'value': 'download'}
-                                            ]
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSelect',
-                                        'props': {
-                                            'model': 'recognization',
-                                            'label': '识别',
-                                            'items': [
-                                                {'title': '是', 'value': 'Y'},
-                                                {'title': '否', 'value': 'N'}
                                             ]
                                         }
                                     }
@@ -425,7 +403,6 @@ class RssSubscribe(_PluginBase):
             "clear": False,
             "filter": False,
             "action": "subscribe",
-            "recognization": "Y",
             "save_path": ""
         }
 
@@ -548,9 +525,7 @@ class RssSubscribe(_PluginBase):
             "include": self._include,
             "exclude": self._exclude,
             "proxy": self._proxy,
-            "clear": self._clear,
-            "action": self._action,
-            "recognization": self._recognization,
+            "clear": self._clear
         })
 
     def check(self):
@@ -630,18 +605,17 @@ class RssSubscribe(_PluginBase):
                         continue
                     else:
                         if self._action == "download":
-                            if str(self._recognization) == "Y":
-                                if mediainfo.type == MediaType.TV:
-                                    if no_exists:
-                                        exist_info = no_exists.get(mediainfo.tmdb_id)
-                                        season_info = exist_info.get(meta.begin_season or 1)
-                                        if not season_info:
-                                            logger.info(f'{mediainfo.title_year} {meta.season} 己存在')
-                                            continue
-                                        if (season_info.episodes
-                                                and not set(meta.episode_list).issubset(set(season_info.episodes))):
-                                            logger.info(f'{mediainfo.title_year} {meta.season_episode} 己存在')
-                                            continue
+                            if mediainfo.type == MediaType.TV:
+                                if no_exists:
+                                    exist_info = no_exists.get(mediainfo.tmdb_id)
+                                    season_info = exist_info.get(meta.begin_season or 1)
+                                    if not season_info:
+                                        logger.info(f'{mediainfo.title_year} {meta.season} 己存在')
+                                        continue
+                                    if (season_info.episodes
+                                            and not set(meta.episode_list).issubset(set(season_info.episodes))):
+                                        logger.info(f'{mediainfo.title_year} {meta.season_episode} 己存在')
+                                        continue
                             # 添加下载
                             result = self.downloadchain.download_single(
                                 context=Context(
