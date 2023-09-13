@@ -736,14 +736,15 @@ class TorrentRemover(_PluginBase):
                 name = remove_torrent.get("name")
                 size = remove_torrent.get("size")
                 for torrent in torrents:
-                    if torrent.name == name \
-                            and torrent.size == size \
-                            and torrent.hash not in [t.get("id") for t in remove_torrents]:
-                        remove_torrents_plus.append({
-                            "id": torrent.hash,
-                            "name": torrent.name,
-                            "site": StringUtils.get_url_sld(torrent.tracker),
-                            "size": torrent.size
-                        })
+                    if downloader == "qbittorrent":
+                        item_plus = self.__get_qb_torrent(torrent)
+                    else:
+                        item_plus = self.__get_tr_torrent(torrent)
+                    if not item_plus:
+                        continue
+                    if item_plus.get("name") == name \
+                            and item_plus.get("size") == size \
+                            and item_plus.get("id") not in [t.get("id") for t in remove_torrents]:
+                        remove_torrents_plus.append(item_plus)
             remove_torrents.extend(remove_torrents_plus)
         return remove_torrents
