@@ -86,7 +86,7 @@ class DownloadChain(ChainBase):
                 channel=channel,
                 mtype=NotificationType.Manual,
                 title=f"{torrent.title} 种子下载失败！",
-                text=f"错误信息：{error_msg}\n种子链接：{torrent.enclosure}",
+                text=f"错误信息：{error_msg}\n站点：{torrent.site_name}",
                 userid=userid))
             return None, "", []
         return torrent_file, download_folder, files
@@ -226,7 +226,6 @@ class DownloadChain(ChainBase):
                       % (_media.title_year, _meta.season_episode),
                 text=f"站点：{_torrent.site_name}\n"
                      f"种子名称：{_meta.org_string}\n"
-                     f"种子链接：{_torrent.enclosure}\n"
                      f"错误信息：{error_msg}",
                 image=_media.get_message_image(),
                 userid=userid))
