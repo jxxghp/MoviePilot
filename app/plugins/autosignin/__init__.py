@@ -801,6 +801,10 @@ class AutoSignIn(_PluginBase):
                         return f"无法通过Cloudflare！"
                     return f"仿真登录失败，Cookie已失效！"
                 else:
+                    # 判断是否已签到
+                    if re.search(r'已签|签到已得', page_source, re.IGNORECASE) \
+                            or SiteUtils.is_checkin(page_source):
+                        return f"签到成功"
                     return "仿真签到成功"
             else:
                 res = RequestUtils(cookies=site_cookie,
