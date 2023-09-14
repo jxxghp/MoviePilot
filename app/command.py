@@ -222,6 +222,10 @@ class Command(metaclass=Singleton):
                 if args_num > 0:
                     if cmd_data:
                         # 有内置参数直接使用内置参数
+                        data = cmd_data.get("data") or {}
+                        data['channel'] = channel
+                        data['user'] = userid
+                        cmd_data['data'] = data
                         command['func'](**cmd_data)
                     elif args_num == 2:
                         # 没有输入参数，只输入渠道和用户ID
