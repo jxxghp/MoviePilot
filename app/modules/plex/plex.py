@@ -130,11 +130,13 @@ class Plex(metaclass=Singleton):
 
     def get_movies(self, 
                    title: str, 
+                   original_title: str = None,
                    year: str = None,
                    tmdb_id: int = None) -> Optional[List[dict]]:
         """
         根据标题和年份，检查电影是否在Plex中存在，存在则返回列表
         :param title: 标题
+        :param original_title: 原产地标题
         :param year: 年份，为空则不过滤
         :param tmdb_id: TMDB ID
         :return: 含title、year属性的字典列表
@@ -144,9 +146,14 @@ class Plex(metaclass=Singleton):
         ret_movies = []
         if year:
             movies = self._plex.library.search(title=title, year=year, libtype="movie")
+            # 根据原标题再查一遍
+            if original_title and str(original_title) != str(title):
+                movies.extend(self._plex.library.search(title=original_title, year=year, libtype="movie"))
         else:
             movies = self._plex.library.search(title=title, libtype="movie")
-        for movie in movies:
+            if original_title and str(original_title) != str(title):
+                movies.extend(self._plex.library.search(title=original_title, year=year, libtype="movie"))
+        for movie in set(movies):
             movie_tmdbid = self.__get_ids(movie.guids).get("tmdb_id")
             if tmdb_id and movie_tmdbid:
                 if str(movie_tmdbid) != str(tmdb_id):
@@ -157,6 +164,7 @@ class Plex(metaclass=Singleton):
     def get_tv_episodes(self,
                         item_id: str = None,
                         title: str = None,
+                        original_title: str = None,
                         year: str = None,
                         tmdb_id: int = None,
                         season: int = None) -> Optional[Dict[int, list]]:
@@ -164,6 +172,7 @@ class Plex(metaclass=Singleton):
         根据标题、年份、季查询电视剧所有集信息
         :param item_id: 媒体ID
         :param title: 标题
+        :param original_title: 原产地标题
         :param year: 年份，可以为空，为空时不按年份过滤
         :param tmdb_id: TMDB ID
         :param season: 季号，数字
@@ -176,6 +185,8 @@ class Plex(metaclass=Singleton):
         else:
             # 根据标题和年份模糊搜索，该结果不够准确
             videos = self._plex.library.search(title=title, year=year, libtype="show")
+            if not videos and original_title and str(original_title) != str(title):
+                videos = self._plex.library.search(title=original_title, year=year, libtype="show")
         if not videos:
             return {}
         if isinstance(videos, list):
