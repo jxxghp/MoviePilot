@@ -7,7 +7,7 @@ from typing import Any, List, Dict, Tuple, Optional
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from torrentool.torrent import Torrent
+from bencode import bdecode, bencode
 
 from app.core.config import settings
 from app.helper.torrent import TorrentHelper
@@ -582,26 +582,50 @@ class TorrentTransfer(_PluginBase):
                     continue
 
                 # 如果源下载器是QB检查是否有Tracker，没有的话额外获取
-                trackers = None
                 if downloader == "qbittorrent":
+                    # 读取种子内容、解析种子文件
+                    content = torrent_file.read_bytes()
+                    if not content:
+                        logger.warn(f"读取种子文件失败：{torrent_file}")
+                        fail += 1
+                        continue
                     # 读取trackers
                     try:
-                        torrent_main = Torrent.from_file(torrent_file)
-                        main_announce = torrent_main.announce_urls
+                        torrent_main = bdecode(content)
+                        main_announce = torrent_main.get('announce')
                     except Exception as err:
-                        logger.error(f"解析种子文件 {torrent_file} 失败：{err}")
-                        # 失败计数
+                        logger.warn(f"解析种子文件 {torrent_file} 失败：{err}")
                         fail += 1
                         continue
 
                     if not main_announce:
-                        logger.info(f"{torrent_item.get('hash')} 未发现tracker信息，尝试补充tracker ...")
-                        # 从源下载任务信息中获取Tracker
-                        torrent = torrent_item.get('torrent')
-                        # 源trackers
-                        trackers = [tracker.get("url") for tracker in torrent.trackers
-                                    if str(tracker.get("url")).startswith('http')]
-                        logger.info(f"获取到源tracker：{trackers}")
+                        logger.info(f"{torrent_item.get('hash')} 未发现tracker信息，尝试补充tracker信息...")
+                        # 读取fastresume文件
+                        fastresume_file = Path(self._fromtorrentpath) / f"{torrent_item.get('hash')}.fastresume"
+                        if not fastresume_file.exists():
+                            logger.warn(f"fastresume文件不存在：{fastresume_file}")
+                            fail += 1
+                            continue
+                        # 尝试补充trackers
+                        try:
+                            # 解析fastresume文件
+                            fastresume = fastresume_file.read_bytes()
+                            torrent_fastresume = bdecode(fastresume)
+                            # 读取trackers
+                            fastresume_trackers = torrent_fastresume.get('trackers')
+                            if isinstance(fastresume_trackers, list) \
+                                    and len(fastresume_trackers) > 0 \
+                                    and fastresume_trackers[0]:
+                                # 重新赋值
+                                torrent_main['announce'] = fastresume_trackers[0][0]
+                                # 替换种子文件路径
+                                torrent_file = settings.TEMP_PATH / f"{torrent_item.get('hash')}.torrent"
+                                # 编码并保存到临时文件
+                                torrent_file.write_bytes(bencode(torrent_main))
+                        except Exception as err:
+                            logger.error(f"解析fastresume文件 {fastresume_file} 出错：{err}")
+                            fail += 1
+                            continue
 
                 # 发送到另一个下载器中下载：默认暂停、传输下载路径、关闭自动管理模式
                 logger.info(f"添加转移做种任务到下载器 {todownloader}：{torrent_file}")
@@ -616,11 +640,6 @@ class TorrentTransfer(_PluginBase):
                 else:
                     # 下载成功
                     logger.info(f"成功添加转移做种任务，种子文件：{torrent_file}")
-
-                    # 补充Tracker
-                    if trackers:
-                        logger.info(f"开始补充 {download_id} 的tracker：{trackers}")
-                        todownloader_obj.add_trackers(ids=[download_id], trackers=trackers)
 
                     # TR会自动校验，QB需要手动校验
                     if todownloader == "qbittorrent":
