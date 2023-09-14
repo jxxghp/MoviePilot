@@ -222,6 +222,7 @@ class WeChat(metaclass=Singleton):
             torrent_title = f"{index}.【{torrent.site_name}】" \
                             f"{meta.season_episode} " \
                             f"{meta.resource_term} " \
+                            f"{meta.video_term} " \
                             f"{meta.release_group} " \
                             f"{StringUtils.str_filesize(torrent.size)} " \
                             f"{torrent.volume_factor} " \

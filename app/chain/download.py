@@ -48,9 +48,12 @@ class DownloadChain(ChainBase):
             msg_text = f"{msg_text}\n大小：{size}"
         if torrent.title:
             msg_text = f"{msg_text}\n种子：{torrent.title}"
+        if torrent.pubdate:
+            msg_text = f"{msg_text}\n发布时间：{torrent.pubdate}"
         if torrent.seeders:
             msg_text = f"{msg_text}\n做种数：{torrent.seeders}"
-        msg_text = f"{msg_text}\n促销：{torrent.volume_factor}"
+        if torrent.uploadvolumefactor and torrent.downloadvolumefactor:
+            msg_text = f"{msg_text}\n促销：{torrent.volume_factor}"
         if torrent.hit_and_run:
             msg_text = f"{msg_text}\nHit&Run：是"
         if torrent.description:
