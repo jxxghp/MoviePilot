@@ -1,3 +1,4 @@
+cython~=3.0.2
 pydantic~=1.10.8
 SQLAlchemy~=2.0.15
 uvicorn~=0.22.0
