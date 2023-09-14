@@ -575,6 +575,7 @@ class AutoSignIn(_PluginBase):
         yesterday_str = yesterday.strftime('%Y-%m-%d')
         # 删除昨天历史
         self.del_data(key=type + "-" + yesterday_str)
+        self.del_data(key=f"{yesterday.month}月{yesterday.day}日")
 
         # 查看今天有没有签到|登录历史
         today = today.strftime('%Y-%m-%d')
@@ -634,11 +635,22 @@ class AutoSignIn(_PluginBase):
             logger.info(f"站点{type}任务完成！")
             # 获取今天的日期
             key = f"{datetime.now().month}月{datetime.now().day}日"
+            today_data = self.get_data(key)
+            if today_data:
+                if not isinstance(today_data, list):
+                    today_data = [today_data]
+                for s in status:
+                    today_data.append({
+                        "site": s[0],
+                        "status": s[1]
+                    })
+            else:
+                today_data = [{
+                    "site": s[0],
+                    "status": s[1]
+                } for s in status]
             # 保存数据
-            self.save_data(key, [{
-                "site": s[0],
-                "status": s[1]
-            } for s in status])
+            self.save_data(key, today_data)
 
             # 命中重试词的站点id
             retry_sites = []
