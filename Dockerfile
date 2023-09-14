@@ -65,7 +65,7 @@ RUN apt-get update \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
     && apt-get install -y build-essential \
     && pip install --upgrade pip \
-    && pip install cython \
+    && pip install Cython \
     && pip install -r requirements.txt \
     && playwright install-deps chromium \
     && python_ver=$(python3 -V | awk '{print $2}') \
