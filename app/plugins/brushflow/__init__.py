@@ -1322,10 +1322,10 @@ class BrushFlow(_PluginBase):
                             end_pubtime = 0
                         # 将种子发布日志转换为与当前时间的差
                         if begin_pubtime and not end_pubtime \
-                                and pubdate_minutes > int(begin_pubtime) * 60:
+                                and pubdate_minutes > int(begin_pubtime):
                             continue
                         elif begin_pubtime and end_pubtime \
-                                and not int(begin_pubtime) * 60 <= pubdate_minutes <= int(end_pubtime) * 60:
+                                and not int(begin_pubtime) <= pubdate_minutes <= int(end_pubtime):
                             continue
                     # 同时下载任务数
                     downloads = self.__get_downloading_count()
@@ -1478,9 +1478,10 @@ class BrushFlow(_PluginBase):
                                                    torrent_title=torrent_info.get("title"),
                                                    reason=f"下载耗时达到 {self._download_time} 小时")
                         continue
-                # 平均上传速度（KB / s）
+                # 平均上传速度（KB / s），大于30分钟才有效
                 if self._seed_avgspeed:
-                    if torrent_info.get("avg_upspeed") <= float(self._seed_avgspeed) * 1024:
+                    if torrent_info.get("avg_upspeed") <= float(self._seed_avgspeed) * 1024 and \
+                            torrent_info.get("seeding_time") >= 30 * 60:
                         logger.info(f"平均上传速度低于 {self._seed_avgspeed} KB/s，删除种子：{torrent_info.get('title')}")
                         downloader.delete_torrents(ids=torrent_hash, delete_file=True)
                         remove_torrents.append(torrent_info)
