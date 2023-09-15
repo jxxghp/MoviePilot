@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     SUBSCRIBE_RSS_INTERVAL: int = 30
     # 订阅搜索开关
     SUBSCRIBE_SEARCH: bool = False
-    # 用户认证站点 hhclub/audiences/hddolby/zmpt/freefarm/hdfans/wintersakura/leaves/1ptba/icc2022/iyuu
+    # 用户认证站点
     AUTH_SITE: str = ""
     # 交互搜索自动下载用户ID，使用,分割
     AUTO_DOWNLOAD_USER: str = None

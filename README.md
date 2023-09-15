@@ -149,7 +149,7 @@ docker pull jxxghp/moviepilot:latest
 
 ### 2. **用户认证**
 
-- **AUTH_SITE：** 认证站点，支持`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`iyuu`
+- **AUTH_SITE：** 认证站点，支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`
 
 `MoviePilot`需要认证后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数。
 
