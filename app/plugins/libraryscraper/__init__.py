@@ -328,19 +328,21 @@ class LibraryScraper(_PluginBase):
             if not mediainfo:
                 # 优先读取本地nfo文件
                 tmdbid = None
-                if meta_info.type == MediaType.MOVIE:
-                    # 电影
-                    movie_nfo = file.parent / "movie.nfo"
-                    if movie_nfo.exists():
-                        tmdbid = self.__get_tmdbid_from_nfo(movie_nfo)
-                    file_nfo = file.with_suffix(".nfo")
-                    if not tmdbid and file_nfo.exists():
-                        tmdbid = self.__get_tmdbid_from_nfo(file_nfo)
-                else:
-                    # 电视剧
-                    tv_nfo = file.parent.parent / "tvshow.nfo"
-                    if tv_nfo.exists():
-                        tmdbid = self.__get_tmdbid_from_nfo(tv_nfo)
+                # 覆盖模式不读取本地nfo tmdbid
+                if self._mode not in ["force_all", "force_nfo"]:
+                    if meta_info.type == MediaType.MOVIE:
+                        # 电影
+                        movie_nfo = file.parent / "movie.nfo"
+                        if movie_nfo.exists():
+                            tmdbid = self.__get_tmdbid_from_nfo(movie_nfo)
+                        file_nfo = file.with_suffix(".nfo")
+                        if not tmdbid and file_nfo.exists():
+                            tmdbid = self.__get_tmdbid_from_nfo(file_nfo)
+                    else:
+                        # 电视剧
+                        tv_nfo = file.parent.parent / "tvshow.nfo"
+                        if tv_nfo.exists():
+                            tmdbid = self.__get_tmdbid_from_nfo(tv_nfo)
                 if tmdbid:
                     # 按TMDBID识别
                     logger.info(f"读取到本地nfo文件的tmdbid：{tmdbid}")
