@@ -8,6 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
+from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.nfo import NfoReader
@@ -295,18 +296,21 @@ class LibraryScraper(_PluginBase):
                     continue
                 # 开始刮削目录
                 if sub_path.is_dir():
+                    # 判断目录是不是媒体目录
+                    dir_meta = MetaInfo(sub_path.name)
+                    if not dir_meta.name or not dir_meta.year:
+                        logger.warn(f"{sub_path} 可能不是媒体目录，请检查刮削目录配置，跳过 ...")
+                        continue
                     logger.info(f"开始刮削目录：{sub_path} ...")
-                    self.__scrape_dir(sub_path)
+                    self.__scrape_dir(path=sub_path, dir_meta=dir_meta)
                     logger.info(f"目录 {sub_path} 刮削完成")
             logger.info(f"媒体库 {path} 刮削完成")
 
-    def __scrape_dir(self, path: Path):
+    def __scrape_dir(self, path: Path, dir_meta: MetaBase):
         """
         削刮一个目录，该目录必须是媒体文件目录
         """
 
-        # 目录识别
-        dir_meta = MetaInfo(path.name)
         # 媒体信息
         mediainfo = None
 
@@ -318,14 +322,15 @@ class LibraryScraper(_PluginBase):
                 return
 
             # 识别元数据
-            meta_info = MetaInfo(file.name)
+            meta_info = MetaInfo(file.stem)
             # 合并
             meta_info.merge(dir_meta)
             # 是否刮削
             scrap_metadata = settings.SCRAP_METADATA
 
-            # 识别媒体信息
-            if not mediainfo:
+            # 没有媒体信息或者名字出现变化时，需要重新识别
+            if not mediainfo \
+                    or meta_info.name != dir_meta.name:
                 # 优先读取本地nfo文件
                 tmdbid = None
                 if meta_info.type == MediaType.MOVIE:
