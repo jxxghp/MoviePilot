@@ -108,7 +108,6 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                 site_proxy=site.get("proxy"),
                 site_order=site.get("pri"),
                 title=item.get("title"),
-                description=item.get("description"),
                 enclosure=item.get("enclosure"),
                 page_url=item.get("link"),
                 size=item.get("size"),
