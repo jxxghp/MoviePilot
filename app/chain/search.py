@@ -196,8 +196,8 @@ class SearchChain(ChainBase):
                     continue
                 # 在副标题中判断是否存在标题与原语种标题
                 if torrent.description:
-                    if mediainfo.title in torrent.description \
-                            or mediainfo.original_title in torrent.description:
+                    if str(mediainfo.title) in torrent.description \
+                            or str(mediainfo.original_title) in torrent.description:
                         logger.info(f'{mediainfo.title} 通过副标题匹配到资源：{torrent.site_name} - {torrent.title}，'
                                     f'副标题：{torrent.description}')
                         _match_torrents.append(torrent)
