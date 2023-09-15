@@ -1,3 +1,4 @@
+import os
 import re
 from datetime import datetime, timedelta
 from threading import Event
@@ -60,6 +61,7 @@ class IYUUAutoSeed(_PluginBase):
     _sites = []
     _notify = False
     _nolabels = None
+    _nopaths = None
     _clearcache = False
     # 退出事件
     _event = Event()
@@ -101,6 +103,7 @@ class IYUUAutoSeed(_PluginBase):
             self._sites = config.get("sites")
             self._notify = config.get("notify")
             self._nolabels = config.get("nolabels")
+            self._nopaths = config.get("nopaths")
             self._clearcache = config.get("clearcache")
             self._permanent_error_caches = config.get("permanent_error_caches") or []
             self._error_caches = [] if self._clearcache else config.get("error_caches") or []
@@ -242,22 +245,6 @@ class IYUUAutoSeed(_PluginBase):
                                     }
                                 ]
                             },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'nolabels',
-                                            'label': '不辅种标签',
-                                            'placeholder': '使用,分隔多个标签'
-                                        }
-                                    }
-                                ]
-                            }
                         ]
                     },
                     {
@@ -315,6 +302,44 @@ class IYUUAutoSeed(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'nolabels',
+                                            'label': '不辅种标签',
+                                            'placeholder': '使用,分隔多个标签'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextarea',
+                                        'props': {
+                                            'model': 'nopaths',
+                                            'label': '不辅种数据文件目录',
+                                            'rows': 3,
+                                            'placeholder': '每一行一个目录'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
                                     'cols': 12,
                                     'md': 6
                                 },
@@ -357,6 +382,7 @@ class IYUUAutoSeed(_PluginBase):
             "token": "",
             "downloaders": [],
             "sites": [],
+            "nopaths": "",
             "nolabels": ""
         }
 
@@ -374,6 +400,7 @@ class IYUUAutoSeed(_PluginBase):
             "sites": self._sites,
             "notify": self._notify,
             "nolabels": self._nolabels,
+            "nopaths": self._nopaths,
             "success_caches": self._success_caches,
             "error_caches": self._error_caches,
             "permanent_error_caches": self._permanent_error_caches
@@ -431,13 +458,25 @@ class IYUUAutoSeed(_PluginBase):
                     logger.info(f"种子 {hash_str} 辅种失败且已缓存，跳过 ...")
                     continue
                 save_path = self.__get_save_path(torrent, downloader)
+
+                if self._nopaths and save_path:
+                    # 过滤不需要转移的路径
+                    nopath_skip = False
+                    for nopath in self._nopaths.split('\n'):
+                        if os.path.normpath(save_path).startswith(os.path.normpath(nopath)):
+                            logger.info(f"种子 {hash_str} 保存路径 {save_path} 不需要辅种，跳过 ...")
+                            nopath_skip = True
+                            break
+                    if nopath_skip:
+                        continue
+
                 # 获取种子标签
                 torrent_labels = self.__get_label(torrent, downloader)
                 if torrent_labels and self._nolabels:
                     is_skip = False
                     for label in self._nolabels.split(','):
                         if label in torrent_labels:
-                            logger.info(f"种子 {hash_str} 含有不转移标签 {label}，跳过 ...")
+                            logger.info(f"种子 {hash_str} 含有不辅种标签 {label}，跳过 ...")
                             is_skip = True
                             break
                     if is_skip:
