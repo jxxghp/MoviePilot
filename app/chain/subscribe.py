@@ -308,6 +308,11 @@ class SubscribeChain(ChainBase):
                         if torrent_meta.episode_list:
                             logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
                             continue
+                    # 优先级小于已下载优先级的不要
+                    if subscribe.current_priority \
+                            and torrent_info.pri_order < subscribe.current_priority:
+                        logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于已下载优先级')
+                        continue
                 matched_contexts.append(context)
             if not matched_contexts:
                 logger.warn(f'订阅 {subscribe.name} 没有符合过滤条件的资源')
