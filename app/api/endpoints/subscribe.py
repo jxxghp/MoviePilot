@@ -138,6 +138,53 @@ def subscribe_mediaid(
     return result if result else Subscribe()
 
 
+@router.get("/refresh", summary="刷新订阅", response_model=schemas.Response)
+def refresh_subscribes(
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    刷新所有订阅
+    """
+    SubscribeChain(db).refresh()
+    return schemas.Response(success=True)
+
+
+@router.get("/check", summary="刷新订阅 TMDB 信息", response_model=schemas.Response)
+def check_subscribes(
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    刷新所有订阅
+    """
+    SubscribeChain(db).check()
+    return schemas.Response(success=True)
+
+
+@router.get("/search", summary="搜索所有订阅", response_model=schemas.Response)
+def search_subscribes(
+        background_tasks: BackgroundTasks,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    搜索所有订阅
+    """
+    background_tasks.add_task(start_subscribe_search, db=db, sid=None, state='R')
+    return schemas.Response(success=True)
+
+
+@router.get("/search/{subscribe_id}", summary="搜索订阅", response_model=schemas.Response)
+def search_subscribe(
+        subscribe_id: int,
+        background_tasks: BackgroundTasks,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据订阅编号搜索订阅
+    """
+    background_tasks.add_task(start_subscribe_search, db=db, sid=subscribe_id, state=None)
+    return schemas.Response(success=True)
+
+
 @router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
 def read_subscribe(
         subscribe_id: int,
@@ -242,40 +289,4 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
                                       season=season,
                                       username=user_name)
 
-    return schemas.Response(success=True)
-
-
-@router.get("/refresh", summary="刷新订阅", response_model=schemas.Response)
-def refresh_subscribes(
-        db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    刷新所有订阅
-    """
-    SubscribeChain(db).refresh()
-    return schemas.Response(success=True)
-
-
-@router.get("/search/{subscribe_id}", summary="搜索订阅", response_model=schemas.Response)
-def search_subscribe(
-        subscribe_id: int,
-        background_tasks: BackgroundTasks,
-        db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    搜索所有订阅
-    """
-    background_tasks.add_task(start_subscribe_search, db=db, sid=subscribe_id, state=None)
-    return schemas.Response(success=True)
-
-
-@router.get("/search", summary="搜索所有订阅", response_model=schemas.Response)
-def search_subscribes(
-        background_tasks: BackgroundTasks,
-        db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    搜索所有订阅
-    """
-    background_tasks.add_task(start_subscribe_search, db=db, sid=None, state='R')
     return schemas.Response(success=True)

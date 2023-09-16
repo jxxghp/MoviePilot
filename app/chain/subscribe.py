@@ -277,7 +277,7 @@ class SubscribeChain(ChainBase):
                 logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
                 if meta.type == MediaType.TV:
                     # 未搜索到资源，但本地缺失可能有变化，更新订阅剩余集数
-                    self.__upate_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
+                    self.__update_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
                 continue
             # 过滤
             matched_contexts = []
@@ -318,7 +318,7 @@ class SubscribeChain(ChainBase):
                 logger.warn(f'订阅 {subscribe.name} 没有符合过滤条件的资源')
                 # 非洗版未搜索到资源，但本地缺失可能有变化，更新订阅剩余集数
                 if meta.type == MediaType.TV and not subscribe.best_version:
-                    self.__upate_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
+                    self.__update_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
                 continue
             # 自动下载
             downloads, lefts = self.downloadchain.batch_download(contexts=matched_contexts,
@@ -335,18 +335,18 @@ class SubscribeChain(ChainBase):
                                              mediainfo=mediainfo, downloads=downloads)
             else:
                 # 未完成下载
-                logger.info(f'{mediainfo.title_year} 未下载未完整，继续订阅 ...')
+                logger.info(f'{mediainfo.title_year} 未下载完整，继续订阅 ...')
                 if meta.type == MediaType.TV and not subscribe.best_version:
                     # 更新订阅剩余集数和时间
                     update_date = True if downloads else False
-                    self.__upate_lack_episodes(lefts=lefts, subscribe=subscribe,
+                    self.__update_lack_episodes(lefts=lefts, subscribe=subscribe,
                                                mediainfo=mediainfo, update_date=update_date)
         # 手动触发时发送系统消息
         if manual:
             if sid:
                 self.message.put(f'订阅 {subscribes[0].name} 搜索完成！')
             else:
-                self.message.put(f'所有订阅搜索完成！')
+                self.message.put('所有订阅搜索完成！')
 
     def finish_subscribe_or_not(self, subscribe: Subscribe, meta: MetaInfo,
                                 mediainfo: MediaInfo, downloads: List[Context]):
@@ -509,11 +509,13 @@ class SubscribeChain(ChainBase):
                         torrent_list=[torrent_info])
                     if result is not None and not result:
                         # 不符合过滤规则
+                        logger.info(f"{torrent_info.title} 不匹配当前过滤规则")
                         continue
                     # 不在订阅站点范围的不处理
                     if subscribe.sites:
                         sub_sites = json.loads(subscribe.sites)
                         if sub_sites and torrent_info.site not in sub_sites:
+                            logger.info(f"{torrent_info.title} 不符合 {torrent_mediainfo.title_year} 订阅站点要求")
                             continue
                     # 如果是电视剧
                     if torrent_mediainfo.type == MediaType.TV:
@@ -585,12 +587,12 @@ class SubscribeChain(ChainBase):
                     if meta.type == MediaType.TV and not subscribe.best_version:
                         update_date = True if downloads else False
                         # 未完成下载，计算剩余集数
-                        self.__upate_lack_episodes(lefts=lefts, subscribe=subscribe,
+                        self.__update_lack_episodes(lefts=lefts, subscribe=subscribe,
                                                    mediainfo=mediainfo, update_date=update_date)
             else:
                 if meta.type == MediaType.TV:
                     # 未搜索到资源，但本地缺失可能有变化，更新订阅剩余集数
-                    self.__upate_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
+                    self.__update_lack_episodes(lefts=no_exists, subscribe=subscribe, mediainfo=mediainfo)
 
     def check(self):
         """
@@ -614,18 +616,15 @@ class SubscribeChain(ChainBase):
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue
-            if not mediainfo.seasons:
-                continue
-            # 获取当前季的总集数
+            # 对于电视剧，获取当前季的总集数
             episodes = mediainfo.seasons.get(subscribe.season) or []
-            if len(episodes) > subscribe.total_episode or 0:
+            if len(episodes) > (subscribe.total_episode or 0):
                 total_episode = len(episodes)
                 lack_episode = subscribe.lack_episode + (total_episode - subscribe.total_episode)
                 logger.info(f'订阅 {subscribe.name} 总集数变化，更新总集数为{total_episode}，缺失集数为{lack_episode} ...')
             else:
                 total_episode = subscribe.total_episode
                 lack_episode = subscribe.lack_episode
-                logger.info(f'订阅 {subscribe.name} 总集数未变化')
             # 更新TMDB信息
             self.subscribeoper.update(subscribe.id, {
                 "name": mediainfo.title,
@@ -682,7 +681,7 @@ class SubscribeChain(ChainBase):
             return True
         return False
 
-    def __upate_lack_episodes(self, lefts: Dict[int, Dict[int, NotExistMediaInfo]],
+    def __update_lack_episodes(self, lefts: Dict[int, Dict[int, NotExistMediaInfo]],
                               subscribe: Subscribe,
                               mediainfo: MediaInfo,
                               update_date: bool = False):
@@ -770,7 +769,7 @@ class SubscribeChain(ChainBase):
                                  total_episode: int,
                                  start_episode: int):
         """
-        根据订阅开始集数和总结数，结合TMDB信息计算当前订阅的缺失集数
+        根据订阅开始集数和总集数，结合TMDB信息计算当前订阅的缺失集数
         :param no_exists: 缺失季集列表
         :param tmdb_id: TMDB ID
         :param begin_season: 开始季

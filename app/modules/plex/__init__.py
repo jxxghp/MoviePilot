@@ -54,7 +54,10 @@ class PlexModule(_ModuleBase):
                 if movie:
                     logger.info(f"媒体库中已存在：{movie}")
                     return ExistMediaInfo(type=MediaType.MOVIE)
-            movies = self.plex.get_movies(title=mediainfo.title, year=mediainfo.year, tmdb_id=mediainfo.tmdb_id)
+            movies = self.plex.get_movies(title=mediainfo.title,
+                                          original_title=mediainfo.original_title, 
+                                          year=mediainfo.year, 
+                                          tmdb_id=mediainfo.tmdb_id)
             if not movies:
                 logger.info(f"{mediainfo.title_year} 在媒体库中不存在")
                 return None
@@ -63,6 +66,7 @@ class PlexModule(_ModuleBase):
                 return ExistMediaInfo(type=MediaType.MOVIE)
         else:
             tvs = self.plex.get_tv_episodes(title=mediainfo.title,
+                                            original_title=mediainfo.original_title,
                                             year=mediainfo.year,
                                             tmdb_id=mediainfo.tmdb_id,
                                             item_id=itemid)
