@@ -149,6 +149,17 @@ def refresh_subscribes(
     return schemas.Response(success=True)
 
 
+@router.get("/check", summary="刷新订阅 TMDB 信息", response_model=schemas.Response)
+def check_subscribes(
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    刷新所有订阅
+    """
+    SubscribeChain(db).check()
+    return schemas.Response(success=True)
+
+
 @router.get("/search", summary="搜索所有订阅", response_model=schemas.Response)
 def search_subscribes(
         background_tasks: BackgroundTasks,
