@@ -346,7 +346,7 @@ class SubscribeChain(ChainBase):
                     # 更新订阅剩余集数和时间
                     update_date = True if downloads else False
                     self.__update_lack_episodes(lefts=lefts, subscribe=subscribe,
-                                               mediainfo=mediainfo, update_date=update_date)
+                                                mediainfo=mediainfo, update_date=update_date)
         # 手动触发时发送系统消息
         if manual:
             if sid:
@@ -600,7 +600,7 @@ class SubscribeChain(ChainBase):
                         update_date = True if downloads else False
                         # 未完成下载，计算剩余集数
                         self.__update_lack_episodes(lefts=lefts, subscribe=subscribe,
-                                                   mediainfo=mediainfo, update_date=update_date)
+                                                    mediainfo=mediainfo, update_date=update_date)
             else:
                 if meta.type == MediaType.TV:
                     # 未搜索到资源，但本地缺失可能有变化，更新订阅剩余集数
@@ -633,7 +633,8 @@ class SubscribeChain(ChainBase):
             if len(episodes) > (subscribe.total_episode or 0):
                 total_episode = len(episodes)
                 lack_episode = subscribe.lack_episode + (total_episode - subscribe.total_episode)
-                logger.info(f'订阅 {subscribe.name} 总集数变化，更新总集数为{total_episode}，缺失集数为{lack_episode} ...')
+                logger.info(
+                    f'订阅 {subscribe.name} 总集数变化，更新总集数为{total_episode}，缺失集数为{lack_episode} ...')
             else:
                 total_episode = subscribe.total_episode
                 lack_episode = subscribe.lack_episode
@@ -694,9 +695,9 @@ class SubscribeChain(ChainBase):
         return False
 
     def __update_lack_episodes(self, lefts: Dict[int, Dict[int, NotExistMediaInfo]],
-                              subscribe: Subscribe,
-                              mediainfo: MediaInfo,
-                              update_date: bool = False):
+                               subscribe: Subscribe,
+                               mediainfo: MediaInfo,
+                               update_date: bool = False):
         """
         更新订阅剩余集数
         """
