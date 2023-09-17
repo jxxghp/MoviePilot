@@ -285,15 +285,21 @@ class SubscribeChain(ChainBase):
                 torrent_meta = context.meta_info
                 torrent_info = context.torrent_info
                 torrent_mediainfo = context.media_info
+                # 包含与排除规则
+                default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
+                include = subscribe.include or default_include_exclude.get("include")
+                exclude = subscribe.exclude or default_include_exclude.get("exclude")
                 # 包含
-                if subscribe.include:
-                    if not re.search(r"%s" % subscribe.include,
+                if include:
+                    if not re.search(r"%s" % include,
                                      f"{torrent_info.title} {torrent_info.description}", re.I):
+                        logger.info(f"{torrent_info.title} 不匹配包含规则 {include}")
                         continue
                 # 排除
-                if subscribe.exclude:
-                    if re.search(r"%s" % subscribe.exclude,
+                if exclude:
+                    if re.search(r"%s" % exclude,
                                  f"{torrent_info.title} {torrent_info.description}", re.I):
+                        logger.info(f"{torrent_info.title} 匹配排除规则 {exclude}")
                         continue
                 # 非洗版
                 if not subscribe.best_version:
@@ -557,15 +563,21 @@ class SubscribeChain(ChainBase):
                                 if torrent_meta.episode_list:
                                     logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
                                     continue
+                    # 包含与排除规则
+                    default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
+                    include = subscribe.include or default_include_exclude.get("include")
+                    exclude = subscribe.exclude or default_include_exclude.get("exclude")
                     # 包含
-                    if subscribe.include:
-                        if not re.search(r"%s" % subscribe.include,
+                    if include:
+                        if not re.search(r"%s" % include,
                                          f"{torrent_info.title} {torrent_info.description}", re.I):
+                            logger.info(f"{torrent_info.title} 不匹配包含规则 {include}")
                             continue
                     # 排除
-                    if subscribe.exclude:
-                        if re.search(r"%s" % subscribe.exclude,
+                    if exclude:
+                        if re.search(r"%s" % exclude,
                                      f"{torrent_info.title} {torrent_info.description}", re.I):
+                            logger.info(f"{torrent_info.title} 匹配排除规则 {exclude}")
                             continue
                     # 匹配成功
                     logger.info(f'{mediainfo.title_year} 匹配成功：{torrent_info.title}')

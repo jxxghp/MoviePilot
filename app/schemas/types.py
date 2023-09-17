@@ -64,6 +64,8 @@ class SystemConfigKey(Enum):
     FilterRules = "FilterRules"
     # 洗版规则
     FilterRules2 = "FilterRules2"
+    # 默认包含与排除规则
+    DefaultIncludeExcludeFilter = "DefaultIncludeExcludeFilter"
     # 转移屏蔽词
     TransferExcludeWords = "TransferExcludeWords"
 
