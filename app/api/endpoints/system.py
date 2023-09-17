@@ -25,7 +25,7 @@ router = APIRouter()
 
 
 @router.get("/env", summary="查询系统环境变量", response_model=schemas.Response)
-def get_setting(_: schemas.TokenPayload = Depends(verify_token)):
+def get_env_setting(_: schemas.TokenPayload = Depends(verify_token)):
     """
     查询系统环境变量，包括当前版本号
     """
@@ -83,7 +83,7 @@ def set_setting(key: str, value: Union[list, dict, str, int] = None,
 
 
 @router.get("/message", summary="实时消息")
-def get_progress(token: str):
+def get_message(token: str):
     """
     实时获取系统消息，返回格式为SSE
     """
