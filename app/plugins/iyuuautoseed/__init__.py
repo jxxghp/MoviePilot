@@ -104,7 +104,7 @@ class IYUUAutoSeed(_PluginBase):
             self._cron = config.get("cron")
             self._token = config.get("token")
             self._downloaders = config.get("downloaders")
-            self._sites = config.get("sites")
+            self._sites = config.get("sites") or []
             self._notify = config.get("notify")
             self._nolabels = config.get("nolabels")
             self._nopaths = config.get("nopaths")
