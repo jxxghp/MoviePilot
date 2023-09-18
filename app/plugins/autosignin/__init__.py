@@ -86,8 +86,8 @@ class AutoSignIn(_PluginBase):
             self._onlyonce = config.get("onlyonce")
             self._notify = config.get("notify")
             self._queue_cnt = config.get("queue_cnt") or 5
-            self._sign_sites = config.get("sign_sites")
-            self._login_sites = config.get("login_sites")
+            self._sign_sites = config.get("sign_sites") or []
+            self._login_sites = config.get("login_sites") or []
             self._retry_keyword = config.get("retry_keyword")
             self._clean = config.get("clean")
 
