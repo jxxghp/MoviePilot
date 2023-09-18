@@ -272,8 +272,8 @@ class Emby(metaclass=Singleton):
             return None
         return ""
 
-    def get_movies(self, 
-                   title: str, 
+    def get_movies(self,
+                   title: str,
                    year: str = None,
                    tmdb_id: int = None) -> Optional[List[dict]]:
         """
@@ -338,10 +338,12 @@ class Emby(metaclass=Singleton):
             if not item_id:
                 return {}
         # 验证tmdbid是否相同
-        item_tmdbid = (self.get_iteminfo(item_id).get("ProviderIds") or {}).get("Tmdb")
-        if tmdb_id and item_tmdbid:
-            if str(tmdb_id) != str(item_tmdbid):
-                return {}
+        item_info = self.get_iteminfo(item_id)
+        if item_info:
+            item_tmdbid = (item_info.get("ProviderIds") or {}).get("Tmdb")
+            if tmdb_id and item_tmdbid:
+                if str(tmdb_id) != str(item_tmdbid):
+                    return {}
         # /Shows/Id/Episodes 查集的信息
         if not season:
             season = ""
