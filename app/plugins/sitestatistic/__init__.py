@@ -15,6 +15,7 @@ from app import schemas
 from app.core.config import settings
 from app.core.event import Event
 from app.core.event import eventmanager
+from app.db.models.site import Site
 from app.helper.browser import PlaywrightHelper
 from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper
@@ -83,6 +84,11 @@ class SiteStatistic(_PluginBase):
             self._queue_cnt = config.get("queue_cnt")
             self._statistic_type = config.get("statistic_type") or "all"
             self._statistic_sites = config.get("statistic_sites") or []
+
+            # 过滤掉已删除的站点
+            self._statistic_sites = [site.get("id") for site in self.sites.get_indexers() if
+                                     not site.get("public") and site.get("id") in self._statistic_sites]
+            self.__update_config()
 
         if self._enabled or self._onlyonce:
             # 加载模块
@@ -177,8 +183,8 @@ class SiteStatistic(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         # 站点的可选项
-        site_options = [{"title": site.get("name"), "value": site.get("id")}
-                        for site in self.sites.get_indexers()]
+        site_options = [{"title": site.name, "value": site.id}
+                        for site in Site.list_order_by_pri(self.db)]
         return [
             {
                 'component': 'VForm',
@@ -1047,10 +1053,6 @@ class SiteStatistic(_PluginBase):
             else:
                 refresh_sites = [site for site in self.sites.get_indexers() if
                                  site.get("id") in self._statistic_sites]
-
-                # 过滤掉已删除的站点
-                self._statistic_sites = [site.get("id") for site in refresh_sites if site]
-                self.__update_config()
             if not refresh_sites:
                 return
 

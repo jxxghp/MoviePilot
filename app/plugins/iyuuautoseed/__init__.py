@@ -12,6 +12,9 @@ from ruamel.yaml import CommentedMap
 
 from app.core.config import settings
 from app.helper.sites import SitesHelper
+
+from app.core.event import eventmanager
+from app.db.models.site import Site
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.modules.qbittorrent import Qbittorrent
@@ -19,6 +22,7 @@ from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 from app.plugins.iyuuautoseed.iyuu_helper import IyuuHelper
 from app.schemas import NotificationType
+from app.schemas.types import EventType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
@@ -109,6 +113,11 @@ class IYUUAutoSeed(_PluginBase):
             self._error_caches = [] if self._clearcache else config.get("error_caches") or []
             self._success_caches = [] if self._clearcache else config.get("success_caches") or []
 
+            # 过滤掉已删除的站点
+            self._sites = [site.get("id") for site in self.sites.get_indexers() if
+                           not site.get("public") and site.get("id") in self._sites]
+            self.__update_config()
+
         # 停止现有任务
         self.stop_service()
 
@@ -166,8 +175,8 @@ class IYUUAutoSeed(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         # 站点的可选项
-        site_options = [{"title": site.get("name"), "value": site.get("id")}
-                        for site in self.sites.get_indexers()]
+        site_options = [{"title": site.name, "value": site.id}
+                        for site in Site.list_order_by_pri(self.db)]
         return [
             {
                 'component': 'VForm',
@@ -424,10 +433,6 @@ class IYUUAutoSeed(_PluginBase):
         if not self.iyuuhelper:
             return
         logger.info("开始辅种任务 ...")
-
-        # 排除已删除站点
-        self._sites = [site.get("id") for site in self.sites.get_indexers() if
-                       site.get("id") in self._sites]
 
         # 计数器初始化
         self.total = 0
@@ -979,3 +984,31 @@ class IYUUAutoSeed(_PluginBase):
                 self._scheduler = None
         except Exception as e:
             print(str(e))
+
+    @eventmanager.register(EventType.SiteDeleted)
+    def site_deleted(self, event):
+        """
+        删除对应站点选中
+        """
+        site_id = event.event_data.get("site_id")
+        config = self.get_config()
+        if config:
+            sites = config.get("sites")
+            if sites:
+                if isinstance(sites, str):
+                    sites = [sites]
+
+                # 删除对应站点
+                if site_id:
+                    sites = [site for site in sites if int(site) != int(site_id)]
+                else:
+                    # 清空
+                    sites = []
+
+                # 若无站点，则停止
+                if len(sites) == 0:
+                    self._enabled = False
+
+                self._sites = sites
+                # 保存配置
+                self.__update_config()

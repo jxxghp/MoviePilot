@@ -14,6 +14,7 @@ from ruamel.yaml import CommentedMap
 from app import schemas
 from app.core.config import settings
 from app.core.event import EventManager, eventmanager, Event
+from app.db.models.site import Site
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.module import ModuleHelper
@@ -89,6 +90,13 @@ class AutoSignIn(_PluginBase):
             self._login_sites = config.get("login_sites")
             self._retry_keyword = config.get("retry_keyword")
             self._clean = config.get("clean")
+
+            # 过滤掉已删除的站点
+            all_sites = [site for site in self.sites.get_indexers() if not site.get("public")]
+            self._sign_sites = [site.get("id") for site in all_sites if site.get("id") in self._sign_sites]
+            self._login_sites = [site.get("id") for site in all_sites if site.get("id") in self._login_sites]
+            # 保存配置
+            self.__update_config()
 
         # 加载模块
         if self._enabled or self._onlyonce:
@@ -237,8 +245,8 @@ class AutoSignIn(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         # 站点的可选项
-        site_options = [{"title": site.get("name"), "value": site.get("id")}
-                        for site in self.sites.get_indexers()]
+        site_options = [{"title": site.name, "value": site.id}
+                        for site in Site.list_order_by_pri(self.db)]
         return [
             {
                 'component': 'VForm',
@@ -592,11 +600,6 @@ class AutoSignIn(_PluginBase):
         # 今日没数据
         if not today_history or self._clean:
             logger.info(f"今日 {today} 未{type}，开始{type}已选站点")
-            # 过滤删除的站点
-            if type == "签到":
-                self._sign_sites = [site.get("id") for site in do_sites if site]
-            if type == "登录":
-                self._login_sites = [site.get("id") for site in do_sites if site]
             if self._clean:
                 # 关闭开关
                 self._clean = False
@@ -946,30 +949,25 @@ class AutoSignIn(_PluginBase):
         site_id = event.event_data.get("site_id")
         config = self.get_config()
         if config:
-            sign_sites = config.get("sign_sites")
-            if sign_sites:
-                if isinstance(sign_sites, str):
-                    sign_sites = [sign_sites]
+            self._sign_sites = self.__remove_site_id(config.get("sign_sites") or [], site_id)
+            self._login_sites = self.__remove_site_id(config.get("login_sites") or [], site_id)
+            # 保存配置
+            self.__update_config()
 
-                # 删除对应站点
-                if site_id:
-                    sign_sites = [site for site in sign_sites if int(site) != int(site_id)]
-                else:
-                    # 清空
-                    sign_sites = []
+    def __remove_site_id(self, do_sites, site_id):
+        if do_sites:
+            if isinstance(do_sites, str):
+                do_sites = [do_sites]
 
-                # 若无站点，则停止
-                if len(sign_sites) == 0:
-                    self._enabled = False
+            # 删除对应站点
+            if site_id:
+                do_sites = [site for site in do_sites if int(site) != int(site_id)]
+            else:
+                # 清空
+                do_sites = []
 
-                # 保存配置
-                self.update_config(
-                    {
-                        "enabled": self._enabled,
-                        "notify": self._notify,
-                        "cron": self._cron,
-                        "onlyonce": self._onlyonce,
-                        "queue_cnt": self._queue_cnt,
-                        "sign_sites": sign_sites
-                    }
-                )
+            # 若无站点，则停止
+            if len(do_sites) == 0:
+                self._enabled = False
+
+        return do_sites
