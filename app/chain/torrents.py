@@ -129,7 +129,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
 
         # 刷新站点
         if not sites:
-            sites = [str(sid) for sid in (self.systemconfig.get(SystemConfigKey.RssSites) or [])]
+            sites = self.systemconfig.get(SystemConfigKey.RssSites) or []
 
         # 读取缓存
         torrents_cache = self.get_torrents()
@@ -139,7 +139,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         # 遍历站点缓存资源
         for indexer in indexers:
             # 未开启的站点不刷新
-            if sites and str(indexer.get("id")) not in sites:
+            if sites and indexer.get("id") not in sites:
                 continue
             domain = StringUtils.get_url_domain(indexer.get("domain"))
             if stype == "spider":

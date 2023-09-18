@@ -247,14 +247,14 @@ class SearchChain(ChainBase):
         """
         # 未开启的站点不搜索
         indexer_sites = []
+
         # 配置的索引站点
-        if sites:
-            config_indexers = [str(sid) for sid in sites]
-        else:
-            config_indexers = [str(sid) for sid in self.systemconfig.get(SystemConfigKey.IndexerSites) or []]
+        if not sites:
+            sites = self.systemconfig.get(SystemConfigKey.IndexerSites) or []
+
         for indexer in self.siteshelper.get_indexers():
             # 检查站点索引开关
-            if not config_indexers or str(indexer.get("id")) in config_indexers:
+            if not sites or indexer.get("id") in sites:
                 # 站点流控
                 state, msg = self.siteshelper.check(indexer.get("domain"))
                 if state:
@@ -264,6 +264,7 @@ class SearchChain(ChainBase):
         if not indexer_sites:
             logger.warn('未开启任何有效站点，无法搜索资源')
             return []
+
         # 开始进度
         self.progress.start(ProgressKey.Search)
         # 开始计时
