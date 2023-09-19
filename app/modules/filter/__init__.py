@@ -1,7 +1,7 @@
 import re
 from typing import List, Tuple, Union, Dict, Optional
 
-from app.core.context import TorrentInfo
+from app.core.context import TorrentInfo, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
@@ -9,9 +9,10 @@ from app.modules.filter.RuleParser import RuleParser
 
 
 class FilterModule(_ModuleBase):
-
     # 规则解析器
     parser: RuleParser = None
+    # 媒体信息
+    media: MediaInfo = None
 
     # 内置规则集
     rule_set: Dict[str, dict] = {
@@ -37,8 +38,13 @@ class FilterModule(_ModuleBase):
         },
         # 中字
         "CNSUB": {
-            "include": [r'[中国國繁简](/|\s|\\|\|)?[繁简英粤]|[英简繁](/|\s|\\|\|)?[中繁简]|繁體|简体|[中国國][字配]|国语|國語|中文|中字'],
-            "exclude": []
+            "include": [
+                r'[中国國繁简](/|\s|\\|\|)?[繁简英粤]|[英简繁](/|\s|\\|\|)?[中繁简]|繁體|简体|[中国國][字配]|国语|國語|中文|中字'],
+            "exclude": [],
+            # 只处理对应TMDB信息的数据
+            "tmdb": {
+                "original_language": "zh,cn"
+            }
         },
         # 特效字幕
         "SPECSUB": {
@@ -107,16 +113,19 @@ class FilterModule(_ModuleBase):
 
     def filter_torrents(self, rule_string: str,
                         torrent_list: List[TorrentInfo],
-                        season_episodes: Dict[int, list] = None) -> List[TorrentInfo]:
+                        season_episodes: Dict[int, list] = None,
+                        mediainfo: MediaInfo = None) -> List[TorrentInfo]:
         """
         过滤种子资源
         :param rule_string:  过滤规则
         :param torrent_list:  资源列表
         :param season_episodes:  季集数过滤 {season:[episodes]}
+        :param mediainfo:  媒体信息
         :return: 过滤后的资源列表，添加资源优先级
         """
         if not rule_string:
             return torrent_list
+        self.media = mediainfo
         # 返回种子列表
         ret_torrents = []
         for torrent in torrent_list:
@@ -215,6 +224,11 @@ class FilterModule(_ModuleBase):
         if not self.rule_set.get(rule_name):
             # 规则不存在
             return False
+        # TMDB规则
+        tmdb = self.rule_set[rule_name].get("tmdb")
+        # 不符合TMDB规则的直接返回True，即不过滤
+        if tmdb and not self.__match_tmdb(tmdb):
+            return True
         # 包含规则项
         includes = self.rule_set[rule_name].get("include") or []
         # 排除规则项
@@ -235,4 +249,45 @@ class FilterModule(_ModuleBase):
             if torrent.downloadvolumefactor != downloadvolumefactor:
                 # FREE规则不匹配
                 return False
+        return True
+
+    def __match_tmdb(self, tmdb: dict) -> bool:
+        """
+        判断种子是否匹配TMDB规则
+        """
+        def __get_media_value(key: str):
+            try:
+                return getattr(self.media, key)
+            except ValueError:
+                return ""
+
+        if not self.media:
+            return False
+
+        for attr, value in tmdb.items():
+            if not value:
+                continue
+            # 获取media信息的值
+            info_value = __get_media_value(attr)
+            if not info_value:
+                # 没有该值，不匹配
+                return False
+            elif attr == "production_countries":
+                # 国家信息
+                info_values = [str(val.get("iso_3166_1")).upper() for val in info_value]
+            else:
+                # media信息转化为数组
+                if isinstance(info_value, list):
+                    info_values = [str(val).upper() for val in info_value]
+                else:
+                    info_values = [str(info_value).upper()]
+            # 过滤值转化为数组
+            if value.find(",") != -1:
+                values = [str(val).upper() for val in value.split(",")]
+            else:
+                values = [str(value).upper()]
+            # 没有交集为不匹配
+            if not set(values).intersection(set(info_values)):
+                return False
+
         return True

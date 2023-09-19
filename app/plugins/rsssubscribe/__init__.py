@@ -593,7 +593,8 @@ class RssSubscribe(_PluginBase):
                     if self._filter:
                         result = self.chain.filter_torrents(
                             rule_string=filter_rule,
-                            torrent_list=[torrentinfo]
+                            torrent_list=[torrentinfo],
+                            mediainfo=mediainfo
                         )
                         if not result:
                             logger.info(f"{title} {description} 不匹配过滤规则")

@@ -512,7 +512,8 @@ class SubscribeChain(ChainBase):
                         filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules)
                     result: List[TorrentInfo] = self.filter_torrents(
                         rule_string=filter_rule,
-                        torrent_list=[torrent_info])
+                        torrent_list=[torrent_info],
+                        mediainfo=torrent_mediainfo)
                     if result is not None and not result:
                         # 不符合过滤规则
                         logger.info(f"{torrent_info.title} 不匹配当前过滤规则")

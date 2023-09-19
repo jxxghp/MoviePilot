@@ -135,7 +135,8 @@ class SearchChain(ChainBase):
             logger.info(f'开始过滤资源，当前规则：{filter_rule} ...')
             result: List[TorrentInfo] = self.filter_torrents(rule_string=filter_rule,
                                                              torrent_list=torrents,
-                                                             season_episodes=season_episodes)
+                                                             season_episodes=season_episodes,
+                                                             mediainfo=mediainfo)
             if result is not None:
                 torrents = result
             if not torrents:
