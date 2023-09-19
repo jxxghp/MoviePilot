@@ -11,6 +11,7 @@ import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from python_hosts import Hosts, HostsEntry
+from requests import Response
 
 from app.core.config import settings
 from app.log import logger
@@ -147,8 +148,8 @@ class CloudflareSpeedTest(_PluginBase):
             logger.info("正在进行CLoudflare CDN优选，请耐心等待")
             # 执行优选命令，-dd不测速
             if SystemUtils.is_windows():
-                cf_command = f'cd {self._cf_path} && CloudflareST {self._additional_args} -o {self._result_file}' + (
-                    f' -f {self._cf_ipv4}' if self._ipv4 else '') + (f' -f {self._cf_ipv6}' if self._ipv6 else '')
+                cf_command = f'cd \"{self._cf_path}\" && CloudflareST {self._additional_args} -o \"{self._result_file}\"' + (
+                    f' -f \"{self._cf_ipv4}\"' if self._ipv4 else '') + (f' -f \"{self._cf_ipv6}\"' if self._ipv6 else '')
             else:
                 cf_command = f'cd {self._cf_path} && chmod a+x {self._binary_name} && ./{self._binary_name} {self._additional_args} -o {self._result_file}' + (
                     f' -f {self._cf_ipv4}' if self._ipv4 else '') + (f' -f {self._cf_ipv6}' if self._ipv6 else '')
@@ -169,7 +170,7 @@ class CloudflareSpeedTest(_PluginBase):
 
             # 获取优选后最优ip
             if SystemUtils.is_windows():
-                powershell_command = f"powershell.exe -Command \"Get-Content {self._result_file} | Select-Object -Skip 1 -First 1 | Write-Output\""
+                powershell_command = f"powershell.exe -Command \"Get-Content \'{self._result_file}\' | Select-Object -Skip 1 -First 1 | Write-Output\""
                 logger.info(f'正在执行powershell命令 {powershell_command}')
                 best_ip = SystemUtils.execute(powershell_command)
                 best_ip = best_ip.split(',')[0]
@@ -365,8 +366,14 @@ class CloudflareSpeedTest(_PluginBase):
             if SystemUtils.is_windows():
                 with zipfile.ZipFile(f'{self._cf_path}/{cf_file_name}', 'r') as zip_ref:
                     # 解压ZIP文件中的所有文件到指定目录
-                    zip_ref.extractall('../config/plugins/CloudflareSpeedTest')
-                return True, release_version
+                    zip_ref.extractall(self._cf_path)
+                if Path(f'{self._cf_path}\\CloudflareST.exe').exists():
+                    logger.info(f"CloudflareSpeedTest安装成功，当前版本：{release_version}")
+                    return True, release_version
+                else:
+                    logger.error(f"CloudflareSpeedTest安装失败，请检查")
+                    os.removedirs(self._cf_path)
+                    return False, None
             try:
                 # 解压
                 os.system(f'{unzip_command}')
@@ -390,7 +397,8 @@ class CloudflareSpeedTest(_PluginBase):
                     return False, None
         else:
             # 如果升级失败但是有可执行文件CloudflareST，则可继续运行，反之停止
-            if Path(f'{self._cf_path}/{self._binary_name}').exists():
+            if Path(f'{self._cf_path}/{self._binary_name}').exists() or \
+                    Path(f'{self._cf_path}\\CloudflareST.exe').exists():
                 logger.warn(f"CloudflareSpeedTest安装失败，存在可执行版本，继续运行")
                 return True, None
             else:
@@ -399,7 +407,11 @@ class CloudflareSpeedTest(_PluginBase):
                 return False, None
 
     def __get_windows_cloudflarest(self, download_url, proxies):
-        response = requests.get(download_url, stream=True, proxies=proxies if proxies else None)
+        response = Response()
+        try:
+            response = requests.get(download_url, stream=True, proxies=proxies if proxies else None)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"CloudflareSpeedTest下载失败：{str(e)}")
         if response.status_code == 200:
             with open(f'{self._cf_path}\\CloudflareST_windows_amd64.zip', 'wb') as file:
                 for chunk in response.iter_content(chunk_size=8192):
