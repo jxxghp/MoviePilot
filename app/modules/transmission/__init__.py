@@ -131,7 +131,7 @@ class TransmissionModule(_ModuleBase):
                     title=torrent.name,
                     path=Path(torrent.download_dir) / torrent.name,
                     hash=torrent.hashString,
-                    tags=torrent.labels
+                    tags=",".join(torrent.labels or [])
                 ))
         elif status == TorrentStatus.DOWNLOADING:
             # 获取正在下载的任务
