@@ -1,3 +1,4 @@
+import glob
 import re
 import shutil
 import threading
@@ -601,8 +602,10 @@ class TransferChain(ChainBase):
         if not path.exists():
             return
         if path.is_file():
-            # 删除文件
-            path.unlink()
+            # 删除文件、nfo、jpg
+            files = glob.glob(f"{Path(path.parent).joinpath(str(path.name).split('.')[0])}*")
+            for file in files:
+                Path(file).unlink()
             logger.warn(f"文件 {path} 已删除")
             # 需要删除父目录
         elif str(path.parent) == str(path.root):
@@ -615,11 +618,25 @@ class TransferChain(ChainBase):
             # 删除目录
             logger.warn(f"目录 {path} 已删除")
             # 需要删除父目录
-        # 判断父目录是否为空, 为空则删除
-        for parent_path in path.parents:
-            if str(parent_path.parent) != str(path.root):
-                # 父目录非根目录，才删除父目录
-                files = SystemUtils.list_files(parent_path, settings.RMT_MEDIAEXT)
-                if not files:
-                    shutil.rmtree(parent_path)
-                    logger.warn(f"目录 {parent_path} 已删除")
+
+        # 判断当前媒体父路径下是否有媒体文件，如有则无需遍历父级
+        files = SystemUtils.list_files(path.parent, settings.RMT_MEDIAEXT)
+        if not files:
+            # 媒体库二级分类根路径
+            library_root_names = [
+                settings.LIBRARY_MOVIE_NAME or '电影',
+                settings.LIBRARY_TV_NAME or '电视剧',
+                settings.LIBRARY_ANIME_NAME or '动漫',
+            ]
+
+            # 判断父目录是否为空, 为空则删除
+            for parent_path in path.parents:
+                # 遍历父目录到媒体库二级分类根路径
+                if str(parent_path.name) in library_root_names:
+                    break
+                if str(parent_path.parent) != str(path.root):
+                    # 父目录非根目录，才删除父目录
+                    files = SystemUtils.list_files(parent_path, settings.RMT_MEDIAEXT)
+                    if not files:
+                        shutil.rmtree(parent_path)
+                        logger.warn(f"目录 {parent_path} 已删除")
