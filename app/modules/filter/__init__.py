@@ -41,7 +41,6 @@ class FilterModule(_ModuleBase):
             "include": [
                 r'[中国國繁简](/|\s|\\|\|)?[繁简英粤]|[英简繁](/|\s|\\|\|)?[中繁简]|繁體|简体|[中国國][字配]|国语|國語|中文|中字'],
             "exclude": [],
-            # 只处理对应TMDB信息的数据
             "tmdb": {
                 "original_language": "zh,cn"
             }
@@ -226,8 +225,8 @@ class FilterModule(_ModuleBase):
             return False
         # TMDB规则
         tmdb = self.rule_set[rule_name].get("tmdb")
-        # 不符合TMDB规则的直接返回True，即不过滤
-        if tmdb and not self.__match_tmdb(tmdb):
+        # 符合TMDB规则的直接返回True，即不过滤
+        if tmdb and self.__match_tmdb(tmdb):
             return True
         # 包含规则项
         includes = self.rule_set[rule_name].get("include") or []
