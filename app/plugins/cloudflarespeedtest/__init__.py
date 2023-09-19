@@ -274,7 +274,7 @@ class CloudflareSpeedTest(_PluginBase):
         if self._re_install:
             install_flag = True
             if SystemUtils.is_windows():
-                os.system(f'rd /s /q {self._cf_path}')
+                os.system(f'rd /s /q \"{self._cf_path}\"')
             else:
                 os.system(f'rm -rf {self._cf_path}')
             logger.info(f'删除CloudflareSpeedTest目录 {self._cf_path}，开始重新安装')
@@ -363,18 +363,18 @@ class CloudflareSpeedTest(_PluginBase):
 
         # 判断是否下载好安装包
         if Path(f'{self._cf_path}/{cf_file_name}').exists():
-            if SystemUtils.is_windows():
-                with zipfile.ZipFile(f'{self._cf_path}/{cf_file_name}', 'r') as zip_ref:
-                    # 解压ZIP文件中的所有文件到指定目录
-                    zip_ref.extractall(self._cf_path)
-                if Path(f'{self._cf_path}\\CloudflareST.exe').exists():
-                    logger.info(f"CloudflareSpeedTest安装成功，当前版本：{release_version}")
-                    return True, release_version
-                else:
-                    logger.error(f"CloudflareSpeedTest安装失败，请检查")
-                    os.removedirs(self._cf_path)
-                    return False, None
             try:
+                if SystemUtils.is_windows():
+                    with zipfile.ZipFile(f'{self._cf_path}/{cf_file_name}', 'r') as zip_ref:
+                        # 解压ZIP文件中的所有文件到指定目录
+                        zip_ref.extractall(self._cf_path)
+                    if Path(f'{self._cf_path}\\CloudflareST.exe').exists():
+                        logger.info(f"CloudflareSpeedTest安装成功，当前版本：{release_version}")
+                        return True, release_version
+                    else:
+                        logger.error(f"CloudflareSpeedTest安装失败，请检查")
+                        os.system(f'rd /s /q \"{self._cf_path}\"')
+                        return False, None
                 # 解压
                 os.system(f'{unzip_command}')
                 # 删除压缩包
@@ -388,12 +388,16 @@ class CloudflareSpeedTest(_PluginBase):
                     return False, None
             except Exception as err:
                 # 如果升级失败但是有可执行文件CloudflareST，则可继续运行，反之停止
-                if Path(f'{self._cf_path}/{self._binary_name}').exists():
+                if Path(f'{self._cf_path}/{self._binary_name}').exists() or \
+                        Path(f'{self._cf_path}\\CloudflareST.exe').exists():
                     logger.error(f"CloudflareSpeedTest安装失败：{str(err)}，继续使用现版本运行")
                     return True, None
                 else:
                     logger.error(f"CloudflareSpeedTest安装失败：{str(err)}，无可用版本，停止运行")
-                    os.removedirs(self._cf_path)
+                    if SystemUtils.is_windows():
+                        os.system(f'rd /s /q \"{self._cf_path}\"')
+                    else:
+                        os.removedirs(self._cf_path)
                     return False, None
         else:
             # 如果升级失败但是有可执行文件CloudflareST，则可继续运行，反之停止
@@ -403,7 +407,10 @@ class CloudflareSpeedTest(_PluginBase):
                 return True, None
             else:
                 logger.error(f"CloudflareSpeedTest安装失败，无可用版本，停止运行")
-                os.removedirs(self._cf_path)
+                if SystemUtils.is_windows():
+                    os.system(f'rd /s /q \"{self._cf_path}\"')
+                else:
+                    os.removedirs(self._cf_path)
                 return False, None
 
     def __get_windows_cloudflarest(self, download_url, proxies):
