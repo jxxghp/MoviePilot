@@ -106,7 +106,7 @@ class SystemUtils:
 
         if directory.is_file():
             return [directory]
-            
+
         if not min_filesize:
             min_filesize = 0
 
@@ -121,6 +121,36 @@ class SystemUtils:
                 files.append(path)
 
         return files
+
+    @staticmethod
+    def exits_files(directory: Path, extensions: list, min_filesize: int = 0) -> bool:
+        """
+        判断目录下是否存在指定扩展名的文件
+        :return True存在 False不存在
+        """
+
+        if not min_filesize:
+            min_filesize = 0
+
+        if not directory.exists():
+            return False
+
+        if directory.is_file():
+            return True
+
+        if not min_filesize:
+            min_filesize = 0
+
+        pattern = r".*(" + "|".join(extensions) + ")$"
+
+        # 遍历目录及子目录
+        for path in directory.rglob('**/*'):
+            if path.is_file() \
+                    and re.match(pattern, path.name, re.IGNORECASE) \
+                    and path.stat().st_size >= min_filesize * 1024 * 1024:
+                return True
+
+        return False
 
     @staticmethod
     def list_sub_files(directory: Path, extensions: list) -> List[Path]:
