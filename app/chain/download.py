@@ -225,7 +225,7 @@ class DownloadChain(ChainBase):
                 self.downloadhis.add_files(files_to_add)
 
             # 发送消息
-            self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, channel=channel)
+            self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, channel=channel, userid=userid)
             # 下载成功后处理
             self.download_added(context=context, download_dir=download_dir, torrent_path=torrent_file)
             # 广播事件
