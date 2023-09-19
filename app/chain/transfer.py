@@ -603,7 +603,7 @@ class TransferChain(ChainBase):
             return
         if path.is_file():
             # 删除文件、nfo、jpg
-            files = glob.glob(f"{Path(path.parent).joinpath(str(path.name).split('.')[0])}*")
+            files = glob.glob(f"{Path(path.parent).joinpath(path.stem)}*")
             for file in files:
                 Path(file).unlink()
             logger.warn(f"文件 {path} 已删除")
@@ -620,8 +620,7 @@ class TransferChain(ChainBase):
             # 需要删除父目录
 
         # 判断当前媒体父路径下是否有媒体文件，如有则无需遍历父级
-        files = SystemUtils.list_files(path.parent, settings.RMT_MEDIAEXT)
-        if not files:
+        if not SystemUtils.exits_files(path.parent, settings.RMT_MEDIAEXT):
             # 媒体库二级分类根路径
             library_root_names = [
                 settings.LIBRARY_MOVIE_NAME or '电影',
