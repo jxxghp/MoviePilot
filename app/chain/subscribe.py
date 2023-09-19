@@ -264,9 +264,9 @@ class SubscribeChain(ChainBase):
                 sites = None
             # 过滤规则
             if subscribe.best_version:
-                filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules2)
+                filter_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
             else:
-                filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules)
+                filter_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
             # 搜索，同时电视剧会过滤掉不需要的剧集
             contexts = self.searchchain.process(mediainfo=mediainfo,
                                                 keyword=subscribe.keyword,
@@ -507,9 +507,9 @@ class SubscribeChain(ChainBase):
                         continue
                     # 过滤规则
                     if subscribe.best_version:
-                        filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules2)
+                        filter_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
                     else:
-                        filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules)
+                        filter_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
                     result: List[TorrentInfo] = self.filter_torrents(
                         rule_string=filter_rule,
                         torrent_list=[torrent_info],

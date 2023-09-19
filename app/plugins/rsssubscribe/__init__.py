@@ -549,7 +549,7 @@ class RssSubscribe(_PluginBase):
                 logger.error(f"未获取到RSS数据：{url}")
                 return
             # 过滤规则
-            filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules)
+            filter_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
             # 解析数据
             for result in results:
                 try:

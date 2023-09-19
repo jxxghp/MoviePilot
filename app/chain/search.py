@@ -88,7 +88,7 @@ class SearchChain(ChainBase):
         :param keyword: 搜索关键词
         :param no_exists: 缺失的媒体信息
         :param sites: 站点ID列表，为空时搜索所有站点
-        :param filter_rule: 过滤规则，为空是使用默认过滤规则
+        :param filter_rule: 过滤规则，为空是使用默认搜索过滤规则
         :param area: 搜索范围，title or imdbid
         """
         logger.info(f'开始搜索资源，关键词：{keyword or mediainfo.title} ...')
@@ -130,7 +130,7 @@ class SearchChain(ChainBase):
         # 过滤种子
         if filter_rule is None:
             # 取默认过滤规则
-            filter_rule = self.systemconfig.get(SystemConfigKey.FilterRules)
+            filter_rule = self.systemconfig.get(SystemConfigKey.SearchFilterRules)
         if filter_rule:
             logger.info(f'开始过滤资源，当前规则：{filter_rule} ...')
             result: List[TorrentInfo] = self.filter_torrents(rule_string=filter_rule,
