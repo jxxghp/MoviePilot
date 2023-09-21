@@ -366,7 +366,7 @@ class RssSubscribe(_PluginBase):
                                         'component': 'VSwitch',
                                         'props': {
                                             'model': 'filter',
-                                            'label': '使用过滤规则',
+                                            'label': '使用优先级规则',
                                         }
                                     }
                                 ]
@@ -549,7 +549,10 @@ class RssSubscribe(_PluginBase):
                 logger.error(f"未获取到RSS数据：{url}")
                 return
             # 过滤规则
-            filter_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
+            filter_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules) if self._filter else ""
+            default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
+            include = self._include or default_include_exclude.get("include")
+            exclude = self._exclude or default_include_exclude.get("exclude")
             # 解析数据
             for result in results:
                 try:
@@ -561,15 +564,6 @@ class RssSubscribe(_PluginBase):
                     pubdate: datetime.datetime = result.get("pubdate")
                     # 检查是否处理过
                     if not title or title in [h.get("key") for h in history]:
-                        continue
-                    # 检查规则
-                    if self._include and not re.search(r"%s" % self._include,
-                                                       f"{title} {description}", re.IGNORECASE):
-                        logger.info(f"{title} - {description} 不符合包含规则")
-                        continue
-                    if self._exclude and re.search(r"%s" % self._exclude,
-                                                   f"{title} {description}", re.IGNORECASE):
-                        logger.info(f"{title} - {description} 不符合排除规则")
                         continue
                     # 识别媒体信息
                     meta = MetaInfo(title=title, subtitle=description)
@@ -590,15 +584,16 @@ class RssSubscribe(_PluginBase):
                         pubdate=pubdate.strftime("%Y-%m-%d %H:%M:%S") if pubdate else None,
                     )
                     # 过滤种子
-                    if self._filter:
-                        result = self.chain.filter_torrents(
-                            rule_string=filter_rule,
-                            torrent_list=[torrentinfo],
-                            mediainfo=mediainfo
-                        )
-                        if not result:
-                            logger.info(f"{title} {description} 不匹配过滤规则")
-                            continue
+                    result = self.chain.filter_torrents(
+                        rule_string=filter_rule,
+                        include=include,
+                        exclude=exclude,
+                        torrent_list=[torrentinfo],
+                        mediainfo=mediainfo
+                    )
+                    if not result:
+                        logger.info(f"{title} {description} 不匹配过滤规则")
+                        continue
                     # 查询缺失的媒体信息
                     exist_flag, no_exists = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
                     if exist_flag:
