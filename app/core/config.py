@@ -144,6 +144,8 @@ class Settings(BaseSettings):
     REFRESH_MEDIASERVER: bool = True
     # 媒体服务器同步间隔（小时）
     MEDIASERVER_SYNC_INTERVAL: int = 6
+    # 媒体服务器同步黑名单，多个媒体库名称,分割
+    MEDIASERVER_SYNC_BLACKLIST: str = None
     # EMBY服务器地址，IP:PORT
     EMBY_HOST: str = None
     # EMBY Api Key

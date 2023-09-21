@@ -64,7 +64,13 @@ class MediaServerChain(ChainBase):
             total_count = 0
             # 清空登记薄
             _dbOper.empty(server=settings.MEDIASERVER)
+            # 同步黑名单
+            sync_blacklist = settings.MEDIASERVER_SYNC_BLACKLIST.split(
+                ",") if settings.MEDIASERVER_SYNC_BLACKLIST else []
             for library in self.librarys():
+                if library.name in sync_blacklist:
+                    # 同步黑名单 跳过
+                    continue
                 logger.info(f"正在同步媒体库 {library.name} ...")
                 library_count = 0
                 for item in self.items(library.id):
