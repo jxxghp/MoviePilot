@@ -534,7 +534,7 @@ class MediaSyncDel(_PluginBase):
                         episode_num=episode_num)
 
     def __sync_del(self, media_type: str, media_name: str, media_path: str,
-                   tmdb_id: int, season_num: int, episode_num: int):
+                   tmdb_id: int, season_num: str, episode_num: str):
         """
         执行删除逻辑
         """
@@ -654,16 +654,20 @@ class MediaSyncDel(_PluginBase):
         self.save_data("history", history)
 
     def __get_transfer_his(self, media_type: str, media_name: str, media_path: str,
-                           tmdb_id: int, season_num: int, episode_num: int):
+                           tmdb_id: int, season_num: str, episode_num: str):
         """
         查询转移记录
         """
         # 季数
-        if season_num:
+        if season_num and season_num.isdigit():
             season_num = str(season_num).rjust(2, '0')
+        else:
+            season_num = None
         # 集数
-        if episode_num:
+        if episode_num and episode_num.isdigit():
             episode_num = str(episode_num).rjust(2, '0')
+        else:
+            episode_num = None
 
         # 类型
         mtype = MediaType.MOVIE if media_type in ["Movie", "MOV"] else MediaType.TV
