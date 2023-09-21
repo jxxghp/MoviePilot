@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Self, List
 
 from sqlalchemy.orm import as_declarative, declared_attr, Session
 
@@ -16,13 +16,13 @@ class Base:
             db.rollback()
             raise err
 
-    def create(self, db: Session):
+    def create(self, db: Session) -> Self:
         db.add(self)
         self.commit(db)
         return self
 
     @classmethod
-    def get(cls, db: Session, rid: int):
+    def get(cls, db: Session, rid: int) -> Self:
         return db.query(cls).filter(cls.id == rid).first()
 
     def update(self, db: Session, payload: dict):
@@ -42,7 +42,7 @@ class Base:
         Base.commit(db)
 
     @classmethod
-    def list(cls, db: Session):
+    def list(cls, db: Session) -> List[Self]:
         return db.query(cls).all()
 
     def to_dict(self):

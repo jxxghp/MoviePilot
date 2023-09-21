@@ -62,20 +62,22 @@ def transfer_history(title: str = None,
 
 @router.delete("/transfer", summary="删除转移历史记录", response_model=schemas.Response)
 def delete_transfer_history(history_in: schemas.TransferHistory,
-                            delete_file: bool = False,
+                            deletesrc: bool = False,
+                            deletedest: bool = False,
                             db: Session = Depends(get_db),
                             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     删除转移历史记录
     """
-    # 触发删除事件
-    if delete_file:
-        history = TransferHistory.get(db, history_in.id)
-        if not history:
-            return schemas.Response(success=False, msg="记录不存在")
-        # 册除文件
-        if history.dest:
-            TransferChain(db).delete_files(Path(history.dest))
+    history = TransferHistory.get(db, history_in.id)
+    if not history:
+        return schemas.Response(success=False, msg="记录不存在")
+    # 册除媒体库文件
+    if deletedest and history.dest:
+        TransferChain(db).delete_files(Path(history.dest))
+    # 删除源文件
+    if deletesrc and history.src:
+        TransferChain(db).delete_files(Path(history.src))
     # 删除记录
     TransferHistory.delete(db, history_in.id)
     return schemas.Response(success=True)
