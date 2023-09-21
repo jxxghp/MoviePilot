@@ -278,7 +278,7 @@ class Plex(metaclass=Singleton):
                 if hasattr(lib, "locations") and lib.locations:
                     for location in lib.locations:
                         if is_subpath(path, Path(location)):
-                            return lib.key, location
+                            return lib.key, str(path)
         except Exception as err:
             logger.error(f"查找媒体库出错：{err}")
         return "", ""
