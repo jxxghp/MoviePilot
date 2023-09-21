@@ -304,11 +304,11 @@ class FilterModule(_ModuleBase):
         判断种子是否符合包含与排除要求
         """
         if include:
-            if not re.search(f"{include!r}", f"{torrent.title} {torrent.description}", re.I):
+            if not re.search(fr"{include}", f"{torrent.title} {torrent.description}", re.I):
                 logger.info(f"{torrent.title} 不匹配包含规则 {include}")
                 return False
         if exclude:
-            if re.search(f"{exclude!r}", f"{torrent.title} {torrent.description}", re.I):
+            if re.search(fr"{exclude}", f"{torrent.title} {torrent.description}", re.I):
                 logger.info(f"{torrent.title} 匹配排除规则 {exclude}")
                 return False
         return True
