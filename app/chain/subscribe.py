@@ -272,7 +272,9 @@ class SubscribeChain(ChainBase):
                                                 keyword=subscribe.keyword,
                                                 no_exists=no_exists,
                                                 sites=sites,
-                                                filter_rule=filter_rule)
+                                                filter_rule=filter_rule,
+                                                include=subscribe.include,
+                                                exclude=subscribe.exclude)
             if not contexts:
                 logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
                 if meta.type == MediaType.TV:
@@ -493,13 +495,19 @@ class SubscribeChain(ChainBase):
                     if torrent_mediainfo.tmdb_id != mediainfo.tmdb_id \
                             or torrent_mediainfo.type != mediainfo.type:
                         continue
-                    # 过滤规则
+                    # 优先级规则
                     if subscribe.best_version:
                         filter_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
                     else:
                         filter_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
+                    # 包含与排除规则
+                    default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
+                    include = subscribe.include or default_include_exclude.get("include")
+                    exclude = subscribe.exclude or default_include_exclude.get("exclude")
                     result: List[TorrentInfo] = self.filter_torrents(
                         rule_string=filter_rule,
+                        include=include,
+                        exclude=exclude,
                         torrent_list=[torrent_info],
                         mediainfo=torrent_mediainfo)
                     if result is not None and not result:
@@ -552,18 +560,6 @@ class SubscribeChain(ChainBase):
                                 if torrent_meta.episode_list:
                                     logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
                                     continue
-                    # 包含
-                    if include:
-                        if not re.search(r"%s" % include,
-                                         f"{torrent_info.title} {torrent_info.description}", re.I):
-                            logger.info(f"{torrent_info.title} 不匹配包含规则 {include}")
-                            continue
-                    # 排除
-                    if exclude:
-                        if re.search(r"%s" % exclude,
-                                     f"{torrent_info.title} {torrent_info.description}", re.I):
-                            logger.info(f"{torrent_info.title} 匹配排除规则 {exclude}")
-                            continue
                     # 匹配成功
                     logger.info(f'{mediainfo.title_year} 匹配成功：{torrent_info.title}')
                     _match_context.append(context)

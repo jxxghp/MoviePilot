@@ -176,7 +176,7 @@ def ruletest(title: str,
              db: Session = Depends(get_db),
              _: schemas.TokenPayload = Depends(verify_token)):
     """
-    过滤规则测试，规则类型 1-订阅，2-洗版，3-搜索
+    优先级规则测试，规则类型 1-订阅，2-洗版，3-搜索
     """
     torrent = schemas.TorrentInfo(
         title=title,

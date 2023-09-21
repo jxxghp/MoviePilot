@@ -221,20 +221,28 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("refresh_torrents", site=site)
 
-    def filter_torrents(self, rule_string: str,
+    def filter_torrents(self,
                         torrent_list: List[TorrentInfo],
+                        rule_string: str = None,
+                        include: str = None,
+                        exclude: str = None,
                         season_episodes: Dict[int, list] = None,
                         mediainfo: MediaInfo = None) -> List[TorrentInfo]:
         """
         过滤种子资源
-        :param rule_string:  过滤规则
         :param torrent_list:  资源列表
+        :param rule_string:  优先级规则
+        :param include: 包含规则
+        :param exclude: 排除规则
         :param season_episodes:  季集数过滤 {season:[episodes]}
         :param mediainfo:  识别的媒体信息
         :return: 过滤后的资源列表，添加资源优先级
         """
-        return self.run_module("filter_torrents", rule_string=rule_string,
-                               torrent_list=torrent_list, season_episodes=season_episodes,
+        return self.run_module("filter_torrents", torrent_list=torrent_list,
+                               rule_string=rule_string,
+                               include=include,
+                               exclude=exclude,
+                               season_episodes=season_episodes,
                                mediainfo=mediainfo)
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,

@@ -110,27 +110,34 @@ class FilterModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def filter_torrents(self, rule_string: str,
+    def filter_torrents(self,
                         torrent_list: List[TorrentInfo],
+                        rule_string: str = None,
+                        include: str = None,
+                        exclude: str = None,
                         season_episodes: Dict[int, list] = None,
                         mediainfo: MediaInfo = None) -> List[TorrentInfo]:
         """
         过滤种子资源
-        :param rule_string:  过滤规则
         :param torrent_list:  资源列表
+        :param rule_string:  优先级规则
+        :param include: 包含规则
+        :param exclude: 排除规则
         :param season_episodes:  季集数过滤 {season:[episodes]}
         :param mediainfo:  媒体信息
         :return: 过滤后的资源列表，添加资源优先级
         """
-        if not rule_string:
-            return torrent_list
         self.media = mediainfo
         # 返回种子列表
         ret_torrents = []
         for torrent in torrent_list:
-            # 能命中优先级的才返回
-            if not self.__get_order(torrent, rule_string):
+            # 包含与排除规则过滤
+            if not self.__match_include_exclude_rule(torrent, include=include, exclude=exclude):
                 continue
+            # 能命中优先级的才返回
+            if rule_string:
+                if not self.__get_order(torrent, rule_string):
+                    continue
             # 季集数过滤
             if season_episodes \
                     and not self.__match_season_episodes(torrent, season_episodes):
@@ -289,4 +296,19 @@ class FilterModule(_ModuleBase):
             if not set(values).intersection(set(info_values)):
                 return False
 
+        return True
+
+    @staticmethod
+    def __match_include_exclude_rule(torrent: TorrentInfo, include: str = None, exclude: str = None) -> bool:
+        """
+        判断种子是否符合包含与排除要求
+        """
+        if include:
+            if not re.search(f"{include!r}", f"{torrent.title} {torrent.description}", re.I):
+                logger.info(f"{torrent.title} 不匹配包含规则 {include}")
+                return False
+        if exclude:
+            if re.search(f"{exclude!r}", f"{torrent.title} {torrent.description}", re.I):
+                logger.info(f"{torrent.title} 匹配排除规则 {exclude}")
+                return False
         return True
