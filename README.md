@@ -230,7 +230,7 @@ docker pull jxxghp/moviepilot:latest
 - 通过WEB进行管理，将WEB添加到手机桌面获得类App使用效果，管理界面端口：`3000`，后台API端口：`3001`。
 - 通过下载器监控或使用目录监控插件实现自动整理入库刮削（二选一）。
 - 通过微信/Telegram/Slack远程管理，其中微信/Telegram将会自动添加操作菜单（微信菜单条数有限制，部分菜单不显示），微信需要在官方页面设置回调地址，地址相对路径为：`/api/v1/message/`。
-- 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`（`3001`端口），其中`moviepilot`为设置的`API_TOKEN`。
+- 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`（`3001`端口），其中`moviepilot`为设置的`API_TOKEN`。可添加`&server=emby/plex/jellyfin`指定Webhook Server。
 - 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr（`3001`端口），可使用Overseerr/Jellyseerr浏览订阅。
 - 映射宿主机docker.sock文件到容器`/var/run/docker.sock`，以支持内建重启操作。实例：`-v /var/run/docker.sock:/var/run/docker.sock:ro`
 

@@ -12,12 +12,26 @@ class WebhookChain(ChainBase):
     Webhook处理链
     """
 
-    def message(self, body: Any, form: Any, args: Any) -> None:
+    def message(self, server: str, body: Any, form: Any, args: Any) -> None:
         """
         处理Webhook报文并发送消息
         """
         # 获取主体内容
-        event_info = self.webhook_parser(body=body, form=form, args=args)
+        if not server:
+            event_info = self.webhook_parser(body=body, form=form, args=args)
+        else:
+            if server == 'emby':
+                from app.modules.emby import EmbyModule
+                event_info = EmbyModule().webhook_parser(body=body, form=form, args=args)
+            elif server == 'plex':
+                from app.modules.plex import PlexModule
+                event_info = PlexModule().webhook_parser(body=body, form=form, args=args)
+            elif server == 'jellyfin':
+                from app.modules.jellyfin import JellyfinModule
+                event_info = JellyfinModule().webhook_parser(body=body, form=form, args=args)
+            else:
+                event_info = None
+
         if not event_info:
             return
         # 广播事件

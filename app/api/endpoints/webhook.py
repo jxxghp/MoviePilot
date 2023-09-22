@@ -11,17 +11,17 @@ from app.db import get_db
 router = APIRouter()
 
 
-def start_webhook_chain(db: Session, body: Any, form: Any, args: Any):
+def start_webhook_chain(db: Session, server: str, body: Any, form: Any, args: Any):
     """
     启动链式任务
     """
-    WebhookChain(db).message(body=body, form=form, args=args)
+    WebhookChain(db).message(server=server, body=body, form=form, args=args)
 
 
 @router.post("/", summary="Webhook消息响应", response_model=schemas.Response)
 async def webhook_message(background_tasks: BackgroundTasks,
-                          token: str, request: Request,
-                          db: Session = Depends(get_db),) -> Any:
+                          token: str, request: Request, server: str = None,
+                          db: Session = Depends(get_db), ) -> Any:
     """
     Webhook响应
     """
@@ -30,7 +30,7 @@ async def webhook_message(background_tasks: BackgroundTasks,
     body = await request.body()
     form = await request.form()
     args = request.query_params
-    background_tasks.add_task(start_webhook_chain, db, body, form, args)
+    background_tasks.add_task(start_webhook_chain, db, server, body, form, args)
     return schemas.Response(success=True)
 
 
