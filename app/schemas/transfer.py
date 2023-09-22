@@ -35,6 +35,8 @@ class TransferInfo(BaseModel):
     """
     文件转移结果信息
     """
+    # 是否成功标志
+    success: bool = True
     # 转移⼁路径
     path: Optional[Path] = None
     # 转移后路径

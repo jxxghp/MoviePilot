@@ -292,7 +292,7 @@ class DirMonitor(_PluginBase):
                     if not transferinfo:
                         logger.error("文件转移模块运行失败")
                         return
-                    if not transferinfo.target_path:
+                    if not transferinfo.success:
                         # 转移失败
                         logger.warn(f"{file_path.name} 入库失败：{transferinfo.message}")
                         # 新增转移失败历史记录

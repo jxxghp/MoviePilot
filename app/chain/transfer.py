@@ -300,7 +300,7 @@ class TransferChain(ChainBase):
                 if not transferinfo:
                     logger.error("文件转移模块运行失败")
                     return False, "文件转移模块运行失败"
-                if not transferinfo.target_path:
+                if not transferinfo.success:
                     # 转移失败
                     logger.warn(f"{file_path.name} 入库失败：{transferinfo.message}")
                     err_msgs.append(f"{file_path.name} {transferinfo.message}")
@@ -490,6 +490,7 @@ class TransferChain(ChainBase):
         src_path = Path(history.src)
         if not src_path.exists():
             return False, f"源目录不存在：{src_path}"
+        dest_path = Path(history.dest) if history.dest else None
         # 查询媒体信息
         mediainfo = self.recognize_media(mtype=mtype, tmdbid=tmdbid)
         if not mediainfo:
@@ -507,6 +508,7 @@ class TransferChain(ChainBase):
         state, errmsg = self.do_transfer(path=src_path,
                                          mediainfo=mediainfo,
                                          download_hash=history.download_hash,
+                                         target=dest_path,
                                          force=True)
         if not state:
             return False, errmsg
