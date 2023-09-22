@@ -318,29 +318,3 @@ class SearchChain(ChainBase):
         self.progress.end(ProgressKey.Search)
         # 返回
         return results
-
-    def filter_torrents_by_default_rule(self,
-                                        torrents: List[TorrentInfo]) -> List[TorrentInfo]:
-
-        # 取默认过滤规则
-        default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
-        if not default_include_exclude:
-            return torrents
-        include = default_include_exclude.get("include")
-        exclude = default_include_exclude.get("exclude")
-        new_torrents = []
-        for torrent in torrents:
-            # 包含
-            if include:
-                if not re.search(r"%s" % include,
-                                 f"{torrent.title} {torrent.description}", re.I):
-                    logger.info(f"{torrent.title} 不匹配包含规则 {include}")
-                    continue
-            # 排除
-            if exclude:
-                if re.search(r"%s" % exclude,
-                             f"{torrent.title} {torrent.description}", re.I):
-                    logger.info(f"{torrent.title} 匹配排除规则 {exclude}")
-                    continue
-            new_torrents.append(torrent)
-        return new_torrents
