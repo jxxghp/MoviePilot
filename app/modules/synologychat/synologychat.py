@@ -88,18 +88,18 @@ class SynologyChat(metaclass=Singleton):
                 if not image:
                     image = media.get_message_image()
                 if media.vote_average:
-                    caption = "%s\n%s. [%s](%s)\n_%s，%s_" % (caption,
-                                                             index,
-                                                             media.title_year,
-                                                             media.detail_link,
-                                                             f"类型：{media.type.value}",
-                                                             f"评分：{media.vote_average}")
+                    caption = "%s\n%s. <%s|%s>\n_%s，%s_" % (caption,
+                                                            index,
+                                                            media.detail_link,
+                                                            media.title_year,
+                                                            f"类型：{media.type.value}",
+                                                            f"评分：{media.vote_average}")
                 else:
-                    caption = "%s\n%s. [%s](%s)\n_%s_" % (caption,
-                                                          index,
-                                                          media.title_year,
-                                                          media.detail_link,
-                                                          f"类型：{media.type.value}")
+                    caption = "%s\n%s. <%s|%s>\n_%s_" % (caption,
+                                                         index,
+                                                         media.detail_link,
+                                                         media.title_year,
+                                                         f"类型：{media.type.value}")
                 index += 1
 
             if userid:
@@ -108,7 +108,6 @@ class SynologyChat(metaclass=Singleton):
                 userids = self.__get_bot_users()
             payload_data = {
                 "text": quote(caption),
-                "file_url": quote(image),
                 "user_ids": userids
             }
             return self.__send_request(payload_data)
@@ -143,7 +142,7 @@ class SynologyChat(metaclass=Singleton):
                 free = torrent.volume_factor
                 seeder = f"{torrent.seeders}↑"
                 description = torrent.description
-                caption = f"{caption}\n{index}.【{site_name}】[{title}]({link}) " \
+                caption = f"{caption}\n{index}.【{site_name}】<{link}|{title}> " \
                           f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}\n" \
                           f"_{description}_"
                 index += 1
