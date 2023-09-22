@@ -311,7 +311,10 @@ class SearchChain(ChainBase):
         # 返回
         return results
 
-    def filter_torrents_by_default_rule(self, torrents, keyword, mediainfo):
+    def filter_torrents_by_default_rule(self,
+                                        torrents: List[TorrentInfo],
+                                        keyword: str,
+                                        mediainfo: MediaInfo) -> List[TorrentInfo]:
         new_torrents = []
         for torrent in torrents:
             # 取默认过滤规则
