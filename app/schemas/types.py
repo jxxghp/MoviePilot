@@ -109,3 +109,4 @@ class MessageChannel(Enum):
     Wechat = "微信"
     Telegram = "Telegram"
     Slack = "Slack"
+    SynologyChat = "SynologyChat"

@@ -84,7 +84,7 @@ docker pull jxxghp/moviepilot:latest
 - **SUBSCRIBE_MODE：** 订阅模式，`rss`/`spider`，默认`spider`，`rss`模式通过定时刷新RSS来匹配订阅（RSS地址会自动获取，也可手动维护），对站点压力小，同时可设置订阅刷新周期，24小时运行，但订阅和下载通知不能过滤和显示免费，推荐使用rss模式。
 - **SUBSCRIBE_RSS_INTERVAL：** RSS订阅模式刷新时间间隔（分钟），默认`30`分钟，不能小于5分钟。
 - **SUBSCRIBE_SEARCH：** 订阅搜索，`true`/`false`，默认`false`，开启后会每隔24小时对所有订阅进行全量搜索，以补齐缺失剧集（一般情况下正常订阅即可，订阅搜索只做为兜底，会增加站点压力，不建议开启）。
-- **MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
+- **MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`/`synologychat`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
 
   - `wechat`设置项：
 
@@ -108,6 +108,11 @@ docker pull jxxghp/moviepilot:latest
     - **SLACK_OAUTH_TOKEN：** Slack Bot User OAuth Token
     - **SLACK_APP_TOKEN：** Slack App-Level Token
     - **SLACK_CHANNEL：** Slack 频道名称，默认`全体`
+  
+  - `synologychat`设置项：
+
+    - **SYNOLOGYCHAT_WEBHOOK：** 在Synology Chat中创建机器人，获取机器人`传入URL`
+    - **SYNOLOGYCHAT_TOKEN：** SynologyChat机器人`令牌`
 
 
 - **DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
@@ -229,9 +234,9 @@ docker pull jxxghp/moviepilot:latest
 - 通过CookieCloud同步快速同步站点，不需要使用的站点可在WEB管理界面中禁用，无法同步的站点可手动新增。
 - 通过WEB进行管理，将WEB添加到手机桌面获得类App使用效果，管理界面端口：`3000`，后台API端口：`3001`。
 - 通过下载器监控或使用目录监控插件实现自动整理入库刮削（二选一）。
-- 通过微信/Telegram/Slack远程管理，其中微信/Telegram将会自动添加操作菜单（微信菜单条数有限制，部分菜单不显示），微信需要在官方页面设置回调地址，地址相对路径为：`/api/v1/message/`。
+- 通过微信/Telegram/Slack/SynologyChat远程管理，其中微信/Telegram将会自动添加操作菜单（微信菜单条数有限制，部分菜单不显示）；微信需要在官方页面设置回调地址，SynologyChat需要设置机器人传入地址，地址相对路径为：`/api/v1/message/`。
 - 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`（`3001`端口），其中`moviepilot`为设置的`API_TOKEN`。
-- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr（`3001`端口），可使用Overseerr/Jellyseerr浏览订阅。
+- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr（`API服务端口`），可使用Overseerr/Jellyseerr浏览订阅。
 - 映射宿主机docker.sock文件到容器`/var/run/docker.sock`，以支持内建重启操作。实例：`-v /var/run/docker.sock:/var/run/docker.sock:ro`
 
 **注意**

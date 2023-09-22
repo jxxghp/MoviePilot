@@ -73,7 +73,9 @@ def read_switchs(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     switchs = SystemConfigOper().get(SystemConfigKey.NotificationChannels)
     if not switchs:
         for noti in NotificationType:
-            return_list.append(NotificationSwitch(mtype=noti.value, wechat=True, telegram=True, slack=True))
+            return_list.append(NotificationSwitch(mtype=noti.value, wechat=True,
+                                                  telegram=True, slack=True,
+                                                  synologychat=True))
     else:
         for switch in switchs:
             return_list.append(NotificationSwitch(**switch))
