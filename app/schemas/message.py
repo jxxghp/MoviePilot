@@ -51,3 +51,5 @@ class NotificationSwitch(BaseModel):
     telegram: Optional[bool] = False
     # Slack开关
     slack: Optional[bool] = False
+    # SynologyChat开关
+    synologychat: Optional[bool] = False

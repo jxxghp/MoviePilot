@@ -1,11 +1,15 @@
+import random
 from typing import Optional, List
+
+from cachetools import cached, TTLCache
 
 from app import schemas
 from app.chain import ChainBase
 from app.schemas import MediaType
+from app.utils.singleton import Singleton
 
 
-class TmdbChain(ChainBase):
+class TmdbChain(ChainBase, metaclass=Singleton):
     """
     TheMovieDB处理链
     """
@@ -106,3 +110,17 @@ class TmdbChain(ChainBase):
         :param page:  页码
         """
         return self.run_module("person_credits", person_id=person_id, page=page)
+
+    @cached(cache=TTLCache(maxsize=1, ttl=3600))
+    def get_random_wallpager(self):
+        """
+        获取随机壁纸，缓存1个小时
+        """
+        infos = self.tmdb_trending()
+        if infos:
+            # 随机一个电影
+            while True:
+                info = random.choice(infos)
+                if info and info.get("backdrop_path"):
+                    return f"https://image.tmdb.org/t/p/original{info.get('backdrop_path')}"
+        return None

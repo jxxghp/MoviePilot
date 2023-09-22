@@ -43,9 +43,13 @@ class FileTransferModule(_ModuleBase):
         # 获取目标路径
         if not target:
             target = self.get_target_path(in_path=path)
+        else:
+            target = self.get_library_path(target)
         if not target:
             logger.error("未找到媒体库目录，无法转移文件")
-            return TransferInfo(message="未找到媒体库目录，无法转移文件")
+            return TransferInfo(success=False,
+                                path=path,
+                                message="未找到媒体库目录，无法转移文件")
         # 转移
         return self.transfer_media(in_path=path,
                                    in_meta=meta,
@@ -316,9 +320,11 @@ class FileTransferModule(_ModuleBase):
                                            over_flag=over_flag)
 
     @staticmethod
-    def __get_library_dir(mediainfo: MediaInfo, target_dir: Path) -> Path:
+    def __get_dest_dir(mediainfo: MediaInfo, target_dir: Path) -> Path:
         """
         根据设置并装媒体库目录
+        :param mediainfo: 媒体信息
+        :target_dir: 媒体库根目录
         """
         if mediainfo.type == MediaType.MOVIE:
             # 电影
@@ -355,19 +361,23 @@ class FileTransferModule(_ModuleBase):
         :param in_path: 转移的路径，可能是一个文件也可以是一个目录
         :param in_meta：预识别元数据
         :param mediainfo: 媒体信息
-        :param target_dir: 目的文件夹，非空的转移到该文件夹，为空时则按类型转移到配置文件中的媒体库文件夹
+        :param target_dir: 媒体库根目录
         :param transfer_type: 文件转移方式
         :return: TransferInfo、错误信息
         """
         # 检查目录路径
         if not in_path.exists():
-            return TransferInfo(message=f"{in_path} 路径不存在")
+            return TransferInfo(success=False,
+                                path=in_path,
+                                message=f"{in_path} 路径不存在")
 
         if not target_dir.exists():
-            return TransferInfo(message=f"{target_dir} 目标路径不存在")
+            return TransferInfo(success=False,
+                                path=in_path,
+                                message=f"{target_dir} 目标路径不存在")
 
-        # 媒体库目录
-        target_dir = self.__get_library_dir(mediainfo=mediainfo, target_dir=target_dir)
+        # 媒体库目的目录
+        target_dir = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_dir)
 
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \
@@ -393,11 +403,16 @@ class FileTransferModule(_ModuleBase):
                                           transfer_type=transfer_type)
             if retcode != 0:
                 logger.error(f"文件夹 {in_path} 转移失败，错误码：{retcode}")
-                return TransferInfo(message=f"文件夹 {in_path} 转移失败，错误码：{retcode}")
+                return TransferInfo(success=False,
+                                    message=f"文件夹 {in_path} 转移失败，错误码：{retcode}",
+                                    path=in_path,
+                                    target_path=new_path,
+                                    is_bluray=bluray_flag)
 
             logger.info(f"文件夹 {in_path} 转移成功")
             # 返回转移后的路径
-            return TransferInfo(path=in_path,
+            return TransferInfo(success=True,
+                                path=in_path,
                                 target_path=new_path,
                                 total_size=new_path.stat().st_size,
                                 is_bluray=bluray_flag)
@@ -440,11 +455,15 @@ class FileTransferModule(_ModuleBase):
                                            over_flag=overflag)
             if retcode != 0:
                 logger.error(f"文件 {in_path} 转移失败，错误码：{retcode}")
-                return TransferInfo(message=f"文件 {in_path.name} 转移失败，错误码：{retcode}",
+                return TransferInfo(success=False,
+                                    message=f"文件 {in_path.name} 转移失败，错误码：{retcode}",
+                                    path=in_path,
+                                    target_path=new_file,
                                     fail_list=[str(in_path)])
 
             logger.info(f"文件 {in_path} 转移成功")
-            return TransferInfo(path=in_path,
+            return TransferInfo(success=True,
+                                path=in_path,
                                 target_path=new_file,
                                 file_count=1,
                                 total_size=new_file.stat().st_size,
@@ -515,6 +534,28 @@ class FileTransferModule(_ModuleBase):
             return Path(render_str)
 
     @staticmethod
+    def get_library_path(path: Path):
+        """
+        根据目录查询其所在的媒体库目录
+        """
+        if not path:
+            return None
+        if not settings.LIBRARY_PATHS:
+            return None
+        # 目的路径，多路径以,分隔
+        dest_paths = settings.LIBRARY_PATHS
+        if len(dest_paths) == 1:
+            return dest_paths[0]
+        for libpath in dest_paths:
+            try:
+                if path.is_relative_to(libpath):
+                    return libpath
+            except Exception as e:
+                logger.debug(f"计算媒体库路径时出错：{e}")
+                continue
+        return None
+
+    @staticmethod
     def get_target_path(in_path: Path = None) -> Optional[Path]:
         """
         计算一个最好的目的目录，有in_path时找与in_path同路径的，没有in_path时，顺序查找1个符合大小要求的，没有in_path和size时，返回第1个
@@ -533,7 +574,7 @@ class FileTransferModule(_ModuleBase):
         if in_path:
             for path in dest_paths:
                 try:
-                    relative = Path(in_path).relative_to(path).as_posix()
+                    relative = in_path.relative_to(path).as_posix()
                     if len(relative) > max_length:
                         max_length = len(relative)
                         target_path = path
@@ -569,7 +610,7 @@ class FileTransferModule(_ModuleBase):
             if not target_dir:
                 continue
             # 媒体分类路径
-            target_dir = self.__get_library_dir(mediainfo=mediainfo, target_dir=target_dir)
+            target_dir = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_dir)
             # 重命名格式
             rename_format = settings.TV_RENAME_FORMAT \
                 if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT

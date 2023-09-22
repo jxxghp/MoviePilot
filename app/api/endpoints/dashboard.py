@@ -64,13 +64,16 @@ def downloader(db: Session = Depends(get_db),
     """
     transfer_info = DashboardChain(db).downloader_info()
     free_space = SystemUtils.free_space(Path(settings.DOWNLOAD_PATH))
-    return schemas.DownloaderInfo(
-        download_speed=transfer_info.download_speed,
-        upload_speed=transfer_info.upload_speed,
-        download_size=transfer_info.download_size,
-        upload_size=transfer_info.upload_size,
-        free_space=free_space
-    )
+    if transfer_info:
+        return schemas.DownloaderInfo(
+            download_speed=transfer_info.download_speed,
+            upload_speed=transfer_info.upload_speed,
+            download_size=transfer_info.download_size,
+            upload_size=transfer_info.upload_size,
+            free_space=free_space
+        )
+    else:
+        return schemas.DownloaderInfo()
 
 
 @router.get("/schedule", summary="后台服务", response_model=List[schemas.ScheduleInfo])

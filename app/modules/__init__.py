@@ -58,6 +58,8 @@ def checkMessage(channel_type: MessageChannel):
                                 return None
                             if channel_type == MessageChannel.Slack and not switch.get("slack"):
                                 return None
+                            if channel_type == MessageChannel.SynologyChat and not switch.get("synologychat"):
+                                return None
                 return func(self, message, *args, **kwargs)
 
         return wrapper

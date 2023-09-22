@@ -106,6 +106,10 @@ class Settings(BaseSettings):
     SLACK_APP_TOKEN: str = ""
     # Slack 频道名称
     SLACK_CHANNEL: str = ""
+    # SynologyChat Webhook
+    SYNOLOGYCHAT_WEBHOOK: str = ""
+    # SynologyChat Token
+    SYNOLOGYCHAT_TOKEN: str = ""
     # 下载器 qbittorrent/transmission
     DOWNLOADER: str = "qbittorrent"
     # 下载器监控开关

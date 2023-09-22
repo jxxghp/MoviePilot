@@ -84,20 +84,25 @@ class CloudflareSpeedTest(_PluginBase):
         if self.get_state() or self._onlyonce:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
 
-            if self.get_state() and self._cron:
-                logger.info(f"Cloudflare CDN优选服务启动，周期：{self._cron}")
-                self._scheduler.add_job(func=self.__cloudflareSpeedTest,
-                                        trigger=CronTrigger.from_crontab(self._cron),
-                                        name="Cloudflare优选")
+            try:
+                if self.get_state() and self._cron:
+                    logger.info(f"Cloudflare CDN优选服务启动，周期：{self._cron}")
+                    self._scheduler.add_job(func=self.__cloudflareSpeedTest,
+                                            trigger=CronTrigger.from_crontab(self._cron),
+                                            name="Cloudflare优选")
 
-            if self._onlyonce:
-                logger.info(f"Cloudflare CDN优选服务启动，立即运行一次")
-                self._scheduler.add_job(func=self.__cloudflareSpeedTest, trigger='date',
-                                        run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
-                                        name="Cloudflare优选")
-                # 关闭一次性开关
-                self._onlyonce = False
-                self.__update_config()
+                if self._onlyonce:
+                    logger.info(f"Cloudflare CDN优选服务启动，立即运行一次")
+                    self._scheduler.add_job(func=self.__cloudflareSpeedTest, trigger='date',
+                                            run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+                                            name="Cloudflare优选")
+                    # 关闭一次性开关
+                    self._onlyonce = False
+                    self.__update_config()
+            except Exception as err:
+                logger.error(f"Cloudflare CDN优选服务出错：{str(err)}")
+                self.systemmessage.put(f"Cloudflare CDN优选服务出错：{str(err)}")
+                return
 
             # 启动任务
             if self._scheduler.get_jobs():

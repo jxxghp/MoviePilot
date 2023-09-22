@@ -731,20 +731,34 @@ class TorrentRemover(_PluginBase):
             remove_torrents.append(item)
         # 处理辅种
         if self._samedata and remove_torrents:
+            remove_ids = [t.get("id") for t in remove_torrents]
             remove_torrents_plus = []
             for remove_torrent in remove_torrents:
                 name = remove_torrent.get("name")
                 size = remove_torrent.get("size")
                 for torrent in torrents:
                     if downloader == "qbittorrent":
-                        item_plus = self.__get_qb_torrent(torrent)
+                        plus_id = torrent.hash
+                        plus_name = torrent.name
+                        plus_size = torrent.size
+                        plus_site = StringUtils.get_url_sld(torrent.tracker)
                     else:
-                        item_plus = self.__get_tr_torrent(torrent)
-                    if not item_plus:
-                        continue
-                    if item_plus.get("name") == name \
-                            and item_plus.get("size") == size \
-                            and item_plus.get("id") not in [t.get("id") for t in remove_torrents]:
-                        remove_torrents_plus.append(item_plus)
-            remove_torrents.extend(remove_torrents_plus)
+                        plus_id = torrent.hashString
+                        plus_name = torrent.name
+                        plus_size = torrent.total_size
+                        plus_site = torrent.trackers[0].get("sitename") if torrent.trackers else ""
+                    # 比对名称和大小
+                    if plus_name == name \
+                            and plus_size == size \
+                            and plus_id not in remove_ids:
+                        remove_torrents_plus.append(
+                            {
+                                "id": plus_id,
+                                "name": plus_name,
+                                "site": plus_site,
+                                "size": plus_size
+                            }
+                        )
+            if remove_torrents_plus:
+                remove_torrents.extend(remove_torrents_plus)
         return remove_torrents
