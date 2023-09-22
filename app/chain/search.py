@@ -141,10 +141,13 @@ class SearchChain(ChainBase):
             if result is not None:
                 torrents = result
             if not torrents:
-                logger.warn(f'{keyword or mediainfo.title} 没有符合过滤条件的资源')
+                logger.warn(f'{keyword or mediainfo.title} 没有符合优先级规则的资源')
                 return []
         # 使用默认过滤规则再次过滤
-        torrents = self.filter_torrents_by_default_rule(torrents, keyword, mediainfo)
+        torrents = self.filter_torrents_by_default_rule(torrents)
+        if not torrents:
+            logger.warn(f'{keyword or mediainfo.title} 没有符合默认过滤规则的资源')
+            return []
         # 匹配的资源
         _match_torrents = []
         # 总数
@@ -312,15 +315,16 @@ class SearchChain(ChainBase):
         return results
 
     def filter_torrents_by_default_rule(self,
-                                        torrents: List[TorrentInfo],
-                                        keyword: str,
-                                        mediainfo: MediaInfo) -> List[TorrentInfo]:
+                                        torrents: List[TorrentInfo]) -> List[TorrentInfo]:
+
+        # 取默认过滤规则
+        default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
+        if not default_include_exclude:
+            return torrents
+        include = default_include_exclude.get("include")
+        exclude = default_include_exclude.get("exclude")
         new_torrents = []
         for torrent in torrents:
-            # 取默认过滤规则
-            default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
-            include = default_include_exclude.get("include")
-            exclude = default_include_exclude.get("exclude")
             # 包含
             if include:
                 if not re.search(r"%s" % include,
@@ -334,7 +338,4 @@ class SearchChain(ChainBase):
                     logger.info(f"{torrent.title} 匹配排除规则 {exclude}")
                     continue
             new_torrents.append(torrent)
-        if not new_torrents:
-            logger.warn(f'{keyword or mediainfo.title} 没有符合过滤条件的资源')
-            return []
         return new_torrents

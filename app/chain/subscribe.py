@@ -285,22 +285,6 @@ class SubscribeChain(ChainBase):
                 torrent_meta = context.meta_info
                 torrent_info = context.torrent_info
                 torrent_mediainfo = context.media_info
-                # 包含与排除规则
-                default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
-                include = subscribe.include or default_include_exclude.get("include")
-                exclude = subscribe.exclude or default_include_exclude.get("exclude")
-                # 包含
-                if include:
-                    if not re.search(r"%s" % include,
-                                     f"{torrent_info.title} {torrent_info.description}", re.I):
-                        logger.info(f"{torrent_info.title} 不匹配包含规则 {include}")
-                        continue
-                # 排除
-                if exclude:
-                    if re.search(r"%s" % exclude,
-                                 f"{torrent_info.title} {torrent_info.description}", re.I):
-                        logger.info(f"{torrent_info.title} 匹配排除规则 {exclude}")
-                        continue
                 # 非洗版
                 if not subscribe.best_version:
                     # 如果是电视剧过滤掉已经下载的集数
@@ -493,6 +477,10 @@ class SubscribeChain(ChainBase):
                     }
                 else:
                     no_exists = {}
+            # 包含与排除规则
+            default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
+            include = subscribe.include or default_include_exclude.get("include")
+            exclude = subscribe.exclude or default_include_exclude.get("exclude")
             # 遍历缓存种子
             _match_context = []
             for domain, contexts in torrents.items():
@@ -564,10 +552,6 @@ class SubscribeChain(ChainBase):
                                 if torrent_meta.episode_list:
                                     logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
                                     continue
-                    # 包含与排除规则
-                    default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
-                    include = subscribe.include or default_include_exclude.get("include")
-                    exclude = subscribe.exclude or default_include_exclude.get("exclude")
                     # 包含
                     if include:
                         if not re.search(r"%s" % include,
