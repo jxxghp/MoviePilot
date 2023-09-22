@@ -2,7 +2,6 @@ import datetime
 import json
 import os
 import re
-import shutil
 import time
 from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional
@@ -10,11 +9,10 @@ from typing import List, Tuple, Dict, Any, Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.event import eventmanager, Event
-from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.transferhistory import TransferHistory
-from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
 from app.modules.emby import Emby
 from app.modules.jellyfin import Jellyfin
@@ -23,7 +21,6 @@ from app.modules.themoviedb.tmdbv3api import Episode
 from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
 from app.schemas.types import NotificationType, EventType, MediaType
-from app.utils.path_utils import PathUtils
 
 
 class MediaSyncDel(_PluginBase):
@@ -58,14 +55,16 @@ class MediaSyncDel(_PluginBase):
     _del_source = False
     _exclude_path = None
     _library_path = None
+    _transferchain = None
     _transferhis = None
     _downloadhis = None
     qb = None
     tr = None
 
     def init_plugin(self, config: dict = None):
-        self._transferhis = TransferHistoryOper(self.db)
-        self._downloadhis = DownloadHistoryOper(self.db)
+        self._transferchain = TransferChain(self.db)
+        self._transferhis = self._transferchain.transferhis
+        self._downloadhis = self._transferchain.downloadhis
         self.episode = Episode()
         self.qb = Qbittorrent()
         self.tr = Transmission()
@@ -587,10 +586,7 @@ class MediaSyncDel(_PluginBase):
             if self._del_source:
                 # 1、直接删除源文件
                 if transferhis.src and Path(transferhis.src).suffix in settings.RMT_MEDIAEXT:
-                    source_name = os.path.basename(transferhis.src)
-                    source_path = str(transferhis.src).replace(source_name, "")
-                    self.delete_media_file(filedir=source_path,
-                                           filename=source_name)
+                    self._transferchain.delete_files(Path(transferhis.src))
                     if transferhis.download_hash:
                         try:
                             # 2、判断种子是否被删除完
@@ -829,10 +825,7 @@ class MediaSyncDel(_PluginBase):
                 if self._del_source:
                     # 1、直接删除源文件
                     if transferhis.src and Path(transferhis.src).suffix in settings.RMT_MEDIAEXT:
-                        source_name = os.path.basename(transferhis.src)
-                        source_path = str(transferhis.src).replace(source_name, "")
-                        self.delete_media_file(filedir=source_path,
-                                               filename=source_name)
+                        self._transferchain.delete_files(Path(transferhis.src))
                         if transferhis.download_hash:
                             try:
                                 # 2、判断种子是否被删除完
@@ -1190,42 +1183,6 @@ class MediaSyncDel(_PluginBase):
             del_medias.append(media)
 
         return del_medias
-
-    @staticmethod
-    def delete_media_file(filedir: str, filename: str):
-        """
-        删除媒体文件，空目录也会被删除
-        """
-        filedir = os.path.normpath(filedir).replace("\\", "/")
-        file = os.path.join(filedir, filename)
-        try:
-            if not os.path.exists(file):
-                return False, f"{file} 不存在"
-            os.remove(file)
-            nfoname = f"{os.path.splitext(filename)[0]}.nfo"
-            nfofile = os.path.join(filedir, nfoname)
-            if os.path.exists(nfofile):
-                os.remove(nfofile)
-            # 检查空目录并删除
-            if re.findall(r"^S\d{2}|^Season", os.path.basename(filedir), re.I):
-                # 当前是季文件夹，判断并删除
-                seaon_dir = filedir
-                if seaon_dir.count('/') > 1 and not PathUtils.get_dir_files(seaon_dir, exts=settings.RMT_MEDIAEXT):
-                    shutil.rmtree(seaon_dir)
-                # 媒体文件夹
-                media_dir = os.path.dirname(seaon_dir)
-            else:
-                media_dir = filedir
-            # 检查并删除媒体文件夹，非根目录且目录大于二级，且没有媒体文件时才会删除
-            if media_dir != '/' \
-                    and media_dir.count('/') > 1 \
-                    and not re.search(r'[a-zA-Z]:/$', media_dir) \
-                    and not PathUtils.get_dir_files(media_dir, exts=settings.RMT_MEDIAEXT):
-                shutil.rmtree(media_dir)
-            return True, f"{file} 删除成功"
-        except Exception as e:
-            logger.error("删除源文件失败：%s" % str(e))
-            return True, f"{file} 删除失败"
 
     def get_state(self):
         return self._enabled
