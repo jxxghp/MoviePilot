@@ -1,4 +1,5 @@
 import pickle
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict
@@ -129,7 +130,7 @@ class SearchChain(ChainBase):
             return []
         # 过滤种子
         if filter_rule is None:
-            # 取默认过滤规则
+            # 取搜索优先级规则
             filter_rule = self.systemconfig.get(SystemConfigKey.SearchFilterRules)
         if filter_rule:
             logger.info(f'开始过滤资源，当前规则：{filter_rule} ...')
@@ -142,6 +143,8 @@ class SearchChain(ChainBase):
             if not torrents:
                 logger.warn(f'{keyword or mediainfo.title} 没有符合过滤条件的资源')
                 return []
+        # 使用默认过滤规则再次过滤
+        torrents = self.filter_torrents_by_default_rule(torrents, keyword, mediainfo)
         # 匹配的资源
         _match_torrents = []
         # 总数
@@ -307,3 +310,28 @@ class SearchChain(ChainBase):
         self.progress.end(ProgressKey.Search)
         # 返回
         return results
+
+    def filter_torrents_by_default_rule(self, torrents, keyword, mediainfo):
+        new_torrents = []
+        for torrent in torrents:
+            # 取默认过滤规则
+            default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
+            include = default_include_exclude.get("include")
+            exclude = default_include_exclude.get("exclude")
+            # 包含
+            if include:
+                if not re.search(r"%s" % include,
+                                 f"{torrent.title} {torrent.description}", re.I):
+                    logger.info(f"{torrent.title} 不匹配包含规则 {include}")
+                    continue
+            # 排除
+            if exclude:
+                if re.search(r"%s" % exclude,
+                             f"{torrent.title} {torrent.description}", re.I):
+                    logger.info(f"{torrent.title} 匹配排除规则 {exclude}")
+                    continue
+            new_torrents.append(torrent)
+        if not new_torrents:
+            logger.warn(f'{keyword or mediainfo.title} 没有符合过滤条件的资源')
+            return []
+        return new_torrents
