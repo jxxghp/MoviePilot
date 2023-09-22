@@ -52,7 +52,7 @@ class Telegram(metaclass=Singleton):
                 定义线程函数来运行 infinity_polling
                 """
                 try:
-                    _bot.infinity_polling(long_polling_timeout=10)
+                    _bot.infinity_polling(long_polling_timeout=30)
                 except Exception as err:
                     logger.error(f"Telegram消息接收服务异常：{err}")
 
