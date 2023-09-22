@@ -1,4 +1,3 @@
-import random
 from datetime import timedelta
 from typing import Any
 
@@ -15,7 +14,7 @@ from app.core.security import get_password_hash
 from app.db import get_db
 from app.db.models.user import User
 from app.log import logger
-from app.utils.http import RequestUtils
+from app.utils.web import WebUtils
 
 router = APIRouter()
 
@@ -67,21 +66,10 @@ def bing_wallpaper() -> Any:
     """
     获取Bing每日壁纸
     """
-    url = "https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1"
-    try:
-        resp = RequestUtils(timeout=5).get_res(url)
-    except Exception as err:
-        print(str(err))
-        return schemas.Response(success=False)
-    if resp and resp.status_code == 200:
-        try:
-            result = resp.json()
-            if isinstance(result, dict):
-                for image in result.get('images') or []:
-                    return schemas.Response(success=False,
-                                            message=f"https://cn.bing.com{image.get('url')}" if 'url' in image else '')
-        except Exception as err:
-            print(str(err))
+    url = WebUtils.get_bing_wallpaper()
+    if url:
+        return schemas.Response(success=False,
+                                message=url)
     return schemas.Response(success=False)
 
 
@@ -90,14 +78,10 @@ def tmdb_wallpaper(db: Session = Depends(get_db)) -> Any:
     """
     获取TMDB电影海报
     """
-    infos = TmdbChain(db).tmdb_trending()
-    if infos:
-        # 随机一个电影
-        while True:
-            info = random.choice(infos)
-            if info and info.get("backdrop_path"):
-                return schemas.Response(
-                    success=True,
-                    message=f"https://image.tmdb.org/t/p/original{info.get('backdrop_path')}"
-                )
+    wallpager = TmdbChain(db).get_random_wallpager()
+    if wallpager:
+        return schemas.Response(
+            success=True,
+            message=wallpager
+        )
     return schemas.Response(success=False)

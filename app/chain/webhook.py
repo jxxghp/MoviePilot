@@ -4,7 +4,7 @@ from typing import Any
 from app.chain import ChainBase
 from app.schemas import Notification
 from app.schemas.types import EventType, MediaImageType, MediaType, NotificationType
-from app.utils.http import WebUtils
+from app.utils.web import WebUtils
 
 
 class WebhookChain(ChainBase):
