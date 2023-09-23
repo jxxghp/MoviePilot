@@ -262,16 +262,25 @@ class SubscribeChain(ChainBase):
                 sites = json.loads(subscribe.sites)
             else:
                 sites = None
-            # 过滤规则
+            # 优先级过滤规则
             if subscribe.best_version:
-                filter_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
+                priority_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
             else:
-                filter_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
+                priority_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
+            # 默认过滤规则
+            if subscribe.include or subscribe.exclude:
+                filter_rule = {
+                    "include": subscribe.include,
+                    "exclude": subscribe.exclude
+                }
+            else:
+                filter_rule = self.systemconfig.get(SystemConfigKey.DefaultFilterRules)
             # 搜索，同时电视剧会过滤掉不需要的剧集
             contexts = self.searchchain.process(mediainfo=mediainfo,
                                                 keyword=subscribe.keyword,
                                                 no_exists=no_exists,
                                                 sites=sites,
+                                                priority_rule=priority_rule,
                                                 filter_rule=filter_rule)
             if not contexts:
                 logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
@@ -477,10 +486,10 @@ class SubscribeChain(ChainBase):
                     }
                 else:
                     no_exists = {}
-            # 包含与排除规则
-            default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
-            include = subscribe.include or default_include_exclude.get("include")
-            exclude = subscribe.exclude or default_include_exclude.get("exclude")
+            # 默认过滤规则
+            default_filter = self.systemconfig.get(SystemConfigKey.DefaultFilterRules) or {}
+            include = subscribe.include or default_filter.get("include")
+            exclude = subscribe.exclude or default_filter.get("exclude")
             # 遍历缓存种子
             _match_context = []
             for domain, contexts in torrents.items():
@@ -493,7 +502,7 @@ class SubscribeChain(ChainBase):
                     if torrent_mediainfo.tmdb_id != mediainfo.tmdb_id \
                             or torrent_mediainfo.type != mediainfo.type:
                         continue
-                    # 过滤规则
+                    # 优先级过滤规则
                     if subscribe.best_version:
                         filter_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
                     else:

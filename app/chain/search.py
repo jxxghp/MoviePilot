@@ -81,7 +81,8 @@ class SearchChain(ChainBase):
                 keyword: str = None,
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
                 sites: List[int] = None,
-                filter_rule: str = None,
+                priority_rule: str = None,
+                filter_rule: Dict[str, str] = None,
                 area: str = "title") -> List[Context]:
         """
         根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
@@ -89,7 +90,8 @@ class SearchChain(ChainBase):
         :param keyword: 搜索关键词
         :param no_exists: 缺失的媒体信息
         :param sites: 站点ID列表，为空时搜索所有站点
-        :param filter_rule: 过滤规则，为空是使用默认搜索过滤规则
+        :param priority_rule: 优先级规则，为空时使用搜索优先级规则
+        :param filter_rule: 过滤规则，为空是使用默认过滤规则
         :param area: 搜索范围，title or imdbid
         """
         logger.info(f'开始搜索资源，关键词：{keyword or mediainfo.title} ...')
@@ -129,12 +131,12 @@ class SearchChain(ChainBase):
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
             return []
         # 过滤种子
-        if filter_rule is None:
+        if priority_rule is None:
             # 取搜索优先级规则
-            filter_rule = self.systemconfig.get(SystemConfigKey.SearchFilterRules)
-        if filter_rule:
-            logger.info(f'开始过滤资源，当前规则：{filter_rule} ...')
-            result: List[TorrentInfo] = self.filter_torrents(rule_string=filter_rule,
+            priority_rule = self.systemconfig.get(SystemConfigKey.SearchFilterRules)
+        if priority_rule:
+            logger.info(f'开始过滤资源，当前规则：{priority_rule} ...')
+            result: List[TorrentInfo] = self.filter_torrents(rule_string=priority_rule,
                                                              torrent_list=torrents,
                                                              season_episodes=season_episodes,
                                                              mediainfo=mediainfo)
@@ -144,9 +146,10 @@ class SearchChain(ChainBase):
                 logger.warn(f'{keyword or mediainfo.title} 没有符合优先级规则的资源')
                 return []
         # 使用默认过滤规则再次过滤
-        torrents = self.filter_torrents_by_default_rule(torrents)
+        torrents = self.filter_torrents_by_rule(torrents=torrents,
+                                                filter_rule=filter_rule)
         if not torrents:
-            logger.warn(f'{keyword or mediainfo.title} 没有符合默认过滤规则的资源')
+            logger.warn(f'{keyword or mediainfo.title} 没有符合过滤规则的资源')
             return []
         # 匹配的资源
         _match_torrents = []
@@ -314,28 +317,43 @@ class SearchChain(ChainBase):
         # 返回
         return results
 
-    def filter_torrents_by_default_rule(self,
-                                        torrents: List[TorrentInfo]) -> List[TorrentInfo]:
+    def filter_torrents_by_rule(self,
+                                torrents: List[TorrentInfo],
+                                filter_rule: Dict[str, str] = None
+                                ) -> List[TorrentInfo]:
+        """
+        使用过滤规则过滤种子
+        :param torrents: 种子列表
+        :param filter_rule: 过滤规则
+        """
 
         # 取默认过滤规则
-        default_include_exclude = self.systemconfig.get(SystemConfigKey.DefaultIncludeExcludeFilter) or {}
-        if not default_include_exclude:
+        if not filter_rule:
+            filter_rule = self.systemconfig.get(SystemConfigKey.DefaultFilterRules)
+        if not filter_rule:
             return torrents
-        include = default_include_exclude.get("include")
-        exclude = default_include_exclude.get("exclude")
-        new_torrents = []
-        for torrent in torrents:
+        # 包含
+        include = filter_rule.get("include")
+        # 排除
+        exclude = filter_rule.get("exclude")
+
+        def __filter_torrent(t: TorrentInfo) -> bool:
+            """
+            过滤种子
+            """
             # 包含
             if include:
                 if not re.search(r"%s" % include,
-                                 f"{torrent.title} {torrent.description}", re.I):
-                    logger.info(f"{torrent.title} 不匹配包含规则 {include}")
-                    continue
+                                 f"{t.title} {t.description}", re.I):
+                    logger.info(f"{t.title} 不匹配包含规则 {include}")
+                    return False
             # 排除
             if exclude:
                 if re.search(r"%s" % exclude,
-                             f"{torrent.title} {torrent.description}", re.I):
-                    logger.info(f"{torrent.title} 匹配排除规则 {exclude}")
-                    continue
-            new_torrents.append(torrent)
-        return new_torrents
+                             f"{t.title} {t.description}", re.I):
+                    logger.info(f"{t.title} 匹配排除规则 {exclude}")
+                    return False
+            return True
+
+        # 使用默认过滤规则再次过滤
+        return list(filter(lambda t: __filter_torrent(t), torrents))

@@ -66,8 +66,8 @@ class SystemConfigKey(Enum):
     SubscribeFilterRules = "SubscribeFilterRules"
     # 洗版规则
     BestVersionFilterRules = "BestVersionFilterRules"
-    # 默认包含与排除规则
-    DefaultIncludeExcludeFilter = "DefaultIncludeExcludeFilter"
+    # 默认过滤规则
+    DefaultFilterRules = "DefaultFilterRules"
     # 转移屏蔽词
     TransferExcludeWords = "TransferExcludeWords"
 
