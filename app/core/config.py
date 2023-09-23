@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     AUTH_SITE: str = ""
     # 交互搜索自动下载用户ID，使用,分割
     AUTO_DOWNLOAD_USER: str = None
-    # 消息通知渠道 telegram/wechat/slack
+    # 消息通知渠道 telegram/wechat/slack，多个通知渠道用,分隔
     MESSAGER: str = "telegram"
     # WeChat企业ID
     WECHAT_CORPID: str = None
@@ -142,7 +142,7 @@ class Settings(BaseSettings):
     DOWNLOAD_CATEGORY: bool = False
     # 下载站点字幕
     DOWNLOAD_SUBTITLE: bool = True
-    # 媒体服务器 emby/jellyfin/plex
+    # 媒体服务器 emby/jellyfin/plex，多个媒体服务器,分割
     MEDIASERVER: str = "emby"
     # 入库刷新媒体库
     REFRESH_MEDIASERVER: bool = True

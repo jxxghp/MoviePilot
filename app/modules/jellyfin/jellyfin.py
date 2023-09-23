@@ -387,7 +387,7 @@ class Jellyfin(metaclass=Singleton):
             logger.error(f"连接Library/Refresh出错：" + str(e))
             return False
 
-    def get_webhook_message(self, message: dict) -> WebhookEventInfo:
+    def get_webhook_message(self, body: any) -> Optional[WebhookEventInfo]:
         """
         解析Jellyfin报文
         {
@@ -450,9 +450,21 @@ class Jellyfin(metaclass=Singleton):
           "UserId": "9783d2432b0d40a8a716b6aa46xxxxx"
         }
         """
+        if not body:
+            return None
+        try:
+            message = json.loads(body)
+        except Exception as e:
+            logger.debug(f"解析Jellyfin Webhook报文出错：" + str(e))
+            return None
+        if not message:
+            return None
         logger.info(f"接收到jellyfin webhook：{message}")
+        eventType = message.get('NotificationType')
+        if not eventType:
+            return None
         eventItem = WebhookEventInfo(
-            event=message.get('NotificationType', ''),
+            event=eventType,
             channel="jellyfin"
         )
         eventItem.item_id = message.get('ItemId')

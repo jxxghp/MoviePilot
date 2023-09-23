@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends
 from requests import Session
@@ -24,14 +24,16 @@ def statistic(db: Session = Depends(get_db),
     """
     查询媒体数量统计信息
     """
-    media_statistic = DashboardChain(db).media_statistic()
-    if media_statistic:
-        return schemas.Statistic(
-            movie_count=media_statistic.movie_count,
-            tv_count=media_statistic.tv_count,
-            episode_count=media_statistic.episode_count,
-            user_count=media_statistic.user_count
-        )
+    media_statistics: Optional[List[schemas.Statistic]] = DashboardChain(db).media_statistic()
+    if media_statistics:
+        # 汇总各媒体库统计信息
+        ret_statistic = schemas.Statistic()
+        for media_statistic in media_statistics:
+            ret_statistic.movie_count += media_statistic.movie_count
+            ret_statistic.tv_count += media_statistic.tv_count
+            ret_statistic.episode_count += media_statistic.episode_count
+            ret_statistic.user_count += media_statistic.user_count
+        return ret_statistic
     else:
         return schemas.Statistic()
 

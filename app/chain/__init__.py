@@ -336,14 +336,14 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("media_exists", mediainfo=mediainfo, itemid=itemid)
 
-    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> Optional[bool]:
+    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> None:
         """
         刷新媒体库
         :param mediainfo:  识别的媒体信息
         :param file_path:  文件路径
         :return: 成功或失败
         """
-        return self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
+        self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
 
     def post_message(self, message: Notification) -> None:
         """
@@ -391,22 +391,22 @@ class ChainBase(metaclass=ABCMeta):
         :param mediainfo:  识别的媒体信息
         :return: 成功或失败
         """
-        return self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
+        self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
 
     def register_commands(self, commands: Dict[str, dict]) -> None:
         """
         注册菜单命令
         """
-        return self.run_module("register_commands", commands=commands)
+        self.run_module("register_commands", commands=commands)
 
     def scheduler_job(self) -> None:
         """
         定时任务，每10分钟调用一次，模块实现该接口以实现定时服务
         """
-        return self.run_module("scheduler_job")
+        self.run_module("scheduler_job")
 
     def clear_cache(self) -> None:
         """
         清理缓存，模块实现该接口响应清理缓存事件
         """
-        return self.run_module("clear_cache")
+        self.run_module("clear_cache")

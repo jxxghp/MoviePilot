@@ -545,7 +545,7 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接Users/Items出错：" + str(e))
         yield {}
 
-    def get_webhook_message(self, message_str: str) -> WebhookEventInfo:
+    def get_webhook_message(self, form: any, args: dict) -> Optional[WebhookEventInfo]:
         """
         解析Emby Webhook报文
         电影：
@@ -783,9 +783,22 @@ class Emby(metaclass=Singleton):
           }
         }
         """
-        message = json.loads(message_str)
+        if not form and not args:
+            return None
+        try:
+            if form and form.get("data"):
+                result = form.get("data")
+            else:
+                result = json.dumps(dict(args))
+            message = json.loads(result)
+        except Exception as e:
+            logger.debug(f"解析emby webhook报文出错：" + str(e))
+            return None
+        eventType = message.get('Event')
+        if not eventType:
+            return None
         logger.info(f"接收到emby webhook：{message}")
-        eventItem = WebhookEventInfo(event=message.get('Event', ''), channel="emby")
+        eventItem = WebhookEventInfo(event=eventType, channel="emby")
         if message.get('Item'):
             if message.get('Item', {}).get('Type') == 'Episode':
                 eventItem.item_type = "TV"

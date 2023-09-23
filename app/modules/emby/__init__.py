@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import Optional, Tuple, Union, Any, List, Generator
 
@@ -41,7 +40,7 @@ class EmbyModule(_ModuleBase):
         # Emby认证
         return self.emby.authenticate(name, password)
 
-    def webhook_parser(self, body: Any, form: Any, args: Any) -> WebhookEventInfo:
+    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[WebhookEventInfo]:
         """
         解析Webhook报文体
         :param body:  请求体
@@ -49,11 +48,7 @@ class EmbyModule(_ModuleBase):
         :param args:  请求参数
         :return: 字典，解析为消息时需要包含：title、text、image
         """
-        if form and form.get("data"):
-            result = form.get("data")
-        else:
-            result = json.dumps(dict(args))
-        return self.emby.get_webhook_message(result)
+        return self.emby.get_webhook_message(form, args)
 
     def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
         """
@@ -87,7 +82,7 @@ class EmbyModule(_ModuleBase):
                 logger.info(f"{mediainfo.title_year} 媒体库中已存在：{tvs}")
                 return ExistMediaInfo(type=MediaType.TV, seasons=tvs)
 
-    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> Optional[bool]:
+    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> None:
         """
         刷新媒体库
         :param mediainfo:  识别的媒体信息
@@ -103,25 +98,27 @@ class EmbyModule(_ModuleBase):
                 target_path=file_path
             )
         ]
-        return self.emby.refresh_library_by_items(items)
+        self.emby.refresh_library_by_items(items)
 
-    def media_statistic(self) -> schemas.Statistic:
+    def media_statistic(self) -> List[schemas.Statistic]:
         """
         媒体数量统计
         """
         media_statistic = self.emby.get_medias_count()
         user_count = self.emby.get_user_count()
-        return schemas.Statistic(
+        return [schemas.Statistic(
             movie_count=media_statistic.get("MovieCount") or 0,
             tv_count=media_statistic.get("SeriesCount") or 0,
             episode_count=media_statistic.get("EpisodeCount") or 0,
             user_count=user_count or 0
-        )
+        )]
 
-    def mediaserver_librarys(self) -> List[schemas.MediaServerLibrary]:
+    def mediaserver_librarys(self, server: str) -> Optional[List[schemas.MediaServerLibrary]]:
         """
         媒体库列表
         """
+        if server != "emby":
+            return None
         librarys = self.emby.get_librarys()
         if not librarys:
             return []
@@ -133,10 +130,12 @@ class EmbyModule(_ModuleBase):
             path=library.get("path")
         ) for library in librarys]
 
-    def mediaserver_items(self, library_id: str) -> Generator:
+    def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator]:
         """
         媒体库项目列表
         """
+        if server != "emby":
+            return None
         items = self.emby.get_items(library_id)
         for item in items:
             yield schemas.MediaServerItem(
@@ -153,10 +152,13 @@ class EmbyModule(_ModuleBase):
                 path=item.get("path"),
             )
 
-    def mediaserver_tv_episodes(self, item_id: Union[str, int]) -> List[schemas.MediaServerSeasonInfo]:
+    def mediaserver_tv_episodes(self, server: str,
+                                item_id: Union[str, int]) -> Optional[List[schemas.MediaServerSeasonInfo]]:
         """
         获取剧集信息
         """
+        if server != "emby":
+            return None
         seasoninfo = self.emby.get_tv_episodes(item_id=item_id)
         if not seasoninfo:
             return []

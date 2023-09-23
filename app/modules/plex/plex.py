@@ -353,7 +353,7 @@ class Plex(metaclass=Singleton):
             logger.error(f"获取媒体库列表出错：{err}")
         yield {}
 
-    def get_webhook_message(self, message_str: str) -> WebhookEventInfo:
+    def get_webhook_message(self, form: any) -> Optional[WebhookEventInfo]:
         """
         解析Plex报文
         eventItem  字段的含义
@@ -457,9 +457,21 @@ class Plex(metaclass=Singleton):
           }
         }
         """
-        message = json.loads(message_str)
+        if not form:
+            return None
+        payload = form.get("payload")
+        if not payload:
+            return None
+        try:
+            message = json.loads(payload)
+        except Exception as e:
+            logger.debug(f"解析plex webhook出错：{str(e)}")
+            return None
+        eventType = message.get('event')
+        if not eventType:
+            return None
         logger.info(f"接收到plex webhook：{message}")
-        eventItem = WebhookEventInfo(event=message.get('event', ''), channel="plex")
+        eventItem = WebhookEventInfo(event=eventType, channel="plex")
         if message.get('Metadata'):
             if message.get('Metadata', {}).get('type') == 'episode':
                 eventItem.item_type = "TV"
