@@ -348,6 +348,7 @@ class MessageChain(ChainBase):
         # 批量下载
         downloads, lefts = self.downloadchain.batch_download(contexts=cache_list,
                                                              no_exists=no_exists,
+                                                             channel=channel,
                                                              userid=userid)
         if downloads and not lefts:
             # 全部下载完成

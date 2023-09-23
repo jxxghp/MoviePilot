@@ -6,6 +6,7 @@ from ruamel.yaml import CommentedMap
 from app.core.context import MediaInfo, TorrentInfo
 from app.log import logger
 from app.modules import _ModuleBase
+from app.modules.indexer.mtorrent import MTorrentSpider
 from app.modules.indexer.spider import TorrentSpider
 from app.modules.indexer.tnode import TNodeSpider
 from app.modules.indexer.torrentleech import TorrentLeech
@@ -72,6 +73,12 @@ class IndexerModule(_ModuleBase):
             elif site.get('parser') == "TorrentLeech":
                 error_flag, result_array = TorrentLeech(site).search(
                     keyword=search_word,
+                    page=page
+                )
+            elif site.get('parser') == "mTorrent":
+                error_flag, result_array = MTorrentSpider(site).search(
+                    keyword=search_word,
+                    mtype=mediainfo.type if mediainfo else None,
                     page=page
                 )
             else:

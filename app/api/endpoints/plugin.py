@@ -1,12 +1,10 @@
 from typing import Any, List
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 
 from app import schemas
 from app.core.plugin import PluginManager
 from app.core.security import verify_token
-from app.db import get_db
 from app.db.systemconfig_oper import SystemConfigOper
 from app.schemas.types import SystemConfigKey
 

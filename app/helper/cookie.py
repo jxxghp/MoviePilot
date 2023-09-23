@@ -23,14 +23,17 @@ class CookieHelper:
         "password": [
             '//input[@name="password"]',
             '//input[@id="form_item_password"]',
-            '//input[@id="password"]'
+            '//input[@id="password"]',
+            '//input[@type="password"]'
         ],
         "captcha": [
             '//input[@name="imagestring"]',
             '//input[@name="captcha"]',
-            '//input[@id="form_item_captcha"]'
+            '//input[@id="form_item_captcha"]',
+            '//input[@placeholder="驗證碼"]'
         ],
         "captcha_img": [
+            '//img[@alt="captcha"]/@src',
             '//img[@alt="CAPTCHA"]/@src',
             '//img[@alt="SECURITY CODE"]/@src',
             '//img[@id="LAY-user-get-vercode"]/@src',

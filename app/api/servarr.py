@@ -684,7 +684,7 @@ def arr_serie(apikey: str, tid: int, db: Session = Depends(get_db)) -> Any:
                 "monitored": True,
             }],
             year=subscribe.year,
-            remotePoster=subscribe.image,
+            remotePoster=subscribe.poster,
             tmdbId=subscribe.tmdbid,
             tvdbId=subscribe.tvdbid,
             imdbId=subscribe.imdbid,
