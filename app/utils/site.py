@@ -17,14 +17,15 @@ class SiteUtils:
         if html.xpath("//input[@type='password']"):
             return False
         # 是否存在登出和用户面板等链接
-        xpaths = ['//a[contains(@href, "logout")'
-                  ' or contains(@data-url, "logout")'
-                  ' or contains(@href, "mybonus") '
-                  ' or contains(@onclick, "logout")'
-                  ' or contains(@href, "usercp")]',
-                  '//form[contains(@action, "logout")]',
-                  '//div[@class="user-info-side"]',
-                  '//a[contains(text(), "退出")]']
+        xpaths = [
+            '//a[contains(@href, "logout")'
+            ' or contains(@data-url, "logout")'
+            ' or contains(@href, "mybonus") '
+            ' or contains(@onclick, "logout")'
+            ' or contains(@href, "usercp")]',
+            '//form[contains(@action, "logout")]',
+            '//div[@class="user-info-side"]'
+        ]
         for xpath in xpaths:
             if html.xpath(xpath):
                 return True

@@ -1,3 +1,4 @@
+import re
 from typing import Union, Tuple
 
 from sqlalchemy.orm import Session
@@ -28,6 +29,66 @@ class SiteChain(ChainBase):
         self.cookiehelper = CookieHelper()
         self.message = MessageHelper()
 
+        # 特殊站点登录验证
+        self.special_site_test = {
+            "zhuque.in": self.__zhuque_test,
+            "m-team.io": self.__mteam_test,
+        }
+
+    @staticmethod
+    def __zhuque_test(site: Site) -> Tuple[bool, str]:
+        """
+        判断站点是否已经登陆：zhuique
+        """
+        # 获取token
+        token = None
+        res = RequestUtils(
+            ua=site.ua,
+            cookies=site.cookie,
+            proxies=settings.PROXY if site.proxy else None,
+            timeout=15
+        ).get_res(url=site.url)
+        if res and res.status_code == 200:
+            csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
+            if csrf_token:
+                token = csrf_token.group(1)
+        if not token:
+            return False, "无法获取Token"
+        # 调用查询用户信息接口
+        user_res = RequestUtils(
+            headers={
+                'X-CSRF-TOKEN': token,
+                "Content-Type": "application/json; charset=utf-8",
+                "User-Agent": f"{site.ua}"
+            },
+            cookies=site.cookie,
+            proxies=settings.PROXY if site.proxy else None,
+            timeout=15
+        ).get_res(url=f"{site.url}api/user/getInfo")
+        if user_res and user_res.status_code == 200:
+            user_info = user_res.json()
+            if user_info and user_info.get("data"):
+                return True, "连接成功"
+        return False, "Cookie已失效"
+
+    @staticmethod
+    def __mteam_test(site: Site) -> Tuple[bool, str]:
+        """
+        判断站点是否已经登陆：m-team
+        """
+        url = f"{site.url}api/member/profile"
+        res = RequestUtils(
+            ua=site.ua,
+            cookies=site.cookie,
+            proxies=settings.PROXY if site.proxy else None,
+            timeout=15
+        ).post_res(url=url)
+        if res and res.status_code == 200:
+            user_info = res.json()
+            if user_info and user_info.get("data"):
+                return True, "连接成功"
+        return False, "Cookie已失效"
+
     def test(self, url: str) -> Tuple[bool, str]:
         """
         测试站点是否可用
@@ -39,6 +100,12 @@ class SiteChain(ChainBase):
         site_info = self.siteoper.get_by_domain(domain)
         if not site_info:
             return False, f"站点【{url}】不存在"
+
+        # 特殊站点测试
+        if self.special_site_test.get(domain):
+            return self.special_site_test[domain](site_info)
+
+        # 通用站点测试
         site_url = site_info.url
         site_cookie = site_info.cookie
         ua = site_info.ua
