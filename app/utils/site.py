@@ -22,14 +22,12 @@ class SiteUtils:
                   ' or contains(@href, "mybonus") '
                   ' or contains(@onclick, "logout")'
                   ' or contains(@href, "usercp")]',
-                  '//form[contains(@action, "logout")]']
+                  '//form[contains(@action, "logout")]',
+                  '//div[@class="user-info-side"]',
+                  '//a[contains(@href, "/profile/detail/")]']
         for xpath in xpaths:
             if html.xpath(xpath):
                 return True
-        user_info_div = html.xpath('//div[@class="user-info-side"]')
-        if user_info_div:
-            return True
-
         return False
 
     @classmethod
