@@ -24,7 +24,7 @@ class SiteUtils:
                   ' or contains(@href, "usercp")]',
                   '//form[contains(@action, "logout")]',
                   '//div[@class="user-info-side"]',
-                  '//a[contains(@href, "/profile/detail/")]']
+                  '//a[contains(text(), "退出")]']
         for xpath in xpaths:
             if html.xpath(xpath):
                 return True
