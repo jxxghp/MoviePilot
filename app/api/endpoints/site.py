@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from starlette.background import BackgroundTasks
 
 from app import schemas
-from app.chain.cookiecloud import CookieCloudChain
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
 from app.core.event import EventManager
@@ -15,17 +14,11 @@ from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper
+from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType
 from app.utils.string import StringUtils
 
 router = APIRouter()
-
-
-def start_cookiecloud_sync(db: Session):
-    """
-    后台启动CookieCloud站点同步
-    """
-    CookieCloudChain(db).process(manual=True)
 
 
 @router.get("/", summary="所有站点", response_model=List[schemas.Site])
@@ -101,12 +94,11 @@ def delete_site(
 
 @router.get("/cookiecloud", summary="CookieCloud同步", response_model=schemas.Response)
 def cookie_cloud_sync(background_tasks: BackgroundTasks,
-                      db: Session = Depends(get_db),
                       _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     运行CookieCloud同步站点信息
     """
-    background_tasks.add_task(start_cookiecloud_sync, db)
+    background_tasks.add_task(Scheduler().start, job_id="cookiecloud")
     return schemas.Response(success=True, message="CookieCloud同步任务已启动！")
 
 
@@ -119,7 +111,8 @@ def cookie_cloud_sync(db: Session = Depends(get_db),
     Site.reset(db)
     SystemConfigOper().set(SystemConfigKey.IndexerSites, [])
     SystemConfigOper().set(SystemConfigKey.RssSites, [])
-    CookieCloudChain().process(manual=True)
+    # 启动定时服务
+    Scheduler().start("cookiecloud", manual=True)
     # 插件站点删除
     EventManager().send_event(EventType.SiteDeleted,
                               {

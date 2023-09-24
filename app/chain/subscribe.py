@@ -132,45 +132,6 @@ class SubscribeChain(ChainBase):
             return True
         return False
 
-    def remote_refresh(self, channel: MessageChannel, userid: Union[str, int] = None):
-        """
-        远程刷新订阅，发送消息
-        """
-        self.post_message(Notification(channel=channel,
-                                       title=f"开始刷新订阅 ...", userid=userid))
-        self.refresh()
-        self.post_message(Notification(channel=channel,
-                                       title=f"订阅刷新完成！", userid=userid))
-
-    def remote_search(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
-        """
-        远程搜索订阅，发送消息
-        """
-        if arg_str and not str(arg_str).isdigit():
-            self.post_message(Notification(channel=channel,
-                                           title="请输入正确的命令格式：/subscribe_search [id]，"
-                                                 "[id]为订阅编号，不输入订阅编号时搜索所有订阅", userid=userid))
-            return
-        if arg_str:
-            sid = int(arg_str)
-            subscribe = self.subscribeoper.get(sid)
-            if not subscribe:
-                self.post_message(Notification(channel=channel,
-                                               title=f"订阅编号 {sid} 不存在！", userid=userid))
-                return
-            self.post_message(Notification(channel=channel,
-                                           title=f"开始搜索 {subscribe.name} ...", userid=userid))
-            # 搜索订阅
-            self.search(sid=int(arg_str))
-            self.post_message(Notification(channel=channel,
-                                           title=f"{subscribe.name} 搜索完成！", userid=userid))
-        else:
-            self.post_message(Notification(channel=channel,
-                                           title=f"开始搜索所有订阅 ...", userid=userid))
-            self.search(state='R')
-            self.post_message(Notification(channel=channel,
-                                           title=f"订阅搜索完成！", userid=userid))
-
     def search(self, sid: int = None, state: str = 'N', manual: bool = False):
         """
         订阅搜索

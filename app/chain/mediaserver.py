@@ -10,7 +10,6 @@ from app.core.config import settings
 from app.db import SessionFactory
 from app.db.mediaserver_oper import MediaServerOper
 from app.log import logger
-from app.schemas import MessageChannel, Notification
 
 lock = threading.Lock()
 
@@ -40,16 +39,6 @@ class MediaServerChain(ChainBase):
         获取媒体服务器剧集信息
         """
         return self.run_module("mediaserver_tv_episodes", server=server, item_id=item_id)
-
-    def remote_sync(self, channel: MessageChannel, userid: Union[int, str]):
-        """
-        同步豆瓣想看数据，发送消息
-        """
-        self.post_message(Notification(channel=channel,
-                                       title="开始媒体服务器 ...", userid=userid))
-        self.sync()
-        self.post_message(Notification(channel=channel,
-                                       title="同步媒体服务器完成！", userid=userid))
 
     def sync(self):
         """

@@ -1,11 +1,9 @@
 import traceback
 from threading import Thread, Event
-from typing import Any, Union
+from typing import Any, Union, Dict
 
 from app.chain import ChainBase
-from app.chain.cookiecloud import CookieCloudChain
 from app.chain.download import DownloadChain
-from app.chain.mediaserver import MediaServerChain
 from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.system import SystemChain
@@ -15,6 +13,8 @@ from app.core.event import eventmanager, EventManager
 from app.core.plugin import PluginManager
 from app.db import SessionFactory
 from app.log import logger
+from app.scheduler import Scheduler
+from app.schemas import Notification
 from app.schemas.types import EventType, MessageChannel
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
@@ -49,13 +49,15 @@ class Command(metaclass=Singleton):
         self.pluginmanager = PluginManager()
         # 处理链
         self.chain = CommandChian(self._db)
+        # 定时服务管理
+        self.scheduler = Scheduler()
         # 内置命令
         self._commands = {
             "/cookiecloud": {
-                "func": CookieCloudChain(self._db).remote_sync,
+                "id": "cookiecloud",
+                "type": "scheduler",
                 "description": "同步站点",
-                "category": "站点",
-                "data": {}
+                "category": "站点"
             },
             "/sites": {
                 "func": SiteChain(self._db).remote_list,
@@ -79,10 +81,10 @@ class Command(metaclass=Singleton):
                 "data": {}
             },
             "/mediaserver_sync": {
-                "func": MediaServerChain(self._db).remote_sync,
+                "id": "mediaserver_sync",
+                "type": "scheduler",
                 "description": "同步媒体服务器",
-                "category": "管理",
-                "data": {}
+                "category": "管理"
             },
             "/subscribes": {
                 "func": SubscribeChain(self._db).remote_list,
@@ -91,16 +93,16 @@ class Command(metaclass=Singleton):
                 "data": {}
             },
             "/subscribe_refresh": {
-                "func": SubscribeChain(self._db).remote_refresh,
+                "id": "subscribe_refresh",
+                "type": "scheduler",
                 "description": "刷新订阅",
-                "category": "订阅",
-                "data": {}
+                "category": "订阅"
             },
             "/subscribe_search": {
-                "func": SubscribeChain(self._db).remote_search,
+                "id": "subscribe_search",
+                "type": "scheduler",
                 "description": "搜索订阅",
-                "category": "订阅",
-                "data": {}
+                "category": "订阅"
             },
             "/subscribe_delete": {
                 "func": SubscribeChain(self._db).remote_delete,
@@ -108,9 +110,9 @@ class Command(metaclass=Singleton):
                 "data": {}
             },
             "/subscribe_tmdb": {
-                "func": SubscribeChain(self._db).check,
-                "description": "订阅TMDB数据刷新",
-                "data": {}
+                "id": "subscribe_tmdb",
+                "type": "scheduler",
+                "description": "订阅元数据更新"
             },
             "/downloading": {
                 "func": DownloadChain(self._db).remote_downloading,
@@ -119,10 +121,10 @@ class Command(metaclass=Singleton):
                 "data": {}
             },
             "/transfer": {
-                "func": TransferChain(self._db).process,
+                "id": "transfer",
+                "type": "scheduler",
                 "description": "下载文件整理",
-                "category": "管理",
-                "data": {}
+                "category": "管理"
             },
             "/redo": {
                 "func": TransferChain(self._db).remote_transfer,
@@ -180,6 +182,56 @@ class Command(metaclass=Singleton):
                     except Exception as e:
                         logger.error(f"事件处理出错：{str(e)} - {traceback.format_exc()}")
 
+    def __run_command(self, command: Dict[str, any],
+                      data_str: str = "",
+                      channel: MessageChannel = None, userid: Union[str, int] = None):
+        """
+        运行定时服务
+        """
+        if command.get("type") == "scheduler":
+            # 定时服务
+            if userid:
+                self.chain.post_message(
+                    Notification(
+                        channel=channel,
+                        title=f"开始执行 {command.get('description')} ...",
+                        userid=userid
+                    )
+                )
+
+            # 执行定时任务
+            self.scheduler.start(job_id=command.get("id"))
+
+            if userid:
+                self.chain.post_message(
+                    Notification(
+                        channel=channel,
+                        title=f"{command.get('description')} 执行完成",
+                        userid=userid
+                    )
+                )
+        else:
+            # 命令
+            cmd_data = command['data'] if command.get('data') else {}
+            args_num = ObjectUtils.arguments(command['func'])
+            if args_num > 0:
+                if cmd_data:
+                    # 有内置参数直接使用内置参数
+                    data = cmd_data.get("data") or {}
+                    data['channel'] = channel
+                    data['user'] = userid
+                    cmd_data['data'] = data
+                    command['func'](**cmd_data)
+                elif args_num == 2:
+                    # 没有输入参数，只输入渠道和用户ID
+                    command['func'](channel, userid)
+                elif args_num > 2:
+                    # 多个输入参数：用户输入、用户ID
+                    command['func'](data_str, channel, userid)
+            else:
+                # 没有参数
+                command['func']()
+
     def stop(self):
         """
         停止事件处理线程
@@ -225,25 +277,11 @@ class Command(metaclass=Singleton):
                     logger.info(f"用户 {userid} 开始执行：{command.get('description')} ...")
                 else:
                     logger.info(f"开始执行：{command.get('description')} ...")
-                cmd_data = command['data'] if command.get('data') else {}
-                args_num = ObjectUtils.arguments(command['func'])
-                if args_num > 0:
-                    if cmd_data:
-                        # 有内置参数直接使用内置参数
-                        data = cmd_data.get("data") or {}
-                        data['channel'] = channel
-                        data['user'] = userid
-                        cmd_data['data'] = data
-                        command['func'](**cmd_data)
-                    elif args_num == 2:
-                        # 没有输入参数，只输入渠道和用户ID
-                        command['func'](channel, userid)
-                    elif args_num > 2:
-                        # 多个输入参数：用户输入、用户ID
-                        command['func'](data_str, channel, userid)
-                else:
-                    # 没有参数
-                    command['func']()
+
+                # 执行命令
+                self.__run_command(command, data_str=data_str,
+                                   channel=channel, userid=userid)
+
                 if userid:
                     logger.info(f"用户 {userid} {command.get('description')} 执行完成")
                 else:

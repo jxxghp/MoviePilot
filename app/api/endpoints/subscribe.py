@@ -1,5 +1,5 @@
 import json
-from typing import List, Any, Optional
+from typing import List, Any
 
 from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
@@ -12,6 +12,7 @@ from app.db import get_db
 from app.db.models.subscribe import Subscribe
 from app.db.models.user import User
 from app.db.userauth import get_current_active_user
+from app.scheduler import Scheduler
 from app.schemas.types import MediaType
 
 router = APIRouter()
@@ -24,13 +25,6 @@ def start_subscribe_add(db: Session, title: str, year: str,
     """
     SubscribeChain(db).add(title=title, year=year,
                            mtype=mtype, tmdbid=tmdbid, season=season, username=username)
-
-
-def start_subscribe_search(db: Session, sid: Optional[int], state: Optional[str]):
-    """
-    启动订阅搜索任务
-    """
-    SubscribeChain(db).search(sid=sid, state=state, manual=True)
 
 
 @router.get("/", summary="所有订阅", response_model=List[schemas.Subscribe])
@@ -140,35 +134,36 @@ def subscribe_mediaid(
 
 @router.get("/refresh", summary="刷新订阅", response_model=schemas.Response)
 def refresh_subscribes(
-        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     刷新所有订阅
     """
-    SubscribeChain(db).refresh()
+    Scheduler().start("subscribe_refresh")
     return schemas.Response(success=True)
 
 
 @router.get("/check", summary="刷新订阅 TMDB 信息", response_model=schemas.Response)
 def check_subscribes(
-        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    刷新所有订阅
+    刷新订阅 TMDB 信息
     """
-    SubscribeChain(db).check()
+    Scheduler().start("subscribe_tmdb")
     return schemas.Response(success=True)
 
 
 @router.get("/search", summary="搜索所有订阅", response_model=schemas.Response)
 def search_subscribes(
         background_tasks: BackgroundTasks,
-        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     搜索所有订阅
     """
-    background_tasks.add_task(start_subscribe_search, db=db, sid=None, state='R')
+    background_tasks.add_task(
+        Scheduler().start,
+        job_id="subscribe_search",
+        sid=None, state='R'
+    )
     return schemas.Response(success=True)
 
 
@@ -176,12 +171,15 @@ def search_subscribes(
 def search_subscribe(
         subscribe_id: int,
         background_tasks: BackgroundTasks,
-        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据订阅编号搜索订阅
     """
-    background_tasks.add_task(start_subscribe_search, db=db, sid=subscribe_id, state=None)
+    background_tasks.add_task(
+        Scheduler().start,
+        job_id="subscribe_search",
+        sid=subscribe_id, state=None
+    )
     return schemas.Response(success=True)
 
 

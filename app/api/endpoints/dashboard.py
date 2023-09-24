@@ -11,9 +11,7 @@ from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
 from app.scheduler import Scheduler
-from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
-from app.utils.timer import TimerUtils
 
 router = APIRouter()
 
@@ -83,37 +81,7 @@ def schedule(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询后台服务信息
     """
-    # 返回计时任务
-    schedulers = []
-    # 去重
-    added = []
-    jobs = Scheduler().list()
-    # 按照下次运行时间排序
-    jobs.sort(key=lambda x: x.next_run_time)
-    for job in jobs:
-        if job.name not in added:
-            added.append(job.name)
-        else:
-            continue
-        if not StringUtils.is_chinese(job.name):
-            continue
-        if not job.next_run_time:
-            status = "已停止"
-            next_run = ""
-        else:
-            next_run = TimerUtils.time_difference(job.next_run_time)
-            if not next_run:
-                status = "正在运行"
-            else:
-                status = "阻塞" if job.pending else "等待"
-        schedulers.append(schemas.ScheduleInfo(
-            id=job.id,
-            name=job.name,
-            status=status,
-            next_run=next_run
-        ))
-
-    return schedulers
+    return Scheduler().list()
 
 
 @router.get("/transfer", summary="文件整理统计", response_model=List[int])
