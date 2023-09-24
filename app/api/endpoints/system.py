@@ -11,12 +11,13 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.chain.search import SearchChain
 from app.core.config import settings
+from app.core.event import eventmanager
 from app.core.security import verify_token
 from app.db import get_db
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey, EventType
 from app.utils.http import RequestUtils
 from app.utils.system import SystemUtils
 from version import APP_VERSION
@@ -211,3 +212,17 @@ def restart_system(_: schemas.TokenPayload = Depends(verify_token)):
     # 执行重启
     ret, msg = SystemUtils.restart()
     return schemas.Response(success=ret, message=msg)
+
+
+@router.get("/command", summary="执行命令", response_model=schemas.Response)
+def execute_command(cmd: str,
+                    _: schemas.TokenPayload = Depends(verify_token)):
+    """
+    执行命令
+    """
+    if not cmd:
+        return schemas.Response(success=False, message="命令不能为空！")
+    eventmanager.send_event(etype=EventType.CommandExcute, data={
+        "cmd": cmd
+    })
+    return schemas.Response(success=True)

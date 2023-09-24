@@ -107,6 +107,11 @@ class Command(metaclass=Singleton):
                 "description": "删除订阅",
                 "data": {}
             },
+            "/subscribe_tmdb": {
+                "func": SubscribeChain(self._db).check,
+                "description": "订阅TMDB数据刷新",
+                "data": {}
+            },
             "/downloading": {
                 "func": DownloadChain(self._db).remote_downloading,
                 "description": "正在下载",
@@ -216,7 +221,10 @@ class Command(metaclass=Singleton):
         command = self.get(cmd)
         if command:
             try:
-                logger.info(f"用户 {userid} 开始执行：{command.get('description')} ...")
+                if userid:
+                    logger.info(f"用户 {userid} 开始执行：{command.get('description')} ...")
+                else:
+                    logger.info(f"开始执行：{command.get('description')} ...")
                 cmd_data = command['data'] if command.get('data') else {}
                 args_num = ObjectUtils.arguments(command['func'])
                 if args_num > 0:
@@ -236,7 +244,10 @@ class Command(metaclass=Singleton):
                 else:
                     # 没有参数
                     command['func']()
-                logger.info(f"用户 {userid} {command.get('description')} 执行完成")
+                if userid:
+                    logger.info(f"用户 {userid} {command.get('description')} 执行完成")
+                else:
+                    logger.info(f"{command.get('description')} 执行完成")
             except Exception as err:
                 logger.error(f"执行命令 {cmd} 出错：{str(err)}")
                 traceback.print_exc()

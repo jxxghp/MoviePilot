@@ -49,6 +49,7 @@ class Scheduler(metaclass=Singleton):
                                     "interval",
                                     minutes=settings.COOKIECLOUD_INTERVAL,
                                     next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=1),
+                                    id="cookiecloud",
                                     name="同步CookieCloud站点")
 
         # 媒体服务器同步
@@ -56,6 +57,7 @@ class Scheduler(metaclass=Singleton):
             self._scheduler.add_job(MediaServerChain(self._db).sync, "interval",
                                     hours=settings.MEDIASERVER_SYNC_INTERVAL,
                                     next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=5),
+                                    id="mediaserver_sync",
                                     name="同步媒体服务器")
 
         # 新增订阅时搜索（5分钟检查一次）
@@ -63,19 +65,23 @@ class Scheduler(metaclass=Singleton):
                                 minutes=5, kwargs={'state': 'N'})
 
         # 检查更新订阅TMDB数据（每隔6小时）
-        self._scheduler.add_job(SubscribeChain(self._db).check, "interval", hours=6)
+        self._scheduler.add_job(SubscribeChain(self._db).check, "interval", hours=6,
+                                id="subscribe_tmdb", name="订阅元数据更新")
 
         # 订阅状态每隔24小时搜索一次
         if settings.SUBSCRIBE_SEARCH:
             self._scheduler.add_job(SubscribeChain(self._db).search, "interval",
-                                    hours=24, kwargs={'state': 'R'}, name="订阅搜索")
+                                    hours=24, kwargs={'state': 'R'},
+                                    id="subscribe_search", name="订阅搜索")
 
         if settings.SUBSCRIBE_MODE == "spider":
             # 站点首页种子定时刷新模式
             triggers = TimerUtils.random_scheduler(num_executions=30)
             for trigger in triggers:
                 self._scheduler.add_job(SubscribeChain(self._db).refresh, "cron",
-                                        hour=trigger.hour, minute=trigger.minute, name="订阅刷新")
+                                        hour=trigger.hour, minute=trigger.minute,
+                                        id=f"subscribe_refresh|{trigger.hour}:{trigger.minute}",
+                                        name="订阅刷新")
         else:
             # RSS订阅模式
             if not settings.SUBSCRIBE_RSS_INTERVAL:
@@ -83,11 +89,13 @@ class Scheduler(metaclass=Singleton):
             elif settings.SUBSCRIBE_RSS_INTERVAL < 5:
                 settings.SUBSCRIBE_RSS_INTERVAL = 5
             self._scheduler.add_job(SubscribeChain(self._db).refresh, "interval",
-                                    minutes=settings.SUBSCRIBE_RSS_INTERVAL, name="订阅刷新")
+                                    minutes=settings.SUBSCRIBE_RSS_INTERVAL,
+                                    id="subscribe_refresh", name="订阅刷新")
 
         # 下载器文件转移（每5分钟）
         if settings.DOWNLOADER_MONITOR:
-            self._scheduler.add_job(TransferChain(self._db).process, "interval", minutes=5, name="下载文件整理")
+            self._scheduler.add_job(TransferChain(self._db).process, "interval", minutes=5,
+                                    id="transfer", name="下载文件整理")
 
         # 公共定时服务
         self._scheduler.add_job(SchedulerChain(self._db).scheduler_job, "interval", minutes=10)
