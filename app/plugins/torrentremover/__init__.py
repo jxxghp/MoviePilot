@@ -644,7 +644,7 @@ class TorrentRemover(_PluginBase):
             return None
         if self._torrentstates and torrent.state not in self._torrentstates:
             return None
-        if self._torrentcategorys and torrent.category and torrent.category not in self._torrentcategorys:
+        if self._torrentcategorys and (not torrent.category or torrent.category not in self._torrentcategorys):
             return None
         return {
             "id": torrent.hash,
