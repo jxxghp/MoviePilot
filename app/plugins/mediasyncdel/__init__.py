@@ -718,19 +718,21 @@ class MediaSyncDel(_PluginBase):
         """
         # 读取历史记录
         history = self.get_data('history') or []
-
-        # 媒体服务器类型
-        media_server = settings.MEDIASERVER
-
         last_time = self.get_data("last_time")
         del_medias = []
-        if media_server == 'emby':
-            del_medias = self.parse_emby_log(last_time)
-        elif media_server == 'jellyfin':
-            del_medias = self.parse_jellyfin_log(last_time)
-        elif media_server == 'plex':
-            # TODO plex解析日志
+
+        # 媒体服务器类型，多个以,分隔
+        if not settings.MEDIASERVER:
             return
+        media_servers = settings.MEDIASERVER.split(',')
+        for media_server in media_servers:
+            if media_server == 'emby':
+                del_medias.extend(self.parse_emby_log(last_time))
+            elif media_server == 'jellyfin':
+                del_medias.extend(self.parse_jellyfin_log(last_time))
+            elif media_server == 'plex':
+                # TODO plex解析日志
+                return
 
         if not del_medias:
             logger.error("未解析到已删除媒体信息")

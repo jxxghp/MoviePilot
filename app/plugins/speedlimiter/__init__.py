@@ -383,78 +383,86 @@ class SpeedLimiter(_PluginBase):
                 return
         # 当前播放的总比特率
         total_bit_rate = 0
-        # 查询播放中会话
-        playing_sessions = []
-        if settings.MEDIASERVER == "emby":
-            req_url = "{HOST}emby/Sessions?api_key={APIKEY}"
-            try:
-                res = Emby().get_data(req_url)
-                if res and res.status_code == 200:
-                    sessions = res.json()
-                    for session in sessions:
-                        if session.get("NowPlayingItem") and not session.get("PlayState", {}).get("IsPaused"):
-                            playing_sessions.append(session)
-            except Exception as e:
-                logger.error(f"获取Emby播放会话失败：{str(e)}")
-            # 计算有效比特率
-            for session in playing_sessions:
-                # 设置了不限速范围则判断session ip是否在不限速范围内
-                if self._unlimited_ips["ipv4"] or self._unlimited_ips["ipv6"]:
-                    if not self.__allow_access(self._unlimited_ips, session.get("RemoteEndPoint")) \
-                            and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
-                        total_bit_rate += int(session.get("NowPlayingItem", {}).get("Bitrate") or 0)
-                # 未设置不限速范围，则默认不限速内网ip
-                elif not IpUtils.is_private_ip(session.get("RemoteEndPoint")) \
-                        and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
-                    total_bit_rate += int(session.get("NowPlayingItem", {}).get("Bitrate") or 0)
-        elif settings.MEDIASERVER == "jellyfin":
-            req_url = "{HOST}Sessions?api_key={APIKEY}"
-            try:
-                res = Jellyfin().get_data(req_url)
-                if res and res.status_code == 200:
-                    sessions = res.json()
-                    for session in sessions:
-                        if session.get("NowPlayingItem") and not session.get("PlayState", {}).get("IsPaused"):
-                            playing_sessions.append(session)
-            except Exception as e:
-                logger.error(f"获取Jellyfin播放会话失败：{str(e)}")
-            # 计算有效比特率
-            for session in playing_sessions:
-                # 设置了不限速范围则判断session ip是否在不限速范围内
-                if self._unlimited_ips["ipv4"] or self._unlimited_ips["ipv6"]:
-                    if not self.__allow_access(self._unlimited_ips, session.get("RemoteEndPoint")) \
-                            and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
-                        media_streams = session.get("NowPlayingItem", {}).get("MediaStreams") or []
-                        for media_stream in media_streams:
-                            total_bit_rate += int(media_stream.get("BitRate") or 0)
-                # 未设置不限速范围，则默认不限速内网ip
-                elif not IpUtils.is_private_ip(session.get("RemoteEndPoint")) \
-                        and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
-                    media_streams = session.get("NowPlayingItem", {}).get("MediaStreams") or []
-                    for media_stream in media_streams:
-                        total_bit_rate += int(media_stream.get("BitRate") or 0)
-        elif settings.MEDIASERVER == "plex":
-            _plex = Plex().get_plex()
-            if _plex:
-                sessions = _plex.sessions()
-                for session in sessions:
-                    bitrate = sum([m.bitrate or 0 for m in session.media])
-                    playing_sessions.append({
-                        "type": session.TAG,
-                        "bitrate": bitrate,
-                        "address": session.player.address
-                    })
+        # 媒体服务器类型，多个以,分隔
+        if not settings.MEDIASERVER:
+            return
+        media_servers = settings.MEDIASERVER.split(',')
+        # 查询所有媒体服务器状态
+        for media_server in media_servers:
+            # 查询播放中会话
+            playing_sessions = []
+            if media_server == "emby":
+                req_url = "{HOST}emby/Sessions?api_key={APIKEY}"
+                try:
+                    res = Emby().get_data(req_url)
+                    if res and res.status_code == 200:
+                        sessions = res.json()
+                        for session in sessions:
+                            if session.get("NowPlayingItem") and not session.get("PlayState", {}).get("IsPaused"):
+                                playing_sessions.append(session)
+                except Exception as e:
+                    logger.error(f"获取Emby播放会话失败：{str(e)}")
+                    continue
                 # 计算有效比特率
                 for session in playing_sessions:
                     # 设置了不限速范围则判断session ip是否在不限速范围内
                     if self._unlimited_ips["ipv4"] or self._unlimited_ips["ipv6"]:
-                        if not self.__allow_access(self._unlimited_ips, session.get("address")) \
+                        if not self.__allow_access(self._unlimited_ips, session.get("RemoteEndPoint")) \
+                                and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
+                            total_bit_rate += int(session.get("NowPlayingItem", {}).get("Bitrate") or 0)
+                    # 未设置不限速范围，则默认不限速内网ip
+                    elif not IpUtils.is_private_ip(session.get("RemoteEndPoint")) \
+                            and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
+                        total_bit_rate += int(session.get("NowPlayingItem", {}).get("Bitrate") or 0)
+            elif media_server == "jellyfin":
+                req_url = "{HOST}Sessions?api_key={APIKEY}"
+                try:
+                    res = Jellyfin().get_data(req_url)
+                    if res and res.status_code == 200:
+                        sessions = res.json()
+                        for session in sessions:
+                            if session.get("NowPlayingItem") and not session.get("PlayState", {}).get("IsPaused"):
+                                playing_sessions.append(session)
+                except Exception as e:
+                    logger.error(f"获取Jellyfin播放会话失败：{str(e)}")
+                    continue
+                # 计算有效比特率
+                for session in playing_sessions:
+                    # 设置了不限速范围则判断session ip是否在不限速范围内
+                    if self._unlimited_ips["ipv4"] or self._unlimited_ips["ipv6"]:
+                        if not self.__allow_access(self._unlimited_ips, session.get("RemoteEndPoint")) \
+                                and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
+                            media_streams = session.get("NowPlayingItem", {}).get("MediaStreams") or []
+                            for media_stream in media_streams:
+                                total_bit_rate += int(media_stream.get("BitRate") or 0)
+                    # 未设置不限速范围，则默认不限速内网ip
+                    elif not IpUtils.is_private_ip(session.get("RemoteEndPoint")) \
+                            and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
+                        media_streams = session.get("NowPlayingItem", {}).get("MediaStreams") or []
+                        for media_stream in media_streams:
+                            total_bit_rate += int(media_stream.get("BitRate") or 0)
+            elif media_server == "plex":
+                _plex = Plex().get_plex()
+                if _plex:
+                    sessions = _plex.sessions()
+                    for session in sessions:
+                        bitrate = sum([m.bitrate or 0 for m in session.media])
+                        playing_sessions.append({
+                            "type": session.TAG,
+                            "bitrate": bitrate,
+                            "address": session.player.address
+                        })
+                    # 计算有效比特率
+                    for session in playing_sessions:
+                        # 设置了不限速范围则判断session ip是否在不限速范围内
+                        if self._unlimited_ips["ipv4"] or self._unlimited_ips["ipv6"]:
+                            if not self.__allow_access(self._unlimited_ips, session.get("address")) \
+                                    and session.get("type") == "Video":
+                                total_bit_rate += int(session.get("bitrate") or 0)
+                        # 未设置不限速范围，则默认不限速内网ip
+                        elif not IpUtils.is_private_ip(session.get("address")) \
                                 and session.get("type") == "Video":
                             total_bit_rate += int(session.get("bitrate") or 0)
-                    # 未设置不限速范围，则默认不限速内网ip
-                    elif not IpUtils.is_private_ip(session.get("address")) \
-                            and session.get("type") == "Video":
-                        total_bit_rate += int(session.get("bitrate") or 0)
 
         if total_bit_rate:
             # 开启智能限速计算上传限速
