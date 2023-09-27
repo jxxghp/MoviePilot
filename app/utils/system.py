@@ -349,9 +349,9 @@ class SystemUtils:
             # 获取当前容器的 ID
             with open('/proc/self/mountinfo', 'r') as f:
                 data = f.read()
-                index_resolv_conf = data.find("/sys/fs/cgroup/devices")
+                index_resolv_conf = data.find("resolv.conf")
                 if index_resolv_conf != -1:
-                    index_second_slash = data.rfind(" ", 0, index_resolv_conf)
+                    index_second_slash = data.rfind("/", 0, index_resolv_conf)
                     index_first_slash = data.rfind("/", 0, index_second_slash) + 1
                     container_id = data[index_first_slash:index_second_slash]
             if not container_id:
