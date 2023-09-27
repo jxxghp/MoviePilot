@@ -1265,12 +1265,6 @@ class BrushFlow(_PluginBase):
                         f"{task.get('site_name')}{task.get('title')}" for task in task_info.values()
                     ]:
                         continue
-                    # 保种体积（GB） 促销
-                    if self._disksize \
-                            and (torrents_size + torrent.size) > float(self._disksize) * 1024**3:
-                        logger.warn(f"当前做种体积 {StringUtils.str_filesize(torrents_size)} "
-                                    f"已超过保种体积 {self._disksize}，停止新增任务")
-                        break
                     # 促销
                     if self._freeleech and torrent.downloadvolumefactor != 0:
                         continue
@@ -1349,6 +1343,12 @@ class BrushFlow(_PluginBase):
                             logger.warn(f"当前总下载带宽 {StringUtils.str_filesize(current_download_speed)} "
                                         f"已达到最大值 {self._maxdlspeed} KB/s，暂时停止新增任务")
                             break
+                    # 保种体积（GB）
+                    if self._disksize \
+                            and (torrents_size + torrent.size) > float(self._disksize) * 1024**3:
+                        logger.warn(f"当前做种体积 {StringUtils.str_filesize(torrents_size)} "
+                                    f"已超过保种体积 {self._disksize}，停止新增任务")
+                        break
                     # 添加下载任务
                     hash_string = self.__download(torrent=torrent)
                     if not hash_string:
