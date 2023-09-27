@@ -88,7 +88,7 @@ def update_subscribe(
     subscribe = Subscribe.get(db, subscribe_in.id)
     if not subscribe:
         return schemas.Response(success=False, message="订阅不存在")
-    if subscribe_in.sites:
+    if subscribe_in.sites is not None:
         subscribe_in.sites = json.dumps(subscribe_in.sites)
     # 避免更新缺失集数
     subscribe_dict = subscribe_in.dict()
