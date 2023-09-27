@@ -85,15 +85,18 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
 
 @router.post("/transfer", summary="历史记录重新转移", response_model=schemas.Response)
 def redo_transfer_history(history_in: schemas.TransferHistory,
-                          mtype: str,
-                          new_tmdbid: int,
+                          mtype: str = None,
+                          new_tmdbid: int = None,
                           db: Session = Depends(get_db),
                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    历史记录重新转移
+    历史记录重新转移，不输入 mtype 和 new_tmdbid 时，自动使用文件名重新识别
     """
-    state, errmsg = TransferChain(db).re_transfer(logid=history_in.id,
-                                                  mtype=MediaType(mtype), tmdbid=new_tmdbid)
+    if mtype and new_tmdbid:
+        state, errmsg = TransferChain(db).re_transfer(logid=history_in.id,
+                                                      mtype=MediaType(mtype), tmdbid=new_tmdbid)
+    else:
+        state, errmsg = TransferChain(db).re_transfer(logid=history_in.id)
     if state:
         return schemas.Response(success=True)
     else:

@@ -15,7 +15,7 @@ from watchdog.observers.polling import PollingObserver
 from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.context import MediaInfo
-from app.core.metainfo import MetaInfo
+from app.core.metainfo import MetaInfoPath
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
@@ -237,13 +237,8 @@ class DirMonitor(_PluginBase):
                         logger.info(f"{event_path} 已整理过")
                         return
 
-                    # 上级目录元数据
-                    meta = MetaInfo(title=file_path.parent.name)
-                    # 文件元数据，不包含后缀
-                    file_meta = MetaInfo(title=file_path.stem)
-                    # 合并元数据
-                    file_meta.merge(meta)
-
+                    # 元数据
+                    file_meta = MetaInfoPath(file_path)
                     if not file_meta.name:
                         logger.error(f"{file_path.name} 无法识别有效信息")
                         return
@@ -343,7 +338,7 @@ class DirMonitor(_PluginBase):
                     }
                     """
                     # 发送消息汇总
-                    media_list = self._medias.get(mediainfo.title_year + " " + meta.season) or {}
+                    media_list = self._medias.get(mediainfo.title_year + " " + file_meta.season) or {}
                     if media_list:
                         media_files = media_list.get("files") or []
                         if media_files:
@@ -384,7 +379,7 @@ class DirMonitor(_PluginBase):
                             ],
                             "time": datetime.now()
                         }
-                    self._medias[mediainfo.title_year + " " + meta.season] = media_list
+                    self._medias[mediainfo.title_year + " " + file_meta.season] = media_list
 
                     # 汇总刷新媒体库
                     if settings.REFRESH_MEDIASERVER:
