@@ -1767,19 +1767,22 @@ class BrushFlow(_PluginBase):
         """
         发送删除种子的消息
         """
-        if self._notify:
-            self.chain.post_message(Notification(
-                mtype=NotificationType.SiteMessage,
-                title=f"【刷流任务删种】",
-                text=f"站点：{site_name}\n"
-                     f"标题：{torrent_title}\n"
-                     f"原因：{reason}"
-            ))
+        if not self._notify:
+            return
+        self.chain.post_message(Notification(
+            mtype=NotificationType.SiteMessage,
+            title=f"【刷流任务删种】",
+            text=f"站点：{site_name}\n"
+                 f"标题：{torrent_title}\n"
+                 f"原因：{reason}"
+        ))
 
     def __send_add_message(self, torrent: TorrentInfo):
         """
         发送添加下载的消息
         """
+        if not self._notify:
+            return
         msg_text = ""
         if torrent.site_name:
             msg_text = f"站点：{torrent.site_name}"
