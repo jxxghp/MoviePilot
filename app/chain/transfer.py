@@ -12,7 +12,7 @@ from app.chain.media import MediaChain
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
-from app.core.metainfo import MetaInfo
+from app.core.metainfo import MetaInfoPath
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
@@ -202,12 +202,8 @@ class TransferChain(ChainBase):
                                      key=ProgressKey.FileTransfer)
 
                 if not meta:
-                    # 上级目录元数据
-                    dir_meta = MetaInfo(title=file_path.parent.name)
-                    # 文件元数据，不包含后缀
-                    file_meta = MetaInfo(title=file_path.stem)
-                    # 合并元数据
-                    file_meta.merge(dir_meta)
+                    # 文件元数据
+                    file_meta = MetaInfoPath(file_path)
                 else:
                     file_meta = meta
 
@@ -474,7 +470,8 @@ class TransferChain(ChainBase):
                                            text=errmsg, userid=userid))
             return
 
-    def re_transfer(self, logid: int, mtype: MediaType, tmdbid: int) -> Tuple[bool, str]:
+    def re_transfer(self, logid: int,
+                    mtype: MediaType = None, tmdbid: int = None) -> Tuple[bool, str]:
         """
         根据历史记录，重新识别转移，只处理对应的src目录
         :param logid: 历史记录ID
@@ -492,11 +489,15 @@ class TransferChain(ChainBase):
             return False, f"源目录不存在：{src_path}"
         dest_path = Path(history.dest) if history.dest else None
         # 查询媒体信息
-        mediainfo = self.recognize_media(mtype=mtype, tmdbid=tmdbid)
+        if mtype and tmdbid:
+            mediainfo = self.recognize_media(mtype=mtype, tmdbid=tmdbid)
+        else:
+            meta = MetaInfoPath(src_path)
+            mediainfo = self.recognize_media(meta=meta)
         if not mediainfo:
             return False, f"未识别到媒体信息，类型：{mtype.value}，tmdbid：{tmdbid}"
         # 重新执行转移
-        logger.info(f"{mtype.value} {tmdbid} 识别为：{mediainfo.title_year}")
+        logger.info(f"{src_path.name} 识别为：{mediainfo.title_year}")
         # 更新媒体图片
         self.obtain_images(mediainfo=mediainfo)
 

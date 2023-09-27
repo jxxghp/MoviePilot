@@ -536,16 +536,14 @@ class FileTransferModule(_ModuleBase):
     @staticmethod
     def get_library_path(path: Path):
         """
-        根据目录查询其所在的媒体库目录
+        根据目录查询其所在的媒体库目录，查询不到的返回输入目录
         """
         if not path:
             return None
         if not settings.LIBRARY_PATHS:
-            return None
+            return path
         # 目的路径，多路径以,分隔
         dest_paths = settings.LIBRARY_PATHS
-        if len(dest_paths) == 1:
-            return dest_paths[0]
         for libpath in dest_paths:
             try:
                 if path.is_relative_to(libpath):
@@ -553,7 +551,7 @@ class FileTransferModule(_ModuleBase):
             except Exception as e:
                 logger.debug(f"计算媒体库路径时出错：{e}")
                 continue
-        return None
+        return path
 
     @staticmethod
     def get_target_path(in_path: Path = None) -> Optional[Path]:

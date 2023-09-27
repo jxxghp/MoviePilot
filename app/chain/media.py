@@ -4,7 +4,7 @@ from typing import Optional, List, Tuple
 from app.chain import ChainBase
 from app.core.context import Context, MediaInfo
 from app.core.meta import MetaBase
-from app.core.metainfo import MetaInfo
+from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.log import logger
 from app.utils.string import StringUtils
 
@@ -38,12 +38,8 @@ class MediaChain(ChainBase):
         """
         logger.info(f'开始识别媒体信息，文件：{path} ...')
         file_path = Path(path)
-        # 上级目录元数据
-        dir_meta = MetaInfo(title=file_path.parent.name)
-        # 文件元数据，不包含后缀
-        file_meta = MetaInfo(title=file_path.stem)
-        # 合并元数据
-        file_meta.merge(dir_meta)
+        # 元数据
+        file_meta = MetaInfoPath(file_path)
         # 识别媒体信息
         mediainfo = self.recognize_media(meta=file_meta)
         if not mediainfo:

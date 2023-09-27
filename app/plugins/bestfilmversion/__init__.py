@@ -131,130 +131,130 @@ class BestFilmVersion(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         return [
-                   {
-                       'component': 'VForm',
-                       'content': [
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 3
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'enabled',
-                                                   'label': '启用插件',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 3
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'notify',
-                                                   'label': '发送通知',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 3
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'only_once',
-                                                   'label': '立即运行一次',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 3
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'webhook_enabled',
-                                                   'label': 'Webhook',
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'cron',
-                                                   'label': '执行周期',
-                                                   'placeholder': '5位cron表达式，留空自动'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VAlert',
-                                               'props': {
-                                                   'text': '支持主动定时获取媒体库数据和Webhook实时触发两种方式，两者只能选其一，'
-                                                           'Webhook需要在媒体服务器设置发送Webhook报文。'
-                                                           'Plex使用主动获取时，建议执行周期设置大于1小时，'
-                                                           '收藏Api调用Plex官网接口，有频率限制。'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           }
-                       ]
-                   }
-               ], {
-                   "enabled": False,
-                   "notify": False,
-                   "cron": "*/30 * * * *",
-                   "webhook_enabled": False,
-                   "only_once": False
-               }
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'notify',
+                                            'label': '发送通知',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'only_once',
+                                            'label': '立即运行一次',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'webhook_enabled',
+                                            'label': 'Webhook',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cron',
+                                            'label': '执行周期',
+                                            'placeholder': '5位cron表达式，留空自动'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '支持主动定时获取媒体库数据和Webhook实时触发两种方式，两者只能选其一，'
+                                                    'Webhook需要在媒体服务器设置发送Webhook报文。'
+                                                    'Plex使用主动获取时，建议执行周期设置大于1小时，'
+                                                    '收藏Api调用Plex官网接口，有频率限制。'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "notify": False,
+            "cron": "*/30 * * * *",
+            "webhook_enabled": False,
+            "only_once": False
+        }
 
     def get_page(self) -> List[dict]:
         """
@@ -386,81 +386,85 @@ class BestFilmVersion(_PluginBase):
             # 读取历史记录
             history = self.get_data('history') or []
 
-            all_item = []
+            # 媒体服务器类型，多个以,分隔
+            if not settings.MEDIASERVER:
+                return
+            media_servers = settings.MEDIASERVER.split(',')
+
             # 读取收藏
-            if settings.MEDIASERVER == 'jellyfin':
-                self.jellyfin_get_items(all_item)
-            elif settings.MEDIASERVER == 'emby':
-                self.emby_get_items(all_item)
-            else:
-                resp = self.plex_get_watchlist()
-                if not resp:
-                    return
-                all_item.extend(resp)
+            all_items = {}
+            for media_server in media_servers:
+                if media_server == 'jellyfin':
+                    all_items['jellyfin'] = self.jellyfin_get_items()
+                elif media_server == 'emby':
+                    all_items['emby'] = self.emby_get_items()
+                else:
+                    all_items['plex'] = self.plex_get_watchlist()
 
             def function(y, x):
                 return y if (x['Name'] in [i['Name'] for i in y]) else (lambda z, u: (z.append(u), z))(y, x)[1]
 
-            # all_item 根据电影名去重
-            result = reduce(function, all_item, [])
-
-            for data in result:
-                # 检查缓存
-                if data.get('Name') in caches:
-                    continue
-
-                # 获取详情
-                if settings.MEDIASERVER == 'jellyfin':
-                    item_info_resp = Jellyfin().get_iteminfo(itemid=data.get('Id'))
-                elif settings.MEDIASERVER == 'emby':
-                    item_info_resp = Emby().get_iteminfo(itemid=data.get('Id'))
-                else:
-                    item_info_resp = self.plex_get_iteminfo(itemid=data.get('Id'))
-
-                logger.info(f'BestFilmVersion插件 item打印 {item_info_resp}')
-                if not item_info_resp:
-                    continue
-
-                # 只接受Movie类型
-                if data.get('Type') != 'Movie':
-                    continue
-
-                # 获取tmdb_id
-                media_info_ids = item_info_resp.get('ExternalUrls')
-                if not media_info_ids:
-                    continue
-                for media_info_id in media_info_ids:
-                    if 'TheMovieDb' != media_info_id.get('Name'):
+            # 处理所有结果
+            for server, all_item in all_items.items():
+                # all_item 根据电影名去重
+                result = reduce(function, all_item, [])
+                for data in result:
+                    # 检查缓存
+                    if data.get('Name') in caches:
                         continue
-                    tmdb_find_id = str(media_info_id.get('Url')).split('/')
-                    tmdb_find_id.reverse()
-                    tmdb_id = tmdb_find_id[0]
-                    # 识别媒体信息
-                    mediainfo: MediaInfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
-                    if not mediainfo:
-                        logger.warn(f'未识别到媒体信息，标题：{data.get("Name")}，tmdbID：{tmdb_id}')
+
+                    # 获取详情
+                    if server == 'jellyfin':
+                        item_info_resp = Jellyfin().get_iteminfo(itemid=data.get('Id'))
+                    elif server == 'emby':
+                        item_info_resp = Emby().get_iteminfo(itemid=data.get('Id'))
+                    else:
+                        item_info_resp = self.plex_get_iteminfo(itemid=data.get('Id'))
+
+                    logger.info(f'BestFilmVersion插件 item打印 {item_info_resp}')
+                    if not item_info_resp:
                         continue
-                    # 添加订阅
-                    self.subscribechain.add(mtype=MediaType.MOVIE,
-                                            title=mediainfo.title,
-                                            year=mediainfo.year,
-                                            tmdbid=mediainfo.tmdb_id,
-                                            best_version=True,
-                                            username="收藏洗版",
-                                            exist_ok=True)
-                    # 加入缓存
-                    caches.append(data.get('Name'))
-                    # 存储历史记录
-                    if mediainfo.tmdb_id not in [h.get("tmdbid") for h in history]:
-                        history.append({
-                            "title": mediainfo.title,
-                            "type": mediainfo.type.value,
-                            "year": mediainfo.year,
-                            "poster": mediainfo.get_poster_image(),
-                            "overview": mediainfo.overview,
-                            "tmdbid": mediainfo.tmdb_id,
-                            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        })
+
+                    # 只接受Movie类型
+                    if data.get('Type') != 'Movie':
+                        continue
+
+                    # 获取tmdb_id
+                    media_info_ids = item_info_resp.get('ExternalUrls')
+                    if not media_info_ids:
+                        continue
+                    for media_info_id in media_info_ids:
+                        if 'TheMovieDb' != media_info_id.get('Name'):
+                            continue
+                        tmdb_find_id = str(media_info_id.get('Url')).split('/')
+                        tmdb_find_id.reverse()
+                        tmdb_id = tmdb_find_id[0]
+                        # 识别媒体信息
+                        mediainfo: MediaInfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
+                        if not mediainfo:
+                            logger.warn(f'未识别到媒体信息，标题：{data.get("Name")}，tmdbID：{tmdb_id}')
+                            continue
+                        # 添加订阅
+                        self.subscribechain.add(mtype=MediaType.MOVIE,
+                                                title=mediainfo.title,
+                                                year=mediainfo.year,
+                                                tmdbid=mediainfo.tmdb_id,
+                                                best_version=True,
+                                                username="收藏洗版",
+                                                exist_ok=True)
+                        # 加入缓存
+                        caches.append(data.get('Name'))
+                        # 存储历史记录
+                        if mediainfo.tmdb_id not in [h.get("tmdbid") for h in history]:
+                            history.append({
+                                "title": mediainfo.title,
+                                "type": mediainfo.type.value,
+                                "year": mediainfo.year,
+                                "poster": mediainfo.get_poster_image(),
+                                "overview": mediainfo.overview,
+                                "tmdbid": mediainfo.tmdb_id,
+                                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            })
             # 保存历史记录
             self.save_data('history', history)
             # 保存缓存
@@ -468,13 +472,14 @@ class BestFilmVersion(_PluginBase):
         finally:
             lock.release()
 
-    def jellyfin_get_items(self, all_item):
+    def jellyfin_get_items(self) -> List[dict]:
         # 获取所有user
         users_url = "{HOST}Users?&apikey={APIKEY}"
         users = self.get_users(Jellyfin().get_data(users_url))
         if not users:
             logger.info(f"bestfilmversion/users_url: {users_url}")
-            return
+            return []
+        all_items = []
         for user in users:
             # 根据加入日期 降序排序
             url = "{HOST}Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
@@ -490,14 +495,16 @@ class BestFilmVersion(_PluginBase):
             resp = self.get_items(Jellyfin().get_data(url))
             if not resp:
                 continue
-            all_item.extend(resp)
+            all_items.extend(resp)
+        return all_items
 
-    def emby_get_items(self, all_item):
+    def emby_get_items(self) -> List[dict]:
         # 获取所有user
         get_users_url = "{HOST}Users?&api_key={APIKEY}"
         users = self.get_users(Emby().get_data(get_users_url))
         if not users:
-            return
+            return []
+        all_items = []
         for user in users:
             # 根据加入日期 降序排序
             url = "{HOST}emby/Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
@@ -512,7 +519,8 @@ class BestFilmVersion(_PluginBase):
             resp = self.get_items(Emby().get_data(url))
             if not resp:
                 continue
-            all_item.extend(resp)
+            all_items.extend(resp)
+        return all_items
 
     @staticmethod
     def get_items(resp: Response):
@@ -538,7 +546,7 @@ class BestFilmVersion(_PluginBase):
             return []
 
     @staticmethod
-    def plex_get_watchlist():
+    def plex_get_watchlist() -> List[dict]:
         # 根据加入日期 降序排序
         url = f"https://metadata.provider.plex.tv/library/sections/watchlist/all?type=1&sort=addedAt%3Adesc" \
               f"&X-Plex-Container-Start=0&X-Plex-Container-Size=50" \

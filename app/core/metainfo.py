@@ -9,7 +9,7 @@ from app.core.meta.words import WordsMatcher
 
 def MetaInfo(title: str, subtitle: str = None) -> MetaBase:
     """
-    媒体整理入口，根据名称和副标题，判断是哪种类型的识别，返回对应对象
+    根据标题和副标题识别元数据
     :param title: 标题、种子名、文件名
     :param subtitle: 副标题、描述
     :return: MetaAnime、MetaVideo
@@ -31,6 +31,20 @@ def MetaInfo(title: str, subtitle: str = None) -> MetaBase:
     meta.apply_words = apply_words or []
 
     return meta
+
+
+def MetaInfoPath(path: Path) -> MetaBase:
+    """
+    根据路径识别元数据
+    :param path: 路径
+    """
+    # 上级目录元数据
+    dir_meta = MetaInfo(title=path.parent.name)
+    # 文件元数据，不包含后缀
+    file_meta = MetaInfo(title=path.stem)
+    # 合并元数据
+    file_meta.merge(dir_meta)
+    return file_meta
 
 
 def is_anime(name: str) -> bool:
