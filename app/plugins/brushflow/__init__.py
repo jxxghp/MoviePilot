@@ -120,6 +120,9 @@ class BrushFlow(_PluginBase):
                 self.save_data("statistic", {})
                 # 清除种子记录
                 self.save_data("torrents", {})
+                # 关闭一次性开关
+                self._clear_task = False
+                self.__update_config()
 
             # 停止现有任务
             self.stop_service()
@@ -729,6 +732,7 @@ class BrushFlow(_PluginBase):
             "enabled": False,
             "notify": True,
             "onlyonce": False,
+            "clear_task": False,
             "freeleech": "free"
         }
 
@@ -1218,7 +1222,8 @@ class BrushFlow(_PluginBase):
             "seed_inactivetime": self._seed_inactivetime,
             "up_speed": self._up_speed,
             "dl_speed": self._dl_speed,
-            "save_path": self._save_path
+            "save_path": self._save_path,
+            "clear_task": self._clear_task
         })
 
     def brush(self):
