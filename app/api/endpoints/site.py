@@ -31,7 +31,7 @@ def read_sites(db: Session = Depends(get_db),
 
 
 @router.post("/", summary="新增站点", response_model=schemas.Response)
-def update_site(
+def add_site(
         *,
         db: Session = Depends(get_db),
         site_in: schemas.Site,

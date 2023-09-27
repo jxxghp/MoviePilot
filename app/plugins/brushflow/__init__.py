@@ -120,6 +120,9 @@ class BrushFlow(_PluginBase):
                 self.save_data("statistic", {})
                 # 清除种子记录
                 self.save_data("torrents", {})
+                # 关闭一次性开关
+                self._clear_task = False
+                self.__update_config()
 
             # 停止现有任务
             self.stop_service()
@@ -729,6 +732,7 @@ class BrushFlow(_PluginBase):
             "enabled": False,
             "notify": True,
             "onlyonce": False,
+            "clear_task": False,
             "freeleech": "free"
         }
 
@@ -1218,7 +1222,8 @@ class BrushFlow(_PluginBase):
             "seed_inactivetime": self._seed_inactivetime,
             "up_speed": self._up_speed,
             "dl_speed": self._dl_speed,
-            "save_path": self._save_path
+            "save_path": self._save_path,
+            "clear_task": self._clear_task
         })
 
     def brush(self):
@@ -1265,12 +1270,6 @@ class BrushFlow(_PluginBase):
                         f"{task.get('site_name')}{task.get('title')}" for task in task_info.values()
                     ]:
                         continue
-                    # 保种体积（GB） 促销
-                    if self._disksize \
-                            and (torrents_size + torrent.size) > float(self._disksize) * 1024**3:
-                        logger.warn(f"当前做种体积 {StringUtils.str_filesize(torrents_size)} "
-                                    f"已超过保种体积 {self._disksize}，停止新增任务")
-                        break
                     # 促销
                     if self._freeleech and torrent.downloadvolumefactor != 0:
                         continue
@@ -1349,6 +1348,12 @@ class BrushFlow(_PluginBase):
                             logger.warn(f"当前总下载带宽 {StringUtils.str_filesize(current_download_speed)} "
                                         f"已达到最大值 {self._maxdlspeed} KB/s，暂时停止新增任务")
                             break
+                    # 保种体积（GB）
+                    if self._disksize \
+                            and (torrents_size + torrent.size) > float(self._disksize) * 1024**3:
+                        logger.warn(f"当前做种体积 {StringUtils.str_filesize(torrents_size)} "
+                                    f"已超过保种体积 {self._disksize}，停止新增任务")
+                        break
                     # 添加下载任务
                     hash_string = self.__download(torrent=torrent)
                     if not hash_string:
@@ -1767,19 +1772,22 @@ class BrushFlow(_PluginBase):
         """
         发送删除种子的消息
         """
-        if self._notify:
-            self.chain.post_message(Notification(
-                mtype=NotificationType.SiteMessage,
-                title=f"【刷流任务删种】",
-                text=f"站点：{site_name}\n"
-                     f"标题：{torrent_title}\n"
-                     f"原因：{reason}"
-            ))
+        if not self._notify:
+            return
+        self.chain.post_message(Notification(
+            mtype=NotificationType.SiteMessage,
+            title=f"【刷流任务删种】",
+            text=f"站点：{site_name}\n"
+                 f"标题：{torrent_title}\n"
+                 f"原因：{reason}"
+        ))
 
     def __send_add_message(self, torrent: TorrentInfo):
         """
         发送添加下载的消息
         """
+        if not self._notify:
+            return
         msg_text = ""
         if torrent.site_name:
             msg_text = f"站点：{torrent.site_name}"
