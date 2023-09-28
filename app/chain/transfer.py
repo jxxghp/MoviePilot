@@ -282,8 +282,8 @@ class TransferChain(ChainBase):
                 self.obtain_images(mediainfo=file_mediainfo)
 
                 # 获取集数据
-                if mediainfo.type == MediaType.TV:
-                    episodes_info = self.tmdbchain.tmdb_episodes(tmdbid=mediainfo.tmdb_id,
+                if file_mediainfo.type == MediaType.TV:
+                    episodes_info = self.tmdbchain.tmdb_episodes(tmdbid=file_mediainfo.tmdb_id,
                                                                  season=file_meta.begin_season or 1)
                 else:
                     episodes_info = None
