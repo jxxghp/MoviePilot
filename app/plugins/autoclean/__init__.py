@@ -37,7 +37,7 @@ class AutoClean(_PluginBase):
     # 插件配置项ID前缀
     plugin_config_prefix = "autoclean_"
     # 加载顺序
-    plugin_order = 15
+    plugin_order = 23
     # 可使用的用户级别
     auth_level = 2
 
