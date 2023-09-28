@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
+from app.chain.tmdb import TmdbChain
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
@@ -41,6 +42,7 @@ class TransferChain(ChainBase):
         self.transferhis = TransferHistoryOper(self._db)
         self.progress = ProgressHelper()
         self.mediachain = MediaChain(self._db)
+        self.tmdbchain = TmdbChain(self._db)
         self.systemconfig = SystemConfigOper()
 
     def process(self) -> bool:
@@ -257,31 +259,17 @@ class TransferChain(ChainBase):
 
                 logger.info(f"{file_path.name} 识别为：{file_mediainfo.type.value} {file_mediainfo.title_year}")
 
-                # 电视剧没有集无法转移
-                if file_mediainfo.type == MediaType.TV and not file_meta.episode:
-                    # 转移失败
-                    logger.warn(f"{file_path.name} 入库失败：未识别到集数")
-                    err_msgs.append(f"{file_path.name} 未识别到集数")
-                    # 新增转移失败历史记录
-                    self.transferhis.add_fail(
-                        src_path=file_path,
-                        mode=settings.TRANSFER_TYPE,
-                        download_hash=download_hash,
-                        meta=file_meta,
-                        mediainfo=file_mediainfo
-                    )
-                    # 发送消息
-                    self.post_message(Notification(
-                        mtype=NotificationType.Manual,
-                        title=f"{file_path.name} 入库失败！",
-                        text=f"原因：未识别到集数",
-                        image=file_mediainfo.get_message_image()
-                    ))
-                    continue
-
                 # 更新媒体图片
                 self.obtain_images(mediainfo=file_mediainfo)
 
+                # 获取集数据
+                if mediainfo.type == MediaType.TV:
+                    episodes_info = self.tmdbchain.tmdb_episodes(tmdbid=mediainfo.tmdb_id,
+                                                                 season=file_meta.begin_season or 1)
+                else:
+                    episodes_info = None
+
+                # 获取下载hash
                 if not download_hash:
                     download_file = self.downloadhis.get_file_by_fullpath(file_path_str)
                     if download_file:
@@ -292,7 +280,8 @@ class TransferChain(ChainBase):
                                                            mediainfo=file_mediainfo,
                                                            path=file_path,
                                                            transfer_type=transfer_type,
-                                                           target=target)
+                                                           target=target,
+                                                           episodes_info=episodes_info)
                 if not transferinfo:
                     logger.error("文件转移模块运行失败")
                     return False, "文件转移模块运行失败"

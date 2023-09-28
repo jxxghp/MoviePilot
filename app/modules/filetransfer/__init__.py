@@ -11,7 +11,7 @@ from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
-from app.schemas import TransferInfo, ExistMediaInfo
+from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode
 from app.schemas.types import MediaType
 from app.utils.system import SystemUtils
 
@@ -30,7 +30,8 @@ class FileTransferModule(_ModuleBase):
         pass
 
     def transfer(self, path: Path, meta: MetaBase, mediainfo: MediaInfo,
-                 transfer_type: str, target: Path = None) -> TransferInfo:
+                 transfer_type: str, target: Path = None,
+                 episodes_info: List[TmdbEpisode] = None) -> TransferInfo:
         """
         文件转移
         :param path:  文件路径
@@ -38,6 +39,7 @@ class FileTransferModule(_ModuleBase):
         :param mediainfo:  识别的媒体信息
         :param transfer_type:  转移方式
         :param target:  目标路径
+        :param episodes_info: 当前季的全部集信息
         :return: {path, target_path, message}
         """
         # 获取目标路径
@@ -49,13 +51,14 @@ class FileTransferModule(_ModuleBase):
             logger.error("未找到媒体库目录，无法转移文件")
             return TransferInfo(success=False,
                                 path=path,
-                                message="未找到媒体库目录，无法转移文件")
+                                message="未找到媒体库目录")
         # 转移
         return self.transfer_media(in_path=path,
                                    in_meta=meta,
                                    mediainfo=mediainfo,
                                    transfer_type=transfer_type,
-                                   target_dir=target)
+                                   target_dir=target,
+                                   episodes_info=episodes_info)
 
     @staticmethod
     def __transfer_command(file_item: Path, target_file: Path, transfer_type: str) -> int:
@@ -355,6 +358,7 @@ class FileTransferModule(_ModuleBase):
                        mediainfo: MediaInfo,
                        transfer_type: str,
                        target_dir: Path,
+                       episodes_info: List[TmdbEpisode] = None
                        ) -> TransferInfo:
         """
         识别并转移一个文件或者一个目录下的所有文件
@@ -363,6 +367,7 @@ class FileTransferModule(_ModuleBase):
         :param mediainfo: 媒体信息
         :param target_dir: 媒体库根目录
         :param transfer_type: 文件转移方式
+        :param episodes_info: 当前季的全部集信息
         :return: TransferInfo、错误信息
         """
         # 检查目录路径
@@ -404,7 +409,7 @@ class FileTransferModule(_ModuleBase):
             if retcode != 0:
                 logger.error(f"文件夹 {in_path} 转移失败，错误码：{retcode}")
                 return TransferInfo(success=False,
-                                    message=f"文件夹 {in_path} 转移失败，错误码：{retcode}",
+                                    message=f"错误码：{retcode}",
                                     path=in_path,
                                     target_path=new_path,
                                     is_bluray=bluray_flag)
@@ -418,17 +423,24 @@ class FileTransferModule(_ModuleBase):
                                 is_bluray=bluray_flag)
         else:
             # 转移单个文件
-            # 文件结束季为空
-            in_meta.end_season = None
+            if mediainfo.type == MediaType.TV:
+                # 电视剧
+                if in_meta.begin_episode is None:
+                    logger.warn(f"文件 {in_path} 转移失败：未识别到文件集数")
+                    return TransferInfo(success=False,
+                                        message=f"未识别到文件集数",
+                                        path=in_path,
+                                        fail_list=[str(in_path)])
 
-            # 文件总季数为1
-            if in_meta.total_season:
-                in_meta.total_season = 1
-
-            # 文件不可能有多集
-            if in_meta.total_episode > 2:
-                in_meta.total_episode = 1
-                in_meta.end_episode = None
+                # 文件结束季为空
+                in_meta.end_season = None
+                # 文件总季数为1
+                if in_meta.total_season:
+                    in_meta.total_season = 1
+                # 文件不可能超过2集
+                if in_meta.total_episode > 2:
+                    in_meta.total_episode = 1
+                    in_meta.end_episode = None
 
             # 目的文件名
             new_file = self.get_rename_path(
@@ -437,6 +449,7 @@ class FileTransferModule(_ModuleBase):
                 rename_dict=self.__get_naming_dict(
                     meta=in_meta,
                     mediainfo=mediainfo,
+                    episodes_info=episodes_info,
                     file_ext=in_path.suffix
                 )
             )
@@ -456,7 +469,7 @@ class FileTransferModule(_ModuleBase):
             if retcode != 0:
                 logger.error(f"文件 {in_path} 转移失败，错误码：{retcode}")
                 return TransferInfo(success=False,
-                                    message=f"文件 {in_path.name} 转移失败，错误码：{retcode}",
+                                    message=f"错误码：{retcode}",
                                     path=in_path,
                                     target_path=new_file,
                                     fail_list=[str(in_path)])
@@ -472,13 +485,23 @@ class FileTransferModule(_ModuleBase):
                                 file_list_new=[str(new_file)])
 
     @staticmethod
-    def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None) -> dict:
+    def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None,
+                          episodes_info: List[TmdbEpisode] = None) -> dict:
         """
         根据媒体信息，返回Format字典
         :param meta: 文件元数据
         :param mediainfo: 识别的媒体信息
         :param file_ext: 文件扩展名
+        :param episodes_info: 当前季的全部集信息
         """
+        # 获取集标题
+        episode_title = None
+        if meta.begin_episode and episodes_info:
+            for episode in episodes_info:
+                if episode.episode_number == meta.begin_episode:
+                    episode_title = episode.name
+                    break
+
         return {
             # 标题
             "title": mediainfo.title,
@@ -514,6 +537,8 @@ class FileTransferModule(_ModuleBase):
             "season_episode": "%s%s" % (meta.season, meta.episodes),
             # 段/节
             "part": meta.part,
+            # 剧集标题
+            "episode_title": episode_title,
             # 文件后缀
             "fileExt": file_ext
         }
@@ -613,9 +638,10 @@ class FileTransferModule(_ModuleBase):
             rename_format = settings.TV_RENAME_FORMAT \
                 if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
             # 相对路径
+            meta = MetaInfo(mediainfo.title)
             rel_path = self.get_rename_path(
                 template_string=rename_format,
-                rename_dict=self.__get_naming_dict(meta=MetaInfo(mediainfo.title),
+                rename_dict=self.__get_naming_dict(meta=meta,
                                                    mediainfo=mediainfo)
             )
             # 取相对路径的第1层目录

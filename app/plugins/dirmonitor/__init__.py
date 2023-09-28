@@ -12,6 +12,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 
+from app.chain.tmdb import TmdbChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.context import MediaInfo
@@ -74,6 +75,7 @@ class DirMonitor(_PluginBase):
     transferhis = None
     downloadhis = None
     transferchian = None
+    tmdbchain = None
     _observer = []
     _enabled = False
     _notify = False
@@ -93,7 +95,7 @@ class DirMonitor(_PluginBase):
         self.transferhis = TransferHistoryOper(self.db)
         self.downloadhis = DownloadHistoryOper(self.db)
         self.transferchian = TransferChain(self.db)
-
+        self.tmdbchain = TmdbChain(self.db)
         # 清空配置
         self._dirconf = {}
 
@@ -274,6 +276,13 @@ class DirMonitor(_PluginBase):
                     # 更新媒体图片
                     self.chain.obtain_images(mediainfo=mediainfo)
 
+                    # 获取集数据
+                    if mediainfo.type == MediaType.TV:
+                        episodes_info = self.tmdbchain.tmdb_episodes(tmdbid=mediainfo.tmdb_id,
+                                                                     season=file_meta.begin_season or 1)
+                    else:
+                        episodes_info = None
+
                     # 获取downloadhash
                     download_hash = self.get_download_hash(src=str(file_path))
 
@@ -282,7 +291,8 @@ class DirMonitor(_PluginBase):
                                                                      path=file_path,
                                                                      transfer_type=self._transfer_type,
                                                                      target=target,
-                                                                     meta=file_meta)
+                                                                     meta=file_meta,
+                                                                     episodes_info=episodes_info)
 
                     if not transferinfo:
                         logger.error("文件转移模块运行失败")

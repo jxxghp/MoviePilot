@@ -212,6 +212,7 @@ docker pull jxxghp/moviepilot:latest
 > `season`： 季号  
 > `episode`： 集号  
 > `season_episode`： 季集 SxxExx  
+> `episode_title`： 集标题
 
 `TV_RENAME_FORMAT`默认配置格式：
 
