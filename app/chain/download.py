@@ -271,7 +271,7 @@ class DownloadChain(ChainBase):
                 torrent_description=_torrent.description,
                 torrent_site=_torrent.site_name,
                 userid=userid,
-                channel=channel,
+                channel=channel.value if channel else None,
                 date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
             )
 
@@ -324,7 +324,7 @@ class DownloadChain(ChainBase):
                        contexts: List[Context],
                        no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
                        save_path: str = None,
-                       channel: str = None,
+                       channel: MessageChannel = None,
                        userid: str = None) -> Tuple[List[Context], Dict[int, Dict[int, NotExistMediaInfo]]]:
         """
         根据缺失数据，自动种子列表中组合择优下载
