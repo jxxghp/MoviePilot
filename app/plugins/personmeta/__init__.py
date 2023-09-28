@@ -192,6 +192,8 @@ class PersonMeta(_PluginBase):
                 logger.info(f"图片已保存：{path}")
             else:
                 logger.info(f"图片下载失败，请检查网络连通性：{image_url}")
+        except RequestException as err:
+            raise err
         except Exception as err:
             logger.error(f"图片下载失败：{err}")
 
