@@ -73,15 +73,19 @@ class SpeedLimiter(_PluginBase):
             try:
                 # 总带宽
                 self._bandwidth = int(float(config.get("bandwidth") or 0)) * 1000000
+                # 自动限速开关
                 if self._bandwidth > 0:
-                    # 自动限速开关
                     self._auto_limit = True
+                else:
+                    self._auto_limit = False
             except Exception as e:
                 logger.error(f"智能限速上行带宽设置错误：{str(e)}")
                 self._bandwidth = 0
 
             # 限速服务开关
-            self._limit_enabled = True if self._play_up_speed or self._play_down_speed or self._auto_limit else False
+            self._limit_enabled = True if (self._play_up_speed
+                                           or self._play_down_speed
+                                           or self._auto_limit) else False
             self._allocation_ratio = config.get("allocation_ratio") or ""
             # 不限速地址
             self._unlimited_ips["ipv4"] = config.get("ipv4") or ""
@@ -479,17 +483,13 @@ class SpeedLimiter(_PluginBase):
             self.__set_limiter(limit_type="未播放", upload_limit=self._noplay_up_speed,
                                download_limit=self._noplay_down_speed)
 
-    def __calc_limit(self, total_bit_rate):
+    def __calc_limit(self, total_bit_rate: float) -> float:
         """
         计算智能上传限速
         """
-        residual_bandwidth = (self._bandwidth - total_bit_rate)
-        if residual_bandwidth < 0:
-            play_up_speed = 10
-        else:
-            play_up_speed = round(residual_bandwidth / 8 / 1024, 2)
-
-        return play_up_speed
+        if not self._bandwidth:
+            return 10
+        return round((self._bandwidth - total_bit_rate) / 8 / 1024, 2)
 
     def __set_limiter(self, limit_type: str, upload_limit: float, download_limit: float):
         """
@@ -572,7 +572,7 @@ class SpeedLimiter(_PluginBase):
             logger.error(f"设置限速失败：{str(e)}")
 
     @staticmethod
-    def __allow_access(allow_ips, ip):
+    def __allow_access(allow_ips: dict, ip: str) -> bool:
         """
         判断IP是否合法
         :param allow_ips: 充许的IP范围 {"ipv4":, "ipv6":}
