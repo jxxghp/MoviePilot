@@ -34,8 +34,8 @@ class EventType(Enum):
     DownloadAdded = "download.added"
     # 删除历史记录
     HistoryDeleted = "history.deleted"
-    # 删除媒体库文件
-    MediaDeleted = "media.deleted"
+    # 删除下载源文件
+    DownloadFileDeleted = "downloadfile.deleted"
     # 用户外来消息
     UserMessage = "user.message"
     # 通知消息

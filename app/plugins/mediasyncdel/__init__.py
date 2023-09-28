@@ -25,9 +25,9 @@ from app.schemas.types import NotificationType, EventType, MediaType
 
 class MediaSyncDel(_PluginBase):
     # 插件名称
-    plugin_name = "媒体库同步删除"
+    plugin_name = "媒体文件同步删除"
     # 插件描述
-    plugin_desc = "媒体库删除媒体后同步删除历史记录、源文件和下载任务。"
+    plugin_desc = "同步删除历史记录、源文件和下载任务。"
     # 插件图标
     plugin_icon = "mediasyncdel.png"
     # 主题色
@@ -187,9 +187,9 @@ class MediaSyncDel(_PluginBase):
                                         'component': 'VSelect',
                                         'props': {
                                             'model': 'sync_type',
-                                            'label': '同步方式',
+                                            'label': '媒体库同步方式',
                                             'items': [
-                                                {'title': 'webhook', 'value': 'webhook'},
+                                                {'title': 'Webhook', 'value': 'webhook'},
                                                 {'title': '日志', 'value': 'log'},
                                                 {'title': 'Scripter X', 'value': 'plugin'}
                                             ]
@@ -208,7 +208,7 @@ class MediaSyncDel(_PluginBase):
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'cron',
-                                            'label': '执行周期',
+                                            'label': '日志检查周期',
                                             'placeholder': '5位cron表达式，留空自动'
                                         }
                                     }
@@ -246,7 +246,7 @@ class MediaSyncDel(_PluginBase):
                                         'props': {
                                             'model': 'library_path',
                                             'rows': '2',
-                                            'label': '媒体库路径',
+                                            'label': '媒体库路径映射',
                                             'placeholder': '媒体服务器路径:MoviePilot路径（一行一个）'
                                         }
                                     }
@@ -266,11 +266,11 @@ class MediaSyncDel(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
-                                            'text': '同步方式分为webhook、日志同步和Scripter X。'
-                                                    'webhook需要Emby4.8.0.45及以上开启媒体删除的webhook'
-                                                    '（建议使用媒体库刮削插件覆盖元数据重新刮削剧集路径）。'
-                                                    '日志同步需要配置执行周期，默认30分钟执行一次。'
-                                                    'Scripter X方式需要emby安装并配置Scripter X插件，无需配置执行周期。'
+                                            'text': '媒体库同步方式分为Webhook、日志同步和Scripter X：'
+                                                    '1、Webhook需要Emby4.8.0.45及以上开启媒体删除的Webhook。'
+                                                    '2、日志同步需要配置检查周期，默认30分钟执行一次。'
+                                                    '3、Scripter X方式需要emby安装并配置Scripter X插件，无需配置执行周期。'
+                                                    '4、启用该插件后，非媒体服务器触发的源文件删除，也会同步处理下载器中的下载任务。'
                                         }
                                     }
                                 ]
@@ -1202,21 +1202,27 @@ class MediaSyncDel(_PluginBase):
         except Exception as e:
             logger.error("退出插件失败：%s" % str(e))
 
-    @eventmanager.register(EventType.MediaDeleted)
-    def remote_sync_del(self, event: Event):
+    @eventmanager.register(EventType.DownloadFileDeleted)
+    def downloadfile_del_sync(self, event: Event):
         """
-        媒体库同步删除
+        下载文件删除处理事件
         """
-        if event:
-            logger.info("收到命令，开始执行媒体库同步删除 ...")
-            self.post_message(channel=event.event_data.get("channel"),
-                              title="开始媒体库同步删除 ...",
-                              userid=event.event_data.get("user"))
-        self.sync_del_by_log()
-
-        if event:
-            self.post_message(channel=event.event_data.get("channel"),
-                              title="媒体库同步删除完成！", userid=event.event_data.get("user"))
+        if not self._enabled:
+            return
+        if not event:
+            return
+        event_data = event.event_data
+        src = event_data.get("src")
+        if not src:
+            return
+        # 源文件路径
+        src_path = Path(src)
+        # 查询下载hash
+        download_hash = self._downloadhis.get_hash_by_fullpath(src_path)
+        if download_hash:
+            self.handle_torrent(src=src, torrent_hash=download_hash)
+        else:
+            logger.warn(f"未查询到文件 {src} 对应的下载记录")
 
     @staticmethod
     def get_tmdbimage_url(path: str, prefix="w500"):

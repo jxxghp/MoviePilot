@@ -589,6 +589,7 @@ class TransferChain(ChainBase):
     def delete_files(path: Path):
         """
         删除转移后的文件以及空目录
+        :param path: 文件路径
         """
         logger.info(f"开始删除文件以及空目录：{path} ...")
         if not path.exists():

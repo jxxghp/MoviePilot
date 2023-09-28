@@ -74,6 +74,16 @@ class DownloadHistoryOper(DbOper):
         """
         DownloadFiles.delete_by_fullpath(self._db, fullpath)
 
+    def get_hash_by_fullpath(self, fullpath: str) -> str:
+        """
+        按fullpath查询下载文件记录hash
+        :param fullpath: 数据key
+        """
+        fileinfo: DownloadFiles = DownloadFiles.get_by_fullpath(self._db, fullpath)
+        if fileinfo:
+            return fileinfo.download_hash
+        return ""
+
     def list_by_page(self, page: int = 1, count: int = 30) -> List[DownloadHistory]:
         """
         分页查询下载历史

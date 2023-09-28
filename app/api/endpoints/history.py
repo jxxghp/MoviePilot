@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.transfer import TransferChain
+from app.core.event import eventmanager
 from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
 from app.schemas import MediaType
+from app.schemas.types import EventType
 
 router = APIRouter()
 
@@ -78,6 +80,13 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
     # 删除源文件
     if deletesrc and history.src:
         TransferChain(db).delete_files(Path(history.src))
+        # 发送事件
+        eventmanager.send_event(
+            EventType.DownloadFileDeleted,
+            {
+                "src": history.src
+            }
+        )
     # 删除记录
     TransferHistory.delete(db, history_in.id)
     return schemas.Response(success=True)
