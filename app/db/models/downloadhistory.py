@@ -35,6 +35,8 @@ class DownloadHistory(Base):
     torrent_description = Column(String)
     # 种子站点
     torrent_site = Column(String)
+    # 下载用户
+    userid = Column(String)
     # 附加信息
     note = Column(String)
 

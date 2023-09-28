@@ -3,6 +3,7 @@ import os
 import sqlite3
 from datetime import datetime
 
+from app.core.config import settings
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.plugindata_oper import PluginDataOper
 from app.db.transferhistory_oper import TransferHistoryOper
@@ -234,7 +235,8 @@ class NAStoolSync(_PluginBase):
                 download_hash=mdownload_hash,
                 torrent_name=mtorrent,
                 torrent_description=mdesc,
-                torrent_site=msite
+                torrent_site=msite,
+                userid=settings.SUPERUSER
             )
             cnt += 1
             if cnt % 100 == 0:

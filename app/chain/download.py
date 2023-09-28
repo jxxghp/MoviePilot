@@ -266,7 +266,8 @@ class DownloadChain(ChainBase):
                 download_hash=_hash,
                 torrent_name=_torrent.title,
                 torrent_description=_torrent.description,
-                torrent_site=_torrent.site_name
+                torrent_site=_torrent.site_name,
+                userid=userid
             )
 
             # 登记下载文件
