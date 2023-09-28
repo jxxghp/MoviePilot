@@ -36,6 +36,12 @@ class DownloadHistory(BaseModel):
     torrent_description: Optional[str] = None
     # 站点
     torrent_site: Optional[str] = None
+    # 下载用户
+    userid: Optional[str] = None
+    # 下载渠道
+    channel: Optional[str] = None
+    # 创建时间
+    date: Optional[str] = None
     # 备注
     note: Optional[str] = None
 

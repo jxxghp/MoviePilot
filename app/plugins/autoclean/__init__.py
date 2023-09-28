@@ -146,15 +146,15 @@ class AutoClean(_PluginBase):
         history = self.get_data('history') or []
 
         # 创建一个字典来保存分组结果
-        downloadhis_grouped_dict = defaultdict(list)
+        downloadhis_grouped_dict: Dict[tuple, List[DownloadHistory]] = defaultdict(list)
         # 遍历DownloadHistory对象列表
         for downloadhis in downloadhis_list:
             # 获取type和tmdbid的值
-            type = downloadhis.type
+            dtype = downloadhis.type
             tmdbid = downloadhis.tmdbid
 
             # 将DownloadHistory对象添加到对应分组的列表中
-            downloadhis_grouped_dict[(type, tmdbid)].append(downloadhis)
+            downloadhis_grouped_dict[(dtype, tmdbid)].append(downloadhis)
 
         # 输出分组结果
         for key, downloadhis_list in downloadhis_grouped_dict.items():

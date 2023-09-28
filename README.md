@@ -190,7 +190,7 @@ docker pull jxxghp/moviepilot:latest
 > `year`： 年份  
 > `resourceType`：资源类型  
 > `effect`：特效  
-> `edition`： 版本（资源类型+特效）
+> `edition`： 版本（资源类型+特效）  
 > `videoFormat`： 分辨率  
 > `releaseGroup`： 制作组/字幕组  
 > `videoCodec`： 视频编码  
