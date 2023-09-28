@@ -152,7 +152,8 @@ class DownloadingMsg(_PluginBase):
                 year = downloadhis.year
                 se = downloadhis.seasons
                 ep = downloadhis.episodes
-                channel_value = downloadhis.channel
+                if not channel_value:
+                    channel_value = downloadhis.channel
             else:
                 try:
                     context = MediaChain(self.db).recognize_by_title(title=torrent.title)
