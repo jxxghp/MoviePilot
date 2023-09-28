@@ -112,17 +112,6 @@ class TransferChain(ChainBase):
             logger.warn(f"{path.name} 没有找到可转移的媒体文件")
             return False, f"{path.name} 没有找到可转移的媒体文件"
 
-        # 汇总错误信息
-        err_msgs: List[str] = []
-        # 汇总季集清单
-        season_episodes: Dict[Tuple, List[int]] = {}
-        # 汇总元数据
-        metas: Dict[Tuple, MetaBase] = {}
-        # 汇总媒体信息
-        medias: Dict[Tuple, MediaInfo] = {}
-        # 汇总转移信息
-        transfers: Dict[Tuple, TransferInfo] = {}
-
         # 有集自定义格式
         formaterHandler = FormatParser(eformat=epformat.format,
                                        details=epformat.detail,
@@ -131,17 +120,24 @@ class TransferChain(ChainBase):
 
         # 开始进度
         self.progress.start(ProgressKey.FileTransfer)
-        # 总数
+        # 目录所有文件清单
         transfer_files = SystemUtils.list_files(directory=path,
                                                 extensions=settings.RMT_MEDIAEXT,
                                                 min_filesize=min_filesize)
         if formaterHandler:
             # 有集自定义格式，过滤文件
             transfer_files = [f for f in transfer_files if formaterHandler.match(f.name)]
-        # 总数
+
+        # 汇总错误信息
+        err_msgs: List[str] = []
+        # 总文件数
         total_num = len(transfer_files)
         # 已处理数量
         processed_num = 0
+        # 失败数量
+        fail_num = 0
+        # 跳过数量
+        skip_num = 0
         self.progress.update(value=0,
                              text=f"开始转移 {path}，共 {total_num} 个文件 ...",
                              key=ProgressKey.FileTransfer)
@@ -151,6 +147,15 @@ class TransferChain(ChainBase):
 
         # 处理所有待转移目录或文件，默认一个转移路径或文件只有一个媒体信息
         for trans_path in trans_paths:
+            # 汇总季集清单
+            season_episodes: Dict[Tuple, List[int]] = {}
+            # 汇总元数据
+            metas: Dict[Tuple, MetaBase] = {}
+            # 汇总媒体信息
+            medias: Dict[Tuple, MediaInfo] = {}
+            # 汇总转移信息
+            transfers: Dict[Tuple, TransferInfo] = {}
+
             # 如果是目录且不是⼀蓝光原盘，获取所有文件并转移
             if (not trans_path.is_file()
                     and not SystemUtils.is_bluray_dir(trans_path)):
@@ -167,7 +172,6 @@ class TransferChain(ChainBase):
 
             # 转移所有文件
             for file_path in file_paths:
-
                 # 回收站及隐藏的文件不处理
                 file_path_str = str(file_path)
                 if file_path_str.find('/@Recycle/') != -1 \
@@ -175,6 +179,9 @@ class TransferChain(ChainBase):
                         or file_path_str.find('/.') != -1 \
                         or file_path_str.find('/@eaDir') != -1:
                     logger.debug(f"{file_path_str} 是回收站或隐藏的文件")
+                    # 计数
+                    processed_num += 1
+                    skip_num += 1
                     continue
 
                 # 整理屏蔽词不处理
@@ -189,6 +196,9 @@ class TransferChain(ChainBase):
                             break
                 if is_blocked:
                     err_msgs.append(f"{file_path.name} 命中整理屏蔽词")
+                    # 计数
+                    processed_num += 1
+                    skip_num += 1
                     continue
 
                 # 转移成功的不再处理
@@ -196,6 +206,9 @@ class TransferChain(ChainBase):
                     transferd = self.transferhis.get_by_src(file_path_str)
                     if transferd and transferd.status:
                         logger.info(f"{file_path} 已成功转移过，如需重新处理，请删除历史记录。")
+                        # 计数
+                        processed_num += 1
+                        skip_num += 1
                         continue
 
                 # 更新进度
@@ -216,6 +229,9 @@ class TransferChain(ChainBase):
                 if not file_meta:
                     logger.error(f"{file_path} 无法识别有效信息")
                     err_msgs.append(f"{file_path} 无法识别有效信息")
+                    # 计数
+                    processed_num += 1
+                    fail_num += 1
                     continue
 
                 # 自定义识别
@@ -248,6 +264,9 @@ class TransferChain(ChainBase):
                         title=f"{file_path.name} 未识别到媒体信息，无法入库！\n"
                               f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别转移。"
                     ))
+                    # 计数
+                    processed_num += 1
+                    fail_num += 1
                     continue
 
                 # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
@@ -305,6 +324,9 @@ class TransferChain(ChainBase):
                         text=f"原因：{transferinfo.message or '未知'}",
                         image=file_mediainfo.get_message_image()
                     ))
+                    # 计数
+                    processed_num += 1
+                    fail_num += 1
                     continue
 
                 # 汇总信息
@@ -344,8 +366,7 @@ class TransferChain(ChainBase):
                                      key=ProgressKey.FileTransfer)
 
             # 目录或文件转移完成
-            self.progress.update(value=100,
-                                 text=f"所有文件转移完成，正在执行后续处理 ...",
+            self.progress.update(text=f"{trans_path} 转移完成，正在执行后续处理 ...",
                                  key=ProgressKey.FileTransfer)
 
             # 执行后续处理
@@ -372,10 +393,16 @@ class TransferChain(ChainBase):
                     'mediainfo': media,
                     'transferinfo': transfer_info
                 })
-            # 结束进度
-            logger.info(f"{path} 转移完成，共 {total_num} 个文件，"
-                        f"成功 {total_num - len(err_msgs)} 个，失败 {len(err_msgs)} 个")
-            self.progress.end(ProgressKey.FileTransfer)
+
+        # 结束进度
+        logger.info(f"{path} 转移完成，共 {total_num} 个文件，"
+                    f"失败 {fail_num} 个，跳过 {skip_num} 个")
+
+        self.progress.update(value=100,
+                             text=f"{path} 转移完成，共 {total_num} 个文件，"
+                                  f"失败 {fail_num} 个，跳过 {skip_num} 个",
+                             key=ProgressKey.FileTransfer)
+        self.progress.end(ProgressKey.FileTransfer)
 
         return True, "\n".join(err_msgs)
 
