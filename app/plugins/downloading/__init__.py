@@ -106,6 +106,7 @@ class Downloading(_PluginBase):
                     continue
                 user_torrent = user_torrents.get(downloadhis.userid) or []
                 user_torrent.append(torrent)
+                user_torrents[downloadhis.userid] = user_torrent
 
             if not user_torrents or not user_torrents.keys():
                 logger.warn("未获取到用户下载记录，无法推送下载进度")
@@ -113,6 +114,8 @@ class Downloading(_PluginBase):
 
             # 推送用户下载任务进度
             for userid in list(user_torrents.keys()):
+                if not userid:
+                    continue
                 # 如果用户是管理员，无需重复推送
                 if self._adminuser and userid in str(self._adminuser).split(","):
                     logger.debug("管理员已推送")
