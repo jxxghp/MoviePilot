@@ -488,14 +488,14 @@ class Emby(metaclass=Singleton):
                     # 匹配子目录
                     subfolder_path = Path(subfolder.get("Path"))
                     if item_path.is_relative_to(subfolder_path):
-                        return subfolder.get("Id")
+                        return folder.get("Id")
                 except Exception as err:
                     print(str(err))
-            # 如果找不到，只要路径中有分类目录名就命中
-            for subfolder in folder.get("SubFolders"):
-                if subfolder.get("Path") and re.search(r"[/\\]%s" % item.category,
-                                                       subfolder.get("Path")):
-                    return folder.get("Id")
+        # 如果找不到，只要路径中有分类目录名就命中
+        for subfolder in folder.get("SubFolders"):
+            if subfolder.get("Path") and re.search(r"[/\\]%s" % item.category,
+                                                    subfolder.get("Path")):
+                return folder.get("Id")
         # 刷新根目录
         return "/"
 
