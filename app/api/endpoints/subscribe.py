@@ -162,7 +162,9 @@ def search_subscribes(
     background_tasks.add_task(
         Scheduler().start,
         job_id="subscribe_search",
-        sid=None, state='R'
+        sid=None,
+        state='R',
+        manual=True
     )
     return schemas.Response(success=True)
 
@@ -178,7 +180,9 @@ def search_subscribe(
     background_tasks.add_task(
         Scheduler().start,
         job_id="subscribe_search",
-        sid=subscribe_id, state=None
+        sid=subscribe_id,
+        state=None,
+        manual=True
     )
     return schemas.Response(success=True)
 
