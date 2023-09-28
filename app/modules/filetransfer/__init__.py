@@ -513,14 +513,16 @@ class FileTransferModule(_ModuleBase):
             "name": meta.name,
             # 年份
             "year": mediainfo.year or meta.year,
+            # 资源类型
+            "resourceType": meta.resource_type,
+            # 特效
+            "effect": meta.resource_effect,
             # 版本
             "edition": meta.edition,
             # 分辨率
             "videoFormat": meta.resource_pix,
             # 制作组/字幕组
             "releaseGroup": meta.resource_team,
-            # 特效
-            "effect": meta.resource_effect,
             # 视频编码
             "videoCodec": meta.video_encode,
             # 音频编码
