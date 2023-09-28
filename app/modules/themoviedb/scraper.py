@@ -122,29 +122,28 @@ class TmdbScraper:
         except Exception as e:
             logger.error(f"{file_path} 刮削失败：{e}")
 
+    def __get_chinese_name(self, person: dict):
+        """
+        获取TMDB别名中的中文名
+        """
+        if not person.get("id"):
+            return ""
+        try:
+            personinfo = self.tmdb.get_person_detail(person.get("id"))
+            if personinfo:
+                also_known_as = personinfo.get("also_known_as") or []
+                if also_known_as:
+                    for name in also_known_as:
+                        if name and StringUtils.is_chinese(name):
+                            return name
+        except Exception as err:
+            logger.error(f"获取人物中文名失败：{err}")
+        return person.get("name") or ""
+
     def __gen_common_nfo(self, mediainfo: MediaInfo, doc, root):
         """
         生成公共NFO
         """
-
-        def __get_chinese_name(person: dict):
-            """
-            获取TMDB别名中的中文名
-            """
-            if not person.get("id"):
-                return ""
-            try:
-                personinfo = self.tmdb.get_person_detail(person.get("id"))
-                if personinfo:
-                    also_known_as = personinfo.get("also_known_as") or []
-                    if also_known_as:
-                        for name in also_known_as:
-                            if name and StringUtils.is_chinese(name):
-                                return name
-            except Exception as err:
-                logger.error(f"获取人物中文名失败：{err}")
-            return person.get("name") or ""
-
         # 添加时间
         DomUtils.add_node(doc, root, "dateadded",
                           time.strftime('%Y-%m-%d %H:%M:%S',
@@ -175,21 +174,18 @@ class TmdbScraper:
         # 导演
         for director in mediainfo.directors:
             # 获取中文名
-            cn_name = __get_chinese_name(director)
+            cn_name = self.__get_chinese_name(director)
             xdirector = DomUtils.add_node(doc, root, "director", cn_name)
             xdirector.setAttribute("tmdbid", str(director.get("id") or ""))
         # 演员
         for actor in mediainfo.actors:
             # 获取中文名
-            cn_name = __get_chinese_name(actor)
+            cn_name = self.__get_chinese_name(actor)
             xactor = DomUtils.add_node(doc, root, "actor")
             DomUtils.add_node(doc, xactor, "name", cn_name)
             DomUtils.add_node(doc, xactor, "type", "Actor")
             DomUtils.add_node(doc, xactor, "role", actor.get("character") or actor.get("role") or "")
-            DomUtils.add_node(doc, xactor, "order", actor.get("order") if actor.get("order") is not None else "")
             DomUtils.add_node(doc, xactor, "tmdbid", actor.get("id") or "")
-            DomUtils.add_node(doc, xactor, "thumb", actor.get('image'))
-            DomUtils.add_node(doc, xactor, "profile", actor.get('profile'))
         # 风格
         genres = mediainfo.genres or []
         for genre in genres:
@@ -330,14 +326,18 @@ class TmdbScraper:
         directors = episodeinfo.get("crew") or []
         for director in directors:
             if director.get("known_for_department") == "Directing":
-                xdirector = DomUtils.add_node(doc, root, "director", director.get("name") or "")
+                # 获取中文名
+                cn_name = self.__get_chinese_name(director)
+                xdirector = DomUtils.add_node(doc, root, "director", cn_name)
                 xdirector.setAttribute("tmdbid", str(director.get("id") or ""))
         # 演员
         actors = episodeinfo.get("guest_stars") or []
         for actor in actors:
             if actor.get("known_for_department") == "Acting":
+                # 获取中文名
+                cn_name = self.__get_chinese_name(actor)
                 xactor = DomUtils.add_node(doc, root, "actor")
-                DomUtils.add_node(doc, xactor, "name", actor.get("name") or "")
+                DomUtils.add_node(doc, xactor, "name", cn_name)
                 DomUtils.add_node(doc, xactor, "type", "Actor")
                 DomUtils.add_node(doc, xactor, "tmdbid", actor.get("id") or "")
         # 保存文件

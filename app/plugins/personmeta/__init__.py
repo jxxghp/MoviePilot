@@ -1,8 +1,17 @@
+from pathlib import Path
 from typing import Any, List, Dict, Tuple
 
+from requests import RequestException
+
+from app.chain.tmdb import TmdbChain
 from app.core.event import eventmanager, Event
+from app.helper.nfo import NfoReader
+from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas.types import EventType
+from app.schemas import TransferInfo, MediaInfo
+from app.schemas.types import EventType, MediaType
+from app.utils.common import retry
+from app.utils.http import RequestUtils
 
 
 class PersonMeta(_PluginBase):
@@ -28,11 +37,15 @@ class PersonMeta(_PluginBase):
     auth_level = 1
 
     # 私有属性
+    tmdbchain = None
     _enabled = False
+    _metadir = ""
 
     def init_plugin(self, config: dict = None):
+        self.tmdbchain = TmdbChain(self.db)
         if config:
             self._enabled = config.get("enabled")
+            self._metadir = config.get("metadir")
 
     def get_state(self) -> bool:
         return self._enabled
@@ -72,11 +85,33 @@ class PersonMeta(_PluginBase):
                                 ]
                             }
                         ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'metadir',
+                                            'label': '人物元数据目录',
+                                            'placeholder': '/metadata/people'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 ]
             }
         ], {
-            "enabled": False
+            "enabled": False,
+            "metadir": ""
         }
 
     def get_page(self) -> List[dict]:
@@ -87,7 +122,78 @@ class PersonMeta(_PluginBase):
         """
         根据事件实时刮削演员信息
         """
-        pass
+        if not self._enabled:
+            return
+        # 下载人物头像
+        if not self._metadir:
+            logger.warning("人物元数据目录未配置，无法下载人物头像")
+            return
+        # 事件数据
+        mediainfo: MediaInfo = event.event_data.get("mediainfo")
+        transferinfo: TransferInfo = event.event_data.get("transferinfo")
+        if not mediainfo or not transferinfo:
+            return
+        # 文件路径
+        filepath = transferinfo.target_path
+        if not filepath:
+            return
+        # 电影
+        if mediainfo.type == MediaType.MOVIE:
+            # nfo文件
+            nfofile = filepath.with_name("movie.nfo")
+            if not nfofile.exists():
+                nfofile = filepath.parent / f"{filepath.stem}.nfo"
+                if not nfofile.exists():
+                    logger.warning(f"电影nfo文件不存在：{nfofile}")
+                    return
+        else:
+            # nfo文件
+            nfofile = filepath.parent.with_name("tvshow.nfo")
+            if not nfofile.exists():
+                logger.warning(f"剧集nfo文件不存在：{nfofile}")
+                return
+        # 读取nfo文件
+        nfo = NfoReader(nfofile)
+        # 读取演员信息
+        actors = nfo.get_elements("actor") or []
+        for actor in actors:
+            # 演员ID
+            actor_id = actor.find("id").text
+            if not actor_id:
+                continue
+            # 演员名称
+            actor_name = actor.find("name").text
+            # 查询演员详情
+            actor_info = self.tmdbchain.person_detail(actor_id)
+            if not actor_info:
+                continue
+            # 演员头像
+            actor_image = actor_info.get("profile_path")
+            if not actor_image:
+                continue
+            # 计算保存路径
+            image_path = Path(self._metadir) / f"{actor_name}-tmdb-{actor_id}{Path(actor_image).suffix}"
+            if image_path.exists():
+                continue
+            # 下载图片
+            self.download_image(f"https://image.tmdb.org/t/p/original{actor_image}", image_path)
+
+    @staticmethod
+    @retry(RequestException, logger=logger)
+    def download_image(image_url: str, path: Path):
+        """
+        下载图片，保存到指定路径
+        """
+        try:
+            logger.info(f"正在下载演职人员图片：{image_url} ...")
+            r = RequestUtils().get_res(url=image_url, raise_exception=True)
+            if r:
+                path.write_bytes(r.content)
+                logger.info(f"图片已保存：{path}")
+            else:
+                logger.info(f"图片下载失败，请检查网络连通性：{image_url}")
+        except Exception as err:
+            logger.error(f"图片下载失败：{err}")
 
     def stop_service(self):
         """
