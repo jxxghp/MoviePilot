@@ -5,16 +5,16 @@ from app.chain.media import MediaChain
 from app.core.config import settings
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.plugins import _PluginBase
-from typing import Any, List, Dict, Tuple, Optional
+from typing import Any, List, Dict, Tuple, Optional, Union
 from app.log import logger
-from app.schemas import NotificationType
+from app.schemas import NotificationType, TransferTorrent, DownloadingTorrent
 from app.schemas.types import TorrentStatus
 from app.utils.string import StringUtils
 
 
 class Downloading(_PluginBase):
     # 插件名称
-    plugin_name = "正在下载"
+    plugin_name = "下载进度推送"
     # 插件描述
     plugin_desc = "定时推送正在下载进度。"
     # 插件图标
@@ -66,7 +66,7 @@ class Downloading(_PluginBase):
                     self._scheduler.add_job(func=self.__downloading,
                                             trigger='interval',
                                             seconds=int(self._seconds),
-                                            name="正在下载")
+                                            name="下载进度推送")
                 except Exception as err:
                     logger.error(f"定时任务配置错误：{err}")
 
@@ -131,7 +131,7 @@ class Downloading(_PluginBase):
         if self._type == "all":
             self.__send_msg(torrents=torrents)
 
-    def __send_msg(self, torrents, userid=None):
+    def __send_msg(self, torrents: Optional[List[Union[TransferTorrent, DownloadingTorrent]]], userid: str = None):
         """
         发送消息
         """
@@ -271,9 +271,9 @@ class Downloading(_PluginBase):
                                                    'model': 'type',
                                                    'label': '推送类型',
                                                    'items': [
-                                                       {'title': 'admin', 'value': 'admin'},
+                                                       {'title': '管理员', 'value': 'admin'},
                                                        {'title': '下载用户', 'value': 'user'},
-                                                       {'title': 'admin和下载用户', 'value': 'both'},
+                                                       {'title': '管理员和下载用户', 'value': 'both'},
                                                        {'title': '所有用户', 'value': 'all'}
                                                    ]
                                                }
