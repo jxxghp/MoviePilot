@@ -30,6 +30,7 @@ class TMDb(object):
             self.__class__._session = requests.Session() if session is None else session
         self._remaining = 40
         self._reset = None
+        self._timeout = 15
         self.obj_cached = obj_cached
         if os.environ.get(self.TMDB_LANGUAGE) is None:
             os.environ[self.TMDB_LANGUAGE] = "en-US"
@@ -131,12 +132,14 @@ class TMDb(object):
 
     @lru_cache(maxsize=REQUEST_CACHE_MAXSIZE)
     def cached_request(self, method, url, data, json):
-        return requests.request(method, url, data=data, json=json, proxies=self.proxies)
+        return requests.request(method, url, data=data, json=json,
+                                timeout=self._timeout, proxies=self.proxies)
 
     def cache_clear(self):
         return self.cached_request.cache_clear()
 
-    def _request_obj(self, action, params="", call_cached=True, method="GET", data=None, json=None, key=None):
+    def _request_obj(self, action, params="", call_cached=True,
+                     method="GET", data=None, json=None, key=None):
         if self.api_key is None or self.api_key == "":
             raise TMDbException("No API key found.")
 
@@ -151,7 +154,8 @@ class TMDb(object):
         if self.cache and self.obj_cached and call_cached and method != "POST":
             req = self.cached_request(method, url, data, json)
         else:
-            req = self.__class__._session.request(method, url, data=data, json=json, proxies=self.proxies)
+            req = self.__class__._session.request(method, url, data=data, json=json,
+                                                  timeout=self._timeout, proxies=self.proxies)
 
         headers = req.headers
 
