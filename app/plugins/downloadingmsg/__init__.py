@@ -117,7 +117,8 @@ class DownloadingMsg(_PluginBase):
                 if not userid:
                     continue
                 # 如果用户是管理员，无需重复推送
-                if self._adminuser and userid in str(self._adminuser).split(","):
+                if self._type == "admin" or self._type == "both" and self._adminuser and userid in str(
+                        self._adminuser).split(","):
                     logger.debug("管理员已推送")
                     continue
 
