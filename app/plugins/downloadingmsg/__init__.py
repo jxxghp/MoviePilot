@@ -12,15 +12,15 @@ from app.schemas.types import TorrentStatus
 from app.utils.string import StringUtils
 
 
-class Downloading(_PluginBase):
+class DownloadingMsg(_PluginBase):
     # 插件名称
     plugin_name = "下载进度推送"
     # 插件描述
     plugin_desc = "定时推送正在下载进度。"
     # 插件图标
-    plugin_icon = "download.png"
+    plugin_icon = "downloadmsg.png"
     # 主题色
-    plugin_color = "#f2a026"
+    plugin_color = "#3DE75D"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者
@@ -30,7 +30,7 @@ class Downloading(_PluginBase):
     # 插件配置项ID前缀
     plugin_config_prefix = "downloading_"
     # 加载顺序
-    plugin_order = 16
+    plugin_order = 22
     # 可使用的用户级别
     auth_level = 2
 
