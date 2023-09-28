@@ -4,8 +4,16 @@ from app.utils.http import RequestUtils
 
 
 class WebUtils:
+
     @staticmethod
     def get_location(ip: str):
+        """
+        查询IP所属地
+        """
+        return WebUtils.get_location1(ip) or WebUtils.get_location2(ip)
+
+    @staticmethod
+    def get_location1(ip: str):
         """
         https://api.mir6.com/api/ip
         {
@@ -35,6 +43,31 @@ class WebUtils:
             r = RequestUtils().get_res(f"https://api.mir6.com/api/ip?ip={ip}&type=json")
             if r:
                 return r.json().get("data", {}).get("location") or ''
+        except Exception as err:
+            print(str(err))
+            return ""
+
+    @staticmethod
+    def get_location2(ip: str):
+        """
+        https://whois.pconline.com.cn/ipJson.jsp?json=true&ip=
+        {
+          "ip": "122.8.12.22",
+          "pro": "上海市",
+          "proCode": "310000",
+          "city": "上海市",
+          "cityCode": "310000",
+          "region": "",
+          "regionCode": "0",
+          "addr": "上海市 铁通",
+          "regionNames": "",
+          "err": ""
+        }
+        """
+        try:
+            r = RequestUtils().get_res(f"https://whois.pconline.com.cn/ipJson.jsp?json=true&ip={ip}")
+            if r:
+                return r.json().get("addr") or ''
         except Exception as err:
             print(str(err))
             return ""
