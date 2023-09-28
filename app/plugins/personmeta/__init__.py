@@ -172,7 +172,7 @@ class PersonMeta(_PluginBase):
             if not actor_image:
                 continue
             # 计算保存路径
-            image_path = Path(self._metadir) / f"{actor_name}-tmdb-{actor_id}{Path(actor_image).suffix}"
+            image_path = Path(self._metadir) / f"{actor_name}-tmdb-{actor_id}" / f"folder{Path(actor_image).suffix}"
             if image_path.exists():
                 continue
             # 下载图片
