@@ -1215,10 +1215,8 @@ class MediaSyncDel(_PluginBase):
         src = event_data.get("src")
         if not src:
             return
-        # 源文件路径
-        src_path = Path(src)
         # 查询下载hash
-        download_hash = self._downloadhis.get_hash_by_fullpath(src_path)
+        download_hash = self._downloadhis.get_hash_by_fullpath(src)
         if download_hash:
             self.handle_torrent(src=src, torrent_hash=download_hash)
         else:
