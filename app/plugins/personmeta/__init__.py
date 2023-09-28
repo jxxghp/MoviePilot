@@ -1,6 +1,8 @@
 from typing import Any, List, Dict, Tuple
 
+from app.core.event import eventmanager, Event
 from app.plugins import _PluginBase
+from app.schemas.types import EventType
 
 
 class PersonMeta(_PluginBase):
@@ -78,6 +80,13 @@ class PersonMeta(_PluginBase):
         }
 
     def get_page(self) -> List[dict]:
+        pass
+
+    @eventmanager.register(EventType.TransferComplete)
+    def scrap_rt(self, event: Event):
+        """
+        根据事件实时刮削演员信息
+        """
         pass
 
     def stop_service(self):

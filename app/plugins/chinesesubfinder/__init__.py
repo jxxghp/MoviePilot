@@ -4,7 +4,7 @@ from typing import List, Tuple, Dict, Any
 
 from app.core.config import settings
 from app.core.context import MediaInfo
-from app.core.event import eventmanager
+from app.core.event import eventmanager, Event
 from app.log import logger
 from app.plugins import _PluginBase
 from app.schemas import TransferInfo
@@ -183,7 +183,7 @@ class ChineseSubFinder(_PluginBase):
         pass
 
     @eventmanager.register(EventType.TransferComplete)
-    def download(self, event):
+    def download(self, event: Event):
         """
         调用ChineseSubFinder下载字幕
         """
