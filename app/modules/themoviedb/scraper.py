@@ -12,6 +12,7 @@ from app.schemas.types import MediaType
 from app.utils.common import retry
 from app.utils.dom import DomUtils
 from app.utils.http import RequestUtils
+from app.utils.string import StringUtils
 
 
 class TmdbScraper:
@@ -121,11 +122,29 @@ class TmdbScraper:
         except Exception as e:
             logger.error(f"{file_path} 刮削失败：{e}")
 
-    @staticmethod
-    def __gen_common_nfo(mediainfo: MediaInfo, doc, root):
+    def __gen_common_nfo(self, mediainfo: MediaInfo, doc, root):
         """
         生成公共NFO
         """
+
+        def __get_chinese_name(person: dict):
+            """
+            获取TMDB别名中的中文名
+            """
+            if not person.get("id"):
+                return ""
+            try:
+                personinfo = self.tmdb.get_person_detail(person.get("id"))
+                if personinfo:
+                    also_known_as = personinfo.get("also_known_as") or []
+                    if also_known_as:
+                        for name in also_known_as:
+                            if name and StringUtils.is_chinese(name):
+                                return name
+            except Exception as err:
+                logger.error(f"获取人物中文名失败：{err}")
+            return person.get("name") or ""
+
         # 添加时间
         DomUtils.add_node(doc, root, "dateadded",
                           time.strftime('%Y-%m-%d %H:%M:%S',
@@ -155,12 +174,16 @@ class TmdbScraper:
         xoutline.appendChild(doc.createCDATASection(mediainfo.overview or ""))
         # 导演
         for director in mediainfo.directors:
-            xdirector = DomUtils.add_node(doc, root, "director", director.get("name") or "")
+            # 获取中文名
+            cn_name = __get_chinese_name(director)
+            xdirector = DomUtils.add_node(doc, root, "director", cn_name)
             xdirector.setAttribute("tmdbid", str(director.get("id") or ""))
         # 演员
         for actor in mediainfo.actors:
+            # 获取中文名
+            cn_name = __get_chinese_name(actor)
             xactor = DomUtils.add_node(doc, root, "actor")
-            DomUtils.add_node(doc, xactor, "name", actor.get("name") or "")
+            DomUtils.add_node(doc, xactor, "name", cn_name)
             DomUtils.add_node(doc, xactor, "type", "Actor")
             DomUtils.add_node(doc, xactor, "role", actor.get("character") or actor.get("role") or "")
             DomUtils.add_node(doc, xactor, "order", actor.get("order") if actor.get("order") is not None else "")

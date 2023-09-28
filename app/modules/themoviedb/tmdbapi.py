@@ -1136,6 +1136,26 @@ class TmdbHelper:
     def get_person_detail(self, person_id: int) -> dict:
         """
         获取人物详情
+        {
+            "adult": false,
+            "also_known_as": [
+                "Michael Chen",
+                "Chen He",
+                "陈赫"
+            ],
+            "biography": "陈赫，xxx",
+            "birthday": "1985-11-09",
+            "deathday": null,
+            "gender": 2,
+            "homepage": "https://movie.douban.com/celebrity/1313841/",
+            "id": 1397016,
+            "imdb_id": "nm4369305",
+            "known_for_department": "Acting",
+            "name": "Chen He",
+            "place_of_birth": "Fuzhou，Fujian Province，China",
+            "popularity": 9.228,
+            "profile_path": "/2Bk39zVuoHUNHtpZ7LVg7OgkDd4.jpg"
+        }
         """
         if not self.person:
             return {}
