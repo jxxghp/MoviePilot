@@ -1,6 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.chain.download import DownloadChain
+from app.chain.media import MediaChain
 from app.core.config import settings
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.plugins import _PluginBase
@@ -101,7 +102,7 @@ class Downloading(_PluginBase):
                     logger.warn(f"种子 {torrent.hash} 未获取到MoviePilot下载历史，无法推送下载进度")
                     continue
                 if not downloadhis.userid:
-                    logger.warn(f"种子 {torrent.hash} 未获取到下载用户记录，无法推送下载进度")
+                    logger.debug(f"种子 {torrent.hash} 未获取到下载用户记录，无法推送下载进度")
                     continue
                 user_torrent = user_torrents.get(downloadhis.userid) or []
                 user_torrent.append(torrent)
@@ -135,7 +136,42 @@ class Downloading(_PluginBase):
         messages = []
         index = 1
         for torrent in torrents:
-            messages.append(f"{index}. {torrent.title} "
+            year = None
+            name = None
+            se = None
+            ep = None
+            # 先查询下载记录，没有再识别
+            downloadhis = self._downloadhis.get_by_hash(download_hash=torrent.hash)
+            if downloadhis:
+                name = downloadhis.title
+                year = downloadhis.year
+                se = downloadhis.seasons
+                ep = downloadhis.episodes
+            else:
+                try:
+                    context = MediaChain(self.db).recognize_by_title(title=torrent.title)
+                    if not context or not context.media_info:
+                        continue
+                    media_info = context.media_info
+                    year = media_info.year
+                    name = media_info.title
+                    if media_info.number_of_seasons:
+                        se = f"S{str(media_info.number_of_seasons).rjust(2, '0')}"
+                    if media_info.number_of_episodes:
+                        ep = f"E{str(media_info.number_of_episodes).rjust(2, '0')}"
+                except Exception as e:
+                    print(str(e))
+
+            # 拼装标题
+            if year:
+                media_name = "%s (%s) %s%s" % (name, year, se, ep)
+            elif name:
+                media_name = "%s %s%s" % (name, se, ep)
+            else:
+                media_name = torrent.title
+
+            messages.append(f"{index}. {media_name}\n"
+                            f"{torrent.title} "
                             f"{StringUtils.str_filesize(torrent.size)} "
                             f"{round(torrent.progress, 1)}%")
             index += 1
