@@ -1,6 +1,7 @@
 import base64
 import json
 import re
+import time
 from pathlib import Path
 from typing import List, Optional, Tuple, Set, Dict, Union
 
@@ -269,7 +270,9 @@ class DownloadChain(ChainBase):
                 torrent_name=_torrent.title,
                 torrent_description=_torrent.description,
                 torrent_site=_torrent.site_name,
-                userid=userid
+                userid=userid,
+                channel=channel,
+                date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
             )
 
             # 登记下载文件

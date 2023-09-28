@@ -37,6 +37,10 @@ class DownloadHistory(Base):
     torrent_site = Column(String)
     # 下载用户
     userid = Column(String)
+    # 下载渠道
+    channel = Column(String)
+    # 创建时间
+    date = Column(String)
     # 附加信息
     note = Column(String)
 
@@ -90,6 +94,19 @@ class DownloadHistory(Base):
                                                     DownloadHistory.year == year,
                                                     DownloadHistory.seasons == season,
                                                     DownloadHistory.episodes == episode).order_by(
+                DownloadHistory.id.desc()).all()
+
+    @staticmethod
+    def list_by_user_date(db: Session, date: str, userid: str = None):
+        """
+        查询某用户某时间之后的下载历史
+        """
+        if userid:
+            return db.query(DownloadHistory).filter(DownloadHistory.date < date,
+                                                    DownloadHistory.userid == userid).order_by(
+                DownloadHistory.id.desc()).all()
+        else:
+            return db.query(DownloadHistory).filter(DownloadHistory.date < date).order_by(
                 DownloadHistory.id.desc()).all()
 
 

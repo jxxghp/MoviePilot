@@ -66,6 +66,10 @@ class TransferHistory(Base):
         return db.query(TransferHistory).filter(TransferHistory.src == src).first()
 
     @staticmethod
+    def list_by_hash(db: Session, download_hash: str):
+        return db.query(TransferHistory).filter(TransferHistory.download_hash == download_hash).all()
+
+    @staticmethod
     def statistic(db: Session, days: int = 7):
         """
         统计最近days天的下载历史数量，按日期分组返回每日数量

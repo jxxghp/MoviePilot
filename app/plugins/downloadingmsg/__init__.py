@@ -8,7 +8,7 @@ from app.plugins import _PluginBase
 from typing import Any, List, Dict, Tuple, Optional, Union
 from app.log import logger
 from app.schemas import NotificationType, TransferTorrent, DownloadingTorrent
-from app.schemas.types import TorrentStatus
+from app.schemas.types import TorrentStatus, MessageChannel
 from app.utils.string import StringUtils
 
 
@@ -138,6 +138,7 @@ class DownloadingMsg(_PluginBase):
         title = f"共 {len(torrents)} 个任务正在下载："
         messages = []
         index = 1
+        channel_value = None
         for torrent in torrents:
             year = None
             name = None
@@ -150,6 +151,7 @@ class DownloadingMsg(_PluginBase):
                 year = downloadhis.year
                 se = downloadhis.seasons
                 ep = downloadhis.episodes
+                channel_value = downloadhis.channel
             else:
                 try:
                     context = MediaChain(self.db).recognize_by_title(title=torrent.title)
@@ -178,7 +180,15 @@ class DownloadingMsg(_PluginBase):
                             f"{StringUtils.str_filesize(torrent.size)} "
                             f"{round(torrent.progress, 1)}%")
             index += 1
+
+        # 用户消息渠道
+        if channel_value:
+            channel = next(
+                (channel for channel in MessageChannel.__members__.values() if channel.value == channel_value), None)
+        else:
+            channel = None
         self.post_message(mtype=NotificationType.Download,
+                          channel=channel,
                           title=title,
                           text="\n".join(messages),
                           userid=userid)

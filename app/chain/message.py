@@ -187,7 +187,7 @@ class MessageChain(ChainBase):
                     # 下载种子
                     context: Context = cache_list[int(text) - 1]
                     # 下载
-                    self.downloadchain.download_single(context, userid=userid)
+                    self.downloadchain.download_single(context, userid=userid, channel=channel)
 
         elif text.lower() == "p":
             # 上一页
