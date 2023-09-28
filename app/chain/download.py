@@ -39,8 +39,10 @@ class DownloadChain(ChainBase):
         发送添加下载的消息
         """
         msg_text = ""
+        if userid:
+            msg_text = f"用户：{userid}"
         if torrent.site_name:
-            msg_text = f"站点：{torrent.site_name}"
+            msg_text = f"{msg_text}\n站点：{torrent.site_name}"
         if meta.resource_term:
             msg_text = f"{msg_text}\n质量：{meta.resource_term}"
         if torrent.size:
@@ -266,7 +268,8 @@ class DownloadChain(ChainBase):
                 download_hash=_hash,
                 torrent_name=_torrent.title,
                 torrent_description=_torrent.description,
-                torrent_site=_torrent.site_name
+                torrent_site=_torrent.site_name,
+                userid=userid
             )
 
             # 登记下载文件

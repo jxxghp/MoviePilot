@@ -325,6 +325,9 @@ class MessageForward(_PluginBase):
                     logger.info(f"转发消息 {title} 成功")
                     return True
                 else:
+                    if ret_json.get('errcode') == 81013:
+                        return False
+
                     logger.error(f"转发消息 {title} 失败，错误信息：{ret_json}")
                     if ret_json.get('errcode') == 42001 or ret_json.get('errcode') == 40014:
                         logger.info("token已过期，正在重新刷新token重试")
