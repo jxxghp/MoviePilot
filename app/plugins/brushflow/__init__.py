@@ -1827,25 +1827,29 @@ class BrushFlow(_PluginBase):
 
     def __get_downloader_info(self) -> schemas.DownloaderInfo:
         """
-        获取下载器实时信息
+        获取下载器实时信息（所有下载器）
         """
-        if self._downloader == "qbittorrent":
-            # 调用Qbittorrent API查询实时信息
+        ret_info = schemas.DownloaderInfo()
+
+        # Qbittorrent
+        if self.qb:
             info = self.qb.transfer_info()
-            return schemas.DownloaderInfo(
-                download_speed=info.get("dl_info_speed"),
-                upload_speed=info.get("up_info_speed"),
-                download_size=info.get("dl_info_data"),
-                upload_size=info.get("up_info_data")
-            )
-        else:
+            if info:
+                ret_info.download_speed += info.get("dl_info_speed")
+                ret_info.upload_speed += info.get("up_info_speed")
+                ret_info.download_size += info.get("dl_info_data")
+                ret_info.upload_size += info.get("up_info_data")
+
+        # Transmission
+        if self.tr:
             info = self.tr.transfer_info()
-            return schemas.DownloaderInfo(
-                download_speed=info.download_speed,
-                upload_speed=info.upload_speed,
-                download_size=info.current_stats.downloaded_bytes,
-                upload_size=info.current_stats.uploaded_bytes
-            )
+            if info:
+                ret_info.download_speed += info.download_speed
+                ret_info.upload_speed += info.upload_speed
+                ret_info.download_size += info.current_stats.downloaded_bytes
+                ret_info.upload_size += info.current_stats.uploaded_bytes
+
+        return ret_info
 
     def __get_downloading_count(self) -> int:
         """
