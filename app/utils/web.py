@@ -36,7 +36,8 @@ class WebUtils:
             if r:
                 return r.json().get("data", {}).get("location") or ''
         except Exception as err:
-            return str(err)
+            print(str(err))
+            return ""
 
     @staticmethod
     def get_bing_wallpaper() -> Optional[str]:
