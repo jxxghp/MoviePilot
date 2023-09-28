@@ -347,6 +347,7 @@ class SystemUtils:
             # 创建 Docker 客户端
             client = docker.DockerClient(base_url='tcp://127.0.0.1:38379')
             # 获取当前容器的 ID
+            container_id = None
             with open('/proc/self/mountinfo', 'r') as f:
                 data = f.read()
                 index_resolv_conf = data.find("resolv.conf")

@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 from app.core.config import settings
 from app.core.meta import MetaBase
@@ -272,7 +272,7 @@ class MediaInfo:
         初始化媒信息
         """
 
-        def __directors_actors(tmdbinfo: dict):
+        def __directors_actors(tmdbinfo: dict) -> Tuple[List[dict], List[dict]]:
             """
             查询导演和演员
             :param tmdbinfo: TMDB元数据
