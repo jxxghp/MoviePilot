@@ -329,7 +329,11 @@ class FanartModule(_ModuleBase):
         if mediainfo.type == MediaType.MOVIE:
             result = self.__request_fanart(mediainfo.type, mediainfo.tmdb_id)
         else:
-            result = self.__request_fanart(mediainfo.type, mediainfo.tvdb_id)
+            if mediainfo.tvdb_id:
+                result = self.__request_fanart(mediainfo.type, mediainfo.tvdb_id)
+            else:
+                logger.info(f"{mediainfo.title_year} 没有tvdbid，无法获取Fanart图片")
+                return
         if not result or result.get('status') == 'error':
             logger.warn(f"没有获取到 {mediainfo.title_year} 的Fanart图片数据")
             return
@@ -351,6 +355,7 @@ class FanartModule(_ModuleBase):
                 # 季图片格式 seasonxx-poster
                 image_name = f"season{str(image_season).rjust(2, '0')}-{image_name[6:]}"
             if not mediainfo.get_image(image_name):
+                # 没有图片才设置
                 mediainfo.set_image(image_name, image_obj.get('url'))
 
         return mediainfo
