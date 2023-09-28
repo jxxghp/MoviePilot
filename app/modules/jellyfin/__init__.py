@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import Optional, Tuple, Union, Any, List, Generator
 
@@ -26,7 +25,7 @@ class JellyfinModule(_ModuleBase):
         """
         # 定时重连
         if not self.jellyfin.is_inactive():
-            self.jellyfin = Jellyfin()
+            self.jellyfin.reconnect()
 
     def stop(self):
         pass

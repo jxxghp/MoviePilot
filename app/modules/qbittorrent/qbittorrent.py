@@ -35,6 +35,12 @@ class Qbittorrent(metaclass=Singleton):
             return False
         return True if not self.qbc else False
 
+    def reconnect(self):
+        """
+        重连
+        """
+        self.qbc = self.__login_qbittorrent()
+
     def __login_qbittorrent(self) -> Optional[Client]:
         """
         连接qbittorrent

@@ -56,6 +56,12 @@ class Transmission(metaclass=Singleton):
             return False
         return True if not self.trc else False
 
+    def reconnect(self):
+        """
+        重连
+        """
+        self.trc = self.__login_transmission()
+
     def get_torrents(self, ids: Union[str, list] = None, status: Union[str, list] = None,
                      tags: Union[str, list] = None) -> Tuple[List[Torrent], bool]:
         """

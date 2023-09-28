@@ -33,6 +33,13 @@ class Jellyfin(metaclass=Singleton):
             return False
         return True if not self.user else False
 
+    def reconnect(self):
+        """
+        重连
+        """
+        self.user = self.get_user()
+        self.serverid = self.get_server_id()
+
     def __get_jellyfin_librarys(self) -> List[dict]:
         """
         获取Jellyfin媒体库的信息

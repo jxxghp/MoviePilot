@@ -35,6 +35,13 @@ class Emby(metaclass=Singleton):
             return False
         return True if not self.user else False
 
+    def reconnect(self):
+        """
+        重连
+        """
+        self.user = self.get_user()
+        self.folders = self.get_emby_folders()
+
     def get_emby_folders(self) -> List[dict]:
         """
         获取Emby媒体库路径列表

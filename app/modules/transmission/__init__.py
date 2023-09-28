@@ -34,7 +34,7 @@ class TransmissionModule(_ModuleBase):
         """
         # 定时重连
         if not self.transmission.is_inactive():
-            self.transmission = Transmission()
+            self.transmission.reconnect()
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None) -> Optional[Tuple[Optional[str], str]]:

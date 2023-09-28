@@ -38,6 +38,17 @@ class Plex(metaclass=Singleton):
             return False
         return True if not self._plex else False
 
+    def reconnect(self):
+        """
+        重连
+        """
+        try:
+            self._plex = PlexServer(self._host, self._token)
+            self._libraries = self._plex.library.sections()
+        except Exception as e:
+            self._plex = None
+            logger.error(f"Plex服务器连接失败：{str(e)}")
+
     def get_librarys(self):
         """
         获取媒体服务器所有媒体库列表

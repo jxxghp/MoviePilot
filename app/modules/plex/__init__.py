@@ -29,7 +29,7 @@ class PlexModule(_ModuleBase):
         """
         # 定时重连
         if not self.plex.is_inactive():
-            self.plex = Plex()
+            self.plex.reconnect()
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[WebhookEventInfo]:
         """

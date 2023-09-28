@@ -34,7 +34,7 @@ class QbittorrentModule(_ModuleBase):
         """
         # 定时重连
         if self.qbittorrent.is_inactive():
-            self.qbittorrent = Qbittorrent()
+            self.qbittorrent.reconnect()
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None) -> Optional[Tuple[Optional[str], str]]:

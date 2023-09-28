@@ -28,7 +28,7 @@ class EmbyModule(_ModuleBase):
         """
         # 定时重连
         if not self.emby.is_inactive():
-            self.emby = Emby()
+            self.emby.reconnect()
 
     def user_authenticate(self, name: str, password: str) -> Optional[str]:
         """
