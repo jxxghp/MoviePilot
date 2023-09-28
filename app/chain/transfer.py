@@ -255,7 +255,7 @@ class TransferChain(ChainBase):
                     # 新增转移失败历史记录
                     his = self.transferhis.add_fail(
                         src_path=file_path,
-                        mode=settings.TRANSFER_TYPE,
+                        mode=transfer_type,
                         meta=file_meta,
                         download_hash=download_hash
                     )
@@ -311,7 +311,7 @@ class TransferChain(ChainBase):
                     # 新增转移失败历史记录
                     self.transferhis.add_fail(
                         src_path=file_path,
-                        mode=settings.TRANSFER_TYPE,
+                        mode=transfer_type,
                         download_hash=download_hash,
                         meta=file_meta,
                         mediainfo=file_mediainfo,
@@ -350,7 +350,7 @@ class TransferChain(ChainBase):
                 # 新增转移成功历史记录
                 self.transferhis.add_success(
                     src_path=file_path,
-                    mode=settings.TRANSFER_TYPE,
+                    mode=transfer_type,
                     download_hash=download_hash,
                     meta=file_meta,
                     mediainfo=file_mediainfo,
