@@ -214,6 +214,7 @@ class NAStoolSync(_PluginBase):
             mtorrent = history[9]
             mdesc = history[10]
             msite = history[11]
+            mdate = history[12]
 
             # 处理站点映射
             if self._site:
@@ -236,7 +237,8 @@ class NAStoolSync(_PluginBase):
                 torrent_name=mtorrent,
                 torrent_description=mdesc,
                 torrent_site=msite,
-                userid=settings.SUPERUSER
+                userid=settings.SUPERUSER,
+                date=mdate
             )
             cnt += 1
             if cnt % 100 == 0:
@@ -360,7 +362,8 @@ class NAStoolSync(_PluginBase):
             DOWNLOAD_ID,
             TORRENT,
             DESC,
-            SITE 
+            SITE,
+            DATE
         FROM
             DOWNLOAD_HISTORY 
         WHERE

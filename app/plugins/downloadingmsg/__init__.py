@@ -8,7 +8,7 @@ from app.plugins import _PluginBase
 from typing import Any, List, Dict, Tuple, Optional, Union
 from app.log import logger
 from app.schemas import NotificationType, TransferTorrent, DownloadingTorrent
-from app.schemas.types import TorrentStatus
+from app.schemas.types import TorrentStatus, MessageChannel
 from app.utils.string import StringUtils
 
 
@@ -117,7 +117,8 @@ class DownloadingMsg(_PluginBase):
                 if not userid:
                     continue
                 # 如果用户是管理员，无需重复推送
-                if self._adminuser and userid in str(self._adminuser).split(","):
+                if self._type == "admin" or self._type == "both" and self._adminuser and userid in str(
+                        self._adminuser).split(","):
                     logger.debug("管理员已推送")
                     continue
 
@@ -138,6 +139,7 @@ class DownloadingMsg(_PluginBase):
         title = f"共 {len(torrents)} 个任务正在下载："
         messages = []
         index = 1
+        channel_value = None
         for torrent in torrents:
             year = None
             name = None
@@ -150,6 +152,8 @@ class DownloadingMsg(_PluginBase):
                 year = downloadhis.year
                 se = downloadhis.seasons
                 ep = downloadhis.episodes
+                if not channel_value:
+                    channel_value = downloadhis.channel
             else:
                 try:
                     context = MediaChain(self.db).recognize_by_title(title=torrent.title)
@@ -178,7 +182,15 @@ class DownloadingMsg(_PluginBase):
                             f"{StringUtils.str_filesize(torrent.size)} "
                             f"{round(torrent.progress, 1)}%")
             index += 1
+
+        # 用户消息渠道
+        if channel_value:
+            channel = next(
+                (channel for channel in MessageChannel.__members__.values() if channel.value == channel_value), None)
+        else:
+            channel = None
         self.post_message(mtype=NotificationType.Download,
+                          channel=channel,
                           title=title,
                           text="\n".join(messages),
                           userid=userid)
