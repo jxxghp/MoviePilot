@@ -136,29 +136,27 @@ class PersonMeta(_PluginBase):
         if not mediainfo or not transferinfo:
             return
         # 文件路径
-        filepath = transferinfo.target_path
-        if not filepath:
+        if not transferinfo.file_list_new:
             return
-        filename = Path(transferinfo.file_list_new[0])
-        if not filename:
-            return
+        filepath = Path(transferinfo.file_list_new[0])
         # 电影
         if mediainfo.type == MediaType.MOVIE:
             # nfo文件
-            nfofile = filepath / "movie.nfo"
+            nfofile = filepath.with_name("movie.nfo")
             if not nfofile.exists():
-                nfofile = filepath / f"{filepath.stem}.nfo"
+                nfofile = filepath.with_name(f"{filepath.stem}.nfo")
                 if not nfofile.exists():
-                    nfofile = filepath / f"{filename.stem}.nfo"
-                    if not nfofile.exists():
-                        logger.warning(f"电影nfo文件不存在：{nfofile}")
-                        return
+                    logger.warning(f"演职人员刮削 电影nfo文件不存在：{nfofile}")
+                    return
         else:
             # nfo文件
-            nfofile = filepath.with_name("tvshow.nfo")
+            nfofile = filepath.parent.with_name("tvshow.nfo")
             if not nfofile.exists():
-                logger.warning(f"剧集nfo文件不存在：{nfofile}")
+                logger.warning(f"演职人员刮削 剧集nfo文件不存在：{nfofile}")
                 return
+        logger.info(f"演职人员刮削 开始刮削：{filepath}")
+        # 主要媒体服务器
+        mediaserver = str(settings.MEDIASERVER).split(",")[0]
         # 读取nfo文件
         nfo = NfoReader(nfofile)
         # 读取演员信息
@@ -170,6 +168,8 @@ class PersonMeta(_PluginBase):
                 continue
             # 演员名称
             actor_name = actor.find("name").text
+            if not actor_name:
+                continue
             # 查询演员详情
             actor_info = self.tmdbchain.person_detail(int(actor_id))
             if not actor_info:
@@ -178,23 +178,29 @@ class PersonMeta(_PluginBase):
             actor_image = actor_info.get("profile_path")
             if not actor_image:
                 continue
-            # 计算保存路径
-            if 'jellyfin' in settings.MEDIASERVER:
-                image_path = Path(
-                    self._metadir) / f"{actor_name[0]}" / f"{actor_name}" / f"folder{Path(actor_image).suffix}"
+            # 计算保存目录
+            if mediaserver == 'jellyfin':
+                pers_path = Path(self._metadir) / f"{actor_name[0]}" / f"{actor_name}"
             else:
-                image_path = Path(self._metadir) / f"{actor_name}-tmdb-{actor_id}" / f"folder{Path(actor_image).suffix}"
+                pers_path = Path(self._metadir) / f"{actor_name}-tmdb-{actor_id}"
+            # 创建目录
+            if not pers_path.exists():
+                os.makedirs(pers_path, exist_ok=True)
+            # 文件路径
+            image_path = pers_path / f"folder{Path(actor_image).suffix}"
             if image_path.exists():
                 continue
-            else:
-                if 'jellyfin' in settings.MEDIASERVER:
-                    pers_path = Path(self._metadir) / f"{actor_name[0]}" / f"{actor_name}"
-                else:
-                    pers_path = Path(self._metadir) / f"{actor_name}-tmdb-{actor_id}"
-                if not pers_path.exists():
-                    os.makedirs(pers_path)
             # 下载图片
-            self.download_image(f"https://image.tmdb.org/t/p/original{actor_image}", image_path)
+            self.download_image(
+                image_url=f"https://image.tmdb.org/t/p/original{actor_image}",
+                path=image_path
+            )
+            # 刷新媒体库
+            self.chain.refresh_mediaserver(
+                mediainfo=mediainfo,
+                file_path=filepath
+            )
+        logger.info(f"演职人员刮削 刮削完成：{filepath}")
 
     @staticmethod
     @retry(RequestException, logger=logger)
