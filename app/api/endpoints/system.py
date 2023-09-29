@@ -222,5 +222,8 @@ def execute_command(jobid: str,
     """
     if not jobid:
         return schemas.Response(success=False, message="命令不能为空！")
-    Scheduler().start(jobid)
+    if jobid == "subscribe_search":
+        Scheduler().start(jobid, state = 'R')
+    else:
+        Scheduler().start(jobid)
     return schemas.Response(success=True)
