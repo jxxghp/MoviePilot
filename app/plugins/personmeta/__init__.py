@@ -140,15 +140,15 @@ class PersonMeta(_PluginBase):
         # 电影
         if mediainfo.type == MediaType.MOVIE:
             # nfo文件
-            nfofile = filepath.with_name("movie.nfo")
+            nfofile = filepath / "movie.nfo"
             if not nfofile.exists():
-                nfofile = filepath.parent / f"{filepath.stem}.nfo"
+                nfofile = filepath / f"{filepath.stem}.nfo"
                 if not nfofile.exists():
                     logger.warning(f"电影nfo文件不存在：{nfofile}")
                     return
         else:
             # nfo文件
-            nfofile = filepath.parent.with_name("tvshow.nfo")
+            nfofile = filepath.with_name("tvshow.nfo")
             if not nfofile.exists():
                 logger.warning(f"剧集nfo文件不存在：{nfofile}")
                 return
