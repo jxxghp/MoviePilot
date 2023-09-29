@@ -62,7 +62,7 @@ class SearchChain(ChainBase):
         else:
             logger.info(f'开始浏览资源，站点：{site} ...')
         # 搜索
-        return self.__search_all_sites(keyword=title, sites=[site] if site else None, page=page) or []
+        return self.__search_all_sites(keywords=[title], sites=[site] if site else None, page=page) or []
 
     def last_search_results(self) -> List[Context]:
         """
@@ -117,16 +117,12 @@ class SearchChain(ChainBase):
         else:
             keywords = [mediainfo.title]
         # 执行搜索
-        torrents: List[TorrentInfo] = []
-        for keyword in keywords:
-            torrents = self.__search_all_sites(
-                mediainfo=mediainfo,
-                keyword=keyword,
-                sites=sites,
-                area=area
-            )
-            if torrents:
-                break
+        torrents: List[TorrentInfo] = self.__search_all_sites(
+            mediainfo=mediainfo,
+            keywords=keywords,
+            sites=sites,
+            area=area
+        )
         if not torrents:
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
             return []
@@ -241,15 +237,15 @@ class SearchChain(ChainBase):
         # 返回
         return contexts
 
-    def __search_all_sites(self, mediainfo: Optional[MediaInfo] = None,
-                           keyword: str = None,
+    def __search_all_sites(self, keywords: List[str],
+                           mediainfo: Optional[MediaInfo] = None,
                            sites: List[int] = None,
                            page: int = 0,
                            area: str = "title") -> Optional[List[TorrentInfo]]:
         """
         多线程搜索多个站点
         :param mediainfo:  识别的媒体信息
-        :param keyword:  搜索关键词，如有按关键词搜索，否则按媒体信息名称搜索
+        :param keywords:  搜索关键词列表
         :param sites:  指定站点ID列表，如有则只搜索指定站点，否则搜索所有站点
         :param page:  搜索页码
         :param area:  搜索区域 title or imdbid
@@ -291,8 +287,18 @@ class SearchChain(ChainBase):
         executor = ThreadPoolExecutor(max_workers=len(indexer_sites))
         all_task = []
         for site in indexer_sites:
-            task = executor.submit(self.search_torrents, mediainfo=mediainfo,
-                                   site=site, keyword=keyword, page=page, area=area)
+            if area == "imdbid":
+                # 搜索IMDBID
+                task = executor.submit(self.search_torrents, site=site,
+                                       keywords=[mediainfo.imdb_id] if mediainfo else None,
+                                       mtype=mediainfo.type if mediainfo else None,
+                                       page=page)
+            else:
+                # 搜索标题
+                task = executor.submit(self.search_torrents, site=site,
+                                       keywords=keywords,
+                                       mtype=mediainfo.type if mediainfo else None,
+                                       page=page)
             all_task.append(task)
         # 结果集
         results = []
@@ -303,7 +309,7 @@ class SearchChain(ChainBase):
                 results.extend(result)
             logger.info(f"站点搜索进度：{finish_count} / {total_num}")
             self.progress.update(value=finish_count / total_num * 100,
-                                 text=f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个站点 ...",
+                                 text=f"正在搜索{keywords or ''}，已完成 {finish_count} / {total_num} 个站点 ...",
                                  key=ProgressKey.Search)
         # 计算耗时
         end_time = datetime.now()

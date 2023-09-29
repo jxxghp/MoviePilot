@@ -197,21 +197,19 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("search_medias", meta=meta)
 
     def search_torrents(self, site: CommentedMap,
-                        mediainfo: MediaInfo,
-                        keyword: str = None,
-                        page: int = 0,
-                        area: str = "title") -> List[TorrentInfo]:
+                        keywords: List[str],
+                        mtype: MediaType = None,
+                        page: int = 0) -> List[TorrentInfo]:
         """
         搜索一个站点的种子资源
         :param site:  站点
-        :param mediainfo:  识别的媒体信息
-        :param keyword:  搜索关键词，如有按关键词搜索，否则按媒体信息名称搜索
+        :param keywords:  搜索关键词列表
+        :param mtype:  媒体类型
         :param page:  页码
-        :param area:  搜索区域
         :reutrn: 资源列表
         """
-        return self.run_module("search_torrents", mediainfo=mediainfo, site=site,
-                               keyword=keyword, page=page, area=area)
+        return self.run_module("search_torrents", site=site, keywords=keywords,
+                               mtype=mtype, page=page)
 
     def refresh_torrents(self, site: CommentedMap) -> List[TorrentInfo]:
         """
