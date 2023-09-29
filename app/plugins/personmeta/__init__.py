@@ -1,9 +1,11 @@
+import os
 from pathlib import Path
 from typing import Any, List, Dict, Tuple
 
 from requests import RequestException
 
 from app.chain.tmdb import TmdbChain
+from app.core.config import settings
 from app.core.event import eventmanager, Event
 from app.helper.nfo import NfoReader
 from app.log import logger
@@ -137,6 +139,9 @@ class PersonMeta(_PluginBase):
         filepath = transferinfo.target_path
         if not filepath:
             return
+        filename = Path(transferinfo.file_list_new[0])
+        if not filename:
+            return
         # 电影
         if mediainfo.type == MediaType.MOVIE:
             # nfo文件
@@ -144,8 +149,10 @@ class PersonMeta(_PluginBase):
             if not nfofile.exists():
                 nfofile = filepath / f"{filepath.stem}.nfo"
                 if not nfofile.exists():
-                    logger.warning(f"电影nfo文件不存在：{nfofile}")
-                    return
+                    nfofile = filepath / f"{filename.stem}.nfo"
+                    if not nfofile.exists():
+                        logger.warning(f"电影nfo文件不存在：{nfofile}")
+                        return
         else:
             # nfo文件
             nfofile = filepath.with_name("tvshow.nfo")
@@ -158,13 +165,13 @@ class PersonMeta(_PluginBase):
         actors = nfo.get_elements("actor") or []
         for actor in actors:
             # 演员ID
-            actor_id = actor.find("id").text
+            actor_id = actor.find("tmdbid").text
             if not actor_id:
                 continue
             # 演员名称
             actor_name = actor.find("name").text
             # 查询演员详情
-            actor_info = self.tmdbchain.person_detail(actor_id)
+            actor_info = self.tmdbchain.person_detail(int(actor_id))
             if not actor_info:
                 continue
             # 演员头像
@@ -172,9 +179,20 @@ class PersonMeta(_PluginBase):
             if not actor_image:
                 continue
             # 计算保存路径
-            image_path = Path(self._metadir) / f"{actor_name}-tmdb-{actor_id}" / f"folder{Path(actor_image).suffix}"
+            if 'jellyfin' in settings.MEDIASERVER:
+                image_path = Path(
+                    self._metadir) / f"{actor_name[0]}" / f"{actor_name}" / f"folder{Path(actor_image).suffix}"
+            else:
+                image_path = Path(self._metadir) / f"{actor_name}-tmdb-{actor_id}" / f"folder{Path(actor_image).suffix}"
             if image_path.exists():
                 continue
+            else:
+                if 'jellyfin' in settings.MEDIASERVER:
+                    pers_path = Path(self._metadir) / f"{actor_name[0]}" / f"{actor_name}"
+                else:
+                    pers_path = Path(self._metadir) / f"{actor_name}-tmdb-{actor_id}"
+                if not pers_path.exists():
+                    os.makedirs(pers_path)
             # 下载图片
             self.download_image(f"https://image.tmdb.org/t/p/original{actor_image}", image_path)
 
