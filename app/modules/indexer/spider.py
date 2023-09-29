@@ -40,8 +40,6 @@ class TorrentSpider:
     referer: str = None
     # 搜索关键字
     keyword: str = None
-    # 搜索IMDBID
-    imdbid: str = None
     # 媒体类型
     mtype: MediaType = None
     # 搜索路径、方式配置
@@ -68,7 +66,6 @@ class TorrentSpider:
     def __init__(self,
                  indexer: CommentedMap,
                  keyword: [str, list] = None,
-                 imdbid: str = None,
                  page: int = 0,
                  referer: str = None,
                  mtype: MediaType = None):
@@ -76,7 +73,6 @@ class TorrentSpider:
         设置查询参数
         :param indexer: 索引器
         :param keyword: 搜索关键字，如果数组则为批量搜索
-        :param imdbid: IMDB ID
         :param page: 页码
         :param referer: Referer
         :param mtype: 媒体类型
@@ -84,7 +80,6 @@ class TorrentSpider:
         if not indexer:
             return
         self.keyword = keyword
-        self.imdbid = imdbid
         self.mtype = mtype
         self.indexerid = indexer.get('id')
         self.indexername = indexer.get('name')
@@ -159,20 +154,17 @@ class TorrentSpider:
             # 搜索URL
             indexer_params = self.search.get("params") or {}
             if indexer_params:
-                # 支持IMDBID时优先使用IMDBID搜索
-                search_area = indexer_params.get("search_area") or 0
-                if self.imdbid and search_area:
-                    search_word = self.imdbid
-                else:
-                    search_word = self.keyword
-                    # 不启用IMDBID搜索时需要将search_area移除
-                    if search_area:
-                        indexer_params.pop('search_area')
+                search_area = indexer_params.get('search_area')
+                # search_area非0表示支持imdbid搜索
+                if (search_area and
+                        (not self.keyword or not self.keyword.startswith('tt'))):
+                    # 支持imdbid搜索，但关键字不是imdbid时，不启用imdbid搜索
+                    indexer_params.pop('search_area')
                 # 变量字典
                 inputs_dict = {
                     "keyword": search_word
                 }
-                # 查询参数
+                # 查询参数，默认查询标题
                 params = {
                     "search_mode": search_mode,
                     "search_area": 0,

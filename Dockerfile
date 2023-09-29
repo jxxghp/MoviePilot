@@ -34,8 +34,7 @@ ENV LANG="C.UTF-8" \
     EMBY_HOST="http://127.0.0.1:8096" \
     EMBY_API_KEY=""
 WORKDIR "/app"
-COPY . .
-RUN apt-get update \
+RUN apt-get update -y \
     && apt-get -y install \
         musl-dev \
         nginx \
@@ -56,26 +55,20 @@ RUN apt-get update \
     elif [ "$(uname -m)" = "aarch64" ]; \
         then ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1; \
     fi \
-    && cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
-    && cp -f /app/update /usr/local/bin/mp_update \
-    && cp -f /app/entrypoint /entrypoint \
-    && chmod +x /entrypoint /usr/local/bin/mp_update \
-    && mkdir -p ${HOME} /var/lib/haproxy/server-state \
-    && groupadd -r moviepilot -g 911 \
-    && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
+    && apt-get autoremove -y \
+    && apt-get clean -y \
+    && rm -rf \
+        /tmp/* \
+        /moviepilot/.cache \
+        /var/lib/apt/lists/* \
+        /var/tmp/*
+COPY requirements.txt requirements.txt
+RUN apt-get update -y \
     && apt-get install -y build-essential \
     && pip install --upgrade pip \
     && pip install Cython \
     && pip install -r requirements.txt \
     && playwright install-deps chromium \
-    && python_ver=$(python3 -V | awk '{print $2}') \
-    && echo "/app/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \
-    && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
-    && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
-    && locale-gen zh_CN.UTF-8 \
-    && FRONTEND_VERSION=$(curl -sL "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name) \
-    && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
-    && mv /dist /public \
     && apt-get remove -y build-essential \
     && apt-get autoremove -y \
     && apt-get clean -y \
@@ -84,6 +77,22 @@ RUN apt-get update \
         /moviepilot/.cache \
         /var/lib/apt/lists/* \
         /var/tmp/*
+COPY . .
+RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
+    && cp -f /app/update /usr/local/bin/mp_update \
+    && cp -f /app/entrypoint /entrypoint \
+    && chmod +x /entrypoint /usr/local/bin/mp_update \
+    && mkdir -p ${HOME} /var/lib/haproxy/server-state \
+    && groupadd -r moviepilot -g 911 \
+    && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
+    && python_ver=$(python3 -V | awk '{print $2}') \
+    && echo "/app/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \
+    && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
+    && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
+    && locale-gen zh_CN.UTF-8 \
+    && FRONTEND_VERSION=$(curl -sL "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name) \
+    && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
+    && mv /dist /public
 EXPOSE 3000
 VOLUME [ "/config" ]
 ENTRYPOINT [ "/entrypoint" ]
