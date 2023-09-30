@@ -130,7 +130,7 @@ class EmbyModule(_ModuleBase):
             return None
         return self.emby.get_librarys()
 
-    def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator[schemas.MediaServerItem]]:
+    def mediaserver_items(self, server: str, library_id: str) -> Optional[List[schemas.MediaServerItem]]:
         """
         媒体库项目列表
         """
@@ -138,7 +138,7 @@ class EmbyModule(_ModuleBase):
             return None
         return self.emby.get_items(library_id)
 
-    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[Generator[schemas.MediaServerItem]]:
+    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[schemas.MediaServerItem]:
         """
         媒体库项目详情
         """

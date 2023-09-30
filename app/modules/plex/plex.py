@@ -326,7 +326,7 @@ class Plex(metaclass=Singleton):
                         break
         return ids
 
-    def get_items(self, parent: str) -> Generator[Optional[schemas.MediaServerItem]]:
+    def get_items(self, parent: str) -> Generator:
         """
         获取媒体服务器所有媒体库列表
         """

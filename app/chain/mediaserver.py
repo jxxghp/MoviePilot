@@ -28,7 +28,7 @@ class MediaServerChain(ChainBase):
         """
         return self.run_module("mediaserver_librarys", server=server)
 
-    def items(self, server: str, library_id: Union[str, int]) -> Generator[schemas.MediaServerItem]:
+    def items(self, server: str, library_id: Union[str, int]) -> List[schemas.MediaServerItem]:
         """
         获取媒体服务器所有项目
         """

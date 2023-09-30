@@ -523,7 +523,7 @@ class Jellyfin(metaclass=Singleton):
             logger.error(f"连接Users/Items出错：" + str(e))
         return None
 
-    def get_items(self, parent: str) -> Generator[schemas.MediaServerItem]:
+    def get_items(self, parent: str) -> Generator:
         """
         获取媒体服务器所有媒体库列表
         """

@@ -128,7 +128,7 @@ class JellyfinModule(_ModuleBase):
             path=library.get("path")
         ) for library in librarys]
 
-    def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator[schemas.MediaServerItem]]:
+    def mediaserver_items(self, server: str, library_id: str) -> Optional[List[schemas.MediaServerItem]]:
         """
         媒体库项目列表
         """

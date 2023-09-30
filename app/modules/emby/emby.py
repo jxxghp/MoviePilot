@@ -514,7 +514,7 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接Items/Id出错：" + str(e))
         return None
 
-    def get_items(self, parent: str) -> Generator[Optional[schemas.MediaServerItem]]:
+    def get_items(self, parent: str) -> Generator:
         """
         获取媒体服务器所有媒体库列表
         """
