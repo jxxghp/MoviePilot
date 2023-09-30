@@ -12,7 +12,6 @@ from app.schemas.types import MediaType
 from app.utils.common import retry
 from app.utils.dom import DomUtils
 from app.utils.http import RequestUtils
-from app.utils.string import StringUtils
 
 
 class TmdbScraper:
@@ -122,25 +121,8 @@ class TmdbScraper:
         except Exception as e:
             logger.error(f"{file_path} 刮削失败：{e}")
 
-    def __get_chinese_name(self, person: dict):
-        """
-        获取TMDB别名中的中文名
-        """
-        if not person.get("id"):
-            return ""
-        try:
-            personinfo = self.tmdb.get_person_detail(person.get("id"))
-            if personinfo:
-                also_known_as = personinfo.get("also_known_as") or []
-                if also_known_as:
-                    for name in also_known_as:
-                        if name and StringUtils.is_chinese(name):
-                            return name
-        except Exception as err:
-            logger.error(f"获取人物中文名失败：{err}")
-        return person.get("name") or ""
-
-    def __gen_common_nfo(self, mediainfo: MediaInfo, doc, root):
+    @staticmethod
+    def __gen_common_nfo(mediainfo: MediaInfo, doc, root):
         """
         生成公共NFO
         """
@@ -173,16 +155,13 @@ class TmdbScraper:
         xoutline.appendChild(doc.createCDATASection(mediainfo.overview or ""))
         # 导演
         for director in mediainfo.directors:
-            # 获取中文名
-            cn_name = self.__get_chinese_name(director)
-            xdirector = DomUtils.add_node(doc, root, "director", cn_name)
+            xdirector = DomUtils.add_node(doc, root, "director", director.get("name") or "")
             xdirector.setAttribute("tmdbid", str(director.get("id") or ""))
         # 演员
         for actor in mediainfo.actors:
             # 获取中文名
-            cn_name = self.__get_chinese_name(actor)
             xactor = DomUtils.add_node(doc, root, "actor")
-            DomUtils.add_node(doc, xactor, "name", cn_name)
+            DomUtils.add_node(doc, xactor, "name", actor.get("name") or "")
             DomUtils.add_node(doc, xactor, "type", "Actor")
             DomUtils.add_node(doc, xactor, "role", actor.get("character") or actor.get("role") or "")
             DomUtils.add_node(doc, xactor, "tmdbid", actor.get("id") or "")
@@ -260,7 +239,8 @@ class TmdbScraper:
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "season")
         # 添加时间
-        DomUtils.add_node(doc, root, "dateadded", time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+        DomUtils.add_node(doc, root, "dateadded",
+                          time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
         # 简介
         xplot = DomUtils.add_node(doc, root, "plot")
         xplot.appendChild(doc.createCDATASection(seasoninfo.get("overview") or ""))
@@ -272,7 +252,8 @@ class TmdbScraper:
         DomUtils.add_node(doc, root, "premiered", seasoninfo.get("air_date") or "")
         DomUtils.add_node(doc, root, "releasedate", seasoninfo.get("air_date") or "")
         # 发行年份
-        DomUtils.add_node(doc, root, "year", seasoninfo.get("air_date")[:4] if seasoninfo.get("air_date") else "")
+        DomUtils.add_node(doc, root, "year",
+                          seasoninfo.get("air_date")[:4] if seasoninfo.get("air_date") else "")
         # seasonnumber
         DomUtils.add_node(doc, root, "seasonnumber", str(season))
         # 保存
@@ -326,18 +307,14 @@ class TmdbScraper:
         directors = episodeinfo.get("crew") or []
         for director in directors:
             if director.get("known_for_department") == "Directing":
-                # 获取中文名
-                cn_name = self.__get_chinese_name(director)
-                xdirector = DomUtils.add_node(doc, root, "director", cn_name)
+                xdirector = DomUtils.add_node(doc, root, "director", director.get("name") or "")
                 xdirector.setAttribute("tmdbid", str(director.get("id") or ""))
         # 演员
         actors = episodeinfo.get("guest_stars") or []
         for actor in actors:
             if actor.get("known_for_department") == "Acting":
-                # 获取中文名
-                cn_name = self.__get_chinese_name(actor)
                 xactor = DomUtils.add_node(doc, root, "actor")
-                DomUtils.add_node(doc, xactor, "name", cn_name)
+                DomUtils.add_node(doc, xactor, "name", actor.get("name") or "")
                 DomUtils.add_node(doc, xactor, "type", "Actor")
                 DomUtils.add_node(doc, xactor, "tmdbid", actor.get("id") or "")
         # 保存文件

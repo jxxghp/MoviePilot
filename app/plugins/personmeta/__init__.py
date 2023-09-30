@@ -13,6 +13,7 @@ from app.log import logger
 from app.plugins import _PluginBase
 from app.schemas import MediaInfo, MediaServerItem
 from app.schemas.types import EventType, MediaType
+from app.utils.string import StringUtils
 
 
 class PersonMeta(_PluginBase):
@@ -289,6 +290,24 @@ class PersonMeta(_PluginBase):
 
         # 更新演员图片
         pass
+
+    def __get_chinese_name(self, person: dict):
+        """
+        获取TMDB别名中的中文名
+        """
+        if not person.get("id"):
+            return ""
+        try:
+            personinfo = self.tmdbchain.person_detail(person.get("id"))
+            if personinfo:
+                also_known_as = personinfo.get("also_known_as") or []
+                if also_known_as:
+                    for name in also_known_as:
+                        if name and StringUtils.is_chinese(name):
+                            return name
+        except Exception as err:
+            logger.error(f"获取人物中文名失败：{err}")
+        return person.get("name") or ""
 
     def stop_service(self):
         """
