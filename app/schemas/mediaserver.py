@@ -14,6 +14,10 @@ class ExistMediaInfo(BaseModel):
     type: Optional[MediaType]
     # 季
     seasons: Optional[Dict[int, list]] = {}
+    # 媒体服务器
+    server: Optional[str] = None
+    # 媒体ID
+    itemid: Optional[Union[str, int]] = None
 
 
 class NotExistMediaInfo(BaseModel):

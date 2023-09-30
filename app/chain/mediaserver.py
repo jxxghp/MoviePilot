@@ -28,11 +28,17 @@ class MediaServerChain(ChainBase):
         """
         return self.run_module("mediaserver_librarys", server=server)
 
-    def items(self, server: str, library_id: Union[str, int]) -> Generator:
+    def items(self, server: str, library_id: Union[str, int]) -> Generator[schemas.MediaServerItem]:
         """
         获取媒体服务器所有项目
         """
         return self.run_module("mediaserver_items", server=server, library_id=library_id)
+
+    def iteminfo(self, server: str, item_id: Union[str, int]) -> schemas.MediaServerItem:
+        """
+        获取媒体服务器项目信息
+        """
+        return self.run_module("mediaserver_iteminfo", server=server, item_id=item_id)
 
     def episodes(self, server: str, item_id: Union[str, int]) -> List[schemas.MediaServerSeasonInfo]:
         """

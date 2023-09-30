@@ -1,17 +1,16 @@
 import json
 import re
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Generator
+from typing import List, Optional, Union, Dict, Generator, Tuple
 
 from requests import Response
 
+from app import schemas
 from app.core.config import settings
 from app.log import logger
-from app.schemas import RefreshMediaItem, WebhookEventInfo
 from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
-from app.utils.string import StringUtils
 
 
 class Emby(metaclass=Singleton):
@@ -78,7 +77,7 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接User/Views 出错：" + str(e))
             return []
 
-    def get_librarys(self):
+    def get_librarys(self) -> List[schemas.MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -93,12 +92,15 @@ class Emby(metaclass=Singleton):
                     library_type = MediaType.TV.value
                 case _:
                     continue
-            libraries.append({
-                "id": library.get("Id"),
-                "name": library.get("Name"),
-                "path": library.get("Path"),
-                "type": library_type
-            })
+            libraries.append(
+                schemas.MediaServerLibrary(
+                    server="emby",
+                    id=library.get("Id"),
+                    name=library.get("Name"),
+                    path=library.get("Path"),
+                    type=library_type
+                )
+            )
         return libraries
 
     def get_user(self, user_name: str = None) -> Optional[Union[str, int]]:
@@ -200,59 +202,29 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接Users/Query出错：" + str(e))
             return 0
 
-    def get_activity_log(self, num: int = 30) -> List[dict]:
-        """
-        获取Emby活动记录
-        """
-        if not self._host or not self._apikey:
-            return []
-        req_url = "%semby/System/ActivityLog/Entries?api_key=%s&" % (self._host, self._apikey)
-        ret_array = []
-        try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                ret_json = res.json()
-                items = ret_json.get('Items')
-                for item in items:
-                    if item.get("Type") == "AuthenticationSucceeded":
-                        event_type = "LG"
-                        event_date = StringUtils.get_time(item.get("Date"))
-                        event_str = "%s, %s" % (item.get("Name"), item.get("ShortOverview"))
-                        activity = {"type": event_type, "event": event_str, "date": event_date}
-                        ret_array.append(activity)
-                    if item.get("Type") in ["VideoPlayback", "VideoPlaybackStopped"]:
-                        event_type = "PL"
-                        event_date = StringUtils.get_time(item.get("Date"))
-                        event_str = item.get("Name")
-                        activity = {"type": event_type, "event": event_str, "date": event_date}
-                        ret_array.append(activity)
-            else:
-                logger.error(f"System/ActivityLog/Entries 未获取到返回数据")
-                return []
-        except Exception as e:
-
-            logger.error(f"连接System/ActivityLog/Entries出错：" + str(e))
-            return []
-        return ret_array[:num]
-
-    def get_medias_count(self) -> dict:
+    def get_medias_count(self) -> schemas.Statistic:
         """
         获得电影、电视剧、动漫媒体数量
         :return: MovieCount SeriesCount SongCount
         """
         if not self._host or not self._apikey:
-            return {}
+            return schemas.Statistic()
         req_url = "%semby/Items/Counts?api_key=%s" % (self._host, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
             if res:
-                return res.json()
+                result = res.json()
+                return schemas.Statistic(
+                    movie_count=result.get("MovieCount") or 0,
+                    tv_count=result.get("SeriesCount") or 0,
+                    episode_count=result.get("EpisodeCount") or 0
+                )
             else:
                 logger.error(f"Items/Counts 未获取到返回数据")
-                return {}
+                return schemas.Statistic()
         except Exception as e:
             logger.error(f"连接Items/Counts出错：" + str(e))
-            return {}
+            return schemas.Statistic()
 
     def __get_emby_series_id_by_name(self, name: str, year: str) -> Optional[str]:
         """
@@ -282,7 +254,7 @@ class Emby(metaclass=Singleton):
     def get_movies(self,
                    title: str,
                    year: str = None,
-                   tmdb_id: int = None) -> Optional[List[dict]]:
+                   tmdb_id: int = None) -> Optional[List[schemas.MediaServerItem]]:
         """
         根据标题和年份，检查电影是否在Emby中存在，存在则返回列表
         :param title: 标题
@@ -303,17 +275,28 @@ class Emby(metaclass=Singleton):
                     ret_movies = []
                     for res_item in res_items:
                         item_tmdbid = res_item.get("ProviderIds", {}).get("Tmdb")
+                        mediaserver_item = schemas.MediaServerItem(
+                            server="emby",
+                            library=res_item.get("ParentId"),
+                            item_id=res_item.get("Id"),
+                            item_type=res_item.get("Type"),
+                            title=res_item.get("Name"),
+                            original_title=res_item.get("OriginalTitle"),
+                            year=res_item.get("ProductionYear"),
+                            tmdbid=int(item_tmdbid) if item_tmdbid else None,
+                            imdbid=res_item.get("ProviderIds", {}).get("Imdb"),
+                            tvdbid=res_item.get("ProviderIds", {}).get("Tvdb"),
+                            path=res_item.get("Path")
+                        )
                         if tmdb_id and item_tmdbid:
                             if str(item_tmdbid) != str(tmdb_id):
                                 continue
                             else:
-                                ret_movies.append(
-                                    {'title': res_item.get('Name'), 'year': str(res_item.get('ProductionYear'))})
+                                ret_movies.append(mediaserver_item)
                                 continue
-                        if res_item.get('Name') == title and (
-                                not year or str(res_item.get('ProductionYear')) == str(year)):
-                            ret_movies.append(
-                                {'title': res_item.get('Name'), 'year': str(res_item.get('ProductionYear'))})
+                        if (mediaserver_item.title == title
+                                and (not year or str(mediaserver_item.year) == str(year))):
+                            ret_movies.append(mediaserver_item)
                     return ret_movies
         except Exception as e:
             logger.error(f"连接Items出错：" + str(e))
@@ -325,7 +308,8 @@ class Emby(metaclass=Singleton):
                         title: str = None,
                         year: str = None,
                         tmdb_id: int = None,
-                        season: int = None) -> Optional[Dict[int, list]]:
+                        season: int = None
+                        ) -> Tuple[Optional[str], Optional[Dict[int, List[Dict[int, list]]]]]:
         """
         根据标题和年份和季，返回Emby中的剧集列表
         :param item_id: Emby中的ID
@@ -336,21 +320,20 @@ class Emby(metaclass=Singleton):
         :return: 每一季的已有集数
         """
         if not self._host or not self._apikey:
-            return None
+            return None, None
         # 电视剧
         if not item_id:
             item_id = self.__get_emby_series_id_by_name(title, year)
             if item_id is None:
-                return None
+                return None, None
             if not item_id:
-                return {}
+                return None, {}
         # 验证tmdbid是否相同
         item_info = self.get_iteminfo(item_id)
         if item_info:
-            item_tmdbid = (item_info.get("ProviderIds") or {}).get("Tmdb")
-            if tmdb_id and item_tmdbid:
-                if str(tmdb_id) != str(item_tmdbid):
-                    return {}
+            if tmdb_id and item_info.tmdbid:
+                if str(tmdb_id) != str(item_info.tmdbid):
+                    return None, {}
         # /Shows/Id/Episodes 查集的信息
         if not season:
             season = ""
@@ -359,7 +342,8 @@ class Emby(metaclass=Singleton):
                 self._host, item_id, season, self._apikey)
             res_json = RequestUtils().get_res(req_url)
             if res_json:
-                res_items = res_json.json().get("Items")
+                tv_item = res_json.json()
+                res_items = tv_item.get("Items")
                 season_episodes = {}
                 for res_item in res_items:
                     season_index = res_item.get("ParentIndexNumber")
@@ -374,11 +358,11 @@ class Emby(metaclass=Singleton):
                         season_episodes[season_index] = []
                     season_episodes[season_index].append(episode_index)
                 # 返回
-                return season_episodes
+                return tv_item.get("Id"), season_episodes
         except Exception as e:
             logger.error(f"连接Shows/Id/Episodes出错：" + str(e))
-            return None
-        return {}
+            return None, None
+        return None, {}
 
     def get_remote_image_by_id(self, item_id: str, image_type: str) -> Optional[str]:
         """
@@ -441,7 +425,7 @@ class Emby(metaclass=Singleton):
             return False
         return False
 
-    def refresh_library_by_items(self, items: List[RefreshMediaItem]) -> bool:
+    def refresh_library_by_items(self, items: List[schemas.RefreshMediaItem]) -> bool:
         """
         按类型、名称、年份来刷新媒体库
         :param items: 已识别的需要刷新媒体库的媒体信息列表
@@ -463,7 +447,7 @@ class Emby(metaclass=Singleton):
                 return self.__refresh_emby_library_by_id(library_id)
         logger.info(f"Emby媒体库刷新完成")
 
-    def __get_emby_library_id_by_item(self, item: RefreshMediaItem) -> Optional[str]:
+    def __get_emby_library_id_by_item(self, item: schemas.RefreshMediaItem) -> Optional[str]:
         """
         根据媒体信息查询在哪个媒体库，返回要刷新的位置的ID
         :param item: {title, year, type, category, target_path}
@@ -491,39 +475,53 @@ class Emby(metaclass=Singleton):
                         return folder.get("Id")
                 except Exception as err:
                     print(str(err))
-        # 如果找不到，只要路径中有分类目录名就命中
-        for subfolder in folder.get("SubFolders"):
-            if subfolder.get("Path") and re.search(r"[/\\]%s" % item.category,
-                                                    subfolder.get("Path")):
-                return folder.get("Id")
+            # 如果找不到，只要路径中有分类目录名就命中
+            for subfolder in folder.get("SubFolders"):
+                if subfolder.get("Path") and re.search(r"[/\\]%s" % item.category,
+                                                       subfolder.get("Path")):
+                    return folder.get("Id")
         # 刷新根目录
         return "/"
 
-    def get_iteminfo(self, itemid: str) -> dict:
+    def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
         """
         获取单个项目详情
         """
         if not itemid:
-            return {}
+            return None
         if not self._host or not self._apikey:
-            return {}
+            return None
         req_url = "%semby/Users/%s/Items/%s?api_key=%s" % (self._host, self.user, itemid, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
             if res and res.status_code == 200:
-                return res.json()
+                item = res.json()
+                tmdbid = item.get("ProviderIds", {}).get("Tmdb")
+                return schemas.MediaServerItem(
+                    server="emby",
+                    library=item.get("ParentId"),
+                    item_id=item.get("Id"),
+                    item_type=item.get("Type"),
+                    title=item.get("Name"),
+                    original_title=item.get("OriginalTitle"),
+                    year=item.get("ProductionYear"),
+                    tmdbid=int(tmdbid) if tmdbid else None,
+                    imdbid=item.get("ProviderIds", {}).get("Imdb"),
+                    tvdbid=item.get("ProviderIds", {}).get("Tvdb"),
+                    path=item.get("Path")
+                )
         except Exception as e:
             logger.error(f"连接Items/Id出错：" + str(e))
-            return {}
+        return None
 
-    def get_items(self, parent: str) -> Generator:
+    def get_items(self, parent: str) -> Generator[Optional[schemas.MediaServerItem]]:
         """
         获取媒体服务器所有媒体库列表
         """
         if not parent:
-            yield {}
+            yield None
         if not self._host or not self._apikey:
-            yield {}
+            yield None
         req_url = "%semby/Users/%s/Items?ParentId=%s&api_key=%s" % (self._host, self.user, parent, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
@@ -533,26 +531,15 @@ class Emby(metaclass=Singleton):
                     if not result:
                         continue
                     if result.get("Type") in ["Movie", "Series"]:
-                        item_info = self.get_iteminfo(result.get("Id"))
-                        yield {"id": result.get("Id"),
-                               "library": item_info.get("ParentId"),
-                               "type": item_info.get("Type"),
-                               "title": item_info.get("Name"),
-                               "original_title": item_info.get("OriginalTitle"),
-                               "year": item_info.get("ProductionYear"),
-                               "tmdbid": item_info.get("ProviderIds", {}).get("Tmdb"),
-                               "imdbid": item_info.get("ProviderIds", {}).get("Imdb"),
-                               "tvdbid": item_info.get("ProviderIds", {}).get("Tvdb"),
-                               "path": item_info.get("Path"),
-                               "json": str(item_info)}
+                        yield self.get_iteminfo(result.get("Id"))
                     elif "Folder" in result.get("Type"):
                         for item in self.get_items(parent=result.get('Id')):
                             yield item
         except Exception as e:
             logger.error(f"连接Users/Items出错：" + str(e))
-        yield {}
+        yield None
 
-    def get_webhook_message(self, form: any, args: dict) -> Optional[WebhookEventInfo]:
+    def get_webhook_message(self, form: any, args: dict) -> Optional[schemas.WebhookEventInfo]:
         """
         解析Emby Webhook报文
         电影：
@@ -805,7 +792,7 @@ class Emby(metaclass=Singleton):
         if not eventType:
             return None
         logger.info(f"接收到emby webhook：{message}")
-        eventItem = WebhookEventInfo(event=eventType, channel="emby")
+        eventItem = schemas.WebhookEventInfo(event=eventType, channel="emby")
         if message.get('Item'):
             if message.get('Item', {}).get('Type') == 'Episode':
                 eventItem.item_type = "TV"

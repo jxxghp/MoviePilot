@@ -420,8 +420,7 @@ class BestFilmVersion(_PluginBase):
                         item_info_resp = Emby().get_iteminfo(itemid=data.get('Id'))
                     else:
                         item_info_resp = self.plex_get_iteminfo(itemid=data.get('Id'))
-
-                    logger.info(f'BestFilmVersion插件 item打印 {item_info_resp}')
+                    logger.debug(f'BestFilmVersion插件 item打印 {item_info_resp}')
                     if not item_info_resp:
                         continue
 
@@ -430,41 +429,35 @@ class BestFilmVersion(_PluginBase):
                         continue
 
                     # 获取tmdb_id
-                    media_info_ids = item_info_resp.get('ExternalUrls')
-                    if not media_info_ids:
+                    tmdb_id = item_info_resp.tmdbid
+                    if not tmdb_id:
                         continue
-                    for media_info_id in media_info_ids:
-                        if 'TheMovieDb' != media_info_id.get('Name'):
-                            continue
-                        tmdb_find_id = str(media_info_id.get('Url')).split('/')
-                        tmdb_find_id.reverse()
-                        tmdb_id = tmdb_find_id[0]
-                        # 识别媒体信息
-                        mediainfo: MediaInfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
-                        if not mediainfo:
-                            logger.warn(f'未识别到媒体信息，标题：{data.get("Name")}，tmdbID：{tmdb_id}')
-                            continue
-                        # 添加订阅
-                        self.subscribechain.add(mtype=MediaType.MOVIE,
-                                                title=mediainfo.title,
-                                                year=mediainfo.year,
-                                                tmdbid=mediainfo.tmdb_id,
-                                                best_version=True,
-                                                username="收藏洗版",
-                                                exist_ok=True)
-                        # 加入缓存
-                        caches.append(data.get('Name'))
-                        # 存储历史记录
-                        if mediainfo.tmdb_id not in [h.get("tmdbid") for h in history]:
-                            history.append({
-                                "title": mediainfo.title,
-                                "type": mediainfo.type.value,
-                                "year": mediainfo.year,
-                                "poster": mediainfo.get_poster_image(),
-                                "overview": mediainfo.overview,
-                                "tmdbid": mediainfo.tmdb_id,
-                                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            })
+                    # 识别媒体信息
+                    mediainfo: MediaInfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
+                    if not mediainfo:
+                        logger.warn(f'未识别到媒体信息，标题：{data.get("Name")}，tmdbid：{tmdb_id}')
+                        continue
+                    # 添加订阅
+                    self.subscribechain.add(mtype=MediaType.MOVIE,
+                                            title=mediainfo.title,
+                                            year=mediainfo.year,
+                                            tmdbid=mediainfo.tmdb_id,
+                                            best_version=True,
+                                            username="收藏洗版",
+                                            exist_ok=True)
+                    # 加入缓存
+                    caches.append(data.get('Name'))
+                    # 存储历史记录
+                    if mediainfo.tmdb_id not in [h.get("tmdbid") for h in history]:
+                        history.append({
+                            "title": mediainfo.title,
+                            "type": mediainfo.type.value,
+                            "year": mediainfo.year,
+                            "poster": mediainfo.get_poster_image(),
+                            "overview": mediainfo.overview,
+                            "tmdbid": mediainfo.tmdb_id,
+                            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        })
             # 保存历史记录
             self.save_data('history', history)
             # 保存缓存
@@ -634,52 +627,34 @@ class BestFilmVersion(_PluginBase):
         if not _is_lock:
             return
         try:
-
-            mediainfo: Optional[MediaInfo] = None
             if not data.tmdb_id:
                 info = None
-                if data.channel == 'jellyfin' and data.save_reason == 'UpdateUserRating' and data.item_favorite:
+                if (data.channel == 'jellyfin'
+                        and data.save_reason == 'UpdateUserRating'
+                        and data.item_favorite):
                     info = Jellyfin().get_iteminfo(itemid=data.item_id)
                 elif data.channel == 'emby' and data.event == 'item.rate':
                     info = Emby().get_iteminfo(itemid=data.item_id)
                 elif data.channel == 'plex' and data.event == 'item.rate':
                     info = Plex().get_iteminfo(itemid=data.item_id)
-                logger.info(f'BestFilmVersion/webhook_message_action item打印：{info}')
-
+                logger.debug(f'BestFilmVersion/webhook_message_action item打印：{info}')
                 if not info:
                     return
-                if info['Type'] not in ['Movie', 'MOV', 'movie']:
+                if info.item_type not in ['Movie', 'MOV', 'movie']:
                     return
-
                 # 获取tmdb_id
-                media_info_ids = info.get('ExternalUrls')
-                if not media_info_ids:
-                    return
-                for media_info_id in media_info_ids:
-
-                    if 'TheMovieDb' != media_info_id.get('Name'):
-                        continue
-
-                    tmdb_find_id = str(media_info_id.get('Url')).split('/')
-                    tmdb_find_id.reverse()
-                    tmdb_id = tmdb_find_id[0]
-
-                    mediainfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
-                    if not mediainfo:
-                        logger.warn(f'未识别到媒体信息，标题：{data.item_name}，tmdbID：{tmdb_id}')
-                        return
+                tmdb_id = info.tmdbid
             else:
-                if data.channel == 'jellyfin' and (data.save_reason != 'UpdateUserRating' or not data.item_favorite):
+                tmdb_id = data.tmdb_id
+                if (data.channel == 'jellyfin'
+                        and (data.save_reason != 'UpdateUserRating' or not data.item_favorite)):
                     return
                 if data.item_type not in ['Movie', 'MOV', 'movie']:
                     return
-
-                mediainfo = self.chain.recognize_media(tmdbid=data.tmdb_id, mtype=MediaType.MOVIE)
-                if not mediainfo:
-                    logger.warn(f'未识别到媒体信息，标题：{data.item_name}，tmdbID：{data.tmdb_id}')
-                    return
-
+            # 识别媒体信息
+            mediainfo = self.chain.recognize_media(tmdbid=tmdb_id, mtype=MediaType.MOVIE)
             if not mediainfo:
+                logger.warn(f'未识别到媒体信息，标题：{data.item_name}，tmdbID：{tmdb_id}')
                 return
             # 读取缓存
             caches = self._cache_path.read_text().split("\n") if self._cache_path.exists() else []

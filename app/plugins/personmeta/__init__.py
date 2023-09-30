@@ -1,19 +1,18 @@
-import os
-from pathlib import Path
+import threading
+import time
 from typing import Any, List, Dict, Tuple
 
-from requests import RequestException
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
+from app.chain.mediaserver import MediaServerChain
 from app.chain.tmdb import TmdbChain
 from app.core.config import settings
 from app.core.event import eventmanager, Event
-from app.helper.nfo import NfoReader
 from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas import TransferInfo, MediaInfo
+from app.schemas import MediaInfo, MediaServerItem
 from app.schemas.types import EventType, MediaType
-from app.utils.common import retry
-from app.utils.http import RequestUtils
 
 
 class PersonMeta(_PluginBase):
@@ -38,16 +37,64 @@ class PersonMeta(_PluginBase):
     # 可使用的用户级别
     auth_level = 1
 
+    # 退出事件
+    _event = threading.Event()
+
     # 私有属性
+    _scheduler = None
     tmdbchain = None
+    mschain = None
     _enabled = False
-    _metadir = ""
+    _onlyonce = False
+    _cron = None
+    _delay = 0
 
     def init_plugin(self, config: dict = None):
         self.tmdbchain = TmdbChain(self.db)
+        self.mschain = MediaServerChain(self.db)
         if config:
             self._enabled = config.get("enabled")
-            self._metadir = config.get("metadir")
+            self._onlyonce = config.get("onlyonce")
+            self._cron = config.get("cron")
+            self._delay = config.get("delay") or 0
+
+        # 停止现有任务
+        self.stop_service()
+
+        # 启动服务
+        if self._enabled or self._onlyonce:
+            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+            if self._cron:
+                logger.info(f"演职人员刮削服务启动，周期：{self._cron}")
+                try:
+                    self._scheduler.add_job(func=self.scrap_library,
+                                            trigger=CronTrigger.from_crontab(self._cron),
+                                            name="演职人员刮削")
+                except Exception as e:
+                    logger.error(f"演职人员刮削服务启动失败，错误信息：{str(e)}")
+                    self.systemmessage.put(f"演职人员刮削服务启动失败，错误信息：{str(e)}")
+
+            if self._onlyonce:
+                # 关闭一次性开关
+                self._onlyonce = False
+                # 保存配置
+                self.__update_config()
+
+            if self._scheduler.get_jobs():
+                # 启动服务
+                self._scheduler.print_jobs()
+                self._scheduler.start()
+
+    def __update_config(self):
+        """
+        更新配置
+        """
+        self.update_config({
+            "enabled": self._enabled,
+            "onlyonce": self._onlyonce,
+            "cron": self._cron,
+            "delay": self._delay
+        })
 
     def get_state(self) -> bool:
         return self._enabled
@@ -85,6 +132,22 @@ class PersonMeta(_PluginBase):
                                         }
                                     }
                                 ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
+                                        }
+                                    }
+                                ]
                             }
                         ]
                     },
@@ -95,14 +158,32 @@ class PersonMeta(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
+                                    'md': 6
                                 },
                                 'content': [
                                     {
                                         'component': 'VTextField',
                                         'props': {
-                                            'model': 'metadir',
-                                            'label': '人物元数据目录',
-                                            'placeholder': '/metadata/people'
+                                            'model': 'cron',
+                                            'label': '媒体库扫描周期',
+                                            'placeholder': '5位cron表达式'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'delay',
+                                            'label': '入库延迟时间（秒）',
+                                            'placeholder': '30'
                                         }
                                     }
                                 ]
@@ -113,7 +194,9 @@ class PersonMeta(_PluginBase):
             }
         ], {
             "enabled": False,
-            "metadir": ""
+            "onlyonce": False,
+            "cron": "",
+            "delay": 30
         }
 
     def get_page(self) -> List[dict]:
@@ -126,103 +209,98 @@ class PersonMeta(_PluginBase):
         """
         if not self._enabled:
             return
-        # 下载人物头像
-        if not self._metadir:
-            logger.warning("人物元数据目录未配置，无法下载人物头像")
-            return
         # 事件数据
         mediainfo: MediaInfo = event.event_data.get("mediainfo")
-        transferinfo: TransferInfo = event.event_data.get("transferinfo")
-        if not mediainfo or not transferinfo:
+        if not mediainfo:
             return
-        # 文件路径
-        if not transferinfo.file_list_new:
+        # 延迟
+        if self._delay:
+            time.sleep(int(self._delay))
+        # 查询媒体服务器中的条目
+        existsinfo = self.chain.media_exists(mediainfo=mediainfo)
+        if not existsinfo or not existsinfo.itemid:
+            logger.warn(f"演职人员刮削 {mediainfo.title_year} 在媒体库中不存在")
             return
-        filepath = Path(transferinfo.file_list_new[0])
-        # 电影
-        if mediainfo.type == MediaType.MOVIE:
-            # nfo文件
-            nfofile = filepath.with_name("movie.nfo")
-            if not nfofile.exists():
-                nfofile = filepath.with_name(f"{filepath.stem}.nfo")
-                if not nfofile.exists():
-                    logger.warning(f"演职人员刮削 电影nfo文件不存在：{nfofile}")
-                    return
-        else:
-            # nfo文件
-            nfofile = filepath.parent.with_name("tvshow.nfo")
-            if not nfofile.exists():
-                logger.warning(f"演职人员刮削 剧集nfo文件不存在：{nfofile}")
-                return
-        logger.info(f"演职人员刮削 开始刮削：{filepath}")
-        # 主要媒体服务器
-        mediaserver = str(settings.MEDIASERVER).split(",")[0]
-        # 读取nfo文件
-        nfo = NfoReader(nfofile)
-        # 读取演员信息
-        actors = nfo.get_elements("actor") or []
-        for actor in actors:
-            # 演员ID
-            actor_id = actor.find("tmdbid").text
-            if not actor_id:
-                continue
-            # 演员名称
-            actor_name = actor.find("name").text
-            if not actor_name:
-                continue
-            # 查询演员详情
-            actor_info = self.tmdbchain.person_detail(int(actor_id))
-            if not actor_info:
-                continue
-            # 演员头像
-            actor_image = actor_info.get("profile_path")
-            if not actor_image:
-                continue
-            # 计算保存目录
-            if mediaserver == 'jellyfin':
-                pers_path = Path(self._metadir) / f"{actor_name[0]}" / f"{actor_name}"
-            else:
-                pers_path = Path(self._metadir) / f"{actor_name}-tmdb-{actor_id}"
-            # 创建目录
-            if not pers_path.exists():
-                os.makedirs(pers_path, exist_ok=True)
-            # 文件路径
-            image_path = pers_path / f"folder{Path(actor_image).suffix}"
-            if image_path.exists():
-                continue
-            # 下载图片
-            self.download_image(
-                image_url=f"https://image.tmdb.org/t/p/original{actor_image}",
-                path=image_path
-            )
-            # 刷新媒体库
-            self.chain.refresh_mediaserver(
-                mediainfo=mediainfo,
-                file_path=filepath
-            )
-        logger.info(f"演职人员刮削 刮削完成：{filepath}")
+        # 初始化媒体服务器
+        if existsinfo.server == "plex":
+            logger.warn(f"演职人员刮削 不支持{existsinfo.server}媒体服务器")
+            return
+        # 查询条目详情
+        iteminfo = self.mschain.iteminfo(server=existsinfo.server, item_id=existsinfo.itemid)
+        if not iteminfo:
+            logger.warn(f"演职人员刮削 {mediainfo.title_year} 条目详情获取失败")
+            return
+        # 刮削演职人员信息
+        self.__update_item(server=existsinfo.server, item=iteminfo, mediainfo=mediainfo)
 
-    @staticmethod
-    @retry(RequestException, logger=logger)
-    def download_image(image_url: str, path: Path):
+    def scrap_library(self):
         """
-        下载图片，保存到指定路径
+        扫描整个媒体库，刮削演员信息
         """
-        try:
-            logger.info(f"正在下载演职人员图片：{image_url} ...")
-            r = RequestUtils().get_res(url=image_url, raise_exception=True)
-            if r:
-                path.write_bytes(r.content)
-                logger.info(f"图片已保存：{path}")
-            else:
-                logger.info(f"图片下载失败，请检查网络连通性：{image_url}")
-        except RequestException as err:
-            raise err
-        except Exception as err:
-            logger.error(f"图片下载失败：{err}")
+        # 所有媒体服务器
+        if not settings.MEDIASERVER:
+            return
+        for server in settings.MEDIASERVER.split(","):
+            if server == "plex":
+                logger.warn(f"演职人员刮削 不支持{server}媒体服务器")
+                continue
+            # 扫描所有媒体库
+            logger.info(f"开始刮削服务器 {server} 的演员信息 ...")
+            for library in self.mschain.librarys(server):
+                logger.info(f"开始刮削媒体库 {library.name} 的演员信息 ...")
+                for item in self.mschain.items(server, library.id):
+                    if not item:
+                        continue
+                    if not item.item_id:
+                        continue
+                    if self._event.is_set():
+                        logger.info(f"演职人员刮削服务停止")
+                        return
+                    # 处理条目
+                    logger.info(f"开始刮削 {item.title} 的演员信息 ...")
+                    self.__update_item(server=server, item=item)
+                    logger.info(f"{item.title} 的演员信息刮削完成")
+                logger.info(f"媒体库 {library.name} 的演员信息刮削完成")
+            logger.info(f"服务器 {server} 的演员信息刮削完成")
+
+    def __update_item(self, server: str, item: MediaServerItem, mediainfo: MediaInfo = None):
+        """
+        更新媒体服务器中的条目
+        """
+        # 识别媒体信息
+        if not mediainfo:
+            if not item.tmdbid:
+                logger.warn(f"{item.title} 未找到tmdbid，无法识别媒体信息")
+                return
+            mtype = MediaType.TV if item.item_type in ['Series', 'show'] else MediaType.MOVIE
+            mediainfo = self.chain.recognize_media(mtype=mtype, tmdbid=item.tmdbid)
+            if not mediainfo:
+                logger.warn(f"{item.title} 未识别到媒体信息")
+                return
+        # 搜索豆瓣词条
+
+        # 搜索豆瓣人物信息
+
+        # 匹配非中文人名
+
+        # 更新中文人名
+
+        # 下载图片
+
+        # 更新演员图片
+        pass
 
     def stop_service(self):
         """
-        退出插件
+        停止服务
         """
-        pass
+        try:
+            if self._scheduler:
+                self._scheduler.remove_all_jobs()
+                if self._scheduler.running:
+                    self._event.set()
+                    self._scheduler.shutdown()
+                    self._event.clear()
+                self._scheduler = None
+        except Exception as e:
+            print(str(e))

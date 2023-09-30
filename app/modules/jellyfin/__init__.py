@@ -6,7 +6,6 @@ from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.jellyfin.jellyfin import Jellyfin
-from app.schemas import ExistMediaInfo, WebhookEventInfo
 from app.schemas.types import MediaType
 
 
@@ -40,7 +39,7 @@ class JellyfinModule(_ModuleBase):
         # Jellyfin认证
         return self.jellyfin.authenticate(name, password)
 
-    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[WebhookEventInfo]:
+    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
         """
         解析Webhook报文体
         :param body:  请求体
@@ -50,7 +49,7 @@ class JellyfinModule(_ModuleBase):
         """
         return self.jellyfin.get_webhook_message(body)
 
-    def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[schemas.ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
@@ -62,25 +61,38 @@ class JellyfinModule(_ModuleBase):
                 movie = self.jellyfin.get_iteminfo(itemid)
                 if movie:
                     logger.info(f"媒体库中已存在：{movie}")
-                    return ExistMediaInfo(type=MediaType.MOVIE)
+                    return schemas.ExistMediaInfo(
+                        type=MediaType.MOVIE,
+                        server="jellyfin",
+                        itemid=movie.item_id
+                    )
             movies = self.jellyfin.get_movies(title=mediainfo.title, year=mediainfo.year, tmdb_id=mediainfo.tmdb_id)
             if not movies:
                 logger.info(f"{mediainfo.title_year} 在媒体库中不存在")
                 return None
             else:
                 logger.info(f"媒体库中已存在：{movies}")
-                return ExistMediaInfo(type=MediaType.MOVIE)
+                return schemas.ExistMediaInfo(
+                    type=MediaType.MOVIE,
+                    server="jellyfin",
+                    itemid=movies[0].item_id
+                )
         else:
-            tvs = self.jellyfin.get_tv_episodes(title=mediainfo.title,
-                                                year=mediainfo.year,
-                                                tmdb_id=mediainfo.tmdb_id,
-                                                item_id=itemid)
+            itemid, tvs = self.jellyfin.get_tv_episodes(title=mediainfo.title,
+                                                        year=mediainfo.year,
+                                                        tmdb_id=mediainfo.tmdb_id,
+                                                        item_id=itemid)
             if not tvs:
                 logger.info(f"{mediainfo.title_year} 在媒体库中不存在")
                 return None
             else:
                 logger.info(f"{mediainfo.title_year} 媒体库中已存在：{tvs}")
-                return ExistMediaInfo(type=MediaType.TV, seasons=tvs)
+                return schemas.ExistMediaInfo(
+                    type=MediaType.TV,
+                    seasons=tvs,
+                    server="jellyfin",
+                    itemid=itemid
+                )
 
     def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> None:
         """
@@ -96,13 +108,8 @@ class JellyfinModule(_ModuleBase):
         媒体数量统计
         """
         media_statistic = self.jellyfin.get_medias_count()
-        user_count = self.jellyfin.get_user_count()
-        return [schemas.Statistic(
-            movie_count=media_statistic.get("MovieCount") or 0,
-            tv_count=media_statistic.get("SeriesCount") or 0,
-            episode_count=media_statistic.get("EpisodeCount") or 0,
-            user_count=user_count or 0
-        )]
+        media_statistic.user_count = self.jellyfin.get_user_count()
+        return media_statistic
 
     def mediaserver_librarys(self, server: str) -> Optional[List[schemas.MediaServerLibrary]]:
         """
@@ -121,27 +128,21 @@ class JellyfinModule(_ModuleBase):
             path=library.get("path")
         ) for library in librarys]
 
-    def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator]:
+    def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator[schemas.MediaServerItem]]:
         """
         媒体库项目列表
         """
         if server != "jellyfin":
             return None
-        items = self.jellyfin.get_items(library_id)
-        for item in items:
-            yield schemas.MediaServerItem(
-                server="jellyfin",
-                library=item.get("library"),
-                item_id=item.get("id"),
-                item_type=item.get("type"),
-                title=item.get("title"),
-                original_title=item.get("original_title"),
-                year=item.get("year"),
-                tmdbid=item.get("tmdbid"),
-                imdbid=item.get("imdbid"),
-                tvdbid=item.get("tvdbid"),
-                path=item.get("path"),
-            )
+        return self.jellyfin.get_items(library_id)
+
+    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[schemas.MediaServerItem]:
+        """
+        媒体库项目详情
+        """
+        if server != "jellyfin":
+            return None
+        return self.jellyfin.get_iteminfo(item_id)
 
     def mediaserver_tv_episodes(self, server: str,
                                 item_id: Union[str, int]) -> Optional[List[schemas.MediaServerSeasonInfo]]:
@@ -150,7 +151,7 @@ class JellyfinModule(_ModuleBase):
         """
         if server != "jellyfin":
             return None
-        seasoninfo = self.jellyfin.get_tv_episodes(item_id=item_id)
+        _, seasoninfo = self.jellyfin.get_tv_episodes(item_id=item_id)
         if not seasoninfo:
             return []
         return [schemas.MediaServerSeasonInfo(
