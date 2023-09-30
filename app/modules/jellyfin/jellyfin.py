@@ -74,7 +74,7 @@ class Jellyfin(metaclass=Singleton):
                     continue
             libraries.append(
                 schemas.MediaServerLibrary(
-                    server="emby",
+                    server="jellyfin",
                     id=library.get("Id"),
                     name=library.get("Name"),
                     path=library.get("Path"),
@@ -252,7 +252,7 @@ class Jellyfin(metaclass=Singleton):
                     for item in res_items:
                         item_tmdbid = item.get("ProviderIds", {}).get("Tmdb")
                         mediaserver_item = schemas.MediaServerItem(
-                            server="emby",
+                            server="jellyfin",
                             library=item.get("ParentId"),
                             item_id=item.get("Id"),
                             item_type=item.get("Type"),
@@ -509,7 +509,7 @@ class Jellyfin(metaclass=Singleton):
                 item = res.json()
                 tmdbid = item.get("ProviderIds", {}).get("Tmdb")
                 return schemas.MediaServerItem(
-                    server="emby",
+                    server="jellyfin",
                     library=item.get("ParentId"),
                     item_id=item.get("Id"),
                     item_type=item.get("Type"),
@@ -552,16 +552,33 @@ class Jellyfin(metaclass=Singleton):
 
     def get_data(self, url: str) -> Optional[Response]:
         """
-        自定义URL从媒体服务器获取数据，其中{HOST}、{APIKEY}、{USER}会被替换成实际的值
+        自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值
         :param url: 请求地址
         """
         if not self._host or not self._apikey:
             return None
-        url = url.replace("{HOST}", self._host) \
-            .replace("{APIKEY}", self._apikey) \
-            .replace("{USER}", self.user)
+        url = url.replace("[HOST]", self._host) \
+            .replace("[APIKEY]", self._apikey) \
+            .replace("[USER]", self.user)
         try:
             return RequestUtils().get_res(url=url)
+        except Exception as e:
+            logger.error(f"连接Jellyfin出错：" + str(e))
+            return None
+
+    def post_data(self, url: str, data: str = None):
+        """
+        自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值
+        :param url: 请求地址
+        :param data: 请求数据
+        """
+        if not self._host or not self._apikey:
+            return None
+        url = url.replace("[HOST]", self._host) \
+            .replace("[APIKEY]", self._apikey) \
+            .replace("[USER]", self.user)
+        try:
+            return RequestUtils().post_res(url=url, data=data)
         except Exception as e:
             logger.error(f"连接Jellyfin出错：" + str(e))
             return None

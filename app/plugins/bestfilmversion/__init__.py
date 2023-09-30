@@ -467,7 +467,7 @@ class BestFilmVersion(_PluginBase):
 
     def jellyfin_get_items(self) -> List[dict]:
         # 获取所有user
-        users_url = "{HOST}Users?&apikey={APIKEY}"
+        users_url = "[HOST]Users?&apikey=[APIKEY]"
         users = self.get_users(Jellyfin().get_data(users_url))
         if not users:
             logger.info(f"bestfilmversion/users_url: {users_url}")
@@ -475,7 +475,7 @@ class BestFilmVersion(_PluginBase):
         all_items = []
         for user in users:
             # 根据加入日期 降序排序
-            url = "{HOST}Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
+            url = "[HOST]Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
                                           "&SortOrder=Descending" \
                                           "&Filters=IsFavorite" \
                                           "&Recursive=true" \
@@ -484,7 +484,7 @@ class BestFilmVersion(_PluginBase):
                                           "&ExcludeLocationTypes=Virtual" \
                                           "&EnableTotalRecordCount=false" \
                                           "&Limit=20" \
-                                          "&apikey={APIKEY}"
+                                          "&apikey=[APIKEY]"
             resp = self.get_items(Jellyfin().get_data(url))
             if not resp:
                 continue
@@ -493,14 +493,14 @@ class BestFilmVersion(_PluginBase):
 
     def emby_get_items(self) -> List[dict]:
         # 获取所有user
-        get_users_url = "{HOST}Users?&api_key={APIKEY}"
+        get_users_url = "[HOST]Users?&api_key=[APIKEY]"
         users = self.get_users(Emby().get_data(get_users_url))
         if not users:
             return []
         all_items = []
         for user in users:
             # 根据加入日期 降序排序
-            url = "{HOST}emby/Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
+            url = "[HOST]emby/Users/" + user + "/Items?SortBy=DateCreated%2CSortName" \
                                                "&SortOrder=Descending" \
                                                "&Filters=IsFavorite" \
                                                "&Recursive=true" \
@@ -508,7 +508,7 @@ class BestFilmVersion(_PluginBase):
                                                "&CollapseBoxSetItems=false" \
                                                "&ExcludeLocationTypes=Virtual" \
                                                "&EnableTotalRecordCount=false" \
-                                               "&Limit=20&api_key={APIKEY}"
+                                               "&Limit=20&api_key=[APIKEY]"
             resp = self.get_items(Emby().get_data(url))
             if not resp:
                 continue

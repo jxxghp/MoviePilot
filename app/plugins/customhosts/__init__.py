@@ -199,9 +199,9 @@ class CustomHosts(_PluginBase):
                 new_entrys.append(host_entry)
             except Exception as err:
                 err_hosts.append(host + "\n")
-                logger.error(f"{host} 格式转换错误：{str(err)}")
+                logger.error(f"[HOST] 格式转换错误：{str(err)}")
                 # 推送实时消息
-                self.systemmessage.put(f"{host} 格式转换错误：{str(err)}")
+                self.systemmessage.put(f"[HOST] 格式转换错误：{str(err)}")
 
         # 写入系统hosts
         if new_entrys:

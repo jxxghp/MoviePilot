@@ -1,5 +1,7 @@
+import json
 import threading
 import time
+from pathlib import Path
 from typing import Any, List, Dict, Tuple
 
 import zhconv
@@ -11,6 +13,9 @@ from app.chain.tmdb import TmdbChain
 from app.core.config import settings
 from app.core.event import eventmanager, Event
 from app.log import logger
+from app.modules.emby import Emby
+from app.modules.jellyfin import Jellyfin
+from app.modules.plex import Plex
 from app.plugins import _PluginBase
 from app.schemas import MediaInfo, MediaServerItem
 from app.schemas.types import EventType, MediaType
@@ -223,10 +228,6 @@ class PersonMeta(_PluginBase):
         if not existsinfo or not existsinfo.itemid:
             logger.warn(f"演职人员刮削 {mediainfo.title_year} 在媒体库中不存在")
             return
-        # 初始化媒体服务器
-        if existsinfo.server == "plex":
-            logger.warn(f"演职人员刮削 不支持{existsinfo.server}媒体服务器")
-            return
         # 查询条目详情
         iteminfo = self.mschain.iteminfo(server=existsinfo.server, item_id=existsinfo.itemid)
         if not iteminfo:
@@ -243,9 +244,6 @@ class PersonMeta(_PluginBase):
         if not settings.MEDIASERVER:
             return
         for server in settings.MEDIASERVER.split(","):
-            if server == "plex":
-                logger.warn(f"演职人员刮削 不支持{server}媒体服务器")
-                continue
             # 扫描所有媒体库
             logger.info(f"开始刮削服务器 {server} 的演员信息 ...")
             for library in self.mschain.librarys(server):
@@ -291,9 +289,307 @@ class PersonMeta(_PluginBase):
         # 下载图片
 
         # 更新演员图片
+
+    @staticmethod
+    def get_iteminfo(server: str, itemid: str) -> dict:
+        """
+        获得媒体项详情
+        """
+
+        def __get_emby_iteminfo() -> dict:
+            """
+            获得Emby媒体项详情
+            """
+            try:
+                url = f'[HOST]emby/Users/[USER]/Items/{itemid}?' \
+                      f'Fields=ChannelMappingInfo&api_key=[APIKEY]'
+                res = Emby().get_data(url=url)
+                if res:
+                    return res.json()
+            except Exception as err:
+                logger.error(f"获取Emby媒体项详情失败：{err}")
+            return {}
+
+        def __get_jellyfin_iteminfo() -> dict:
+            """
+            获得Jellyfin媒体项详情
+            """
+            try:
+                url = f'[HOST]Users/[USER]/Items/{itemid}?Fields=ChannelMappingInfo&api_key=[APIKEY]'
+                res = Jellyfin().get_data(url=url)
+                if res:
+                    result = res.json()
+                    if result:
+                        result['FileName'] = Path(result['Path']).name
+                    return result
+            except Exception as err:
+                logger.error(f"获取Jellyfin媒体项详情失败：{err}")
+            return {}
+
+        def __get_plex_iteminfo() -> dict:
+            """
+            获得Plex媒体项详情
+            """
+            iteminfo = {}
+            try:
+                plexitem = Plex().get_plex().library.fetchItem(ekey=itemid)
+                if 'movie' in plexitem.METADATA_TYPE:
+                    iteminfo['Type'] = 'Movie'
+                    iteminfo['IsFolder'] = False
+                elif 'episode' in plexitem.METADATA_TYPE:
+                    iteminfo['Type'] = 'Series'
+                    iteminfo['IsFolder'] = False
+                    if 'show' in plexitem.TYPE:
+                        iteminfo['ChildCount'] = plexitem.childCount
+                iteminfo['Name'] = plexitem.title
+                iteminfo['Id'] = plexitem.key
+                iteminfo['ProductionYear'] = plexitem.year
+                iteminfo['ProviderIds'] = {}
+                for guid in plexitem.guids:
+                    idlist = str(guid.id).split(sep='://')
+                    if len(idlist) < 2:
+                        continue
+                    iteminfo['ProviderIds'][idlist[0]] = idlist[1]
+                for location in plexitem.locations:
+                    iteminfo['Path'] = location
+                    iteminfo['FileName'] = Path(location).name
+                iteminfo['Overview'] = plexitem.summary
+                iteminfo['CommunityRating'] = plexitem.audienceRating
+                return iteminfo
+            except Exception as err:
+                logger.error(f"获取Plex媒体项详情失败：{err}")
+            return {}
+
+        if server == "emby":
+            return __get_emby_iteminfo()
+        elif server == "jellyfin":
+            return __get_jellyfin_iteminfo()
+        else:
+            return __get_plex_iteminfo()
+
+    @staticmethod
+    def get_items(server: str, parentid: str) -> dict:
+        """
+        获得媒体的所有子媒体项
+        """
         pass
 
-    def __get_chinese_name(self, person: dict):
+        def __get_emby_items() -> dict:
+            """
+            获得Emby媒体的所有子媒体项
+            """
+            try:
+                if parentid:
+                    url = f'[HOST]emby/Users/[USER]/Items?ParentId={parentid}&api_key=[APIKEY]'
+                else:
+                    url = '[HOST]emby/Users/[USER]/Items?api_key=[APIKEY]'
+                res = Emby().get_data(url=url)
+                if res:
+                    return res.json()
+            except Exception as err:
+                logger.error(f"获取Emby媒体的所有子媒体项失败：{err}")
+            return {}
+
+        def __get_jellyfin_items() -> dict:
+            """
+            获得Jellyfin媒体的所有子媒体项
+            """
+            try:
+                if parentid:
+                    url = f'[HOST]Users/[USER]/Items?ParentId={parentid}&api_key=[APIKEY]'
+                else:
+                    url = '[HOST]Users/[USER]/Items?api_key=[APIKEY]'
+                res = Jellyfin().get_data(url=url)
+                if res:
+                    return res.json()
+            except Exception as err:
+                logger.error(f"获取Jellyfin媒体的所有子媒体项失败：{err}")
+            return {}
+
+        def __get_plex_items() -> dict:
+            """
+            获得Plex媒体的所有子媒体项
+            """
+            items = {}
+            try:
+                plex = Plex().get_plex()
+                items['Items'] = []
+                if parentid:
+                    if type and 'Season' in type:
+                        plexitem = plex.library.fetchItem(ekey=parentid)
+                        items['Items'] = []
+                        for season in plexitem.seasons():
+                            item = {
+                                'Name': season.title,
+                                'Id': season.key,
+                                'IndexNumber': season.seasonNumber,
+                                'Overview': season.summary
+                            }
+                            items['Items'].append(item)
+                    elif type and 'Episode' in type:
+                        plexitem = plex.library.fetchItem(ekey=parentid)
+                        items['Items'] = []
+                        for episode in plexitem.episodes():
+                            item = {
+                                'Name': episode.title,
+                                'Id': episode.key,
+                                'IndexNumber': episode.episodeNumber,
+                                'Overview': episode.summary,
+                                'CommunityRating': episode.audienceRating
+                            }
+                            items['Items'].append(item)
+                    else:
+                        plexitems = plex.library.sectionByID(sectionID=parentid)
+                        for plexitem in plexitems.all():
+                            item = {}
+                            if 'movie' in plexitem.METADATA_TYPE:
+                                item['Type'] = 'Movie'
+                                item['IsFolder'] = False
+                            elif 'episode' in plexitem.METADATA_TYPE:
+                                item['Type'] = 'Series'
+                                item['IsFolder'] = False
+                            item['Name'] = plexitem.title
+                            item['Id'] = plexitem.key
+                            items['Items'].append(item)
+                else:
+                    plexitems = plex.library.sections()
+                    for plexitem in plexitems:
+                        item = {}
+                        if 'Directory' in plexitem.TAG:
+                            item['Type'] = 'Folder'
+                            item['IsFolder'] = True
+                        elif 'movie' in plexitem.METADATA_TYPE:
+                            item['Type'] = 'Movie'
+                            item['IsFolder'] = False
+                        elif 'episode' in plexitem.METADATA_TYPE:
+                            item['Type'] = 'Series'
+                            item['IsFolder'] = False
+                        item['Name'] = plexitem.title
+                        item['Id'] = plexitem.key
+                        items['Items'].append(item)
+                return items
+            except Exception as err:
+                logger.error(f"获取Plex媒体的所有子媒体项失败：{err}")
+            return {}
+
+        if server == "emby":
+            return __get_emby_items()
+        elif server == "jellyfin":
+            return __get_jellyfin_items()
+        else:
+            return __get_plex_items()
+
+    @staticmethod
+    def set_iteminfo(server: str, itemid: str, iteminfo: dict):
+        """
+        更新媒体项详情
+        """
+
+        def __set_emby_iteminfo():
+            """
+            更新Emby媒体项详情
+            """
+            try:
+                res = Emby().post_data(
+                    url=f'[HOST]emby/Items/{itemid}?api_key=[APIKEY]',
+                    data=json.dumps(iteminfo)
+                )
+                return True if res else False
+            except Exception as err:
+                logger.error(f"更新Emby媒体项详情失败：{err}")
+            return False
+
+        def __set_jellyfin_iteminfo():
+            """
+            更新Jellyfin媒体项详情
+            """
+            try:
+                res = Jellyfin().post_data(
+                    url=f'[HOST]Items/{itemid}?api_key=[APIKEY]',
+                    data=json.dumps(iteminfo)
+                )
+                return True if res else False
+            except Exception as err:
+                logger.error(f"更新Jellyfin媒体项详情失败：{err}")
+            return False
+
+        def __set_plex_iteminfo():
+            """
+            更新Plex媒体项详情
+            """
+            try:
+                plexitem = Plex().get_plex().library.fetchItem(ekey=itemid)
+                if 'CommunityRating' in iteminfo:
+                    edits = {
+                        'audienceRating.value': iteminfo['CommunityRating'],
+                        'audienceRating.locked': 1
+                    }
+                    plexitem.edit(**edits)
+                plexitem.editTitle(iteminfo['Name']).editSummary(iteminfo['Overview']).reload()
+                return True
+            except Exception as err:
+                logger.error(f"更新Plex媒体项详情失败：{err}")
+            return False
+
+        if server == "emby":
+            return __set_emby_iteminfo()
+        elif server == "jellyfin":
+            return __set_jellyfin_iteminfo()
+        else:
+            return __set_plex_iteminfo()
+
+    @staticmethod
+    def __set_item_image(server: str, itemid: str, imageurl: str):
+        """
+        更新媒体项图片
+        """
+
+        def __set_emby_item_image():
+            """
+            更新Emby媒体项图片
+            """
+            try:
+                url = f'[HOST]emby/Items/{itemid}/Images/Primary/0/Url?api_key=[APIKEY]'
+                data = json.dumps({'Url': imageurl})
+                res = Emby().post_data(url=url, data=data)
+                return True if res else False
+            except Exception as result:
+                logger.error(f"更新Emby媒体项图片失败：{result}")
+            return False
+
+        def __set_jellyfin_item_image():
+            """
+            更新Jellyfin媒体项图片
+            """
+            try:
+                url = f'[HOST]Items/{itemid}/RemoteImages/Download?' \
+                      f'Type=Primary&ImageUrl={imageurl}&ProviderName=TheMovieDb&api_key=[APIKEY]'
+                res = Jellyfin().post_data(url=url)
+                return True if res else None
+            except Exception as err:
+                logger.error(f"更新Jellyfin媒体项图片失败：{err}")
+            return False
+
+        def __set_plex_item_image():
+            """
+            更新Plex媒体项图片
+            """
+            try:
+                plexitem = Plex().get_plex().library.fetchItem(ekey=itemid)
+                plexitem.uploadPoster(url=imageurl)
+                return True
+            except Exception as err:
+                logger.error(f"更新Plex媒体项图片失败：{err}")
+            return False
+
+        if server == "emby":
+            return __set_emby_item_image()
+        elif server == "jellyfin":
+            return __set_jellyfin_item_image()
+        else:
+            return __set_plex_item_image()
+
+    def __get_chinese_name(self, person: dict) -> str:
         """
         获取TMDB别名中的中文名
         """

@@ -1043,7 +1043,7 @@ class MediaSyncDel(_PluginBase):
 
     @staticmethod
     def parse_emby_log(last_time):
-        log_url = "{HOST}System/Logs/embyserver.txt?api_key={APIKEY}"
+        log_url = "[HOST]System/Logs/embyserver.txt?api_key=[APIKEY]"
         log_res = Emby().get_data(log_url)
         if not log_res or log_res.status_code != 200:
             logger.error("获取emby日志失败，请检查服务器配置")
@@ -1116,7 +1116,7 @@ class MediaSyncDel(_PluginBase):
     @staticmethod
     def parse_jellyfin_log(last_time: datetime):
         # 根据加入日期 降序排序
-        log_url = "{HOST}System/Logs/Log?name=log_%s.log&api_key={APIKEY}" % datetime.date.today().strftime("%Y%m%d")
+        log_url = "[HOST]System/Logs/Log?name=log_%s.log&api_key=[APIKEY]" % datetime.date.today().strftime("%Y%m%d")
         log_res = Jellyfin().get_data(log_url)
         if not log_res or log_res.status_code != 200:
             logger.error("获取jellyfin日志失败，请检查服务器配置")

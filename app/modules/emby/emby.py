@@ -866,16 +866,33 @@ class Emby(metaclass=Singleton):
 
     def get_data(self, url: str) -> Optional[Response]:
         """
-        自定义URL从媒体服务器获取数据，其中{HOST}、{APIKEY}、{USER}会被替换成实际的值
+        自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值
         :param url: 请求地址
         """
         if not self._host or not self._apikey:
             return None
-        url = url.replace("{HOST}", self._host) \
-            .replace("{APIKEY}", self._apikey) \
-            .replace("{USER}", self.user)
+        url = url.replace("[HOST]", self._host) \
+            .replace("[APIKEY]", self._apikey) \
+            .replace("[USER]", self.user)
         try:
-            return RequestUtils().get_res(url=url)
+            return RequestUtils(content_type="application/json").get_res(url=url)
+        except Exception as e:
+            logger.error(f"连接Emby出错：" + str(e))
+            return None
+
+    def post_data(self, url: str, data: str = None):
+        """
+        自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值
+        :param url: 请求地址
+        :param data: 请求数据
+        """
+        if not self._host or not self._apikey:
+            return None
+        url = url.replace("[HOST]", self._host) \
+            .replace("[APIKEY]", self._apikey) \
+            .replace("[USER]", self.user)
+        try:
+            return RequestUtils(content_type="application/json").post_res(url=url, data=data)
         except Exception as e:
             logger.error(f"连接Emby出错：" + str(e))
             return None

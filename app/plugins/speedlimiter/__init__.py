@@ -396,7 +396,7 @@ class SpeedLimiter(_PluginBase):
             # 查询播放中会话
             playing_sessions = []
             if media_server == "emby":
-                req_url = "{HOST}emby/Sessions?api_key={APIKEY}"
+                req_url = "[HOST]emby/Sessions?api_key=[APIKEY]"
                 try:
                     res = Emby().get_data(req_url)
                     if res and res.status_code == 200:
@@ -419,7 +419,7 @@ class SpeedLimiter(_PluginBase):
                             and session.get("NowPlayingItem", {}).get("MediaType") == "Video":
                         total_bit_rate += int(session.get("NowPlayingItem", {}).get("Bitrate") or 0)
             elif media_server == "jellyfin":
-                req_url = "{HOST}Sessions?api_key={APIKEY}"
+                req_url = "[HOST]Sessions?api_key=[APIKEY]"
                 try:
                     res = Jellyfin().get_data(req_url)
                     if res and res.status_code == 200:
