@@ -118,14 +118,20 @@ class Plex(metaclass=Singleton):
             return None
         ret_movies = []
         if year:
-            movies = self._plex.library.search(title=title, year=year, libtype="movie")
+            movies = self._plex.library.search(title=title,
+                                               year=year,
+                                               libtype="movie")
             # 根据原标题再查一遍
             if original_title and str(original_title) != str(title):
-                movies.extend(self._plex.library.search(title=original_title, year=year, libtype="movie"))
+                movies.extend(self._plex.library.search(title=original_title,
+                                                        year=year,
+                                                        libtype="movie"))
         else:
-            movies = self._plex.library.search(title=title, libtype="movie")
+            movies = self._plex.library.search(title=title,
+                                               libtype="movie")
             if original_title and str(original_title) != str(title):
-                movies.extend(self._plex.library.search(title=original_title, libtype="movie"))
+                movies.extend(self._plex.library.search(title=original_title,
+                                                        libtype="movie"))
         for item in set(movies):
             ids = self.__get_ids(item.guids)
             if tmdb_id and ids['tmdb_id']:
@@ -174,9 +180,15 @@ class Plex(metaclass=Singleton):
             videos = self._plex.fetchItem(item_id)
         else:
             # 根据标题和年份模糊搜索，该结果不够准确
-            videos = self._plex.library.search(title=title, year=year, libtype="show")
-            if not videos and original_title and str(original_title) != str(title):
-                videos = self._plex.library.search(title=original_title, year=year, libtype="show")
+            videos = self._plex.library.search(title=title,
+                                               year=year,
+                                               libtype="show")
+            if (not videos
+                    and original_title
+                    and str(original_title) != str(title)):
+                videos = self._plex.library.search(title=original_title,
+                                                   year=year,
+                                                   libtype="show")
         if not videos:
             return None, {}
         if isinstance(videos, list):
@@ -206,9 +218,11 @@ class Plex(metaclass=Singleton):
             return None
         try:
             if image_type == "Poster":
-                images = self._plex.fetchItems('/library/metadata/%s/posters' % item_id, cls=media.Poster)
+                images = self._plex.fetchItems('/library/metadata/%s/posters' % item_id,
+                                               cls=media.Poster)
             else:
-                images = self._plex.fetchItems('/library/metadata/%s/arts' % item_id, cls=media.Art)
+                images = self._plex.fetchItems('/library/metadata/%s/arts' % item_id,
+                                               cls=media.Art)
             for image in images:
                 if hasattr(image, 'key') and image.key.startswith('http'):
                     return image.key
@@ -410,7 +424,7 @@ class Plex(metaclass=Singleton):
             "parentTitle": "Combat Shadow Fighting Saga / Great Prison Battle Saga",
             "originalTitle": "Baki Hanma",
             "contentRating": "TV-MA",
-            "summary": "The world is shaken by news of a man taking down a monstrous elephant with his bare hands. Back in Japan, Baki is confronted by a knife-wielding child.",
+            "summary": "The world is shaken by news",
             "index": 1,
             "parentIndex": 1,
             "audienceRating": 8.5,
@@ -492,14 +506,17 @@ class Plex(metaclass=Singleton):
                 eventItem.season_id = message.get('Metadata', {}).get('parentIndex')
                 eventItem.episode_id = message.get('Metadata', {}).get('index')
 
-                if message.get('Metadata', {}).get('summary') and len(message.get('Metadata', {}).get('summary')) > 100:
+                if (message.get('Metadata', {}).get('summary')
+                        and len(message.get('Metadata', {}).get('summary')) > 100):
                     eventItem.overview = str(message.get('Metadata', {}).get('summary'))[:100] + "..."
                 else:
                     eventItem.overview = message.get('Metadata', {}).get('summary')
             else:
-                eventItem.item_type = "MOV" if message.get('Metadata', {}).get('type') == 'movie' else "SHOW"
+                eventItem.item_type = "MOV" if message.get('Metadata',
+                                                           {}).get('type') == 'movie' else "SHOW"
                 eventItem.item_name = "%s %s" % (
-                    message.get('Metadata', {}).get('title'), "(" + str(message.get('Metadata', {}).get('year')) + ")")
+                    message.get('Metadata', {}).get('title'),
+                    "(" + str(message.get('Metadata', {}).get('year')) + ")")
                 eventItem.item_id = message.get('Metadata', {}).get('ratingKey')
                 if len(message.get('Metadata', {}).get('summary')) > 100:
                     eventItem.overview = str(message.get('Metadata', {}).get('summary'))[:100] + "..."

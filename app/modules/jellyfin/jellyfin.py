@@ -210,7 +210,8 @@ class Jellyfin(metaclass=Singleton):
         """
         if not self._host or not self._apikey or not self.user:
             return None
-        req_url = "%sUsers/%s/Items?api_key=%s&searchTerm=%s&IncludeItemTypes=Series&Limit=10&Recursive=true" % (
+        req_url = ("%sUsers/%s/Items?"
+                   "api_key=%s&searchTerm=%s&IncludeItemTypes=Series&Limit=10&Recursive=true") % (
             self._host, self.user, self._apikey, name)
         try:
             res = RequestUtils().get_res(req_url)
@@ -239,7 +240,8 @@ class Jellyfin(metaclass=Singleton):
         """
         if not self._host or not self._apikey or not self.user:
             return None
-        req_url = "%sUsers/%s/Items?api_key=%s&searchTerm=%s&IncludeItemTypes=Movie&Limit=10&Recursive=true" % (
+        req_url = ("%sUsers/%s/Items?"
+                   "api_key=%s&searchTerm=%s&IncludeItemTypes=Movie&Limit=10&Recursive=true") % (
             self._host, self.user, self._apikey, title)
         try:
             res = RequestUtils().get_res(req_url)

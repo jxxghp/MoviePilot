@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple, Union, Any, List, Generator
+from typing import Optional, Tuple, Union, Any, List
 
 from app import schemas
 from app.core.context import MediaInfo

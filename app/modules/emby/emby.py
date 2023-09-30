@@ -235,7 +235,15 @@ class Emby(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return None
-        req_url = "%semby/Items?IncludeItemTypes=Series&Fields=ProductionYear&StartIndex=0&Recursive=true&SearchTerm=%s&Limit=10&IncludeSearchTypes=false&api_key=%s" % (
+        req_url = ("%semby/Items?"
+                   "IncludeItemTypes=Series"
+                   "&Fields=ProductionYear"
+                   "&StartIndex=0"
+                   "&Recursive=true"
+                   "&SearchTerm=%s"
+                   "&Limit=10"
+                   "&IncludeSearchTypes=false"
+                   "&api_key=%s") % (
             self._host, name, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
@@ -334,7 +342,7 @@ class Emby(metaclass=Singleton):
             if tmdb_id and item_info.tmdbid:
                 if str(tmdb_id) != str(item_info.tmdbid):
                     return None, {}
-        # /Shows/Id/Episodes 查集的信息
+        # 查集的信息
         if not season:
             season = ""
         try:
