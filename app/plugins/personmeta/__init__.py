@@ -2,6 +2,7 @@ import threading
 import time
 from typing import Any, List, Dict, Tuple
 
+import zhconv
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -278,13 +279,14 @@ class PersonMeta(_PluginBase):
             if not mediainfo:
                 logger.warn(f"{item.title} 未识别到媒体信息")
                 return
+        # TODO 演员名称使用TMDB的中文信息
         # 搜索豆瓣词条
 
         # 搜索豆瓣人物信息
 
-        # 匹配非中文人名
+        # 匹配非中文人名为豆瓣人名
 
-        # 更新中文人名
+        # 更新演员信息
 
         # 下载图片
 
@@ -304,7 +306,8 @@ class PersonMeta(_PluginBase):
                 if also_known_as:
                     for name in also_known_as:
                         if name and StringUtils.is_chinese(name):
-                            return name
+                            # 使用cn2an将繁体转化为简体
+                            return zhconv.convert(name, "zh-hans")
         except Exception as err:
             logger.error(f"获取人物中文名失败：{err}")
         return person.get("name") or ""
