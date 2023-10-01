@@ -516,9 +516,9 @@ class PersonMeta(_PluginBase):
                             if douban_actor.get("character"):
                                 # "饰 詹姆斯·邦德 James Bond 007"
                                 character = re.search(r"饰\s(.*)\s*",
-                                                      douban_actor.get("character")).group(1)
+                                                      douban_actor.get("character"))
                                 if character:
-                                    ret_people["Role"] = character
+                                    ret_people["Role"] = character.group(1)
                                 else:
                                     ret_people["Role"] = douban_actor.get("character")
                             updated_name = True
