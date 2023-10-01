@@ -1,3 +1,4 @@
+import base64
 import copy
 import datetime
 import json
@@ -10,6 +11,7 @@ import pytz
 import zhconv
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from requests import RequestException
 
 from app.chain.mediaserver import MediaServerChain
 from app.chain.tmdb import TmdbChain
@@ -22,6 +24,8 @@ from app.modules.plex import Plex
 from app.plugins import _PluginBase
 from app.schemas import MediaInfo, MediaServerItem
 from app.schemas.types import EventType, MediaType
+from app.utils.common import retry
+from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
 
@@ -658,7 +662,10 @@ class PersonMeta(_PluginBase):
             try:
                 res = Emby().post_data(
                     url=f'[HOST]emby/Items/{itemid}?api_key=[APIKEY]&reqformat=json',
-                    data=json.dumps(iteminfo)
+                    data=json.dumps(iteminfo),
+                    headers={
+                        "Content-Type": "application/json"
+                    }
                 )
                 if res and res.status_code in [200, 204]:
                     return True
@@ -676,7 +683,10 @@ class PersonMeta(_PluginBase):
             try:
                 res = Jellyfin().post_data(
                     url=f'[HOST]Items/{itemid}?api_key=[APIKEY]',
-                    data=json.dumps(iteminfo)
+                    data=json.dumps(iteminfo),
+                    headers={
+                        "Content-Type": "application/json"
+                    }
                 )
                 if res and res.status_code in [200, 204]:
                     return True
@@ -713,19 +723,40 @@ class PersonMeta(_PluginBase):
             return __set_plex_iteminfo()
 
     @staticmethod
+    @retry(RequestException, logger=logger)
     def set_item_image(server: str, itemid: str, imageurl: str):
         """
         更新媒体项图片
         """
 
-        def __set_emby_item_image():
+        def __download_image():
+            """
+            下载图片
+            """
+            try:
+                logger.info(f"正在下载图片：{imageurl} ...")
+                r = RequestUtils().get_res(url=imageurl, raise_exception=True)
+                if r:
+                    return base64.b64encode(r.content).decode()
+                else:
+                    logger.info(f"{imageurl} 图片下载失败，请检查网络连通性")
+            except Exception as err:
+                logger.error(f"下载图片失败：{err}")
+            return None
+
+        def __set_emby_item_image(_base64: str):
             """
             更新Emby媒体项图片
             """
             try:
-                url = f'[HOST]emby/Items/{itemid}/Images/Primary/0/Url?api_key=[APIKEY]'
-                data = json.dumps({'Url': imageurl})
-                res = Emby().post_data(url=url, data=data)
+                url = f'[HOST]emby/Items/{itemid}/Images/Primary?api_key=[APIKEY]'
+                res = Emby().post_data(
+                    url=url,
+                    data=_base64,
+                    headers={
+                        "Content-Type": "image/png"
+                    }
+                )
                 if res and res.status_code in [200, 204]:
                     return True
                 else:
@@ -765,11 +796,15 @@ class PersonMeta(_PluginBase):
             return False
 
         if server == "emby":
-            return __set_emby_item_image()
+            # 下载图片获取base64
+            image_base64 = __download_image()
+            if image_base64:
+                return __set_emby_item_image(image_base64)
         elif server == "jellyfin":
             return __set_jellyfin_item_image()
         else:
             return __set_plex_item_image()
+        return None
 
     @staticmethod
     def __get_chinese_name(personinfo: dict) -> str:

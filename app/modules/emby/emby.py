@@ -880,11 +880,12 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接Emby出错：" + str(e))
             return None
 
-    def post_data(self, url: str, data: str = None) -> Optional[Response]:
+    def post_data(self, url: str, data: str = None, headers: dict = None) -> Optional[Response]:
         """
         自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值
         :param url: 请求地址
         :param data: 请求数据
+        :param headers: 请求头
         """
         if not self._host or not self._apikey:
             return None
@@ -893,9 +894,7 @@ class Emby(metaclass=Singleton):
             .replace("[USER]", self.user)
         try:
             return RequestUtils(
-                headers={
-                    "Content-Type": "application/json"
-                }
+                headers=headers,
             ).post_res(url=url, data=data)
         except Exception as e:
             logger.error(f"连接Emby出错：" + str(e))
