@@ -63,6 +63,7 @@ class PersonMeta(_PluginBase):
     _onlyonce = False
     _cron = None
     _delay = 0
+    _remove_nozh = False
 
     def init_plugin(self, config: dict = None):
         self.tmdbchain = TmdbChain(self.db)
@@ -72,6 +73,7 @@ class PersonMeta(_PluginBase):
             self._onlyonce = config.get("onlyonce")
             self._cron = config.get("cron")
             self._delay = config.get("delay") or 0
+            self._remove_nozh = config.get("remove_nozh") or False
 
         # 停止现有任务
         self.stop_service()
@@ -113,7 +115,8 @@ class PersonMeta(_PluginBase):
             "enabled": self._enabled,
             "onlyonce": self._onlyonce,
             "cron": self._cron,
-            "delay": self._delay
+            "delay": self._delay,
+            "remove_nozh": self._remove_nozh
         })
 
     def get_state(self) -> bool:
@@ -209,6 +212,27 @@ class PersonMeta(_PluginBase):
                                 ]
                             }
                         ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'remove_nozh',
+                                            'label': '删除非中文演员',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 ]
             }
@@ -216,7 +240,8 @@ class PersonMeta(_PluginBase):
             "enabled": False,
             "onlyonce": False,
             "cron": "",
-            "delay": 30
+            "delay": 30,
+            "remove_nozh": False
         }
 
     def get_page(self) -> List[dict]:
@@ -325,12 +350,16 @@ class PersonMeta(_PluginBase):
                 if not people.get("Name"):
                     continue
                 if StringUtils.is_chinese(people.get("Name")):
+                    peoples.append(people)
                     continue
+                if self._event.is_set():
+                    logger.info(f"演职人员刮削服务停止")
+                    return
                 info = self.__update_people(server=server, people=people,
                                             douban_actors=douban_actors)
                 if info:
                     peoples.append(info)
-                else:
+                elif not self._remove_nozh:
                     peoples.append(people)
             # 保存媒体项信息
             if peoples:
@@ -356,23 +385,28 @@ class PersonMeta(_PluginBase):
                     # 更新季媒体项人物
                     peoples = []
                     if seasoninfo.get("People"):
-
+                        logger.info(f"开始更新季 {seasoninfo.get('Id')} 的人物信息 ...")
                         for people in seasoninfo["People"]:
                             if not people.get("Name"):
                                 continue
                             if StringUtils.is_chinese(people.get("Name")):
+                                peoples.append(people)
                                 continue
+                            if self._event.is_set():
+                                logger.info(f"演职人员刮削服务停止")
+                                return
                             # 更新人物信息
                             info = self.__update_people(server=server, people=people,
                                                         douban_actors=season_actors)
                             if info:
                                 peoples.append(info)
-                            else:
+                            elif not self._remove_nozh:
                                 peoples.append(people)
                         # 保存季媒体项信息
                         if peoples:
                             seasoninfo["People"] = peoples
                             self.set_iteminfo(server=server, itemid=season.get("Id"), iteminfo=seasoninfo)
+                        logger.info(f"季 {seasoninfo.get('Id')} 的人物信息更新完成")
                 # 获取集媒体项
                 episodes = self.get_items(server=server, parentid=season.get("Id"), mtype="Episode")
                 if not episodes:
@@ -387,23 +421,29 @@ class PersonMeta(_PluginBase):
                         continue
                     # 更新集媒体项人物
                     if episodeinfo.get("People"):
+                        logger.info(f"开始更新集 {episodeinfo.get('Id')} 的人物信息 ...")
                         peoples = []
                         for people in episodeinfo["People"]:
                             if not people.get("Name"):
                                 continue
                             if StringUtils.is_chinese(people.get("Name")):
+                                peoples.append(people)
                                 continue
+                            if self._event.is_set():
+                                logger.info(f"演职人员刮削服务停止")
+                                return
                             # 更新人物信息
                             info = self.__update_people(server=server, people=people,
                                                         douban_actors=season_actors)
                             if info:
                                 peoples.append(info)
-                            else:
+                            elif not self._remove_nozh:
                                 peoples.append(people)
                         # 保存集媒体项信息
                         if peoples:
                             episodeinfo["People"] = peoples
                             self.set_iteminfo(server=server, itemid=episode.get("Id"), iteminfo=episodeinfo)
+                        logger.info(f"集 {episodeinfo.get('Id')} 的人物信息更新完成")
 
     def __update_people(self, server: str, people: dict, douban_actors: list = None) -> Optional[dict]:
         """
@@ -434,43 +474,54 @@ class PersonMeta(_PluginBase):
             # 查询媒体库人物详情
             personinfo = self.get_iteminfo(server=server, itemid=people.get("Id"))
             if not personinfo:
-                logger.debug(f"未找到人物 {people.get('Id')} 的信息")
+                logger.debug(f"未找到人物 {people.get('Name')} 的信息")
                 return None
+
             # 是否更新标志
             updated_name = False
             updated_overview = False
             profile_path = None
-            # 从豆瓣演员中匹配中文名称
-            if douban_actors:
-                for douban_actor in douban_actors:
-                    if douban_actor.get("latin_name") == people.get("Name"):
-                        # 名称
-                        personinfo["Name"] = douban_actor.get("name")
-                        ret_people["Name"] = douban_actor.get("name")
+
+            # 获取人物的TMDBID
+            person_tmdbid, person_imdbid = __get_peopleid(personinfo)
+            if person_tmdbid:
+                person_tmdbinfo = self.tmdbchain.person_detail(int(person_tmdbid))
+                if person_tmdbinfo:
+                    cn_name = self.__get_chinese_name(person_tmdbinfo)
+                    if cn_name:
+                        logger.info(f"{people.get('Name')} 从TMDB获取到中文名：{cn_name}")
+                        # 更新中文名
+                        personinfo["Name"] = cn_name
+                        ret_people["Name"] = cn_name
                         updated_name = True
+                        # 更新中文描述
+                        biography = person_tmdbinfo.get("biography")
+                        if StringUtils.is_chinese(biography):
+                            updated_overview = True
+                            personinfo["Overview"] = biography
                         # 图片
-                        if douban_actor.get("avatar", {}).get("large"):
-                            profile_path = douban_actor.get("avatar", {}).get("large")
-                        break
+                        profile_path = f"https://image.tmdb.org/t/p/original{person_tmdbinfo.get('profile_path')}"
+
             if not updated_name or not updated_overview:
-                # 获取人物的TMDBID
-                person_tmdbid, person_imdbid = __get_peopleid(personinfo)
-                if person_tmdbid:
-                    person_tmdbinfo = self.tmdbchain.person_detail(int(person_tmdbid))
-                    if person_tmdbinfo:
-                        cn_name = self.__get_chinese_name(person_tmdbinfo)
-                        if cn_name:
-                            # 更新中文名
-                            personinfo["Name"] = cn_name
-                            ret_people["Name"] = cn_name
+                # 从豆瓣演员中匹配中文名称
+                if douban_actors:
+                    for douban_actor in douban_actors:
+                        if douban_actor.get("latin_name") == people.get("Name"):
+                            logger.info(f"{people.get('Name')} 从豆瓣中获取到中文名：{douban_actor.get('name')}")
+                            # 名称
+                            personinfo["Name"] = douban_actor.get("name")
+                            ret_people["Name"] = douban_actor.get("name")
                             updated_name = True
-                            # 更新中文描述
-                            biography = person_tmdbinfo.get("biography")
-                            if StringUtils.is_chinese(biography):
-                                updated_overview = True
-                                personinfo["Overview"] = biography
                             # 图片
-                            profile_path = f"https://image.tmdb.org/t/p/original{person_tmdbinfo.get('profile_path')}"
+                            if douban_actor.get("avatar", {}).get("large"):
+                                profile_path = douban_actor.get("avatar", {}).get("large")
+                            break
+
+            # 更新人物图片
+            if profile_path:
+                logger.info(f"更新人物 {people.get('Name')} 的图片：{profile_path}")
+                self.set_item_image(server=server, itemid=people.get("Id"), imageurl=profile_path)
+
             # 锁定人物信息
             if updated_name:
                 if "Name" not in personinfo["LockedFields"]:
@@ -479,17 +530,14 @@ class PersonMeta(_PluginBase):
                 if "Overview" not in personinfo["LockedFields"]:
                     personinfo["LockedFields"].append("Overview")
 
-            # 更新人物图片
-            if profile_path:
-                logger.info(f"更新人物 {people.get('Id')} 的图片：{profile_path}")
-                self.set_item_image(server=server, itemid=people.get("Id"), imageurl=profile_path)
-
             # 更新人物信息
             if updated_name or updated_overview:
-                logger.info(f"更新人物 {people.get('Id')} 的信息：{personinfo}")
+                logger.info(f"更新人物 {people.get('Name')} 的信息：{personinfo}")
                 ret = self.set_iteminfo(server=server, itemid=people.get("Id"), iteminfo=personinfo)
                 if ret:
                     return ret_people
+            else:
+                logger.info(f"人物 {people.get('Name')} 未找到中文数据")
         except Exception as err:
             logger.error(f"更新人物信息失败：{err}")
         return None
