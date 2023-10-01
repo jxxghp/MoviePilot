@@ -192,7 +192,7 @@ class Jellyfin(metaclass=Singleton):
             res = RequestUtils().get_res(req_url)
             if res:
                 result = res.json()
-                schemas.Statistic(
+                return schemas.Statistic(
                     movie_count=result.get("MovieCount") or 0,
                     tv_count=result.get("SeriesCount") or 0,
                     episode_count=result.get("EpisodeCount") or 0
