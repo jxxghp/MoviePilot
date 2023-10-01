@@ -117,16 +117,7 @@ class JellyfinModule(_ModuleBase):
         """
         if server != "jellyfin":
             return None
-        librarys = self.jellyfin.get_librarys()
-        if not librarys:
-            return []
-        return [schemas.MediaServerLibrary(
-            server="jellyfin",
-            id=library.get("id"),
-            name=library.get("name"),
-            type=library.get("type"),
-            path=library.get("path")
-        ) for library in librarys]
+        return self.jellyfin.get_librarys()
 
     def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator]:
         """
