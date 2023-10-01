@@ -227,8 +227,8 @@ class Jellyfin(metaclass=Singleton):
             return None
         return ""
 
-    def get_movies(self, 
-                   title: str, 
+    def get_movies(self,
+                   title: str,
                    year: str = None,
                    tmdb_id: int = None) -> Optional[List[schemas.MediaServerItem]]:
         """
@@ -582,3 +582,30 @@ class Jellyfin(metaclass=Singleton):
         except Exception as e:
             logger.error(f"连接Jellyfin出错：" + str(e))
             return None
+
+    def refresh_pers_img(self) -> bool:
+        """
+        刷新演员头像任务
+        """
+        task_id = ""
+        # 获取所有任务
+        resp: Response = self.get_data("[HOST]ScheduledTasks?&api_key=[APIKEY]")
+        if resp and resp.status_code == 200:
+            for res in resp.json():
+                if res.get("Name") != "刷新人员":
+                    continue
+                task_id = res.get("Id")
+                break
+        if not task_id:
+            logger.warn("jellyfin获取任务失败")
+            return False
+
+        # 执行刷新人员任务
+        resp = self.post_data(url=f"[HOST]ScheduledTasks/Running/{task_id}?&api_key=[APIKEY]")
+        if resp and resp.status_code == 204:
+            logger.info("jellyfin执行刷新人员任务成功")
+            return True
+        else:
+            logger.warn("jellyfin执行刷新人员任务失败")
+            return False
+
