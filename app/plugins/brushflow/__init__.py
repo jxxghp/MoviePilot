@@ -1372,6 +1372,7 @@ class BrushFlow(_PluginBase):
                         "deleted": False,
                     }
                     # 统计数据
+                    torrents_size += torrent.size
                     statistic_info["count"] += 1
                     # 发送消息
                     self.__send_add_message(torrent)
