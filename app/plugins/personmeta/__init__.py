@@ -515,12 +515,9 @@ class PersonMeta(_PluginBase):
                             # 饰演角色
                             if douban_actor.get("character"):
                                 # "饰 詹姆斯·邦德 James Bond 007"
-                                character = re.search(r"饰\s(.*)\s*",
-                                                      douban_actor.get("character"))
-                                if character:
-                                    ret_people["Role"] = character.group(1)
-                                else:
-                                    ret_people["Role"] = douban_actor.get("character")
+                                character = re.sub(r"饰\s+", "",
+                                                   douban_actor.get("character"))
+                                ret_people["Role"] = character
                             updated_name = True
                             # 图片
                             if douban_actor.get("avatar", {}).get("large"):
