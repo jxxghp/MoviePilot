@@ -383,7 +383,14 @@ class SpeedLimiter(_PluginBase):
             return
         if event:
             event_data: WebhookEventInfo = event.event_data
-            if event_data.event not in ["playback.start", "PlaybackStart", "media.play"]:
+            if event_data.event not in [
+                "playback.start",
+                "PlaybackStart",
+                "media.play",
+                "media.stop",
+                "PlaybackStop",
+                "playback.stop"
+            ]:
                 return
         # 当前播放的总比特率
         total_bit_rate = 0
