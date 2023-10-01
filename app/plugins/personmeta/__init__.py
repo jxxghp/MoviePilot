@@ -277,18 +277,32 @@ class PersonMeta(_PluginBase):
             if not mediainfo:
                 logger.warn(f"{item.title} 未识别到媒体信息")
                 return
-        # TODO 演员名称使用TMDB的中文信息
-        # 搜索豆瓣词条
 
-        # 搜索豆瓣人物信息
+        # 获取媒体项
+        iteminfo = self.get_iteminfo(server=server, itemid=item.item_id)
+        if not iteminfo:
+            logger.warn(f"{item.title} 未找到媒体项")
+            return
+        # 处理媒体项中的人物信息
+        if not iteminfo.get("People"):
+            logger.warn(f"{item.title} 未找到人物信息")
+            return
+        for people in iteminfo["People"]:
+            try:
+                # 查询人物详情
+                personinfo = self.get_iteminfo(server=server, itemid=people.get("Id"))
+                if not personinfo:
+                    logger.debug(f"{item.title} 未找到人物 {people.get('Id')} 的信息")
+                    continue
+                # TODO 使用TMDB中的信息转换中文名称和描述
 
-        # 匹配非中文人名为豆瓣人名
+                # TODO 检查豆瓣影片信息并匹配转换人物中文名称和描述
 
-        # 更新演员信息
+                # TODO 更新人物图片
 
-        # 下载图片
-
-        # 更新演员图片
+                # TODO 刷新一次人物信息
+            except Exception as err:
+                logger.error(f"更新人物信息失败：{err}")
 
     @staticmethod
     def get_iteminfo(server: str, itemid: str) -> dict:
