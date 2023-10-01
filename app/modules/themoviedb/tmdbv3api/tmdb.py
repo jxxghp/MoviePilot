@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class TMDb(object):
-    _session = None
     TMDB_API_KEY = "TMDB_API_KEY"
     TMDB_LANGUAGE = "TMDB_LANGUAGE"
     TMDB_SESSION_ID = "TMDB_SESSION_ID"
@@ -25,9 +24,7 @@ class TMDb(object):
     TMDB_DOMAIN = "TMDB_DOMAIN"
     REQUEST_CACHE_MAXSIZE = None
 
-    def __init__(self, obj_cached=True, session=None):
-        if self.__class__._session is None or session is not None:
-            self.__class__._session = requests.Session() if session is None else session
+    def __init__(self, obj_cached=True):
         self._remaining = 40
         self._reset = None
         self._timeout = 15
@@ -54,7 +51,7 @@ class TMDb(object):
     @property
     def domain(self):
         return os.environ.get(self.TMDB_DOMAIN)
-    
+
     @property
     def proxies(self):
         proxy = os.environ.get(self.TMDB_PROXIES)
@@ -132,8 +129,9 @@ class TMDb(object):
 
     @lru_cache(maxsize=REQUEST_CACHE_MAXSIZE)
     def cached_request(self, method, url, data, json):
-        return requests.request(method, url, data=data, json=json,
-                                timeout=self._timeout, proxies=self.proxies)
+        with requests.Session() as s:
+            return s.request(method, url, data=data, json=json,
+                             timeout=self._timeout, proxies=self.proxies)
 
     def cache_clear(self):
         return self.cached_request.cache_clear()
@@ -154,8 +152,9 @@ class TMDb(object):
         if self.cache and self.obj_cached and call_cached and method != "POST":
             req = self.cached_request(method, url, data, json)
         else:
-            req = self.__class__._session.request(method, url, data=data, json=json,
-                                                  timeout=self._timeout, proxies=self.proxies)
+            with requests.Session() as s:
+                req = s.request(method, url, data=data, json=json,
+                                timeout=self._timeout, proxies=self.proxies)
 
         headers = req.headers
 
