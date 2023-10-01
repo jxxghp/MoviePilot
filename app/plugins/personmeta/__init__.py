@@ -515,8 +515,12 @@ class PersonMeta(_PluginBase):
                             # 饰演角色
                             if douban_actor.get("character"):
                                 # "饰 詹姆斯·邦德 James Bond 007"
-                                ret_people["Role"] = re.search(r"饰\s(.*)\s*",
-                                                               douban_actor.get("character")).group(1)
+                                character = re.search(r"饰\s(.*)\s*",
+                                                      douban_actor.get("character")).group(1)
+                                if character:
+                                    ret_people["Role"] = character
+                                else:
+                                    ret_people["Role"] = douban_actor.get("character")
                             updated_name = True
                             # 图片
                             if douban_actor.get("avatar", {}).get("large"):
@@ -562,7 +566,7 @@ class PersonMeta(_PluginBase):
         # 豆瓣演员
         if doubaninfo:
             doubanitem = self.chain.douban_info(doubaninfo.get("id")) or {}
-            return doubanitem.get("actors") or []
+            return (doubanitem.get("actors") or []) + (doubanitem.get("directors") or [])
         return []
 
     @staticmethod
