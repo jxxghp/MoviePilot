@@ -4,6 +4,7 @@ import xml.dom.minidom
 from threading import Event
 from typing import Tuple, List, Dict, Any, Optional
 
+import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -100,10 +101,18 @@ class DoubanRank(_PluginBase):
                     logger.error(f"豆瓣榜单订阅服务启动失败，错误信息：{str(e)}")
                     self.systemmessage.put(f"豆瓣榜单订阅服务启动失败，错误信息：{str(e)}")
             else:
-                self._scheduler.add_job(func=self.__refresh_rss,
-                                        trigger=CronTrigger.from_crontab("0 8 * * *"),
-                                        name="豆瓣榜单订阅")
+                self._scheduler.add_job(func=self.__refresh_rss, trigger='date',
+                                        run_date=datetime.datetime.now(
+                                            tz=pytz.timezone(settings.TZ)) + datetime.timedelta(seconds=3)
+                                        )
                 logger.info("豆瓣榜单订阅服务启动，周期：每天 08:00")
+
+            if self._onlyonce:
+                logger.info("豆瓣榜单订阅服务启动，立即运行一次")
+                self._scheduler.add_job(func=self.__refresh_rss, trigger='date',
+                                        run_date=datetime.datetime.now(
+                                            tz=pytz.timezone(settings.TZ)) + datetime.timedelta(seconds=3)
+                                        )
 
             if self._onlyonce or self._clear:
                 # 关闭一次性开关

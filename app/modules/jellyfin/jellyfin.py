@@ -561,7 +561,7 @@ class Jellyfin(metaclass=Singleton):
             .replace("[APIKEY]", self._apikey) \
             .replace("[USER]", self.user)
         try:
-            return RequestUtils().get_res(url=url)
+            return RequestUtils(accept_type="application/json").get_res(url=url)
         except Exception as e:
             logger.error(f"连接Jellyfin出错：" + str(e))
             return None
@@ -578,7 +578,11 @@ class Jellyfin(metaclass=Singleton):
             .replace("[APIKEY]", self._apikey) \
             .replace("[USER]", self.user)
         try:
-            return RequestUtils().post_res(url=url, data=data)
+            return RequestUtils(
+                headers={
+                    "Content-Type": "application/json"
+                }
+            ).post_res(url=url, data=data)
         except Exception as e:
             logger.error(f"连接Jellyfin出错：" + str(e))
             return None

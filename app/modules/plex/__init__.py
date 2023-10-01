@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple, Union, Any, List
+from typing import Optional, Tuple, Union, Any, List, Generator
 
 from app import schemas
 from app.core.context import MediaInfo
@@ -122,7 +122,7 @@ class PlexModule(_ModuleBase):
             return None
         return self.plex.get_librarys()
 
-    def mediaserver_items(self, server: str, library_id: str) -> Optional[List[schemas.MediaServerItem]]:
+    def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator]:
         """
         媒体库项目列表
         """

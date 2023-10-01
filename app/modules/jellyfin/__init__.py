@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple, Union, Any, List
+from typing import Optional, Tuple, Union, Any, List, Generator
 
 from app import schemas
 from app.core.context import MediaInfo
@@ -109,7 +109,7 @@ class JellyfinModule(_ModuleBase):
         """
         media_statistic = self.jellyfin.get_medias_count()
         media_statistic.user_count = self.jellyfin.get_user_count()
-        return media_statistic
+        return [media_statistic]
 
     def mediaserver_librarys(self, server: str) -> Optional[List[schemas.MediaServerLibrary]]:
         """
@@ -128,7 +128,7 @@ class JellyfinModule(_ModuleBase):
             path=library.get("path")
         ) for library in librarys]
 
-    def mediaserver_items(self, server: str, library_id: str) -> Optional[List[schemas.MediaServerItem]]:
+    def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator]:
         """
         媒体库项目列表
         """

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple, Union, Any, List
+from typing import Optional, Tuple, Union, Any, List, Generator
 
 from app import schemas
 from app.core.context import MediaInfo
@@ -122,7 +122,7 @@ class EmbyModule(_ModuleBase):
         media_statistic.user_count = self.emby.get_user_count()
         return [media_statistic]
 
-    def mediaserver_librarys(self, server: str) -> List[schemas.MediaServerLibrary]:
+    def mediaserver_librarys(self, server: str) -> Optional[List[schemas.MediaServerLibrary]]:
         """
         媒体库列表
         """
@@ -130,7 +130,7 @@ class EmbyModule(_ModuleBase):
             return None
         return self.emby.get_librarys()
 
-    def mediaserver_items(self, server: str, library_id: str) -> Optional[List[schemas.MediaServerItem]]:
+    def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator]:
         """
         媒体库项目列表
         """
