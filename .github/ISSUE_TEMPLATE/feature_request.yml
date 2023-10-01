@@ -14,6 +14,18 @@ body:
       description: 目前使用的程序版本
     validations:
       required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: 功能改进类型
+      description: 你需要在下面哪个方面改进功能
+      options:
+        - 主程序
+        - 插件
+        - Docker
+        - 其他
+    validations:
+      required: true
   - type: textarea
     id: feature-request
     attributes:
