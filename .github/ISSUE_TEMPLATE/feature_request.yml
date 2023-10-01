@@ -17,8 +17,8 @@ body:
   - type: dropdown
     id: type
     attributes:
-      label: 功能增强类型
-      description: 你需要在下面哪个方面添加活增强功能
+      label: 功能改进类型
+      description: 你需要在下面哪个方面改进功能
       options:
         - 主程序
         - 插件
