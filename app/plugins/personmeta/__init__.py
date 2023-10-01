@@ -2,6 +2,7 @@ import base64
 import copy
 import datetime
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -511,6 +512,11 @@ class PersonMeta(_PluginBase):
                             # 名称
                             personinfo["Name"] = douban_actor.get("name")
                             ret_people["Name"] = douban_actor.get("name")
+                            # 饰演角色
+                            if douban_actor.get("character"):
+                                # "饰 詹姆斯·邦德 James Bond 007"
+                                ret_people["Role"] = re.search(r"饰\s(.*)\s*",
+                                                               douban_actor.get("character")).group(1)
                             updated_name = True
                             # 图片
                             if douban_actor.get("avatar", {}).get("large"):
@@ -834,7 +840,12 @@ class PersonMeta(_PluginBase):
             """
             try:
                 logger.info(f"正在下载图片：{imageurl} ...")
-                r = RequestUtils().get_res(url=imageurl, raise_exception=True)
+                if "doubanio.com" in imageurl:
+                    r = RequestUtils(headers={
+                        'Referer': "https://movie.douban.com/"
+                    }, ua=settings.USER_AGENT).get_res(url=imageurl, raise_exception=True)
+                else:
+                    r = RequestUtils().get_res(url=imageurl, raise_exception=True)
                 if r:
                     return base64.b64encode(r.content).decode()
                 else:
@@ -868,6 +879,7 @@ class PersonMeta(_PluginBase):
         def __set_jellyfin_item_image():
             """
             更新Jellyfin媒体项图片
+            # FIXME 改为预下载图片
             """
             try:
                 url = f'[HOST]Items/{itemid}/RemoteImages/Download?' \
@@ -885,6 +897,7 @@ class PersonMeta(_PluginBase):
         def __set_plex_item_image():
             """
             更新Plex媒体项图片
+            # FIXME 改为预下载图片
             """
             try:
                 plexitem = Plex().get_plex().library.fetchItem(ekey=itemid)
