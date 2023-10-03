@@ -49,6 +49,7 @@ class BrushFlow(_PluginBase):
     siteshelper = None
     siteoper = None
     torrents = None
+    sites = None
     qb = None
     tr = None
     # 添加种子定时
@@ -88,6 +89,7 @@ class BrushFlow(_PluginBase):
         self.siteshelper = SitesHelper()
         self.siteoper = SiteOper()
         self.torrents = TorrentsChain()
+        self.sites = SitesHelper()
         if config:
             self._enabled = config.get("enabled")
             self._notify = config.get("notify")
@@ -114,6 +116,13 @@ class BrushFlow(_PluginBase):
             self._dl_speed = config.get("dl_speed")
             self._save_path = config.get("save_path")
             self._clear_task = config.get("clear_task")
+
+            # 过滤掉已删除的站点
+            self._brushsites = [site.get("id") for site in self.sites.get_indexers() if
+                                not site.get("public") and site.get("id") in self._brushsites]
+
+            # 保存配置
+            self.__update_config()
 
             if self._clear_task:
                 # 清除统计数据
@@ -1113,7 +1122,7 @@ class BrushFlow(_PluginBase):
                                     {
                                         'component': 'thead',
                                         'props': {
-                                          'class': 'text-no-wrap'
+                                            'class': 'text-no-wrap'
                                         },
                                         'content': [
                                             {
@@ -1290,10 +1299,10 @@ class BrushFlow(_PluginBase):
                         else:
                             end_size = 0
                         if begin_size and not end_size \
-                                and torrent.size > float(begin_size) * 1024**3:
+                                and torrent.size > float(begin_size) * 1024 ** 3:
                             continue
                         elif begin_size and end_size \
-                                and not float(begin_size) * 1024**3 <= torrent.size <= float(end_size) * 1024**3:
+                                and not float(begin_size) * 1024 ** 3 <= torrent.size <= float(end_size) * 1024 ** 3:
                             continue
                     # 做种人数
                     if self._seeder:
@@ -1350,7 +1359,7 @@ class BrushFlow(_PluginBase):
                             break
                     # 保种体积（GB）
                     if self._disksize \
-                            and (torrents_size + torrent.size) > float(self._disksize) * 1024**3:
+                            and (torrents_size + torrent.size) > float(self._disksize) * 1024 ** 3:
                         logger.warn(f"当前做种体积 {StringUtils.str_filesize(torrents_size)} "
                                     f"已超过保种体积 {self._disksize}，停止新增任务")
                         break
@@ -1861,7 +1870,7 @@ class BrushFlow(_PluginBase):
             return 0
         torrents = downlader.get_downloading_torrents()
         return len(torrents) or 0
-    
+
     @staticmethod
     def __get_pubminutes(pubdate: str) -> int:
         """
@@ -1877,4 +1886,3 @@ class BrushFlow(_PluginBase):
         except Exception as e:
             print(str(e))
             return 0
-    

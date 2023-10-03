@@ -156,7 +156,7 @@ docker pull jxxghp/moviepilot:latest
 
 ### 2. **用户认证**
 
-- **AUTH_SITE：** 认证站点，支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`
+- **AUTH_SITE：** 认证站点，支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`/`xingtan`
 
 `MoviePilot`需要认证后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数。
 
@@ -174,6 +174,7 @@ docker pull jxxghp/moviepilot:latest
 |    1ptba     |        `1PTBA_UID`：用户ID<br/>`1PTBA_PASSKEY`：密钥        |
 |   icc2022    |      `ICC2022_UID`：用户ID<br/>`ICC2022_PASSKEY`：密钥      |
 |    ptlsp     |        `PTLSP_UID`：用户ID<br/>`PTLSP_PASSKEY`：密钥        |
+|   xingtan    |      `XINGTAN_UID`：用户ID<br/>`XINGTAN_PASSKEY`：密钥      |
 
 
 ### 2. **进阶配置**

@@ -158,10 +158,8 @@ class Telegram(metaclass=Singleton):
                 title = re.sub(r"\s+", " ", title).strip()
                 free = torrent.volume_factor
                 seeder = f"{torrent.seeders}↑"
-                description = torrent.description
                 caption = f"{caption}\n{index}.【{site_name}】[{title}]({link}) " \
-                          f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}\n" \
-                          f"_{description}_"
+                          f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}"
                 index += 1
 
             if userid:

@@ -673,6 +673,8 @@ class MediaSyncDel(_PluginBase):
             paths = self._library_path.split("\n")
             for path in paths:
                 sub_paths = path.split(":")
+                if len(sub_paths) < 2:
+                    continue
                 media_path = media_path.replace(sub_paths[0], sub_paths[1]).replace('\\', '/')
 
         # 删除电影
@@ -765,6 +767,8 @@ class MediaSyncDel(_PluginBase):
                 paths = self._library_path.split("\n")
                 for path in paths:
                     sub_paths = path.split(":")
+                    if len(sub_paths) < 2:
+                        continue
                     media_path = media_path.replace(sub_paths[0], sub_paths[1]).replace('\\', '/')
 
             # 获取删除的记录
