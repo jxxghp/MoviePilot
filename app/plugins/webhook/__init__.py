@@ -158,6 +158,8 @@ class WebHook(_PluginBase):
                 return _event
             elif hasattr(_event, '__dict__'):
                 return _event.__dict__
+            else:
+                return str(_event)
 
         event_info = {
             "type": event.event_type,
