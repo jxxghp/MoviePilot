@@ -517,7 +517,10 @@ class PersonMeta(_PluginBase):
                                 # "饰 詹姆斯·邦德 James Bond 007"
                                 character = re.sub(r"饰\s+", "",
                                                    douban_actor.get("character"))
-                                ret_people["Role"] = character
+                                character = re.sub("演员", "",
+                                                   character)
+                                if character:
+                                    ret_people["Role"] = character
                             updated_name = True
                             # 图片
                             if douban_actor.get("avatar", {}).get("large"):

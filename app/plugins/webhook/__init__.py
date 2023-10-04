@@ -137,13 +137,27 @@ class WebHook(_PluginBase):
             return
 
         def __to_dict(_event):
-            result = {}
-            for key, value in _event.items():
-                if hasattr(value, 'to_dict'):
-                    result[key] = value.to_dict()
-                else:
-                    result[key] = str(value)
-            return result
+            """
+            递归将对象转换为字典
+            """
+            if isinstance(_event, dict):
+                for k, v in _event.items():
+                    _event[k] = __to_dict(v)
+                return _event
+            elif isinstance(_event, list):
+                for i in range(len(_event)):
+                    _event[i] = __to_dict(_event[i])
+                return _event
+            elif isinstance(_event, tuple):
+                return tuple(__to_dict(list(_event)))
+            elif isinstance(_event, set):
+                return set(__to_dict(list(_event)))
+            elif isinstance(_event, frozenset):
+                return frozenset(__to_dict(list(_event)))
+            elif isinstance(_event, (int, float, str, bool, type(None))):
+                return _event
+            elif hasattr(_event, '__dict__'):
+                return _event.__dict__
 
         event_info = {
             "type": event.event_type,
