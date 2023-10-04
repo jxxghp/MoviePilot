@@ -155,8 +155,13 @@ class DoubanApi(metaclass=Singleton):
     def __sign(cls, url: str, ts: int, method='GET') -> str:
         url_path = parse.urlparse(url).path
         raw_sign = '&'.join([method.upper(), parse.quote(url_path, safe=''), str(ts)])
-        return base64.b64encode(hmac.new(cls._api_secret_key.encode(), raw_sign.encode(), hashlib.sha1).digest()
-                                ).decode()
+        return base64.b64encode(
+            hmac.new(
+                cls._api_secret_key.encode(),
+                raw_sign.encode(),
+                hashlib.sha1
+            ).digest()
+        ).decode()
 
     @classmethod
     @lru_cache(maxsize=settings.CACHE_CONF.get('douban'))

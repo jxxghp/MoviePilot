@@ -91,12 +91,19 @@ class RequestUtils:
         except requests.exceptions.RequestException:
             return None
 
-    def get_res(self, url: str, params: dict = None,
-                allow_redirects: bool = True, raise_exception: bool = False) -> Optional[Response]:
+    def get_res(self, url: str,
+                params: dict = None,
+                data: Any = None,
+                json: dict = None,
+                allow_redirects: bool = True,
+                raise_exception: bool = False
+                ) -> Optional[Response]:
         try:
             if self._session:
                 return self._session.get(url,
                                          params=params,
+                                         data=data,
+                                         json=json,
                                          verify=False,
                                          headers=self._headers,
                                          proxies=self._proxies,
@@ -106,6 +113,8 @@ class RequestUtils:
             else:
                 return requests.get(url,
                                     params=params,
+                                    data=data,
+                                    json=json,
                                     verify=False,
                                     headers=self._headers,
                                     proxies=self._proxies,
