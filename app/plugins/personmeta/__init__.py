@@ -475,44 +475,60 @@ class PersonMeta(_PluginBase):
             # 查询媒体库人物详情
             personinfo = self.get_iteminfo(server=server, itemid=people.get("Id"))
             if not personinfo:
-                logger.debug(f"未找到人物 {people.get('Name')} 的信息")
+                logger.warn(f"未找到人物 {people.get('Name')} 的信息")
                 return None
 
             # 是否更新标志
             updated_name = False
             updated_overview = False
+            update_character = False
             profile_path = None
 
-            # 获取人物的TMDBID
+            # 从TMDB信息中更新人物信息
             person_tmdbid, person_imdbid = __get_peopleid(personinfo)
             if person_tmdbid:
                 person_tmdbinfo = self.tmdbchain.person_detail(int(person_tmdbid))
                 if person_tmdbinfo:
                     cn_name = self.__get_chinese_name(person_tmdbinfo)
                     if cn_name:
-                        logger.info(f"{people.get('Name')} 从TMDB获取到中文名：{cn_name}")
                         # 更新中文名
+                        logger.info(f"{people.get('Name')} 从TMDB获取到中文名：{cn_name}")
                         personinfo["Name"] = cn_name
                         ret_people["Name"] = cn_name
                         updated_name = True
                         # 更新中文描述
                         biography = person_tmdbinfo.get("biography")
-                        if StringUtils.is_chinese(biography):
-                            updated_overview = True
+                        if biography and StringUtils.is_chinese(biography):
+                            logger.info(f"{people.get('Name')} 从TMDB获取到中文描述")
                             personinfo["Overview"] = biography
+                            updated_overview = True
                         # 图片
-                        profile_path = f"https://image.tmdb.org/t/p/original{person_tmdbinfo.get('profile_path')}"
+                        profile_path = person_tmdbinfo.get('profile_path')
+                        if profile_path:
+                            logger.info(f"{people.get('Name')} 从TMDB获取到图片：{profile_path}")
+                            profile_path = f"https://image.tmdb.org/t/p/original{profile_path}"
 
-            if not updated_name or not updated_overview:
-                # 从豆瓣演员中匹配中文名称
-                if douban_actors:
-                    for douban_actor in douban_actors:
-                        if douban_actor.get("latin_name") == people.get("Name"):
+            # 从豆瓣信息中更新人物信息
+            if douban_actors and (not updated_name
+                                  or not updated_overview
+                                  or not update_character):
+                # 从豆瓣演员中匹配中文名称、角色和简介
+                for douban_actor in douban_actors:
+                    if douban_actor.get("latin_name") == people.get("Name"):
+                        # 名称
+                        if not updated_name:
                             logger.info(f"{people.get('Name')} 从豆瓣中获取到中文名：{douban_actor.get('name')}")
-                            # 名称
                             personinfo["Name"] = douban_actor.get("name")
                             ret_people["Name"] = douban_actor.get("name")
-                            # 饰演角色
+                            updated_name = True
+                        # 描述
+                        if not updated_overview:
+                            if douban_actor.get("title"):
+                                logger.info(f"{people.get('Name')} 从豆瓣中获取到中文描述：{douban_actor.get('title')}")
+                                personinfo["Overview"] = douban_actor.get("title")
+                                updated_overview = True
+                        # 饰演角色
+                        if not update_character:
                             if douban_actor.get("character"):
                                 # "饰 詹姆斯·邦德 James Bond 007"
                                 character = re.sub(r"饰\s+", "",
@@ -520,12 +536,16 @@ class PersonMeta(_PluginBase):
                                 character = re.sub("演员", "",
                                                    character)
                                 if character:
+                                    logger.info(f"{people.get('Name')} 从豆瓣中获取到饰演角色：{character}")
                                     ret_people["Role"] = character
-                            updated_name = True
-                            # 图片
-                            if douban_actor.get("avatar", {}).get("large"):
-                                profile_path = douban_actor.get("avatar", {}).get("large")
-                            break
+                                    update_character = True
+                        # 图片
+                        if not profile_path:
+                            avatar = douban_actor.get("avatar") or {}
+                            if avatar.get("large"):
+                                logger.info(f"{people.get('Name')} 从豆瓣中获取到图片：{avatar.get('large')}")
+                                profile_path = avatar.get("large")
+                        break
 
             # 更新人物图片
             if profile_path:
@@ -541,7 +561,7 @@ class PersonMeta(_PluginBase):
                     personinfo["LockedFields"].append("Overview")
 
             # 更新人物信息
-            if updated_name or updated_overview:
+            if updated_name or updated_overview or update_character:
                 logger.info(f"更新人物 {people.get('Name')} 的信息：{personinfo}")
                 ret = self.set_iteminfo(server=server, itemid=people.get("Id"), iteminfo=personinfo)
                 if ret:
@@ -843,7 +863,6 @@ class PersonMeta(_PluginBase):
             下载图片
             """
             try:
-                logger.info(f"正在下载图片：{imageurl} ...")
                 if "doubanio.com" in imageurl:
                     r = RequestUtils(headers={
                         'Referer': "https://movie.douban.com/"
