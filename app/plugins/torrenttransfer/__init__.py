@@ -100,7 +100,7 @@ class TorrentTransfer(_PluginBase):
                 return
             if self._fromdownloader == self._todownloader:
                 logger.error(f"源下载器和目的下载器不能相同")
-                self.systemmessage(f"源下载器和目的下载器不能相同")
+                self.systemmessage.put(f"源下载器和目的下载器不能相同")
                 return
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             if self._cron:
@@ -110,7 +110,7 @@ class TorrentTransfer(_PluginBase):
                                             CronTrigger.from_crontab(self._cron))
                 except Exception as e:
                     logger.error(f"转移做种服务启动失败：{e}")
-                    self.systemmessage(f"转移做种服务启动失败：{e}")
+                    self.systemmessage.put(f"转移做种服务启动失败：{e}")
                     return
             if self._onlyonce:
                 logger.info(f"转移做种服务启动，立即运行一次")
