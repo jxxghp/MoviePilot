@@ -5,6 +5,7 @@ from cachetools import cached, TTLCache
 
 from app import schemas
 from app.chain import ChainBase
+from app.core.config import settings
 from app.schemas import MediaType
 from app.utils.singleton import Singleton
 
@@ -122,5 +123,5 @@ class TmdbChain(ChainBase, metaclass=Singleton):
             while True:
                 info = random.choice(infos)
                 if info and info.get("backdrop_path"):
-                    return f"https://image.tmdb.org/t/p/original{info.get('backdrop_path')}"
+                    return f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.get('backdrop_path')}"
         return None

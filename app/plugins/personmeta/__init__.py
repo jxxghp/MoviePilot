@@ -506,7 +506,7 @@ class PersonMeta(_PluginBase):
                         profile_path = person_tmdbinfo.get('profile_path')
                         if profile_path:
                             logger.info(f"{people.get('Name')} 从TMDB获取到图片：{profile_path}")
-                            profile_path = f"https://image.tmdb.org/t/p/original{profile_path}"
+                            profile_path = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{profile_path}"
 
             # 从豆瓣信息中更新人物信息
             if douban_actors and (not updated_name

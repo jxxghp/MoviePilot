@@ -165,6 +165,10 @@ class TmdbScraper:
             DomUtils.add_node(doc, xactor, "type", "Actor")
             DomUtils.add_node(doc, xactor, "role", actor.get("character") or actor.get("role") or "")
             DomUtils.add_node(doc, xactor, "tmdbid", actor.get("id") or "")
+            DomUtils.add_node(doc, xactor, "thumb",
+                              f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{actor.get('profile_path')}")
+            DomUtils.add_node(doc, xactor, "profile",
+                              f"https://www.themoviedb.org/person/{actor.get('id')}")
         # 风格
         genres = mediainfo.genres or []
         for genre in genres:
@@ -317,6 +321,10 @@ class TmdbScraper:
                 DomUtils.add_node(doc, xactor, "name", actor.get("name") or "")
                 DomUtils.add_node(doc, xactor, "type", "Actor")
                 DomUtils.add_node(doc, xactor, "tmdbid", actor.get("id") or "")
+                DomUtils.add_node(doc, xactor, "thumb",
+                                  f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{actor.get('profile_path')}")
+                DomUtils.add_node(doc, xactor, "profile",
+                                  f"https://www.themoviedb.org/person/{actor.get('id')}")
         # 保存文件
         self.__save_nfo(doc, file_path.with_suffix(".nfo"))
 

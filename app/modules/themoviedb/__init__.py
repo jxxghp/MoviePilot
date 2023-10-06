@@ -345,7 +345,7 @@ class TheMovieDbModule(_ModuleBase):
                 image_path = seasoninfo.get(image_type.value)
 
         if image_path:
-            return f"https://image.tmdb.org/t/p/{image_prefix}{image_path}"
+            return f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/{image_prefix}{image_path}"
         return None
 
     def movie_similar(self, tmdbid: int) -> List[dict]:
