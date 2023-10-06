@@ -16,10 +16,16 @@ router = APIRouter()
 IMAGE_TYPES = [".jpg", ".png", ".gif", ".bmp", ".jpeg", ".webp"]
 
 
-@router.get("/list", summary="所有插件", response_model=List[schemas.FileItem])
-def list_path(path: str, sort: str = 'time', _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.get("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])
+def list_path(path: str,
+              sort: str = 'time',
+              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询当前目录下所有目录和文件
+    :param path: 目录路径
+    :param sort: 排序方式，name:按名称排序，time:按修改时间排序
+    :param _: token
+    :return: 所有目录和文件
     """
     # 返回结果
     ret_items = []
