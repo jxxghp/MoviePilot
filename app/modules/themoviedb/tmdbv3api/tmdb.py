@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+from datetime import datetime
 from functools import lru_cache
 
 import requests
@@ -137,7 +138,11 @@ class TMDb(object):
         os.environ[self.TMDB_CACHE_ENABLED] = str(cache)
 
     @lru_cache(maxsize=REQUEST_CACHE_MAXSIZE)
-    def cached_request(self, method, url, data, json):
+    def cached_request(self, method, url, data, json,
+                       _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        """
+        缓存请求，时间默认1天
+        """
         return self.request(method, url, data, json)
 
     def request(self, method, url, data, json):
