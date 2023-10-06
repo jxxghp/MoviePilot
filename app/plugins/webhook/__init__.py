@@ -152,12 +152,12 @@ class WebHook(_PluginBase):
                 return tuple(__to_dict(list(_event)))
             elif isinstance(_event, set):
                 return set(__to_dict(list(_event)))
-            elif isinstance(_event, frozenset):
-                return frozenset(__to_dict(list(_event)))
+            elif hasattr(_event, 'to_dict'):
+                return __to_dict(_event.to_dict())
+            elif hasattr(_event, '__dict__'):
+                return __to_dict(_event.__dict__)
             elif isinstance(_event, (int, float, str, bool, type(None))):
                 return _event
-            elif hasattr(_event, '__dict__'):
-                return _event.__dict__
             else:
                 return str(_event)
 
