@@ -59,7 +59,8 @@ class RequestUtils:
                                           headers=self._headers,
                                           proxies=self._proxies,
                                           timeout=self._timeout,
-                                          json=json)
+                                          json=json,
+                                          stream=False)
             else:
                 return requests.post(url,
                                      data=data,
@@ -67,7 +68,8 @@ class RequestUtils:
                                      headers=self._headers,
                                      proxies=self._proxies,
                                      timeout=self._timeout,
-                                     json=json)
+                                     json=json,
+                                     stream=False)
         except requests.exceptions.RequestException:
             return None
 
@@ -109,7 +111,8 @@ class RequestUtils:
                                          proxies=self._proxies,
                                          cookies=self._cookies,
                                          timeout=self._timeout,
-                                         allow_redirects=allow_redirects)
+                                         allow_redirects=allow_redirects,
+                                         stream=False)
             else:
                 return requests.get(url,
                                     params=params,
@@ -120,7 +123,8 @@ class RequestUtils:
                                     proxies=self._proxies,
                                     cookies=self._cookies,
                                     timeout=self._timeout,
-                                    allow_redirects=allow_redirects)
+                                    allow_redirects=allow_redirects,
+                                    stream=False)
         except requests.exceptions.RequestException:
             if raise_exception:
                 raise requests.exceptions.RequestException
@@ -129,7 +133,8 @@ class RequestUtils:
     def post_res(self, url: str, data: Any = None, params: dict = None,
                  allow_redirects: bool = True,
                  files: Any = None,
-                 json: dict = None) -> Optional[Response]:
+                 json: dict = None,
+                 raise_exception: bool = False) -> Optional[Response]:
         try:
             if self._session:
                 return self._session.post(url,
@@ -142,7 +147,8 @@ class RequestUtils:
                                           timeout=self._timeout,
                                           allow_redirects=allow_redirects,
                                           files=files,
-                                          json=json)
+                                          json=json,
+                                          stream=False)
             else:
                 return requests.post(url,
                                      data=data,
@@ -154,8 +160,11 @@ class RequestUtils:
                                      timeout=self._timeout,
                                      allow_redirects=allow_redirects,
                                      files=files,
-                                     json=json)
+                                     json=json,
+                                     stream=False)
         except requests.exceptions.RequestException:
+            if raise_exception:
+                raise requests.exceptions.RequestException
             return None
 
     @staticmethod
