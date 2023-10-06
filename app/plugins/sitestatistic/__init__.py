@@ -841,87 +841,88 @@ class SiteStatistic(_PluginBase):
         url = site_info.get("url")
         proxy = site_info.get("proxy")
         ua = site_info.get("ua")
-        session = requests.Session()
-        proxies = settings.PROXY if proxy else None
-        proxy_server = settings.PROXY_SERVER if proxy else None
-        render = site_info.get("render")
+        # 会话管理
+        with requests.Session() as session:
+            proxies = settings.PROXY if proxy else None
+            proxy_server = settings.PROXY_SERVER if proxy else None
+            render = site_info.get("render")
 
-        logger.debug(f"站点 {site_name} url={url} site_cookie={site_cookie} ua={ua}")
-        if render:
-            # 演染模式
-            html_text = PlaywrightHelper().get_page_source(url=url,
-                                                           cookies=site_cookie,
-                                                           ua=ua,
-                                                           proxies=proxy_server)
-        else:
-            # 普通模式
-            res = RequestUtils(cookies=site_cookie,
-                               session=session,
-                               ua=ua,
-                               proxies=proxies
-                               ).get_res(url=url)
-            if res and res.status_code == 200:
-                if re.search(r"charset=\"?utf-8\"?", res.text, re.IGNORECASE):
-                    res.encoding = "utf-8"
-                else:
-                    res.encoding = res.apparent_encoding
-                html_text = res.text
-                # 第一次登录反爬
-                if html_text.find("title") == -1:
-                    i = html_text.find("window.location")
-                    if i == -1:
-                        return None
-                    tmp_url = url + html_text[i:html_text.find(";")] \
-                        .replace("\"", "") \
-                        .replace("+", "") \
-                        .replace(" ", "") \
-                        .replace("window.location=", "")
-                    res = RequestUtils(cookies=site_cookie,
-                                       session=session,
-                                       ua=ua,
-                                       proxies=proxies
-                                       ).get_res(url=tmp_url)
-                    if res and res.status_code == 200:
-                        if "charset=utf-8" in res.text or "charset=UTF-8" in res.text:
-                            res.encoding = "UTF-8"
-                        else:
-                            res.encoding = res.apparent_encoding
-                        html_text = res.text
-                        if not html_text:
-                            return None
-                    else:
-                        logger.error("站点 %s 被反爬限制：%s, 状态码：%s" % (site_name, url, res.status_code))
-                        return None
-
-                # 兼容假首页情况，假首页通常没有 <link rel="search" 属性
-                if '"search"' not in html_text and '"csrf-token"' not in html_text:
-                    res = RequestUtils(cookies=site_cookie,
-                                       session=session,
-                                       ua=ua,
-                                       proxies=proxies
-                                       ).get_res(url=url + "/index.php")
-                    if res and res.status_code == 200:
-                        if re.search(r"charset=\"?utf-8\"?", res.text, re.IGNORECASE):
-                            res.encoding = "utf-8"
-                        else:
-                            res.encoding = res.apparent_encoding
-                        html_text = res.text
-                        if not html_text:
-                            return None
-            elif res is not None:
-                logger.error(f"站点 {site_name} 连接失败，状态码：{res.status_code}")
-                return None
+            logger.debug(f"站点 {site_name} url={url} site_cookie={site_cookie} ua={ua}")
+            if render:
+                # 演染模式
+                html_text = PlaywrightHelper().get_page_source(url=url,
+                                                               cookies=site_cookie,
+                                                               ua=ua,
+                                                               proxies=proxy_server)
             else:
-                logger.error(f"站点 {site_name} 无法访问：{url}")
-                return None
-        # 解析站点类型
-        if html_text:
-            site_schema = self.__build_class(html_text)
-            if not site_schema:
-                logger.error("站点 %s 无法识别站点类型" % site_name)
-                return None
-            return site_schema(site_name, url, site_cookie, html_text, session=session, ua=ua, proxy=proxy)
-        return None
+                # 普通模式
+                res = RequestUtils(cookies=site_cookie,
+                                   session=session,
+                                   ua=ua,
+                                   proxies=proxies
+                                   ).get_res(url=url)
+                if res and res.status_code == 200:
+                    if re.search(r"charset=\"?utf-8\"?", res.text, re.IGNORECASE):
+                        res.encoding = "utf-8"
+                    else:
+                        res.encoding = res.apparent_encoding
+                    html_text = res.text
+                    # 第一次登录反爬
+                    if html_text.find("title") == -1:
+                        i = html_text.find("window.location")
+                        if i == -1:
+                            return None
+                        tmp_url = url + html_text[i:html_text.find(";")] \
+                            .replace("\"", "") \
+                            .replace("+", "") \
+                            .replace(" ", "") \
+                            .replace("window.location=", "")
+                        res = RequestUtils(cookies=site_cookie,
+                                           session=session,
+                                           ua=ua,
+                                           proxies=proxies
+                                           ).get_res(url=tmp_url)
+                        if res and res.status_code == 200:
+                            if "charset=utf-8" in res.text or "charset=UTF-8" in res.text:
+                                res.encoding = "UTF-8"
+                            else:
+                                res.encoding = res.apparent_encoding
+                            html_text = res.text
+                            if not html_text:
+                                return None
+                        else:
+                            logger.error("站点 %s 被反爬限制：%s, 状态码：%s" % (site_name, url, res.status_code))
+                            return None
+
+                    # 兼容假首页情况，假首页通常没有 <link rel="search" 属性
+                    if '"search"' not in html_text and '"csrf-token"' not in html_text:
+                        res = RequestUtils(cookies=site_cookie,
+                                           session=session,
+                                           ua=ua,
+                                           proxies=proxies
+                                           ).get_res(url=url + "/index.php")
+                        if res and res.status_code == 200:
+                            if re.search(r"charset=\"?utf-8\"?", res.text, re.IGNORECASE):
+                                res.encoding = "utf-8"
+                            else:
+                                res.encoding = res.apparent_encoding
+                            html_text = res.text
+                            if not html_text:
+                                return None
+                elif res is not None:
+                    logger.error(f"站点 {site_name} 连接失败，状态码：{res.status_code}")
+                    return None
+                else:
+                    logger.error(f"站点 {site_name} 无法访问：{url}")
+                    return None
+            # 解析站点类型
+            if html_text:
+                site_schema = self.__build_class(html_text)
+                if not site_schema:
+                    logger.error("站点 %s 无法识别站点类型" % site_name)
+                    return None
+                return site_schema(site_name, url, site_cookie, html_text, session=session, ua=ua, proxy=proxy)
+            return None
 
     def refresh_by_domain(self, domain: str) -> schemas.Response:
         """

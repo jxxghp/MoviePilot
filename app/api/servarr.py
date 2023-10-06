@@ -1,7 +1,7 @@
 from typing import Any, List
 
 from fastapi import APIRouter, HTTPException, Depends
-from requests import Session
+from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.media import MediaChain

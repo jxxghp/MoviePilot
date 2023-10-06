@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends
-from requests import Session
+from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.dashboard import DashboardChain

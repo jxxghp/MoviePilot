@@ -146,10 +146,10 @@ class DoubanApi(metaclass=Singleton):
     _api_secret_key = "bf7dddc7c9cfe6f7"
     _api_key = "0dad551ec0f84ed02907ff5c42e8ec70"
     _base_url = "https://frodo.douban.com/api/v2"
-    _session = requests.Session()
+    _session = None
 
     def __init__(self):
-        pass
+        self._session = requests.Session()
 
     @classmethod
     def __sign(cls, url: str, ts: int, method='GET') -> str:
@@ -163,60 +163,94 @@ class DoubanApi(metaclass=Singleton):
             ).digest()
         ).decode()
 
-    @classmethod
     @lru_cache(maxsize=settings.CACHE_CONF.get('douban'))
-    def __invoke(cls, url, **kwargs):
-        req_url = cls._base_url + url
+    def __invoke(self, url, **kwargs):
+        req_url = self._base_url + url
 
-        params = {'apiKey': cls._api_key}
+        params = {'apiKey': self._api_key}
         if kwargs:
             params.update(kwargs)
 
-        ts = params.pop('_ts', int(datetime.strftime(datetime.now(), '%Y%m%d')))
-        params.update({'os_rom': 'android', 'apiKey': cls._api_key, '_ts': ts, '_sig': cls.__sign(url=req_url, ts=ts)})
-
-        resp = RequestUtils(ua=choice(cls._user_agents), session=cls._session).get_res(url=req_url, params=params)
-
+        ts = params.pop(
+            '_ts',
+            int(datetime.strftime(datetime.now(), '%Y%m%d'))
+        )
+        params.update({
+            'os_rom': 'android',
+            'apiKey': self._api_key,
+            '_ts': ts,
+            '_sig': self.__sign(url=req_url, ts=ts)
+        })
+        resp = RequestUtils(
+            ua=choice(self._user_agents),
+            session=self._session
+        ).get_res(url=req_url, params=params)
         return resp.json() if resp else {}
 
-    def search(self, keyword, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["search"], q=keyword, start=start, count=count, _ts=ts)
+    def search(self, keyword, start=0, count=20,
+               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["search"], q=keyword,
+                             start=start, count=count, _ts=ts)
 
-    def movie_search(self, keyword, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["movie_search"], q=keyword, start=start, count=count, _ts=ts)
+    def movie_search(self, keyword, start=0, count=20,
+                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["movie_search"], q=keyword,
+                             start=start, count=count, _ts=ts)
 
-    def tv_search(self, keyword, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["tv_search"], q=keyword, start=start, count=count, _ts=ts)
+    def tv_search(self, keyword, start=0, count=20,
+                  ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["tv_search"], q=keyword,
+                             start=start, count=count, _ts=ts)
 
-    def book_search(self, keyword, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["book_search"], q=keyword, start=start, count=count, _ts=ts)
+    def book_search(self, keyword, start=0, count=20,
+                    ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["book_search"], q=keyword,
+                             start=start, count=count, _ts=ts)
 
-    def group_search(self, keyword, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["group_search"], q=keyword, start=start, count=count, _ts=ts)
+    def group_search(self, keyword, start=0, count=20,
+                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["group_search"], q=keyword,
+                             start=start, count=count, _ts=ts)
 
-    def movie_showing(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["movie_showing"], start=start, count=count, _ts=ts)
+    def movie_showing(self, start=0, count=20,
+                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["movie_showing"],
+                             start=start, count=count, _ts=ts)
 
-    def movie_soon(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["movie_soon"], start=start, count=count, _ts=ts)
+    def movie_soon(self, start=0, count=20,
+                   ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["movie_soon"],
+                             start=start, count=count, _ts=ts)
 
-    def movie_hot_gaia(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["movie_hot_gaia"], start=start, count=count, _ts=ts)
+    def movie_hot_gaia(self, start=0, count=20,
+                       ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["movie_hot_gaia"],
+                             start=start, count=count, _ts=ts)
 
-    def tv_hot(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["tv_hot"], start=start, count=count, _ts=ts)
+    def tv_hot(self, start=0, count=20,
+               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["tv_hot"],
+                             start=start, count=count, _ts=ts)
 
-    def tv_animation(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["tv_animation"], start=start, count=count, _ts=ts)
+    def tv_animation(self, start=0, count=20,
+                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["tv_animation"],
+                             start=start, count=count, _ts=ts)
 
-    def tv_variety_show(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["tv_variety_show"], start=start, count=count, _ts=ts)
+    def tv_variety_show(self, start=0, count=20,
+                        ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["tv_variety_show"],
+                             start=start, count=count, _ts=ts)
 
-    def tv_rank_list(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["tv_rank_list"], start=start, count=count, _ts=ts)
+    def tv_rank_list(self, start=0, count=20,
+                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["tv_rank_list"],
+                             start=start, count=count, _ts=ts)
 
-    def show_hot(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["show_hot"], start=start, count=count, _ts=ts)
+    def show_hot(self, start=0, count=20,
+                 ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["show_hot"],
+                             start=start, count=count, _ts=ts)
 
     def movie_detail(self, subject_id):
         return self.__invoke(self._urls["movie_detail"] + subject_id)
@@ -233,20 +267,30 @@ class DoubanApi(metaclass=Singleton):
     def book_detail(self, subject_id):
         return self.__invoke(self._urls["book_detail"] + subject_id)
 
-    def movie_top250(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["movie_top250"], start=start, count=count, _ts=ts)
+    def movie_top250(self, start=0, count=20,
+                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["movie_top250"],
+                             start=start, count=count, _ts=ts)
 
-    def movie_recommend(self, tags='', sort='R', start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["movie_recommend"], tags=tags, sort=sort, start=start, count=count, _ts=ts)
+    def movie_recommend(self, tags='', sort='R', start=0, count=20,
+                        ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["movie_recommend"], tags=tags, sort=sort,
+                             start=start, count=count, _ts=ts)
 
-    def tv_recommend(self, tags='', sort='R', start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["tv_recommend"], tags=tags, sort=sort, start=start, count=count, _ts=ts)
+    def tv_recommend(self, tags='', sort='R', start=0, count=20,
+                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["tv_recommend"], tags=tags, sort=sort,
+                             start=start, count=count, _ts=ts)
 
-    def tv_chinese_best_weekly(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["tv_chinese_best_weekly"], start=start, count=count, _ts=ts)
+    def tv_chinese_best_weekly(self, start=0, count=20,
+                               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["tv_chinese_best_weekly"],
+                             start=start, count=count, _ts=ts)
 
-    def tv_global_best_weekly(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
-        return self.__invoke(self._urls["tv_global_best_weekly"], start=start, count=count, _ts=ts)
+    def tv_global_best_weekly(self, start=0, count=20,
+                              ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["tv_global_best_weekly"],
+                             start=start, count=count, _ts=ts)
 
     def doulist_detail(self, subject_id):
         """
@@ -255,7 +299,8 @@ class DoubanApi(metaclass=Singleton):
         """
         return self.__invoke(self._urls["doulist"] + subject_id)
 
-    def doulist_items(self, subject_id, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+    def doulist_items(self, subject_id, start=0, count=20,
+                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         豆列列表
         :param subject_id: 豆列id
@@ -263,4 +308,9 @@ class DoubanApi(metaclass=Singleton):
         :param count: 数量
         :param ts: 时间戳
         """
-        return self.__invoke(self._urls["doulist_items"] % subject_id, start=start, count=count, _ts=ts)
+        return self.__invoke(self._urls["doulist_items"] % subject_id,
+                             start=start, count=count, _ts=ts)
+
+    def __del__(self):
+        if self._session:
+            self._session.close()

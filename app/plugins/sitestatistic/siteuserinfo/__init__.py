@@ -6,7 +6,6 @@ from enum import Enum
 from typing import Optional
 from urllib.parse import urljoin, urlsplit
 
-import requests
 from requests import Session
 
 from app.core.config import settings
@@ -107,7 +106,7 @@ class ISiteUserInfo(metaclass=ABCMeta):
         self._base_url = f"{split_url.scheme}://{split_url.netloc}"
         self._site_cookie = site_cookie
         self._index_html = index_html
-        self._session = session if session else requests.Session()
+        self._session = session if session else None
         self._ua = ua
 
         self._emulate = emulate

@@ -3,7 +3,7 @@ import re
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
 
-from requests import Session
+from sqlalchemy.orm import Session
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain

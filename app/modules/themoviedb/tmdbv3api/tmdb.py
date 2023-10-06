@@ -26,12 +26,14 @@ class TMDb(object):
     REQUEST_CACHE_MAXSIZE = None
 
     _req = None
+    _session = None
 
     def __init__(self, obj_cached=True, session=None):
         if session is not None:
             self._req = RequestUtils(session=session, proxies=self.proxies)
         else:
-            self._req = RequestUtils(session=requests.Session(), proxies=self.proxies)
+            self._session = requests.Session()
+            self._req = RequestUtils(session=self._session, proxies=self.proxies)
         self._remaining = 40
         self._reset = None
         self._timeout = 15
@@ -208,3 +210,7 @@ class TMDb(object):
         if key:
             return json.get(key)
         return json
+
+    def __del__(self):
+        if self._session:
+            self._session.close()
