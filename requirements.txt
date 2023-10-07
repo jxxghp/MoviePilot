@@ -42,6 +42,7 @@ chardet~=4.0.0
 starlette~=0.27.0
 PyVirtualDisplay~=3.0
 psutil~=5.9.4
+python_dotenv~=1.0.0
 python_hosts~=1.0.3
 watchdog~=3.0.0
 tailer~=0.4.1
