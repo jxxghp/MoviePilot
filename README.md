@@ -41,9 +41,11 @@ docker pull jxxghp/moviepilot:latest
 
 ## 配置
 
-项目的所有配置均通过环境变量进行设置，部分环境建立容器后会自动显示待配置项，如未自动显示配置项则需要手动增加对应环境变量。
+项目的所有配置均通过环境变量进行设置，支持两种配置方式：
+1. 在docker环境变量部分进行参数配置，部分环境建立容器后会自动显示待配置项，如未自动显示配置项则需要手动增加对应环境变量。
+2. 下载 [app.env](https://github.com/jxxghp/MoviePilot/raw/main/config/app.env) 文件，修改好配置后放置到配置文件映射路径根目录，配置项可根据说明自主增减。
 
-配置文件映射路径：`/config`
+配置文件映射路径：`/config`，配置项生效优先级：环境变量 > env文件 > 默认值
 
 ### 1. **基础设置**
 
@@ -63,7 +65,7 @@ docker pull jxxghp/moviepilot:latest
 - **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录，不设置则下载到`DOWNLOAD_PATH`
 - **DOWNLOAD_TV_PATH：** 电视剧下载保存目录，不设置则下载到`DOWNLOAD_PATH`
 - **DOWNLOAD_ANIME_PATH：** 动漫下载保存目录，不设置则下载到`DOWNLOAD_PATH`
-- **DOWNLOAD_CATEGORY：** 下载二级分类开关，`true`/`false`，默认`false`，开启后会根据配置`category.yaml`自动在下载目录下建立二级目录分类
+- **DOWNLOAD_CATEGORY：** 下载二级分类开关，`true`/`false`，默认`false`，开启后会根据配置 [category.yaml](https://github.com/jxxghp/MoviePilot/raw/main/config/category.yaml) 自动在下载目录下建立二级目录分类
 - **DOWNLOAD_SUBTITLE：** 下载站点字幕，`true`/`false`，默认`true`
 - **REFRESH_MEDIASERVER：** 入库刷新媒体库，`true`/`false`，默认`true`
 - **SCRAP_METADATA：** 刮削入库的媒体文件，`true`/`false`，默认`true`
@@ -73,7 +75,7 @@ docker pull jxxghp/moviepilot:latest
 - **LIBRARY_MOVIE_NAME：** 电影媒体库目录名，默认`电影`
 - **LIBRARY_TV_NAME：** 电视剧媒体库目录名，默认`电视剧`
 - **LIBRARY_ANIME_NAME：** 动漫媒体库目录名，默认`电视剧/动漫`
-- **LIBRARY_CATEGORY：** 媒体库二级分类开关，`true`/`false`，默认`false`，开启后会根据配置`category.yaml`自动在媒体库目录下建立二级目录分类
+- **LIBRARY_CATEGORY：** 媒体库二级分类开关，`true`/`false`，默认`false`，开启后会根据配置 [category.yaml](https://github.com/jxxghp/MoviePilot/raw/main/config/category.yaml) 自动在媒体库目录下建立二级目录分类
 - **TRANSFER_TYPE：** 转移方式，支持`link`/`copy`/`move`/`softlink`  **注意：在`link`和`softlink`转移方式下，转移后的文件会继承源文件的权限掩码，不受`UMASK`影响**
 - **COOKIECLOUD_HOST：** CookieCloud服务器地址，格式：`http(s)://ip:port`，不配置默认使用内建服务器`https://movie-pilot.org/cookiecloud`
 - **COOKIECLOUD_KEY：** CookieCloud用户KEY

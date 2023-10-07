@@ -268,8 +268,8 @@ class Settings(BaseSettings):
             return [Path(path) for path in self.LIBRARY_PATH.split(",")]
         return []
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         with self.CONFIG_PATH as p:
             if not p.exists():
                 p.mkdir(parents=True, exist_ok=True)
@@ -281,6 +281,8 @@ class Settings(BaseSettings):
                 p.mkdir(parents=True, exist_ok=True)
 
     class Config:
+        env_file = "/config/app.env"
+        env_file_encoding = "utf-8"
         case_sensitive = True
 
 
