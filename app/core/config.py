@@ -6,11 +6,6 @@ from typing import List
 from dotenv import load_dotenv
 from pydantic import BaseSettings
 
-load_dotenv(
-    dotenv_path=Path(os.environ.get("CONFIG_DIR", "/config")) / "app.env",
-    encoding="utf-8"
-)
-
 
 class Settings(BaseSettings):
     # 项目名称
