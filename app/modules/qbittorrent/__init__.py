@@ -225,6 +225,8 @@ class QbittorrentModule(_ModuleBase):
         """
         # 调用Qbittorrent API查询实时信息
         info = self.qbittorrent.transfer_info()
+        if not info:
+            return schemas.DownloaderInfo()
         return schemas.DownloaderInfo(
             download_speed=info.get("dl_info_speed"),
             upload_speed=info.get("up_info_speed"),

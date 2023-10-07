@@ -45,7 +45,7 @@ docker pull jxxghp/moviepilot:latest
 1. 在docker环境变量部分进行参数配置，部分环境建立容器后会自动显示待配置项，如未自动显示配置项则需要手动增加对应环境变量。
 2. 下载 [app.env](https://github.com/jxxghp/MoviePilot/raw/main/config/app.env) 文件，修改好配置后放置到配置文件映射路径根目录，配置项可根据说明自主增减。
 
-配置文件映射路径：`/config`，配置项生效优先级：环境变量 > env文件 > 默认值
+配置文件映射路径：`/config`，配置项生效优先级：环境变量 > env文件 > 默认值，部分参数如路径映射、站点认证等必须通过环境变量进行配置。
 
 ### 1. **基础设置**
 
@@ -158,9 +158,9 @@ docker pull jxxghp/moviepilot:latest
 
 ### 2. **用户认证**
 
-- **AUTH_SITE：** 认证站点，支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`/`xingtan`
+`MoviePilot`需要认证后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数（**仅能通过docker环境变量配置**）
 
-`MoviePilot`需要认证后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数。
+- **AUTH_SITE：** 认证站点，支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`/`xingtan`
 
 |      站点      |                          参数                           |
 |:------------:|:-----------------------------------------------------:|

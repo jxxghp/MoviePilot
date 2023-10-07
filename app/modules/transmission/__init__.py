@@ -211,6 +211,8 @@ class TransmissionModule(_ModuleBase):
         下载器信息
         """
         info = self.transmission.transfer_info()
+        if not info:
+            return schemas.DownloaderInfo()
         return schemas.DownloaderInfo(
             download_speed=info.download_speed,
             upload_speed=info.upload_speed,
