@@ -3,36 +3,12 @@ ARG MOVIEPILOT_VERSION
 ENV LANG="C.UTF-8" \
     HOME="/moviepilot" \
     TERM="xterm" \
-    TZ="Asia/Shanghai" \
     PUID=0 \
     PGID=0 \
     UMASK=000 \
     MOVIEPILOT_AUTO_UPDATE=true \
     MOVIEPILOT_AUTO_UPDATE_DEV=false \
-    PORT=3001 \
-    NGINX_PORT=3000 \
-    CONFIG_DIR="/config" \
-    API_TOKEN="moviepilot" \
-    AUTH_SITE="iyuu" \
-    DOWNLOAD_PATH="/downloads" \
-    DOWNLOAD_CATEGORY="false" \
-    TORRENT_TAG="MOVIEPILOT" \
-    LIBRARY_PATH="" \
-    LIBRARY_CATEGORY="false" \
-    TRANSFER_TYPE="copy" \
-    COOKIECLOUD_HOST="https://movie-pilot.org/cookiecloud" \
-    COOKIECLOUD_KEY="" \
-    COOKIECLOUD_PASSWORD="" \
-    MESSAGER="telegram" \
-    TELEGRAM_TOKEN="" \
-    TELEGRAM_CHAT_ID="" \
-    DOWNLOADER="qbittorrent" \
-    QB_HOST="127.0.0.1:8080" \
-    QB_USER="admin" \
-    QB_PASSWORD="adminadmin" \
-    MEDIASERVER="emby" \
-    EMBY_HOST="http://127.0.0.1:8096" \
-    EMBY_API_KEY=""
+    CONFIG_DIR="/config"
 WORKDIR "/app"
 RUN apt-get update -y \
     && apt-get -y install \
