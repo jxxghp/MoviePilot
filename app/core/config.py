@@ -1,8 +1,15 @@
+import os
 import secrets
 from pathlib import Path
 from typing import List
 
+from dotenv import load_dotenv
 from pydantic import BaseSettings
+
+load_dotenv(
+    dotenv_path=Path(os.environ.get("CONFIG_DIR", "/config")) / "app.env",
+    encoding="utf-8"
+)
 
 
 class Settings(BaseSettings):
@@ -285,6 +292,6 @@ class Settings(BaseSettings):
 
 
 settings = Settings(
-    _env_file="/config/app.env",
+    _env_file=Path(os.environ.get("CONFIG_DIR", "/config")) / "app.env",
     _env_file_encoding="utf-8"
 )
