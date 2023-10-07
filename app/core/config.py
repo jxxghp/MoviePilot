@@ -285,6 +285,6 @@ class Settings(BaseSettings):
 
 
 settings = Settings(
-    _env_file=Settings().CONFIG_PATH / "app.env",
+    _env_file="/config/app.env",
     _env_file_encoding="utf-8"
 )
