@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # 是否开发模式
     DEV: bool = False
     # 配置文件目录
-    CONFIG_DIR: str = None
+    CONFIG_DIR: str = "/config"
     # 超级管理员
     SUPERUSER: str = "admin"
     # 超级管理员初始密码
@@ -281,9 +281,10 @@ class Settings(BaseSettings):
                 p.mkdir(parents=True, exist_ok=True)
 
     class Config:
-        env_file = "/config/app.env"
-        env_file_encoding = "utf-8"
         case_sensitive = True
 
 
-settings = Settings()
+settings = Settings(
+    _env_file=Settings().CONFIG_PATH / "app.env",
+    _env_file_encoding="utf-8"
+)
