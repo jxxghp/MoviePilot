@@ -473,8 +473,8 @@ class Emby(metaclass=Singleton):
                 return None
         # 查找需要刷新的媒体库ID
         item_path = Path(item.target_path)
+        # 匹配子目录
         for folder in self.folders:
-            # 匹配子目录
             for subfolder in folder.get("SubFolders"):
                 try:
                     # 匹配子目录
@@ -483,7 +483,8 @@ class Emby(metaclass=Singleton):
                         return folder.get("Id")
                 except Exception as err:
                     print(str(err))
-            # 如果找不到，只要路径中有分类目录名就命中
+        # 如果找不到，只要路径中有分类目录名就命中
+        for folder in self.folders:
             for subfolder in folder.get("SubFolders"):
                 if subfolder.get("Path") and re.search(r"[/\\]%s" % item.category,
                                                        subfolder.get("Path")):
