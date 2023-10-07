@@ -622,8 +622,9 @@ class TransferChain(ChainBase):
         if not path.exists():
             return
         if path.is_file():
-            # 删除文件、nfo、jpg
-            files = glob.glob(f"{Path(path.parent).joinpath(path.stem)}*")
+            # 删除文件、nfo、jpg等同名文件
+            pattern = path.stem.replace('[', '?').replace(']', '?')
+            files = path.parent.glob(f"{pattern}.*")
             for file in files:
                 Path(file).unlink()
             logger.warn(f"文件 {path} 已删除")

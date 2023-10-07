@@ -11,6 +11,7 @@ from app.chain import ChainBase
 from app.chain.cookiecloud import CookieCloudChain
 from app.chain.mediaserver import MediaServerChain
 from app.chain.subscribe import SubscribeChain
+from app.chain.tmdb import TmdbChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.db import SessionFactory
@@ -182,6 +183,14 @@ class Scheduler(metaclass=Singleton):
                     'job_id': 'transfer'
                 }
             )
+
+        # 后台刷新TMDB壁纸
+        self._scheduler.add_job(
+            TmdbChain(self._db).get_random_wallpager,
+            "interval",
+            minutes=30,
+            next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=3)
+        )
 
         # 公共定时服务
         self._scheduler.add_job(
