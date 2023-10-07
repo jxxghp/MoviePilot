@@ -1882,7 +1882,7 @@ class BrushFlow(_PluginBase):
             pubdate = pubdate.replace("T", " ").replace("Z", "")
             pubdate = datetime.strptime(pubdate, "%Y-%m-%d %H:%M:%S")
             now = datetime.now()
-            return (now - pubdate).seconds // 60
+            return (now - pubdate).total_seconds() // 60
         except Exception as e:
             print(str(e))
             return 0
