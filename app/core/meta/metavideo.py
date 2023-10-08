@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 
 from app.core.config import settings
+from app.core.meta.customization import CustomizationMatcher
 from app.core.meta.metabase import MetaBase
 from app.core.meta.releasegroup import ReleaseGroupsMatcher
 from app.utils.string import StringUtils
@@ -130,6 +131,8 @@ class MetaVideo(MetaBase):
             self.part = None
         # 制作组/字幕组
         self.resource_team = ReleaseGroupsMatcher().match(title=original_title) or None
+        # 自定义占位符
+        self.customization = CustomizationMatcher().match(title=original_title) or None
 
     def __fix_name(self, name: str):
         if not name:

@@ -51,6 +51,8 @@ class MetaBase(object):
     resource_pix: Optional[str] = None
     # 识别的制作组/字幕组
     resource_team: Optional[str] = None
+    # 识别的自定义占位符
+    customization: Optional[str] = None
     # 视频编码
     video_encode: Optional[str] = None
     # 音频编码
@@ -492,6 +494,9 @@ class MetaBase(object):
         # 制作组/字幕组
         if not self.resource_team:
             self.resource_team = meta.resource_team
+        # 自定义占位符
+        if not self.customization:
+            self.customization = meta.customization
         # 特效
         if not self.resource_effect:
             self.resource_effect = meta.resource_effect

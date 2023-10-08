@@ -197,6 +197,7 @@ docker pull jxxghp/moviepilot:latest
 > `edition`： 版本（资源类型+特效）  
 > `videoFormat`： 分辨率  
 > `releaseGroup`： 制作组/字幕组  
+> `customization`： 自定义占位符  
 > `videoCodec`： 视频编码  
 > `audioCodec`： 音频编码  
 > `tmdbid`： TMDBID  

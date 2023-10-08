@@ -58,6 +58,8 @@ class SystemConfigKey(Enum):
     NotificationChannels = "NotificationChannels"
     # 自定义制作组/字幕组
     CustomReleaseGroups = "CustomReleaseGroups"
+    # 自定义占位符
+    Customization = "Customization"
     # 自定义识别词
     CustomIdentifiers = "CustomIdentifiers"
     # 搜索优先级规则
