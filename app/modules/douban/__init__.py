@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
@@ -10,6 +11,7 @@ from app.modules import _ModuleBase
 from app.modules.douban.apiv2 import DoubanApi
 from app.modules.douban.scraper import DoubanScraper
 from app.schemas.types import MediaType
+from app.utils.common import retry
 from app.utils.system import SystemUtils
 
 
@@ -393,6 +395,7 @@ class DoubanModule(_ModuleBase):
 
         return ret_medias
 
+    @retry(Exception, 5, 3, 3, logger=logger)
     def match_doubaninfo(self, name: str, mtype: str = None,
                          year: str = None, season: int = None) -> dict:
         """
@@ -402,9 +405,15 @@ class DoubanModule(_ModuleBase):
         :param year:  年份
         :param season:  季号
         """
-        result = self.doubanapi.search(f"{name} {year or ''}".strip())
+        result = self.doubanapi.search(f"{name} {year or ''}".strip(),
+                                       ts=datetime.strftime(datetime.now(), '%Y%m%d%H%M%S'))
         if not result:
+            logger.warn(f"未找到 {name} 的豆瓣信息")
             return {}
+        # 触发rate limit
+        if "search_access_rate_limit" in result.values():
+            logger.warn(f"触发豆瓣API速率限制 错误信息 {result} ...")
+            raise Exception("触发豆瓣API速率限制")
         for item_obj in result.get("items"):
             type_name = item_obj.get("type_name")
             if type_name not in [MediaType.TV.value, MediaType.MOVIE.value]:
