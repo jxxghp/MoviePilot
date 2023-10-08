@@ -30,7 +30,7 @@ class CustomizationMatcher(metaclass=Singleton):
             if not customization:
                 return ""
             if isinstance(customization, str):
-                customization = customization.replace("\n", ";").strip(";").split(";")
+                customization = customization.replace("\n", ";").replace("|", ";").strip(";").split(";")
             self.customization = "|".join([f"({item})" for item in customization])
 
         customization_re = re.compile(r"%s" % self.customization)
