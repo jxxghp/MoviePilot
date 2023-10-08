@@ -173,7 +173,7 @@ class DoubanApi(metaclass=Singleton):
 
         ts = params.pop(
             '_ts',
-            int(datetime.strftime(datetime.now(), '%Y%m%d'))
+            datetime.strftime(datetime.now(), '%Y%m%d')
         )
         params.update({
             'os_rom': 'android',
@@ -185,6 +185,8 @@ class DoubanApi(metaclass=Singleton):
             ua=choice(self._user_agents),
             session=self._session
         ).get_res(url=req_url, params=params)
+        if resp.status_code == 400 and "rate_limit" in resp.text:
+            return resp.json()
         return resp.json() if resp else {}
 
     def search(self, keyword, start=0, count=20,

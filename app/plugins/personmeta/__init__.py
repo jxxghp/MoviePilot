@@ -307,11 +307,55 @@ class PersonMeta(_PluginBase):
                 logger.info(f"媒体库 {library.name} 的演员信息刮削完成")
             logger.info(f"服务器 {server} 的演员信息刮削完成")
 
+    def __update_peoples(self, server: str, itemid: str, iteminfo: dict, douban_actors):
+        # 处理媒体项中的人物信息
+        """
+        "People": [
+            {
+              "Name": "丹尼尔·克雷格",
+              "Id": "33625",
+              "Role": "James Bond",
+              "Type": "Actor",
+              "PrimaryImageTag": "bef4f764540f10577f804201d8d27918"
+            }
+        ]
+        """
+        peoples = []
+        # 更新当前媒体项人物
+        for people in iteminfo["People"]:
+            if not people.get("Name"):
+                continue
+            if StringUtils.is_chinese(people.get("Name")):
+                peoples.append(people)
+                continue
+            if self._event.is_set():
+                logger.info(f"演职人员刮削服务停止")
+                return
+            info = self.__update_people(server=server, people=people,
+                                        douban_actors=douban_actors)
+            if info:
+                peoples.append(info)
+            elif not self._remove_nozh:
+                peoples.append(people)
+        # 保存媒体项信息
+        if peoples:
+            iteminfo["People"] = peoples
+            self.set_iteminfo(server=server, itemid=itemid, iteminfo=iteminfo)
+
     def __update_item(self, server: str, item: MediaServerItem,
                       mediainfo: MediaInfo = None, season: int = None):
         """
         更新媒体服务器中的条目
         """
+
+        def __need_trans_actor(_item):
+            # 是否需要处理人物信息
+            _peoples = [x for x in _item.get("People", []) if
+                        x.get("Name") and not StringUtils.is_chinese(x.get("Name"))]
+            if _peoples:
+                return True
+            return False
+
         # 识别媒体信息
         if not mediainfo:
             if not item.tmdbid:
@@ -323,49 +367,19 @@ class PersonMeta(_PluginBase):
                 logger.warn(f"{item.title} 未识别到媒体信息")
                 return
 
-        # 获取豆瓣演员信息
-        douban_actors = self.__get_douban_actors(mediainfo=mediainfo, season=season)
-
         # 获取媒体项
         iteminfo = self.get_iteminfo(server=server, itemid=item.item_id)
         if not iteminfo:
             logger.warn(f"{item.title} 未找到媒体项")
             return
 
-        # 处理媒体项中的人物信息
-        if iteminfo.get("People"):
-            """
-            "People": [
-                {
-                  "Name": "丹尼尔·克雷格",
-                  "Id": "33625",
-                  "Role": "James Bond",
-                  "Type": "Actor",
-                  "PrimaryImageTag": "bef4f764540f10577f804201d8d27918"
-                }
-            ]
-            """
-            peoples = []
-            # 更新当前媒体项人物
-            for people in iteminfo["People"]:
-                if not people.get("Name"):
-                    continue
-                if StringUtils.is_chinese(people.get("Name")):
-                    peoples.append(people)
-                    continue
-                if self._event.is_set():
-                    logger.info(f"演职人员刮削服务停止")
-                    return
-                info = self.__update_people(server=server, people=people,
-                                            douban_actors=douban_actors)
-                if info:
-                    peoples.append(info)
-                elif not self._remove_nozh:
-                    peoples.append(people)
-            # 保存媒体项信息
-            if peoples:
-                iteminfo["People"] = peoples
-                self.set_iteminfo(server=server, itemid=item.item_id, iteminfo=iteminfo)
+        if __need_trans_actor(iteminfo):
+            # 获取豆瓣演员信息
+            logger.info(f"开始获取 {item.title} 的豆瓣演员信息 ...")
+            douban_actors = self.__get_douban_actors(mediainfo=mediainfo, season=season)
+            self.__update_peoples(server=server, itemid=item.item_id, iteminfo=iteminfo, douban_actors=douban_actors)
+        else:
+            logger.info(f"{item.title} 的人物信息已是中文，无需更新")
 
         # 处理季和集人物
         if iteminfo.get("Type") and "Series" in iteminfo["Type"]:
@@ -383,31 +397,14 @@ class PersonMeta(_PluginBase):
                     if not seasoninfo:
                         logger.warn(f"{item.title} 未找到季媒体项：{season.get('Id')}")
                         continue
-                    # 更新季媒体项人物
-                    peoples = []
-                    if seasoninfo.get("People"):
-                        logger.info(f"开始更新季 {seasoninfo.get('Id')} 的人物信息 ...")
-                        for people in seasoninfo["People"]:
-                            if not people.get("Name"):
-                                continue
-                            if StringUtils.is_chinese(people.get("Name")):
-                                peoples.append(people)
-                                continue
-                            if self._event.is_set():
-                                logger.info(f"演职人员刮削服务停止")
-                                return
-                            # 更新人物信息
-                            info = self.__update_people(server=server, people=people,
-                                                        douban_actors=season_actors)
-                            if info:
-                                peoples.append(info)
-                            elif not self._remove_nozh:
-                                peoples.append(people)
-                        # 保存季媒体项信息
-                        if peoples:
-                            seasoninfo["People"] = peoples
-                            self.set_iteminfo(server=server, itemid=season.get("Id"), iteminfo=seasoninfo)
+
+                    if __need_trans_actor(seasoninfo):
+                        # 更新季媒体项人物
+                        self.__update_peoples(server=server, itemid=season.get("Id"), iteminfo=seasoninfo,
+                                              douban_actors=season_actors)
                         logger.info(f"季 {seasoninfo.get('Id')} 的人物信息更新完成")
+                    else:
+                        logger.info(f"季 {seasoninfo.get('Id')} 的人物信息已是中文，无需更新")
                 # 获取集媒体项
                 episodes = self.get_items(server=server, parentid=season.get("Id"), mtype="Episode")
                 if not episodes:
@@ -420,31 +417,13 @@ class PersonMeta(_PluginBase):
                     if not episodeinfo:
                         logger.warn(f"{item.title} 未找到集媒体项：{episode.get('Id')}")
                         continue
-                    # 更新集媒体项人物
-                    if episodeinfo.get("People"):
-                        logger.info(f"开始更新集 {episodeinfo.get('Id')} 的人物信息 ...")
-                        peoples = []
-                        for people in episodeinfo["People"]:
-                            if not people.get("Name"):
-                                continue
-                            if StringUtils.is_chinese(people.get("Name")):
-                                peoples.append(people)
-                                continue
-                            if self._event.is_set():
-                                logger.info(f"演职人员刮削服务停止")
-                                return
-                            # 更新人物信息
-                            info = self.__update_people(server=server, people=people,
-                                                        douban_actors=season_actors)
-                            if info:
-                                peoples.append(info)
-                            elif not self._remove_nozh:
-                                peoples.append(people)
-                        # 保存集媒体项信息
-                        if peoples:
-                            episodeinfo["People"] = peoples
-                            self.set_iteminfo(server=server, itemid=episode.get("Id"), iteminfo=episodeinfo)
+                    if __need_trans_actor(episodeinfo):
+                        # 更新集媒体项人物
+                        self.__update_peoples(server=server, itemid=episode.get("Id"), iteminfo=episodeinfo,
+                                              douban_actors=season_actors)
                         logger.info(f"集 {episodeinfo.get('Id')} 的人物信息更新完成")
+                    else:
+                        logger.info(f"集 {episodeinfo.get('Id')} 的人物信息已是中文，无需更新")
 
     def __update_people(self, server: str, people: dict, douban_actors: list = None) -> Optional[dict]:
         """
@@ -587,6 +566,8 @@ class PersonMeta(_PluginBase):
         if doubaninfo:
             doubanitem = self.chain.douban_info(doubaninfo.get("id")) or {}
             return (doubanitem.get("actors") or []) + (doubanitem.get("directors") or [])
+        else:
+            logger.warn(f"未找到豆瓣信息：{mediainfo.title_year}")
         return []
 
     @staticmethod
