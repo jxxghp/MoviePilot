@@ -47,19 +47,21 @@ docker pull jxxghp/moviepilot:latest
 
 配置文件映射路径：`/config`，配置项生效优先级：环境变量 > env文件 > 默认值，部分参数如路径映射、站点认证、权限端口等必须通过环境变量进行配置。
 
+> <font color="red">*</font> 号标识的为必填项，其它为可选项，可选项可删除配置变量从而使用默认值。
+
 ### 1. **基础设置**
 
+- **NGINX_PORT<font color="red">*</font>：** WEB服务端口，默认`3000`，可自行修改，不能与API服务端口冲突（仅支持环境变量配置）
+- **PORT<font color="red">*</font>：** API服务端口，默认`3001`，可自行修改，不能与WEB服务端口冲突（仅支持环境变量配置）
 - **PUID**：运行程序用户的`uid`，默认`0`（仅支持环境变量配置）
 - **PGID**：运行程序用户的`gid`，默认`0`（仅支持环境变量配置）
 - **UMASK**：掩码权限，默认`000`，可以考虑设置为`022`（仅支持环境变量配置）
 - **MOVIEPILOT_AUTO_UPDATE**：重启更新，`true`/`false`，默认`true` **注意：如果出现网络问题可以配置`PROXY_HOST`，具体看下方`PROXY_HOST`解释**（仅支持环境变量配置）
 - **MOVIEPILOT_AUTO_UPDATE_DEV**：重启时更新到未发布的开发版本代码，`true`/`false`，默认`false`（仅支持环境变量配置）
-- **NGINX_PORT：** WEB服务端口，默认`3000`，可自行修改，不能与API服务端口冲突（仅支持环境变量配置）
-- **PORT：** API服务端口，默认`3001`，可自行修改，不能与WEB服务端口冲突（仅支持环境变量配置）
 ---
-- **SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
-- **SUPERUSER_PASSWORD：** 超级管理员初始密码，默认`password`，建议修改为复杂密码
-- **API_TOKEN：** API密钥，默认`moviepilot`，在媒体服务器Webhook、微信回调等地址配置中需要加上`?token=`该值，建议修改为复杂字符串
+- **SUPERUSER<font color="red">*</font>：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
+- **SUPERUSER_PASSWORD<font color="red">*</font>：** 超级管理员初始密码，默认`password`，建议修改为复杂密码
+- **API_TOKEN<font color="red">*</font>：** API密钥，默认`moviepilot`，在媒体服务器Webhook、微信回调等地址配置中需要加上`?token=`该值，建议修改为复杂字符串
 - **PROXY_HOST：** 网络代理（可选），访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`或其它中转代理服务地址，能连通即可
 - **TMDB_IMAGE_DOMAIN：** TMDB图片地址，默认`image.tmdb.org`，可配置为其它中转代理以加速TMDB图片显示，如：`static-mdb.v.geilijiasu.com`
@@ -68,18 +70,18 @@ docker pull jxxghp/moviepilot:latest
 - **SCRAP_SOURCE：** 刮削元数据及图片使用的数据源，`themoviedb`/`douban`，默认`themoviedb`
 - **SCRAP_FOLLOW_TMDB：** 新增已入库媒体是否跟随TMDB信息变化，`true`/`false`，默认`true`
 ---
-- **TRANSFER_TYPE：** 整理转移方式，支持`link`/`copy`/`move`/`softlink`  **注意：在`link`和`softlink`转移方式下，转移后的文件会继承源文件的权限掩码，不受`UMASK`影响**
-- **LIBRARY_PATH：** 媒体库目录，多个目录使用`,`分隔
-- **LIBRARY_MOVIE_NAME：** 电影媒体库目录名，默认`电影`
-- **LIBRARY_TV_NAME：** 电视剧媒体库目录名，默认`电视剧`
-- **LIBRARY_ANIME_NAME：** 动漫媒体库目录名，默认`电视剧/动漫`
+- **TRANSFER_TYPE<font color="red">*</font>：** 整理转移方式，支持`link`/`copy`/`move`/`softlink`  **注意：在`link`和`softlink`转移方式下，转移后的文件会继承源文件的权限掩码，不受`UMASK`影响**
+- **LIBRARY_PATH<font color="red">*</font>：** 媒体库目录，多个目录使用`,`分隔
+- **LIBRARY_MOVIE_NAME：** 电影媒体库目录名称（不是完整路径），默认`电影`
+- **LIBRARY_TV_NAME：** 电视剧媒体库目录称（不是完整路径），默认`电视剧`
+- **LIBRARY_ANIME_NAME：** 动漫媒体库目录称（不是完整路径），默认`电视剧/动漫`
 - **LIBRARY_CATEGORY：** 媒体库二级分类开关，`true`/`false`，默认`false`，开启后会根据配置 [category.yaml](https://github.com/jxxghp/MoviePilot/raw/main/config/category.yaml) 自动在媒体库目录下建立二级目录分类
 ---
-- **COOKIECLOUD_HOST：** CookieCloud服务器地址，格式：`http(s)://ip:port`，不配置默认使用内建服务器`https://movie-pilot.org/cookiecloud`
-- **COOKIECLOUD_KEY：** CookieCloud用户KEY
-- **COOKIECLOUD_PASSWORD：** CookieCloud端对端加密密码
-- **COOKIECLOUD_INTERVAL：** CookieCloud同步间隔（分钟）
-- **USER_AGENT：** CookieCloud对应的浏览器UA，可选，设置后可增加连接站点的成功率，同步站点后可以在管理界面中修改
+- **COOKIECLOUD_HOST<font color="red">*</font>：** CookieCloud服务器地址，格式：`http(s)://ip:port`，不配置默认使用内建服务器`https://movie-pilot.org/cookiecloud`
+- **COOKIECLOUD_KEY<font color="red">*</font>：** CookieCloud用户KEY
+- **COOKIECLOUD_PASSWORD<font color="red">*</font>：** CookieCloud端对端加密密码
+- **COOKIECLOUD_INTERVAL<font color="red">*</font>：** CookieCloud同步间隔（分钟）
+- **USER_AGENT<font color="red">*</font>：** CookieCloud对应的浏览器UA，可选，设置后可增加连接站点的成功率，同步站点后可以在管理界面中修改
 - **OCR_HOST：** OCR识别服务器地址，格式：`http(s)://ip:port`，用于识别站点二维码实现自动登录获取Cookie等，不配置默认使用内建服务器`https://movie-pilot.org`，可使用 [这个镜像](https://hub.docker.com/r/jxxghp/moviepilot-ocr) 自行搭建。
 ---
 - **SUBSCRIBE_MODE：** 订阅模式，`rss`/`spider`，默认`spider`，`rss`模式通过定时刷新RSS来匹配订阅（RSS地址会自动获取，也可手动维护），对站点压力小，同时可设置订阅刷新周期，24小时运行，但订阅和下载通知不能过滤和显示免费，推荐使用rss模式。
@@ -88,7 +90,7 @@ docker pull jxxghp/moviepilot:latest
 - **SEARCH_SOURCE：** 媒体信息搜索来源，`themoviedb`/`douban`，默认`themoviedb`
 ---
 - **AUTO_DOWNLOAD_USER：** 远程交互搜索时自动择优下载的用户ID，多个用户使用,分割，未设置需要选择资源或者回复`0`
-- **MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`/`synologychat`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
+- **MESSAGER<font color="red">*</font>：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`/`synologychat`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
 
   - `wechat`设置项：
 
@@ -119,15 +121,15 @@ docker pull jxxghp/moviepilot:latest
     - **SYNOLOGYCHAT_TOKEN：** SynologyChat机器人`令牌`
 
 ---
-- **DOWNLOAD_PATH：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径保持一致**，否则会导致下载文件无法转移
-- **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录，不设置则下载到`DOWNLOAD_PATH`
-- **DOWNLOAD_TV_PATH：** 电视剧下载保存目录，不设置则下载到`DOWNLOAD_PATH`
-- **DOWNLOAD_ANIME_PATH：** 动漫下载保存目录，不设置则下载到`DOWNLOAD_PATH`
+- **DOWNLOAD_PATH<font color="red">*</font>：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径保持一致**，否则会导致下载文件无法转移
+- **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`
+- **DOWNLOAD_TV_PATH：** 电视剧下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`
+- **DOWNLOAD_ANIME_PATH：** 动漫下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`
 - **DOWNLOAD_CATEGORY：** 下载二级分类开关，`true`/`false`，默认`false`，开启后会根据配置 [category.yaml](https://github.com/jxxghp/MoviePilot/raw/main/config/category.yaml) 自动在下载目录下建立二级目录分类
 - **DOWNLOAD_SUBTITLE：** 下载站点字幕，`true`/`false`，默认`true`
 - **DOWNLOADER_MONITOR：** 下载器监控，`true`/`false`，默认为`true`，开启后下载完成时才会自动整理入库
 - **TORRENT_TAG：** 下载器种子标签，默认为`MOVIEPILOT`，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
-- **DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
+- **DOWNLOADER<font color="red">*</font>：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
 
   - `qbittorrent`设置项：
 
@@ -144,7 +146,7 @@ docker pull jxxghp/moviepilot:latest
 
 ---
 - **REFRESH_MEDIASERVER：** 入库后是否刷新媒体服务器，`true`/`false`，默认`true`
-- **MEDIASERVER：** 媒体服务器，支持`emby`/`jellyfin`/`plex`，同时开启多个使用`,`分隔。还需要配置对应媒体服务器的环境变量，非对应媒体服务器的变量可删除，推荐使用`emby`
+- **MEDIASERVER<font color="red">*</font>：** 媒体服务器，支持`emby`/`jellyfin`/`plex`，同时开启多个使用`,`分隔。还需要配置对应媒体服务器的环境变量，非对应媒体服务器的变量可删除，推荐使用`emby`
 
   - `emby`设置项：
 
@@ -169,7 +171,7 @@ docker pull jxxghp/moviepilot:latest
 
 `MoviePilot`需要认证后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数（**仅能通过docker环境变量配置**）
 
-- **AUTH_SITE：** 认证站点，支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`/`xingtan`
+- **AUTH_SITE<font color="red">*</font>：** 认证站点，支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`/`xingtan`
 
 |      站点      |                          参数                           |
 |:------------:|:-----------------------------------------------------:|
