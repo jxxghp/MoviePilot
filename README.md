@@ -62,7 +62,7 @@ docker pull jxxghp/moviepilot:latest
 - **SUPERUSER $\color{red}{*}$ ：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
 - **SUPERUSER_PASSWORD $\color{red}{*}$ ：** 超级管理员初始密码，默认`password`，建议修改为复杂密码
 - **API_TOKEN $\color{red}{*}$ ：** API密钥，默认`moviepilot`，在媒体服务器Webhook、微信回调等地址配置中需要加上`?token=`该值，建议修改为复杂字符串
-- **PROXY_HOST：** 网络代理（可选），访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`
+- **PROXY_HOST：** 网络代理，访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`（可选）
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`或其它中转代理服务地址，能连通即可
 - **TMDB_IMAGE_DOMAIN：** TMDB图片地址，默认`image.tmdb.org`，可配置为其它中转代理以加速TMDB图片显示，如：`static-mdb.v.geilijiasu.com`
 ---
@@ -81,8 +81,8 @@ docker pull jxxghp/moviepilot:latest
 - **COOKIECLOUD_KEY $\color{red}{*}$ ：** CookieCloud用户KEY
 - **COOKIECLOUD_PASSWORD $\color{red}{*}$ ：** CookieCloud端对端加密密码
 - **COOKIECLOUD_INTERVAL $\color{red}{*}$ ：** CookieCloud同步间隔（分钟）
-- **USER_AGENT $\color{red}{*}$ ：** CookieCloud对应的浏览器UA，可选，设置后可增加连接站点的成功率，同步站点后可以在管理界面中修改
-- **OCR_HOST：** OCR识别服务器地址，格式：`http(s)://ip:port`，用于识别站点二维码实现自动登录获取Cookie等，不配置默认使用内建服务器`https://movie-pilot.org`，可使用 [这个镜像](https://hub.docker.com/r/jxxghp/moviepilot-ocr) 自行搭建。
+- **USER_AGENT $\color{red}{*}$ ：** CookieCloud保存Cookie对应的浏览器UA，建议配置，设置后可增加连接站点的成功率，同步站点后可以在管理界面中修改
+- **OCR_HOST：** OCR识别服务器地址，格式：`http(s)://ip:port`，用于识别站点验证码实现自动登录获取Cookie等，不配置默认使用内建服务器`https://movie-pilot.org`，可使用 [这个镜像](https://hub.docker.com/r/jxxghp/moviepilot-ocr) 自行搭建。
 ---
 - **SUBSCRIBE_MODE：** 订阅模式，`rss`/`spider`，默认`spider`，`rss`模式通过定时刷新RSS来匹配订阅（RSS地址会自动获取，也可手动维护），对站点压力小，同时可设置订阅刷新周期，24小时运行，但订阅和下载通知不能过滤和显示免费，推荐使用rss模式。
 - **SUBSCRIBE_RSS_INTERVAL：** RSS订阅模式刷新时间间隔（分钟），默认`30`分钟，不能小于5分钟。
@@ -107,13 +107,13 @@ docker pull jxxghp/moviepilot:latest
     - **TELEGRAM_TOKEN：** Telegram Bot Token
     - **TELEGRAM_CHAT_ID：** Telegram Chat ID
     - **TELEGRAM_USERS：** Telegram 用户ID，多个使用,分隔，只有用户ID在列表中才可以使用Bot，如未设置则均可以使用Bot
-    - **TELEGRAM_ADMINS：** Telegram 管理员ID，多个使用,分隔，只有管理员才可以操作Bot菜单，如未设置则均可以操作菜单
+    - **TELEGRAM_ADMINS：** Telegram 管理员ID，多个使用,分隔，只有管理员才可以操作Bot菜单，如未设置则均可以操作菜单（可选）
 
   - `slack`设置项：
 
     - **SLACK_OAUTH_TOKEN：** Slack Bot User OAuth Token
     - **SLACK_APP_TOKEN：** Slack App-Level Token
-    - **SLACK_CHANNEL：** Slack 频道名称，默认`全体`
+    - **SLACK_CHANNEL：** Slack 频道名称，默认`全体`（可选）
   
   - `synologychat`设置项：
 
