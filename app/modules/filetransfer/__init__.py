@@ -542,7 +542,9 @@ class FileTransferModule(_ModuleBase):
             # 剧集标题
             "episode_title": episode_title,
             # 文件后缀
-            "fileExt": file_ext
+            "fileExt": file_ext,
+            # 自定义占位符
+            "customization": meta.customization
         }
 
     @staticmethod
