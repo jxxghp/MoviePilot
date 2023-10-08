@@ -15,23 +15,23 @@ Docker：https://hub.docker.com/r/jxxghp/moviepilot
 
 ## 安装
 
-1. **安装CookieCloud插件**
+### 1. **安装CookieCloud插件**
 
 站点信息需要通过CookieCloud同步获取，因此需要安装CookieCloud插件，将浏览器中的站点Cookie数据同步到云端后再同步到MoviePilot使用。 插件下载地址请点击 [这里](https://github.com/easychen/CookieCloud/releases)。
 
-2. **安装CookieCloud服务端（可选）**
+### 2. **安装CookieCloud服务端（可选）**
 
 MoviePilot内置了公共CookieCloud服务器，如果需要自建服务，可参考 [CookieCloud](https://github.com/easychen/CookieCloud) 项目进行搭建，docker镜像请点击 [这里](https://hub.docker.com/r/easychen/cookiecloud)。
 
 **声明：** 本项目不会收集用户敏感数据，Cookie同步也是基于CookieCloud项目实现，非本项目提供的能力。技术角度上CookieCloud采用端到端加密，在个人不泄露`用户KEY`和`端对端加密密码`的情况下第三方无法窃取任何用户信息（包括服务器持有者）。如果你不放心，可以不使用公共服务或者不使用本项目，但如果使用后发生了任何信息泄露与本项目无关！
 
-3. **安装配套管理软件**
+### 3. **安装配套管理软件**
 
 MoviePilot需要配套下载器和媒体服务器配合使用。
 - 下载器支持：qBittorrent、Transmission，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，推荐使用QB。
 - 媒体服务器支持：Jellyfin、Emby、Plex，推荐使用Emby。
 
-4. **安装MoviePilot**
+### 4. **安装MoviePilot**
 
 目前仅提供docker镜像，点击 [这里](https://hub.docker.com/r/jxxghp/moviepilot) 或执行命令：
 
@@ -42,8 +42,8 @@ docker pull jxxghp/moviepilot:latest
 ## 配置
 
 项目的所有配置均通过环境变量进行设置，支持两种配置方式：
-1. 在docker环境变量部分进行参数配置，部分环境建立容器后会自动显示待配置项，如未自动显示配置项则需要手动增加对应环境变量。
-2. 下载 [app.env](https://github.com/jxxghp/MoviePilot/raw/main/config/app.env) 文件，修改好配置后放置到配置文件映射路径根目录，配置项可根据说明自主增减。
+- 在docker环境变量部分进行参数配置，部分环境建立容器后会自动显示待配置项，如未自动显示配置项则需要手动增加对应环境变量。
+- 下载 [app.env](https://github.com/jxxghp/MoviePilot/raw/main/config/app.env) 文件，修改好配置后放置到配置文件映射路径根目录，配置项可根据说明自主增减。
 
 配置文件映射路径：`/config`，配置项生效优先级：环境变量 > env文件 > 默认值，部分参数如路径映射、站点认证、权限端口等必须通过环境变量进行配置。
 
@@ -56,37 +56,38 @@ docker pull jxxghp/moviepilot:latest
 - **MOVIEPILOT_AUTO_UPDATE_DEV**：重启时更新到未发布的开发版本代码，`true`/`false`，默认`false`（仅支持环境变量配置）
 - **NGINX_PORT：** WEB服务端口，默认`3000`，可自行修改，不能与API服务端口冲突（仅支持环境变量配置）
 - **PORT：** API服务端口，默认`3001`，可自行修改，不能与WEB服务端口冲突（仅支持环境变量配置）
+---
 - **SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
 - **SUPERUSER_PASSWORD：** 超级管理员初始密码，默认`password`，建议修改为复杂密码
 - **API_TOKEN：** API密钥，默认`moviepilot`，在媒体服务器Webhook、微信回调等地址配置中需要加上`?token=`该值，建议修改为复杂字符串
-- **PROXY_HOST：** 网络代理（可选），访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`
+- **PROXY_HOST：** 网络代理（可选），访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`或其它中转代理服务地址，能连通即可
-- **DOWNLOAD_PATH：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径保持一致**，否则会导致下载文件无法转移
-- **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录，不设置则下载到`DOWNLOAD_PATH`
-- **DOWNLOAD_TV_PATH：** 电视剧下载保存目录，不设置则下载到`DOWNLOAD_PATH`
-- **DOWNLOAD_ANIME_PATH：** 动漫下载保存目录，不设置则下载到`DOWNLOAD_PATH`
-- **DOWNLOAD_CATEGORY：** 下载二级分类开关，`true`/`false`，默认`false`，开启后会根据配置 [category.yaml](https://github.com/jxxghp/MoviePilot/raw/main/config/category.yaml) 自动在下载目录下建立二级目录分类
-- **DOWNLOAD_SUBTITLE：** 下载站点字幕，`true`/`false`，默认`true`
-- **REFRESH_MEDIASERVER：** 入库刷新媒体库，`true`/`false`，默认`true`
+- **TMDB_IMAGE_DOMAIN：** TMDB图片地址，默认`image.tmdb.org`，可配置为其它中转代理以加速TMDB图片显示，如：`static-mdb.v.geilijiasu.com`
+---
 - **SCRAP_METADATA：** 刮削入库的媒体文件，`true`/`false`，默认`true`
+- **SCRAP_SOURCE：** 刮削元数据及图片使用的数据源，`themoviedb`/`douban`，默认`themoviedb`
 - **SCRAP_FOLLOW_TMDB：** 新增已入库媒体是否跟随TMDB信息变化，`true`/`false`，默认`true`
-- **TORRENT_TAG：** 种子标签，默认为`MOVIEPILOT`，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
+---
+- **TRANSFER_TYPE：** 整理转移方式，支持`link`/`copy`/`move`/`softlink`  **注意：在`link`和`softlink`转移方式下，转移后的文件会继承源文件的权限掩码，不受`UMASK`影响**
 - **LIBRARY_PATH：** 媒体库目录，多个目录使用`,`分隔
 - **LIBRARY_MOVIE_NAME：** 电影媒体库目录名，默认`电影`
 - **LIBRARY_TV_NAME：** 电视剧媒体库目录名，默认`电视剧`
 - **LIBRARY_ANIME_NAME：** 动漫媒体库目录名，默认`电视剧/动漫`
 - **LIBRARY_CATEGORY：** 媒体库二级分类开关，`true`/`false`，默认`false`，开启后会根据配置 [category.yaml](https://github.com/jxxghp/MoviePilot/raw/main/config/category.yaml) 自动在媒体库目录下建立二级目录分类
-- **TRANSFER_TYPE：** 转移方式，支持`link`/`copy`/`move`/`softlink`  **注意：在`link`和`softlink`转移方式下，转移后的文件会继承源文件的权限掩码，不受`UMASK`影响**
+---
 - **COOKIECLOUD_HOST：** CookieCloud服务器地址，格式：`http(s)://ip:port`，不配置默认使用内建服务器`https://movie-pilot.org/cookiecloud`
 - **COOKIECLOUD_KEY：** CookieCloud用户KEY
 - **COOKIECLOUD_PASSWORD：** CookieCloud端对端加密密码
 - **COOKIECLOUD_INTERVAL：** CookieCloud同步间隔（分钟）
-- **OCR_HOST：** OCR识别服务器地址，格式：`http(s)://ip:port`，用于识别站点二维码实现自动登录获取Cookie等，不配置默认使用内建服务器`https://movie-pilot.org`，可使用 [这个镜像](https://hub.docker.com/r/jxxghp/moviepilot-ocr) 自行搭建。
 - **USER_AGENT：** CookieCloud对应的浏览器UA，可选，设置后可增加连接站点的成功率，同步站点后可以在管理界面中修改
-- **AUTO_DOWNLOAD_USER：** 交互搜索自动下载用户ID，使用,分割
+- **OCR_HOST：** OCR识别服务器地址，格式：`http(s)://ip:port`，用于识别站点二维码实现自动登录获取Cookie等，不配置默认使用内建服务器`https://movie-pilot.org`，可使用 [这个镜像](https://hub.docker.com/r/jxxghp/moviepilot-ocr) 自行搭建。
+---
 - **SUBSCRIBE_MODE：** 订阅模式，`rss`/`spider`，默认`spider`，`rss`模式通过定时刷新RSS来匹配订阅（RSS地址会自动获取，也可手动维护），对站点压力小，同时可设置订阅刷新周期，24小时运行，但订阅和下载通知不能过滤和显示免费，推荐使用rss模式。
 - **SUBSCRIBE_RSS_INTERVAL：** RSS订阅模式刷新时间间隔（分钟），默认`30`分钟，不能小于5分钟。
 - **SUBSCRIBE_SEARCH：** 订阅搜索，`true`/`false`，默认`false`，开启后会每隔24小时对所有订阅进行全量搜索，以补齐缺失剧集（一般情况下正常订阅即可，订阅搜索只做为兜底，会增加站点压力，不建议开启）。
+- **SEARCH_SOURCE：** 媒体信息搜索来源，`themoviedb`/`douban`，默认`themoviedb`
+---
+- **AUTO_DOWNLOAD_USER：** 远程交互搜索时自动择优下载的用户ID，多个用户使用,分割，未设置需要选择资源或者回复`0`
 - **MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`/`synologychat`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
 
   - `wechat`设置项：
@@ -117,7 +118,15 @@ docker pull jxxghp/moviepilot:latest
     - **SYNOLOGYCHAT_WEBHOOK：** 在Synology Chat中创建机器人，获取机器人`传入URL`
     - **SYNOLOGYCHAT_TOKEN：** SynologyChat机器人`令牌`
 
-
+---
+- **DOWNLOAD_PATH：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径保持一致**，否则会导致下载文件无法转移
+- **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录，不设置则下载到`DOWNLOAD_PATH`
+- **DOWNLOAD_TV_PATH：** 电视剧下载保存目录，不设置则下载到`DOWNLOAD_PATH`
+- **DOWNLOAD_ANIME_PATH：** 动漫下载保存目录，不设置则下载到`DOWNLOAD_PATH`
+- **DOWNLOAD_CATEGORY：** 下载二级分类开关，`true`/`false`，默认`false`，开启后会根据配置 [category.yaml](https://github.com/jxxghp/MoviePilot/raw/main/config/category.yaml) 自动在下载目录下建立二级目录分类
+- **DOWNLOAD_SUBTITLE：** 下载站点字幕，`true`/`false`，默认`true`
+- **DOWNLOADER_MONITOR：** 下载器监控，`true`/`false`，默认为`true`，开启后下载完成时才会自动整理入库
+- **TORRENT_TAG：** 下载器种子标签，默认为`MOVIEPILOT`，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
 - **DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
 
   - `qbittorrent`设置项：
@@ -133,8 +142,8 @@ docker pull jxxghp/moviepilot:latest
     - **TR_USER：** transmission用户名
     - **TR_PASSWORD：** transmission密码
 
-- **DOWNLOADER_MONITOR：** 下载器监控，`true`/`false`，默认为`true`，开启后下载完成时才会自动整理入库
-
+---
+- **REFRESH_MEDIASERVER：** 入库后是否刷新媒体服务器，`true`/`false`，默认`true`
 - **MEDIASERVER：** 媒体服务器，支持`emby`/`jellyfin`/`plex`，同时开启多个使用`,`分隔。还需要配置对应媒体服务器的环境变量，非对应媒体服务器的变量可删除，推荐使用`emby`
 
   - `emby`设置项：
@@ -227,9 +236,7 @@ docker pull jxxghp/moviepilot:latest
 ```
 
 
-### 3. **过滤规则**
-
-在`设定`-`规则`中设定，规则说明：
+### 3. **优先级规则**
 
 - 仅支持使用内置规则进行排列组合，内置规则有：`蓝光原盘`、`4K`、`1080P`、`中文字幕`、`特效字幕`、`H265`、`H264`、`杜比`、`HDR`、`REMUX`、`WEB-DL`、`免费`、`国语配音` 等
 - 符合任一层级规则的资源将被标识选中，匹配成功的层级做为该资源的优先级，排越前面优先级超高
@@ -246,10 +253,9 @@ docker pull jxxghp/moviepilot:latest
 - 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr（`API服务端口`），可使用Overseerr/Jellyseerr浏览订阅。
 - 映射宿主机docker.sock文件到容器`/var/run/docker.sock`，以支持内建重启操作。实例：`-v /var/run/docker.sock:/var/run/docker.sock:ro`
 
-**注意**
-
-1) 容器首次启动需要下载浏览器内核，根据网络情况可能需要较长时间，此时无法登录。可映射`/moviepilot`目录避免容器重置后重新触发浏览器内核下载。
-2) 使用反向代理时，需要添加以下配置，否则可能会导致部分功能无法访问（`ip:port`修改为实际值）：
+### **注意**
+- 容器首次启动需要下载浏览器内核，根据网络情况可能需要较长时间，此时无法登录。可映射`/moviepilot`目录避免容器重置后重新触发浏览器内核下载。 
+- 使用反向代理时，需要添加以下配置，否则可能会导致部分功能无法访问（`ip:port`修改为实际值）：
 ```nginx configuration
 location / {
     proxy_pass http://ip:port;
@@ -259,7 +265,7 @@ location / {
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
-3) 新建的企业微信应用需要固定公网IP的代理才能收到消息，代理添加以下代码：
+- 新建的企业微信应用需要固定公网IP的代理才能收到消息，代理添加以下代码：
 ```nginx configuration
 location /cgi-bin/gettoken {
     proxy_pass https://qyapi.weixin.qq.com;
