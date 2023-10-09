@@ -109,7 +109,7 @@ class IYUUAutoSeed(_PluginBase):
             self._nolabels = config.get("nolabels")
             self._nopaths = config.get("nopaths")
             self._clearcache = config.get("clearcache")
-            self._permanent_error_caches = config.get("permanent_error_caches") or []
+            self._permanent_error_caches = [] if self._clearcache else config.get("permanent_error_caches") or []
             self._error_caches = [] if self._clearcache else config.get("error_caches") or []
             self._success_caches = [] if self._clearcache else config.get("success_caches") or []
 
