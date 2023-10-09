@@ -71,13 +71,20 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    collect_pkg_data('config'),
+    collect_pkg_data('cf_clearance'),
+    collect_pkg_data('database', include_py_files=True),
     [],
-    exclude_binaries=True,
     name='MoviePilot',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -85,17 +92,4 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon="app.ico"
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    collect_pkg_data('config'),
-    collect_pkg_data('cf_clearance'),
-    collect_pkg_data('database', include_py_files=True),
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='MoviePilot',
 )
