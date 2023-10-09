@@ -322,15 +322,16 @@ class PersonMeta(_PluginBase):
         """
         peoples = []
         # 更新当前媒体项人物
-        for people in iteminfo["People"]:
-            if not people.get("Name"):
-                continue
-            if StringUtils.is_chinese(people.get("Name")):
-                peoples.append(people)
-                continue
+        for people in iteminfo["People"] or []:
             if self._event.is_set():
                 logger.info(f"演职人员刮削服务停止")
                 return
+            if not people.get("Name"):
+                continue
+            if StringUtils.is_chinese(people.get("Name")) \
+                    and StringUtils.is_chinese(people.get("Role")):
+                peoples.append(people)
+                continue
             info = self.__update_people(server=server, people=people,
                                         douban_actors=douban_actors)
             if info:
@@ -351,7 +352,8 @@ class PersonMeta(_PluginBase):
         def __need_trans_actor(_item):
             # 是否需要处理人物信息
             _peoples = [x for x in _item.get("People", []) if
-                        x.get("Name") and not StringUtils.is_chinese(x.get("Name"))]
+                        (x.get("Name") and not StringUtils.is_chinese(x.get("Name")))
+                        or (x.get("Role") and not StringUtils.is_chinese(x.get("Role")))]
             if _peoples:
                 return True
             return False
@@ -488,12 +490,36 @@ class PersonMeta(_PluginBase):
                             profile_path = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{profile_path}"
 
             # 从豆瓣信息中更新人物信息
+            """
+            {
+              "name": "丹尼尔·克雷格",
+              "roles": [
+                "演员",
+                "制片人",
+                "配音"
+              ],
+              "title": "丹尼尔·克雷格（同名）英国,英格兰,柴郡,切斯特影视演员",
+              "url": "https://movie.douban.com/celebrity/1025175/",
+              "user": null,
+              "character": "饰 詹姆斯·邦德 James Bond 007",
+              "uri": "douban://douban.com/celebrity/1025175?subject_id=27230907",
+              "avatar": {
+                "large": "https://qnmob3.doubanio.com/view/celebrity/raw/public/p42588.jpg?imageView2/2/q/80/w/600/h/3000/format/webp",
+                "normal": "https://qnmob3.doubanio.com/view/celebrity/raw/public/p42588.jpg?imageView2/2/q/80/w/200/h/300/format/webp"
+              },
+              "sharing_url": "https://www.douban.com/doubanapp/dispatch?uri=/celebrity/1025175/",
+              "type": "celebrity",
+              "id": "1025175",
+              "latin_name": "Daniel Craig"
+            }
+            """
             if douban_actors and (not updated_name
                                   or not updated_overview
                                   or not update_character):
                 # 从豆瓣演员中匹配中文名称、角色和简介
                 for douban_actor in douban_actors:
-                    if douban_actor.get("latin_name") == people.get("Name"):
+                    if douban_actor.get("latin_name") == people.get("Name") \
+                            or douban_actor.get("name") == people.get("Name"):
                         # 名称
                         if not updated_name:
                             logger.info(f"{people.get('Name')} 从豆瓣中获取到中文名：{douban_actor.get('name')}")
