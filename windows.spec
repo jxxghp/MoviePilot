@@ -47,11 +47,13 @@ def collect_local_submodules(package):
 
 
 hiddenimports = [
-    'passlib.handlers.bcrypt',
-    'app.modules',
-    'app.plugins',
-] + collect_local_submodules('app.modules') \
+                    'passlib.handlers.bcrypt',
+                    'app.modules',
+                    'app.plugins',
+                ] + collect_local_submodules('app.modules') \
                 + collect_local_submodules('app.plugins')
+
+block_cipher = None
 
 a = Analysis(
     ['app/main.py'],
@@ -66,7 +68,7 @@ a = Analysis(
     noarchive=False,
 )
 
-pyz = PYZ(a.pure)
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
     pyz,
