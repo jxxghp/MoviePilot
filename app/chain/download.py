@@ -74,8 +74,7 @@ class DownloadChain(ChainBase):
             title=f"{mediainfo.title_year} "
                   f"{meta.season_episode} 开始下载",
             text=msg_text,
-            image=mediainfo.get_message_image(),
-            userid=userid))
+            image=mediainfo.get_message_image()))
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: MessageChannel = None,
