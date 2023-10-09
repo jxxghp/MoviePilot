@@ -87,6 +87,8 @@ class DirMonitor(_PluginBase):
     _exclude_keywords = ""
     # 存储源目录与目的目录关系
     _dirconf: Dict[str, Path] = {}
+    # 存储源目录转移方式
+    _transferconf: Dict[str, str] = {}
     _medias = {}
     # 退出事件
     _event = Event()
@@ -98,6 +100,7 @@ class DirMonitor(_PluginBase):
         self.tmdbchain = TmdbChain(self.db)
         # 清空配置
         self._dirconf = {}
+        self._transferconf = {}
 
         # 读取配置
         if config:
@@ -132,6 +135,13 @@ class DirMonitor(_PluginBase):
                         paths = [mon_path]
                 else:
                     paths = mon_path.split(":")
+
+                # 自定义转移方式
+                if mon_path.count("#") == 1:
+                    self._transferconf[mon_path] = mon_path.split("#")[1]
+                else:
+                    self._transferconf[mon_path] = self._transfer_type
+
                 target_path = None
                 if len(paths) > 1:
                     mon_path = paths[0]
@@ -247,6 +257,8 @@ class DirMonitor(_PluginBase):
 
                     # 查询转移目的目录
                     target: Path = self._dirconf.get(mon_path)
+                    # 查询转移方式
+                    transfer_type = self._transferconf.get(mon_path)
 
                     # 识别媒体信息
                     mediainfo: MediaInfo = self.chain.recognize_media(meta=file_meta)
@@ -260,7 +272,7 @@ class DirMonitor(_PluginBase):
                         # 新增转移成功历史记录
                         self.transferhis.add_fail(
                             src_path=file_path,
-                            mode=self._transfer_type,
+                            mode=transfer_type,
                             meta=file_meta
                         )
                         return
@@ -289,7 +301,7 @@ class DirMonitor(_PluginBase):
                     # 转移
                     transferinfo: TransferInfo = self.chain.transfer(mediainfo=mediainfo,
                                                                      path=file_path,
-                                                                     transfer_type=self._transfer_type,
+                                                                     transfer_type=transfer_type,
                                                                      target=target,
                                                                      meta=file_meta,
                                                                      episodes_info=episodes_info)
@@ -303,7 +315,7 @@ class DirMonitor(_PluginBase):
                         # 新增转移失败历史记录
                         self.transferhis.add_fail(
                             src_path=file_path,
-                            mode=self._transfer_type,
+                            mode=transfer_type,
                             download_hash=download_hash,
                             meta=file_meta,
                             mediainfo=mediainfo,
@@ -320,7 +332,7 @@ class DirMonitor(_PluginBase):
                     # 新增转移成功历史记录
                     self.transferhis.add_success(
                         src_path=file_path,
-                        mode=self._transfer_type,
+                        mode=transfer_type,
                         download_hash=download_hash,
                         meta=file_meta,
                         mediainfo=mediainfo,
@@ -402,7 +414,7 @@ class DirMonitor(_PluginBase):
                     })
 
                     # 移动模式删除空目录
-                    if self._transfer_type == "move":
+                    if transfer_type == "move":
                         for file_dir in file_path.parents:
                             if len(str(file_dir)) <= len(str(Path(mon_path))):
                                 # 重要，删除到监控目录为止
@@ -601,9 +613,10 @@ class DirMonitor(_PluginBase):
                                             'model': 'monitor_dirs',
                                             'label': '监控目录',
                                             'rows': 5,
-                                            'placeholder': '每一行一个目录，支持两种配置方式：\n'
+                                            'placeholder': '每一行一个目录，支持三种配置方式：\n'
                                                            '监控目录\n'
-                                                           '监控目录:转移目的目录（需同时在媒体库目录中配置该目的目录）'
+                                                           '监控目录:转移目的目录（需同时在媒体库目录中配置该目的目录）\n'
+                                                           '监控目录:转移目的目录#转移方式（move|copy|link|softlink）'
                                         }
                                     }
                                 ]
