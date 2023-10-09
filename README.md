@@ -33,11 +33,19 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 ### 4. **安装MoviePilot**
 
-目前仅提供docker镜像，点击 [这里](https://hub.docker.com/r/jxxghp/moviepilot) 或执行命令：
+- Docker镜像
 
-```shell
-docker pull jxxghp/moviepilot:latest
-```
+  点击 [这里](https://hub.docker.com/r/jxxghp/moviepilot) 或执行命令：
+
+  ```shell
+  docker pull jxxghp/moviepilot:latest
+  ```
+
+- Window
+
+  后端：https://github.com/jxxghp/MoviePilot-Frontend/releases
+  
+  前端：https://github.com/jxxghp/MoviePilot-Frontend/releases
 
 ## 配置
 
