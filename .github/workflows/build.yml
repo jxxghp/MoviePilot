@@ -60,6 +60,7 @@ jobs:
 
   Windows-build:
     runs-on: windows-latest
+    name: Build Windows Binary
     steps:
       - name: Checkout
         uses: actions/checkout@v4
