@@ -12,7 +12,7 @@ for module in Path(__file__).with_name("models").glob("*.py"):
 
 db_version = input("请输入版本号：")
 db_location = settings.CONFIG_PATH / 'user.db'
-script_location = settings.ROOT_PATH / 'alembic'
+script_location = settings.ROOT_PATH / 'database'
 alembic_cfg = AlembicConfig()
 alembic_cfg.set_main_option('script_location', str(script_location))
 alembic_cfg.set_main_option('sqlalchemy.url', f"sqlite:///{db_location}")

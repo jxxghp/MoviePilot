@@ -1,9 +1,12 @@
 import os
 import secrets
+import sys
 from pathlib import Path
 from typing import List
 
 from pydantic import BaseSettings
+
+from app.utils.system import SystemUtils
 
 
 class Settings(BaseSettings):
@@ -28,7 +31,7 @@ class Settings(BaseSettings):
     # 是否开发模式
     DEV: bool = False
     # 配置文件目录
-    CONFIG_DIR: str = "/config"
+    CONFIG_DIR: str = None
     # 超级管理员
     SUPERUSER: str = "admin"
     # 超级管理员初始密码
@@ -209,7 +212,11 @@ class Settings(BaseSettings):
     def CONFIG_PATH(self):
         if self.CONFIG_DIR:
             return Path(self.CONFIG_DIR)
-        return self.INNER_CONFIG_PATH
+        elif SystemUtils.is_docker():
+            return Path("/config")
+        elif SystemUtils.is_frozen():
+            return Path(sys.executable).parent / "config"
+        return self.ROOT_PATH / "config"
 
     @property
     def TEMP_PATH(self):
@@ -274,6 +281,9 @@ class Settings(BaseSettings):
         with self.CONFIG_PATH as p:
             if not p.exists():
                 p.mkdir(parents=True, exist_ok=True)
+            if SystemUtils.is_frozen():
+                if not (p / "app.env").exists():
+                    SystemUtils.copy(self.INNER_CONFIG_PATH / "app.env", p / "app.env")
         with self.TEMP_PATH as p:
             if not p.exists():
                 p.mkdir(parents=True, exist_ok=True)

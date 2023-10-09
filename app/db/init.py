@@ -39,7 +39,7 @@ def update_db():
     更新数据库
     """
     db_location = settings.CONFIG_PATH / 'user.db'
-    script_location = settings.ROOT_PATH / 'alembic'
+    script_location = settings.ROOT_PATH / 'database'
     try:
         alembic_cfg = Config()
         alembic_cfg.set_main_option('script_location', str(script_location))
