@@ -137,7 +137,7 @@ class DirMonitor(_PluginBase):
                     paths = mon_path.split(":")
 
                 # 自定义转移方式
-                if mon_path.count("#") == 2:
+                if mon_path.count("#") == 1:
                     self._transferconf[mon_path] = mon_path.split("#")[1]
                 else:
                     self._transferconf[mon_path] = self._transfer_type
