@@ -19,18 +19,20 @@ jobs:
     - name: Install Dependent Packages
       run: |
         python -m pip install --upgrade pip
-        pip install wheel numpy==1.23.5 pyparsing==3.0.9 wxpython==4.2.0 pyinstaller==5.7.0
+        pip install wheel pyinstaller
         git clone --depth=1 -b main https://github.com/jxxghp/MoviePilot
         cd MoviePilot
         pip install -r requirements.txt
       shell: pwsh
+
     - name: Pyinstaller
       run: |
         cd MoviePilot
         pyinstaller windows.spec
       shell: pwsh
+
     - name: Upload Windows File
       uses: actions/upload-artifact@v3
       with:
         name: windows
-        path: MoviePilot/dist/MoviePilot.exe
+        path: MoviePilot/dist/MoviePilot/MoviePilot.exe
