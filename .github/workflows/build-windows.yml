@@ -17,8 +17,8 @@ jobs:
       - name: Release Version
         id: release_version
         run: |
-          app_version=$(cat version.py |sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
-          echo "app_version=$app_version" >> $GITHUB_ENV
+          $app_version = Select-String -Path "version.py" -Pattern "APP_VERSION\s=\s'v(.*)'" | ForEach-Object { $_.Matches.Groups[1].Value }
+          $env:GITHUB_ENV += "app_version=$app_version"
 
       - name: Generate Release
         id: generate_release
