@@ -136,15 +136,17 @@ class DirMonitor(_PluginBase):
                 else:
                     paths = mon_path.split(":")
 
+                # 自定义转移方式
+                if mon_path.count("#") == 2:
+                    self._transferconf[mon_path] = mon_path.split("#")[1]
+                else:
+                    self._transferconf[mon_path] = self._transfer_type
+
                 target_path = None
                 if len(paths) > 1:
                     mon_path = paths[0]
                     target_path = Path(paths[1])
                     self._dirconf[mon_path] = target_path
-
-                    # 自定义转移方式
-                    if len(paths) == 3:
-                        self._transferconf[mon_path] = paths[2]
 
                 # 检查媒体库目录是不是下载目录的子目录
                 try:
@@ -256,7 +258,7 @@ class DirMonitor(_PluginBase):
                     # 查询转移目的目录
                     target: Path = self._dirconf.get(mon_path)
                     # 查询转移方式
-                    transfer_type = self._transferconf.get(mon_path) or self._transfer_type
+                    transfer_type = self._transferconf.get(mon_path)
 
                     # 识别媒体信息
                     mediainfo: MediaInfo = self.chain.recognize_media(meta=file_meta)
@@ -614,7 +616,7 @@ class DirMonitor(_PluginBase):
                                             'placeholder': '每一行一个目录，支持三种配置方式：\n'
                                                            '监控目录\n'
                                                            '监控目录:转移目的目录（需同时在媒体库目录中配置该目的目录）\n'
-                                                           '监控目录:转移目的目录:转移方式（move|copy|link|softlink）'
+                                                           '监控目录:转移目的目录#转移方式（move|copy|link|softlink）'
                                         }
                                     }
                                 ]
