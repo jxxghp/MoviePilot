@@ -11,27 +11,55 @@ jobs:
   Windows-build:
     runs-on: windows-latest
     steps:
-    - name: Init Python 3.11.4
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11.4'
-    - name: Install Dependent Packages
-      run: |
-        python -m pip install --upgrade pip
-        pip install wheel pyinstaller
-        git clone --depth=1 -b main https://github.com/jxxghp/MoviePilot
-        cd MoviePilot
-        pip install -r requirements.txt
-      shell: pwsh
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Pyinstaller
-      run: |
-        cd MoviePilot
-        pyinstaller windows.spec
-      shell: pwsh
+      - name: Release Version
+        id: release_version
+        run: |
+          app_version=$(cat version.py |sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
+          echo "app_version=$app_version" >> $GITHUB_ENV
 
-    - name: Upload Windows File
-      uses: actions/upload-artifact@v3
-      with:
-        name: windows
-        path: MoviePilot/dist/MoviePilot.exe
+      - name: Generate Release
+        id: generate_release
+        uses: actions/create-release@latest
+        with:
+          tag_name: v${{ env.app_version }}
+          release_name: v${{ env.app_version }}
+          body: ${{ github.event.commits[0].message }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Init Python 3.11.4
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11.4'
+
+      - name: Install Dependent Packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install wheel pyinstaller
+          pip install -r requirements.txt
+        shell: pwsh
+
+      - name: Pyinstaller
+        run: |
+          pyinstaller windows.spec
+        shell: pwsh
+
+      - name: Upload Windows File
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows
+          path: dist/MoviePilot.exe
+
+      - name: Upload Release Asset
+        uses: dwenegar/upload-release-assets@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          release_id: ${{ steps.generate_release.outputs.id }}
+          assets_path: |
+            dist/MoviePilot.exe
