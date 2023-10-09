@@ -43,7 +43,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 - Window
 
-  后端：https://github.com/jxxghp/MoviePilot-Frontend/releases
+  后端：https://github.com/jxxghp/MoviePilot/releases
   
   前端：https://github.com/jxxghp/MoviePilot-Frontend/releases
 
