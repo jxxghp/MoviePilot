@@ -20,18 +20,6 @@ jobs:
           $app_version = Select-String -Path "version.py" -Pattern "APP_VERSION\s=\s'v(.*)'" | ForEach-Object { $_.Matches.Groups[1].Value }
           $env:GITHUB_ENV += "app_version=$app_version"
 
-      - name: Generate Release
-        id: generate_release
-        uses: actions/create-release@latest
-        with:
-          tag_name: v${{ env.app_version }}
-          release_name: v${{ env.app_version }}
-          body: ${{ github.event.commits[0].message }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Init Python 3.11.4
         uses: actions/setup-python@v4
         with:
@@ -54,6 +42,18 @@ jobs:
         with:
           name: windows
           path: dist/MoviePilot.exe
+
+      - name: Generate Release
+        id: generate_release
+        uses: actions/create-release@latest
+        with:
+          tag_name: v${{ env.app_version }}
+          release_name: v${{ env.app_version }}
+          body: ${{ github.event.commits[0].message }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Release Asset
         uses: dwenegar/upload-release-assets@v1
