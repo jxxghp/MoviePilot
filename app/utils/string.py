@@ -68,6 +68,8 @@ class StringUtils:
         """
         判断是否含有中文
         """
+        if not word:
+            return False
         if isinstance(word, list):
             word = " ".join(word)
         chn = re.compile(r'[\u4e00-\u9fff]')
