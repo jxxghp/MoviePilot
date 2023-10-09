@@ -4,8 +4,6 @@
 
 # 仅用于学习交流使用，请勿在任何国内平台宣传该项目！
 
-Docker：https://hub.docker.com/r/jxxghp/moviepilot
-
 发布频道：https://t.me/moviepilot_channel
 
 ## 主要特性
