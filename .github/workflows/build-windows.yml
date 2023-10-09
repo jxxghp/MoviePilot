@@ -18,7 +18,7 @@ jobs:
         id: release_version
         run: |
           $app_version = Select-String -Path "version.py" -Pattern "APP_VERSION\s=\s'v(.*)'" | ForEach-Object { $_.Matches.Groups[1].Value }
-          echo "app_version=$app_version" >> $GITHUB_ENV
+          echo app_version=%app_version% >> %GITHUB_ENV%
 
       - name: Init Python 3.11.4
         uses: actions/setup-python@v4
