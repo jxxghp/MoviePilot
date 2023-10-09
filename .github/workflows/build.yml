@@ -1,4 +1,4 @@
-name: MoviePilot Docker Builder
+name: MoviePilot Builder
 on:
   workflow_dispatch:
   push:
