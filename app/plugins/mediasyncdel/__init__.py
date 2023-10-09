@@ -741,7 +741,11 @@ class MediaSyncDel(_PluginBase):
             return
 
         # 遍历删除
+        last_del_time = None
         for del_media in del_medias:
+            # 删除时间
+            del_time = del_media.get("time")
+            last_del_time = del_time
             # 媒体类型 Movie|Series|Season|Episode
             media_type = del_media.get("type")
             # 媒体名称 蜀山战纪
@@ -881,7 +885,7 @@ class MediaSyncDel(_PluginBase):
         # 保存历史
         self.save_data("history", history)
 
-        self.save_data("last_time", datetime.datetime.now())
+        self.save_data("last_time", last_del_time or datetime.datetime.now())
 
     def handle_torrent(self, src: str, torrent_hash: str):
         """
@@ -1047,146 +1051,207 @@ class MediaSyncDel(_PluginBase):
 
     @staticmethod
     def parse_emby_log(last_time):
-        log_url = "[HOST]System/Logs/embyserver.txt?api_key=[APIKEY]"
-        log_res = Emby().get_data(log_url)
-        if not log_res or log_res.status_code != 200:
-            logger.error("获取emby日志失败，请检查服务器配置")
-            return []
+        """
+        获取emby日志列表、解析emby日志
+        """
 
-        # 正则解析删除的媒体信息
-        pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3}) Info App: Removing item from database, Type: (\w+), Name: (.*), Path: (.*), Id: (\d+)'
-        matches = re.findall(pattern, log_res.text)
+        def __parse_log(file_name: str, del_list: list):
+            """
+            解析emby日志
+            """
+            log_url = f"[HOST]System/Logs/{file_name}?api_key=[APIKEY]"
+            log_res = Emby().get_data(log_url)
+            if not log_res or log_res.status_code != 200:
+                logger.error("获取emby日志失败，请检查服务器配置")
+                return del_list
+
+            # 正则解析删除的媒体信息
+            pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3}) Info App: Removing item from database, Type: (\w+), Name: (.*), Path: (.*), Id: (\d+)'
+            matches = re.findall(pattern, log_res.text)
+
+            # 循环获取媒体信息
+            for match in matches:
+                mtime = match[0]
+                # 排除已处理的媒体信息
+                if last_time and mtime < last_time:
+                    continue
+
+                mtype = match[1]
+                name = match[2]
+                path = match[3]
+
+                year = None
+                year_pattern = r'\(\d+\)'
+                year_match = re.search(year_pattern, path)
+                if year_match:
+                    year = year_match.group()[1:-1]
+
+                season = None
+                episode = None
+                if mtype == 'Episode' or mtype == 'Season':
+                    name_pattern = r"\/([\u4e00-\u9fa5]+)(?= \()"
+                    season_pattern = r"Season\s*(\d+)"
+                    episode_pattern = r"S\d+E(\d+)"
+                    name_match = re.search(name_pattern, path)
+                    season_match = re.search(season_pattern, path)
+                    episode_match = re.search(episode_pattern, path)
+
+                    if name_match:
+                        name = name_match.group(1)
+
+                    if season_match:
+                        season = season_match.group(1)
+                        if int(season) < 10:
+                            season = f'S0{season}'
+                        else:
+                            season = f'S{season}'
+                    else:
+                        season = None
+
+                    if episode_match:
+                        episode = episode_match.group(1)
+                        episode = f'E{episode}'
+                    else:
+                        episode = None
+
+                media = {
+                    "time": mtime,
+                    "type": mtype,
+                    "name": name,
+                    "year": year,
+                    "path": path,
+                    "season": season,
+                    "episode": episode,
+                }
+                logger.debug(f"解析到删除媒体：{json.dumps(media)}")
+                del_list.append(media)
+
+            return del_list
+
+        log_files = []
+        try:
+            # 获取所有emby日志
+            log_list_url = "[HOST]System/Logs/Query?Limit=3&api_key=[APIKEY]"
+            log_list_res = Emby().get_data(log_list_url)
+
+            if log_list_res and log_list_res.status_code == 200:
+                log_files_dict = json.loads(log_list_res.text)
+                for item in log_files_dict.get("Items"):
+                    if str(item.get('Name')).startswith("embyserver"):
+                        log_files.append(str(item.get('Name')))
+        except Exception as e:
+            print(str(e))
+
+        if not log_files:
+            log_files.append("embyserver.txt")
 
         del_medias = []
-        # 循环获取媒体信息
-        for match in matches:
-            mtime = match[0]
-            # 排除已处理的媒体信息
-            if last_time and mtime < last_time:
-                continue
-
-            mtype = match[1]
-            name = match[2]
-            path = match[3]
-
-            year = None
-            year_pattern = r'\(\d+\)'
-            year_match = re.search(year_pattern, path)
-            if year_match:
-                year = year_match.group()[1:-1]
-
-            season = None
-            episode = None
-            if mtype == 'Episode' or mtype == 'Season':
-                name_pattern = r"\/([\u4e00-\u9fa5]+)(?= \()"
-                season_pattern = r"Season\s*(\d+)"
-                episode_pattern = r"S\d+E(\d+)"
-                name_match = re.search(name_pattern, path)
-                season_match = re.search(season_pattern, path)
-                episode_match = re.search(episode_pattern, path)
-
-                if name_match:
-                    name = name_match.group(1)
-
-                if season_match:
-                    season = season_match.group(1)
-                    if int(season) < 10:
-                        season = f'S0{season}'
-                    else:
-                        season = f'S{season}'
-                else:
-                    season = None
-
-                if episode_match:
-                    episode = episode_match.group(1)
-                    episode = f'E{episode}'
-                else:
-                    episode = None
-
-            media = {
-                "time": mtime,
-                "type": mtype,
-                "name": name,
-                "year": year,
-                "path": path,
-                "season": season,
-                "episode": episode,
-            }
-            logger.debug(f"解析到删除媒体：{json.dumps(media)}")
-            del_medias.append(media)
+        log_files.reverse()
+        for log_file in log_files:
+            del_medias = __parse_log(log_file, del_medias)
 
         return del_medias
 
     @staticmethod
     def parse_jellyfin_log(last_time: datetime):
-        # 根据加入日期 降序排序
-        log_url = "[HOST]System/Logs/Log?name=log_%s.log&api_key=[APIKEY]" % datetime.date.today().strftime("%Y%m%d")
-        log_res = Jellyfin().get_data(log_url)
-        if not log_res or log_res.status_code != 200:
-            logger.error("获取jellyfin日志失败，请检查服务器配置")
-            return []
+        """
+        获取jellyfin日志列表、解析jellyfin日志
+        """
 
-        # 正则解析删除的媒体信息
-        pattern = r'\[(.*?)\].*?Removing item, Type: "(.*?)", Name: "(.*?)", Path: "(.*?)"'
-        matches = re.findall(pattern, log_res.text)
+        def __parse_log(file_name: str, del_list: list):
+            """
+            解析jellyfin日志
+            """
+            log_url = f"[HOST]System/Logs/Log?name={file_name}&api_key=[APIKEY]"
+            log_res = Jellyfin().get_data(log_url)
+            if not log_res or log_res.status_code != 200:
+                logger.error("获取jellyfin日志失败，请检查服务器配置")
+                return del_list
+
+            # 正则解析删除的媒体信息
+            pattern = r'\[(.*?)\].*?Removing item, Type: "(.*?)", Name: "(.*?)", Path: "(.*?)"'
+            matches = re.findall(pattern, log_res.text)
+
+            # 循环获取媒体信息
+            for match in matches:
+                mtime = match[0]
+                # 排除已处理的媒体信息
+                if last_time and mtime < last_time:
+                    continue
+
+                mtype = match[1]
+                name = match[2]
+                path = match[3]
+
+                year = None
+                year_pattern = r'\(\d+\)'
+                year_match = re.search(year_pattern, path)
+                if year_match:
+                    year = year_match.group()[1:-1]
+
+                season = None
+                episode = None
+                if mtype == 'Episode' or mtype == 'Season':
+                    name_pattern = r"\/([\u4e00-\u9fa5]+)(?= \()"
+                    season_pattern = r"Season\s*(\d+)"
+                    episode_pattern = r"S\d+E(\d+)"
+                    name_match = re.search(name_pattern, path)
+                    season_match = re.search(season_pattern, path)
+                    episode_match = re.search(episode_pattern, path)
+
+                    if name_match:
+                        name = name_match.group(1)
+
+                    if season_match:
+                        season = season_match.group(1)
+                        if int(season) < 10:
+                            season = f'S0{season}'
+                        else:
+                            season = f'S{season}'
+                    else:
+                        season = None
+
+                    if episode_match:
+                        episode = episode_match.group(1)
+                        episode = f'E{episode}'
+                    else:
+                        episode = None
+
+                media = {
+                    "time": mtime,
+                    "type": mtype,
+                    "name": name,
+                    "year": year,
+                    "path": path,
+                    "season": season,
+                    "episode": episode,
+                }
+                logger.debug(f"解析到删除媒体：{json.dumps(media)}")
+                del_list.append(media)
+
+            return del_list
+
+        log_files = []
+        try:
+            # 获取所有jellyfin日志
+            log_list_url = "[HOST]System/Logs?api_key=[APIKEY]"
+            log_list_res = Jellyfin().get_data(log_list_url)
+
+            if log_list_res and log_list_res.status_code == 200:
+                log_files_dict = json.loads(log_list_res.text)
+                for item in log_files_dict:
+                    if str(item.get('Name')).startswith("log_"):
+                        log_files.append(str(item.get('Name')))
+        except Exception as e:
+            print(str(e))
+
+        if not log_files:
+            log_files.append("log_%s.log" % datetime.date.today().strftime("%Y%m%d"))
 
         del_medias = []
-        # 循环获取媒体信息
-        for match in matches:
-            mtime = match[0]
-            # 排除已处理的媒体信息
-            if last_time and mtime < last_time:
-                continue
-
-            mtype = match[1]
-            name = match[2]
-            path = match[3]
-
-            year = None
-            year_pattern = r'\(\d+\)'
-            year_match = re.search(year_pattern, path)
-            if year_match:
-                year = year_match.group()[1:-1]
-
-            season = None
-            episode = None
-            if mtype == 'Episode' or mtype == 'Season':
-                name_pattern = r"\/([\u4e00-\u9fa5]+)(?= \()"
-                season_pattern = r"Season\s*(\d+)"
-                episode_pattern = r"S\d+E(\d+)"
-                name_match = re.search(name_pattern, path)
-                season_match = re.search(season_pattern, path)
-                episode_match = re.search(episode_pattern, path)
-
-                if name_match:
-                    name = name_match.group(1)
-
-                if season_match:
-                    season = season_match.group(1)
-                    if int(season) < 10:
-                        season = f'S0{season}'
-                    else:
-                        season = f'S{season}'
-                else:
-                    season = None
-
-                if episode_match:
-                    episode = episode_match.group(1)
-                    episode = f'E{episode}'
-                else:
-                    episode = None
-
-            media = {
-                "time": mtime,
-                "type": mtype,
-                "name": name,
-                "year": year,
-                "path": path,
-                "season": season,
-                "episode": episode,
-            }
-            logger.debug(f"解析到删除媒体：{json.dumps(media)}")
-            del_medias.append(media)
+        log_files.reverse()
+        for log_file in log_files:
+            del_medias = __parse_log(log_file, del_medias)
 
         return del_medias
 
