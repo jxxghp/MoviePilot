@@ -858,7 +858,7 @@ class BrushFlow(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/upload.png'
+                                                            'src': '/plugin_icon/upload.png'
                                                         }
                                                     }
                                                 ]
@@ -928,7 +928,7 @@ class BrushFlow(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/download.png'
+                                                            'src': '/plugin_icon/download.png'
                                                         }
                                                     }
                                                 ]
@@ -998,7 +998,7 @@ class BrushFlow(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/seed.png'
+                                                            'src': '/plugin_icon/seed.png'
                                                         }
                                                     }
                                                 ]
@@ -1068,7 +1068,7 @@ class BrushFlow(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/delete.png'
+                                                            'src': '/plugin_icon/delete.png'
                                                         }
                                                     }
                                                 ]

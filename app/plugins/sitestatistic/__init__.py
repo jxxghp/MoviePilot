@@ -467,7 +467,7 @@ class SiteStatistic(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/upload.png'
+                                                            'src': '/plugin_icon/upload.png'
                                                         }
                                                     }
                                                 ]
@@ -537,7 +537,7 @@ class SiteStatistic(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/download.png'
+                                                            'src': '/plugin_icon/download.png'
                                                         }
                                                     }
                                                 ]
@@ -607,7 +607,7 @@ class SiteStatistic(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/seed.png'
+                                                            'src': '/plugin_icon/seed.png'
                                                         }
                                                     }
                                                 ]
@@ -677,7 +677,7 @@ class SiteStatistic(_PluginBase):
                                                     {
                                                         'component': 'VImg',
                                                         'props': {
-                                                            'src': '/plugin/database.png'
+                                                            'src': '/plugin_icon/database.png'
                                                         }
                                                     }
                                                 ]
