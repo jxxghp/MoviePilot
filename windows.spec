@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-def collect_pkg_data(package, include_py_files=False, subdir=None):
+def collect_pkg_data(package: str, include_py_files: bool = False, subdir: str = None):
     """
     Collect all data files from the given package.
     """
@@ -27,7 +27,7 @@ def collect_pkg_data(package, include_py_files=False, subdir=None):
     return data_toc
 
 
-def collect_local_submodules(package):
+def collect_local_submodules(package: str):
     """
     Collect all local submodules from the given package.
     """
@@ -38,9 +38,9 @@ def collect_local_submodules(package):
     # Walk through all file in the given package, looking for data files.
     for file in package_dir.rglob('*.py'):
         if file.name == '__init__.py':
-            module = str(file.parent).replace(os.sep, '.')
+            module = f"{file.parent}".replace(os.sep, '.')
         else:
-            module = f"{package}.{file.parent.name}.{file.stem}"
+            module = f"{file.parent}.{file.stem}".replace(os.sep, '.')
         if module not in submodules:
             submodules.append(module)
     return submodules
@@ -50,8 +50,7 @@ hiddenimports = [
                     'passlib.handlers.bcrypt',
                     'app.modules',
                     'app.plugins',
-                ] + collect_local_submodules('app.modules') \
-                + collect_local_submodules('app.plugins')
+                ] + collect_local_submodules('app.modules') + collect_local_submodules('app.plugins')
 
 block_cipher = None
 
