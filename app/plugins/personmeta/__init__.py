@@ -581,8 +581,10 @@ class PersonMeta(_PluginBase):
         """
         获取豆瓣演员信息
         """
-        # 随机休眠1-5秒
-        time.sleep(1 + int(time.time()) % 5)
+        # 随机休眠 3-10 秒
+        sleep_time = 3 + int(time.time()) % 7
+        logger.info(f"随机休眠 {sleep_time}秒 ...")
+        time.sleep(sleep_time)
         # 匹配豆瓣信息
         doubaninfo = self.chain.match_doubaninfo(name=mediainfo.title,
                                                  mtype=mediainfo.type.value,

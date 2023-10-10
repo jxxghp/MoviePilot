@@ -449,7 +449,7 @@ class DoubanSync(_PluginBase):
             results = self.rsshelper.parse(url)
             if not results:
                 logger.error(f"未获取到用户 {user_id} 豆瓣RSS数据：{url}")
-                return
+                continue
             # 解析数据
             for result in results:
                 try:
