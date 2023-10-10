@@ -1,4 +1,5 @@
 import multiprocessing
+from pathlib import Path
 
 import uvicorn as uvicorn
 from fastapi import FastAPI
@@ -13,6 +14,7 @@ from app.db.init import init_db, update_db
 from app.helper.display import DisplayHelper
 from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
+from app.utils.system import SystemUtils
 
 # App
 App = FastAPI(title=settings.PROJECT_NAME,
@@ -44,6 +46,34 @@ def init_routers():
     App.include_router(arr_router, prefix="/api/v3")
 
 
+def start_frontend():
+    """
+    启动前端服务
+    """
+    if not SystemUtils.is_frozen():
+        return
+    if SystemUtils.is_windows():
+        nginx_path = settings.ROOT_PATH / 'nginx' / 'nginx.exe'
+    else:
+        nginx_path = settings.ROOT_PATH / 'nginx' / 'nginx'
+    if Path(nginx_path).exists():
+        import subprocess
+        subprocess.Popen(f"start {nginx_path}", shell=True)
+
+
+def stop_frontend():
+    """
+    停止前端服务
+    """
+    if not SystemUtils.is_frozen():
+        return
+    import subprocess
+    if SystemUtils.is_windows():
+        subprocess.Popen(f"taskkill /f /im nginx.exe", shell=True)
+    else:
+        subprocess.Popen(f"killall nginx", shell=True)
+
+
 @App.on_event("shutdown")
 def shutdown_server():
     """
@@ -59,6 +89,8 @@ def shutdown_server():
     DisplayHelper().stop()
     # 停止定时服务
     Scheduler().stop()
+    # 停止前端服务
+    stop_frontend()
 
 
 @App.on_event("startup")
@@ -66,7 +98,7 @@ def start_module():
     """
     启动模块
     """
-    # 虚伪显示
+    # 虚拟显示
     DisplayHelper()
     # 站点管理
     SitesHelper()
@@ -80,6 +112,8 @@ def start_module():
     Command()
     # 初始化路由
     init_routers()
+    # 启动前端服务
+    start_frontend()
 
 
 if __name__ == '__main__':

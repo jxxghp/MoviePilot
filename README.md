@@ -39,19 +39,17 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
   docker pull jxxghp/moviepilot:latest
   ```
 
-- Window
+- Windows
 
-  后端：https://github.com/jxxghp/MoviePilot/releases
-  
-  前端：https://github.com/jxxghp/MoviePilot-Frontend/releases
+  下载 [MoviePilot.exe](https://github.com/jxxghp/MoviePilot/releases)，双击运行后自动生成配置文件目录。
 
 ## 配置
 
 项目的所有配置均通过环境变量进行设置，支持两种配置方式：
-- 在docker环境变量部分进行参数配置，部分环境建立容器后会自动显示待配置项，如未自动显示配置项则需要手动增加对应环境变量。
-- 下载 [app.env](https://github.com/jxxghp/MoviePilot/raw/main/config/app.env) 文件，修改好配置后放置到配置文件映射路径根目录，配置项可根据说明自主增减。
+- 在Docker环境变量部分或Wdinows系统环境变量中进行参数配置，如未自动显示配置项则需要手动增加对应环境变量。
+- 下载 [app.env](https://github.com/jxxghp/MoviePilot/raw/main/config/app.env) 配置文件，修改好配置后放置到配置文件映射路径根目录，配置项可根据说明自主增减。
 
-配置文件映射路径：`/config`，配置项生效优先级：环境变量 > env文件 > 默认值，部分参数如路径映射、站点认证、权限端口等必须通过环境变量进行配置。
+配置文件映射路径：`/config`，配置项生效优先级：环境变量 > env文件 > 默认值，**部分参数如路径映射、站点认证、权限端口、时区等必须通过环境变量进行配置**。
 
 >   $\color{red}{*}$   号标识的为必填项，其它为可选项，可选项可删除配置变量从而使用默认值。
 

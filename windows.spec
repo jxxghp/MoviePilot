@@ -77,6 +77,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     collect_pkg_data('config'),
+    collect_pkg_data('nginx'),
     collect_pkg_data('cf_clearance'),
     collect_pkg_data('database', include_py_files=True),
     [],

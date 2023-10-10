@@ -77,6 +77,22 @@ jobs:
           pip install -r requirements.txt
         shell: pwsh
 
+      - name: Prepare Frontend
+        run: |
+          Invoke-WebRequest -Uri "http://nginx.org/download/nginx-1.25.2.zip" -OutFile "nginx.zip"
+          Expand-Archive -Path "nginx.zip" -DestinationPath "nginx-1.25.2"
+          Move-Item -Path "nginx-1.25.2/nginx-1.25.2" -Destination "nginx"
+          Remove-Item -Path "nginx.zip"
+          Remove-Item -Path "nginx-1.25.2" -Recurse -Force
+          $FRONTEND_VERSION = (Invoke-WebRequest -Uri "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | ConvertFrom-Json).tag_name
+          Invoke-WebRequest -Uri "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/$FRONTEND_VERSION/dist.zip" -OutFile "dist.zip"
+          Expand-Archive -Path "dist.zip" -DestinationPath "dist"
+          Move-Item -Path "dist/dist/*" -Destination "nginx/html" -Force
+          Remove-Item -Path "dist.zip"
+          Remove-Item -Path "dist" -Recurse -Force
+          Move-Item -Path "nginx/html/nginx.conf" -Destination "nginx/conf/nginx.conf" -Force
+        shell: pwsh
+
       - name: Pyinstaller
         run: |
           pyinstaller windows.spec
