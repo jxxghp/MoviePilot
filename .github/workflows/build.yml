@@ -95,6 +95,7 @@ jobs:
           New-Item -Path "nginx/temp/__keep__.txt" -ItemType File -Force
           New-Item -Path "nginx/logs" -ItemType Directory -Force
           New-Item -Path "nginx/logs/__keep__.txt" -ItemType File -Force
+          Rename-Item -Path "nginx/nginx.exe" -NewName "nginx/nginx_mp.exe" -Force
         shell: pwsh
 
       - name: Pyinstaller

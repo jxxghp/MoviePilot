@@ -1,6 +1,8 @@
 .idea/
 *.c
 build/
+dist/
+nginx/
 test.py
 app/helper/sites.py
 config/user.db

@@ -1,4 +1,6 @@
 import multiprocessing
+import os
+import sys
 import threading
 from pathlib import Path
 
@@ -9,6 +11,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from uvicorn import Config
 
+from app.utils.system import SystemUtils
+
+# 禁用输出
+if SystemUtils.is_frozen():
+    sys.stdout = open(os.devnull, 'w')
+    sys.stderr = open(os.devnull, 'w')
+
 from app.command import Command
 from app.core.config import settings
 from app.core.module import ModuleManager
@@ -17,7 +26,6 @@ from app.db.init import init_db, update_db
 from app.helper.display import DisplayHelper
 from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
-from app.utils.system import SystemUtils
 
 # App
 App = FastAPI(title=settings.PROJECT_NAME,
@@ -56,9 +64,9 @@ def start_frontend():
     if not SystemUtils.is_frozen():
         return
     if SystemUtils.is_windows():
-        nginx_path = settings.ROOT_PATH / 'nginx' / 'nginx.exe'
+        nginx_path = settings.ROOT_PATH / 'nginx' / 'nginx_mp.exe'
     else:
-        nginx_path = settings.ROOT_PATH / 'nginx' / 'nginx'
+        nginx_path = settings.ROOT_PATH / 'nginx' / 'nginx_mp'
     if Path(nginx_path).exists():
         import subprocess
         subprocess.Popen(f"start {nginx_path}", shell=True)
@@ -72,9 +80,9 @@ def stop_frontend():
         return
     import subprocess
     if SystemUtils.is_windows():
-        subprocess.Popen(f"taskkill /f /im nginx.exe", shell=True)
+        subprocess.Popen(f"taskkill /f /im nginx_mp.exe", shell=True)
     else:
-        subprocess.Popen(f"killall nginx", shell=True)
+        subprocess.Popen(f"killall nginx_mp", shell=True)
 
 
 @App.on_event("shutdown")
@@ -161,11 +169,11 @@ def start_tray():
 
 
 if __name__ == '__main__':
+    # 启动托盘
+    start_tray()
     # 初始化数据库
     init_db()
     # 更新数据库
     update_db()
-    # 启动托盘
-    start_tray()
     # 启动API服务
     Server.run()
