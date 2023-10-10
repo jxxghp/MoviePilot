@@ -68,7 +68,7 @@ def start_frontend():
         nginx_path = settings.ROOT_PATH / 'nginx' / 'nginx'
     if Path(nginx_path).exists():
         import subprocess
-        subprocess.Popen(f"start {nginx_path}", shell=True)
+        subprocess.Popen(nginx_path)
 
 
 def stop_frontend():
