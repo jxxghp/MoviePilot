@@ -91,6 +91,8 @@ jobs:
           Remove-Item -Path "dist.zip"
           Remove-Item -Path "dist" -Recurse -Force
           Move-Item -Path "nginx/html/nginx.conf" -Destination "nginx/conf/nginx.conf" -Force
+          New-Item -Path "nginx/temp" -ItemType Directory
+          New-Item -Path "nginx/logs" -ItemType Directory
         shell: pwsh
 
       - name: Pyinstaller
