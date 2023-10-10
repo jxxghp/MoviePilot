@@ -211,7 +211,7 @@ class CustomHosts(_PluginBase):
                 # 添加新的Hosts
                 system_hosts.add(new_entrys)
                 system_hosts.write()
-                logger.info("更新系统hosts文件成功")
+                logger.info("更新系统hosts文件成功（注：容器运行则更新容器hosts！）")
             except Exception as err:
                 err_flag = True
                 logger.error(f"更新系统hosts文件失败：{str(err) or '请检查权限'}")
