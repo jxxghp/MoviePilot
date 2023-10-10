@@ -4,7 +4,6 @@ import sys
 import threading
 from pathlib import Path
 
-import pystray
 import uvicorn as uvicorn
 from PIL import Image
 from fastapi import FastAPI
@@ -85,6 +84,49 @@ def stop_frontend():
         subprocess.Popen(f"killall nginx_mp", shell=True)
 
 
+def start_tray():
+    """
+    启动托盘图标
+    """
+
+    if not SystemUtils.is_frozen():
+        return
+
+    def open_web():
+        """
+        调用浏览器打开前端页面
+        """
+        import webbrowser
+        webbrowser.open(f"http://localhost:{settings.NGINX_PORT}")
+
+    def quit_app():
+        """
+        退出程序
+        """
+        TrayIcon.stop()
+        Server.should_exit = True
+
+    import pystray
+
+    # 托盘图标
+    TrayIcon = pystray.Icon(
+        settings.PROJECT_NAME,
+        icon=Image.open(settings.ROOT_PATH / 'app.ico'),
+        menu=pystray.Menu(
+            pystray.MenuItem(
+                '打开',
+                open_web,
+            ),
+            pystray.MenuItem(
+                '退出',
+                quit_app,
+            )
+        )
+    )
+    # 启动托盘图标
+    threading.Thread(target=TrayIcon.run, daemon=True).start()
+
+
 @App.on_event("shutdown")
 def shutdown_server():
     """
@@ -125,47 +167,6 @@ def start_module():
     init_routers()
     # 启动前端服务
     start_frontend()
-
-
-def start_tray():
-    """
-    启动托盘图标
-    """
-
-    if not SystemUtils.is_frozen():
-        return
-
-    def open_web():
-        """
-        调用浏览器打开前端页面
-        """
-        import webbrowser
-        webbrowser.open(f"http://localhost:{settings.NGINX_PORT}")
-
-    def quit_app():
-        """
-        退出程序
-        """
-        TrayIcon.stop()
-        Server.should_exit = True
-
-    # 托盘图标
-    TrayIcon = pystray.Icon(
-        settings.PROJECT_NAME,
-        icon=Image.open(settings.ROOT_PATH / 'app.ico'),
-        menu=pystray.Menu(
-            pystray.MenuItem(
-                '打开',
-                open_web,
-            ),
-            pystray.MenuItem(
-                '退出',
-                quit_app,
-            )
-        )
-    )
-    # 启动托盘图标
-    threading.Thread(target=TrayIcon.run, daemon=True).start()
 
 
 if __name__ == '__main__':
