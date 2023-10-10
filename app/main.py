@@ -63,10 +63,16 @@ def start_frontend():
     if not SystemUtils.is_frozen():
         return
     nginx_path = settings.ROOT_PATH / 'nginx'
-    nginx = 'nginx.exe' if SystemUtils.is_windows() else 'nginx'
-    if Path(nginx_path).exists():
-        import subprocess
-        subprocess.Popen(f"cd {nginx_path}; start {nginx}",
+    if not nginx_path.exists():
+        return
+    import subprocess
+    if SystemUtils.is_windows():
+        subprocess.Popen("start nginx.exe",
+                         cwd=nginx_path,
+                         shell=True)
+    else:
+        subprocess.Popen("nohup ./nginx &",
+                         cwd=nginx_path,
                          shell=True)
 
 
