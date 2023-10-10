@@ -60,13 +60,13 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 - **PUID**：运行程序用户的`uid`，默认`0`（仅支持环境变量配置）
 - **PGID**：运行程序用户的`gid`，默认`0`（仅支持环境变量配置）
 - **UMASK**：掩码权限，默认`000`，可以考虑设置为`022`（仅支持环境变量配置）
-- **MOVIEPILOT_AUTO_UPDATE**：重启更新，`true`/`false`，默认`true` **注意：如果出现网络问题可以配置`PROXY_HOST`，具体看下方`PROXY_HOST`解释**（仅支持环境变量配置）
+- **PROXY_HOST：** 网络代理，访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`（仅支持环境变量配置）
+- **MOVIEPILOT_AUTO_UPDATE**：重启更新，`true`/`false`，默认`true` **注意：如果出现网络问题可以配置`PROXY_HOST`**（仅支持环境变量配置）
 - **MOVIEPILOT_AUTO_UPDATE_DEV**：重启时更新到未发布的开发版本代码，`true`/`false`，默认`false`（仅支持环境变量配置）
 ---
 - **SUPERUSER $\color{red}{*}$ ：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
 - **SUPERUSER_PASSWORD $\color{red}{*}$ ：** 超级管理员初始密码，默认`password`，建议修改为复杂密码
 - **API_TOKEN $\color{red}{*}$ ：** API密钥，默认`moviepilot`，在媒体服务器Webhook、微信回调等地址配置中需要加上`?token=`该值，建议修改为复杂字符串
-- **PROXY_HOST：** 网络代理，访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`（可选）
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`或其它中转代理服务地址，能连通即可
 - **TMDB_IMAGE_DOMAIN：** TMDB图片地址，默认`image.tmdb.org`，可配置为其它中转代理以加速TMDB图片显示，如：`static-mdb.v.geilijiasu.com`
 ---

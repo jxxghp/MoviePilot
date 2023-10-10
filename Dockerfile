@@ -3,15 +3,16 @@ ARG MOVIEPILOT_VERSION
 ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
     HOME="/moviepilot" \
+    CONFIG_DIR="/config" \
     TERM="xterm" \
     PUID=0 \
     PGID=0 \
     UMASK=000 \
     PORT=3001 \
     NGINX_PORT=3000 \
+    PROXY_HOST="" \
     MOVIEPILOT_AUTO_UPDATE=true \
     MOVIEPILOT_AUTO_UPDATE_DEV=false \
-    CONFIG_DIR="/config" \
     AUTH_SITE="iyuu" \
     IYUU_SIGN=""
 WORKDIR "/app"
