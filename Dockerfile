@@ -11,7 +11,9 @@ ENV LANG="C.UTF-8" \
     NGINX_PORT=3000 \
     MOVIEPILOT_AUTO_UPDATE=true \
     MOVIEPILOT_AUTO_UPDATE_DEV=false \
-    CONFIG_DIR="/config"
+    CONFIG_DIR="/config" \
+    AUTH_SITE="iyuu" \
+    IYUU_SIGN=""
 WORKDIR "/app"
 RUN apt-get update -y \
     && apt-get -y install \
