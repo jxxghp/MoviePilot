@@ -3,6 +3,7 @@ import os
 import platform
 import re
 import shutil
+import sys
 from pathlib import Path
 from typing import List, Union, Tuple
 
@@ -27,20 +28,39 @@ class SystemUtils:
 
     @staticmethod
     def is_docker() -> bool:
+        """
+        判断是否为Docker环境
+        """
         return Path("/.dockerenv").exists()
 
     @staticmethod
     def is_synology() -> bool:
+        """
+        判断是否为群晖系统
+        """
         if SystemUtils.is_windows():
             return False
         return True if "synology" in SystemUtils.execute('uname -a') else False
 
     @staticmethod
     def is_windows() -> bool:
+        """
+        判断是否为Windows系统
+        """
         return True if os.name == "nt" else False
 
     @staticmethod
+    def is_frozen() -> bool:
+        """
+        判断是否为冻结的二进制文件
+        """
+        return True if getattr(sys, 'frozen', False) else False
+
+    @staticmethod
     def is_macos() -> bool:
+        """
+        判断是否为MacOS系统
+        """
         return True if platform.system() == 'Darwin' else False
 
     @staticmethod
@@ -77,7 +97,7 @@ class SystemUtils:
         """
         try:
             # link到当前目录并改名
-            tmp_path = (src.parent / dest.name).with_suffix(".mp")
+            tmp_path = src.parent / (dest.name + ".mp")
             tmp_path.hardlink_to(src)
             # 移动到目标目录
             shutil.move(tmp_path, dest)

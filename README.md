@@ -4,8 +4,6 @@
 
 # 仅用于学习交流使用，请勿在任何国内平台宣传该项目！
 
-Docker：https://hub.docker.com/r/jxxghp/moviepilot
-
 发布频道：https://t.me/moviepilot_channel
 
 ## 主要特性
@@ -33,11 +31,19 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 ### 4. **安装MoviePilot**
 
-目前仅提供docker镜像，点击 [这里](https://hub.docker.com/r/jxxghp/moviepilot) 或执行命令：
+- Docker镜像
 
-```shell
-docker pull jxxghp/moviepilot:latest
-```
+  点击 [这里](https://hub.docker.com/r/jxxghp/moviepilot) 或执行命令：
+
+  ```shell
+  docker pull jxxghp/moviepilot:latest
+  ```
+
+- Window
+
+  后端：https://github.com/jxxghp/MoviePilot/releases
+  
+  前端：https://github.com/jxxghp/MoviePilot-Frontend/releases
 
 ## 配置
 

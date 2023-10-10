@@ -1,6 +1,7 @@
 FROM python:3.11.4-slim-bullseye
 ARG MOVIEPILOT_VERSION
 ENV LANG="C.UTF-8" \
+    TZ="Asia/Shanghai" \
     HOME="/moviepilot" \
     TERM="xterm" \
     PUID=0 \
