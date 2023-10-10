@@ -21,7 +21,7 @@ class Jellyfin(metaclass=Singleton):
             if not self._host.startswith("http"):
                 self._host = "http://" + self._host
         self._apikey = settings.JELLYFIN_API_KEY
-        self.user = self.get_user()
+        self.user = self.get_user(settings.SUPERUSER)
         self.serverid = self.get_server_id()
 
     def is_inactive(self) -> bool:

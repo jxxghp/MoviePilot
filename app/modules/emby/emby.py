@@ -23,7 +23,7 @@ class Emby(metaclass=Singleton):
             if not self._host.startswith("http"):
                 self._host = "http://" + self._host
         self._apikey = settings.EMBY_API_KEY
-        self.user = self.get_user()
+        self.user = self.get_user(settings.SUPERUSER)
         self.folders = self.get_emby_folders()
 
     def is_inactive(self) -> bool:

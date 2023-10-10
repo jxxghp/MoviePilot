@@ -49,10 +49,10 @@ async def login_access_token(
                 user.create(db)
     elif not user.is_active:
         raise HTTPException(status_code=403, detail="用户未启用")
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return schemas.Token(
         access_token=security.create_access_token(
-            user.id, expires_delta=access_token_expires
+            user.id,
+            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         ),
         token_type="bearer",
         super_user=user.is_superuser,
