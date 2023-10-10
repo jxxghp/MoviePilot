@@ -63,9 +63,9 @@ def start_frontend():
     if not SystemUtils.is_frozen():
         return
     if SystemUtils.is_windows():
-        nginx_path = settings.ROOT_PATH / 'nginx' / 'nginx_mp.exe'
+        nginx_path = settings.ROOT_PATH / 'nginx' / 'nginx.exe'
     else:
-        nginx_path = settings.ROOT_PATH / 'nginx' / 'nginx_mp'
+        nginx_path = settings.ROOT_PATH / 'nginx' / 'nginx'
     if Path(nginx_path).exists():
         import subprocess
         subprocess.Popen(f"start {nginx_path}", shell=True)
@@ -79,9 +79,9 @@ def stop_frontend():
         return
     import subprocess
     if SystemUtils.is_windows():
-        subprocess.Popen(f"taskkill /f /im nginx_mp.exe", shell=True)
+        subprocess.Popen(f"taskkill /f /im nginx.exe", shell=True)
     else:
-        subprocess.Popen(f"killall nginx_mp", shell=True)
+        subprocess.Popen(f"killall nginx", shell=True)
 
 
 def start_tray():
