@@ -127,11 +127,10 @@ class DirMonitor(_PluginBase):
                     continue
 
                 # 自定义转移方式
+                _transfer_type = self._transfer_type
                 if mon_path.count("#") == 1:
-                    self._transferconf[mon_path] = mon_path.split("#")[1]
+                    _transfer_type = mon_path.split("#")[1]
                     mon_path = mon_path.split("#")[0]
-                else:
-                    self._transferconf[mon_path] = self._transfer_type
 
                 # 存储目的目录
                 if SystemUtils.is_windows():
@@ -143,15 +142,19 @@ class DirMonitor(_PluginBase):
                 else:
                     paths = mon_path.split(":")
 
+                # 目的目录
                 target_path = None
                 if len(paths) > 1:
                     mon_path = paths[0]
                     target_path = Path(paths[1])
                     self._dirconf[mon_path] = target_path
 
+                # 转移方式
+                self._transferconf[mon_path] = _transfer_type
+
                 # 检查媒体库目录是不是下载目录的子目录
                 try:
-                    if target_path.is_relative_to(Path(mon_path)):
+                    if target_path and target_path.is_relative_to(Path(mon_path)):
                         logger.warn(f"{target_path} 是下载目录 {mon_path} 的子目录，无法监控")
                         self.systemmessage.put(f"{target_path} 是下载目录 {mon_path} 的子目录，无法监控")
                         continue
