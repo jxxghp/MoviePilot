@@ -173,7 +173,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 ### 2. **用户认证**
 
-`MoviePilot`需要认证后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数（**仅能通过docker环境变量配置**）
+`MoviePilot`需要认证后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数（**仅能通过环境变量配置**）
 
 - **AUTH_SITE $\color{red}{*}$ ：** 认证站点，支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`/`xingtan`
 

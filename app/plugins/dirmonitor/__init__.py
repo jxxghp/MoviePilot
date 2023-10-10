@@ -126,6 +126,13 @@ class DirMonitor(_PluginBase):
                 if not mon_path:
                     continue
 
+                # 自定义转移方式
+                if mon_path.count("#") == 1:
+                    self._transferconf[mon_path] = mon_path.split("#")[1]
+                    mon_path = mon_path.split("#")[0]
+                else:
+                    self._transferconf[mon_path] = self._transfer_type
+
                 # 存储目的目录
                 if SystemUtils.is_windows():
                     if mon_path.count(":") > 1:
@@ -135,12 +142,6 @@ class DirMonitor(_PluginBase):
                         paths = [mon_path]
                 else:
                     paths = mon_path.split(":")
-
-                # 自定义转移方式
-                if mon_path.count("#") == 1:
-                    self._transferconf[mon_path] = mon_path.split("#")[1]
-                else:
-                    self._transferconf[mon_path] = self._transfer_type
 
                 target_path = None
                 if len(paths) > 1:
@@ -615,6 +616,7 @@ class DirMonitor(_PluginBase):
                                             'rows': 5,
                                             'placeholder': '每一行一个目录，支持三种配置方式：\n'
                                                            '监控目录\n'
+                                                           '监控目录#转移方式（move|copy|link|softlink）\n'
                                                            '监控目录:转移目的目录（需同时在媒体库目录中配置该目的目录）\n'
                                                            '监控目录:转移目的目录#转移方式（move|copy|link|softlink）'
                                         }
