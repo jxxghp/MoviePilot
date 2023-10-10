@@ -32,17 +32,17 @@ def collect_local_submodules(package):
     Collect all local submodules from the given package.
     """
     import os
-    base_dir = '..'
-    package_dir = os.path.join(base_dir, package.replace('.', os.sep))
-    submodules = []
-    for dir_path, dir_names, files in os.walk(package_dir):
-        for f in files:
-            if f == '__init__.py':
-                submodules.append(f"{package}.{os.path.basename(dir_path)}")
-            elif f.endswith('.py'):
-                submodules.append(f"{package}.{os.path.basename(dir_path)}.{os.path.splitext(f)[0]}")
-        for d in dir_names:
-            submodules.append(f"{package}.{os.path.basename(dir_path)}.{d}")
+    from pathlib import Path
+    package_dir = Path(package.replace('.', os.sep))
+    submodules = [package]
+    # Walk through all file in the given package, looking for data files.
+    for file in package_dir.rglob('*.py'):
+        if file.name == '__init__.py':
+            module = str(file.parent).replace(os.sep, '.')
+        else:
+            module = f"{package}.{file.parent.name}.{file.stem}"
+        if module not in submodules:
+            submodules.append(module)
     return submodules
 
 
