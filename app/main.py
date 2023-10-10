@@ -32,7 +32,6 @@ App.add_middleware(
     allow_headers=["*"],
 )
 
-
 # uvicorn服务
 Server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT,
                                reload=settings.DEV, workers=multiprocessing.cpu_count()))
@@ -120,37 +119,46 @@ def start_module():
     start_frontend()
 
 
-def open_web():
+def start_tray():
     """
-    调用浏览器打开前端页面
+    启动托盘图标
     """
-    import webbrowser
-    webbrowser.open(f"http://localhost:{settings.NGINX_PORT}")
 
+    if not SystemUtils.is_frozen():
+        return
 
-def quit_app():
-    """
-    退出程序
-    """
-    TrayIcon.stop()
-    Server.should_exit = True
+    def open_web():
+        """
+        调用浏览器打开前端页面
+        """
+        import webbrowser
+        webbrowser.open(f"http://localhost:{settings.NGINX_PORT}")
 
+    def quit_app():
+        """
+        退出程序
+        """
+        TrayIcon.stop()
+        Server.should_exit = True
 
-# 托盘图标
-TrayIcon = pystray.Icon(
-    settings.PROJECT_NAME,
-    icon=Image.open(settings.ROOT_PATH / 'app.ico'),
-    menu=pystray.Menu(
-        pystray.MenuItem(
-            '打开',
-            open_web,
-        ),
-        pystray.MenuItem(
-            '退出',
-            quit_app,
+    # 托盘图标
+    TrayIcon = pystray.Icon(
+        settings.PROJECT_NAME,
+        icon=Image.open(settings.ROOT_PATH / 'app.ico'),
+        menu=pystray.Menu(
+            pystray.MenuItem(
+                '打开',
+                open_web,
+            ),
+            pystray.MenuItem(
+                '退出',
+                quit_app,
+            )
         )
     )
-)
+    # 启动托盘图标
+    threading.Thread(target=TrayIcon.run, daemon=True).start()
+
 
 if __name__ == '__main__':
     # 初始化数据库
@@ -158,6 +166,6 @@ if __name__ == '__main__':
     # 更新数据库
     update_db()
     # 启动托盘
-    threading.Thread(target=TrayIcon.run, daemon=True).start()
+    start_tray()
     # 启动API服务
     Server.run()
