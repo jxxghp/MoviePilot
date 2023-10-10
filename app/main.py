@@ -1,8 +1,10 @@
 import multiprocessing
+import threading
 from pathlib import Path
 
 import pystray
 import uvicorn as uvicorn
+from PIL import Image
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from uvicorn import Config
@@ -29,6 +31,11 @@ App.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# uvicorn服务
+Server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT,
+                               reload=settings.DEV, workers=multiprocessing.cpu_count()))
 
 
 def init_routers():
@@ -69,14 +76,6 @@ def stop_frontend():
         subprocess.Popen(f"taskkill /f /im nginx.exe", shell=True)
     else:
         subprocess.Popen(f"killall nginx", shell=True)
-
-
-def open_web():
-    """
-    调用浏览器打开前端页面
-    """
-    import webbrowser
-    webbrowser.open(f"http://{settings.HOST}:{settings.PORT}")
 
 
 @App.on_event("shutdown")
@@ -121,14 +120,26 @@ def start_module():
     start_frontend()
 
 
-# uvicorn服务
-Server = uvicorn.Server(Config(App, host=settings.HOST, port=settings.PORT,
-                               reload=settings.DEV, workers=multiprocessing.cpu_count()))
+def open_web():
+    """
+    调用浏览器打开前端页面
+    """
+    import webbrowser
+    webbrowser.open(f"http://localhost:{settings.NGINX_PORT}")
+
+
+def quit_app():
+    """
+    退出程序
+    """
+    TrayIcon.stop()
+    Server.should_exit = True
+
 
 # 托盘图标
 TrayIcon = pystray.Icon(
     settings.PROJECT_NAME,
-    icon=settings.ROOT_PATH / 'app.ico',
+    icon=Image.open(settings.ROOT_PATH / 'app.ico'),
     menu=pystray.Menu(
         pystray.MenuItem(
             '打开',
@@ -136,7 +147,7 @@ TrayIcon = pystray.Icon(
         ),
         pystray.MenuItem(
             '退出',
-            shutdown_server,
+            quit_app,
         )
     )
 )
@@ -146,5 +157,7 @@ if __name__ == '__main__':
     init_db()
     # 更新数据库
     update_db()
-    # 启动服务
+    # 启动托盘
+    threading.Thread(target=TrayIcon.run, daemon=True).start()
+    # 启动API服务
     Server.run()

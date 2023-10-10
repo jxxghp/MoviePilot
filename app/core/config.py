@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     # API监听端口
     PORT: int = 3001
+    # 前端监听端口
+    NGINX_PORT: int = 3000
     # 是否调试模式
     DEBUG: bool = False
     # 是否开发模式
