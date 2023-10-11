@@ -49,13 +49,12 @@ class DoubanChain(ChainBase):
         # 使用原标题识别媒体信息
         mediainfo = self.recognize_media(meta=meta, mtype=meta.type)
         if not mediainfo:
-            logger.warn(f'{meta.name} 未识别到TMDB媒体信息')
             if season_meta and season_meta.name != meta.name:
                 # 使用主标题识别媒体信息
                 mediainfo = self.recognize_media(meta=season_meta, mtype=season_meta.type)
             if not mediainfo:
-                logger.warn(f'{season_meta.name} 未识别到TMDB媒体信息')
-                return Context(meta_info=season_meta, media_info=MediaInfo(douban_info=doubaninfo))
+                logger.warn(f'{meta.name} 未识别到TMDB媒体信息')
+                return Context(meta_info=meta, media_info=MediaInfo(douban_info=doubaninfo))
         logger.info(f'识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year} {meta.season}')
         mediainfo.set_douban_info(doubaninfo)
         return Context(meta_info=meta, media_info=mediainfo)
