@@ -450,14 +450,18 @@ class DoubanSync(_PluginBase):
             if not results:
                 logger.error(f"未获取到用户 {user_id} 豆瓣RSS数据：{url}")
                 continue
+            else:
+                logger.info(f"获取到用户 {user_id} 豆瓣RSS数据：{len(results)}")
             # 解析数据
             for result in results:
                 try:
                     dtype = result.get("title", "")[:2]
                     title = result.get("title", "")[2:]
                     if dtype not in ["想看"]:
+                        logger.info(f'标题：{title}，非想看数据，跳过')
                         continue
                     if not result.get("link"):
+                        logger.warn(f'标题：{title}，未获取到链接，跳过')
                         continue
                     # 判断是否在天数范围
                     pubdate: Optional[datetime.datetime] = result.get("pubdate")
@@ -468,6 +472,7 @@ class DoubanSync(_PluginBase):
                     douban_id = result.get("link", "").split("/")[-2]
                     # 检查是否处理过
                     if not douban_id or douban_id in [h.get("doubanid") for h in history]:
+                        logger.info(f'标题：{title}，豆瓣ID：{douban_id} 已处理过')
                         continue
                     # 根据豆瓣ID获取豆瓣数据
                     doubaninfo: Optional[dict] = self.chain.douban_info(doubanid=douban_id)
