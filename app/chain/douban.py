@@ -29,18 +29,33 @@ class DoubanChain(ChainBase):
         """
         根据豆瓣信息识别媒体信息
         """
-        # 使用原标题匹配
-        meta = MetaInfo(title=doubaninfo.get("original_title") or doubaninfo.get("title"))
+        # 优先使用原标题匹配
+        season_meta = None
+        if doubaninfo.get("original_title"):
+            meta = MetaInfo(title=doubaninfo.get("original_title"))
+            season_meta = MetaInfo(title=doubaninfo.get("title"))
+            # 合并季
+            meta.begin_season = season_meta.begin_season
+        else:
+            meta = MetaInfo(title=doubaninfo.get("title"))
+        # 年份
+        if doubaninfo.get("year"):
+            meta.year = doubaninfo.get("year")
         # 处理类型
         if isinstance(doubaninfo.get('media_type'), MediaType):
             meta.type = doubaninfo.get('media_type')
         else:
             meta.type = MediaType.MOVIE if doubaninfo.get("type") == "movie" else MediaType.TV
-        # 识别媒体信息
-        mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type)
+        # 使用原标题识别媒体信息
+        mediainfo = self.recognize_media(meta=meta, mtype=meta.type)
         if not mediainfo:
             logger.warn(f'{meta.name} 未识别到TMDB媒体信息')
-            return Context(meta_info=meta, media_info=MediaInfo(douban_info=doubaninfo))
+            if season_meta and season_meta.name != meta.name:
+                # 使用主标题识别媒体信息
+                mediainfo = self.recognize_media(meta=season_meta, mtype=season_meta.type)
+            if not mediainfo:
+                logger.warn(f'{season_meta.name} 未识别到TMDB媒体信息')
+                return Context(meta_info=season_meta, media_info=MediaInfo(douban_info=doubaninfo))
         logger.info(f'识别到媒体信息：{mediainfo.type.value} {mediainfo.title_year} {meta.season}')
         mediainfo.set_douban_info(doubaninfo)
         return Context(meta_info=meta, media_info=mediainfo)
