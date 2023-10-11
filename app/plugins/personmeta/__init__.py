@@ -714,7 +714,7 @@ class PersonMeta(_PluginBase):
                 logger.error(f"获取Jellyfin媒体的所有子媒体项失败：{err}")
             return {}
 
-        def __get_plex_items(t: str) -> dict:
+        def __get_plex_items() -> dict:
             """
             获得Plex媒体的所有子媒体项
             """
@@ -723,7 +723,7 @@ class PersonMeta(_PluginBase):
                 plex = Plex().get_plex()
                 items['Items'] = []
                 if parentid:
-                    if mtype and 'Season' in t:
+                    if mtype and 'Season' in mtype:
                         plexitem = plex.library.fetchItem(ekey=parentid)
                         items['Items'] = []
                         for season in plexitem.seasons():
@@ -734,7 +734,7 @@ class PersonMeta(_PluginBase):
                                 'Overview': season.summary
                             }
                             items['Items'].append(item)
-                    elif mtype and 'Episode' in t:
+                    elif mtype and 'Episode' in mtype:
                         plexitem = plex.library.fetchItem(ekey=parentid)
                         items['Items'] = []
                         for episode in plexitem.episodes():
@@ -785,7 +785,7 @@ class PersonMeta(_PluginBase):
         elif server == "jellyfin":
             return __get_jellyfin_items()
         else:
-            return __get_plex_items(mtype)
+            return __get_plex_items()
 
     @staticmethod
     def set_iteminfo(server: str, itemid: str, iteminfo: dict):
