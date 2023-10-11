@@ -161,7 +161,13 @@ class DoubanScraper:
         """
         if file_path.exists():
             return
+        if not url:
+            return
         try:
+            # 没有后缀时，处理URL转化为jpg格式
+            if not file_path.suffix:
+                url = url.replace("/format/webp", "/format/jpg")
+                file_path.with_suffix(".jpg")
             logger.info(f"正在下载{file_path.stem}图片：{url} ...")
             r = RequestUtils().get_res(url=url)
             if r:
