@@ -4,8 +4,9 @@ def collect_pkg_data(package: str, include_py_files: bool = False, subdir: str =
     """
     Collect all data files from the given package.
     """
-    import os
-    from PyInstaller.utils.hooks import get_package_paths, remove_prefix, PY_IGNORE_EXTENSIONS
+    from pathlib import Path
+    from PyInstaller.utils.hooks import get_package_paths, PY_IGNORE_EXTENSIONS
+    from PyInstaller.building.datastruct import TOC
 
     # Accept only strings as packages.
     if type(package) is not str:
@@ -13,17 +14,17 @@ def collect_pkg_data(package: str, include_py_files: bool = False, subdir: str =
 
     pkg_base, pkg_dir = get_package_paths(package)
     if subdir:
-        pkg_dir = os.path.join(pkg_dir, subdir)
+        pkg_path = Path(pkg_dir) / subdir
+    else:
+        pkg_path = Path(pkg_dir)
     # Walk through all file in the given package, looking for data files.
     data_toc = TOC()
-    for dir_path, dir_names, files in os.walk(pkg_dir):
-        for f in files:
-            extension = os.path.splitext(f)[1]
-            if include_py_files or (extension not in PY_IGNORE_EXTENSIONS):
-                source_file = os.path.join(dir_path, f)
-                dest_folder = remove_prefix(dir_path, os.path.dirname(pkg_base) + os.sep)
-                dest_file = os.path.join(dest_folder, f)
-                data_toc.append((dest_file, source_file, 'DATA'))
+    for file in pkg_path.rglob('*'):
+        if file.is_file():
+            extension = file.suffix
+            if not include_py_files and (extension in PY_IGNORE_EXTENSIONS):
+                continue
+            data_toc.append((str(file.relative_to(pkg_base)), str(file), 'DATA'))
     return data_toc
 
 
