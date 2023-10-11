@@ -139,6 +139,18 @@ def tv_weekly_global(page: int = 1,
     return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
 
 
+@router.get("/tv_animation", summary="豆瓣动画剧集", response_model=List[schemas.MediaInfo])
+def tv_animation(page: int = 1,
+                 count: int = 30,
+                 db: Session = Depends(get_db),
+                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    热门动画剧集
+    """
+    tvs = DoubanChain(db).tv_animation(page=page, count=count)
+    return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
+
+
 @router.get("/{doubanid}", summary="查询豆瓣详情", response_model=schemas.MediaInfo)
 def douban_info(doubanid: str,
                 db: Session = Depends(get_db),

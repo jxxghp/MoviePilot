@@ -369,6 +369,16 @@ class DoubanModule(_ModuleBase):
             return []
         return infos.get("subject_collection_items")
 
+    def tv_animation(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取豆瓣动画剧
+        """
+        infos = self.doubanapi.tv_animation(start=(page - 1) * count,
+                                            count=count)
+        if not infos:
+            return []
+        return infos.get("subject_collection_items")
+
     def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息

@@ -84,3 +84,9 @@ class DoubanChain(ChainBase):
         """
         return self.run_module("douban_discover", mtype=mtype, sort=sort, tags=tags,
                                page=page, count=count)
+
+    def tv_animation(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取动画剧集
+        """
+        return self.run_module("tv_animation", page=page, count=count)
