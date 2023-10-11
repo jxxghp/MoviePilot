@@ -3,6 +3,7 @@ import os
 import platform
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Union, Tuple
@@ -117,6 +118,54 @@ class SystemUtils:
         except Exception as err:
             print(str(err))
             return -1, str(err)
+
+    @staticmethod
+    def rclone_move(src: Path, dest: Path):
+        """
+        Rclone移动
+        """
+        try:
+            retcode = subprocess.run(
+                [
+                    'rclone', 'moveto',
+                    str(src),
+                    f'MP:{dest}'
+                ],
+                startupinfo=SystemUtils.__get_hidden_shell()
+            ).returncode
+            return retcode, ""
+        except Exception as err:
+            print(str(err))
+            return -1, str(err)
+
+    @staticmethod
+    def rclone_copy(src: Path, dest: Path):
+        """
+        Rclone复制
+        """
+        try:
+            retcode = subprocess.run(
+                [
+                    'rclone', 'copyto',
+                    str(src),
+                    f'MP:{dest}'
+                ],
+                startupinfo=SystemUtils.__get_hidden_shell()
+            ).returncode
+            return retcode, ""
+        except Exception as err:
+            print(str(err))
+            return -1, str(err)
+
+    @staticmethod
+    def __get_hidden_shell():
+        if SystemUtils.is_windows():
+            st = subprocess.STARTUPINFO()
+            st.dwFlags = subprocess.STARTF_USESHOWWINDOW
+            st.wShowWindow = subprocess.SW_HIDE
+            return st
+        else:
+            return None
 
     @staticmethod
     def list_files(directory: Path, extensions: list, min_filesize: int = 0) -> List[Path]:

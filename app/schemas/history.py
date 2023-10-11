@@ -56,7 +56,7 @@ class TransferHistory(BaseModel):
     src: Optional[str] = None
     # 目的目录
     dest: Optional[str] = None
-    # 转移模式link/copy/move/softlink
+    # 转移模式
     mode: Optional[str] = None
     # 类型：电影、电视剧
     type: Optional[str] = None

@@ -619,9 +619,9 @@ class DirMonitor(_PluginBase):
                                             'rows': 5,
                                             'placeholder': '每一行一个目录，支持三种配置方式：\n'
                                                            '监控目录\n'
-                                                           '监控目录#转移方式（move|copy|link|softlink）\n'
+                                                           '监控目录#转移方式（move|copy|link|softlink|rclone_copy|rclone_move）\n'
                                                            '监控目录:转移目的目录（需同时在媒体库目录中配置该目的目录）\n'
-                                                           '监控目录:转移目的目录#转移方式（move|copy|link|softlink）'
+                                                           '监控目录:转移目的目录#转移方式（move|copy|link|softlink|rclone_copy|rclone_move）'
                                         }
                                     }
                                 ]

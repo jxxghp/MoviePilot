@@ -80,6 +80,12 @@ class FileTransferModule(_ModuleBase):
             elif transfer_type == 'move':
                 # 移动
                 retcode, retmsg = SystemUtils.move(file_item, target_file)
+            elif transfer_type == 'rclone_move':
+                # Rclone 移动
+                retcode, retmsg = SystemUtils.rclone_move(file_item, target_file)
+            elif transfer_type == 'rclone_copy':
+                # Rclone 复制
+                retcode, retmsg = SystemUtils.rclone_copy(file_item, target_file)
             else:
                 # 复制
                 retcode, retmsg = SystemUtils.copy(file_item, target_file)
