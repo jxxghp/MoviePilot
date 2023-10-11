@@ -18,7 +18,8 @@ from app.utils.system import SystemUtils
 
 # App
 App = FastAPI(title=settings.PROJECT_NAME,
-              openapi_url=f"{settings.API_V1_STR}/openapi.json")
+              openapi_url=f"{settings.API_V1_STR}/openapi.json",
+              docs_url=f"{settings.API_V1_STR}/docs")
 
 # 跨域
 App.add_middleware(
