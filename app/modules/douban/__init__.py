@@ -478,6 +478,7 @@ class DoubanModule(_ModuleBase):
                 return
             # 根据名称查询豆瓣数据
             doubaninfo = self.match_doubaninfo(name=mediainfo.title,
+                                               imdbid=mediainfo.imdb_id,
                                                mtype=mediainfo.type.value,
                                                year=mediainfo.year,
                                                season=meta.begin_season)
@@ -500,6 +501,7 @@ class DoubanModule(_ModuleBase):
                         continue
                     # 根据名称查询豆瓣数据
                     doubaninfo = self.match_doubaninfo(name=mediainfo.title,
+                                                       imdbid=mediainfo.imdb_id,
                                                        mtype=mediainfo.type.value,
                                                        year=mediainfo.year,
                                                        season=meta.begin_season)
