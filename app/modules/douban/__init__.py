@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
@@ -487,6 +488,12 @@ class DoubanModule(_ModuleBase):
             if not doubaninfo:
                 logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
                 return
+            # 查询豆瓣详情
+            doubanid = doubaninfo.get("id")
+            if not str(doubanid).isdigit():
+                doubanid = re.search(r"\d+", doubanid).group(0)
+            doubaninfo = self.douban_info(doubanid)
+            # 刮削路径
             scrape_path = path / path.name
             self.scraper.gen_scraper_files(meta=meta,
                                            mediainfo=MediaInfo(douban_info=doubaninfo),
@@ -510,6 +517,11 @@ class DoubanModule(_ModuleBase):
                     if not doubaninfo:
                         logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
                         break
+                    # 查询豆瓣详情
+                    doubanid = doubaninfo.get("id")
+                    if not str(doubanid).isdigit():
+                        doubanid = re.search(r"\d+", doubanid).group(0)
+                    doubaninfo = self.douban_info(doubanid)
                     # 刮削
                     self.scraper.gen_scraper_files(meta=meta,
                                                    mediainfo=MediaInfo(douban_info=doubaninfo),
