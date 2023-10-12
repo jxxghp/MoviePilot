@@ -402,6 +402,8 @@ class FileTransferModule(_ModuleBase):
             bluray_flag = SystemUtils.is_bluray_dir(in_path)
             if bluray_flag:
                 logger.info(f"{in_path} 是蓝光原盘文件夹")
+            # 原文件大小
+            file_size = in_path.stat().st_size
             # 目的路径
             new_path = self.get_rename_path(
                 path=target_dir,
@@ -426,7 +428,7 @@ class FileTransferModule(_ModuleBase):
             return TransferInfo(success=True,
                                 path=in_path,
                                 target_path=new_path,
-                                total_size=new_path.stat().st_size,
+                                total_size=file_size,
                                 is_bluray=bluray_flag)
         else:
             # 转移单个文件
@@ -467,7 +469,8 @@ class FileTransferModule(_ModuleBase):
                 if new_file.stat().st_size < in_path.stat().st_size:
                     logger.info(f"目标文件已存在，但文件大小更小，将覆盖：{new_file}")
                     overflag = True
-
+            # 原文件大小
+            file_size = in_path.stat().st_size
             # 转移文件
             retcode = self.__transfer_file(file_item=in_path,
                                            new_file=new_file,
@@ -486,7 +489,7 @@ class FileTransferModule(_ModuleBase):
                                 path=in_path,
                                 target_path=new_file,
                                 file_count=1,
-                                total_size=new_file.stat().st_size,
+                                total_size=file_size,
                                 is_bluray=False,
                                 file_list=[str(in_path)],
                                 file_list_new=[str(new_file)])
