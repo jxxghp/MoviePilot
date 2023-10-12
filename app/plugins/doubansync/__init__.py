@@ -457,8 +457,8 @@ class DoubanSync(_PluginBase):
                 try:
                     dtype = result.get("title", "")[:2]
                     title = result.get("title", "")[2:]
-                    if dtype not in ["想看"]:
-                        logger.info(f'标题：{title}，非想看数据，跳过')
+                    if dtype not in ["想看", "在看"]:
+                        logger.info(f'标题：{title}，非想看/在看数据，跳过')
                         continue
                     if not result.get("link"):
                         logger.warn(f'标题：{title}，未获取到链接，跳过')
