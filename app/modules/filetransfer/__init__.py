@@ -382,13 +382,14 @@ class FileTransferModule(_ModuleBase):
                                 path=in_path,
                                 message=f"{in_path} 路径不存在")
 
-        if not target_dir.exists():
-            return TransferInfo(success=False,
-                                path=in_path,
-                                message=f"{target_dir} 目标路径不存在")
-
-        # 媒体库目的目录
-        target_dir = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_dir)
+        if transfer_type not in ['rclone_copy', 'rclone_move']:
+            # 检查目标路径
+            if not target_dir.exists():
+                return TransferInfo(success=False,
+                                    path=in_path,
+                                    message=f"{target_dir} 目标路径不存在")
+            # 媒体库目的目录
+            target_dir = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_dir)
 
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \
