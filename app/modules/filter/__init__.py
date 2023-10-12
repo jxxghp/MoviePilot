@@ -70,9 +70,14 @@ class FilterModule(_ModuleBase):
             "include": [r'[Hx].?264|AVC'],
             "exclude": []
         },
-        # 杜比
+        # 杜比视界
         "DOLBY": {
             "include": [r"Dolby[\s.]+Vision|DOVI|[\s.]+DV[\s.]+|杜比视界"],
+            "exclude": []
+        },
+        # 杜比全景声
+        "ATMOS": {
+            "include": [r"Dolby[\s.+]+Atmos|Atmos|杜比全景[声聲]"],
             "exclude": []
         },
         # HDR
