@@ -172,6 +172,9 @@ class TMDb(object):
         else:
             req = self.request(method, url, data, json)
 
+        if req is None:
+            raise TMDbException("Failed to establish a new connection: no response from the server.")
+
         headers = req.headers
 
         if "X-RateLimit-Remaining" in headers:
