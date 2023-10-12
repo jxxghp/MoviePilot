@@ -593,11 +593,7 @@ class PersonMeta(_PluginBase):
                                                  season=season)
         # 豆瓣演员
         if doubaninfo:
-            doubanid = doubaninfo.get("id")
-            if not str(doubanid).isdigit():
-                # 从https://api.douban.com/movie/35561680中提取出字
-                doubanid = re.search(r"\d+", doubanid).group(0)
-            doubanitem = self.chain.douban_info(doubanid) or {}
+            doubanitem = self.chain.douban_info(doubaninfo.get("id")) or {}
             return (doubanitem.get("actors") or []) + (doubanitem.get("directors") or [])
         else:
             logger.warn(f"未找到豆瓣信息：{mediainfo.title_year}")

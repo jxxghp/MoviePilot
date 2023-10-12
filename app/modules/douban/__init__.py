@@ -421,6 +421,10 @@ class DoubanModule(_ModuleBase):
             logger.info(f"开始使用IMDBID {imdbid} 查询豆瓣信息 ...")
             result = self.doubanapi.imdbid(imdbid)
             if result:
+                doubanid = result.get("id")
+                if doubanid and not str(doubanid).isdigit():
+                    doubanid = re.search(r"\d+", doubanid).group(0)
+                    result["id"] = doubanid
                 return result
         # 搜索
         logger.info(f"开始使用名称 {name} 查询豆瓣信息 ...")
@@ -489,10 +493,7 @@ class DoubanModule(_ModuleBase):
                 logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
                 return
             # 查询豆瓣详情
-            doubanid = doubaninfo.get("id")
-            if not str(doubanid).isdigit():
-                doubanid = re.search(r"\d+", doubanid).group(0)
-            doubaninfo = self.douban_info(doubanid)
+            doubaninfo = self.douban_info(doubaninfo.get("id"))
             # 刮削路径
             scrape_path = path / path.name
             self.scraper.gen_scraper_files(meta=meta,
@@ -518,10 +519,7 @@ class DoubanModule(_ModuleBase):
                         logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
                         break
                     # 查询豆瓣详情
-                    doubanid = doubaninfo.get("id")
-                    if not str(doubanid).isdigit():
-                        doubanid = re.search(r"\d+", doubanid).group(0)
-                    doubaninfo = self.douban_info(doubanid)
+                    doubaninfo = self.douban_info(doubaninfo.get("id"))
                     # 刮削
                     self.scraper.gen_scraper_files(meta=meta,
                                                    mediainfo=MediaInfo(douban_info=doubaninfo),
