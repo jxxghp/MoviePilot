@@ -237,7 +237,10 @@ class SubscribeChain(ChainBase):
             if subscribe.include or subscribe.exclude:
                 filter_rule = {
                     "include": subscribe.include,
-                    "exclude": subscribe.exclude
+                    "exclude": subscribe.exclude,
+                    "quality": subscribe.quality,
+                    "resolution": subscribe.resolution,
+                    "effect": subscribe.effect,
                 }
             else:
                 filter_rule = self.systemconfig.get(SystemConfigKey.DefaultFilterRules)

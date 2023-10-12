@@ -37,6 +37,12 @@ class Subscribe(Base):
     include = Column(String)
     # 排除
     exclude = Column(String)
+    # 质量
+    quality = Column(String)
+    # 分辨率
+    resolution = Column(String)
+    # 特效
+    effect = Column(String)
     # 总集数
     total_episode = Column(Integer)
     # 开始集数

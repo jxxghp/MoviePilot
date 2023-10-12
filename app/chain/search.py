@@ -342,6 +342,12 @@ class SearchChain(ChainBase):
         include = filter_rule.get("include")
         # 排除
         exclude = filter_rule.get("exclude")
+        # 质量
+        quality = filter_rule.get("quality")
+        # 分辨率
+        resolution = filter_rule.get("resolution")
+        # 特效
+        effect = filter_rule.get("effect")
 
         def __filter_torrent(t: TorrentInfo) -> bool:
             """
@@ -359,6 +365,24 @@ class SearchChain(ChainBase):
                              f"{t.title} {t.description}", re.I):
                     logger.info(f"{t.title} 匹配排除规则 {exclude}")
                     return False
+            # 质量
+            if quality:
+                if not re.search(r"%s" % quality, t.title, re.I):
+                    logger.info(f"{t.title} 不匹配质量规则 {quality}")
+                    return False
+
+            # 分辨率
+            if resolution:
+                if not re.search(r"%s" % resolution, t.title, re.I):
+                    logger.info(f"{t.title} 不匹配分辨率规则 {resolution}")
+                    return False
+
+            # 特效
+            if effect:
+                if not re.search(r"%s" % effect, t.title, re.I):
+                    logger.info(f"{t.title} 不匹配特效规则 {effect}")
+                    return False
+
             return True
 
         # 使用默认过滤规则再次过滤
