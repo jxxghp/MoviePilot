@@ -1,4 +1,3 @@
-from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
@@ -406,17 +405,23 @@ class DoubanModule(_ModuleBase):
         return ret_medias
 
     @retry(Exception, 5, 3, 3, logger=logger)
-    def match_doubaninfo(self, name: str, mtype: str = None,
-                         year: str = None, season: int = None) -> dict:
+    def match_doubaninfo(self, name: str, imdbid: str = None,
+                         mtype: str = None, year: str = None, season: int = None) -> dict:
         """
         搜索和匹配豆瓣信息
         :param name:  名称
+        :param imdbid:  IMDB ID
         :param mtype:  类型 电影/电视剧
         :param year:  年份
         :param season:  季号
         """
-        result = self.doubanapi.search(f"{name} {year or ''}".strip(),
-                                       ts=datetime.strftime(datetime.now(), '%Y%m%d%H%M%S'))
+        if imdbid:
+            # 优先使用IMDBID查询
+            result = self.doubanapi.imdbid(imdbid)
+            if result:
+                return result
+        # 搜索
+        result = self.doubanapi.search(f"{name} {year or ''}".strip())
         if not result:
             logger.warn(f"未找到 {name} 的豆瓣信息")
             return {}

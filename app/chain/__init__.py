@@ -115,16 +115,18 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("recognize_media", meta=meta, mtype=mtype, tmdbid=tmdbid)
 
-    def match_doubaninfo(self, name: str, mtype: str = None,
-                         year: str = None, season: int = None) -> Optional[dict]:
+    def match_doubaninfo(self, name: str, imdbid: str = None,
+                         mtype: str = None, year: str = None, season: int = None) -> Optional[dict]:
         """
         搜索和匹配豆瓣信息
         :param name: 标题
+        :param imdbid: imdbid
         :param mtype: 类型
         :param year: 年份
         :param season: 季
         """
-        return self.run_module("match_doubaninfo", name=name, mtype=mtype, year=year, season=season)
+        return self.run_module("match_doubaninfo", name=name, imdbid=imdbid,
+                               mtype=mtype, year=year, season=season)
 
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """
