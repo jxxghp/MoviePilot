@@ -10,16 +10,13 @@ class EventManager(metaclass=Singleton):
     事件管理器
     """
 
-    # 事件队列
-    _eventQueue: Queue = None
-    # 事件响应函数字典
-    _handlers: dict = {}
-
     def __init__(self):
         # 事件队列
         self._eventQueue = Queue()
         # 事件响应函数字典
         self._handlers = {}
+        # 已禁用的事件响应
+        self._disabled_handlers = []
 
     def get_event(self):
         """
@@ -27,8 +24,12 @@ class EventManager(metaclass=Singleton):
         """
         try:
             event = self._eventQueue.get(block=True, timeout=1)
-            handlerList = self._handlers.get(event.event_type)
-            return event, handlerList or []
+            handlerList = self._handlers.get(event.event_type) or []
+            if handlerList:
+                # 去除掉被禁用的事件响应
+                handlerList = [handler for handler in handlerList
+                               if handler.__qualname__.split(".")[0] not in self._disabled_handlers]
+            return event, handlerList
         except Empty:
             return None, []
 
@@ -51,18 +52,21 @@ class EventManager(metaclass=Singleton):
             handlerList.append(handler)
             logger.debug(f"Event Registed：{etype.value} - {handler}")
 
-    def remove_event_listener(self, etype: EventType, handler: type):
+    def disable_events_hander(self, class_name: str):
         """
-        移除监听器的处理函数
+        标记对应类事件处理为不可用
         """
-        try:
-            handlerList = self._handlers[etype.value]
-            if handler in handlerList[:]:
-                handlerList.remove(handler)
-            if not handlerList:
-                del self._handlers[etype.value]
-        except KeyError:
-            pass
+        if class_name not in self._disabled_handlers:
+            self._disabled_handlers.append(class_name)
+            logger.debug(f"Event Disabled：{class_name}")
+
+    def enable_events_hander(self, class_name: str):
+        """
+        标记对应类事件处理为可用
+        """
+        if class_name in self._disabled_handlers:
+            self._disabled_handlers.remove(class_name)
+            logger.debug(f"Event Enabled：{class_name}")
 
     def send_event(self, etype: EventType, data: dict = None):
         """

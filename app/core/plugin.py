@@ -1,6 +1,7 @@
 import traceback
 from typing import List, Any, Dict, Tuple
 
+from app.core.event import eventmanager
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper
@@ -58,6 +59,8 @@ class PluginManager(metaclass=Singleton):
                 self._plugins[plugin_id] = plugin
                 # 未安装的不加载
                 if plugin_id not in installed_plugins:
+                    # 设置事件状态为不可用
+                    eventmanager.disable_events_hander(plugin_id)
                     continue
                 # 生成实例
                 plugin_obj = plugin()
@@ -66,6 +69,8 @@ class PluginManager(metaclass=Singleton):
                 # 存储运行实例
                 self._running_plugins[plugin_id] = plugin_obj
                 logger.info(f"Plugin Loaded：{plugin_id}")
+                # 设置事件注册状态可用
+                eventmanager.enable_events_hander(plugin_id)
             except Exception as err:
                 logger.error(f"加载插件 {plugin_id} 出错：{err} - {traceback.format_exc()}")
 

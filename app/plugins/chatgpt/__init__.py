@@ -198,7 +198,7 @@ class ChatGPT(_PluginBase):
         title = event.event_data.get("title")
         if not title:
             return
-        # 收到事件后需要立码返回
+        # 收到事件后需要立码返回，避免主程序等待
         if not self._enabled \
                 or not self.openai \
                 or not self._recognize:
