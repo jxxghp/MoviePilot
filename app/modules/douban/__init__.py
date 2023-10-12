@@ -425,9 +425,10 @@ class DoubanModule(_ModuleBase):
                 if doubanid and not str(doubanid).isdigit():
                     doubanid = re.search(r"\d+", doubanid).group(0)
                     result["id"] = doubanid
+                logger.info(f"{imdbid} 查询到豆瓣信息：{result.get('title')}")
                 return result
         # 搜索
-        logger.info(f"开始使用名称 {name} 查询豆瓣信息 ...")
+        logger.info(f"开始使用名称 {name} 匹配豆瓣信息 ...")
         result = self.doubanapi.search(f"{name} {year or ''}".strip())
         if not result:
             logger.warn(f"未找到 {name} 的豆瓣信息")
@@ -455,6 +456,7 @@ class DoubanModule(_ModuleBase):
             if meta.name == name \
                     and ((not season and not meta.begin_season) or meta.begin_season == season) \
                     and (not year or item.get('year') == year):
+                logger.info(f"{name} 匹配到豆瓣信息：{item.get('id')} {item.get('title')}")
                 return item
         return {}
 
