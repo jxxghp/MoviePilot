@@ -283,6 +283,8 @@ class TheMovieDbModule(_ModuleBase):
         :param mediainfo:  识别的媒体信息
         :return: 更新后的媒体信息
         """
+        if not mediainfo.tmdb_id:
+            return mediainfo
         if mediainfo.logo_path \
                 and mediainfo.poster_path \
                 and mediainfo.backdrop_path:
