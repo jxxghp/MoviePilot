@@ -417,10 +417,12 @@ class DoubanModule(_ModuleBase):
         """
         if imdbid:
             # 优先使用IMDBID查询
+            logger.info(f"开始使用IMDBID {imdbid} 查询豆瓣信息 ...")
             result = self.doubanapi.imdbid(imdbid)
             if result:
                 return result
         # 搜索
+        logger.info(f"开始使用名称 {name} 查询豆瓣信息 ...")
         result = self.doubanapi.search(f"{name} {year or ''}".strip())
         if not result:
             logger.warn(f"未找到 {name} 的豆瓣信息")

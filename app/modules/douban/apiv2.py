@@ -214,13 +214,14 @@ class DoubanApi(metaclass=Singleton):
         )
         """
         req_url = self._api_url + url
-        params = {'apiKey': self._api_key2}
+        params = {'apikey': self._api_key2}
         if kwargs:
             params.update(kwargs)
         if '_ts' in params:
             params.pop('_ts')
         resp = RequestUtils(
-            session=self._session
+            ua=settings.USER_AGENT,
+            session=self._session,
         ).post_res(url=req_url, data=params)
         if resp.status_code == 400 and "rate_limit" in resp.text:
             return resp.json()
