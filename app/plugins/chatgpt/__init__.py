@@ -193,15 +193,23 @@ class ChatGPT(_PluginBase):
         """
         监听识别事件，使用ChatGPT辅助识别名称
         """
-        if not self._enabled:
-            return
-        if not self.openai:
-            return
         if not event.event_data:
             return
         title = event.event_data.get("title")
         if not title:
             return
+        # 收到事件后需要立码返回
+        if not self._enabled \
+                or not self.openai \
+                or not self._recognize:
+            eventmanager.send_event(
+                EventType.NameRecognizeResult,
+                {
+                    'title': title
+                }
+            )
+            return
+        # 调用ChatGPT
         response = self.openai.get_media_name(filename=title)
         logger.info(f"ChatGPT辅助识别结果：{response}")
         if response:
