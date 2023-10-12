@@ -32,6 +32,12 @@ class EventManager(metaclass=Singleton):
         except Empty:
             return None, []
 
+    def check(self, etype: EventType):
+        """
+        检查事件是否存在响应
+        """
+        return etype.value in self._handlers
+
     def add_event_listener(self, etype: EventType, handler: type):
         """
         注册事件处理

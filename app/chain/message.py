@@ -32,7 +32,7 @@ class MessageChain(ChainBase):
         self.downloadchain = DownloadChain(self._db)
         self.subscribechain = SubscribeChain(self._db)
         self.searchchain = SearchChain(self._db)
-        self.medtachain = MediaChain(self._db)
+        self.medtachain = MediaChain()
         self.torrent = TorrentHelper()
         self.eventmanager = EventManager()
         self.torrenthelper = TorrentHelper()

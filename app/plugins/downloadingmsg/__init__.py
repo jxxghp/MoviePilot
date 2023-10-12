@@ -156,7 +156,7 @@ class DownloadingMsg(_PluginBase):
                     channel_value = downloadhis.channel
             else:
                 try:
-                    context = MediaChain(self.db).recognize_by_title(title=torrent.title)
+                    context = MediaChain().recognize_by_title(title=torrent.title)
                     if not context or not context.media_info:
                         continue
                     media_info = context.media_info

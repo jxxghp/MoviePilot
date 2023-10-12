@@ -68,12 +68,12 @@ def exists(media_in: schemas.MediaInfo,
     if media_in.tmdb_id:
         mediainfo.from_dict(media_in.dict())
     elif media_in.douban_id:
-        context = DoubanChain(db).recognize_by_doubanid(doubanid=media_in.douban_id)
+        context = DoubanChain().recognize_by_doubanid(doubanid=media_in.douban_id)
         if context:
             mediainfo = context.media_info
             meta = context.meta_info
     else:
-        context = MediaChain(db).recognize_by_title(title=f"{media_in.title} {media_in.year}")
+        context = MediaChain().recognize_by_title(title=f"{media_in.title} {media_in.year}")
         if context:
             mediainfo = context.media_info
             meta = context.meta_info

@@ -12,7 +12,7 @@ from app.utils.singleton import Singleton
 
 class TmdbChain(ChainBase, metaclass=Singleton):
     """
-    TheMovieDB处理链
+    TheMovieDB处理链，单例运行
     """
 
     def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str,

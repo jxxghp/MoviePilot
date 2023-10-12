@@ -1,3 +1,4 @@
+import importlib
 import traceback
 from threading import Thread, Event
 from typing import Any, Union, Dict
@@ -175,10 +176,24 @@ class Command(metaclass=Singleton):
                 for handler in handlers:
                     try:
                         names = handler.__qualname__.split(".")
-                        if names[0] == "Command":
-                            self.command_event(event)
+                        [class_name, method_name] = names
+                        if class_name in self.pluginmanager.get_plugin_ids():
+                            # 插件事件
+                            self.pluginmanager.run_plugin_method(class_name, method_name, event)
                         else:
-                            self.pluginmanager.run_plugin_method(names[0], names[1], event)
+                            # 检查全局变量中是否存在
+                            if class_name not in globals():
+                                # 导入模块，除了插件和Command本身，只有chain能响应事件
+                                module = importlib.import_module(
+                                    f"app.chain.{class_name[:-5].lower()}"
+                                )
+                                class_obj = getattr(module, class_name)()
+                            else:
+                                # 通过类名创建类实例
+                                class_obj = globals()[class_name]()
+                            # 检查类是否存在并调用方法
+                            if hasattr(class_obj, method_name):
+                                getattr(class_obj, method_name)(event)
                     except Exception as e:
                         logger.error(f"事件处理出错：{str(e)} - {traceback.format_exc()}")
 

@@ -41,8 +41,8 @@ class TransferChain(ChainBase):
         self.downloadhis = DownloadHistoryOper(self._db)
         self.transferhis = TransferHistoryOper(self._db)
         self.progress = ProgressHelper()
-        self.mediachain = MediaChain(self._db)
-        self.tmdbchain = TmdbChain(self._db)
+        self.mediachain = MediaChain()
+        self.tmdbchain = TmdbChain()
         self.systemconfig = SystemConfigOper()
 
     def process(self) -> bool:

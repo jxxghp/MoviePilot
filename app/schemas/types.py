@@ -40,6 +40,10 @@ class EventType(Enum):
     UserMessage = "user.message"
     # 通知消息
     NoticeMessage = "notice.message"
+    # 名称识别请求
+    NameRecognize = "name.recognize"
+    # 名称识别结果
+    NameRecognizeResult = "name.recognize.result"
 
 
 # 系统配置Key字典

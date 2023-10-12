@@ -6,11 +6,12 @@ from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.schemas import MediaType
+from app.utils.singleton import Singleton
 
 
-class DoubanChain(ChainBase):
+class DoubanChain(ChainBase, metaclass=Singleton):
     """
-    豆瓣处理链
+    豆瓣处理链，单例运行
     """
 
     def recognize_by_doubanid(self, doubanid: str) -> Optional[Context]:

@@ -87,6 +87,17 @@ class MetaBase(object):
             return self.cn_name
         return ""
 
+    @name.setter
+    def name(self, name: str):
+        """
+        设置名称
+        """
+        if StringUtils.is_all_chinese(name):
+            self.cn_name = name
+        else:
+            self.en_name = name
+            self.cn_name = None
+
     def init_subtitle(self, title_text: str):
         """
         副标题识别

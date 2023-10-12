@@ -97,7 +97,7 @@ class DirMonitor(_PluginBase):
         self.transferhis = TransferHistoryOper(self.db)
         self.downloadhis = DownloadHistoryOper(self.db)
         self.transferchian = TransferChain(self.db)
-        self.tmdbchain = TmdbChain(self.db)
+        self.tmdbchain = TmdbChain()
         # 清空配置
         self._dirconf = {}
         self._transferconf = {}

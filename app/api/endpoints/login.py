@@ -74,11 +74,11 @@ def bing_wallpaper() -> Any:
 
 
 @router.get("/tmdb", summary="TMDB电影海报", response_model=schemas.Response)
-def tmdb_wallpaper(db: Session = Depends(get_db)) -> Any:
+def tmdb_wallpaper() -> Any:
     """
     获取TMDB电影海报
     """
-    wallpager = TmdbChain(db).get_random_wallpager()
+    wallpager = TmdbChain().get_random_wallpager()
     if wallpager:
         return schemas.Response(
             success=True,

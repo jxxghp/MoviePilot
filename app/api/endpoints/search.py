@@ -40,7 +40,7 @@ def search_by_tmdbid(mediaid: str,
     elif mediaid.startswith("douban:"):
         doubanid = mediaid.replace("douban:", "")
         # 识别豆瓣信息
-        context = DoubanChain(db).recognize_by_doubanid(doubanid)
+        context = DoubanChain().recognize_by_doubanid(doubanid)
         if not context or not context.media_info or not context.media_info.tmdb_id:
             return []
         torrents = SearchChain(db).search_by_tmdbid(tmdbid=context.media_info.tmdb_id,

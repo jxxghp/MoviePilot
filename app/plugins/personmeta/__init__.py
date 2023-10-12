@@ -67,7 +67,7 @@ class PersonMeta(_PluginBase):
     _remove_nozh = False
 
     def init_plugin(self, config: dict = None):
-        self.tmdbchain = TmdbChain(self.db)
+        self.tmdbchain = TmdbChain()
         self.mschain = MediaServerChain(self.db)
         if config:
             self._enabled = config.get("enabled")

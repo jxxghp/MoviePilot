@@ -177,6 +177,12 @@ class PluginManager(metaclass=Singleton):
             return None
         return getattr(self._running_plugins[pid], method)(*args, **kwargs)
 
+    def get_plugin_ids(self) -> List[str]:
+        """
+        获取所有插件ID
+        """
+        return list(self._plugins.keys())
+
     def get_plugin_apps(self) -> List[dict]:
         """
         获取所有插件信息

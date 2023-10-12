@@ -1,7 +1,8 @@
 from typing import Any, List, Dict, Tuple
 
 from app.core.config import settings
-from app.core.event import eventmanager
+from app.core.event import eventmanager, Event
+from app.log import logger
 from app.plugins import _PluginBase
 from app.plugins.chatgpt.openai import OpenAi
 from app.schemas.types import EventType
@@ -33,6 +34,7 @@ class ChatGPT(_PluginBase):
     openai = None
     _enabled = False
     _proxy = False
+    _recognize = False
     _openai_url = None
     _openai_key = None
 
@@ -40,6 +42,7 @@ class ChatGPT(_PluginBase):
         if config:
             self._enabled = config.get("enabled")
             self._proxy = config.get("proxy")
+            self._recognize = config.get("recognize")
             self._openai_url = config.get("openai_url")
             self._openai_key = config.get("openai_key")
             self.openai = OpenAi(api_key=self._openai_key, api_url=self._openai_url,
@@ -70,7 +73,7 @@ class ChatGPT(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -86,7 +89,7 @@ class ChatGPT(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -94,6 +97,22 @@ class ChatGPT(_PluginBase):
                                         'props': {
                                             'model': 'proxy',
                                             'label': '使用代理',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'recognize',
+                                            'label': '辅助识别',
                                         }
                                     }
                                 ]
@@ -143,6 +162,7 @@ class ChatGPT(_PluginBase):
         ], {
             "enabled": False,
             "proxy": False,
+            "recognize": False,
             "openai_url": "https://api.openai.com",
             "openai_key": ""
         }
@@ -151,10 +171,12 @@ class ChatGPT(_PluginBase):
         pass
 
     @eventmanager.register(EventType.UserMessage)
-    def talk(self, event):
+    def talk(self, event: Event):
         """
         监听用户消息，获取ChatGPT回复
         """
+        if not self._enabled:
+            return
         if not self.openai:
             return
         text = event.event_data.get("text")
@@ -165,6 +187,34 @@ class ChatGPT(_PluginBase):
         response = self.openai.get_response(text=text, userid=userid)
         if response:
             self.post_message(channel=channel, title=response, userid=userid)
+
+    @eventmanager.register(EventType.NameRecognize)
+    def recognize(self, event: Event):
+        """
+        监听识别事件，使用ChatGPT辅助识别名称
+        """
+        if not self._enabled:
+            return
+        if not self.openai:
+            return
+        if not event.event_data:
+            return
+        title = event.event_data.get("title")
+        if not title:
+            return
+        response = self.openai.get_media_name(filename=title)
+        logger.info(f"ChatGPT辅助识别结果：{response}")
+        if response:
+            eventmanager.send_event(
+                EventType.NameRecognizeResult,
+                {
+                    'title': title,
+                    'name': response.get("title"),
+                    'year': response.get("year"),
+                    'season': response.get("season"),
+                    'episode': response.get("episode")
+                }
+            )
 
     def stop_service(self):
         """
