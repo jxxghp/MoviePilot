@@ -1276,8 +1276,6 @@ class MediaSyncDel(_PluginBase):
         """
         下载文件删除处理事件
         """
-        if not self._enabled:
-            return
         if not event:
             return
         event_data = event.event_data

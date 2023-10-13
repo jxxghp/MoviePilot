@@ -158,8 +158,8 @@ class NAStoolSync(_PluginBase):
 
                         # 替换value
                         if isinstance(plugin_value, str):
-                            _value: dict = json.loads(plugin_value)
-                        elif isinstance(plugin_value, dict):
+                            plugin_value = json.loads(plugin_value)
+                        if isinstance(plugin_value, dict):
                             if str(plugin_value.get("to_download")).isdigit() and int(
                                     plugin_value.get("to_download")) == int(sub_downloaders[0]):
                                 plugin_value["to_download"] = sub_downloaders[1]
