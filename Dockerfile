@@ -31,8 +31,9 @@ RUN apt-get update -y \
         dumb-init \
         jq \
         haproxy \
-        rclone \
+        fuse3 \
     && \
+    && curl https://rclone.org/install.sh | bash \
     if [ "$(uname -m)" = "x86_64" ]; \
         then ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
     elif [ "$(uname -m)" = "aarch64" ]; \
