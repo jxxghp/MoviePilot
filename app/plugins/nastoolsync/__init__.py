@@ -139,43 +139,61 @@ class NAStoolSync(_PluginBase):
             plugin_key = history[2]
             plugin_value = history[3]
 
-            # 处理下载器映射
-            if self._downloader:
-                downloaders = self._downloader.split("\n")
-                for downloader in downloaders:
-                    if not downloader:
-                        continue
-                    sub_downloaders = downloader.split(":")
-                    if not str(sub_downloaders[0]).isdigit():
-                        logger.error(f"下载器映射配置错误：NAStool下载器id 应为数字！")
-                        continue
-                    # 替换转种记录
-                    if str(plugin_id) == "TorrentTransfer":
-                        keys = str(plugin_key).split("-")
-                        if keys[0].isdigit() and int(keys[0]) == int(sub_downloaders[0]):
-                            # 替换key
-                            plugin_key = plugin_key.replace(keys[0], sub_downloaders[1])
+            # 替换转种记录
+            if str(plugin_id) == "TorrentTransfer":
+                keys = str(plugin_key).split("-")
 
-                        # 替换value
-                        if isinstance(plugin_value, str):
-                            _value: dict = json.loads(plugin_value)
-                        elif isinstance(plugin_value, dict):
-                            if str(plugin_value.get("to_download")).isdigit() and int(
-                                    plugin_value.get("to_download")) == int(sub_downloaders[0]):
-                                plugin_value["to_download"] = sub_downloaders[1]
+                # 1-2cd5d6fe32dca4e39a3e9f10961bfbdb00437e91
+                if len(keys) == 2 and keys[0].isdigit():
+                    mp_downloader = self.__get_target_downloader(int(keys[0]))
+                    # 替换key
+                    plugin_key = mp_downloader + "-" + keys[1]
 
-                    # 替换辅种记录
-                    if str(plugin_id) == "IYUUAutoSeed":
-                        if isinstance(plugin_value, str):
-                            plugin_value: list = json.loads(plugin_value)
-                        if not isinstance(plugin_value, list):
-                            plugin_value = [plugin_value]
-                        for value in plugin_value:
-                            if not str(value.get("downloader")).isdigit():
-                                continue
-                            if str(value.get("downloader")).isdigit() and int(value.get("downloader")) == int(
-                                    sub_downloaders[0]):
-                                value["downloader"] = sub_downloaders[1]
+                    # 替换value
+                    """
+                    {
+                        "to_download":2,
+                        "to_download_id":"2cd5d6fe32dca4e39a3e9f10961bfbdb00437e91",
+                        "delete_source":true
+                    }
+                    """
+                    if isinstance(plugin_value, str):
+                        plugin_value: dict = json.loads(plugin_value)
+                    if isinstance(plugin_value, dict):
+                        if str(plugin_value.get("to_download")).isdigit():
+                            to_downloader = self.__get_target_downloader(int(plugin_value.get("to_download")))
+                            plugin_value["to_download"] = to_downloader
+
+            # 替换辅种记录
+            elif str(plugin_id) == "IYUUAutoSeed":
+                """
+                [
+                    {
+                        "downloader":"2",
+                        "torrents":[
+                            "a18aa62abab42613edba15e7dbad0d729d8500da",
+                            "e494f372316bbfd8572da80138a6ef4c491d5991",
+                            "cc2bbc1e654d8fc0f83297f6cd36a38805aa2864",
+                            "68aec0db3aa7fe28a887e5e41a0d0d5bc284910f",
+                            "f02962474287e11441e34e40b8326ddf28d034f6"
+                        ]
+                    },
+                    {
+                        "downloader":"2",
+                        "torrents":[
+                            "4f042003ce90519e1aadd02b76f51c0c0711adb3"
+                        ]
+                    }
+                ]
+                """
+                if isinstance(plugin_value, str):
+                    plugin_value: list = json.loads(plugin_value)
+                if not isinstance(plugin_value, list):
+                    plugin_value = [plugin_value]
+                for value in plugin_value:
+                    if str(value.get("downloader")).isdigit():
+                        downloader = self.__get_target_downloader(int(value.get("downloader")))
+                        value["downloader"] = downloader
 
             self._plugindata.save(plugin_id=plugin_id,
                                   key=plugin_key,
@@ -188,6 +206,24 @@ class NAStoolSync(_PluginBase):
         end_time = datetime.now()
 
         logger.info(f"插件记录已同步完成。总耗时 {(end_time - start_time).seconds} 秒")
+
+    def __get_target_downloader(self, download_id: int):
+        """
+        获取NAStool下载器id对应的Moviepilot下载器
+        """
+        # 处理下载器映射
+        if self._downloader:
+            downloaders = self._downloader.split("\n")
+            for downloader in downloaders:
+                if not downloader:
+                    continue
+                sub_downloaders = downloader.split(":")
+                if not str(sub_downloaders[0]).isdigit():
+                    logger.error(f"下载器映射配置错误：NAStool下载器id 应为数字！")
+                    continue
+                if int(sub_downloaders[0]) == download_id:
+                    return str(sub_downloaders[1])
+        return download_id
 
     def sync_download_history(self, download_history):
         """

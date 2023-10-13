@@ -1013,40 +1013,42 @@ class MediaSyncDel(_PluginBase):
                 if not isinstance(torrents, list):
                     torrents = [torrents]
 
-                # 删除辅种历史中与本下载器相同的辅种记录
-                if str(downloader) == str(download):
-                    for torrent in torrents:
-                        handle_cnt += 1
-                        if str(download) == "qbittorrent":
-                            # 删除辅种
-                            if action_flag == "del":
-                                logger.info(f"删除辅种：{downloader} - {torrent}")
-                                self.qb.delete_torrents(delete_file=True,
-                                                        ids=torrent)
-                            # 暂停辅种
-                            if action_flag == "stop":
-                                self.qb.stop_torrents(torrent)
-                                logger.info(f"辅种：{downloader} - {torrent} 暂停")
-                        else:
-                            # 删除辅种
-                            if action_flag == "del":
-                                logger.info(f"删除辅种：{downloader} - {torrent}")
-                                self.tr.delete_torrents(delete_file=True,
-                                                        ids=torrent)
-                            # 暂停辅种
-                            if action_flag == "stop":
-                                self.tr.stop_torrents(torrent)
-                                logger.info(f"辅种：{downloader} - {torrent} 暂停")
-                    # 删除本下载器辅种历史
-                    if action_flag == "del":
-                        del history
-                    break
+                # 删除辅种历史
+                for torrent in torrents:
+                    handle_cnt += 1
+                    if str(download) == "qbittorrent":
+                        # 删除辅种
+                        if action_flag == "del":
+                            logger.info(f"删除辅种：{downloader} - {torrent}")
+                            self.qb.delete_torrents(delete_file=True,
+                                                    ids=torrent)
+                        # 暂停辅种
+                        if action_flag == "stop":
+                            self.qb.stop_torrents(torrent)
+                            logger.info(f"辅种：{downloader} - {torrent} 暂停")
+                    else:
+                        # 删除辅种
+                        if action_flag == "del":
+                            logger.info(f"删除辅种：{downloader} - {torrent}")
+                            self.tr.delete_torrents(delete_file=True,
+                                                    ids=torrent)
+                        # 暂停辅种
+                        if action_flag == "stop":
+                            self.tr.stop_torrents(torrent)
+                            logger.info(f"辅种：{downloader} - {torrent} 暂停")
+                # 删除本下载器辅种历史
+                if action_flag == "del":
+                    del history
+                break
 
             # 更新辅种历史
-            self.save_data(key=history_key,
-                           value=seed_history,
-                           plugin_id=plugin_id)
-
+            if seed_history:
+                self.save_data(key=history_key,
+                               value=seed_history,
+                               plugin_id=plugin_id)
+            else:
+                self.del_data(key=history_key,
+                              plugin_id=plugin_id)
         return handle_cnt
 
     @staticmethod
@@ -1276,8 +1278,6 @@ class MediaSyncDel(_PluginBase):
         """
         下载文件删除处理事件
         """
-        if not self._enabled:
-            return
         if not event:
             return
         event_data = event.event_data
