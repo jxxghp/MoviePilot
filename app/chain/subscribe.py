@@ -244,17 +244,8 @@ class SubscribeChain(ChainBase):
             else:
                 priority_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
 
-            # 默认过滤规则
-            if subscribe.include or subscribe.exclude:
-                filter_rule = {
-                    "include": subscribe.include,
-                    "exclude": subscribe.exclude,
-                    "quality": subscribe.quality,
-                    "resolution": subscribe.resolution,
-                    "effect": subscribe.effect,
-                }
-            else:
-                filter_rule = self.systemconfig.get(SystemConfigKey.DefaultFilterRules)
+            # 过滤规则
+            filter_rule = self.get_filter_rule(subscribe)
 
             # 搜索，同时电视剧会过滤掉不需要的剧集
             contexts = self.searchchain.process(mediainfo=mediainfo,
@@ -400,6 +391,67 @@ class SubscribeChain(ChainBase):
 
         return ret_sites
 
+    def get_filter_rule(self, subscribe: Subscribe):
+        """
+        获取订阅过滤规则，没有则返回默认规则
+        """
+        # 默认过滤规则
+        if (subscribe.include
+                or subscribe.exclude
+                or subscribe.quality
+                or subscribe.resolution
+                or subscribe.effect):
+            return {
+                "include": subscribe.include,
+                "exclude": subscribe.exclude,
+                "quality": subscribe.quality,
+                "resolution": subscribe.resolution,
+                "effect": subscribe.effect,
+            }
+        # 订阅默认过滤规则
+        return self.systemconfig.get(SystemConfigKey.DefaultFilterRules) or {}
+    
+    @staticmethod
+    def check_filter_rule(torrent_info: TorrentInfo, filter_rule: Dict[str, str]) -> bool:
+        """
+        检查种子是否匹配订阅过滤规则
+        """
+        if not filter_rule:
+            return True
+        # 包含
+        include = filter_rule.get("include")
+        if include:
+            if not re.search(r"%s" % include,
+                             f"{torrent_info.title} {torrent_info.description}", re.I):
+                logger.info(f"{torrent_info.title} 不匹配包含规则 {include}")
+                return False
+        # 排除
+        exclude = filter_rule.get("exclude")
+        if exclude:
+            if re.search(r"%s" % exclude,
+                         f"{torrent_info.title} {torrent_info.description}", re.I):
+                logger.info(f"{torrent_info.title} 匹配排除规则 {exclude}")
+                return False
+        # 质量
+        quality = filter_rule.get("quality")
+        if quality:
+            if not re.search(r"%s" % quality, torrent_info.title, re.I):
+                logger.info(f"{torrent_info.title} 不匹配质量规则 {quality}")
+                return False
+        # 分辨率
+        resolution = filter_rule.get("resolution")
+        if resolution:
+            if not re.search(r"%s" % resolution, torrent_info.title, re.I):
+                logger.info(f"{torrent_info.title} 不匹配分辨率规则 {resolution}")
+                return False
+        # 特效
+        effect = filter_rule.get("effect")
+        if effect:
+            if not re.search(r"%s" % effect, torrent_info.title, re.I):
+                logger.info(f"{torrent_info.title} 不匹配特效规则 {effect}")
+                return False
+        return True
+
     def match(self, torrents: Dict[str, List[Context]]):
         """
         从缓存中匹配订阅，并自动下载
@@ -475,10 +527,8 @@ class SubscribeChain(ChainBase):
                     if no_exists_info:
                         logger.info(f'订阅 {mediainfo.title_year} {meta.season} 缺失集：{no_exists_info.episodes}')
 
-            # 默认过滤规则
-            default_filter = self.systemconfig.get(SystemConfigKey.DefaultFilterRules) or {}
-            include = subscribe.include or default_filter.get("include")
-            exclude = subscribe.exclude or default_filter.get("exclude")
+            # 过滤规则
+            filter_rule = self.get_filter_rule(subscribe)
 
             # 遍历缓存种子
             _match_context = []
@@ -494,11 +544,11 @@ class SubscribeChain(ChainBase):
                         continue
                     # 优先级过滤规则
                     if subscribe.best_version:
-                        filter_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
+                        priority_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
                     else:
-                        filter_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
+                        priority_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
                     result: List[TorrentInfo] = self.filter_torrents(
-                        rule_string=filter_rule,
+                        rule_string=priority_rule,
                         torrent_list=[torrent_info],
                         mediainfo=torrent_mediainfo)
                     if result is not None and not result:
@@ -539,7 +589,8 @@ class SubscribeChain(ChainBase):
                                                 set(torrent_meta.episode_list)
                                             ):
                                         logger.info(
-                                            f'{torrent_info.title} 对应剧集 {torrent_meta.episode_list} 未包含缺失的剧集')
+                                            f'{torrent_info.title} 对应剧集 {torrent_meta.episode_list} 未包含缺失的剧集'
+                                        )
                                         continue
                             # 过滤掉已经下载的集数
                             if self.__check_subscribe_note(subscribe, torrent_meta.episode_list):
@@ -551,18 +602,12 @@ class SubscribeChain(ChainBase):
                                 if torrent_meta.episode_list:
                                     logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
                                     continue
-                    # 包含
-                    if include:
-                        if not re.search(r"%s" % include,
-                                         f"{torrent_info.title} {torrent_info.description}", re.I):
-                            logger.info(f"{torrent_info.title} 不匹配包含规则 {include}")
-                            continue
-                    # 排除
-                    if exclude:
-                        if re.search(r"%s" % exclude,
-                                     f"{torrent_info.title} {torrent_info.description}", re.I):
-                            logger.info(f"{torrent_info.title} 匹配排除规则 {exclude}")
-                            continue
+
+                    # 过滤规则
+                    if not self.check_filter_rule(torrent_info=torrent_info,
+                                                  filter_rule=filter_rule):
+                        continue
+
                     # 匹配成功
                     logger.info(f'{mediainfo.title_year} 匹配成功：{torrent_info.title}')
                     _match_context.append(context)

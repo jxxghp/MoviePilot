@@ -141,7 +141,7 @@ class SearchChain(ChainBase):
             if not torrents:
                 logger.warn(f'{keyword or mediainfo.title} 没有符合优先级规则的资源')
                 return []
-        # 使用默认过滤规则再次过滤
+        # 使用过滤规则再次过滤
         torrents = self.filter_torrents_by_rule(torrents=torrents,
                                                 filter_rule=filter_rule)
         if not torrents:
@@ -333,9 +333,9 @@ class SearchChain(ChainBase):
         :param filter_rule: 过滤规则
         """
 
-        # 取默认过滤规则
         if not filter_rule:
-            filter_rule = self.systemconfig.get(SystemConfigKey.DefaultFilterRules)
+            # 没有则取搜索默认过滤规则
+            filter_rule = self.systemconfig.get(SystemConfigKey.DefaultSearchFilterRules)
         if not filter_rule:
             return torrents
         # 包含
