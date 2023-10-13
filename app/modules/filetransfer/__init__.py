@@ -45,7 +45,8 @@ class FileTransferModule(_ModuleBase):
         # 获取目标路径
         if not target:
             target = self.get_target_path(in_path=path)
-        else:
+        elif not target.exists() or target.is_file():
+            # 目的路径不存在或者是文件时，找对应的媒体库目录
             target = self.get_library_path(target)
         if not target:
             logger.error("未找到媒体库目录，无法转移文件")
@@ -575,7 +576,7 @@ class FileTransferModule(_ModuleBase):
     @staticmethod
     def get_library_path(path: Path):
         """
-        根据目录查询其所在的媒体库目录，查询不到的返回输入目录
+        根据文件路径查询其所在的媒体库目录，查询不到的返回输入目录
         """
         if not path:
             return None
