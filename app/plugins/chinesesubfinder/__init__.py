@@ -251,6 +251,6 @@ class ChineseSubFinder(_PluginBase):
                     else:
                         logger.info("ChineseSubFinder任务添加成功：%s" % job_id)
                 else:
-                    logger.error("%s 目录缺失nfo元数据" % file_path)
+                    logger.warn(f"ChineseSubFinder调用出错：{res.status_code} - {res.reason}")
         except Exception as e:
             logger.error("连接ChineseSubFinder出错：" + str(e))

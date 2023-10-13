@@ -99,6 +99,8 @@ class SystemUtils:
         try:
             # link到当前目录并改名
             tmp_path = src.parent / (dest.name + ".mp")
+            if tmp_path.exists():
+                tmp_path.unlink()
             tmp_path.hardlink_to(src)
             # 移动到目标目录
             shutil.move(tmp_path, dest)

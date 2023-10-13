@@ -587,6 +587,7 @@ class PersonMeta(_PluginBase):
         time.sleep(sleep_time)
         # 匹配豆瓣信息
         doubaninfo = self.chain.match_doubaninfo(name=mediainfo.title,
+                                                 imdbid=mediainfo.imdb_id,
                                                  mtype=mediainfo.type.value,
                                                  year=mediainfo.year,
                                                  season=season)

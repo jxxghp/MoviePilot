@@ -103,7 +103,12 @@ class FilterModule(_ModuleBase):
         "CNVOI": {
             "include": [r'[国國][语語]配音|[国國]配|[国國][语語]'],
             "exclude": []
-        }
+        },
+        # 60FPS
+        "60FPS": {
+            "include": [r'60fps'],
+            "exclude": []
+        },
     }
 
     def init_module(self) -> None:

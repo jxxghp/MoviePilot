@@ -1,4 +1,4 @@
-from datetime import datetime
+import re
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
@@ -406,17 +406,29 @@ class DoubanModule(_ModuleBase):
         return ret_medias
 
     @retry(Exception, 5, 3, 3, logger=logger)
-    def match_doubaninfo(self, name: str, mtype: str = None,
-                         year: str = None, season: int = None) -> dict:
+    def match_doubaninfo(self, name: str, imdbid: str = None,
+                         mtype: str = None, year: str = None, season: int = None) -> dict:
         """
         搜索和匹配豆瓣信息
         :param name:  名称
+        :param imdbid:  IMDB ID
         :param mtype:  类型 电影/电视剧
         :param year:  年份
         :param season:  季号
         """
-        result = self.doubanapi.search(f"{name} {year or ''}".strip(),
-                                       ts=datetime.strftime(datetime.now(), '%Y%m%d%H%M%S'))
+        if imdbid:
+            # 优先使用IMDBID查询
+            logger.info(f"开始使用IMDBID {imdbid} 查询豆瓣信息 ...")
+            result = self.doubanapi.imdbid(imdbid)
+            if result:
+                doubanid = result.get("id")
+                if doubanid and not str(doubanid).isdigit():
+                    doubanid = re.search(r"\d+", doubanid).group(0)
+                    result["id"] = doubanid
+                return result
+        # 搜索
+        logger.info(f"开始使用名称 {name} 查询豆瓣信息 ...")
+        result = self.doubanapi.search(f"{name} {year or ''}".strip())
         if not result:
             logger.warn(f"未找到 {name} 的豆瓣信息")
             return {}
@@ -473,12 +485,16 @@ class DoubanModule(_ModuleBase):
                 return
             # 根据名称查询豆瓣数据
             doubaninfo = self.match_doubaninfo(name=mediainfo.title,
+                                               imdbid=mediainfo.imdb_id,
                                                mtype=mediainfo.type.value,
                                                year=mediainfo.year,
                                                season=meta.begin_season)
             if not doubaninfo:
                 logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
                 return
+            # 查询豆瓣详情
+            doubaninfo = self.douban_info(doubaninfo.get("id"))
+            # 刮削路径
             scrape_path = path / path.name
             self.scraper.gen_scraper_files(meta=meta,
                                            mediainfo=MediaInfo(douban_info=doubaninfo),
@@ -495,12 +511,15 @@ class DoubanModule(_ModuleBase):
                         continue
                     # 根据名称查询豆瓣数据
                     doubaninfo = self.match_doubaninfo(name=mediainfo.title,
+                                                       imdbid=mediainfo.imdb_id,
                                                        mtype=mediainfo.type.value,
                                                        year=mediainfo.year,
                                                        season=meta.begin_season)
                     if not doubaninfo:
                         logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
                         break
+                    # 查询豆瓣详情
+                    doubaninfo = self.douban_info(doubaninfo.get("id"))
                     # 刮削
                     self.scraper.gen_scraper_files(meta=meta,
                                                    mediainfo=MediaInfo(douban_info=doubaninfo),

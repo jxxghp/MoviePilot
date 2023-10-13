@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Union, Tuple
 from sqlalchemy.orm import Session
 
 from app.chain import ChainBase
+from app.chain.douban import DoubanChain
 from app.chain.download import DownloadChain
 from app.chain.search import SearchChain
 from app.chain.torrents import TorrentsChain
@@ -50,18 +51,28 @@ class SubscribeChain(ChainBase):
         识别媒体信息并添加订阅
         """
         logger.info(f'开始添加订阅，标题：{title} ...')
-        # 识别元数据
-        metainfo = MetaInfo(title)
-        if year:
-            metainfo.year = year
-        if mtype:
-            metainfo.type = mtype
-        if season:
-            metainfo.type = MediaType.TV
-            metainfo.begin_season = season
-        # 识别媒体信息
-        mediainfo: MediaInfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid)
-        if not mediainfo:
+        metainfo = None
+        mediainfo = None
+        if not tmdbid and doubanid:
+            # 将豆瓣信息转换为TMDB信息
+            context = DoubanChain().recognize_by_doubanid(doubanid)
+            if context:
+                metainfo = context.meta_info
+                mediainfo = context.media_info
+        else:
+            # 识别元数据
+            metainfo = MetaInfo(title)
+            if year:
+                metainfo.year = year
+            if mtype:
+                metainfo.type = mtype
+            if season:
+                metainfo.type = MediaType.TV
+                metainfo.begin_season = season
+            # 识别媒体信息
+            mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid)
+        # 识别失败
+        if not mediainfo or not metainfo or not mediainfo.tmdb_id:
             logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}')
             return None, "未识别到媒体信息"
         # 更新媒体图片
@@ -74,8 +85,8 @@ class SubscribeChain(ChainBase):
             if not kwargs.get('total_episode'):
                 if not mediainfo.seasons:
                     # 补充媒体信息
-                    mediainfo: MediaInfo = self.recognize_media(mtype=mediainfo.type,
-                                                                tmdbid=mediainfo.tmdb_id)
+                    mediainfo = self.recognize_media(mtype=mediainfo.type,
+                                                     tmdbid=mediainfo.tmdb_id)
                     if not mediainfo:
                         logger.error(f"媒体信息识别失败！")
                         return None, "媒体信息识别失败"
@@ -85,7 +96,7 @@ class SubscribeChain(ChainBase):
                 total_episode = len(mediainfo.seasons.get(season) or [])
                 if not total_episode:
                     logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}')
-                    return None, "未获取到总集数"
+                    return None, f"未获取到第 {season} 季的总集数"
                 kwargs.update({
                     'total_episode': total_episode
                 })
