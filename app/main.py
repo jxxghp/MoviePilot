@@ -2,7 +2,6 @@ import multiprocessing
 import os
 import sys
 import threading
-from pathlib import Path
 
 import uvicorn as uvicorn
 from PIL import Image
