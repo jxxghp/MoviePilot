@@ -263,22 +263,26 @@ class DirMonitor(_PluginBase):
                     target: Path = self._dirconf.get(mon_path)
                     # 查询转移方式
                     transfer_type = self._transferconf.get(mon_path)
+                    # 根据父路径获取下载历史
+                    download_history = self.downloadhis.get_by_path(Path(event_path).parent)
 
                     # 识别媒体信息
-                    mediainfo: MediaInfo = self.chain.recognize_media(meta=file_meta)
+                    mediainfo: MediaInfo = self.chain.recognize_media(meta=file_meta,
+                                                                      tmdbid=download_history.tmdbid if download_history else None)
                     if not mediainfo:
                         logger.warn(f'未识别到媒体信息，标题：{file_meta.name}')
-                        if self._notify:
-                            self.chain.post_message(Notification(
-                                mtype=NotificationType.Manual,
-                                title=f"{file_path.name} 未识别到媒体信息，无法入库！"
-                            ))
                         # 新增转移成功历史记录
-                        self.transferhis.add_fail(
+                        his = self.transferhis.add_fail(
                             src_path=file_path,
                             mode=transfer_type,
                             meta=file_meta
                         )
+                        if self._notify:
+                            self.chain.post_message(Notification(
+                                mtype=NotificationType.Manual,
+                                title=f"{file_path.name} 未识别到媒体信息，无法入库！\n"
+                                      f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别转移。"
+                            ))
                         return
 
                     # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
