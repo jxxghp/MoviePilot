@@ -85,6 +85,11 @@ class FilterModule(_ModuleBase):
             "include": [r"[\s.]+HDR[\s.]+|HDR10|HDR10\+"],
             "exclude": []
         },
+        # SDR
+        "SDR": {
+            "include": [r"[\s.]+SDR[\s.]+"],
+            "exclude": []
+        },
         # 重编码
         "REMUX": {
             "include": [r'REMUX'],
@@ -104,9 +109,19 @@ class FilterModule(_ModuleBase):
             "include": [r'[国國][语語]配音|[国國]配|[国國][语語]'],
             "exclude": []
         },
+        # 粤语配音
+        "HKVOI": {
+            "include": [r'粤语配音|粤语'],
+            "exclude": []
+        },
         # 60FPS
         "60FPS": {
             "include": [r'60fps'],
+            "exclude": []
+        },
+        # 3D
+        "3D": {
+            "include": [r'3D'],
             "exclude": []
         },
     }
