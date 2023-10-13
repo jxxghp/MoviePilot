@@ -117,7 +117,7 @@ class DownloadingMsg(_PluginBase):
                 if not userid:
                     continue
                 # 如果用户是管理员，无需重复推送
-                if self._type == "admin" or self._type == "both" and self._adminuser and userid in str(
+                if (self._type == "admin" or self._type == "both") and self._adminuser and userid in str(
                         self._adminuser).split(","):
                     logger.debug("管理员已推送")
                     continue
@@ -177,10 +177,14 @@ class DownloadingMsg(_PluginBase):
             else:
                 media_name = torrent.title
 
-            messages.append(f"{index}. {media_name}\n"
-                            f"{torrent.title} "
-                            f"{StringUtils.str_filesize(torrent.size)} "
-                            f"{round(torrent.progress, 1)}%")
+            if not self._adminuser or userid not in str(self._adminuser).split(","):
+                # 下载用户发送精简消息
+                messages.append(f"{index}. {media_name} {round(torrent.progress, 1)}%")
+            else:
+                messages.append(f"{index}. {media_name}\n"
+                                f"{torrent.title} "
+                                f"{StringUtils.str_filesize(torrent.size)} "
+                                f"{round(torrent.progress, 1)}%")
             index += 1
 
         # 用户消息渠道
