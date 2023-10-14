@@ -23,7 +23,19 @@ chown -R moviepilot:moviepilot \
     /var/log/nginx
 chown moviepilot:moviepilot /etc/hosts /tmp
 # 下载浏览器内核
-gosu moviepilot:moviepilot playwright install chromium
+if [ "${USE_PLAYWRIGHT}" = "true" ]; then
+    echo "配置仿真环境中..."
+    cp /etc/apt/sources.list /etc/apt/sources.list.bak
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bullseye main contrib non-free" > /etc/apt/sources.list
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bullseye-updates main contrib non-free" >> /etc/apt/sources.list
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bullseye-backports main contrib non-free" >> /etc/apt/sources.list
+    echo "deb https://security.debian.org/debian-security bullseye-security main contrib non-free" >> /etc/apt/sources.list
+    apt-get update -y
+    playwright install-deps chromium
+    gosu moviepilot:moviepilot playwright install chromium
+else
+    echo "未开启仿真环境，如需开启仿真环境请在创建容器时设置环境变量：USE_PLAYWRIGHT=true"
+fi
 # 启动前端nginx服务
 nginx
 # 启动haproxy

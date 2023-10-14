@@ -13,6 +13,7 @@ ENV LANG="C.UTF-8" \
     PROXY_HOST="" \
     MOVIEPILOT_AUTO_UPDATE=true \
     MOVIEPILOT_AUTO_UPDATE_DEV=false \
+    USE_PLAYWRIGHT=false \
     AUTH_SITE="iyuu" \
     IYUU_SIGN=""
 WORKDIR "/app"
@@ -52,7 +53,6 @@ RUN apt-get update -y \
     && pip install --upgrade pip \
     && pip install Cython \
     && pip install -r requirements.txt \
-    && playwright install-deps chromium \
     && apt-get remove -y build-essential \
     && apt-get autoremove -y \
     && apt-get clean -y \
