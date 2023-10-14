@@ -66,8 +66,7 @@ def manual_transfer(path: str = None,
 
     if target:
         target = Path(target)
-        if not target.exists():
-            return schemas.Response(success=False, message=f"目标路径不存在")
+
     # 类型
     mtype = MediaType(type_name) if type_name else None
     # 自定义格式
