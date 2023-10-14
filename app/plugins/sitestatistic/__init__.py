@@ -86,7 +86,8 @@ class SiteStatistic(_PluginBase):
             self._statistic_sites = config.get("statistic_sites") or []
 
             # 过滤掉已删除的站点
-            self._statistic_sites = [site.get("id") for site in self.sites.get_indexers() if
+            all_sites = [site for site in self.sites.get_indexers() if not site.get("public")] + self.__custom_sites()
+            self._statistic_sites = [site.get("id") for site in all_sites if
                                      not site.get("public") and site.get("id") in self._statistic_sites]
             self.__update_config()
 
@@ -182,9 +183,14 @@ class SiteStatistic(_PluginBase):
         """
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
-        # 站点的可选项
-        site_options = [{"title": site.name, "value": site.id}
+        # 站点的可选项（内置站点 + 自定义站点）
+        customSites = self.__custom_sites()
+
+        site_options = ([{"title": site.name, "value": site.id}
                         for site in Site.list_order_by_pri(self.db)]
+                        + [{"title": site.get("name"), "value": site.get("id")}
+                           for site in customSites])
+
         return [
             {
                 'component': 'VForm',
@@ -1048,11 +1054,12 @@ class SiteStatistic(_PluginBase):
 
         with lock:
 
+            all_sites = [site for site in self.sites.get_indexers() if not site.get("public")] + self.__custom_sites()
             # 没有指定站点，默认使用全部站点
             if not self._statistic_sites:
-                refresh_sites = [site for site in self.sites.get_indexers() if not site.get("public")]
+                refresh_sites = all_sites
             else:
-                refresh_sites = [site for site in self.sites.get_indexers() if
+                refresh_sites = [site for site in all_sites if
                                  site.get("id") in self._statistic_sites]
             if not refresh_sites:
                 return
@@ -1114,6 +1121,13 @@ class SiteStatistic(_PluginBase):
             # 更新时间
             self.save_data("last_update_time", key)
             logger.info("站点数据刷新完成")
+
+    def __custom_sites(self) -> List[dict]:
+        custom_sites = []
+        custom_sites_config = self.get_config("CustomSites")
+        if custom_sites_config and custom_sites_config.get("enabled"):
+            custom_sites = custom_sites_config.get("sites")
+        return custom_sites
 
     def __update_config(self):
         self.update_config({
