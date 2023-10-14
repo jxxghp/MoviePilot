@@ -19,7 +19,6 @@ from app.schemas import Notification
 from app.schemas.types import EventType, MessageChannel
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
-from app.utils.system import SystemUtils
 
 
 class CommandChian(ChainBase):
@@ -139,7 +138,7 @@ class Command(metaclass=Singleton):
                 "data": {}
             },
             "/restart": {
-                "func": SystemUtils.restart,
+                "func": SystemChain(self._db).restart,
                 "description": "重启系统",
                 "category": "管理",
                 "data": {}
