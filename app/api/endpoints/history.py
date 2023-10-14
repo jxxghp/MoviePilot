@@ -11,7 +11,6 @@ from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
-from app.schemas import MediaType
 from app.schemas.types import EventType
 
 router = APIRouter()
@@ -90,23 +89,3 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
     # 删除记录
     TransferHistory.delete(db, history_in.id)
     return schemas.Response(success=True)
-
-
-@router.post("/transfer", summary="历史记录重新转移", response_model=schemas.Response)
-def redo_transfer_history(history_in: schemas.TransferHistory,
-                          mtype: str = None,
-                          new_tmdbid: int = None,
-                          db: Session = Depends(get_db),
-                          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    历史记录重新转移，不输入 mtype 和 new_tmdbid 时，自动使用文件名重新识别
-    """
-    if mtype and new_tmdbid:
-        state, errmsg = TransferChain(db).re_transfer(logid=history_in.id,
-                                                      mtype=MediaType(mtype), tmdbid=new_tmdbid)
-    else:
-        state, errmsg = TransferChain(db).re_transfer(logid=history_in.id)
-    if state:
-        return schemas.Response(success=True)
-    else:
-        return schemas.Response(success=False, message=errmsg)

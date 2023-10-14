@@ -8,13 +8,15 @@ from app import schemas
 from app.chain.transfer import TransferChain
 from app.core.security import verify_token
 from app.db import get_db
+from app.db.models.transferhistory import TransferHistory
 from app.schemas import MediaType
 
 router = APIRouter()
 
 
 @router.post("/manual", summary="手动转移", response_model=schemas.Response)
-def manual_transfer(path: str,
+def manual_transfer(path: str = None,
+                    logid: int = None,
                     target: str = None,
                     tmdbid: int = None,
                     type_name: str = None,
@@ -28,8 +30,9 @@ def manual_transfer(path: str,
                     db: Session = Depends(get_db),
                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    手动转移，支持自定义剧集识别格式
+    手动转移，文件或历史记录，支持自定义剧集识别格式
     :param path: 转移路径或文件
+    :param logid: 转移历史记录ID
     :param target: 目标路径
     :param type_name: 媒体类型、电影/电视剧
     :param tmdbid: tmdbid
@@ -43,7 +46,24 @@ def manual_transfer(path: str,
     :param db: 数据库
     :param _: Token校验
     """
-    in_path = Path(path)
+    if logid:
+        # 查询历史记录
+        history = TransferHistory.get(db, logid)
+        if not history:
+            return schemas.Response(success=False, message=f"历史记录不存在，ID：{logid}")
+        # 源路径
+        in_path = Path(history.src)
+        # 目的路径
+        if history.dest:
+            # 删除旧的已整理文件
+            TransferChain(db).delete_files(Path(history.dest))
+            if not target:
+                target = history.dest
+    elif path:
+        in_path = Path(path)
+    else:
+        return schemas.Response(success=False, message=f"缺少参数：path/logid")
+
     if target:
         target = Path(target)
         if not target.exists():

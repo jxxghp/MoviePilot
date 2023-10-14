@@ -489,7 +489,7 @@ class TransferChain(ChainBase):
     def re_transfer(self, logid: int,
                     mtype: MediaType = None, tmdbid: int = None) -> Tuple[bool, str]:
         """
-        根据历史记录，重新识别转移，只处理对应的src目录
+        根据历史记录，重新识别转移，只支持简单条件
         :param logid: 历史记录ID
         :param mtype: 媒体类型
         :param tmdbid: TMDB ID
@@ -499,7 +499,7 @@ class TransferChain(ChainBase):
         if not history:
             logger.error(f"历史记录不存在，ID：{logid}")
             return False, "历史记录不存在"
-        # 没有下载记录，按源目录路径重新转移
+        # 按源目录路径重新转移
         src_path = Path(history.src)
         if not src_path.exists():
             return False, f"源目录不存在：{src_path}"
@@ -541,7 +541,7 @@ class TransferChain(ChainBase):
                         epformat: EpisodeFormat = None,
                         min_filesize: int = 0) -> Tuple[bool, Union[str, list]]:
         """
-        手动转移
+        手动转移，支持复杂条件，带进度显示
         :param in_path: 源文件路径
         :param target: 目标路径
         :param tmdbid: TMDB ID
