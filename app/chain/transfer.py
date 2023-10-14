@@ -589,7 +589,8 @@ class TransferChain(ChainBase):
                                              transfer_type=transfer_type,
                                              season=season,
                                              epformat=epformat,
-                                             min_filesize=min_filesize)
+                                             min_filesize=min_filesize,
+                                             force=force)
             return state, errmsg
 
     def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo,
