@@ -92,7 +92,7 @@ class AutoSignIn(_PluginBase):
             self._clean = config.get("clean")
 
             # 过滤掉已删除的站点
-            all_sites = [site for site in self.sites.get_indexers() if not site.get("public")]
+            all_sites = [site for site in self.sites.get_indexers() if not site.get("public")] + self.__custom_sites()
             self._sign_sites = [site.get("id") for site in all_sites if site.get("id") in self._sign_sites]
             self._login_sites = [site.get("id") for site in all_sites if site.get("id") in self._login_sites]
             # 保存配置
@@ -244,9 +244,13 @@ class AutoSignIn(_PluginBase):
         """
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
-        # 站点的可选项
-        site_options = [{"title": site.name, "value": site.id}
-                        for site in Site.list_order_by_pri(self.db)]
+        # 站点的可选项（内置站点 + 自定义站点）
+        customSites = self.__custom_sites()
+
+        site_options = ([{"title": site.name, "value": site.id}
+                         for site in Site.list_order_by_pri(self.db)]
+                        + [{"title": site.get("name"), "value": site.get("id")}
+                           for site in customSites])
         return [
             {
                 'component': 'VForm',
@@ -452,6 +456,13 @@ class AutoSignIn(_PluginBase):
             "retry_keyword": "错误|失败"
         }
 
+    def __custom_sites(self) -> List[dict]:
+        custom_sites = []
+        custom_sites_config = self.get_config("CustomSites")
+        if custom_sites_config and custom_sites_config.get("enabled"):
+            custom_sites = custom_sites_config.get("sites")
+        return custom_sites
+
     def get_page(self) -> List[dict]:
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
@@ -590,7 +601,7 @@ class AutoSignIn(_PluginBase):
         today_history = self.get_data(key=type + "-" + today)
 
         # 查询所有站点
-        all_sites = [site for site in self.sites.get_indexers() if not site.get("public")]
+        all_sites = [site for site in self.sites.get_indexers() if not site.get("public")] + self.__custom_sites()
         # 过滤掉没有选中的站点
         if do_sites:
             do_sites = [site for site in all_sites if site.get("id") in do_sites]
