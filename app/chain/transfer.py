@@ -539,7 +539,8 @@ class TransferChain(ChainBase):
                         season: int = None,
                         transfer_type: str = None,
                         epformat: EpisodeFormat = None,
-                        min_filesize: int = 0) -> Tuple[bool, Union[str, list]]:
+                        min_filesize: int = 0,
+                        force: bool = False) -> Tuple[bool, Union[str, list]]:
         """
         手动转移，支持复杂条件，带进度显示
         :param in_path: 源文件路径
@@ -550,6 +551,7 @@ class TransferChain(ChainBase):
         :param transfer_type: 转移类型
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
+        :param force: 是否强制转移
         """
         logger.info(f"手动转移：{in_path} ...")
 
@@ -571,7 +573,8 @@ class TransferChain(ChainBase):
                 target=target,
                 season=season,
                 epformat=epformat,
-                min_filesize=min_filesize
+                min_filesize=min_filesize,
+                force=force
             )
             if not state:
                 return False, errmsg

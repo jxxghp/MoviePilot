@@ -46,11 +46,14 @@ def manual_transfer(path: str = None,
     :param db: 数据库
     :param _: Token校验
     """
+    force = False
     if logid:
         # 查询历史记录
         history = TransferHistory.get(db, logid)
         if not history:
             return schemas.Response(success=False, message=f"历史记录不存在，ID：{logid}")
+        # 强制转移
+        force = True
         # 源路径
         in_path = Path(history.src)
         # 目的路径
@@ -87,7 +90,8 @@ def manual_transfer(path: str = None,
         season=season,
         transfer_type=transfer_type,
         epformat=epformat,
-        min_filesize=min_filesize
+        min_filesize=min_filesize,
+        force=force
     )
     # 失败
     if not state:
