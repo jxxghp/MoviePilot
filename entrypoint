@@ -24,8 +24,8 @@ chown -R moviepilot:moviepilot \
 chown moviepilot:moviepilot /etc/hosts /tmp
 # 下载浏览器内核
 if [ "${USE_PLAYWRIGHT}" = "true" ]; then
-    echo "配置仿真环境中..."
     if [ ! -f /playwright_depends_install ]; then
+        echo "配置仿真环境中..."
         cp /etc/apt/sources.list /etc/apt/sources.list.bak
         echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bullseye main contrib non-free" > /etc/apt/sources.list
         echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bullseye-updates main contrib non-free" >> /etc/apt/sources.list
