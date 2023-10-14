@@ -74,7 +74,7 @@ class PersonMeta(_PluginBase):
             self._enabled = config.get("enabled")
             self._onlyonce = config.get("onlyonce")
             self._cron = config.get("cron")
-            self._type = config.get("type")
+            self._type = config.get("type") or "all"
             self._delay = config.get("delay") or 0
             self._remove_nozh = config.get("remove_nozh") or False
 
@@ -228,9 +228,9 @@ class PersonMeta(_PluginBase):
                                             'model': 'type',
                                             'label': '刮削条件',
                                             'items': [
+                                                {'title': '全部', 'value': 'all'},
                                                 {'title': '演员非中文', 'value': 'name'},
                                                 {'title': '角色非中文', 'value': 'role'},
-                                                {'title': '任一非中文', 'value': 'all'}
                                             ]
                                         }
                                     }
@@ -375,12 +375,10 @@ class PersonMeta(_PluginBase):
         """
 
         def __need_trans_actor(_item):
-            if self._type == "all":
-                # 是否需要处理人物信息
-                _peoples = [x for x in _item.get("People", []) if
-                            (x.get("Name") and not StringUtils.is_chinese(x.get("Name")))
-                            or (x.get("Role") and not StringUtils.is_chinese(x.get("Role")))]
-            elif self._type == "name":
+            """
+            是否需要处理人物信息
+            """
+            if self._type == "name":
                 # 是否需要处理人物名称
                 _peoples = [x for x in _item.get("People", []) if
                             (x.get("Name") and not StringUtils.is_chinese(x.get("Name")))]
@@ -389,8 +387,9 @@ class PersonMeta(_PluginBase):
                 _peoples = [x for x in _item.get("People", []) if
                             (x.get("Role") and not StringUtils.is_chinese(x.get("Role")))]
             else:
-                return False
-
+                _peoples = [x for x in _item.get("People", []) if
+                            (x.get("Name") and not StringUtils.is_chinese(x.get("Name")))
+                            or (x.get("Role") and not StringUtils.is_chinese(x.get("Role")))]
             if _peoples:
                 return True
             return False
