@@ -263,6 +263,7 @@ class DirMonitor(_PluginBase):
                     if re.search(r"BDMV[/\\]STREAM", event_path, re.IGNORECASE):
                         # 截取BDMV前面的路径
                         event_path = event_path[:event_path.find("BDMV")]
+                        file_path = Path(event_path)
 
                     # 查询转移目的目录
                     target: Path = self._dirconf.get(mon_path)
