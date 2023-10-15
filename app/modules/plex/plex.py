@@ -492,7 +492,7 @@ class Plex(metaclass=Singleton):
         eventType = message.get('event')
         if not eventType:
             return None
-        logger.info(f"接收到plex webhook：{message}")
+        logger.debug(f"接收到plex webhook：{message}")
         eventItem = schemas.WebhookEventInfo(event=eventType, channel="plex")
         if message.get('Metadata'):
             if message.get('Metadata', {}).get('type') == 'episode':

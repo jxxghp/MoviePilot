@@ -800,7 +800,7 @@ class Emby(metaclass=Singleton):
         eventType = message.get('Event')
         if not eventType:
             return None
-        logger.info(f"接收到emby webhook：{message}")
+        logger.debug(f"接收到emby webhook：{message}")
         eventItem = schemas.WebhookEventInfo(event=eventType, channel="emby")
         if message.get('Item'):
             if message.get('Item', {}).get('Type') == 'Episode':

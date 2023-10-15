@@ -452,7 +452,7 @@ class Jellyfin(metaclass=Singleton):
             return None
         if not message:
             return None
-        logger.info(f"接收到jellyfin webhook：{message}")
+        logger.debug(f"接收到jellyfin webhook：{message}")
         eventType = message.get('NotificationType')
         if not eventType:
             return None
