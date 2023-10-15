@@ -248,11 +248,6 @@ class DirMonitor(_PluginBase):
                         logger.debug(f"{event_path} 不是媒体文件")
                         return
 
-                    # 查询历史记录，已转移的不处理
-                    if self.transferhis.get_by_src(event_path):
-                        logger.info(f"{event_path} 已整理过")
-                        return
-
                     # 元数据
                     file_meta = MetaInfoPath(file_path)
                     if not file_meta.name:
@@ -264,6 +259,11 @@ class DirMonitor(_PluginBase):
                         # 截取BDMV前面的路径
                         event_path = event_path[:event_path.find("BDMV")]
                         file_path = Path(event_path)
+
+                    # 查询历史记录，已转移的不处理
+                    if self.transferhis.get_by_src(event_path):
+                        logger.info(f"{event_path} 已整理过")
+                        return
 
                     # 查询转移目的目录
                     target: Path = self._dirconf.get(mon_path)
