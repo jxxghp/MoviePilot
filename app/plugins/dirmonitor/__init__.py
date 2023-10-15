@@ -259,6 +259,11 @@ class DirMonitor(_PluginBase):
                         logger.error(f"{file_path.name} 无法识别有效信息")
                         return
 
+                    # 判断是不是蓝光目录
+                    if re.search(r"BDMV[/\\]STREAM", event_path, re.IGNORECASE):
+                        # 截取BDMV前面的路径
+                        event_path = event_path[:event_path.find("BDMV")]
+
                     # 查询转移目的目录
                     target: Path = self._dirconf.get(mon_path)
                     # 查询转移方式
