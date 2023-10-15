@@ -747,7 +747,7 @@ class BrushFlow(_PluginBase):
 
     def get_page(self) -> List[dict]:
         # 种子明细
-        data_list = self.get_data("torrents") or {}
+        torrents = self.get_data("torrents") or {}
         # 统计数据
         stattistic_data: Dict[str, dict] = self.get_data("statistic") or {
             "count": 0,
@@ -755,7 +755,7 @@ class BrushFlow(_PluginBase):
             "uploaded": 0,
             "downloaded": 0,
         }
-        if not data_list:
+        if not torrents:
             return [
                 {
                     'component': 'div',
@@ -766,7 +766,9 @@ class BrushFlow(_PluginBase):
                 }
             ]
         else:
-            data_list = data_list.values()
+            data_list = torrents.values()
+            # 按time倒序排序
+            data_list = sorted(data_list, key=lambda x: x.get("time") or 0, reverse=True)
         # 总上传量格式化
         total_upload = StringUtils.str_filesize(stattistic_data.get("uploaded") or 0)
         # 总下载量格式化
@@ -1379,6 +1381,7 @@ class BrushFlow(_PluginBase):
                         "downloaded": 0,
                         "uploaded": 0,
                         "deleted": False,
+                        "time": time.time()
                     }
                     # 统计数据
                     torrents_size += torrent.size
