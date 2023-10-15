@@ -187,11 +187,12 @@ class TheMovieDbModule(_ModuleBase):
 
         return [MediaInfo(tmdb_info=info) for info in results]
 
-    def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
+    def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径
         :param mediainfo:  识别的媒体信息
+        :param transfer_type:  转移类型
         :return: 成功或失败
         """
         if settings.SCRAP_SOURCE != "themoviedb":
@@ -202,12 +203,14 @@ class TheMovieDbModule(_ModuleBase):
             logger.info(f"开始刮削蓝光原盘：{path} ...")
             scrape_path = path / path.name
             self.scraper.gen_scraper_files(mediainfo=mediainfo,
-                                           file_path=scrape_path)
+                                           file_path=scrape_path,
+                                           transfer_type=transfer_type)
         elif path.is_file():
             # 单个文件
             logger.info(f"开始刮削媒体库文件：{path} ...")
             self.scraper.gen_scraper_files(mediainfo=mediainfo,
-                                           file_path=path)
+                                           file_path=path,
+                                           transfer_type=transfer_type)
         else:
             # 目录下的所有文件
             logger.info(f"开始刮削目录：{path} ...")
@@ -215,7 +218,8 @@ class TheMovieDbModule(_ModuleBase):
                 if not file:
                     continue
                 self.scraper.gen_scraper_files(mediainfo=mediainfo,
-                                               file_path=file)
+                                               file_path=file,
+                                               transfer_type=transfer_type)
         logger.info(f"{path} 刮削完成")
 
     def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,

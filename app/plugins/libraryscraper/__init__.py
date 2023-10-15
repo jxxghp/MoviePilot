@@ -390,7 +390,7 @@ class LibraryScraper(_PluginBase):
 
             # 刮削单个文件
             if scrap_metadata:
-                self.chain.scrape_metadata(path=file, mediainfo=mediainfo)
+                self.chain.scrape_metadata(path=file, mediainfo=mediainfo, transfer_type=settings.TRANSFER_TYPE)
 
     @staticmethod
     def __get_tmdbid_from_nfo(file_path: Path):

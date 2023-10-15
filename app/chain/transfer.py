@@ -1,4 +1,3 @@
-import glob
 import re
 import shutil
 import threading
@@ -358,7 +357,9 @@ class TransferChain(ChainBase):
                 )
                 # 刮削单个文件
                 if settings.SCRAP_METADATA:
-                    self.scrape_metadata(path=transferinfo.target_path, mediainfo=file_mediainfo)
+                    self.scrape_metadata(path=transferinfo.target_path,
+                                         mediainfo=file_mediainfo,
+                                         transfer_type=transfer_type)
                 # 更新进度
                 processed_num += 1
                 self.progress.update(value=processed_num / total_num * 100,

@@ -398,14 +398,15 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("post_torrents_message", message=message, torrents=torrents)
 
-    def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
+    def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径
         :param mediainfo:  识别的媒体信息
+        :param transfer_type:  转移模式
         :return: 成功或失败
         """
-        self.run_module("scrape_metadata", path=path, mediainfo=mediainfo)
+        self.run_module("scrape_metadata", path=path, mediainfo=mediainfo, transfer_type=transfer_type)
 
     def register_commands(self, commands: Dict[str, dict]) -> None:
         """
