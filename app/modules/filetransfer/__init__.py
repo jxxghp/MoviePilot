@@ -389,8 +389,9 @@ class FileTransferModule(_ModuleBase):
                 return TransferInfo(success=False,
                                     path=in_path,
                                     message=f"{target_dir} 目标路径不存在")
-            # 媒体库目的目录
-            target_dir = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_dir)
+
+        # 媒体库目的目录
+        target_dir = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_dir)
 
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \

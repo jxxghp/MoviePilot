@@ -470,11 +470,12 @@ class DoubanModule(_ModuleBase):
             return []
         return infos.get("subject_collection_items")
 
-    def scrape_metadata(self, path: Path, mediainfo: MediaInfo) -> None:
+    def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径
         :param mediainfo:  识别的媒体信息
+        :param transfer_type: 传输类型
         :return: 成功或失败
         """
         if settings.SCRAP_SOURCE != "douban":
@@ -500,7 +501,8 @@ class DoubanModule(_ModuleBase):
             scrape_path = path / path.name
             self.scraper.gen_scraper_files(meta=meta,
                                            mediainfo=MediaInfo(douban_info=doubaninfo),
-                                           file_path=scrape_path)
+                                           file_path=scrape_path,
+                                           transfer_type=transfer_type)
         else:
             # 目录下的所有文件
             for file in SystemUtils.list_files(path, settings.RMT_MEDIAEXT):
@@ -525,7 +527,8 @@ class DoubanModule(_ModuleBase):
                     # 刮削
                     self.scraper.gen_scraper_files(meta=meta,
                                                    mediainfo=MediaInfo(douban_info=doubaninfo),
-                                                   file_path=file)
+                                                   file_path=file,
+                                                   transfer_type=transfer_type)
                 except Exception as e:
                     logger.error(f"刮削文件 {file} 失败，原因：{e}")
         logger.info(f"{path} 刮削完成")

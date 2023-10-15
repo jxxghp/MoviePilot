@@ -350,7 +350,8 @@ class DirMonitor(_PluginBase):
                     # 刮削单个文件
                     if settings.SCRAP_METADATA:
                         self.chain.scrape_metadata(path=transferinfo.target_path,
-                                                   mediainfo=mediainfo)
+                                                   mediainfo=mediainfo,
+                                                   transfer_type=transfer_type)
 
                     """
                     {
