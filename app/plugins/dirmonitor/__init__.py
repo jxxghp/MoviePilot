@@ -121,7 +121,7 @@ class DirMonitor(_PluginBase):
             # 定时服务管理器
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             # 追加入库消息统一发送服务
-            self._scheduler.add_job(self.send_msg, trigger='interval', seconds=15)
+            self._scheduler.add_job(self.send_msg, trigger='interval', seconds=30)
 
             # 读取目录配置
             monitor_dirs = self._monitor_dirs.split("\n")
