@@ -121,7 +121,7 @@ class DirMonitor(_PluginBase):
             # 定时服务管理器
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             # 追加入库消息统一发送服务
-            self._scheduler.add_job(self.send_msg, trigger='interval', seconds=30)
+            self._scheduler.add_job(self.send_msg, trigger='interval', seconds=15)
 
             # 读取目录配置
             monitor_dirs = self._monitor_dirs.split("\n")
@@ -531,8 +531,8 @@ class DirMonitor(_PluginBase):
             transferinfo = media_files[0].get("transferinfo")
             file_meta = media_files[0].get("file_meta")
             mediainfo = media_files[0].get("mediainfo")
-            # 判断最后更新时间距现在是已超过5秒，超过则发送消息
-            if (datetime.datetime.now() - last_update_time).total_seconds() > 5:
+            # 判断最后更新时间距现在是已超过10秒，超过则发送消息
+            if (datetime.datetime.now() - last_update_time).total_seconds() > 10:
                 # 发送通知
                 if self._notify:
 
