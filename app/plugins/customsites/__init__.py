@@ -214,7 +214,7 @@ class CustomSites(_PluginBase):
                                             'label': '站点列表',
                                             'rows': 5,
                                             'placeholder': '每一行一个站点，配置方式：\n'
-                                                           '站点名称|站点 URL|是否仿真(Y|y|N|n)\n'
+                                                           '站点名称|站点地址|是否仿真(Y/N)\n'
                                         }
                                     }
                                 ]
