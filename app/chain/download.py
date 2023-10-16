@@ -786,6 +786,7 @@ class DownloadChain(ChainBase):
         for torrent in torrents:
             history = self.downloadhis.get_by_hash(torrent.hash)
             if history:
+                # 媒体信息
                 torrent.media = {
                     "tmdbid": history.tmdbid,
                     "type": history.type,
@@ -794,6 +795,8 @@ class DownloadChain(ChainBase):
                     "episode": history.episodes,
                     "image": history.image,
                 }
+                # 下载用户
+                torrent.userid = history.userid
             ret_torrents.append(torrent)
         return ret_torrents
 

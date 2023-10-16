@@ -12,6 +12,7 @@ class TransferTorrent(BaseModel):
     path: Optional[Path] = None
     hash: Optional[str] = None
     tags: Optional[str] = None
+    userid: Optional[str] = None
 
 
 class DownloadingTorrent(BaseModel):
@@ -29,6 +30,7 @@ class DownloadingTorrent(BaseModel):
     upspeed: Optional[str] = None
     dlspeed: Optional[str] = None
     media: Optional[dict] = {}
+    userid: Optional[str] = None
 
 
 class TransferInfo(BaseModel):
