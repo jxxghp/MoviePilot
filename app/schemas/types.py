@@ -44,6 +44,8 @@ class EventType(Enum):
     NameRecognize = "name.recognize"
     # 名称识别结果
     NameRecognizeResult = "name.recognize.result"
+    # 目录监控同步
+    DirectorySync = "directory.sync"
 
 
 # 系统配置Key字典
