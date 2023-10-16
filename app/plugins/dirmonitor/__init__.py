@@ -719,7 +719,7 @@ class DirMonitor(_PluginBase):
                                             'model': 'monitor_dirs',
                                             'label': '监控目录',
                                             'rows': 5,
-                                            'placeholder': '每一行一个目录，支持三种配置方式，转移方式支持 move、copy、link、softlink、rclone_copy、rclone_move：\n'
+                                            'placeholder': '每一行一个目录，支持以下几种配置方式，转移方式支持 move、copy、link、softlink、rclone_copy、rclone_move：\n'
                                                            '监控目录\n'
                                                            '监控目录#转移方式\n'
                                                            '监控目录:转移目的目录\n'
