@@ -154,6 +154,8 @@ class DirMonitor(_PluginBase):
                     mon_path = paths[0]
                     target_path = Path(paths[1])
                     self._dirconf[mon_path] = target_path
+                else:
+                    self._dirconf[mon_path] = None
 
                 # 转移方式
                 self._transferconf[mon_path] = _transfer_type
