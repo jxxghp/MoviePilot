@@ -4,7 +4,7 @@ import shutil
 import threading
 import traceback
 from pathlib import Path
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -88,9 +88,9 @@ class DirMonitor(_PluginBase):
     _monitor_dirs = ""
     _exclude_keywords = ""
     # 存储源目录与目的目录关系
-    _dirconf: Dict[str, Path] = {}
+    _dirconf: Dict[str, Optional[Path]] = {}
     # 存储源目录转移方式
-    _transferconf: Dict[str, str] = {}
+    _transferconf: Dict[str, Optional[str]] = {}
     _medias = {}
     # 退出事件
     _event = threading.Event()
@@ -698,7 +698,9 @@ class DirMonitor(_PluginBase):
                                                 {'title': '移动', 'value': 'move'},
                                                 {'title': '复制', 'value': 'copy'},
                                                 {'title': '硬链接', 'value': 'link'},
-                                                {'title': '软链接', 'value': 'softlink'}
+                                                {'title': '软链接', 'value': 'softlink'},
+                                                {'title': 'Rclone复制', 'value': 'rclone_copy'},
+                                                {'title': 'Rclone移动', 'value': 'rclone_move'}
                                             ]
                                         }
                                     }
