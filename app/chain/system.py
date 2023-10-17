@@ -45,6 +45,9 @@ class SystemChain(ChainBase):
         """
         重启系统
         """
+        if SystemUtils.is_windows():
+            logger.error("windows暂不支持")
+            return
         if channel and userid:
             self.post_message(Notification(channel=channel,
                                            title="系统正在更新，请耐心等候！", userid=userid))
