@@ -527,7 +527,7 @@ class DirMonitor(_PluginBase):
         # 根据download_hash查询下载记录
         recent_download_files = 0
         try:
-            download_history = self.downloadhis.get_history_by_hash(download_hash=download_hash)
+            download_history = self.downloadhis.get_by_hash(download_hash=download_hash)
             if download_history:
                 # 根据下载历史查询 下载时间前一分钟及以后的下载记录
                 # 将时间字符串转换为datetime对象 - 减去一分钟

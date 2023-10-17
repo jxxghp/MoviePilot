@@ -97,13 +97,6 @@ class DownloadHistory(Base):
                 DownloadHistory.id.desc()).all()
 
     @staticmethod
-    def get_history_by_hash(db: Session, download_hash: str):
-        """
-        根据hash获取下载记录
-        """
-        return db.query(DownloadHistory).filter(DownloadHistory.download_hash == download_hash).first()
-
-    @staticmethod
     def list_by_date(db: Session, date: str, type: str, tmdbid: str):
         """
         查询某时间之后的下载历史

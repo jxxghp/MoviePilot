@@ -90,13 +90,6 @@ class DownloadHistoryOper(DbOper):
         """
         return DownloadHistory.list_by_page(self._db, page, count)
 
-    def get_history_by_hash(self, download_hash: str) -> DownloadHistory:
-        """
-        按Hash查询下载记录
-        :param download_hash: 数据key
-        """
-        return DownloadHistory.get_history_by_hash(self._db, download_hash)
-
     def list_by_date(self, date: str, type: str, tmdbid: str) -> List[DownloadHistory]:
         """
         查询某时间之后的下载历史
