@@ -8,10 +8,11 @@ from app.core.config import settings
 from app.log import logger
 from app.schemas import Notification, MessageChannel
 from app.utils.http import RequestUtils
+from app.utils.singleton import Singleton
 from app.utils.system import SystemUtils
 
 
-class SystemChain(ChainBase):
+class SystemChain(ChainBase, metaclass=Singleton):
     """
     系统级处理链
     """

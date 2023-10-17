@@ -1,4 +1,5 @@
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import List
 
@@ -39,6 +40,8 @@ class Scheduler(metaclass=Singleton):
                                      executors={
                                          'default': ThreadPoolExecutor(20)
                                      })
+    # 退出事件
+    _event = threading.Event()
 
     def __init__(self):
         # 数据库连接
@@ -258,6 +261,7 @@ class Scheduler(metaclass=Singleton):
         """
         关闭定时服务
         """
+        self._event.set()
         if self._scheduler.running:
             self._scheduler.shutdown()
         if self._db:

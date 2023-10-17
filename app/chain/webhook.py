@@ -4,10 +4,11 @@ from typing import Any
 from app.chain import ChainBase
 from app.schemas import Notification
 from app.schemas.types import EventType, MediaImageType, MediaType, NotificationType
+from app.utils.singleton import Singleton
 from app.utils.web import WebUtils
 
 
-class WebhookChain(ChainBase):
+class WebhookChain(ChainBase, metaclass=Singleton):
     """
     Webhook处理链
     """

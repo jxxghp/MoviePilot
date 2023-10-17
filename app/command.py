@@ -1,6 +1,7 @@
 import importlib
+import threading
 import traceback
-from threading import Thread, Event
+from threading import Thread
 from typing import Any, Union, Dict
 
 from app.chain import ChainBase
@@ -39,7 +40,7 @@ class Command(metaclass=Singleton):
     _commands = {}
 
     # 退出事件
-    _event = Event()
+    _event = threading.Event()
 
     def __init__(self):
         # 数据库连接
@@ -135,25 +136,25 @@ class Command(metaclass=Singleton):
                 "data": {}
             },
             "/clear_cache": {
-                "func": SystemChain(self._db).remote_clear_cache,
+                "func": SystemChain().remote_clear_cache,
                 "description": "清理缓存",
                 "category": "管理",
                 "data": {}
             },
             "/restart": {
-                "func": SystemChain(self._db).restart,
+                "func": SystemChain().restart,
                 "description": "重启系统",
                 "category": "管理",
                 "data": {}
             },
             "/version": {
-                "func": SystemChain(self._db).version,
+                "func": SystemChain().version,
                 "description": "当前版本",
                 "category": "管理",
                 "data": {}
             },
             "/update": {
-                "func": SystemChain(self._db).update,
+                "func": SystemChain().update,
                 "description": "更新系统",
                 "category": "管理",
                 "data": {}
@@ -179,7 +180,7 @@ class Command(metaclass=Singleton):
         # 启动事件处理线程
         self._thread.start()
         # 重启msg
-        SystemChain(self._db).restart_finish()
+        SystemChain().restart_finish()
 
     def __run(self):
         """
