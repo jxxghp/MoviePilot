@@ -41,7 +41,7 @@ class SystemChain(ChainBase):
             }, self._restart_file)
         SystemUtils.restart()
 
-    def update(self, channel: MessageChannel, userid: Union[int, str]):
+    def update(self, channel: MessageChannel = None, userid: Union[int, str] = None):
         """
         重启系统
         """
@@ -56,16 +56,17 @@ class SystemChain(ChainBase):
 
         # 重启系统
         os.system("bash /usr/local/bin/mp_update")
-        self.post_message(Notification(channel=channel,
-                                       title="暂无新版本！", userid=userid))
-        self.remove_cache(self._update_file)
+        if channel and userid:
+            self.post_message(Notification(channel=channel,
+                                           title="暂无新版本！", userid=userid))
+            self.remove_cache(self._update_file)
 
     def version(self, channel: MessageChannel, userid: Union[int, str]):
         """
         查看当前版本、远程版本
         """
         release_version = self.__get_release_version()
-        local_version = self.__get_local_version()
+        local_version = self.get_local_version()
         if release_version == local_version:
             title = f"当前版本：{local_version}，已是最新版本"
         else:
@@ -110,7 +111,7 @@ class SystemChain(ChainBase):
         if channel and userid:
             # 版本号
             release_version = self.__get_release_version()
-            local_version = self.__get_local_version()
+            local_version = self.get_local_version()
             if release_version == local_version:
                 title = f"当前版本：{local_version}"
             else:
@@ -135,7 +136,7 @@ class SystemChain(ChainBase):
             return None
 
     @staticmethod
-    def __get_local_version():
+    def get_local_version():
         """
         查看当前版本
         """
