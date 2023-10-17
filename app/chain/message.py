@@ -1,3 +1,4 @@
+import copy
 from typing import Any
 
 from app.chain.download import *
@@ -204,10 +205,11 @@ class MessageChain(ChainBase):
                 self.post_message(Notification(
                     channel=channel, title="已经是第一页了！", userid=userid))
                 return
-            cache_type: str = cache_data.get('type')
-            cache_list: list = cache_data.get('items')
             # 减一页
             _current_page -= 1
+            cache_type: str = cache_data.get('type')
+            # 产生副本，避免修改原值
+            cache_list: list = copy.deepcopy(cache_data.get('items'))
             if _current_page == 0:
                 start = 0
                 end = self._page_size
@@ -243,7 +245,8 @@ class MessageChain(ChainBase):
                     channel=channel, title="输入有误！", userid=userid))
                 return
             cache_type: str = cache_data.get('type')
-            cache_list: list = cache_data.get('items')
+            # 产生副本，避免修改原值
+            cache_list: list = copy.deepcopy(cache_data.get('items'))
             total = len(cache_list)
             # 加一页
             cache_list = cache_list[
