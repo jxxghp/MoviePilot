@@ -179,12 +179,33 @@ class MoviePilotUpdateNotify(_PluginBase):
                                     {
                                         'component': 'VSwitch',
                                         'props': {
-                                            'model': 'onlyonce',
-                                            'label': '立即运行一次',
+                                            'model': 'notify',
+                                            'label': '发送通知',
                                         }
                                     }
                                 ]
                             }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cron',
+                                            'label': '检查周期',
+                                            'placeholder': '5位cron表达式'
+                                        }
+                                    }
+                                ]
+                            },
                         ]
                     }
                 ]
