@@ -52,6 +52,9 @@ def db_lock(func):
 
 
 class DbOper:
+    """
+    数据库操作基类
+    """
     _db: Session = None
 
     def __init__(self, db: Session = None):
@@ -59,4 +62,3 @@ class DbOper:
             self._db = db
         else:
             self._db = ScopedSession()
-

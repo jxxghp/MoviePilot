@@ -2,7 +2,7 @@ import time
 from typing import Tuple, List
 
 from app.core.context import MediaInfo
-from app.db import DbOper
+from app.db import DbOper, db_lock
 from app.db.models.subscribe import Subscribe
 
 
@@ -11,6 +11,7 @@ class SubscribeOper(DbOper):
     订阅管理
     """
 
+    @db_lock
     def add(self, mediainfo: MediaInfo, **kwargs) -> Tuple[int, str]:
         """
         新增订阅
@@ -57,12 +58,14 @@ class SubscribeOper(DbOper):
             return Subscribe.get_by_state(self._db, state)
         return Subscribe.list(self._db)
 
+    @db_lock
     def delete(self, sid: int):
         """
         删除订阅
         """
         Subscribe.delete(self._db, rid=sid)
 
+    @db_lock
     def update(self, sid: int, payload: dict) -> Subscribe:
         """
         更新订阅

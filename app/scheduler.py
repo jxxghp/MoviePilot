@@ -1,6 +1,5 @@
 import logging
 import threading
-import traceback
 from datetime import datetime, timedelta
 from typing import List
 
@@ -224,7 +223,7 @@ class Scheduler(metaclass=Singleton):
         try:
             job["func"](*args, **kwargs)
         except Exception as e:
-            logger.error(f"定时任务 {job_id} 执行失败：{e} - {traceback.print_exc()}")
+            logger.error(f"定时任务 {job_id} 执行失败：{e}")
         self._jobs[job_id]["running"] = False
 
     def list(self) -> List[schemas.ScheduleInfo]:
