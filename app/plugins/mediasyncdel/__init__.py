@@ -969,6 +969,13 @@ class MediaSyncDel(_PluginBase):
                         self.chain.stop_torrents(torrent_hash)
                         handle_cnt += 1
 
+                    logger.info(f"暂停转种后下载任务：{download} - {download_id}")
+                    # 删除转种后下载任务
+                    if download == "transmission":
+                        self.tr.stop_torrents(ids=download_id)
+                    else:
+                        self.qb.stop_torrents(ids=download_id)
+                    handle_cnt += 1
             else:
                 # 未转种de情况
                 if delete_flag:

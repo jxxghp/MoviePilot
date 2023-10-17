@@ -211,7 +211,7 @@ class QbittorrentModule(_ModuleBase):
         :param hashs:  种子Hash
         :return: bool
         """
-        return self.qbittorrent.start_torrents(ids=hashs)
+        return self.qbittorrent.stop_torrents(ids=hashs)
 
     def torrent_files(self, tid: str) -> Optional[TorrentFilesList]:
         """
