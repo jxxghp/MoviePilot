@@ -1,6 +1,5 @@
 import json
 import re
-from pathlib import Path
 from typing import Union
 
 from app.chain import ChainBase
@@ -88,11 +87,8 @@ class SystemChain(ChainBase):
         """
         获取最新版本
         """
-        version_res = RequestUtils().get_res(
+        version_res = RequestUtils(proxies=settings.PROXY).get_res(
             "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest")
-        if not version_res:
-            version_res = RequestUtils(proxies=settings.PROXY).get_res(
-                "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest")
         if version_res:
             ver_json = version_res.json()
             version = f"{ver_json['tag_name']}"
@@ -105,7 +101,7 @@ class SystemChain(ChainBase):
         """
         查看当前版本
         """
-        version_file = Path(__file__).parents[2] / "version.py"
+        version_file = settings.ROOT_PATH / "version.py"
         if version_file.exists():
             try:
                 with open(version_file, 'rb') as f:
