@@ -142,6 +142,18 @@ class Command(metaclass=Singleton):
                 "description": "重启系统",
                 "category": "管理",
                 "data": {}
+            },
+            "/version": {
+                "func": SystemChain(self._db).version,
+                "description": "当前版本",
+                "category": "管理",
+                "data": {}
+            },
+            "/update": {
+                "func": SystemChain(self._db).update,
+                "description": "更新系统",
+                "category": "管理",
+                "data": {}
             }
         }
         # 汇总插件命令
@@ -163,6 +175,8 @@ class Command(metaclass=Singleton):
         self._thread = Thread(target=self.__run)
         # 启动事件处理线程
         self._thread.start()
+        # 重启msg
+        SystemChain(self._db).restart_finish()
 
     def __run(self):
         """

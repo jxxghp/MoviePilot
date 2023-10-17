@@ -404,6 +404,7 @@ class DirMonitor(_PluginBase):
                     )
                     if self._notify:
                         self.chain.post_message(Notification(
+                            mtype=NotificationType.Manual,
                             title=f"{mediainfo.title_year}{file_meta.season_episode} 入库失败！",
                             text=f"原因：{transferinfo.message or '未知'}",
                             image=mediainfo.get_message_image()
