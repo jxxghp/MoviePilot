@@ -57,7 +57,7 @@ def manual_transfer(path: str = None,
         # 源路径
         in_path = Path(history.src)
         # 目的路径
-        if history.dest:
+        if history.dest and str(history.dest) != "None":
             # 删除旧的已整理文件
             TransferChain(db).delete_files(Path(history.dest))
             if not target:
@@ -67,8 +67,10 @@ def manual_transfer(path: str = None,
     else:
         return schemas.Response(success=False, message=f"缺少参数：path/logid")
 
-    if target:
+    if target and target != "None":
         target = Path(target)
+    else:
+        target = None
 
     # 类型
     mtype = MediaType(type_name) if type_name else None

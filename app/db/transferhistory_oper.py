@@ -119,7 +119,7 @@ class TransferHistoryOper(DbOper):
         """
         self.add_force(
             src=str(src_path),
-            dest=str(transferinfo.target_path),
+            dest=str(transferinfo.target_path or ''),
             mode=mode,
             type=mediainfo.type.value,
             category=mediainfo.category,
@@ -145,7 +145,7 @@ class TransferHistoryOper(DbOper):
         if mediainfo and transferinfo:
             his = self.add_force(
                 src=str(src_path),
-                dest=str(transferinfo.target_path),
+                dest=str(transferinfo.target_path or ''),
                 mode=mode,
                 type=mediainfo.type.value,
                 category=mediainfo.category,
