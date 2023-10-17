@@ -572,6 +572,7 @@ class TransferChain(ChainBase):
                 path=in_path,
                 mediainfo=mediainfo,
                 target=target,
+                transfer_type=transfer_type,
                 season=season,
                 epformat=epformat,
                 min_filesize=min_filesize,
