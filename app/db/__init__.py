@@ -1,3 +1,5 @@
+import threading
+
 from sqlalchemy import create_engine, QueuePool
 from sqlalchemy.orm import sessionmaker, Session, scoped_session
 
@@ -19,6 +21,9 @@ SessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=Engine)
 # 多线程全局使用的数据库会话
 ScopedSession = scoped_session(SessionFactory)
 
+# 数据库锁
+DBLock = threading.Lock()
+
 
 def get_db():
     """
@@ -34,6 +39,18 @@ def get_db():
             db.close()
 
 
+def db_lock(func):
+    """
+    使用DBLock加锁，防止多线程同时操作数据库
+    装饰器
+    """
+    def wrapper(*args, **kwargs):
+        with DBLock:
+            return func(*args, **kwargs)
+
+    return wrapper
+
+
 class DbOper:
     _db: Session = None
 
@@ -42,3 +59,4 @@ class DbOper:
             self._db = db
         else:
             self._db = ScopedSession()
+
