@@ -459,15 +459,15 @@ class DirMonitor(_PluginBase):
                                 "file_meta": file_meta,
                                 "transferinfo": transferinfo
                             })
-                        else:
-                            media_files = [
-                                {
-                                    "path": event_path,
-                                    "mediainfo": mediainfo,
-                                    "file_meta": file_meta,
-                                    "transferinfo": transferinfo
-                                }
-                            ]
+                    else:
+                        media_files = [
+                            {
+                                "path": event_path,
+                                "mediainfo": mediainfo,
+                                "file_meta": file_meta,
+                                "transferinfo": transferinfo
+                            }
+                        ]
                     media_list = {
                         "files": media_files,
                         "time": datetime.datetime.now()
