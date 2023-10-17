@@ -13,6 +13,7 @@ from app.core.event import Event as ManagerEvent
 from app.core.event import eventmanager, EventManager
 from app.core.plugin import PluginManager
 from app.db import SessionFactory
+from app.helper.thread import ThreadHelper
 from app.log import logger
 from app.scheduler import Scheduler
 from app.schemas import Notification
@@ -51,6 +52,8 @@ class Command(metaclass=Singleton):
         self.chain = CommandChian(self._db)
         # 定时服务管理
         self.scheduler = Scheduler()
+        # 线程管理器
+        self.threader = ThreadHelper()
         # 内置命令
         self._commands = {
             "/cookiecloud": {
@@ -192,7 +195,11 @@ class Command(metaclass=Singleton):
                         [class_name, method_name] = names
                         if class_name in self.pluginmanager.get_plugin_ids():
                             # 插件事件
-                            self.pluginmanager.run_plugin_method(class_name, method_name, event)
+                            self.threader.submit(
+                                self.pluginmanager.run_plugin_method,
+                                class_name, method_name, event
+                            )
+
                         else:
                             # 检查全局变量中是否存在
                             if class_name not in globals():
@@ -206,7 +213,10 @@ class Command(metaclass=Singleton):
                                 class_obj = globals()[class_name]()
                             # 检查类是否存在并调用方法
                             if hasattr(class_obj, method_name):
-                                getattr(class_obj, method_name)(event)
+                                self.threader.submit(
+                                    getattr(class_obj, method_name),
+                                    event
+                                )
                     except Exception as e:
                         logger.error(f"事件处理出错：{str(e)} - {traceback.format_exc()}")
 
