@@ -1,7 +1,12 @@
+import threading
+
 from sqlalchemy import create_engine, QueuePool
 from sqlalchemy.orm import sessionmaker, Session, scoped_session
 
 from app.core.config import settings
+
+# 数据库锁
+DBLock = threading.Lock()
 
 # 数据库引擎
 Engine = create_engine(f"sqlite:///{settings.CONFIG_PATH}/user.db",
@@ -44,4 +49,5 @@ class DbOper:
         if db:
             self._db = db
         else:
-            self._db = ScopedSession()
+            with DBLock:
+                self._db = ScopedSession()

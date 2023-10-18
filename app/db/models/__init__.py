@@ -3,10 +3,7 @@ from typing import Any, Self, List
 
 from sqlalchemy.orm import as_declarative, declared_attr, Session
 
-from app.db import ScopedSession
-
-# 数据库锁
-DBLock = threading.Lock()
+from app.db import ScopedSession, DBLock
 
 
 def db_persist(func):
