@@ -1,4 +1,5 @@
 import base64
+import copy
 import json
 import re
 import time
@@ -345,7 +346,8 @@ class DownloadChain(ChainBase):
             # 剩余季数
             need = list(set(_need).difference(set(_current)))
             # 清除已下载的季信息
-            for _sea in list(no_exists.get(_tmdbid)):
+            seas = copy.deepcopy(no_exists.get(_tmdbid))
+            for _sea in list(seas):
                 if _sea not in need:
                     no_exists[_tmdbid].pop(_sea)
                 if not no_exists.get(_tmdbid) and no_exists.get(_tmdbid) is not None:
