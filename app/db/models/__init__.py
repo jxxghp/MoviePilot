@@ -1,9 +1,8 @@
-import threading
 from typing import Any, Self, List
 
 from sqlalchemy.orm import as_declarative, declared_attr, Session
 
-from app.db import ScopedSession, DBLock
+from app.db import DBLock
 
 
 def db_persist(func):
@@ -20,9 +19,6 @@ def db_persist(func):
                         db = arg
                         break
             try:
-                if db:
-                    db.close()
-                db = ScopedSession()
                 result = func(*args, **kwargs)
                 db.commit()
             except Exception as err:
