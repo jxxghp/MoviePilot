@@ -66,8 +66,8 @@ class DoubanRank(_PluginBase):
     _clearflag = False
 
     def init_plugin(self, config: dict = None):
-        self.downloadchain = DownloadChain(self.db)
-        self.subscribechain = SubscribeChain(self.db)
+        self.downloadchain = DownloadChain()
+        self.subscribechain = SubscribeChain()
 
         if config:
             self._enabled = config.get("enabled")

@@ -11,6 +11,7 @@ from lxml import etree
 from ruamel.yaml import CommentedMap
 
 from app.core.config import settings
+from app.db.site_oper import SiteOper
 from app.helper.sites import SitesHelper
 
 from app.core.event import eventmanager
@@ -55,6 +56,7 @@ class IYUUAutoSeed(_PluginBase):
     qb = None
     tr = None
     sites = None
+    siteoper = None
     torrent = None
     # 开关
     _enabled = False
@@ -96,6 +98,7 @@ class IYUUAutoSeed(_PluginBase):
 
     def init_plugin(self, config: dict = None):
         self.sites = SitesHelper()
+        self.siteoper = SiteOper()
         self.torrent = TorrentHelper()
         # 读取配置
         if config:
@@ -176,7 +179,7 @@ class IYUUAutoSeed(_PluginBase):
         """
         # 站点的可选项
         site_options = [{"title": site.name, "value": site.id}
-                        for site in Site.list_order_by_pri(self.db)]
+                        for site in self.siteoper.list_order_by_pri()]
         return [
             {
                 'component': 'VForm',

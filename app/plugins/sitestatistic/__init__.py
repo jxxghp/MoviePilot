@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.event import Event
 from app.core.event import eventmanager
 from app.db.models.site import Site
+from app.db.site_oper import SiteOper
 from app.helper.browser import PlaywrightHelper
 from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper
@@ -56,6 +57,7 @@ class SiteStatistic(_PluginBase):
 
     # 私有属性
     sites = None
+    siteoper = None
     _scheduler: Optional[BackgroundScheduler] = None
     _last_update_time: Optional[datetime] = None
     _sites_data: dict = {}
@@ -72,6 +74,7 @@ class SiteStatistic(_PluginBase):
 
     def init_plugin(self, config: dict = None):
         self.sites = SitesHelper()
+        self.siteoper = SiteOper()
         # 停止现有任务
         self.stop_service()
 
@@ -187,7 +190,7 @@ class SiteStatistic(_PluginBase):
         customSites = self.__custom_sites()
 
         site_options = ([{"title": site.name, "value": site.id}
-                        for site in Site.list_order_by_pri(self.db)]
+                        for site in self.siteoper.list_order_by_pri()]
                         + [{"title": site.get("name"), "value": site.get("id")}
                            for site in customSites])
 
@@ -1122,7 +1125,7 @@ class SiteStatistic(_PluginBase):
             self.save_data("last_update_time", key)
             logger.info("站点数据刷新完成")
 
-    def __custom_sites(self) -> List[dict]:
+    def __custom_sites(self) -> List[Any]:
         custom_sites = []
         custom_sites_config = self.get_config("CustomSites")
         if custom_sites_config and custom_sites_config.get("enabled"):

@@ -15,7 +15,6 @@ from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
-from app.db import SessionFactory
 from app.log import logger
 from app.utils.singleton import Singleton
 from app.utils.timer import TimerUtils
@@ -44,32 +43,30 @@ class Scheduler(metaclass=Singleton):
     _event = threading.Event()
 
     def __init__(self):
-        # 数据库连接
-        self._db = SessionFactory()
         # 各服务的运行状态
         self._jobs = {
             "cookiecloud": {
-                "func": CookieCloudChain(self._db).process,
+                "func": CookieCloudChain().process,
                 "running": False,
             },
             "mediaserver_sync": {
-                "func": MediaServerChain(self._db).sync,
+                "func": MediaServerChain().sync,
                 "running": False,
             },
             "subscribe_tmdb": {
-                "func": SubscribeChain(self._db).check,
+                "func": SubscribeChain().check,
                 "running": False,
             },
             "subscribe_search": {
-                "func": SubscribeChain(self._db).search,
+                "func": SubscribeChain().search,
                 "running": False,
             },
             "subscribe_refresh": {
-                "func": SubscribeChain(self._db).refresh,
+                "func": SubscribeChain().refresh,
                 "running": False,
             },
             "transfer": {
-                "func": TransferChain(self._db).process,
+                "func": TransferChain().process,
                 "running": False,
             }
         }
@@ -189,7 +186,7 @@ class Scheduler(metaclass=Singleton):
 
         # 后台刷新TMDB壁纸
         self._scheduler.add_job(
-            TmdbChain(self._db).get_random_wallpager,
+            TmdbChain().get_random_wallpager,
             "interval",
             minutes=30,
             next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=3)
@@ -197,7 +194,7 @@ class Scheduler(metaclass=Singleton):
 
         # 公共定时服务
         self._scheduler.add_job(
-            SchedulerChain(self._db).scheduler_job,
+            SchedulerChain().scheduler_job,
             "interval",
             minutes=10
         )
@@ -264,5 +261,3 @@ class Scheduler(metaclass=Singleton):
         self._event.set()
         if self._scheduler.running:
             self._scheduler.shutdown()
-        if self._db:
-            self._db.close()

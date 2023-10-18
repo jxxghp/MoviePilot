@@ -13,7 +13,6 @@ from app.chain.transfer import TransferChain
 from app.core.event import Event as ManagerEvent
 from app.core.event import eventmanager, EventManager
 from app.core.plugin import PluginManager
-from app.db import SessionFactory
 from app.helper.thread import ThreadHelper
 from app.log import logger
 from app.scheduler import Scheduler
@@ -43,14 +42,12 @@ class Command(metaclass=Singleton):
     _event = threading.Event()
 
     def __init__(self):
-        # 数据库连接
-        self._db = SessionFactory()
         # 事件管理器
         self.eventmanager = EventManager()
         # 插件管理器
         self.pluginmanager = PluginManager()
         # 处理链
-        self.chain = CommandChian(self._db)
+        self.chain = CommandChian()
         # 定时服务管理
         self.scheduler = Scheduler()
         # 线程管理器
@@ -64,23 +61,23 @@ class Command(metaclass=Singleton):
                 "category": "站点"
             },
             "/sites": {
-                "func": SiteChain(self._db).remote_list,
+                "func": SiteChain().remote_list,
                 "description": "查询站点",
                 "category": "站点",
                 "data": {}
             },
             "/site_cookie": {
-                "func": SiteChain(self._db).remote_cookie,
+                "func": SiteChain().remote_cookie,
                 "description": "更新站点Cookie",
                 "data": {}
             },
             "/site_enable": {
-                "func": SiteChain(self._db).remote_enable,
+                "func": SiteChain().remote_enable,
                 "description": "启用站点",
                 "data": {}
             },
             "/site_disable": {
-                "func": SiteChain(self._db).remote_disable,
+                "func": SiteChain().remote_disable,
                 "description": "禁用站点",
                 "data": {}
             },
@@ -91,7 +88,7 @@ class Command(metaclass=Singleton):
                 "category": "管理"
             },
             "/subscribes": {
-                "func": SubscribeChain(self._db).remote_list,
+                "func": SubscribeChain().remote_list,
                 "description": "查询订阅",
                 "category": "订阅",
                 "data": {}
@@ -109,7 +106,7 @@ class Command(metaclass=Singleton):
                 "category": "订阅"
             },
             "/subscribe_delete": {
-                "func": SubscribeChain(self._db).remote_delete,
+                "func": SubscribeChain().remote_delete,
                 "description": "删除订阅",
                 "data": {}
             },
@@ -119,7 +116,7 @@ class Command(metaclass=Singleton):
                 "description": "订阅元数据更新"
             },
             "/downloading": {
-                "func": DownloadChain(self._db).remote_downloading,
+                "func": DownloadChain().remote_downloading,
                 "description": "正在下载",
                 "category": "管理",
                 "data": {}
@@ -131,7 +128,7 @@ class Command(metaclass=Singleton):
                 "category": "管理"
             },
             "/redo": {
-                "func": TransferChain(self._db).remote_transfer,
+                "func": TransferChain().remote_transfer,
                 "description": "手动整理",
                 "data": {}
             },
@@ -277,8 +274,6 @@ class Command(metaclass=Singleton):
         """
         self._event.set()
         self._thread.join()
-        if self._db:
-            self._db.close()
 
     def get_commands(self):
         """

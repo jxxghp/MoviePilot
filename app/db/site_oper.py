@@ -31,6 +31,12 @@ class SiteOper(DbOper):
         """
         return Site.list(self._db)
 
+    def list_order_by_pri(self) -> List[Site]:
+        """
+        获取站点列表
+        """
+        return Site.list_order_by_pri(self._db)
+
     def list_active(self) -> List[Site]:
         """
         按状态获取站点列表

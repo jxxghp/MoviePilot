@@ -4,7 +4,6 @@ import cn2an
 import regex as re
 
 from app.db.systemconfig_oper import SystemConfigOper
-from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.singleton import Singleton
 

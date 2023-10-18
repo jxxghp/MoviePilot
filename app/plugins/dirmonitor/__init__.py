@@ -96,9 +96,9 @@ class DirMonitor(_PluginBase):
     _event = threading.Event()
 
     def init_plugin(self, config: dict = None):
-        self.transferhis = TransferHistoryOper(self.db)
-        self.downloadhis = DownloadHistoryOper(self.db)
-        self.transferchian = TransferChain(self.db)
+        self.transferhis = TransferHistoryOper()
+        self.downloadhis = DownloadHistoryOper()
+        self.transferchian = TransferChain()
         self.tmdbchain = TmdbChain()
         # 清空配置
         self._dirconf = {}

@@ -7,7 +7,6 @@ from app.chain import ChainBase
 from app.core.config import settings
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.metainfo import MetaInfo
-from app.db import SessionFactory
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.rss import RssHelper
@@ -28,10 +27,9 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
     _rss_file = "__rss_cache__"
 
     def __init__(self):
-        self._db = SessionFactory()
-        super().__init__(self._db)
+        super().__init__()
         self.siteshelper = SitesHelper()
-        self.siteoper = SiteOper(self._db)
+        self.siteoper = SiteOper()
         self.rsshelper = RssHelper()
         self.systemconfig = SystemConfigOper()
 

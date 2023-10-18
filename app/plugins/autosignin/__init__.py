@@ -15,6 +15,7 @@ from app import schemas
 from app.core.config import settings
 from app.core.event import EventManager, eventmanager, Event
 from app.db.models.site import Site
+from app.db.site_oper import SiteOper
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.module import ModuleHelper
@@ -52,6 +53,7 @@ class AutoSignIn(_PluginBase):
 
     # 私有属性
     sites: SitesHelper = None
+    siteoper: SiteOper = None
     # 事件管理器
     event: EventManager = None
     # 定时器
@@ -74,6 +76,7 @@ class AutoSignIn(_PluginBase):
 
     def init_plugin(self, config: dict = None):
         self.sites = SitesHelper()
+        self.siteoper = SiteOper()
         self.event = EventManager()
 
         # 停止现有任务
@@ -248,7 +251,7 @@ class AutoSignIn(_PluginBase):
         customSites = self.__custom_sites()
 
         site_options = ([{"title": site.name, "value": site.id}
-                         for site in Site.list_order_by_pri(self.db)]
+                         for site in self.siteoper.list_order_by_pri()]
                         + [{"title": site.get("name"), "value": site.get("id")}
                            for site in customSites])
         return [
@@ -456,7 +459,7 @@ class AutoSignIn(_PluginBase):
             "retry_keyword": "错误|失败"
         }
 
-    def __custom_sites(self) -> List[dict]:
+    def __custom_sites(self) -> List[Any]:
         custom_sites = []
         custom_sites_config = self.get_config("CustomSites")
         if custom_sites_config and custom_sites_config.get("enabled"):

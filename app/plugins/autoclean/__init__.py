@@ -72,8 +72,8 @@ class AutoClean(_PluginBase):
 
             # 加载模块
         if self._enabled:
-            self._downloadhis = DownloadHistoryOper(self.db)
-            self._transferhis = TransferHistoryOper(self.db)
+            self._downloadhis = DownloadHistoryOper()
+            self._transferhis = TransferHistoryOper()
             # 定时服务
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
 
@@ -181,12 +181,12 @@ class AutoClean(_PluginBase):
                 for history in transferhis_list:
                     # 册除媒体库文件
                     if str(self._cleantype == "dest") or str(self._cleantype == "all"):
-                        TransferChain(self.db).delete_files(Path(history.dest))
+                        TransferChain().delete_files(Path(history.dest))
                         # 删除记录
                         self._transferhis.delete(history.id)
                     # 删除源文件
                     if str(self._cleantype == "src") or str(self._cleantype == "all"):
-                        TransferChain(self.db).delete_files(Path(history.src))
+                        TransferChain().delete_files(Path(history.src))
                         # 发送事件
                         eventmanager.send_event(
                             EventType.DownloadFileDeleted,

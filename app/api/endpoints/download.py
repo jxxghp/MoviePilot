@@ -1,7 +1,6 @@
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.douban import DoubanChain
@@ -10,7 +9,6 @@ from app.chain.media import MediaChain
 from app.core.context import MediaInfo, Context, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
-from app.db import get_db
 from app.schemas import NotExistMediaInfo, MediaType
 
 router = APIRouter()
@@ -18,19 +16,17 @@ router = APIRouter()
 
 @router.get("/", summary="正在下载", response_model=List[schemas.DownloadingTorrent])
 def read_downloading(
-        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询正在下载的任务
     """
-    return DownloadChain(db).downloading()
+    return DownloadChain().downloading()
 
 
 @router.post("/", summary="添加下载", response_model=schemas.Response)
 def add_downloading(
         media_in: schemas.MediaInfo,
         torrent_in: schemas.TorrentInfo,
-        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     添加下载任务
@@ -49,7 +45,7 @@ def add_downloading(
         media_info=mediainfo,
         torrent_info=torrentinfo
     )
-    did = DownloadChain(db).download_single(context=context)
+    did = DownloadChain().download_single(context=context)
     return schemas.Response(success=True if did else False, data={
         "download_id": did
     })
@@ -57,7 +53,6 @@ def add_downloading(
 
 @router.post("/notexists", summary="查询缺失媒体信息", response_model=List[NotExistMediaInfo])
 def exists(media_in: schemas.MediaInfo,
-           db: Session = Depends(get_db),
            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询缺失媒体信息
@@ -80,7 +75,7 @@ def exists(media_in: schemas.MediaInfo,
     # 查询缺失信息
     if not mediainfo or not mediainfo.tmdb_id:
         raise HTTPException(status_code=404, detail="媒体信息不存在")
-    exist_flag, no_exists = DownloadChain(db).get_no_exists_info(meta=meta, mediainfo=mediainfo)
+    exist_flag, no_exists = DownloadChain().get_no_exists_info(meta=meta, mediainfo=mediainfo)
     if mediainfo.type == MediaType.MOVIE:
         # 电影已存在时返回空列表，存在时返回空对像列表
         return [] if exist_flag else [NotExistMediaInfo()]
@@ -93,34 +88,31 @@ def exists(media_in: schemas.MediaInfo,
 @router.get("/start/{hashString}", summary="开始任务", response_model=schemas.Response)
 def start_downloading(
         hashString: str,
-        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     开如下载任务
     """
-    ret = DownloadChain(db).set_downloading(hashString, "start")
+    ret = DownloadChain().set_downloading(hashString, "start")
     return schemas.Response(success=True if ret else False)
 
 
 @router.get("/stop/{hashString}", summary="暂停任务", response_model=schemas.Response)
 def stop_downloading(
         hashString: str,
-        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     控制下载任务
     """
-    ret = DownloadChain(db).set_downloading(hashString, "stop")
+    ret = DownloadChain().set_downloading(hashString, "stop")
     return schemas.Response(success=True if ret else False)
 
 
 @router.delete("/{hashString}", summary="删除下载任务", response_model=schemas.Response)
 def remove_downloading(
         hashString: str,
-        db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     控制下载任务
     """
-    ret = DownloadChain(db).remove_downloading(hashString)
+    ret = DownloadChain().remove_downloading(hashString)
     return schemas.Response(success=True if ret else False)
