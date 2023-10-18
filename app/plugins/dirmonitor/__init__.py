@@ -535,7 +535,8 @@ class DirMonitor(_PluginBase):
                     minutes=1)
                 download_historys = self.downloadhis.list_by_date(date=new_dt.strftime("%Y-%m-%d %H:%M:%S"),
                                                                   type=download_history.type,
-                                                                  tmdbid=download_history.tmdbid)
+                                                                  tmdbid=download_history.tmdbid,
+                                                                  seasons=download_history.seasons)
                 if download_historys:
                     for download_his in download_historys:
                         # 根据download_hash获取下载文件列表

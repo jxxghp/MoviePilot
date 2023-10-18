@@ -90,14 +90,15 @@ class DownloadHistoryOper(DbOper):
         """
         return DownloadHistory.list_by_page(self._db, page, count)
 
-    def list_by_date(self, date: str, type: str, tmdbid: str) -> List[DownloadHistory]:
+    def list_by_date(self, date: str, type: str, tmdbid: str, seasons: str = None) -> List[DownloadHistory]:
         """
         查询某时间之后的下载历史
         """
         return DownloadHistory.list_by_date(db=self._db,
                                             date=date,
                                             type=type,
-                                            tmdbid=tmdbid)
+                                            tmdbid=tmdbid,
+                                            seasons=seasons)
 
     def truncate(self):
         """
