@@ -97,9 +97,26 @@ class DownloadHistory(Base):
                 DownloadHistory.id.desc()).all()
 
     @staticmethod
+    def list_by_date(db: Session, date: str, type: str, tmdbid: str, seasons: str = None):
+        """
+        查询某时间之后的下载历史
+        """
+        if seasons:
+            return db.query(DownloadHistory).filter(DownloadHistory.date > date,
+                                                    DownloadHistory.type == type,
+                                                    DownloadHistory.tmdbid == tmdbid,
+                                                    DownloadHistory.seasons == seasons).order_by(
+                DownloadHistory.id.desc()).all()
+        else:
+            return db.query(DownloadHistory).filter(DownloadHistory.date > date,
+                                                    DownloadHistory.type == type,
+                                                    DownloadHistory.tmdbid == tmdbid).order_by(
+                DownloadHistory.id.desc()).all()
+
+    @staticmethod
     def list_by_user_date(db: Session, date: str, userid: str = None):
         """
-        查询某用户某时间之后的下载历史
+        查询某用户某时间之前的下载历史
         """
         if userid:
             return db.query(DownloadHistory).filter(DownloadHistory.date < date,
