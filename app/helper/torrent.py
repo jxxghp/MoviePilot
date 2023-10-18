@@ -157,7 +157,7 @@ class TorrentHelper:
                         file_list.append(str(file_path.relative_to(root_path)))
                     else:
                         file_list.append(fileinfo.name)
-            logger.info(f"解析种子：{torrent_path.name} => 目录：{folder_name}，文件清单：{file_list}")
+            logger.debug(f"解析种子：{torrent_path.name} => 目录：{folder_name}，文件清单：{file_list}")
             return folder_name, file_list
         except Exception as err:
             logger.error(f"种子文件解析失败：{err}")

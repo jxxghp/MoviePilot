@@ -70,7 +70,7 @@ class LibraryScraper(_PluginBase):
 
         # 启动定时任务 & 立即运行一次
         if self._enabled or self._onlyonce:
-            self.transferhis = TransferHistoryOper(self.db)
+            self.transferhis = TransferHistoryOper()
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
             if self._cron:
                 logger.info(f"媒体库刮削服务启动，周期：{self._cron}")

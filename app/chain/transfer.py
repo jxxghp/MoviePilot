@@ -4,8 +4,6 @@ import threading
 from pathlib import Path
 from typing import List, Optional, Tuple, Union, Dict
 
-from sqlalchemy.orm import Session
-
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.tmdb import TmdbChain
@@ -35,10 +33,10 @@ class TransferChain(ChainBase):
     文件转移处理链
     """
 
-    def __init__(self, db: Session = None):
-        super().__init__(db)
-        self.downloadhis = DownloadHistoryOper(self._db)
-        self.transferhis = TransferHistoryOper(self._db)
+    def __init__(self):
+        super().__init__()
+        self.downloadhis = DownloadHistoryOper()
+        self.transferhis = TransferHistoryOper()
         self.progress = ProgressHelper()
         self.mediachain = MediaChain()
         self.tmdbchain = TmdbChain()

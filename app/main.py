@@ -16,14 +16,15 @@ if SystemUtils.is_frozen():
     sys.stdout = open(os.devnull, 'w')
     sys.stderr = open(os.devnull, 'w')
 
-from app.command import Command
 from app.core.config import settings
 from app.core.module import ModuleManager
 from app.core.plugin import PluginManager
 from app.db.init import init_db, update_db
+from app.helper.thread import ThreadHelper
 from app.helper.display import DisplayHelper
 from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
+from app.command import Command
 
 # App
 App = FastAPI(title=settings.PROJECT_NAME,
@@ -146,6 +147,8 @@ def shutdown_server():
     DisplayHelper().stop()
     # 停止定时服务
     Scheduler().stop()
+    # 停止线程池
+    ThreadHelper().shutdown()
     # 停止前端服务
     stop_frontend()
 

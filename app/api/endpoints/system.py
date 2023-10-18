@@ -6,13 +6,11 @@ from typing import Union
 import tailer
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.search import SearchChain
 from app.core.config import settings
 from app.core.security import verify_token
-from app.db import get_db
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
@@ -174,7 +172,6 @@ def latest_version(_: schemas.TokenPayload = Depends(verify_token)):
 def ruletest(title: str,
              subtitle: str = None,
              ruletype: str = None,
-             db: Session = Depends(get_db),
              _: schemas.TokenPayload = Depends(verify_token)):
     """
     过滤规则测试，规则类型 1-订阅，2-洗版，3-搜索
@@ -193,8 +190,8 @@ def ruletest(title: str,
         return schemas.Response(success=False, message="优先级规则未设置！")
 
     # 过滤
-    result = SearchChain(db).filter_torrents(rule_string=rule_string,
-                                             torrent_list=[torrent])
+    result = SearchChain().filter_torrents(rule_string=rule_string,
+                                           torrent_list=[torrent])
     if not result:
         return schemas.Response(success=False, message="不符合优先级规则！")
     return schemas.Response(success=True, data={

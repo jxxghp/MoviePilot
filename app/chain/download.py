@@ -5,8 +5,6 @@ import time
 from pathlib import Path
 from typing import List, Optional, Tuple, Set, Dict, Union
 
-from sqlalchemy.orm import Session
-
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.context import MediaInfo, TorrentInfo, Context
@@ -27,11 +25,11 @@ class DownloadChain(ChainBase):
     下载处理链
     """
 
-    def __init__(self, db: Session = None):
-        super().__init__(db)
+    def __init__(self):
+        super().__init__()
         self.torrent = TorrentHelper()
-        self.downloadhis = DownloadHistoryOper(self._db)
-        self.mediaserver = MediaServerOper(self._db)
+        self.downloadhis = DownloadHistoryOper()
+        self.mediaserver = MediaServerOper()
 
     def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo,
                               channel: MessageChannel = None,

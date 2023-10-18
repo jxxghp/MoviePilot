@@ -59,7 +59,7 @@ def manual_transfer(path: str = None,
         # 目的路径
         if history.dest and str(history.dest) != "None":
             # 删除旧的已整理文件
-            TransferChain(db).delete_files(Path(history.dest))
+            TransferChain().delete_files(Path(history.dest))
             if not target:
                 target = history.dest
     elif path:
@@ -84,7 +84,7 @@ def manual_transfer(path: str = None,
             offset=episode_offset,
         )
     # 开始转移
-    state, errormsg = TransferChain(db).manual_transfer(
+    state, errormsg = TransferChain().manual_transfer(
         in_path=in_path,
         target=target,
         tmdbid=tmdbid,

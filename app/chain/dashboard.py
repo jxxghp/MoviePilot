@@ -2,9 +2,10 @@ from typing import Optional, List
 
 from app import schemas
 from app.chain import ChainBase
+from app.utils.singleton import Singleton
 
 
-class DashboardChain(ChainBase):
+class DashboardChain(ChainBase, metaclass=Singleton):
     """
     各类仪表板统计处理链
     """

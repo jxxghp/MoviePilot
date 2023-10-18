@@ -8,10 +8,11 @@ from app.core.config import settings
 from app.log import logger
 from app.schemas import Notification, MessageChannel
 from app.utils.http import RequestUtils
+from app.utils.singleton import Singleton
 from app.utils.system import SystemUtils
 
 
-class SystemChain(ChainBase):
+class SystemChain(ChainBase, metaclass=Singleton):
     """
     系统级处理链
     """
@@ -45,9 +46,10 @@ class SystemChain(ChainBase):
         """
         重启系统
         """
-        if SystemUtils.is_windows():
-            logger.error("windows暂不支持")
+        if not SystemUtils.is_docker():
+            logger.error("非Docker版本不支持自动更新！")
             return
+
         if channel and userid:
             self.post_message(Notification(channel=channel,
                                            title="系统正在更新，请耐心等候！", userid=userid))
@@ -59,6 +61,7 @@ class SystemChain(ChainBase):
 
         # 重启系统
         os.system("bash /usr/local/bin/mp_update")
+
         if channel and userid:
             self.post_message(Notification(channel=channel,
                                            title="暂无新版本！", userid=userid))

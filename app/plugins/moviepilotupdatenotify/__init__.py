@@ -80,7 +80,7 @@ class MoviePilotUpdateNotify(_PluginBase):
             return
 
         # 本地版本
-        local_version = SystemChain(self.db).get_local_version()
+        local_version = SystemChain().get_local_version()
         if release_version == local_version:
             logger.info(f"当前版本：{local_version} 远程版本：{release_version} 停止运行")
             return
@@ -98,7 +98,7 @@ class MoviePilotUpdateNotify(_PluginBase):
         # 自动更新
         if self._update:
             logger.info("开始执行自动更新…")
-            SystemChain(self.db).update()
+            SystemChain().update()
 
     @staticmethod
     def __get_release_version():

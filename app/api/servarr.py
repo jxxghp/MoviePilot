@@ -390,11 +390,11 @@ def arr_add_movie(apikey: str,
             "id": subscribe.id
         }
     # 添加订阅
-    sid, message = SubscribeChain(db).add(title=movie.title,
-                                          year=movie.year,
-                                          mtype=MediaType.MOVIE,
-                                          tmdbid=movie.tmdbId,
-                                          userid="Seerr")
+    sid, message = SubscribeChain().add(title=movie.title,
+                                        year=movie.year,
+                                        mtype=MediaType.MOVIE,
+                                        tmdbid=movie.tmdbId,
+                                        userid="Seerr")
     if sid:
         return {
             "id": sid
@@ -582,7 +582,7 @@ def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> 
     # 获取TVDBID
     if not term.startswith("tvdb:"):
         mediainfo = MediaChain().recognize_media(meta=MetaInfo(term),
-                                                   mtype=MediaType.TV)
+                                                 mtype=MediaType.TV)
         if not mediainfo:
             return [SonarrSeries()]
         tvdbid = mediainfo.tvdb_id
@@ -606,7 +606,7 @@ def arr_series_lookup(apikey: str, term: str, db: Session = Depends(get_db)) -> 
     # 根据TVDB查询媒体信息
     if not mediainfo:
         mediainfo = MediaChain().recognize_media(meta=MetaInfo(tvdbinfo.get('seriesName')),
-                                                   mtype=MediaType.TV)
+                                                 mtype=MediaType.TV)
 
     # 查询是否存在
     exists = MediaChain().media_exists(mediainfo)
@@ -732,12 +732,12 @@ def arr_add_series(apikey: str, tv: schemas.SonarrSeries,
     for season in left_seasons:
         if not season.get("monitored"):
             continue
-        sid, message = SubscribeChain(db).add(title=tv.title,
-                                              year=tv.year,
-                                              season=season.get("seasonNumber"),
-                                              tmdbid=tv.tmdbId,
-                                              mtype=MediaType.TV,
-                                              userid="Seerr")
+        sid, message = SubscribeChain().add(title=tv.title,
+                                            year=tv.year,
+                                            season=season.get("seasonNumber"),
+                                            tmdbid=tv.tmdbId,
+                                            mtype=MediaType.TV,
+                                            userid="Seerr")
 
     if sid:
         return {

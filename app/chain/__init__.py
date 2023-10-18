@@ -7,7 +7,6 @@ from typing import Optional, Any, Tuple, List, Set, Union, Dict
 
 from qbittorrentapi import TorrentFilesList
 from ruamel.yaml import CommentedMap
-from sqlalchemy.orm import Session
 from transmission_rpc import File
 
 from app.core.config import settings
@@ -28,11 +27,10 @@ class ChainBase(metaclass=ABCMeta):
     处理链基类
     """
 
-    def __init__(self, db: Session = None):
+    def __init__(self):
         """
         公共初始化
         """
-        self._db = db
         self.modulemanager = ModuleManager()
         self.eventmanager = EventManager()
 

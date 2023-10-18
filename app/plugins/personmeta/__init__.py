@@ -69,7 +69,7 @@ class PersonMeta(_PluginBase):
 
     def init_plugin(self, config: dict = None):
         self.tmdbchain = TmdbChain()
-        self.mschain = MediaServerChain(self.db)
+        self.mschain = MediaServerChain()
         if config:
             self._enabled = config.get("enabled")
             self._onlyonce = config.get("onlyonce")

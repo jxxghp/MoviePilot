@@ -75,10 +75,10 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
         return schemas.Response(success=False, msg="记录不存在")
     # 册除媒体库文件
     if deletedest and history.dest:
-        TransferChain(db).delete_files(Path(history.dest))
+        TransferChain().delete_files(Path(history.dest))
     # 删除源文件
     if deletesrc and history.src:
-        TransferChain(db).delete_files(Path(history.src))
+        TransferChain().delete_files(Path(history.src))
         # 发送事件
         eventmanager.send_event(
             EventType.DownloadFileDeleted,

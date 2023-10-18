@@ -2,14 +2,12 @@ from typing import Union, Any, List
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi import Request
-from sqlalchemy.orm import Session
 from starlette.responses import PlainTextResponse
 
 from app import schemas
 from app.chain.message import MessageChain
 from app.core.config import settings
 from app.core.security import verify_token
-from app.db import get_db
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
@@ -19,23 +17,22 @@ from app.schemas.types import SystemConfigKey, NotificationType
 router = APIRouter()
 
 
-def start_message_chain(db: Session, body: Any, form: Any, args: Any):
+def start_message_chain(body: Any, form: Any, args: Any):
     """
     启动链式任务
     """
-    MessageChain(db).process(body=body, form=form, args=args)
+    MessageChain().process(body=body, form=form, args=args)
 
 
 @router.post("/", summary="接收用户消息", response_model=schemas.Response)
-async def user_message(background_tasks: BackgroundTasks, request: Request,
-                       db: Session = Depends(get_db)):
+async def user_message(background_tasks: BackgroundTasks, request: Request):
     """
     用户消息响应
     """
     body = await request.body()
     form = await request.form()
     args = request.query_params
-    background_tasks.add_task(start_message_chain, db, body, form, args)
+    background_tasks.add_task(start_message_chain, body, form, args)
     return schemas.Response(success=True)
 
 

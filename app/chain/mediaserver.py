@@ -1,13 +1,10 @@
 import json
 import threading
-from typing import List, Union, Generator
-
-from sqlalchemy.orm import Session
+from typing import List, Union
 
 from app import schemas
 from app.chain import ChainBase
 from app.core.config import settings
-from app.db import SessionFactory
 from app.db.mediaserver_oper import MediaServerOper
 from app.log import logger
 
@@ -19,8 +16,9 @@ class MediaServerChain(ChainBase):
     媒体服务器处理链
     """
 
-    def __init__(self, db: Session = None):
-        super().__init__(db)
+    def __init__(self):
+        super().__init__()
+        self.dboper = MediaServerOper()
 
     def librarys(self, server: str) -> List[schemas.MediaServerLibrary]:
         """
@@ -51,13 +49,10 @@ class MediaServerChain(ChainBase):
         同步媒体库所有数据到本地数据库
         """
         with lock:
-            # 媒体服务器同步使用独立的会话
-            _db = SessionFactory()
-            _dbOper = MediaServerOper(_db)
             # 汇总统计
             total_count = 0
             # 清空登记薄
-            _dbOper.empty(server=settings.MEDIASERVER)
+            self.dboper.empty(server=settings.MEDIASERVER)
             # 同步黑名单
             sync_blacklist = settings.MEDIASERVER_SYNC_BLACKLIST.split(
                 ",") if settings.MEDIASERVER_SYNC_BLACKLIST else []
@@ -79,6 +74,7 @@ class MediaServerChain(ChainBase):
                             continue
                         if not item.item_id:
                             continue
+                        logger.debug(f"正在同步 {item.title} ...")
                         # 计数
                         library_count += 1
                         seasoninfo = {}
@@ -93,11 +89,8 @@ class MediaServerChain(ChainBase):
                         item_dict = item.dict()
                         item_dict['seasoninfo'] = json.dumps(seasoninfo)
                         item_dict['item_type'] = item_type
-                        _dbOper.add(**item_dict)
+                        self.dboper.add(**item_dict)
                     logger.info(f"{mediaserver} 媒体库 {library.name} 同步完成，共同步数量：{library_count}")
                     # 总数累加
                     total_count += library_count
-            # 关闭数据库连接
-            if _db:
-                _db.close()
             logger.info("【MediaServer】媒体库数据同步完成，同步数量：%s" % total_count)

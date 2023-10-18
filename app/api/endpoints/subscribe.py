@@ -18,13 +18,13 @@ from app.schemas.types import MediaType
 router = APIRouter()
 
 
-def start_subscribe_add(db: Session, title: str, year: str,
+def start_subscribe_add(title: str, year: str,
                         mtype: MediaType, tmdbid: int, season: int, username: str):
     """
     启动订阅任务
     """
-    SubscribeChain(db).add(title=title, year=year,
-                           mtype=mtype, tmdbid=tmdbid, season=season, username=username)
+    SubscribeChain().add(title=title, year=year,
+                         mtype=mtype, tmdbid=tmdbid, season=season, username=username)
 
 
 @router.get("/", summary="所有订阅", response_model=List[schemas.Subscribe])
@@ -45,7 +45,6 @@ def read_subscribes(
 def create_subscribe(
         *,
         subscribe_in: schemas.Subscribe,
-        db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """
@@ -61,15 +60,15 @@ def create_subscribe(
         title = subscribe_in.name
     else:
         title = None
-    sid, message = SubscribeChain(db).add(mtype=mtype,
-                                          title=title,
-                                          year=subscribe_in.year,
-                                          tmdbid=subscribe_in.tmdbid,
-                                          season=subscribe_in.season,
-                                          doubanid=subscribe_in.doubanid,
-                                          username=current_user.name,
-                                          best_version=subscribe_in.best_version,
-                                          exist_ok=True)
+    sid, message = SubscribeChain().add(mtype=mtype,
+                                        title=title,
+                                        year=subscribe_in.year,
+                                        tmdbid=subscribe_in.tmdbid,
+                                        season=subscribe_in.season,
+                                        doubanid=subscribe_in.doubanid,
+                                        username=current_user.name,
+                                        best_version=subscribe_in.best_version,
+                                        exist_ok=True)
     return schemas.Response(success=True if sid else False, message=message, data={
         "id": sid
     })
@@ -240,7 +239,6 @@ def delete_subscribe(
 
 @router.post("/seerr", summary="OverSeerr/JellySeerr通知订阅", response_model=schemas.Response)
 async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
-                          db: Session = Depends(get_db),
                           authorization: str = Header(None)) -> Any:
     """
     Jellyseerr/Overseerr订阅
@@ -268,7 +266,6 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
     # 添加订阅
     if media_type == MediaType.MOVIE:
         background_tasks.add_task(start_subscribe_add,
-                                  db=db,
                                   mtype=media_type,
                                   tmdbid=tmdbId,
                                   title=subject,
@@ -283,7 +280,6 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
                 break
         for season in seasons:
             background_tasks.add_task(start_subscribe_add,
-                                      db=db,
                                       mtype=media_type,
                                       tmdbid=tmdbId,
                                       title=subject,

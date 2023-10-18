@@ -22,16 +22,15 @@ def init_db():
     # 全量建表
     Base.metadata.create_all(bind=Engine)
     # 初始化超级管理员
-    db = SessionFactory()
-    user = User.get_by_name(db=db, name=settings.SUPERUSER)
-    if not user:
-        user = User(
-            name=settings.SUPERUSER,
-            hashed_password=get_password_hash(settings.SUPERUSER_PASSWORD),
-            is_superuser=True,
-        )
-        user.create(db)
-    db.close()
+    with SessionFactory() as db:
+        user = User.get_by_name(db=db, name=settings.SUPERUSER)
+        if not user:
+            user = User(
+                name=settings.SUPERUSER,
+                hashed_password=get_password_hash(settings.SUPERUSER_PASSWORD),
+                is_superuser=True,
+            )
+            user.create(db)
 
 
 def update_db():

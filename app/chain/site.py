@@ -1,8 +1,6 @@
 import re
 from typing import Union, Tuple
 
-from sqlalchemy.orm import Session
-
 from app.chain import ChainBase
 from app.core.config import settings
 from app.db.models.site import Site
@@ -23,9 +21,9 @@ class SiteChain(ChainBase):
     站点管理处理链
     """
 
-    def __init__(self, db: Session = None):
-        super().__init__(db)
-        self.siteoper = SiteOper(self._db)
+    def __init__(self):
+        super().__init__()
+        self.siteoper = SiteOper()
         self.cookiehelper = CookieHelper()
         self.message = MessageHelper()
 

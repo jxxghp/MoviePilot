@@ -35,7 +35,7 @@ async def login_access_token(
     if not user:
         # 请求协助认证
         logger.warn("登录用户本地不匹配，尝试辅助认证 ...")
-        token = UserChain(db).user_authenticate(form_data.username, form_data.password)
+        token = UserChain().user_authenticate(form_data.username, form_data.password)
         if not token:
             raise HTTPException(status_code=401, detail="用户名或密码不正确")
         else:

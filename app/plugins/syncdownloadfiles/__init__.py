@@ -59,8 +59,8 @@ class SyncDownloadFiles(_PluginBase):
 
         self.qb = Qbittorrent()
         self.tr = Transmission()
-        self.downloadhis = DownloadHistoryOper(self.db)
-        self.transferhis = TransferHistoryOper(self.db)
+        self.downloadhis = DownloadHistoryOper()
+        self.transferhis = TransferHistoryOper()
 
         if config:
             self._enabled = config.get('enabled')

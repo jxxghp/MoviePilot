@@ -62,7 +62,7 @@ class MediaSyncDel(_PluginBase):
     tr = None
 
     def init_plugin(self, config: dict = None):
-        self._transferchain = TransferChain(self.db)
+        self._transferchain = TransferChain()
         self._transferhis = self._transferchain.transferhis
         self._downloadhis = self._transferchain.downloadhis
         self.episode = Episode()

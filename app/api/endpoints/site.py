@@ -139,9 +139,9 @@ def update_cookie(
             detail=f"站点 {site_id} 不存在！",
         )
     # 更新Cookie
-    state, message = SiteChain(db).update_cookie(site_info=site_info,
-                                                 username=username,
-                                                 password=password)
+    state, message = SiteChain().update_cookie(site_info=site_info,
+                                               username=username,
+                                               password=password)
     return schemas.Response(success=state, message=message)
 
 
@@ -158,7 +158,7 @@ def test_site(site_id: int,
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
-    status, message = SiteChain(db).test(site.domain)
+    status, message = SiteChain().test(site.domain)
     return schemas.Response(success=status, message=message)
 
 
