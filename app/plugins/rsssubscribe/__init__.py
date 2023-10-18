@@ -525,7 +525,10 @@ class RssSubscribe(_PluginBase):
             "include": self._include,
             "exclude": self._exclude,
             "proxy": self._proxy,
-            "clear": self._clear
+            "clear": self._clear,
+            "filter": self._filter,
+            "action": self._action,
+            "save_path": self._save_path
         })
 
     def check(self):
