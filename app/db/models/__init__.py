@@ -16,7 +16,12 @@ def db_persist(func):
 
     def wrapper(*args, **kwargs):
         with DBLock:
-            db: Session = kwargs.get("db") or args[1]
+            db: Session = kwargs.get("db")
+            if not db:
+                for arg in args:
+                    if isinstance(arg, Session):
+                        db = arg
+                        break
             try:
                 if db:
                     db.close()

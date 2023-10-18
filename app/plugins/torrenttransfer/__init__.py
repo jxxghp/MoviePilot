@@ -109,8 +109,8 @@ class TorrentTransfer(_PluginBase):
                     self._scheduler.add_job(self.transfer,
                                             CronTrigger.from_crontab(self._cron))
                 except Exception as e:
-                    logger.error(f"转移做种服务启动失败：{e}")
-                    self.systemmessage.put(f"转移做种服务启动失败：{e}")
+                    logger.error(f"转移做种服务启动失败：{str(e)}")
+                    self.systemmessage.put(f"转移做种服务启动失败：{str(e)}")
                     return
             if self._onlyonce:
                 logger.info(f"转移做种服务启动，立即运行一次")
@@ -594,7 +594,7 @@ class TorrentTransfer(_PluginBase):
                         torrent_main = bdecode(content)
                         main_announce = torrent_main.get('announce')
                     except Exception as err:
-                        logger.warn(f"解析种子文件 {torrent_file} 失败：{err}")
+                        logger.warn(f"解析种子文件 {torrent_file} 失败：{str(err)}")
                         fail += 1
                         continue
 
@@ -623,7 +623,7 @@ class TorrentTransfer(_PluginBase):
                                 # 编码并保存到临时文件
                                 torrent_file.write_bytes(bencode(torrent_main))
                         except Exception as err:
-                            logger.error(f"解析fastresume文件 {fastresume_file} 出错：{err}")
+                            logger.error(f"解析fastresume文件 {fastresume_file} 出错：{str(err)}")
                             fail += 1
                             continue
 

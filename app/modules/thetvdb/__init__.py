@@ -33,4 +33,4 @@ class TheTvDbModule(_ModuleBase):
             logger.info(f"开始获取TVDB信息: {tvdbid} ...")
             return self.tvdb[tvdbid].data
         except Exception as err:
-            logger.error(f"获取TVDB信息失败: {err}")
+            logger.error(f"获取TVDB信息失败: {str(err)}")

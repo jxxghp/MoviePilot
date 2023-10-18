@@ -92,7 +92,7 @@ class IndexerModule(_ModuleBase):
                 if result_array:
                     break
             except Exception as err:
-                logger.error(f"{site.get('name')} 搜索出错：{err}")
+                logger.error(f"{site.get('name')} 搜索出错：{str(err)}")
 
         # 索引花费的时间
         seconds = round((datetime.now() - start_time).seconds, 1)

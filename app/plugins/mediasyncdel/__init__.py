@@ -90,9 +90,9 @@ class MediaSyncDel(_PluginBase):
                                             trigger=CronTrigger.from_crontab(self._cron),
                                             name="媒体库同步删除")
                 except Exception as err:
-                    logger.error(f"定时任务配置错误：{err}")
+                    logger.error(f"定时任务配置错误：{str(err)}")
                     # 推送实时消息
-                    self.systemmessage.put(f"执行周期配置错误：{err}")
+                    self.systemmessage.put(f"执行周期配置错误：{str(err)}")
             else:
                 self._scheduler.add_job(self.sync_del_by_log, "interval", minutes=30, name="媒体库同步删除")
 
@@ -996,7 +996,7 @@ class MediaSyncDel(_PluginBase):
 
             return delete_flag, True, handle_cnt
         except Exception as e:
-            logger.error(f"删种失败： {e}")
+            logger.error(f"删种失败： {str(e)}")
             return False, False, 0
 
     def __del_seed(self, download, download_id, action_flag, handle_cnt):

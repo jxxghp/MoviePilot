@@ -76,7 +76,7 @@ class WeChat(metaclass=Singleton):
                 else:
                     logger.error(f"获取微信access_token失败，未获取到返回信息")
             except Exception as e:
-                logger.error(f"获取微信access_token失败，错误信息：{e}")
+                logger.error(f"获取微信access_token失败，错误信息：{str(e)}")
                 return None
         return self._access_token
 
@@ -271,7 +271,7 @@ class WeChat(metaclass=Singleton):
                 logger.error(f"发送请求失败，未获取到返回信息")
                 return False
         except Exception as err:
-            logger.error(f"发送请求失败，错误信息：{err}")
+            logger.error(f"发送请求失败，错误信息：{str(err)}")
             return False
 
     def create_menus(self, commands: Dict[str, dict]):

@@ -54,7 +54,7 @@ class Telegram(metaclass=Singleton):
                 try:
                     _bot.infinity_polling(long_polling_timeout=30, logger_level=None)
                 except Exception as err:
-                    logger.error(f"Telegram消息接收服务异常：{err}")
+                    logger.error(f"Telegram消息接收服务异常：{str(err)}")
 
             # 启动线程来运行 infinity_polling
             self._polling_thread = threading.Thread(target=run_polling)

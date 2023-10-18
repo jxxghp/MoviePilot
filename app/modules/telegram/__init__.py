@@ -63,7 +63,7 @@ class TelegramModule(_ModuleBase):
         try:
             message: dict = json.loads(body)
         except Exception as err:
-            logger.debug(f"解析Telegram消息失败：{err}")
+            logger.debug(f"解析Telegram消息失败：{str(err)}")
             return None
         if message:
             text = message.get("text")

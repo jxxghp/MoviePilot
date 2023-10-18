@@ -125,7 +125,7 @@ class TmdbScraper:
                             f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{episode_image}",
                             file_path.with_suffix(Path(episode_image).suffix))
         except Exception as e:
-            logger.error(f"{file_path} 刮削失败：{e}")
+            logger.error(f"{file_path} 刮削失败：{str(e)}")
 
     @staticmethod
     def __gen_common_nfo(mediainfo: MediaInfo, doc, root):
@@ -355,7 +355,7 @@ class TmdbScraper:
         except RequestException as err:
             raise err
         except Exception as err:
-            logger.error(f"{file_path.stem}图片下载失败：{err}")
+            logger.error(f"{file_path.stem}图片下载失败：{str(err)}")
 
     def __save_nfo(self, doc, file_path: Path):
         """

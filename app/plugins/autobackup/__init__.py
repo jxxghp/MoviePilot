@@ -71,7 +71,7 @@ class AutoBackup(_PluginBase):
                                             trigger=CronTrigger.from_crontab(self._cron),
                                             name="自动备份")
                 except Exception as err:
-                    logger.error(f"定时任务配置错误：{err}")
+                    logger.error(f"定时任务配置错误：{str(err)}")
 
             if self._onlyonce:
                 logger.info(f"自动备份服务启动，立即运行一次")

@@ -162,8 +162,8 @@ class CookieHelper:
                 page.click(submit_xpath)
                 page.wait_for_load_state("networkidle", timeout=30 * 1000)
             except Exception as e:
-                logger.error(f"仿真登录失败：{e}")
-                return None, None, f"仿真登录失败：{e}"
+                logger.error(f"仿真登录失败：{str(e)}")
+                return None, None, f"仿真登录失败：{str(e)}"
             # 登录后的源码
             html_text = page.content()
             if not html_text:

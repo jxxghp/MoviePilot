@@ -84,9 +84,9 @@ class BestFilmVersion(_PluginBase):
                                                 trigger=CronTrigger.from_crontab(self._cron),
                                                 name="收藏洗版")
                     except Exception as err:
-                        logger.error(f"定时任务配置错误：{err}")
+                        logger.error(f"定时任务配置错误：{str(err)}")
                         # 推送实时消息
-                        self.systemmessage.put(f"执行周期配置错误：{err}")
+                        self.systemmessage.put(f"执行周期配置错误：{str(err)}")
                 else:
                     self._scheduler.add_job(self.sync, "interval", minutes=30, name="收藏洗版")
 

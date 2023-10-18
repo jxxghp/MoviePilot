@@ -48,7 +48,7 @@ def wechat_verify(echostr: str, msg_signature: str,
                               sEncodingAESKey=settings.WECHAT_ENCODING_AESKEY,
                               sReceiveId=settings.WECHAT_CORPID)
     except Exception as err:
-        logger.error(f"微信请求验证失败: {err}")
+        logger.error(f"微信请求验证失败: {str(err)}")
         return str(err)
     ret, sEchoStr = wxcpt.VerifyURL(sMsgSignature=msg_signature,
                                     sTimeStamp=timestamp,

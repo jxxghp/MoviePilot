@@ -117,7 +117,7 @@ class WechatModule(_ModuleBase):
                 return CommingMessage(channel=MessageChannel.Wechat,
                                       userid=user_id, username=user_id, text=content)
         except Exception as err:
-            logger.error(f"微信消息处理发生错误：{err}")
+            logger.error(f"微信消息处理发生错误：{str(err)}")
         return None
 
     @checkMessage(MessageChannel.Wechat)

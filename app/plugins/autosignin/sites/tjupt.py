@@ -141,7 +141,7 @@ class Tjupt(_ISiteSigninHandler):
                                              proxy=proxy,
                                              site=site)
         except (FileNotFoundError, IOError, OSError) as e:
-            logger.debug(f"查询本地已知答案失败：{e}，继续请求豆瓣查询")
+            logger.debug(f"查询本地已知答案失败：{str(e)}，继续请求豆瓣查询")
 
         # 本地不存在正确答案则请求豆瓣查询匹配
         for value, answer in answers:
@@ -236,7 +236,7 @@ class Tjupt(_ISiteSigninHandler):
             with open(self._answer_file, 'w') as f:
                 f.write(formatted_data)
         except (FileNotFoundError, IOError, OSError) as e:
-            logger.debug(f"签到成功写入本地文件失败：{e}")
+            logger.debug(f"签到成功写入本地文件失败：{str(e)}")
 
     @staticmethod
     def _tohash(img, shape=(10, 10)):

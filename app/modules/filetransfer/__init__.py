@@ -590,7 +590,7 @@ class FileTransferModule(_ModuleBase):
                 if path.is_relative_to(libpath):
                     return libpath
             except Exception as e:
-                logger.debug(f"计算媒体库路径时出错：{e}")
+                logger.debug(f"计算媒体库路径时出错：{str(e)}")
                 continue
         return path
 
@@ -618,7 +618,7 @@ class FileTransferModule(_ModuleBase):
                         max_length = len(relative)
                         target_path = path
                 except Exception as e:
-                    logger.debug(f"计算目标路径时出错：{e}")
+                    logger.debug(f"计算目标路径时出错：{str(e)}")
                     continue
             if target_path:
                 return target_path

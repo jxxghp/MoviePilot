@@ -92,9 +92,9 @@ class DoubanSync(_PluginBase):
                                             trigger=CronTrigger.from_crontab(self._cron),
                                             name="豆瓣想看")
                 except Exception as err:
-                    logger.error(f"定时任务配置错误：{err}")
+                    logger.error(f"定时任务配置错误：{str(err)}")
                     # 推送实时消息
-                    self.systemmessage.put(f"执行周期配置错误：{err}")
+                    self.systemmessage.put(f"执行周期配置错误：{str(err)}")
             else:
                 self._scheduler.add_job(self.sync, "interval", minutes=30, name="豆瓣想看")
 
@@ -541,7 +541,7 @@ class DoubanSync(_PluginBase):
                         "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     })
                 except Exception as err:
-                    logger.error(f'同步用户 {user_id} 豆瓣想看数据出错：{err}')
+                    logger.error(f'同步用户 {user_id} 豆瓣想看数据出错：{str(err)}')
             logger.info(f"用户 {user_id} 豆瓣想看同步完成")
         # 保存历史记录
         self.save_data('history', history)

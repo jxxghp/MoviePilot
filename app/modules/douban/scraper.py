@@ -57,7 +57,7 @@ class DoubanScraper:
                                                   season=meta.begin_season,
                                                   season_path=file_path.parent)
         except Exception as e:
-            logger.error(f"{file_path} 刮削失败：{e}")
+            logger.error(f"{file_path} 刮削失败：{str(e)}")
 
     @staticmethod
     def __gen_common_nfo(mediainfo: MediaInfo, doc, root):
@@ -187,7 +187,7 @@ class DoubanScraper:
             else:
                 logger.info(f"{file_path.stem}图片下载失败，请检查网络连通性")
         except Exception as err:
-            logger.error(f"{file_path.stem}图片下载失败：{err}")
+            logger.error(f"{file_path.stem}图片下载失败：{str(err)}")
 
     def __save_nfo(self, doc, file_path: Path):
         """

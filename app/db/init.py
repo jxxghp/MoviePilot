@@ -45,4 +45,4 @@ def update_db():
         alembic_cfg.set_main_option('sqlalchemy.url', f"sqlite:///{db_location}")
         upgrade(alembic_cfg, 'head')
     except Exception as e:
-        logger.error(f'数据库更新失败：{e}')
+        logger.error(f'数据库更新失败：{str(e)}')

@@ -151,7 +151,7 @@ class SlackModule(_ModuleBase):
         try:
             msg_json: dict = json.loads(body)
         except Exception as err:
-            logger.debug(f"解析Slack消息失败：{err}")
+            logger.debug(f"解析Slack消息失败：{str(err)}")
             return None
         if msg_json:
             if msg_json.get("type") == "message":

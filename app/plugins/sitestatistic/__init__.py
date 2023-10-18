@@ -128,9 +128,9 @@ class SiteStatistic(_PluginBase):
                                             trigger=CronTrigger.from_crontab(self._cron),
                                             name="站点数据统计")
                 except Exception as err:
-                    logger.error(f"定时任务配置错误：{err}")
+                    logger.error(f"定时任务配置错误：{str(err)}")
                     # 推送实时消息
-                    self.systemmessage.put(f"执行周期配置错误：{err}")
+                    self.systemmessage.put(f"执行周期配置错误：{str(err)}")
             else:
                 triggers = TimerUtils.random_scheduler(num_executions=1,
                                                        begin_hour=0,
@@ -836,7 +836,7 @@ class SiteStatistic(_PluginBase):
                 if site_schema.match(html_text):
                     return site_schema
             except Exception as e:
-                logger.error(f"站点匹配失败 {e}")
+                logger.error(f"站点匹配失败 {str(e)}")
         return None
 
     def build(self, site_info: CommentedMap) -> Optional[ISiteUserInfo]:

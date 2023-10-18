@@ -32,7 +32,7 @@ class CategoryHelper(metaclass=Singleton):
                     logger.warn(f"二级分类策略配置文件格式出现严重错误！请检查：{str(e)}")
                     self._categorys = {}
         except Exception as err:
-            logger.warn(f"二级分类策略配置文件加载出错：{err}")
+            logger.warn(f"二级分类策略配置文件加载出错：{str(err)}")
 
         if self._categorys:
             self._movie_categorys = self._categorys.get('movie')

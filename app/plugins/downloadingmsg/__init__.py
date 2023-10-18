@@ -68,7 +68,7 @@ class DownloadingMsg(_PluginBase):
                                             seconds=int(self._seconds),
                                             name="下载进度推送")
                 except Exception as err:
-                    logger.error(f"定时任务配置错误：{err}")
+                    logger.error(f"定时任务配置错误：{str(err)}")
 
             # 启动任务
             if self._scheduler.get_jobs():

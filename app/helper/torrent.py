@@ -95,7 +95,7 @@ class TorrentHelper:
                                 logger.warn(f"触发了站点首次种子下载，且无法自动跳过：{url}")
                         break
                 except Exception as err:
-                    logger.warn(f"触发了站点首次种子下载，尝试自动跳过时出现错误：{err}，链接：{url}")
+                    logger.warn(f"触发了站点首次种子下载，尝试自动跳过时出现错误：{str(err)}，链接：{url}")
                 if not skip_flag:
                     return None, None, "", [], "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"
             # 种子内容
@@ -113,7 +113,7 @@ class TorrentHelper:
                     # 成功拿到种子数据
                     return file_path, req.content, folder_name, file_list, ""
                 except Exception as err:
-                    logger.error(f"种子文件解析失败：{err}")
+                    logger.error(f"种子文件解析失败：{str(err)}")
                 # 种子数据仍然错误
                 return None, None, "", [], "种子数据有误，请确认链接是否正确"
             # 返回失败
@@ -160,7 +160,7 @@ class TorrentHelper:
             logger.debug(f"解析种子：{torrent_path.name} => 目录：{folder_name}，文件清单：{file_list}")
             return folder_name, file_list
         except Exception as err:
-            logger.error(f"种子文件解析失败：{err}")
+            logger.error(f"种子文件解析失败：{str(err)}")
             return "", []
 
     @staticmethod

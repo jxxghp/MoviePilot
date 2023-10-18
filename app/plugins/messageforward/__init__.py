@@ -351,7 +351,7 @@ class MessageForward(_PluginBase):
                 logger.error(f"转发消息 {title} 失败，未获取到返回信息")
                 return False
         except Exception as err:
-            logger.error(f"转发消息 {title} 异常，错误信息：{err}")
+            logger.error(f"转发消息 {title} 异常，错误信息：{str(err)}")
             return False
 
     def __get_access_token(self, corpid: str, appsecret: str):
@@ -377,7 +377,7 @@ class MessageForward(_PluginBase):
                 logger.error(f"{corpid} {appsecret} 获取token失败")
                 return None, None, None
         except Exception as e:
-            logger.error(f"获取微信access_token失败，错误信息：{e}")
+            logger.error(f"获取微信access_token失败，错误信息：{str(e)}")
             return None, None, None
 
     def stop_service(self):

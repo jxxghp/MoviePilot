@@ -168,9 +168,9 @@ class AutoSignIn(_PluginBase):
                                 logger.info(
                                     f"站点自动签到服务启动，执行周期 {self._start_time}点-{self._end_time}点 每{self._cron}小时执行一次")
                     except Exception as err:
-                        logger.error(f"定时任务配置错误：{err}")
+                        logger.error(f"定时任务配置错误：{str(err)}")
                         # 推送实时消息
-                        self.systemmessage.put(f"执行周期配置错误：{err}")
+                        self.systemmessage.put(f"执行周期配置错误：{str(err)}")
                         self._cron = ""
                         self._enabled = False
                         self.__update_config()

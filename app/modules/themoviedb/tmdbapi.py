@@ -210,10 +210,10 @@ class TmdbHelper:
             else:
                 movies = self.search.movies(term=name)
         except TMDbException as err:
-            logger.error(f"连接TMDB出错：{err}")
+            logger.error(f"连接TMDB出错：{str(err)}")
             return None
         except Exception as e:
-            logger.error(f"连接TMDB出错：{e}")
+            logger.error(f"连接TMDB出错：{str(e)}")
             print(traceback.print_exc())
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
@@ -258,10 +258,10 @@ class TmdbHelper:
             else:
                 tvs = self.search.tv_shows(term=name)
         except TMDbException as err:
-            logger.error(f"连接TMDB出错：{err}")
+            logger.error(f"连接TMDB出错：{str(err)}")
             return None
         except Exception as e:
-            logger.error(f"连接TMDB出错：{e}")
+            logger.error(f"连接TMDB出错：{str(e)}")
             print(traceback.print_exc())
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
@@ -320,10 +320,10 @@ class TmdbHelper:
         try:
             tvs = self.search.tv_shows(term=name)
         except TMDbException as err:
-            logger.error(f"连接TMDB出错：{err}")
+            logger.error(f"连接TMDB出错：{str(err)}")
             return None
         except Exception as e:
-            logger.error(f"连接TMDB出错：{e}")
+            logger.error(f"连接TMDB出错：{str(e)}")
             print(traceback.print_exc())
             return None
 
@@ -400,10 +400,10 @@ class TmdbHelper:
         try:
             multis = self.search.multi(term=name) or []
         except TMDbException as err:
-            logger.error(f"连接TMDB出错：{err}")
+            logger.error(f"连接TMDB出错：{str(err)}")
             return None
         except Exception as e:
-            logger.error(f"连接TMDB出错：{e}")
+            logger.error(f"连接TMDB出错：{str(e)}")
             print(traceback.print_exc())
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
@@ -508,7 +508,7 @@ class TmdbHelper:
                 else:
                     logger.info("%s TMDB网站未查询到媒体信息！" % name)
             except Exception as err:
-                logger.error(f"从TheDbMovie网站查询出错：{err}")
+                logger.error(f"从TheDbMovie网站查询出错：{str(err)}")
                 return None
         return None
 

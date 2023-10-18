@@ -382,5 +382,5 @@ class FanartModule(_ModuleBase):
             if ret:
                 return ret.json()
         except Exception as err:
-            logger.error(f"获取{queryid}的Fanart图片失败：{err}")
+            logger.error(f"获取{queryid}的Fanart图片失败：{str(err)}")
         return None

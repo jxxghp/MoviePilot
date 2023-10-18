@@ -70,7 +70,7 @@ class _ISiteSigninHandler(metaclass=ABCMeta):
                         # 解码为字符串
                         return raw_data.decode(encoding)
                     except Exception as e:
-                        logger.error(f"chardet解码失败：{e}")
+                        logger.error(f"chardet解码失败：{str(e)}")
                         return res.text
                 else:
                     return res.text

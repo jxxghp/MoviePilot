@@ -220,7 +220,7 @@ class Scheduler(metaclass=Singleton):
         try:
             job["func"](*args, **kwargs)
         except Exception as e:
-            logger.error(f"定时任务 {job_id} 执行失败：{e}")
+            logger.error(f"定时任务 {job_id} 执行失败：{str(e)}")
         self._jobs[job_id]["running"] = False
 
     def list(self) -> List[schemas.ScheduleInfo]:

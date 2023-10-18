@@ -530,5 +530,5 @@ class DoubanModule(_ModuleBase):
                                                    file_path=file,
                                                    transfer_type=transfer_type)
                 except Exception as e:
-                    logger.error(f"刮削文件 {file} 失败，原因：{e}")
+                    logger.error(f"刮削文件 {file} 失败，原因：{str(e)}")
         logger.info(f"{path} 刮削完成")

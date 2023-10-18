@@ -34,7 +34,7 @@ class Slack:
                             ssl_check_enabled=False,
                             url_verification_enabled=False)
         except Exception as err:
-            logger.error(f"Slack初始化失败: {err}")
+            logger.error(f"Slack初始化失败: {str(err)}")
             return
         self._client = slack_app.client
 
@@ -335,5 +335,5 @@ class Slack:
                         conversation_id = channel.get("id")
                         break
         except Exception as e:
-            logger.error(f"查找Slack公共频道失败: {e}")
+            logger.error(f"查找Slack公共频道失败: {str(e)}")
         return conversation_id

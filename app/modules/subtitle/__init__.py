@@ -122,7 +122,7 @@ class SubtitleModule(_ModuleBase):
                             shutil.rmtree(zip_path)
                             zip_file.unlink()
                         except Exception as err:
-                            logger.error(f"删除临时文件失败：{err}")
+                            logger.error(f"删除临时文件失败：{str(err)}")
                     else:
                         sub_file = settings.TEMP_PATH / file_name
                         # 保存

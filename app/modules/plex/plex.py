@@ -284,7 +284,7 @@ class Plex(metaclass=Singleton):
                         if is_subpath(path, Path(location)):
                             return lib.key, str(path)
         except Exception as err:
-            logger.error(f"查找媒体库出错：{err}")
+            logger.error(f"查找媒体库出错：{str(err)}")
         return "", ""
 
     def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
@@ -313,7 +313,7 @@ class Plex(metaclass=Singleton):
                 path=path,
             )
         except Exception as err:
-            logger.error(f"获取项目详情出错：{err}")
+            logger.error(f"获取项目详情出错：{str(err)}")
         return None
 
     @staticmethod
@@ -372,7 +372,7 @@ class Plex(metaclass=Singleton):
                         path=path,
                     )
         except Exception as err:
-            logger.error(f"获取媒体库列表出错：{err}")
+            logger.error(f"获取媒体库列表出错：{str(err)}")
         yield None
 
     def get_webhook_message(self, form: any) -> Optional[schemas.WebhookEventInfo]:

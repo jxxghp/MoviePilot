@@ -610,7 +610,7 @@ class PersonMeta(_PluginBase):
             else:
                 logger.debug(f"人物 {people.get('Name')} 未找到中文数据")
         except Exception as err:
-            logger.error(f"更新人物信息失败：{err}")
+            logger.error(f"更新人物信息失败：{str(err)}")
         return None
 
     def __get_douban_actors(self, mediainfo: MediaInfo, season: int = None) -> List[dict]:
@@ -652,7 +652,7 @@ class PersonMeta(_PluginBase):
                 if res:
                     return res.json()
             except Exception as err:
-                logger.error(f"获取Emby媒体项详情失败：{err}")
+                logger.error(f"获取Emby媒体项详情失败：{str(err)}")
             return {}
 
         def __get_jellyfin_iteminfo() -> dict:
@@ -668,7 +668,7 @@ class PersonMeta(_PluginBase):
                         result['FileName'] = Path(result['Path']).name
                     return result
             except Exception as err:
-                logger.error(f"获取Jellyfin媒体项详情失败：{err}")
+                logger.error(f"获取Jellyfin媒体项详情失败：{str(err)}")
             return {}
 
         def __get_plex_iteminfo() -> dict:
@@ -702,7 +702,7 @@ class PersonMeta(_PluginBase):
                 iteminfo['CommunityRating'] = plexitem.audienceRating
                 return iteminfo
             except Exception as err:
-                logger.error(f"获取Plex媒体项详情失败：{err}")
+                logger.error(f"获取Plex媒体项详情失败：{str(err)}")
             return {}
 
         if server == "emby":
@@ -732,7 +732,7 @@ class PersonMeta(_PluginBase):
                 if res:
                     return res.json()
             except Exception as err:
-                logger.error(f"获取Emby媒体的所有子媒体项失败：{err}")
+                logger.error(f"获取Emby媒体的所有子媒体项失败：{str(err)}")
             return {}
 
         def __get_jellyfin_items() -> dict:
@@ -748,7 +748,7 @@ class PersonMeta(_PluginBase):
                 if res:
                     return res.json()
             except Exception as err:
-                logger.error(f"获取Jellyfin媒体的所有子媒体项失败：{err}")
+                logger.error(f"获取Jellyfin媒体的所有子媒体项失败：{str(err)}")
             return {}
 
         def __get_plex_items() -> dict:
@@ -814,7 +814,7 @@ class PersonMeta(_PluginBase):
                         items['Items'].append(item)
                 return items
             except Exception as err:
-                logger.error(f"获取Plex媒体的所有子媒体项失败：{err}")
+                logger.error(f"获取Plex媒体的所有子媒体项失败：{str(err)}")
             return {}
 
         if server == "emby":
@@ -848,7 +848,7 @@ class PersonMeta(_PluginBase):
                     logger.error(f"更新Emby媒体项详情失败，错误码：{res.status_code}")
                     return False
             except Exception as err:
-                logger.error(f"更新Emby媒体项详情失败：{err}")
+                logger.error(f"更新Emby媒体项详情失败：{str(err)}")
             return False
 
         def __set_jellyfin_iteminfo():
@@ -869,7 +869,7 @@ class PersonMeta(_PluginBase):
                     logger.error(f"更新Jellyfin媒体项详情失败，错误码：{res.status_code}")
                     return False
             except Exception as err:
-                logger.error(f"更新Jellyfin媒体项详情失败：{err}")
+                logger.error(f"更新Jellyfin媒体项详情失败：{str(err)}")
             return False
 
         def __set_plex_iteminfo():
@@ -887,7 +887,7 @@ class PersonMeta(_PluginBase):
                 plexitem.editTitle(iteminfo['Name']).editSummary(iteminfo['Overview']).reload()
                 return True
             except Exception as err:
-                logger.error(f"更新Plex媒体项详情失败：{err}")
+                logger.error(f"更新Plex媒体项详情失败：{str(err)}")
             return False
 
         if server == "emby":
@@ -920,7 +920,7 @@ class PersonMeta(_PluginBase):
                 else:
                     logger.warn(f"{imageurl} 图片下载失败，请检查网络连通性")
             except Exception as err:
-                logger.error(f"下载图片失败：{err}")
+                logger.error(f"下载图片失败：{str(err)}")
             return None
 
         def __set_emby_item_image(_base64: str):

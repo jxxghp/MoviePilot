@@ -50,7 +50,7 @@ class SynologyChatModule(_ModuleBase):
                 return CommingMessage(channel=MessageChannel.SynologyChat,
                                       userid=user_id, username=user_name, text=text)
         except Exception as err:
-            logger.debug(f"解析SynologyChat消息失败：{err}")
+            logger.debug(f"解析SynologyChat消息失败：{str(err)}")
         return None
 
     @checkMessage(MessageChannel.SynologyChat)

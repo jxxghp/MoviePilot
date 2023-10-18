@@ -100,9 +100,9 @@ class RssSubscribe(_PluginBase):
                                             trigger=CronTrigger.from_crontab(self._cron),
                                             name="RSS订阅")
                 except Exception as err:
-                    logger.error(f"定时任务配置错误：{err}")
+                    logger.error(f"定时任务配置错误：{str(err)}")
                     # 推送实时消息
-                    self.systemmessage.put(f"执行周期配置错误：{err}")
+                    self.systemmessage.put(f"执行周期配置错误：{str(err)}")
             else:
                 self._scheduler.add_job(self.check, "interval", minutes=30, name="RSS订阅")
 
@@ -658,7 +658,7 @@ class RssSubscribe(_PluginBase):
                         "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     })
                 except Exception as err:
-                    logger.error(f'刷新RSS数据出错：{err}')
+                    logger.error(f'刷新RSS数据出错：{str(err)}')
             logger.info(f"RSS {url} 刷新完成")
         # 保存历史记录
         self.save_data('history', history)

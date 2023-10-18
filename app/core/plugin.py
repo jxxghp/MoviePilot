@@ -72,7 +72,7 @@ class PluginManager(metaclass=Singleton):
                 # 设置事件注册状态可用
                 eventmanager.enable_events_hander(plugin_id)
             except Exception as err:
-                logger.error(f"加载插件 {plugin_id} 出错：{err} - {traceback.format_exc()}")
+                logger.error(f"加载插件 {plugin_id} 出错：{str(err)} - {traceback.format_exc()}")
 
     def reload_plugin(self, plugin_id: str, conf: dict):
         """

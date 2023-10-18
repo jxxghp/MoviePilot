@@ -123,7 +123,7 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
             if bonus_match and bonus_match.group(1).strip():
                 self.bonus = StringUtils.str_float(bonus_match.group(1).strip('"'))
         except Exception as err:
-            logger.error(f"{self.site_name} 解析魔力值出错, 错误信息: {err}")
+            logger.error(f"{self.site_name} 解析魔力值出错, 错误信息: {str(err)}")
 
     @staticmethod
     def _parse_ucoin(html):

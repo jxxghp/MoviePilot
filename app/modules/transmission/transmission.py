@@ -45,7 +45,7 @@ class Transmission(metaclass=Singleton):
                                           timeout=60)
             return trt
         except Exception as err:
-            logger.error(f"transmission 连接出错：{err}")
+            logger.error(f"transmission 连接出错：{str(err)}")
             return None
 
     def is_inactive(self) -> bool:
@@ -73,7 +73,7 @@ class Transmission(metaclass=Singleton):
         try:
             torrents = self.trc.get_torrents(ids=ids, arguments=self._trarg)
         except Exception as err:
-            logger.error(f"获取种子列表出错：{err}")
+            logger.error(f"获取种子列表出错：{str(err)}")
             return [], True
         if status and not isinstance(status, list):
             status = [status]
@@ -104,7 +104,7 @@ class Transmission(metaclass=Singleton):
             torrents, error = self.get_torrents(status=["seeding", "seed_pending"], ids=ids, tags=tags)
             return None if error else torrents or []
         except Exception as err:
-            logger.error(f"获取已完成的种子列表出错：{err}")
+            logger.error(f"获取已完成的种子列表出错：{str(err)}")
             return None
 
     def get_downloading_torrents(self, ids: Union[str, list] = None,
@@ -121,7 +121,7 @@ class Transmission(metaclass=Singleton):
                                                 tags=tags)
             return None if error else torrents or []
         except Exception as err:
-            logger.error(f"获取正在下载的种子列表出错：{err}")
+            logger.error(f"获取正在下载的种子列表出错：{str(err)}")
             return None
 
     def set_torrent_tag(self, ids: str, tags: list) -> bool:
@@ -136,7 +136,7 @@ class Transmission(metaclass=Singleton):
             self.trc.change_torrent(labels=tags, ids=ids)
             return True
         except Exception as err:
-            logger.error(f"设置种子标签出错：{err}")
+            logger.error(f"设置种子标签出错：{str(err)}")
             return False
 
     def add_torrent(self, content: Union[str, bytes],
@@ -162,7 +162,7 @@ class Transmission(metaclass=Singleton):
                                         labels=labels,
                                         cookies=cookie)
         except Exception as err:
-            logger.error(f"添加种子出错：{err}")
+            logger.error(f"添加种子出错：{str(err)}")
             return None
 
     def start_torrents(self, ids: Union[str, list]) -> bool:
@@ -175,7 +175,7 @@ class Transmission(metaclass=Singleton):
             self.trc.start_torrent(ids=ids)
             return True
         except Exception as err:
-            logger.error(f"启动种子出错：{err}")
+            logger.error(f"启动种子出错：{str(err)}")
             return False
 
     def stop_torrents(self, ids: Union[str, list]) -> bool:
@@ -188,7 +188,7 @@ class Transmission(metaclass=Singleton):
             self.trc.stop_torrent(ids=ids)
             return True
         except Exception as err:
-            logger.error(f"停止种子出错：{err}")
+            logger.error(f"停止种子出错：{str(err)}")
             return False
 
     def delete_torrents(self, delete_file: bool, ids: Union[str, list]) -> bool:
@@ -203,7 +203,7 @@ class Transmission(metaclass=Singleton):
             self.trc.remove_torrent(delete_data=delete_file, ids=ids)
             return True
         except Exception as err:
-            logger.error(f"删除种子出错：{err}")
+            logger.error(f"删除种子出错：{str(err)}")
             return False
 
     def get_files(self, tid: str) -> Optional[List[File]]:
@@ -217,7 +217,7 @@ class Transmission(metaclass=Singleton):
         try:
             torrent = self.trc.get_torrent(tid)
         except Exception as err:
-            logger.error(f"获取种子文件列表出错：{err}")
+            logger.error(f"获取种子文件列表出错：{str(err)}")
             return None
         if torrent:
             return torrent.files()
@@ -234,7 +234,7 @@ class Transmission(metaclass=Singleton):
             self.trc.change_torrent(ids=tid, files_wanted=file_ids)
             return True
         except Exception as err:
-            logger.error(f"设置下载文件状态出错：{err}")
+            logger.error(f"设置下载文件状态出错：{str(err)}")
             return False
 
     def transfer_info(self) -> Optional[SessionStats]:
@@ -246,7 +246,7 @@ class Transmission(metaclass=Singleton):
         try:
             return self.trc.session_stats()
         except Exception as err:
-            logger.error(f"获取传输信息出错：{err}")
+            logger.error(f"获取传输信息出错：{str(err)}")
             return None
 
     def set_speed_limit(self, download_limit: float = None, upload_limit: float = None) -> bool:
@@ -268,7 +268,7 @@ class Transmission(metaclass=Singleton):
             )
             return True
         except Exception as err:
-            logger.error(f"设置速度限制出错：{err}")
+            logger.error(f"设置速度限制出错：{str(err)}")
             return False
 
     def recheck_torrents(self, ids: Union[str, list]):
@@ -280,7 +280,7 @@ class Transmission(metaclass=Singleton):
         try:
             return self.trc.verify_torrent(ids=ids)
         except Exception as err:
-            logger.error(f"重新校验种子出错：{err}")
+            logger.error(f"重新校验种子出错：{str(err)}")
             return False
 
     def add_trackers(self, ids: Union[str, list], trackers: list):
@@ -292,7 +292,7 @@ class Transmission(metaclass=Singleton):
         try:
             return self.trc.change_torrent(ids=ids, tracker_list=[trackers])
         except Exception as err:
-            logger.error(f"添加Tracker出错：{err}")
+            logger.error(f"添加Tracker出错：{str(err)}")
             return False
 
     def change_torrent(self,
@@ -347,5 +347,5 @@ class Transmission(metaclass=Singleton):
                                     seedIdleMode=seedIdleMode,
                                     seedIdleLimit=seedIdleLimit)
         except Exception as err:
-            logger.error(f"设置种子出错：{err}")
+            logger.error(f"设置种子出错：{str(err)}")
             return False

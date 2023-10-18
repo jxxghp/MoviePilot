@@ -101,7 +101,7 @@ class SyncDownloadFiles(_PluginBase):
                                             name="自动同步下载器文件记录")
                     logger.info(f"自动同步下载器文件记录服务启动，时间间隔 {self._time} 小时")
                 except Exception as err:
-                    logger.error(f"定时任务配置错误：{err}")
+                    logger.error(f"定时任务配置错误：{str(err)}")
 
                 # 启动任务
                 if self._scheduler.get_jobs():

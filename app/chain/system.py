@@ -161,4 +161,4 @@ class SystemChain(ChainBase, metaclass=Singleton):
                     logger.warn("未找到版本号")
                     return None
             except Exception as err:
-                logger.error(f"加载版本文件 {version_file} 出错：{err}")
+                logger.error(f"加载版本文件 {version_file} 出错：{str(err)}")
