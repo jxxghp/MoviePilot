@@ -28,10 +28,13 @@ class TimerUtils:
             # 随机生成下一个任务的时间间隔
             interval_minutes = random.randint(min_interval, max_interval)
             random_interval = datetime.timedelta(minutes=interval_minutes)
+            # 记录上一个任务的时间触发器
+            last_random_trigger = random_trigger
             # 更新当前时间为下一个任务的时间触发器
             random_trigger += random_interval
-            # 达到结束时间时退出
-            if random_trigger.hour > end_hour:
+            # 达到结束时间或者时间出现倒退时退出
+            if random_trigger.hour > end_hour \
+                    or random_trigger.hour < last_random_trigger.hour:
                 break
             # 添加到队列
             trigger.append(random_trigger)

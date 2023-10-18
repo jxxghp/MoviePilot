@@ -14,7 +14,6 @@ from ruamel.yaml import CommentedMap
 from app import schemas
 from app.core.config import settings
 from app.core.event import EventManager, eventmanager, Event
-from app.db.models.site import Site
 from app.db.site_oper import SiteOper
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
@@ -180,8 +179,8 @@ class AutoSignIn(_PluginBase):
                     triggers = TimerUtils.random_scheduler(num_executions=2,
                                                            begin_hour=9,
                                                            end_hour=23,
-                                                           max_interval=12 * 60,
-                                                           min_interval=6 * 60)
+                                                           max_interval=6 * 60,
+                                                           min_interval=2 * 60)
                     for trigger in triggers:
                         self._scheduler.add_job(self.sign_in, "cron",
                                                 hour=trigger.hour, minute=trigger.minute,
