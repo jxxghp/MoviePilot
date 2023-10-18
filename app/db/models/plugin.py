@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
-from app.db.models import Base
+from app.db.models import Base, db_persist
 
 
 class PluginData(Base):
@@ -22,9 +22,9 @@ class PluginData(Base):
         return db.query(PluginData).filter(PluginData.plugin_id == plugin_id, PluginData.key == key).first()
 
     @staticmethod
+    @db_persist
     def del_plugin_data_by_key(db: Session, plugin_id: str, key: str):
         db.query(PluginData).filter(PluginData.plugin_id == plugin_id, PluginData.key == key).delete()
-        Base.commit(db)
 
     @staticmethod
     def get_plugin_data_by_plugin_id(db: Session, plugin_id: str):

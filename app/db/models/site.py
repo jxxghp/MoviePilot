@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
-from app.db.models import Base
+from app.db.models import Base, db_persist
 
 
 class Site(Base):
@@ -59,6 +59,6 @@ class Site(Base):
         return db.query(Site).order_by(Site.pri).all()
 
     @staticmethod
+    @db_persist
     def reset(db: Session):
         db.query(Site).delete()
-        Base.commit(db)

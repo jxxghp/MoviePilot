@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
-from app.db.models import Base
+from app.db.models import Base, db_persist
 
 
 class DownloadHistory(Base):
@@ -148,6 +148,7 @@ class DownloadFiles(Base):
         return db.query(DownloadFiles).filter(DownloadFiles.savepath == savepath).all()
 
     @staticmethod
+    @db_persist
     def delete_by_fullpath(db: Session, fullpath: str):
         db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath,
                                        DownloadFiles.state == 1).update(
@@ -155,4 +156,3 @@ class DownloadFiles(Base):
                 "state": 0
             }
         )
-        Base.commit(db)

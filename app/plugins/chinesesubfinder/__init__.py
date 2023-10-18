@@ -250,7 +250,7 @@ class ChineseSubFinder(_PluginBase):
                         logger.warn("ChineseSubFinder下载字幕出错：%s" % message)
                     else:
                         logger.info("ChineseSubFinder任务添加成功：%s" % job_id)
-                else:
+                elif res.status_code != 200:
                     logger.warn(f"ChineseSubFinder调用出错：{res.status_code} - {res.reason}")
         except Exception as e:
             logger.error("连接ChineseSubFinder出错：" + str(e))

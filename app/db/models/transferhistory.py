@@ -3,7 +3,7 @@ import time
 from sqlalchemy import Column, Integer, String, Sequence, Boolean, func
 from sqlalchemy.orm import Session
 
-from app.db.models import Base
+from app.db.models import Base, db_persist
 
 
 class TransferHistory(Base):
@@ -154,10 +154,10 @@ class TransferHistory(Base):
                                                 TransferHistory.type == mtype).first()
 
     @staticmethod
+    @db_persist
     def update_download_hash(db: Session, historyid: int = None, download_hash: str = None):
         db.query(TransferHistory).filter(TransferHistory.id == historyid).update(
             {
                 "download_hash": download_hash
             }
         )
-        Base.commit(db)

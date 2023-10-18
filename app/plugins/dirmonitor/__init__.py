@@ -577,9 +577,9 @@ class DirMonitor(_PluginBase):
         """
         从表中获取download_hash，避免连接下载器
         """
-        downloadHis = self.downloadhis.get_file_by_fullpath(src)
-        if downloadHis:
-            return downloadHis.download_hash
+        download_file = self.downloadhis.get_file_by_fullpath(src)
+        if download_file:
+            return download_file.download_hash
         return None
 
     def get_state(self) -> bool:

@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
-from app.db.models import Base
+from app.db.models import Base, db_persist
 
 
 class MediaServerItem(Base):
@@ -45,9 +45,9 @@ class MediaServerItem(Base):
         return db.query(MediaServerItem).filter(MediaServerItem.item_id == item_id).first()
 
     @staticmethod
+    @db_persist
     def empty(db: Session, server: str):
         db.query(MediaServerItem).filter(MediaServerItem.server == server).delete()
-        Base.commit(db)
 
     @staticmethod
     def exist_by_tmdbid(db: Session, tmdbid: int, mtype: str):
