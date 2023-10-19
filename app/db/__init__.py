@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional, Generator
 
 from sqlalchemy import create_engine, QueuePool
 from sqlalchemy.orm import sessionmaker, Session, scoped_session
@@ -22,7 +22,7 @@ SessionFactory = sessionmaker(bind=Engine)
 ScopedSession = scoped_session(SessionFactory)
 
 
-def get_db():
+def get_db() -> Generator:
     """
     获取数据库会话，用于WEB请求
     :return: Session
@@ -36,7 +36,7 @@ def get_db():
             db.close()
 
 
-def get_args_db(args: tuple, kwargs: dict):
+def get_args_db(args: tuple, kwargs: dict) -> Optional[Session]:
     """
     从参数中获取数据库Session对象
     """
@@ -58,7 +58,7 @@ def update_args_db(args: tuple, kwargs: dict, db: Session) -> Tuple[tuple, dict]
     """
     更新参数中的数据库Session对象，关键字传参时更新db的值，否则更新第1或第2个参数
     """
-    if kwargs:
+    if kwargs and 'db' in kwargs:
         kwargs['db'] = db
     elif args:
         if args[0] is None:
