@@ -3,7 +3,8 @@ from datetime import datetime
 from sqlalchemy import Boolean, Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
-from app.db.models import Base, db_persist
+from app.db import db_query
+from app.db.models import Base, db_update
 
 
 class Site(Base):
@@ -47,18 +48,23 @@ class Site(Base):
     lst_mod_date = Column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     @staticmethod
+    @db_query
     def get_by_domain(db: Session, domain: str):
         return db.query(Site).filter(Site.domain == domain).first()
 
     @staticmethod
+    @db_query
     def get_actives(db: Session):
-        return db.query(Site).filter(Site.is_active == 1).all()
+        result = db.query(Site).filter(Site.is_active == 1).all()
+        return list(result)
 
     @staticmethod
+    @db_query
     def list_order_by_pri(db: Session):
-        return db.query(Site).order_by(Site.pri).all()
+        result = db.query(Site).order_by(Site.pri).all()
+        return list(result)
 
     @staticmethod
-    @db_persist
+    @db_update
     def reset(db: Session):
         db.query(Site).delete()

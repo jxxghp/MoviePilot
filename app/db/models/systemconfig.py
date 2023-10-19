@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
+from app.db import db_update, db_query
 from app.db.models import Base
 
 
@@ -15,9 +16,11 @@ class SystemConfig(Base):
     value = Column(String, nullable=True)
 
     @staticmethod
+    @db_query
     def get_by_key(db: Session, key: str):
         return db.query(SystemConfig).filter(SystemConfig.key == key).first()
 
+    @db_update
     def delete_by_key(self, db: Session, key: str):
         systemconfig = self.get_by_key(db, key)
         if systemconfig:
