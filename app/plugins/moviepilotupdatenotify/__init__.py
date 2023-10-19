@@ -10,13 +10,14 @@ from typing import Any, List, Dict, Tuple, Optional
 from app.log import logger
 from app.schemas import NotificationType
 from app.utils.http import RequestUtils
+from app.utils.system import SystemUtils
 
 
 class MoviePilotUpdateNotify(_PluginBase):
     # 插件名称
     plugin_name = "MoviePilot更新推送"
     # 插件描述
-    plugin_desc = "MoviePilot推送release更新通知、自动更新。"
+    plugin_desc = "MoviePilot推送release更新通知、自动重启。"
     # 插件图标
     plugin_icon = "update.png"
     # 主题色
@@ -38,6 +39,7 @@ class MoviePilotUpdateNotify(_PluginBase):
     _enabled = False
     # 任务执行间隔
     _cron = None
+    _restart = False
     _notify = False
 
     # 定时器
@@ -50,6 +52,7 @@ class MoviePilotUpdateNotify(_PluginBase):
         if config:
             self._enabled = config.get("enabled")
             self._cron = config.get("cron")
+            self._restart = config.get("restart")
             self._notify = config.get("notify")
 
             # 加载模块
@@ -98,6 +101,11 @@ class MoviePilotUpdateNotify(_PluginBase):
                      f"\n"
                      f"{update_time}")
 
+        # 自动重启
+        if self._restart:
+            logger.info("开始执行自动重启…")
+            SystemUtils.restart()
+
     @staticmethod
     def __get_release_version():
         """
@@ -139,7 +147,7 @@ class MoviePilotUpdateNotify(_PluginBase):
                                        'component': 'VCol',
                                        'props': {
                                            'cols': 12,
-                                           'md': 6
+                                           'md': 4
                                        },
                                        'content': [
                                            {
@@ -155,7 +163,23 @@ class MoviePilotUpdateNotify(_PluginBase):
                                        'component': 'VCol',
                                        'props': {
                                            'cols': 12,
-                                           'md': 6
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'restart',
+                                                   'label': '自动重启',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
                                        },
                                        'content': [
                                            {
@@ -194,7 +218,7 @@ class MoviePilotUpdateNotify(_PluginBase):
                    }
                ], {
                    "enabled": False,
-                   "update": False,
+                   "restart": False,
                    "notify": False,
                    "cron": "0 9 * * *"
                }
