@@ -10,13 +10,14 @@ from typing import Any, List, Dict, Tuple, Optional
 from app.log import logger
 from app.schemas import NotificationType
 from app.utils.http import RequestUtils
+from app.utils.system import SystemUtils
 
 
 class MoviePilotUpdateNotify(_PluginBase):
     # 插件名称
     plugin_name = "MoviePilot更新推送"
     # 插件描述
-    plugin_desc = "MoviePilot推送release更新通知、自动更新。"
+    plugin_desc = "MoviePilot推送release更新通知、自动重启。"
     # 插件图标
     plugin_icon = "update.png"
     # 主题色
@@ -38,7 +39,7 @@ class MoviePilotUpdateNotify(_PluginBase):
     _enabled = False
     # 任务执行间隔
     _cron = None
-    _update = False
+    _restart = False
     _notify = False
 
     # 定时器
@@ -51,7 +52,7 @@ class MoviePilotUpdateNotify(_PluginBase):
         if config:
             self._enabled = config.get("enabled")
             self._cron = config.get("cron")
-            self._update = config.get("update")
+            self._restart = config.get("restart")
             self._notify = config.get("notify")
 
             # 加载模块
@@ -97,12 +98,13 @@ class MoviePilotUpdateNotify(_PluginBase):
                 text=f"{release_version} \n"
                      f"\n"
                      f"{description} \n"
+                     f"\n"
                      f"{update_time}")
 
-        # 自动更新
-        if self._update:
-            logger.info("开始执行自动更新…")
-            SystemChain().update()
+        # 自动重启
+        if self._restart:
+            logger.info("开始执行自动重启…")
+            SystemUtils.restart()
 
     @staticmethod
     def __get_release_version():
@@ -167,8 +169,8 @@ class MoviePilotUpdateNotify(_PluginBase):
                                            {
                                                'component': 'VSwitch',
                                                'props': {
-                                                   'model': 'update',
-                                                   'label': '自动更新',
+                                                   'model': 'restart',
+                                                   'label': '自动重启',
                                                }
                                            }
                                        ]
@@ -211,12 +213,31 @@ class MoviePilotUpdateNotify(_PluginBase):
                                        ]
                                    },
                                ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VAlert',
+                                               'props': {
+                                                   'text': '如要开启自动重启，请确认MOVIEPILOT_AUTO_UPDATE设置为true，重启即更新。'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
                            }
                        ]
                    }
                ], {
                    "enabled": False,
-                   "update": False,
+                   "restart": False,
                    "notify": False,
                    "cron": "0 9 * * *"
                }
