@@ -213,6 +213,25 @@ class MoviePilotUpdateNotify(_PluginBase):
                                        ]
                                    },
                                ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VAlert',
+                                               'props': {
+                                                   'text': '如要开启自动重启，请确认MOVIEPILOT_AUTO_UPDATE设置为true，重启即更新。'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
                            }
                        ]
                    }
