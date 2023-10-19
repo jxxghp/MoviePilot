@@ -13,7 +13,6 @@ class Base:
     @db_update
     def create(self, db: Session) -> Self:
         db.add(self)
-        db.refresh(self)
         return self
 
     @classmethod
