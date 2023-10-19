@@ -2,12 +2,13 @@ import datetime
 import re
 import xml.dom.minidom
 from threading import Event
-from typing import Tuple, List, Dict, Any, Optional
+from typing import Tuple, List, Dict, Any
 
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from app.chain.douban import DoubanChain
 from app.chain.download import DownloadChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
@@ -46,6 +47,7 @@ class DoubanRank(_PluginBase):
     # 私有属性
     downloadchain: DownloadChain = None
     subscribechain: SubscribeChain = None
+    doubanchain: DoubanChain = None
     _scheduler = None
     _douban_address = {
         'movie-ustop': 'https://rsshub.app/douban/movie/ustop',
@@ -68,6 +70,7 @@ class DoubanRank(_PluginBase):
     def init_plugin(self, config: dict = None):
         self.downloadchain = DownloadChain()
         self.subscribechain = SubscribeChain()
+        self.doubanchain = DoubanChain()
 
         if config:
             self._enabled = config.get("enabled")
@@ -471,26 +474,23 @@ class DoubanRank(_PluginBase):
                     # 检查是否已处理过
                     if unique_flag in [h.get("unique") for h in history]:
                         continue
+                    # 元数据
+                    meta = MetaInfo(title)
                     # 识别媒体信息
                     if douban_id:
-                        # 根据豆瓣ID获取豆瓣数据
-                        doubaninfo: Optional[dict] = self.chain.douban_info(doubanid=douban_id)
-                        if not doubaninfo:
-                            logger.warn(f'未获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
+                        # 识别豆瓣信息
+                        context = self.doubanchain.recognize_by_doubanid(douban_id)
+                        mediainfo = context.media_info
+                        if not mediainfo or not mediainfo.tmdb_id:
+                            logger.warn(f'未识别到媒体信息，标题：{title}，豆瓣ID：{douban_id}')
                             continue
-                        logger.info(f'获取到豆瓣信息，标题：{title}，豆瓣ID：{douban_id}')
-                        # 识别
-                        title = doubaninfo.get("title")
-                        meta = MetaInfo(doubaninfo.get("original_title") or title)
-                        if doubaninfo.get("year"):
-                            meta.year = doubaninfo.get("year")
+
                     else:
-                        meta = MetaInfo(title)
-                    # 匹配媒体信息
-                    mediainfo: MediaInfo = self.chain.recognize_media(meta=meta)
-                    if not mediainfo:
-                        logger.warn(f'未识别到媒体信息，标题：{title}，豆瓣ID：{douban_id}')
-                        continue
+                        # 匹配媒体信息
+                        mediainfo: MediaInfo = self.chain.recognize_media(meta=meta)
+                        if not mediainfo:
+                            logger.warn(f'未识别到媒体信息，标题：{title}，豆瓣ID：{douban_id}')
+                            continue
                     # 查询缺失的媒体信息
                     exist_flag, _ = self.downloadchain.get_no_exists_info(meta=meta, mediainfo=mediainfo)
                     if exist_flag:
@@ -526,7 +526,7 @@ class DoubanRank(_PluginBase):
         logger.info(f"所有榜单RSS刷新完成")
 
     @staticmethod
-    def __get_rss_info(addr):
+    def __get_rss_info(addr) -> List[dict]:
         """
         获取RSS
         """
