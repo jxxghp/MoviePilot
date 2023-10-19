@@ -1,5 +1,6 @@
 from typing import Any, Self, List
 
+from sqlalchemy import inspect
 from sqlalchemy.orm import as_declarative, declared_attr, Session
 
 from app.db import db_update, db_query
@@ -25,6 +26,8 @@ class Base:
         payload = {k: v for k, v in payload.items() if v is not None}
         for key, value in payload.items():
             setattr(self, key, value)
+        if inspect(self).detached:
+            db.add(self)
 
     @classmethod
     @db_update
