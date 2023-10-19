@@ -30,6 +30,8 @@ class SubscribeOper(DbOper):
                                   date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                                   **kwargs)
             subscribe.create(self._db)
+            # 查询订阅
+            subscribe = Subscribe.exists(self._db, tmdbid=mediainfo.tmdb_id, season=kwargs.get('season'))
             return subscribe.id, "新增订阅成功"
         else:
             return subscribe.id, "订阅已存在"

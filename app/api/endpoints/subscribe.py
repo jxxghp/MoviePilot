@@ -194,6 +194,8 @@ def read_subscribe(
     """
     根据订阅编号查询订阅信息
     """
+    if not subscribe_id:
+        return Subscribe()
     subscribe = Subscribe.get(db, subscribe_id)
     if subscribe and subscribe.sites:
         subscribe.sites = json.loads(subscribe.sites)
