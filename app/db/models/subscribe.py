@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
+from app.db import db_update, db_query
 from app.db.models import Base
 
 
@@ -67,6 +68,7 @@ class Subscribe(Base):
     current_priority = Column(Integer)
 
     @staticmethod
+    @db_query
     def exists(db: Session, tmdbid: int, season: int = None):
         if season:
             return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid,
@@ -74,30 +76,39 @@ class Subscribe(Base):
         return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid).first()
 
     @staticmethod
+    @db_query
     def get_by_state(db: Session, state: str):
-        return db.query(Subscribe).filter(Subscribe.state == state).all()
+        result = db.query(Subscribe).filter(Subscribe.state == state).all()
+        return list(result)
 
     @staticmethod
+    @db_query
     def get_by_tmdbid(db: Session, tmdbid: int, season: int = None):
         if season:
-            return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid,
-                                              Subscribe.season == season).all()
-        return db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid).all()
+            result = db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid,
+                                                Subscribe.season == season).all()
+        else:
+            result = db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid).all()
+        return list(result)
 
     @staticmethod
+    @db_query
     def get_by_title(db: Session, title: str):
         return db.query(Subscribe).filter(Subscribe.name == title).first()
 
     @staticmethod
+    @db_query
     def get_by_doubanid(db: Session, doubanid: str):
         return db.query(Subscribe).filter(Subscribe.doubanid == doubanid).first()
 
+    @db_update
     def delete_by_tmdbid(self, db: Session, tmdbid: int, season: int):
         subscrbies = self.get_by_tmdbid(db, tmdbid, season)
         for subscrbie in subscrbies:
             subscrbie.delete(db, subscrbie.id)
         return True
 
+    @db_update
     def delete_by_doubanid(self, db: Session, doubanid: str):
         subscribe = self.get_by_doubanid(db, doubanid)
         if subscribe:

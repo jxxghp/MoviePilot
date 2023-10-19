@@ -2,31 +2,7 @@ from typing import Any, Self, List
 
 from sqlalchemy.orm import as_declarative, declared_attr, Session
 
-from app.db import DBLock
-
-
-def db_persist(func):
-    """
-    数据库操作装饰器，获取第一个输入参数db，执行数据库操作后提交
-    """
-
-    def wrapper(*args, **kwargs):
-        with DBLock:
-            db: Session = kwargs.get("db")
-            if not db:
-                for arg in args:
-                    if isinstance(arg, Session):
-                        db = arg
-                        break
-            try:
-                result = func(*args, **kwargs)
-                db.commit()
-            except Exception as err:
-                db.rollback()
-                raise err
-            return result
-
-    return wrapper
+from app.db import db_update, db_query
 
 
 @as_declarative()
@@ -34,34 +10,38 @@ class Base:
     id: Any
     __name__: str
 
-    @db_persist
+    @db_update
     def create(self, db: Session) -> Self:
         db.add(self)
+        db.refresh(self)
         return self
 
     @classmethod
+    @db_query
     def get(cls, db: Session, rid: int) -> Self:
         return db.query(cls).filter(cls.id == rid).first()
 
-    @db_persist
+    @db_update
     def update(self, db: Session, payload: dict):
         payload = {k: v for k, v in payload.items() if v is not None}
         for key, value in payload.items():
             setattr(self, key, value)
 
     @classmethod
-    @db_persist
+    @db_update
     def delete(cls, db: Session, rid):
         db.query(cls).filter(cls.id == rid).delete()
 
     @classmethod
-    @db_persist
+    @db_update
     def truncate(cls, db: Session):
         db.query(cls).delete()
 
     @classmethod
+    @db_query
     def list(cls, db: Session) -> List[Self]:
-        return db.query(cls).all()
+        result = db.query(cls).all()
+        return list(result)
 
     def to_dict(self):
         return {c.name: getattr(self, c.name, None) for c in self.__table__.columns}
