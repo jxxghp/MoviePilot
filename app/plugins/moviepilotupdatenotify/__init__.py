@@ -38,7 +38,6 @@ class MoviePilotUpdateNotify(_PluginBase):
     _enabled = False
     # 任务执行间隔
     _cron = None
-    _update = False
     _notify = False
 
     # 定时器
@@ -51,7 +50,6 @@ class MoviePilotUpdateNotify(_PluginBase):
         if config:
             self._enabled = config.get("enabled")
             self._cron = config.get("cron")
-            self._update = config.get("update")
             self._notify = config.get("notify")
 
             # 加载模块
@@ -100,11 +98,6 @@ class MoviePilotUpdateNotify(_PluginBase):
                      f"\n"
                      f"{update_time}")
 
-        # 自动更新
-        if self._update:
-            logger.info("开始执行自动更新…")
-            SystemChain().update()
-
     @staticmethod
     def __get_release_version():
         """
@@ -146,7 +139,7 @@ class MoviePilotUpdateNotify(_PluginBase):
                                        'component': 'VCol',
                                        'props': {
                                            'cols': 12,
-                                           'md': 4
+                                           'md': 6
                                        },
                                        'content': [
                                            {
@@ -162,23 +155,7 @@ class MoviePilotUpdateNotify(_PluginBase):
                                        'component': 'VCol',
                                        'props': {
                                            'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'update',
-                                                   'label': '自动更新',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
+                                           'md': 6
                                        },
                                        'content': [
                                            {

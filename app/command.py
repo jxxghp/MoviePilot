@@ -149,12 +149,6 @@ class Command(metaclass=Singleton):
                 "description": "当前版本",
                 "category": "管理",
                 "data": {}
-            },
-            "/update": {
-                "func": SystemChain().update,
-                "description": "更新系统",
-                "category": "管理",
-                "data": {}
             }
         }
         # 汇总插件命令
