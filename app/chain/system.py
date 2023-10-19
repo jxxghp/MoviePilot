@@ -59,13 +59,11 @@ class SystemChain(ChainBase, metaclass=Singleton):
                 "userid": userid
             }, self._update_file)
 
+        # 更新系统
+        if not settings.MOVIEPILOT_AUTO_UPDATE:
+            os.system("cd / && bash /usr/local/bin/mp_update")
         # 重启系统
-        os.system("bash /usr/local/bin/mp_update")
-
-        if channel and userid:
-            self.post_message(Notification(channel=channel,
-                                           title="暂无新版本！", userid=userid))
-            self.remove_cache(self._update_file)
+        SystemUtils.restart()
 
     def version(self, channel: MessageChannel, userid: Union[int, str]):
         """

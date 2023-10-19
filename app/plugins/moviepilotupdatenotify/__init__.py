@@ -1,3 +1,5 @@
+import datetime
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -81,18 +83,21 @@ class MoviePilotUpdateNotify(_PluginBase):
 
         # 本地版本
         local_version = SystemChain().get_local_version()
-        if release_version == local_version:
+        if local_version and release_version <= local_version:
             logger.info(f"当前版本：{local_version} 远程版本：{release_version} 停止运行")
             return
 
         # 推送更新消息
         if self._notify:
+            # 将时间字符串转为datetime对象
+            update_time = datetime.datetime.strptime(update_time, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
             self.post_message(
                 mtype=NotificationType.SiteMessage,
                 title="【MoviePilot更新通知】",
                 text=f"{release_version} \n"
                      f"\n"
                      f"{description} \n"
+                     f"\n"
                      f"{update_time}")
 
         # 自动更新
@@ -131,91 +136,91 @@ class MoviePilotUpdateNotify(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         return [
-            {
-                'component': 'VForm',
-                'content': [
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'enabled',
-                                            'label': '启用插件',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'update',
-                                            'label': '自动更新',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'notify',
-                                            'label': '发送通知',
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'cron',
-                                            'label': '检查周期',
-                                            'placeholder': '5位cron表达式'
-                                        }
-                                    }
-                                ]
-                            },
-                        ]
-                    }
-                ]
-            }
-        ], {
-            "enabled": False,
-            "update": False,
-            "notify": False,
-            "cron": "0 9 * * *"
-        }
+                   {
+                       'component': 'VForm',
+                       'content': [
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'enabled',
+                                                   'label': '启用插件',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'update',
+                                                   'label': '自动更新',
+                                               }
+                                           }
+                                       ]
+                                   },
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                           'md': 4
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VSwitch',
+                                               'props': {
+                                                   'model': 'notify',
+                                                   'label': '发送通知',
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VTextField',
+                                               'props': {
+                                                   'model': 'cron',
+                                                   'label': '检查周期',
+                                                   'placeholder': '5位cron表达式'
+                                               }
+                                           }
+                                       ]
+                                   },
+                               ]
+                           }
+                       ]
+                   }
+               ], {
+                   "enabled": False,
+                   "update": False,
+                   "notify": False,
+                   "cron": "0 9 * * *"
+               }
 
     def get_page(self) -> List[dict]:
         pass
