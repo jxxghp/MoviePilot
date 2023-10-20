@@ -14,7 +14,7 @@ from python_hosts import Hosts, HostsEntry
 from requests import Response
 
 from app.core.config import settings
-from app.core.event import eventmanager
+from app.core.event import eventmanager, Event
 from app.log import logger
 from app.plugins import _PluginBase
 from app.schemas.types import EventType, NotificationType
@@ -110,7 +110,8 @@ class CloudflareSpeedTest(_PluginBase):
                 self._scheduler.print_jobs()
                 self._scheduler.start()
 
-    def __cloudflareSpeedTest(self):
+    @eventmanager.register(EventType.CloudFlareSpeedTest)
+    def __cloudflareSpeedTest(self, event: Event = None):
         """
         CloudflareSpeedTest优选
         """
@@ -129,6 +130,12 @@ class CloudflareSpeedTest(_PluginBase):
         if not self._cf_ip:
             logger.error("CloudflareSpeedTest加载成功，首次运行，需要配置优选ip")
             return
+
+        if event and event.event_data:
+            logger.info("收到命令，开始Cloudflare IP优选 ...")
+            self.post_message(channel=event.event_data.get("channel"),
+                              title="开始Cloudflare IP优选 ...",
+                              userid=event.event_data.get("user"))
 
         # ipv4和ipv6必须其一
         if not self._ipv4 and not self._ipv6:
@@ -470,7 +477,16 @@ class CloudflareSpeedTest(_PluginBase):
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
-        pass
+        """
+        定义远程控制命令
+        :return: 命令关键字、事件、描述、附带数据
+        """
+        return [{
+            "cmd": "/cloudflare_speedtest",
+            "event": EventType.CloudFlareSpeedTest,
+            "desc": "Cloudflare IP优选",
+            "data": {}
+        }]
 
     def get_api(self) -> List[Dict[str, Any]]:
         pass
@@ -759,10 +775,3 @@ class CloudflareSpeedTest(_PluginBase):
                 self._scheduler = None
         except Exception as e:
             logger.error("退出插件失败：%s" % str(e))
-
-    @eventmanager.register(EventType.CloudFlareSpeedTest)
-    def auto_cloudflare_speedtest(self, event):
-        """
-        触发Cloudflare IP优选
-        """
-        self.__cloudflareSpeedTest()
