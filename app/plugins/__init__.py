@@ -5,7 +5,6 @@ from typing import Any, List, Dict, Tuple
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.event import EventManager
-from app.db.models import Base
 from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
@@ -141,7 +140,7 @@ class _PluginBase(metaclass=ABCMeta):
             data_path.mkdir(parents=True)
         return data_path
 
-    def save_data(self, key: str, value: Any, plugin_id: str = None) -> Base:
+    def save_data(self, key: str, value: Any, plugin_id: str = None):
         """
         保存插件数据
         :param key: 数据key
@@ -150,7 +149,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
-        return self.plugindata.save(plugin_id, key, value)
+        self.plugindata.save(plugin_id, key, value)
 
     def get_data(self, key: str, plugin_id: str = None) -> Any:
         """

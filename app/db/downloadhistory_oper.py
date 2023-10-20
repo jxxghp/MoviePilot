@@ -24,12 +24,11 @@ class DownloadHistoryOper(DbOper):
         """
         return DownloadHistory.get_by_hash(self._db, download_hash)
 
-    def add(self, **kwargs) -> DownloadHistory:
+    def add(self, **kwargs):
         """
         新增下载历史
         """
-        downloadhistory = DownloadHistory(**kwargs)
-        return downloadhistory.create(self._db)
+        DownloadHistory(**kwargs).create(self._db)
 
     def add_files(self, file_items: List[dict]):
         """

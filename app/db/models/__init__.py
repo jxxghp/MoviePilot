@@ -12,9 +12,8 @@ class Base:
     __name__: str
 
     @db_update
-    def create(self, db: Session) -> Self:
+    def create(self, db: Session):
         db.add(self)
-        return self
 
     @classmethod
     @db_query

@@ -43,14 +43,14 @@ class TransferHistoryOper(DbOper):
         """
         return TransferHistory.list_by_hash(self._db, download_hash)
 
-    def add(self, **kwargs) -> TransferHistory:
+    def add(self, **kwargs):
         """
         新增转移历史
         """
         kwargs.update({
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         })
-        return TransferHistory(**kwargs).create(self._db)
+        TransferHistory(**kwargs).create(self._db)
 
     def statistic(self, days: int = 7) -> List[Any]:
         """
@@ -103,7 +103,8 @@ class TransferHistoryOper(DbOper):
         kwargs.update({
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         })
-        return TransferHistory(**kwargs).create(self._db)
+        TransferHistory(**kwargs).create(self._db)
+        return TransferHistory.get_by_src(self._db, kwargs.get("src"))
 
     def update_download_hash(self, historyid, download_hash):
         """
