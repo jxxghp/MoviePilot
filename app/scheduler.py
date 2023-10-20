@@ -60,6 +60,9 @@ class Scheduler(metaclass=Singleton):
             "subscribe_search": {
                 "func": SubscribeChain().search,
                 "running": False,
+                "kwargs": {
+                    "state": "R"
+                }
             },
             "subscribe_refresh": {
                 "func": SubscribeChain().refresh,
@@ -218,6 +221,8 @@ class Scheduler(metaclass=Singleton):
             return
         self._jobs[job_id]["running"] = True
         try:
+            if not kwargs:
+                kwargs = job.get("kwargs") or {}
             job["func"](*args, **kwargs)
         except Exception as e:
             logger.error(f"定时任务 {job_id} 执行失败：{str(e)}")

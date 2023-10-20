@@ -103,10 +103,7 @@ class Command(metaclass=Singleton):
                 "id": "subscribe_search",
                 "type": "scheduler",
                 "description": "搜索订阅",
-                "category": "订阅",
-                "kwargs": {
-                    'state': 'R'
-                }
+                "category": "订阅"
             },
             "/subscribe_delete": {
                 "func": SubscribeChain().remote_delete,
@@ -233,7 +230,7 @@ class Command(metaclass=Singleton):
                 )
 
             # 执行定时任务
-            self.scheduler.start(job_id=command.get("id"), **command.get("kwargs", {}))
+            self.scheduler.start(job_id=command.get("id"))
 
             if userid:
                 self.chain.post_message(
