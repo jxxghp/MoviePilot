@@ -732,13 +732,11 @@ class AutoSignIn(_PluginBase):
 
                 if 'Cookie已失效' in str(s) and site_id:
                     # 触发自动登录插件登录
-                    autologin = self.get_config("AutoLogin")
-                    if autologin and autologin.get("enabled") and autologin.get("siteconf"):
-                        logger.info(f"触发站点 {site_name} 自动登录更新Cookie和Ua")
-                        self.eventmanager.send_event(EventType.SiteLogin,
-                                                     {
-                                                         "site_id": site_id
-                                                     })
+                    logger.info(f"触发站点 {site_name} 自动登录更新Cookie和Ua")
+                    self.eventmanager.send_event(EventType.SiteLogin,
+                                                 {
+                                                     "site_id": site_id
+                                                 })
                 # 记录本次命中重试关键词的站点
                 if self._retry_keyword:
                     if site_id:
