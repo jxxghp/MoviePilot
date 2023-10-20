@@ -774,7 +774,7 @@ class AutoSignIn(_PluginBase):
 
             # 自动Cloudflare IP优选
             if self._auto_cf and int(self._auto_cf) > 0 and retry_msg and len(retry_msg) >= int(self._auto_cf):
-                EventManager().send_event(EventType.CloudFlareSpeedTest, {})
+                self.eventmanager.send_event(EventType.CloudFlareSpeedTest, {})
 
             # 发送通知
             if self._notify:
