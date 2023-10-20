@@ -567,8 +567,8 @@ class MediaSyncDel(_PluginBase):
         # 开始删除
         image = 'https://emby.media/notificationicon.png'
         year = None
-        del_cnt = 0
-        stop_cnt = 0
+        del_torrent_hashs = []
+        stop_torrent_hashs = []
         error_cnt = 0
         for transferhis in transfer_history:
             title = transferhis.title
@@ -590,15 +590,16 @@ class MediaSyncDel(_PluginBase):
                     if transferhis.download_hash:
                         try:
                             # 2、判断种子是否被删除完
-                            delete_flag, success_flag, handle_cnt = self.handle_torrent(src=transferhis.src,
-                                                                                        torrent_hash=transferhis.download_hash)
+                            delete_flag, success_flag, handle_torrent_hashs = self.handle_torrent(
+                                src=transferhis.src,
+                                torrent_hash=transferhis.download_hash)
                             if not success_flag:
                                 error_cnt += 1
                             else:
                                 if delete_flag:
-                                    del_cnt += handle_cnt
+                                    del_torrent_hashs += handle_torrent_hashs
                                 else:
-                                    stop_cnt += handle_cnt
+                                    stop_torrent_hashs += handle_torrent_hashs
                         except Exception as e:
                             logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
 
@@ -615,10 +616,16 @@ class MediaSyncDel(_PluginBase):
                     image = self.get_tmdbimage_url(images[-1].get("file_path"), prefix="original")
 
             torrent_cnt_msg = ""
-            if del_cnt:
-                torrent_cnt_msg += f"删除种子{del_cnt}个\n"
-            if stop_cnt:
-                torrent_cnt_msg += f"暂停种子{stop_cnt}个\n"
+            if del_torrent_hashs:
+                torrent_cnt_msg += f"删除种子{len(set(del_torrent_hashs))}个\n"
+            if stop_torrent_hashs:
+                stop_cnt = 0
+                # 排除已删除
+                for stop_hash in set(stop_torrent_hashs):
+                    if stop_hash not in set(del_torrent_hashs):
+                        stop_cnt += 1
+                if stop_cnt > 0:
+                    torrent_cnt_msg += f"暂停种子{stop_cnt}个\n"
             if error_cnt:
                 torrent_cnt_msg += f"删种失败{error_cnt}个\n"
             # 发送通知
@@ -818,8 +825,8 @@ class MediaSyncDel(_PluginBase):
 
             # 开始删除
             image = 'https://emby.media/notificationicon.png'
-            del_cnt = 0
-            stop_cnt = 0
+            del_torrent_hashs = []
+            stop_torrent_hashs = []
             error_cnt = 0
             for transferhis in transfer_history:
                 title = transferhis.title
@@ -839,15 +846,16 @@ class MediaSyncDel(_PluginBase):
                         if transferhis.download_hash:
                             try:
                                 # 2、判断种子是否被删除完
-                                delete_flag, success_flag, handle_cnt = self.handle_torrent(src=transferhis.src,
-                                                                                            torrent_hash=transferhis.download_hash)
+                                delete_flag, success_flag, handle_torrent_hashs = self.handle_torrent(
+                                    src=transferhis.src,
+                                    torrent_hash=transferhis.download_hash)
                                 if not success_flag:
                                     error_cnt += 1
                                 else:
                                     if delete_flag:
-                                        del_cnt += handle_cnt
+                                        del_torrent_hashs += handle_torrent_hashs
                                     else:
-                                        stop_cnt += handle_cnt
+                                        stop_torrent_hashs += handle_torrent_hashs
                             except Exception as e:
                                 logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
 
@@ -856,12 +864,16 @@ class MediaSyncDel(_PluginBase):
             # 发送消息
             if self._notify:
                 torrent_cnt_msg = ""
-                if del_cnt:
-                    torrent_cnt_msg += f"删除种子{del_cnt}个\n"
-                if stop_cnt:
-                    torrent_cnt_msg += f"暂停种子{stop_cnt}个\n"
-                if error_cnt:
-                    torrent_cnt_msg += f"删种失败{error_cnt}个\n"
+                if del_torrent_hashs:
+                    torrent_cnt_msg += f"删除种子{len(set(del_torrent_hashs))}个\n"
+                if stop_torrent_hashs:
+                    stop_cnt = 0
+                    # 排除已删除
+                    for stop_hash in set(stop_torrent_hashs):
+                        if stop_hash not in set(del_torrent_hashs):
+                            stop_cnt += 1
+                    if stop_cnt > 0:
+                        torrent_cnt_msg += f"暂停种子{stop_cnt}个\n"
                 self.post_message(
                     mtype=NotificationType.MediaServer,
                     title="媒体库同步删除任务完成",
@@ -901,7 +913,7 @@ class MediaSyncDel(_PluginBase):
                                          plugin_id=plugin_id)
         logger.info(f"查询到 {history_key} 转种历史 {transfer_history}")
 
-        handle_cnt = 0
+        handle_torrent_hashs = []
         try:
             # 删除本次种子记录
             self._downloadhis.delete_file_by_fullpath(fullpath=src)
@@ -946,7 +958,7 @@ class MediaSyncDel(_PluginBase):
                         # 删除源种子
                         logger.info(f"删除源下载器下载任务：{settings.DOWNLOADER} - {torrent_hash}")
                         self.chain.remove_torrents(torrent_hash)
-                        handle_cnt += 1
+                        handle_torrent_hashs.append(torrent_hash)
 
                     # 删除转种后任务
                     logger.info(f"删除转种后下载任务：{download} - {download_id}")
@@ -957,7 +969,7 @@ class MediaSyncDel(_PluginBase):
                     else:
                         self.qb.delete_torrents(delete_file=True,
                                                 ids=download_id)
-                    handle_cnt += 1
+                    handle_torrent_hashs.append(download_id)
                 else:
                     # 暂停种子
                     # 转种后未删除源种时，同步暂停源种
@@ -967,7 +979,7 @@ class MediaSyncDel(_PluginBase):
                         # 暂停源种子
                         logger.info(f"暂停源下载器下载任务：{settings.DOWNLOADER} - {torrent_hash}")
                         self.chain.stop_torrents(torrent_hash)
-                        handle_cnt += 1
+                        handle_torrent_hashs.append(torrent_hash)
 
                     logger.info(f"暂停转种后下载任务：{download} - {download_id}")
                     # 删除转种后下载任务
@@ -975,7 +987,7 @@ class MediaSyncDel(_PluginBase):
                         self.tr.stop_torrents(ids=download_id)
                     else:
                         self.qb.stop_torrents(ids=download_id)
-                    handle_cnt += 1
+                    handle_torrent_hashs.append(download_id)
             else:
                 # 未转种de情况
                 if delete_flag:
@@ -986,20 +998,20 @@ class MediaSyncDel(_PluginBase):
                     # 暂停源种子
                     logger.info(f"暂停源下载器下载任务：{download} - {download_id}")
                     self.chain.stop_torrents(download_id)
-                handle_cnt += 1
+                handle_torrent_hashs.append(download_id)
 
             # 处理辅种
             handle_cnt = self.__del_seed(download=download,
                                          download_id=download_id,
                                          action_flag="del" if delete_flag else 'stop',
-                                         handle_cnt=handle_cnt)
+                                         handle_torrent_hashs=handle_torrent_hashs)
 
             return delete_flag, True, handle_cnt
         except Exception as e:
             logger.error(f"删种失败： {str(e)}")
             return False, False, 0
 
-    def __del_seed(self, download, download_id, action_flag, handle_cnt):
+    def __del_seed(self, download, download_id, action_flag, handle_torrent_hashs):
         """
         删除辅种
         """
@@ -1022,7 +1034,7 @@ class MediaSyncDel(_PluginBase):
 
                 # 删除辅种历史
                 for torrent in torrents:
-                    handle_cnt += 1
+                    handle_torrent_hashs.append(torrent)
                     if str(download) == "qbittorrent":
                         # 删除辅种
                         if action_flag == "del":
@@ -1056,7 +1068,7 @@ class MediaSyncDel(_PluginBase):
             else:
                 self.del_data(key=history_key,
                               plugin_id=plugin_id)
-        return handle_cnt
+        return handle_torrent_hashs
 
     @staticmethod
     def parse_emby_log(last_time):
