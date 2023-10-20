@@ -106,12 +106,12 @@ class SystemChain(ChainBase, metaclass=Singleton):
             try:
                 with open(version_file, 'rb') as f:
                     version = f.read()
-                pattern = r"v(\d+\.\d+\.\d+)"
+                pattern = r"'([^']*)'"
                 match = re.search(pattern, str(version))
 
                 if match:
                     version = match.group(1)
-                    return f"v{version}"
+                    return version
                 else:
                     logger.warn("未找到版本号")
                     return None
