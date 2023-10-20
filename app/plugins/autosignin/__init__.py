@@ -750,6 +750,15 @@ class AutoSignIn(_PluginBase):
                 elif '已签到' in s:
                     already_sign_msg.append(s)
                 else:
+                    if 'Cookie已失效' in s and site_id:
+                        # 触发自动登录插件登录
+                        autologin = self.get_config("AutoLogin")
+                        if autologin and autologin.get("enabled") and autologin.get("siteconf"):
+                            logger.info(f"触发站点 {site_name} 自动登录更新Cookie和Ua")
+                            self.eventmanager.send_event(EventType.SiteLogin,
+                                                         {
+                                                             "site_id": site_id
+                                                         })
                     failed_msg.append(s)
 
             if not self._retry_keyword:

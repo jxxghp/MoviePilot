@@ -53,8 +53,8 @@ class HD4fans(_ISiteSigninHandler):
             return False, '签到失败，请检查站点连通性'
 
         if "login.php" in html_text:
-            logger.error(f"{site} 签到失败，cookie失效")
-            return False, '签到失败，cookie失效'
+            logger.error(f"{site} 签到失败，Cookie已失效")
+            return False, '签到失败，Cookie已失效'
 
         # 判断是否已签到
         if self._repeat_text in html_text:

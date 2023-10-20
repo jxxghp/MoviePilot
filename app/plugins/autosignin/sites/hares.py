@@ -53,8 +53,8 @@ class Hares(_ISiteSigninHandler):
             return False, '模拟访问失败，请检查站点连通性'
 
         if "login.php" in html_text:
-            logger.error(f"{site} 模拟访问失败，Cookie失效")
-            return False, '模拟访问失败，Cookie失效'
+            logger.error(f"{site} 模拟访问失败，Cookie已失效")
+            return False, '模拟访问失败，Cookie已失效'
 
         # if self._sign_text in html_res.text:
         #     logger.info(f"今日已签到")

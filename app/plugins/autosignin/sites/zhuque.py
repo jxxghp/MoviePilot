@@ -50,8 +50,8 @@ class ZhuQue(_ISiteSigninHandler):
             return False, '模拟登录失败，请检查站点连通性'
 
         if "login.php" in html_text:
-            logger.error(f"{site} 模拟登录失败，Cookie失效")
-            return False, '模拟登录失败，Cookie失效'
+            logger.error(f"{site} 模拟登录失败，Cookie已失效")
+            return False, '模拟登录失败，Cookie已失效'
 
         html = etree.HTML(html_text)
 
