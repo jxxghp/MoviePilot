@@ -447,13 +447,13 @@ class DownloadChain(ChainBase):
                                 logger.info(f"{meta.org_string} 解析文件集数为 {torrent_episodes}")
                                 if not torrent_episodes:
                                     continue
-                                # 总集数
+                                # 更新集数范围
+                                begin_ep = min(torrent_episodes)
+                                end_ep = max(torrent_episodes)
+                                meta.set_episodes(begin=begin_ep, end=end_ep)
+                                # 需要总集数
                                 need_total = __get_season_episodes(need_tmdbid, torrent_season[0])
                                 if len(torrent_episodes) < need_total:
-                                    # 更新集数范围
-                                    begin_ep = min(torrent_episodes)
-                                    end_ep = max(torrent_episodes)
-                                    meta.set_episodes(begin=begin_ep, end=end_ep)
                                     logger.info(
                                         f"{meta.org_string} 解析文件集数发现不是完整合集")
                                     continue
@@ -610,11 +610,12 @@ class DownloadChain(ChainBase):
                             )
                             if not download_id:
                                 continue
-                            # 把识别的集更新到上下文
-                            context.meta_info.begin_episode = min(selected_episodes)
-                            context.meta_info.end_episode = max(selected_episodes)
                             # 下载成功
                             downloaded_list.append(context)
+                            # 更新种子集数范围
+                            begin_ep = min(torrent_episodes)
+                            end_ep = max(torrent_episodes)
+                            meta.set_episodes(begin=begin_ep, end=end_ep)
                             # 更新仍需集数
                             need_episodes = __update_episodes(_tmdbid=need_tmdbid,
                                                               _need=need_episodes,
