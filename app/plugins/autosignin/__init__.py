@@ -729,6 +729,14 @@ class AutoSignIn(_PluginBase):
                 site_id = None
                 if site_name:
                     site_id = sites.get(site_name)
+
+                if 'Cookie已失效' in str(s) and site_id:
+                    # 触发自动登录插件登录
+                    logger.info(f"触发站点 {site_name} 自动登录更新Cookie和Ua")
+                    self.eventmanager.send_event(EventType.SiteLogin,
+                                                 {
+                                                     "site_id": site_id
+                                                 })
                 # 记录本次命中重试关键词的站点
                 if self._retry_keyword:
                     if site_id:
@@ -740,25 +748,16 @@ class AutoSignIn(_PluginBase):
                             retry_msg.append(s)
                             continue
 
-                if "登录成功" in s:
+                if "登录成功" in str(s):
                     login_success_msg.append(s)
-                elif "仿真签到成功" in s:
+                elif "仿真签到成功" in str(s):
                     fz_sign_msg.append(s)
                     continue
-                elif "签到成功" in s:
+                elif "签到成功" in str(s):
                     sign_success_msg.append(s)
-                elif '已签到' in s:
+                elif '已签到' in str(s):
                     already_sign_msg.append(s)
                 else:
-                    if 'Cookie已失效' in s and site_id:
-                        # 触发自动登录插件登录
-                        autologin = self.get_config("AutoLogin")
-                        if autologin and autologin.get("enabled") and autologin.get("siteconf"):
-                            logger.info(f"触发站点 {site_name} 自动登录更新Cookie和Ua")
-                            self.eventmanager.send_event(EventType.SiteLogin,
-                                                         {
-                                                             "site_id": site_id
-                                                         })
                     failed_msg.append(s)
 
             if not self._retry_keyword:
@@ -774,8 +773,8 @@ class AutoSignIn(_PluginBase):
                            })
 
             # 自动Cloudflare IP优选
-            if self._auto_cf and self._auto_cf > 0 and retry_msg and len(retry_msg) > self._auto_cf:
-                EventManager().send_event(EventType.CloudFlareSpeedTest, {})
+            if self._auto_cf and int(self._auto_cf) > 0 and retry_msg and len(retry_msg) >= int(self._auto_cf):
+                self.eventmanager.send_event(EventType.CloudFlareSpeedTest, {})
 
             # 发送通知
             if self._notify:
