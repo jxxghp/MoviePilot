@@ -52,8 +52,8 @@ class HDChina(_ISiteSigninHandler):
                 cookie += sub_str + ";"
 
         if "hdchina=" not in cookie:
-            logger.error(f"{site} 签到失败，Cookie失效")
-            return False, '签到失败，Cookie失效'
+            logger.error(f"{site} 签到失败，Cookie已失效")
+            return False, '签到失败，Cookie已失效'
 
         site_cookie = cookie
         # 获取页面html

@@ -46,7 +46,10 @@ class EventType(Enum):
     NameRecognizeResult = "name.recognize.result"
     # 目录监控同步
     DirectorySync = "directory.sync"
-
+    # Cloudflare IP优选
+    CloudFlareSpeedTest = "cloudflare.speedtest"
+    # 站点自动登录更新Cookie、Ua
+    SiteLogin = "site.login"
 
 # 系统配置Key字典
 class SystemConfigKey(Enum):

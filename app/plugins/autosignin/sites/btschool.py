@@ -51,8 +51,8 @@ class BTSchool(_ISiteSigninHandler):
             return False, '签到失败，请检查站点连通性'
 
         if "login.php" in html_text:
-            logger.error(f"{site} 签到失败，Cookie失效")
-            return False, '签到失败，Cookie失效'
+            logger.error(f"{site} 签到失败，Cookie已失效")
+            return False, '签到失败，Cookie已失效'
 
         # 已签到
         if self._sign_text not in html_text:

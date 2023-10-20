@@ -14,6 +14,7 @@ from python_hosts import Hosts, HostsEntry
 from requests import Response
 
 from app.core.config import settings
+from app.core.event import eventmanager, Event
 from app.log import logger
 from app.plugins import _PluginBase
 from app.schemas.types import EventType, NotificationType
@@ -109,7 +110,8 @@ class CloudflareSpeedTest(_PluginBase):
                 self._scheduler.print_jobs()
                 self._scheduler.start()
 
-    def __cloudflareSpeedTest(self):
+    @eventmanager.register(EventType.CloudFlareSpeedTest)
+    def __cloudflareSpeedTest(self, event: Event = None):
         """
         CloudflareSpeedTest优选
         """
@@ -128,6 +130,12 @@ class CloudflareSpeedTest(_PluginBase):
         if not self._cf_ip:
             logger.error("CloudflareSpeedTest加载成功，首次运行，需要配置优选ip")
             return
+
+        if event and event.event_data:
+            logger.info("收到命令，开始Cloudflare IP优选 ...")
+            self.post_message(channel=event.event_data.get("channel"),
+                              title="开始Cloudflare IP优选 ...",
+                              userid=event.event_data.get("user"))
 
         # ipv4和ipv6必须其一
         if not self._ipv4 and not self._ipv6:
@@ -154,7 +162,8 @@ class CloudflareSpeedTest(_PluginBase):
             # 执行优选命令，-dd不测速
             if SystemUtils.is_windows():
                 cf_command = f'cd \"{self._cf_path}\" && CloudflareST {self._additional_args} -o \"{self._result_file}\"' + (
-                    f' -f \"{self._cf_ipv4}\"' if self._ipv4 else '') + (f' -f \"{self._cf_ipv6}\"' if self._ipv6 else '')
+                    f' -f \"{self._cf_ipv4}\"' if self._ipv4 else '') + (
+                                 f' -f \"{self._cf_ipv6}\"' if self._ipv6 else '')
             else:
                 cf_command = f'cd {self._cf_path} && chmod a+x {self._binary_name} && ./{self._binary_name} {self._additional_args} -o {self._result_file}' + (
                     f' -f {self._cf_ipv4}' if self._ipv4 else '') + (f' -f {self._cf_ipv6}' if self._ipv6 else '')
@@ -313,7 +322,7 @@ class CloudflareSpeedTest(_PluginBase):
         # 重装后数据库有版本数据，但是本地没有则重装
         if not install_flag and release_version == self._version and not Path(
                 f'{self._cf_path}/{self._binary_name}').exists() and not Path(
-                f'{self._cf_path}/CloudflareST.exe').exists():
+            f'{self._cf_path}/CloudflareST.exe').exists():
             logger.warn(f"未检测到CloudflareSpeedTest本地版本，重新安装")
             install_flag = True
 
@@ -468,7 +477,16 @@ class CloudflareSpeedTest(_PluginBase):
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
-        pass
+        """
+        定义远程控制命令
+        :return: 命令关键字、事件、描述、附带数据
+        """
+        return [{
+            "cmd": "/cloudflare_speedtest",
+            "event": EventType.CloudFlareSpeedTest,
+            "desc": "Cloudflare IP优选",
+            "data": {}
+        }]
 
     def get_api(self) -> List[Dict[str, Any]]:
         pass

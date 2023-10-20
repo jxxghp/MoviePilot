@@ -54,8 +54,8 @@ class HDArea(_ISiteSigninHandler):
             return False, '签到失败，请检查站点连通性'
 
         if "login.php" in html_res.text:
-            logger.error(f"{site} 签到失败，Cookie失效")
-            return False, '签到失败，Cookie失效'
+            logger.error(f"{site} 签到失败，Cookie已失效")
+            return False, '签到失败，Cookie已失效'
 
         # 判断是否已签到
         # '已连续签到278天，此次签到您获得了100魔力值奖励!'
