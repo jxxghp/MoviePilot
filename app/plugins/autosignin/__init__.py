@@ -72,6 +72,7 @@ class AutoSignIn(_PluginBase):
     _clean: bool = False
     _start_time: int = None
     _end_time: int = None
+    _auto_cf: int = 0
 
     def init_plugin(self, config: dict = None):
         self.sites = SitesHelper()
@@ -91,6 +92,7 @@ class AutoSignIn(_PluginBase):
             self._sign_sites = config.get("sign_sites") or []
             self._login_sites = config.get("login_sites") or []
             self._retry_keyword = config.get("retry_keyword")
+            self._auto_cf = config.get("auto_cf")
             self._clean = config.get("clean")
 
             # 过滤掉已删除的站点
@@ -206,6 +208,7 @@ class AutoSignIn(_PluginBase):
                 "sign_sites": self._sign_sites,
                 "login_sites": self._login_sites,
                 "retry_keyword": self._retry_keyword,
+                "auto_cf": self._auto_cf,
                 "clean": self._clean,
             }
         )
@@ -333,7 +336,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -350,7 +353,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -366,7 +369,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -375,6 +378,23 @@ class AutoSignIn(_PluginBase):
                                             'model': 'retry_keyword',
                                             'label': '重试关键词',
                                             'placeholder': '支持正则表达式，命中才重签'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'auto_cf',
+                                            'label': '自动优选',
+                                            'placeholder': '0为不开启，命中重试关键词达到数量自动进行Cloudflare IP优选'
                                         }
                                     }
                                 ]
@@ -443,6 +463,25 @@ class AutoSignIn(_PluginBase):
                                 ]
                             }
                         ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '自动Cloudflare IP优选，0=不开启，命中重试关键词数量大于该数量时自动执行Cloudflare IP优选。（需要开启且则正确配置Cloudflare IP优选插件和自定义Hosts插件）'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 ]
             }
@@ -450,6 +489,7 @@ class AutoSignIn(_PluginBase):
             "enabled": False,
             "notify": True,
             "cron": "",
+            "auto_cf": 0,
             "onlyonce": False,
             "clean": False,
             "queue_cnt": 5,
@@ -723,6 +763,10 @@ class AutoSignIn(_PluginBase):
                                "do": self._sign_sites if type == "签到" else self._login_sites,
                                "retry": retry_sites
                            })
+
+            # 自动Cloudflare IP优选
+            if self._auto_cf and self._auto_cf > 0 and retry_msg and len(retry_msg) > self._auto_cf:
+                EventManager().send_event(EventType.CloudFlareSpeedTest, {})
 
             # 发送通知
             if self._notify:

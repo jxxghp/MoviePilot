@@ -14,6 +14,7 @@ from python_hosts import Hosts, HostsEntry
 from requests import Response
 
 from app.core.config import settings
+from app.core.event import eventmanager
 from app.log import logger
 from app.plugins import _PluginBase
 from app.schemas.types import EventType, NotificationType
@@ -154,7 +155,8 @@ class CloudflareSpeedTest(_PluginBase):
             # 执行优选命令，-dd不测速
             if SystemUtils.is_windows():
                 cf_command = f'cd \"{self._cf_path}\" && CloudflareST {self._additional_args} -o \"{self._result_file}\"' + (
-                    f' -f \"{self._cf_ipv4}\"' if self._ipv4 else '') + (f' -f \"{self._cf_ipv6}\"' if self._ipv6 else '')
+                    f' -f \"{self._cf_ipv4}\"' if self._ipv4 else '') + (
+                                 f' -f \"{self._cf_ipv6}\"' if self._ipv6 else '')
             else:
                 cf_command = f'cd {self._cf_path} && chmod a+x {self._binary_name} && ./{self._binary_name} {self._additional_args} -o {self._result_file}' + (
                     f' -f {self._cf_ipv4}' if self._ipv4 else '') + (f' -f {self._cf_ipv6}' if self._ipv6 else '')
@@ -313,7 +315,7 @@ class CloudflareSpeedTest(_PluginBase):
         # 重装后数据库有版本数据，但是本地没有则重装
         if not install_flag and release_version == self._version and not Path(
                 f'{self._cf_path}/{self._binary_name}').exists() and not Path(
-                f'{self._cf_path}/CloudflareST.exe').exists():
+            f'{self._cf_path}/CloudflareST.exe').exists():
             logger.warn(f"未检测到CloudflareSpeedTest本地版本，重新安装")
             install_flag = True
 
@@ -757,3 +759,10 @@ class CloudflareSpeedTest(_PluginBase):
                 self._scheduler = None
         except Exception as e:
             logger.error("退出插件失败：%s" % str(e))
+
+    @eventmanager.register(EventType.CloudFlareSpeedTest)
+    def auto_cloudflare_speedtest(self, event):
+        """
+        触发Cloudflare IP优选
+        """
+        self.__cloudflareSpeedTest()
