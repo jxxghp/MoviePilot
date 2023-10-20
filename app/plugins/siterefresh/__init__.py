@@ -9,11 +9,11 @@ from app.schemas.types import EventType, NotificationType
 from app.utils.string import StringUtils
 
 
-class AutoLogin(_PluginBase):
+class SiteRefresh(_PluginBase):
     # 插件名称
-    plugin_name = "自动登录"
+    plugin_name = "站点自动更新"
     # 插件描述
-    plugin_desc = "配置站点用户名和密码、Cookie过期自动登录刷新Cookie和Ua。"
+    plugin_desc = "自动登录获取站点Cookie和User-Agent。"
     # 插件图标
     plugin_icon = "login.png"
     # 主题色
@@ -25,7 +25,7 @@ class AutoLogin(_PluginBase):
     # 作者主页
     author_url = "https://github.com/thsrite"
     # 插件配置项ID前缀
-    plugin_config_prefix = "autologin_"
+    plugin_config_prefix = "siterefresh_"
     # 加载顺序
     plugin_order = 2
     # 可使用的用户级别
