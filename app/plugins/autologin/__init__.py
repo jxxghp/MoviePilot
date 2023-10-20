@@ -106,7 +106,8 @@ class AutoLogin(_PluginBase):
 
             if self._notify:
                 self.post_message(mtype=NotificationType.SiteMessage,
-                                  title=f"站点 {site_name} 自动更新Cookie和Ua{'成功' if state else '失败'}")
+                                  title=f"站点 {site_name} Cookie已失效。",
+                                  text=f"自动更新Cookie和Ua{'成功' if state else '失败'}")
         else:
             logger.error(f"未获取到站点{site_name}配置，已跳过")
 
