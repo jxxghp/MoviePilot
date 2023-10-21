@@ -16,10 +16,11 @@ from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
 from app.schemas.types import MediaType, ProgressKey, SystemConfigKey
+from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
 
-class SearchChain(ChainBase):
+class SearchChain(ChainBase, metaclass=Singleton):
     """
     站点资源搜索处理链
     """
