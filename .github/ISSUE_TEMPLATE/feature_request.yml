@@ -22,6 +22,8 @@ body:
       options:
         - Docker
         - Windows
+    validations:
+      required: true
   - type: dropdown
     id: type
     attributes:
