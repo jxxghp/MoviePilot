@@ -62,17 +62,24 @@ def start_frontend():
     """
     if not SystemUtils.is_frozen():
         return
+    # 临时Nginx目录
     nginx_path = settings.ROOT_PATH / 'nginx'
     if not nginx_path.exists():
         return
+    # 配置目录下的Nginx目录
+    run_nginx_dir = settings.CONFIG_PATH.with_name('nginx')
+    if not run_nginx_dir.exists():
+        # 移动到配置目录
+        SystemUtils.move(nginx_path, run_nginx_dir)
+    # 启动Nginx
     import subprocess
     if SystemUtils.is_windows():
         subprocess.Popen("start nginx.exe",
-                         cwd=nginx_path,
+                         cwd=run_nginx_dir,
                          shell=True)
     else:
         subprocess.Popen("nohup ./nginx &",
-                         cwd=nginx_path,
+                         cwd=run_nginx_dir,
                          shell=True)
 
 
