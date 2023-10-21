@@ -336,7 +336,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 3
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -353,7 +353,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 3
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -369,7 +369,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 3
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -386,7 +386,7 @@ class AutoSignIn(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 3
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -394,7 +394,7 @@ class AutoSignIn(_PluginBase):
                                         'props': {
                                             'model': 'auto_cf',
                                             'label': '自动优选',
-                                            'placeholder': '0为不开启，命中重试关键词达到数量自动进行Cloudflare IP优选'
+                                            'placeholder': '命中重试关键词次数（0-关闭）'
                                         }
                                     }
                                 ]
@@ -476,7 +476,7 @@ class AutoSignIn(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
-                                            'text': '自动Cloudflare IP优选，0=不开启，命中重试关键词数量大于该数量时自动执行Cloudflare IP优选。（需要开启且则正确配置Cloudflare IP优选插件和自定义Hosts插件）'
+                                            'text': '自动优选：0-关闭，命中重试关键词次数大于该数量时自动执行Cloudflare IP优选（需要开启且则正确配置Cloudflare IP优选插件和自定义Hosts插件）'
                                         }
                                     }
                                 ]
