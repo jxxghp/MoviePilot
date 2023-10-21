@@ -55,8 +55,8 @@ jobs:
             MOVIEPILOT_VERSION=${{ env.app_version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha, scope=${{ github.workflow }}
-          cache-to: type=gha, scope=${{ github.workflow }}
+          cache-from: type=gha, scope=${{ github.workflow }}-docker
+          cache-to: type=gha, scope=${{ github.workflow }}-docker
 
   Windows-build:
     runs-on: windows-latest
