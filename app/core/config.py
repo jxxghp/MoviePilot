@@ -136,7 +136,7 @@ class Settings(BaseSettings):
     # 种子标签
     TORRENT_TAG: str = "MOVIEPILOT"
     # 下载保存目录，容器内映射路径需要一致
-    DOWNLOAD_PATH: str = "/downloads"
+    DOWNLOAD_PATH: str = None
     # 电影下载保存目录，容器内映射路径需要一致
     DOWNLOAD_MOVIE_PATH: str = None
     # 电视剧下载保存目录，容器内映射路径需要一致
@@ -275,7 +275,43 @@ class Settings(BaseSettings):
     def LIBRARY_PATHS(self) -> List[Path]:
         if self.LIBRARY_PATH:
             return [Path(path) for path in self.LIBRARY_PATH.split(",")]
-        return []
+        return [self.CONFIG_PATH / "library"]
+
+    @property
+    def SAVE_PATH(self) -> Path:
+        """
+        获取下载保存目录
+        """
+        if self.DOWNLOAD_PATH:
+            return Path(self.DOWNLOAD_PATH)
+        return self.CONFIG_PATH / "downloads"
+
+    @property
+    def SAVE_MOVIE_PATH(self) -> Path:
+        """
+        获取电影下载保存目录
+        """
+        if self.DOWNLOAD_MOVIE_PATH:
+            return Path(self.DOWNLOAD_MOVIE_PATH)
+        return self.SAVE_PATH
+
+    @property
+    def SAVE_TV_PATH(self) -> Path:
+        """
+        获取电视剧下载保存目录
+        """
+        if self.DOWNLOAD_TV_PATH:
+            return Path(self.DOWNLOAD_TV_PATH)
+        return self.SAVE_PATH
+
+    @property
+    def SAVE_ANIME_PATH(self) -> Path:
+        """
+        获取动漫下载保存目录
+        """
+        if self.DOWNLOAD_ANIME_PATH:
+            return Path(self.DOWNLOAD_ANIME_PATH)
+        return self.SAVE_TV_PATH
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -291,6 +327,12 @@ class Settings(BaseSettings):
         with self.LOG_PATH as p:
             if not p.exists():
                 p.mkdir(parents=True, exist_ok=True)
+        with self.SAVE_PATH as p:
+            if not p.exists():
+                p.mkdir(parents=True, exist_ok=True)
+        for path in self.LIBRARY_PATHS:
+            if not path.exists():
+                path.mkdir(parents=True, exist_ok=True)
 
     class Config:
         case_sensitive = True

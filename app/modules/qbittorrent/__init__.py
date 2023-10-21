@@ -123,7 +123,7 @@ class QbittorrentModule(_ModuleBase):
                 if content_path:
                     torrent_path = Path(content_path)
                 else:
-                    torrent_path = Path(settings.DOWNLOAD_PATH) / torrent.get('name')
+                    torrent_path = settings.SAVE_PATH / torrent.get('name')
                 ret_torrents.append(TransferTorrent(
                     title=torrent.get('name'),
                     path=torrent_path,
@@ -142,7 +142,7 @@ class QbittorrentModule(_ModuleBase):
                 if content_path:
                     torrent_path = Path(content_path)
                 else:
-                    torrent_path = Path(settings.DOWNLOAD_PATH) / torrent.get('name')
+                    torrent_path = settings.SAVE_PATH / torrent.get('name')
                 ret_torrents.append(TransferTorrent(
                     title=torrent.get('name'),
                     path=torrent_path,

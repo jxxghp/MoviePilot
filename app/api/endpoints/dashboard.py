@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends
@@ -61,7 +60,7 @@ def downloader(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     查询下载器信息
     """
     transfer_info = DashboardChain().downloader_info()
-    free_space = SystemUtils.free_space(Path(settings.DOWNLOAD_PATH))
+    free_space = SystemUtils.free_space(settings.SAVE_PATH)
     if transfer_info:
         return schemas.DownloaderInfo(
             download_speed=transfer_info.download_speed,

@@ -202,33 +202,31 @@ class DownloadChain(ChainBase):
                 # 开启下载二级目录
                 if _media.type == MediaType.MOVIE:
                     # 电影
-                    download_dir = Path(settings.DOWNLOAD_MOVIE_PATH or settings.DOWNLOAD_PATH) / _media.category
+                    download_dir = settings.SAVE_MOVIE_PATH / _media.category
                 else:
-                    if settings.DOWNLOAD_ANIME_PATH \
-                            and _media.genre_ids \
+                    if _media.genre_ids \
                             and set(_media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
                         # 动漫
-                        download_dir = Path(settings.DOWNLOAD_ANIME_PATH)
+                        download_dir = settings.SAVE_ANIME_PATH
                     else:
                         # 电视剧
-                        download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH) / _media.category
+                        download_dir = settings.SAVE_TV_PATH / _media.category
             elif _media:
                 # 未开启下载二级目录
                 if _media.type == MediaType.MOVIE:
                     # 电影
-                    download_dir = Path(settings.DOWNLOAD_MOVIE_PATH or settings.DOWNLOAD_PATH)
+                    download_dir = settings.SAVE_MOVIE_PATH
                 else:
-                    if settings.DOWNLOAD_ANIME_PATH \
-                            and _media.genre_ids \
+                    if _media.genre_ids \
                             and set(_media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
                         # 动漫
-                        download_dir = Path(settings.DOWNLOAD_ANIME_PATH)
+                        download_dir = settings.SAVE_ANIME_PATH
                     else:
                         # 电视剧
-                        download_dir = Path(settings.DOWNLOAD_TV_PATH or settings.DOWNLOAD_PATH)
+                        download_dir = settings.SAVE_TV_PATH
             else:
                 # 未识别
-                download_dir = Path(settings.DOWNLOAD_PATH)
+                download_dir = settings.SAVE_PATH
         else:
             # 自定义下载目录
             download_dir = Path(save_path)
