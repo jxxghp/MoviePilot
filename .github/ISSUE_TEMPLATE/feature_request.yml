@@ -15,6 +15,16 @@ body:
     validations:
       required: true
   - type: dropdown
+    id: environment
+    attributes:
+      label: 运行环境
+      description: 当前程序运行环境
+      options:
+        - Docker
+        - Windows
+    validations:
+      required: true
+  - type: dropdown
     id: type
     attributes:
       label: 功能改进类型
@@ -22,7 +32,6 @@ body:
       options:
         - 主程序
         - 插件
-        - Docker
         - 其他
     validations:
       required: true

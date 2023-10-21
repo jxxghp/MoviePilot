@@ -34,6 +34,16 @@ body:
     validations:
       required: true
   - type: dropdown
+    id: environment
+    attributes:
+      label: 运行环境
+      description: 当前程序运行环境
+      options:
+        - Docker
+        - Windows
+    validations:
+      required: true
+  - type: dropdown
     id: type
     attributes:
       label: 问题类型
@@ -41,7 +51,6 @@ body:
       options:
         - 主程序运行问题
         - 插件问题
-        - Docker或运行环境问题
         - 其他问题
     validations:
       required: true
