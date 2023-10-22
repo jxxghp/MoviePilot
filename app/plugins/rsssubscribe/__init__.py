@@ -591,6 +591,7 @@ class RssSubscribe(_PluginBase):
                         page_url=link,
                         size=sise,
                         pubdate=pubdate.strftime("%Y-%m-%d %H:%M:%S") if pubdate else None,
+                        site_proxy=self._proxy,
                     )
                     # 过滤种子
                     if self._filter:
