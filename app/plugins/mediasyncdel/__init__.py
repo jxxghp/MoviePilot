@@ -601,7 +601,7 @@ class MediaSyncDel(_PluginBase):
                                 else:
                                     stop_torrent_hashs += handle_torrent_hashs
                         except Exception as e:
-                            logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
+                            logger.error("删除种子失败：%s" % str(e))
 
         logger.info(f"同步删除 {msg} 完成！")
 
@@ -771,6 +771,7 @@ class MediaSyncDel(_PluginBase):
                     os.path.abspath(media_path).startswith(os.path.abspath(path)) for path in
                     self._exclude_path.split(",")):
                 logger.info(f"媒体路径 {media_path} 已被排除，暂不处理")
+                self.save_data("last_time", last_del_time or datetime.datetime.now())
                 return
 
             # 处理路径映射 (处理同一媒体多分辨率的情况)
@@ -813,12 +814,14 @@ class MediaSyncDel(_PluginBase):
                     episode=media_episode,
                     dest=media_path)
             else:
+                self.save_data("last_time", last_del_time or datetime.datetime.now())
                 continue
 
             logger.info(f"正在同步删除 {msg}")
 
             if not transfer_history:
                 logger.info(f"未获取到 {msg} 转移记录")
+                self.save_data("last_time", last_del_time or datetime.datetime.now())
                 continue
 
             logger.info(f"获取到删除历史记录数量 {len(transfer_history)}")
@@ -833,6 +836,7 @@ class MediaSyncDel(_PluginBase):
                 if title not in media_name:
                     logger.warn(
                         f"当前转移记录 {transferhis.id} {title} {transferhis.tmdbid} 与删除媒体{media_name}不符，防误删，暂不自动删除")
+                    self.save_data("last_time", last_del_time or datetime.datetime.now())
                     continue
                 image = transferhis.image
                 # 0、删除转移记录
@@ -857,7 +861,7 @@ class MediaSyncDel(_PluginBase):
                                     else:
                                         stop_torrent_hashs += handle_torrent_hashs
                             except Exception as e:
-                                logger.error("删除种子失败，尝试删除源文件：%s" % str(e))
+                                logger.error("删除种子失败：%s" % str(e))
 
             logger.info(f"同步删除 {msg} 完成！")
 
