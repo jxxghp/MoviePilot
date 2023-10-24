@@ -60,6 +60,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 - **PUID**：运行程序用户的`uid`，默认`0`（仅支持环境变量配置）
 - **PGID**：运行程序用户的`gid`，默认`0`（仅支持环境变量配置）
 - **UMASK**：掩码权限，默认`000`，可以考虑设置为`022`（仅支持环境变量配置）
+- **WALLPAPER：** 登录首页电影海报，`tmdb`/`bing`，默认`tmdb`
 - **PROXY_HOST：** 网络代理，访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`（仅支持环境变量配置）
 - **MOVIEPILOT_AUTO_UPDATE**：重启更新，`true`/`false`，默认`true` **注意：如果出现网络问题可以配置`PROXY_HOST`**（仅支持环境变量配置）
 - **MOVIEPILOT_AUTO_UPDATE_DEV**：重启时更新到未发布的开发版本代码，`true`/`false`，默认`false`（仅支持环境变量配置）

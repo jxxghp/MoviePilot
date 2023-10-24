@@ -61,6 +61,18 @@ async def login_access_token(
     )
 
 
+@router.get("/wallpaper", summary="登录页面电影海报", response_model=schemas.Response)
+def wallpaper() -> Any:
+    """
+    获取登录页面电影海报
+    """
+    if settings.WALLPAPER == "tmdb":
+        return tmdb_wallpaper()
+    elif settings.WALLPAPER == "bing":
+        return bing_wallpaper()
+    return schemas.Response(success=False)
+
+
 @router.get("/bing", summary="Bing每日壁纸", response_model=schemas.Response)
 def bing_wallpaper() -> Any:
     """
@@ -68,8 +80,10 @@ def bing_wallpaper() -> Any:
     """
     url = WebUtils.get_bing_wallpaper()
     if url:
-        return schemas.Response(success=False,
-                                message=url)
+        return schemas.Response(
+            success=True,
+            message=url
+        )
     return schemas.Response(success=False)
 
 
