@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     SUPERUSER_PASSWORD: str = "password"
     # API密钥，需要更换
     API_TOKEN: str = "moviepilot"
+    # 登录页面电影海报,tmdb/bing
+    WALLPAPER: str = "tmdb"
     # 网络代理 IP:PORT
     PROXY_HOST: str = None
     # 媒体信息搜索来源
