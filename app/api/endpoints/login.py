@@ -67,17 +67,9 @@ def wallpaper() -> Any:
     获取登录页面电影海报
     """
     if settings.WALLPAPER == "tmdb":
-        wallpager = TmdbChain().get_random_wallpager()
-        if wallpager:
-            return schemas.Response(
-                success=True,
-                message=wallpager
-            )
+        return tmdb_wallpaper()
     elif settings.WALLPAPER == "bing":
-        url = WebUtils.get_bing_wallpaper()
-        if url:
-            return schemas.Response(success=False,
-                                    message=url)
+        return bing_wallpaper()
     return schemas.Response(success=False)
 
 
@@ -88,8 +80,10 @@ def bing_wallpaper() -> Any:
     """
     url = WebUtils.get_bing_wallpaper()
     if url:
-        return schemas.Response(success=False,
-                                message=url)
+        return schemas.Response(
+            success=True,
+            message=url
+        )
     return schemas.Response(success=False)
 
 
