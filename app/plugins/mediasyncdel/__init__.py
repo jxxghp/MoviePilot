@@ -1059,17 +1059,10 @@ class MediaSyncDel(_PluginBase):
                         if action_flag == "stop":
                             self.tr.stop_torrents(torrent)
                             logger.info(f"辅种：{downloader} - {torrent} 暂停")
-                # 删除本下载器辅种历史
-                if action_flag == "del":
-                    del history
                 break
 
-            # 更新辅种历史
-            if seed_history:
-                self.save_data(key=history_key,
-                               value=seed_history,
-                               plugin_id=plugin_id)
-            else:
+            # 删除辅种历史
+            if action_flag == "del":
                 self.del_data(key=history_key,
                               plugin_id=plugin_id)
         return handle_torrent_hashs
