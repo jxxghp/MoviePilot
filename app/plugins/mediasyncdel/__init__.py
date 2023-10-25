@@ -20,7 +20,7 @@ from app.modules.qbittorrent import Qbittorrent
 from app.modules.themoviedb.tmdbv3api import Episode
 from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
-from app.schemas.types import NotificationType, EventType, MediaType
+from app.schemas.types import NotificationType, EventType, MediaType, MediaImageType
 
 
 class MediaSyncDel(_PluginBase):
@@ -565,7 +565,7 @@ class MediaSyncDel(_PluginBase):
             return
 
         # 开始删除
-        image = 'https://emby.media/notificationicon.png'
+        image = None
         year = None
         del_torrent_hashs = []
         stop_torrent_hashs = []
@@ -576,7 +576,7 @@ class MediaSyncDel(_PluginBase):
                 logger.warn(
                     f"当前转移记录 {transferhis.id} {title} {transferhis.tmdbid} 与删除媒体{media_name}不符，防误删，暂不自动删除")
                 continue
-            image = transferhis.image
+            image = transferhis.image or image
             year = transferhis.year
 
             # 0、删除转移记录
@@ -614,6 +614,20 @@ class MediaSyncDel(_PluginBase):
                                              episode_num=episode_num)
                 if images:
                     image = self.get_tmdbimage_url(images[-1].get("file_path"), prefix="original")
+
+            if not image:
+                specific_image = self.chain.obtain_specific_image(
+                    mediaid=tmdb_id,
+                    mtype=MediaType.MOVIE if media_type in ["Movie", "MOV"] else MediaType.TV,
+                    image_type=MediaImageType.Backdrop,
+                    season=season_num,
+                    episode=episode_num
+                )
+                if specific_image:
+                    image = specific_image
+
+            if not image:
+                image = 'https://emby.media/notificationicon.png'
 
             torrent_cnt_msg = ""
             if del_torrent_hashs:
@@ -838,7 +852,7 @@ class MediaSyncDel(_PluginBase):
                         f"当前转移记录 {transferhis.id} {title} {transferhis.tmdbid} 与删除媒体{media_name}不符，防误删，暂不自动删除")
                     self.save_data("last_time", last_del_time or datetime.datetime.now())
                     continue
-                image = transferhis.image
+                image = transferhis.image or image
                 # 0、删除转移记录
                 self._transferhis.delete(transferhis.id)
 
