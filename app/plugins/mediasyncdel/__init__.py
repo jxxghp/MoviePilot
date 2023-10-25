@@ -276,6 +276,28 @@ class MediaSyncDel(_PluginBase):
                                 ]
                             }
                         ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '关于路径映射：'
+                                                    'emby:/data/series/A.mp4,'
+                                                    'moviepilot:/mnt/link/series/A.mp4。'
+                                                    '路径映射填/data:/mnt/link'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 ]
             }
@@ -561,7 +583,7 @@ class MediaSyncDel(_PluginBase):
         logger.info(f"正在同步删除{msg}")
 
         if not transfer_history:
-            logger.warn(f"{media_type} {media_name} 未获取到可删除数据，可使用媒体库刮削插件覆盖所有元数据")
+            logger.warn(f"{media_type} {media_name} 未获取到可删除数据，请检查路径映射是否配置错误，请检查tmdbid获取是否正确")
             return
 
         # 开始删除
