@@ -145,6 +145,26 @@ class CustomHosts(_PluginBase):
                                        ]
                                    }
                                ]
+                           },
+                           {
+                               'component': 'VRow',
+                               'content': [
+                                   {
+                                       'component': 'VCol',
+                                       'props': {
+                                           'cols': 12,
+                                       },
+                                       'content': [
+                                           {
+                                               'component': 'VAlert',
+                                               'props': {
+                                                   'text': 'host格式ip host，中间有空格！！！'
+                                                           '（注：容器运行则更新容器hosts！非宿主机！）'
+                                               }
+                                           }
+                                       ]
+                                   }
+                               ]
                            }
                        ]
                    }
@@ -211,7 +231,7 @@ class CustomHosts(_PluginBase):
                 # 添加新的Hosts
                 system_hosts.add(new_entrys)
                 system_hosts.write()
-                logger.info("更新系统hosts文件成功（注：容器运行则更新容器hosts！）")
+                logger.info("更新系统hosts文件成功")
             except Exception as err:
                 err_flag = True
                 logger.error(f"更新系统hosts文件失败：{str(err) or '请检查权限'}")

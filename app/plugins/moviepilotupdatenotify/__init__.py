@@ -1,5 +1,6 @@
 import datetime
 
+import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -91,7 +92,12 @@ class MoviePilotUpdateNotify(_PluginBase):
         # 推送更新消息
         if self._notify:
             # 将时间字符串转为datetime对象
-            update_time = datetime.datetime.strptime(update_time, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
+            dt = datetime.datetime.strptime(update_time, "%Y-%m-%dT%H:%M:%SZ")
+            # 设置时区
+            timezone = pytz.timezone(settings.TZ)
+            dt = dt.replace(tzinfo=timezone)
+            # 将datetime对象转换为带时区的字符串
+            update_time = dt.strftime("%Y-%m-%d %H:%M:%S")
             self.post_message(
                 mtype=NotificationType.SiteMessage,
                 title="【MoviePilot更新通知】",

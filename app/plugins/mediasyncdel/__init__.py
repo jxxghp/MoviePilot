@@ -20,7 +20,7 @@ from app.modules.qbittorrent import Qbittorrent
 from app.modules.themoviedb.tmdbv3api import Episode
 from app.modules.transmission import Transmission
 from app.plugins import _PluginBase
-from app.schemas.types import NotificationType, EventType, MediaType
+from app.schemas.types import NotificationType, EventType, MediaType, MediaImageType
 
 
 class MediaSyncDel(_PluginBase):
@@ -271,6 +271,28 @@ class MediaSyncDel(_PluginBase):
                                                     '2、日志同步需要配置检查周期，默认30分钟执行一次。'
                                                     '3、Scripter X方式需要emby安装并配置Scripter X插件，无需配置执行周期。'
                                                     '4、启用该插件后，非媒体服务器触发的源文件删除，也会同步处理下载器中的下载任务。'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '关于路径映射：'
+                                                    'emby:/data/series/A.mp4,'
+                                                    'moviepilot:/mnt/link/series/A.mp4。'
+                                                    '路径映射填/data:/mnt/link'
                                         }
                                     }
                                 ]
@@ -561,11 +583,12 @@ class MediaSyncDel(_PluginBase):
         logger.info(f"正在同步删除{msg}")
 
         if not transfer_history:
-            logger.warn(f"{media_type} {media_name} 未获取到可删除数据，可使用媒体库刮削插件覆盖所有元数据")
+            logger.warn(
+                f"{media_type} {media_name} 未获取到可删除数据，请检查路径映射是否配置错误，请检查tmdbid获取是否正确")
             return
 
         # 开始删除
-        image = 'https://emby.media/notificationicon.png'
+        image = None
         year = None
         del_torrent_hashs = []
         stop_torrent_hashs = []
@@ -576,7 +599,7 @@ class MediaSyncDel(_PluginBase):
                 logger.warn(
                     f"当前转移记录 {transferhis.id} {title} {transferhis.tmdbid} 与删除媒体{media_name}不符，防误删，暂不自动删除")
                 continue
-            image = transferhis.image
+            image = transferhis.image or image
             year = transferhis.year
 
             # 0、删除转移记录
@@ -605,15 +628,23 @@ class MediaSyncDel(_PluginBase):
 
         logger.info(f"同步删除 {msg} 完成！")
 
+        media_type = MediaType.MOVIE if media_type in ["Movie", "MOV"] else MediaType.TV
+
         # 发送消息
         if self._notify:
-            if media_type == "Episode":
-                # 根据tmdbid获取图片
-                images = self.episode.images(tv_id=tmdb_id,
-                                             season_num=season_num,
-                                             episode_num=episode_num)
-                if images:
-                    image = self.get_tmdbimage_url(images[-1].get("file_path"), prefix="original")
+            if not image or media_type == MediaType.TV:
+                specific_image = self.chain.obtain_specific_image(
+                    mediaid=tmdb_id,
+                    mtype=media_type,
+                    image_type=MediaImageType.Backdrop,
+                    season=season_num,
+                    episode=episode_num
+                )
+                if specific_image:
+                    image = specific_image
+
+            if not image:
+                image = 'https://emby.media/notificationicon.png'
 
             torrent_cnt_msg = ""
             if del_torrent_hashs:
@@ -643,7 +674,7 @@ class MediaSyncDel(_PluginBase):
         history = self.get_data('history') or []
 
         history.append({
-            "type": "电影" if media_type == "Movie" or media_type == "MOV" else "电视剧",
+            "type": media_type.value,
             "title": media_name,
             "year": year,
             "path": media_path,
@@ -838,7 +869,7 @@ class MediaSyncDel(_PluginBase):
                         f"当前转移记录 {transferhis.id} {title} {transferhis.tmdbid} 与删除媒体{media_name}不符，防误删，暂不自动删除")
                     self.save_data("last_time", last_del_time or datetime.datetime.now())
                     continue
-                image = transferhis.image
+                image = transferhis.image or image
                 # 0、删除转移记录
                 self._transferhis.delete(transferhis.id)
 

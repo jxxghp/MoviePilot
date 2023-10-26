@@ -350,6 +350,7 @@ class DownloadChain(ChainBase):
                     no_exists[_tmdbid].pop(_sea)
                 if not no_exists.get(_tmdbid) and no_exists.get(_tmdbid) is not None:
                     no_exists.pop(_tmdbid)
+                    break
             return need
 
         def __update_episodes(_tmdbid: int, _sea: int, _need: list, _current: set) -> list:
@@ -485,8 +486,9 @@ class DownloadChain(ChainBase):
                 need_tv = no_exists.get(need_tmdbid)
                 if not need_tv:
                     continue
+                need_tv_copy = copy.deepcopy(no_exists.get(need_tmdbid))
                 # 循环每一季
-                for sea, tv in need_tv.items():
+                for sea, tv in need_tv_copy.items():
                     # 当前需要季
                     need_season = sea
                     # 当前需要集
