@@ -298,6 +298,25 @@ class MediaSyncDel(_PluginBase):
                                 ]
                             }
                         ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '排除路径：命中排除路径后请求云盘删除插件删除云盘资源。'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 ]
             }
@@ -570,6 +589,16 @@ class MediaSyncDel(_PluginBase):
                 os.path.abspath(media_path).startswith(os.path.abspath(path)) for path in
                 self._exclude_path.split(",")):
             logger.info(f"媒体路径 {media_path} 已被排除，暂不处理")
+            # 发送消息通知网盘删除插件删除网盘资源
+            self.eventmanager.send_event(EventType.NetworkDiskDel,
+                                         {
+                                             "media_path": media_path,
+                                             "media_name": media_name,
+                                             "tmdb_id": tmdb_id,
+                                             "media_type": media_type,
+                                             "season_num": season_num,
+                                             "episode_num": episode_num,
+                                         })
             return
 
         # 查询转移记录

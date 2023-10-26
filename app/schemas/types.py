@@ -50,6 +50,9 @@ class EventType(Enum):
     CloudFlareSpeedTest = "cloudflare.speedtest"
     # 站点自动登录更新Cookie、Ua
     SiteLogin = "site.login"
+    # 网盘删除
+    NetworkDiskDel = "networkdisk.del"
+
 
 # 系统配置Key字典
 class SystemConfigKey(Enum):
