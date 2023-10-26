@@ -199,6 +199,8 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 - **BIG_MEMORY_MODE：** 大内存模式，默认为`false`，开启后会占用更多的内存，但响应速度会更快
 
+- **OVERWRITE_MODE：** 转移覆盖模式，默认为`nerver`，支持`nerver`/`size`/`always`，分别表示`不覆盖`/`根据大小覆盖（大覆盖小）`/`总是覆盖`
+
 - **MOVIE_RENAME_FORMAT：** 电影重命名格式
 
 `MOVIE_RENAME_FORMAT`支持的配置项：
