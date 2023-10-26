@@ -298,6 +298,25 @@ class MediaSyncDel(_PluginBase):
                                 ]
                             }
                         ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '排除路径：命中排除路径后请求云盘删除插件删除云盘资源。'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 ]
             }
@@ -559,17 +578,27 @@ class MediaSyncDel(_PluginBase):
         """
         执行删除逻辑
         """
-        if not media_type:
-            logger.error(f"{media_name} 同步删除失败，未获取到媒体类型")
-            return
-        if not tmdb_id or not str(tmdb_id).isdigit():
-            logger.error(f"{media_name} 同步删除失败，未获取到TMDB ID")
-            return
-
         if self._exclude_path and media_path and any(
                 os.path.abspath(media_path).startswith(os.path.abspath(path)) for path in
                 self._exclude_path.split(",")):
             logger.info(f"媒体路径 {media_path} 已被排除，暂不处理")
+            # 发送消息通知网盘删除插件删除网盘资源
+            self.eventmanager.send_event(EventType.NetworkDiskDel,
+                                         {
+                                             "media_path": media_path,
+                                             "media_name": media_name,
+                                             "tmdb_id": tmdb_id,
+                                             "media_type": media_type,
+                                             "season_num": season_num,
+                                             "episode_num": episode_num,
+                                         })
+            return
+
+        if not media_type:
+            logger.error(f"{media_name} 同步删除失败，未获取到媒体类型，请检查媒体是否刮削")
+            return
+        if not tmdb_id or not str(tmdb_id).isdigit():
+            logger.error(f"{media_name} 同步删除失败，未获取到TMDB ID，请检查媒体是否刮削")
             return
 
         # 查询转移记录
@@ -588,11 +617,11 @@ class MediaSyncDel(_PluginBase):
             return
 
         # 开始删除
-        image = None
         year = None
         del_torrent_hashs = []
         stop_torrent_hashs = []
         error_cnt = 0
+        image = 'https://emby.media/notificationicon.png'
         for transferhis in transfer_history:
             title = transferhis.title
             if title not in media_name:
@@ -632,19 +661,13 @@ class MediaSyncDel(_PluginBase):
 
         # 发送消息
         if self._notify:
-            if not image or media_type == MediaType.TV:
-                specific_image = self.chain.obtain_specific_image(
-                    mediaid=tmdb_id,
-                    mtype=media_type,
-                    image_type=MediaImageType.Backdrop,
-                    season=season_num,
-                    episode=episode_num
-                )
-                if specific_image:
-                    image = specific_image
-
-            if not image:
-                image = 'https://emby.media/notificationicon.png'
+            backrop_image = self.chain.obtain_specific_image(
+                mediaid=tmdb_id,
+                mtype=media_type,
+                image_type=MediaImageType.Backdrop,
+                season=season_num,
+                episode=episode_num
+            ) or image
 
             torrent_cnt_msg = ""
             if del_torrent_hashs:
@@ -663,7 +686,7 @@ class MediaSyncDel(_PluginBase):
             self.post_message(
                 mtype=NotificationType.MediaServer,
                 title="媒体库同步删除任务完成",
-                image=image,
+                image=backrop_image,
                 text=f"{msg}\n"
                      f"删除记录{len(transfer_history)}个\n"
                      f"{torrent_cnt_msg}"
@@ -673,6 +696,12 @@ class MediaSyncDel(_PluginBase):
         # 读取历史记录
         history = self.get_data('history') or []
 
+        # 获取poster
+        poster_image = self.chain.obtain_specific_image(
+            mediaid=tmdb_id,
+            mtype=media_type,
+            image_type=MediaImageType.Poster,
+        ) or image
         history.append({
             "type": media_type.value,
             "title": media_name,
@@ -680,7 +709,7 @@ class MediaSyncDel(_PluginBase):
             "path": media_path,
             "season": season_num,
             "episode": episode_num,
-            "image": image,
+            "image": poster_image,
             "del_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
         })
 

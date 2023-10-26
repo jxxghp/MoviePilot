@@ -50,6 +50,9 @@ class EventType(Enum):
     CloudFlareSpeedTest = "cloudflare.speedtest"
     # 站点自动登录更新Cookie、Ua
     SiteLogin = "site.login"
+    # 网盘删除
+    NetworkDiskDel = "networkdisk.del"
+
 
 # 系统配置Key字典
 class SystemConfigKey(Enum):
@@ -95,8 +98,8 @@ class ProgressKey(Enum):
 
 # 媒体图片类型
 class MediaImageType(Enum):
-    Poster = "poster"
-    Backdrop = "backdrop"
+    Poster = "poster_path"
+    Backdrop = "backdrop_path"
 
 
 # 消息类型
