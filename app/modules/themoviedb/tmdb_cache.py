@@ -144,7 +144,8 @@ class TmdbCache(metaclass=Singleton):
                         "backdrop_path": info.get("backdrop_path"),
                         CACHE_EXPIRE_TIMESTAMP_STR: int(time.time()) + EXPIRE_TIMESTAMP
                     }
-            else:
+            elif info is not None:
+                # None时不缓存，此时代表网络错误，允许重复请求
                 self._meta_data[self.__get_key(meta)] = {'id': 0}
 
     def save(self, force: bool = False) -> None:
