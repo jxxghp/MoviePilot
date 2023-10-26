@@ -480,7 +480,11 @@ class FileTransferModule(_ModuleBase):
                         else:
                             logger.info(f"目标文件文件大小更大，跳过转移：{new_file}")
                     case 'never':
-                        overflag = False
+                        return TransferInfo(success=False,
+                                            message=f"目标文件已存在，转移覆盖模式：{settings.OVERWRITE_MODE}",
+                                            path=in_path,
+                                            target_path=new_file,
+                                            fail_list=[str(in_path)])
                     case _:
                         pass
             # 原文件大小
