@@ -422,10 +422,10 @@ class TransferChain(ChainBase):
                 "anime": settings.SAVE_ANIME_PATH
             }
             for key in save_paths.keys():
-                if save_paths[key] in directory.parents and settings.SAVE_PATHS_IN_MP.get(key):
-                    save_path_abs_str = save_paths[key].as_posix()
-                    save_path_in_mp_abs_str = settings.SAVE_PATHS_IN_MP[key].as_posix()
-                    new_directory = directory.as_posix().replace(save_path_abs_str, save_path_in_mp_abs_str)
+                if save_paths[key] in directory.parents and settings.SAVE_PATHS_MP.get(key):
+                    save_path_str = save_paths[key].as_posix()
+                    save_path_mp_str = settings.SAVE_PATHS_MP[key].as_posix()
+                    new_directory = directory.as_posix().replace(save_path_str, save_path_mp_str)
                     if Path(new_directory).exists():
                         directory = Path(new_directory)
                         exist_flag = True
