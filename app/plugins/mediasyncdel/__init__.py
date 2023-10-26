@@ -662,15 +662,13 @@ class MediaSyncDel(_PluginBase):
         # 发送消息
         if self._notify:
             if not image or media_type == MediaType.TV:
-                specific_image = self.chain.obtain_specific_image(
+                poster_image = self.chain.obtain_specific_image(
                     mediaid=tmdb_id,
                     mtype=media_type,
-                    image_type=MediaImageType.Backdrop,
-                    season=season_num,
-                    episode=episode_num
+                    image_type=MediaImageType.Poster,
                 )
-                if specific_image:
-                    image = specific_image
+                if poster_image:
+                    image = poster_image
 
             if not image:
                 image = 'https://emby.media/notificationicon.png'

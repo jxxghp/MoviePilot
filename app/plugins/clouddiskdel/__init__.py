@@ -106,15 +106,13 @@ class CloudDiskDel(_PluginBase):
         image = 'https://emby.media/notificationicon.png'
         media_type = MediaType.MOVIE if media_type in ["Movie", "MOV"] else MediaType.TV
         if self._notify:
-            specific_image = self.chain.obtain_specific_image(
+            poster_image = self.chain.obtain_specific_image(
                 mediaid=tmdb_id,
                 mtype=media_type,
-                image_type=MediaImageType.Backdrop,
-                season=season_num,
-                episode=episode_num
+                image_type=MediaImageType.Poster,
             )
-            if specific_image:
-                image = specific_image
+            if poster_image:
+                image = poster_image
 
             # 类型
             if media_type == MediaType.MOVIE:
