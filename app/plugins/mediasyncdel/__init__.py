@@ -579,10 +579,10 @@ class MediaSyncDel(_PluginBase):
         执行删除逻辑
         """
         if not media_type:
-            logger.error(f"{media_name} 同步删除失败，未获取到媒体类型")
+            logger.error(f"{media_name} 同步删除失败，未获取到媒体类型，请检查媒体是否刮削")
             return
         if not tmdb_id or not str(tmdb_id).isdigit():
-            logger.error(f"{media_name} 同步删除失败，未获取到TMDB ID")
+            logger.error(f"{media_name} 同步删除失败，未获取到TMDB ID，请检查媒体是否刮削")
             return
 
         if self._exclude_path and media_path and any(

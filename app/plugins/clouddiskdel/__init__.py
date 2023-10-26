@@ -21,7 +21,7 @@ class CloudDiskDel(_PluginBase):
     # 插件图标
     plugin_icon = "clouddisk.png"
     # 主题色
-    plugin_color = "#ff6600"
+    plugin_color = "#ff9933"
     # 插件版本
     plugin_version = "1.0"
     # 插件作者
