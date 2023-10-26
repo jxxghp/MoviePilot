@@ -583,7 +583,8 @@ class MediaSyncDel(_PluginBase):
         logger.info(f"正在同步删除{msg}")
 
         if not transfer_history:
-            logger.warn(f"{media_type} {media_name} 未获取到可删除数据，请检查路径映射是否配置错误，请检查tmdbid获取是否正确")
+            logger.warn(
+                f"{media_type} {media_name} 未获取到可删除数据，请检查路径映射是否配置错误，请检查tmdbid获取是否正确")
             return
 
         # 开始删除
@@ -627,20 +628,14 @@ class MediaSyncDel(_PluginBase):
 
         logger.info(f"同步删除 {msg} 完成！")
 
+        media_type = MediaType.MOVIE if media_type in ["Movie", "MOV"] else MediaType.TV
+
         # 发送消息
         if self._notify:
-            if media_type == "Episode":
-                # 根据tmdbid获取图片
-                images = self.episode.images(tv_id=tmdb_id,
-                                             season_num=season_num,
-                                             episode_num=episode_num)
-                if images:
-                    image = self.get_tmdbimage_url(images[-1].get("file_path"), prefix="original")
-
-            if not image:
+            if not image or media_type == MediaType.TV:
                 specific_image = self.chain.obtain_specific_image(
                     mediaid=tmdb_id,
-                    mtype=MediaType.MOVIE if media_type in ["Movie", "MOV"] else MediaType.TV,
+                    mtype=media_type,
                     image_type=MediaImageType.Backdrop,
                     season=season_num,
                     episode=episode_num
@@ -679,7 +674,7 @@ class MediaSyncDel(_PluginBase):
         history = self.get_data('history') or []
 
         history.append({
-            "type": "电影" if media_type == "Movie" or media_type == "MOV" else "电视剧",
+            "type": media_type.value,
             "title": media_name,
             "year": year,
             "path": media_path,
