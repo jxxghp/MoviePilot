@@ -106,13 +106,13 @@ class CloudDiskDel(_PluginBase):
         image = 'https://emby.media/notificationicon.png'
         media_type = MediaType.MOVIE if media_type in ["Movie", "MOV"] else MediaType.TV
         if self._notify:
-            poster_image = self.chain.obtain_specific_image(
+            backrop_image = self.chain.obtain_specific_image(
                 mediaid=tmdb_id,
                 mtype=media_type,
-                image_type=MediaImageType.Poster,
-            )
-            if poster_image:
-                image = poster_image
+                image_type=MediaImageType.Backdrop,
+                season=season_num,
+                episode=episode_num
+            ) or image
 
             # 类型
             if media_type == MediaType.MOVIE:
@@ -133,7 +133,7 @@ class CloudDiskDel(_PluginBase):
             self.post_message(
                 mtype=NotificationType.MediaServer,
                 title="云盘同步删除任务完成",
-                image=image,
+                image=backrop_image,
                 text=f"{msg}\n"
                      f"时间 {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}"
             )
@@ -141,13 +141,19 @@ class CloudDiskDel(_PluginBase):
         # 读取历史记录
         history = self.get_data('history') or []
 
+        # 获取poster
+        poster_image = self.chain.obtain_specific_image(
+            mediaid=tmdb_id,
+            mtype=media_type,
+            image_type=MediaImageType.Poster,
+        ) or image
         history.append({
             "type": media_type.value,
             "title": media_name,
             "path": media_path,
             "season": season_num,
             "episode": episode_num,
-            "image": image,
+            "image": poster_image,
             "del_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
         })
 

@@ -617,11 +617,11 @@ class MediaSyncDel(_PluginBase):
             return
 
         # 开始删除
-        image = None
         year = None
         del_torrent_hashs = []
         stop_torrent_hashs = []
         error_cnt = 0
+        image = 'https://emby.media/notificationicon.png'
         for transferhis in transfer_history:
             title = transferhis.title
             if title not in media_name:
@@ -661,17 +661,13 @@ class MediaSyncDel(_PluginBase):
 
         # 发送消息
         if self._notify:
-            if not image or media_type == MediaType.TV:
-                poster_image = self.chain.obtain_specific_image(
-                    mediaid=tmdb_id,
-                    mtype=media_type,
-                    image_type=MediaImageType.Poster,
-                )
-                if poster_image:
-                    image = poster_image
-
-            if not image:
-                image = 'https://emby.media/notificationicon.png'
+            backrop_image = self.chain.obtain_specific_image(
+                mediaid=tmdb_id,
+                mtype=media_type,
+                image_type=MediaImageType.Backdrop,
+                season=season_num,
+                episode=episode_num
+            ) or image
 
             torrent_cnt_msg = ""
             if del_torrent_hashs:
@@ -690,7 +686,7 @@ class MediaSyncDel(_PluginBase):
             self.post_message(
                 mtype=NotificationType.MediaServer,
                 title="媒体库同步删除任务完成",
-                image=image,
+                image=backrop_image,
                 text=f"{msg}\n"
                      f"删除记录{len(transfer_history)}个\n"
                      f"{torrent_cnt_msg}"
@@ -700,6 +696,12 @@ class MediaSyncDel(_PluginBase):
         # 读取历史记录
         history = self.get_data('history') or []
 
+        # 获取poster
+        poster_image = self.chain.obtain_specific_image(
+            mediaid=tmdb_id,
+            mtype=media_type,
+            image_type=MediaImageType.Poster,
+        ) or image
         history.append({
             "type": media_type.value,
             "title": media_name,
@@ -707,7 +709,7 @@ class MediaSyncDel(_PluginBase):
             "path": media_path,
             "season": season_num,
             "episode": episode_num,
-            "image": image,
+            "image": poster_image,
             "del_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
         })
 
