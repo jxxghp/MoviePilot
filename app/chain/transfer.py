@@ -411,9 +411,33 @@ class TransferChain(ChainBase):
         获取转移目录列表
         """
 
+        # 目录不存在
         if not directory.exists():
-            logger.warn(f"目录不存在：{directory}")
-            return []
+            # 尝试目录转换
+            save_path_abs_str = None
+            save_path_in_mp_abs_str = None
+            if settings.SAVE_PATH in directory.parents and settings.SAVE_PATHS_IN_MP.get("root"):
+                save_path_abs_str = str(settings.SAVE_PATH.resolve())
+                save_path_in_mp_abs_str = str(settings.SAVE_PATHS_IN_MP["root"].resolve())
+            elif settings.SAVE_MOVIE_PATH in directory.parents and settings.SAVE_PATHS_IN_MP.get("movie"):
+                save_path_abs_str = str(settings.SAVE_MOVIE_PATH.resolve())
+                save_path_in_mp_abs_str = str(settings.SAVE_PATHS_IN_MP["movie"].resolve())
+            elif settings.SAVE_TV_PATH in directory.parents and settings.SAVE_PATHS_IN_MP.get("tv"):
+                save_path_abs_str = str(settings.SAVE_TV_PATH.resolve())
+                save_path_in_mp_abs_str = str(settings.SAVE_PATHS_IN_MP["tv"].resolve())
+            elif settings.SAVE_ANIME_PATH in directory.parents and settings.SAVE_PATHS_IN_MP.get("anime"):
+                save_path_abs_str = str(settings.SAVE_ANIME_PATH.resolve())
+                save_path_in_mp_abs_str = str(settings.SAVE_PATHS_IN_MP["anime"].resolve())
+            else:
+                pass
+            if save_path_abs_str and save_path_in_mp_abs_str:
+                directory = Path(str(directory.resolve()).replace(save_path_abs_str, save_path_in_mp_abs_str))
+                if not directory.exists():
+                    logger.warn(f"目录不存在：{directory}")
+                    return []
+            else:
+                logger.warn(f"目录不存在：{directory}")
+                return []
 
         # 单文件
         if directory.is_file():

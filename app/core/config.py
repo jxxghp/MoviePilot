@@ -287,6 +287,8 @@ class Settings(BaseSettings):
         获取下载保存目录
         """
         if self.DOWNLOAD_PATH:
+            if " => " in self.DOWNLOAD_PATH:
+                return Path(self.DOWNLOAD_PATH.split(" => ")[0])
             return Path(self.DOWNLOAD_PATH)
         return self.CONFIG_PATH / "downloads"
 
@@ -296,6 +298,8 @@ class Settings(BaseSettings):
         获取电影下载保存目录
         """
         if self.DOWNLOAD_MOVIE_PATH:
+            if " => " in self.DOWNLOAD_MOVIE_PATH:
+                return Path(self.DOWNLOAD_MOVIE_PATH.split(" => ")[0])
             return Path(self.DOWNLOAD_MOVIE_PATH)
         return self.SAVE_PATH
 
@@ -305,6 +309,8 @@ class Settings(BaseSettings):
         获取电视剧下载保存目录
         """
         if self.DOWNLOAD_TV_PATH:
+            if " => " in self.DOWNLOAD_TV_PATH:
+                return Path(self.DOWNLOAD_TV_PATH.split(" => ")[0])
             return Path(self.DOWNLOAD_TV_PATH)
         return self.SAVE_PATH
 
@@ -314,8 +320,31 @@ class Settings(BaseSettings):
         获取动漫下载保存目录
         """
         if self.DOWNLOAD_ANIME_PATH:
+            if " => " in self.DOWNLOAD_ANIME_PATH:
+                return Path(self.DOWNLOAD_ANIME_PATH.split(" => ")[0])
             return Path(self.DOWNLOAD_ANIME_PATH)
         return self.SAVE_TV_PATH
+
+    @property
+    def SAVE_PATHS_IN_MP(self) -> dict:
+        """
+        获取下载保存目录在MoviePilot中的路径
+        """
+        save_paths_in_mp = {
+            "root": None,
+            "movie": None,
+            "tv": None,
+            "anime": None
+        }
+        if self.DOWNLOAD_PATH and " => " in self.DOWNLOAD_PATH and self.DOWNLOAD_PATH.split(" => ")[1]:
+            save_paths_in_mp['root'] = Path(self.DOWNLOAD_PATH.split(" => ")[1])
+        if self.DOWNLOAD_MOVIE_PATH and " => " in self.DOWNLOAD_MOVIE_PATH and self.DOWNLOAD_MOVIE_PATH.split(" => ")[1]:
+            save_paths_in_mp['movie'] = Path(self.DOWNLOAD_MOVIE_PATH.split(" => ")[1])
+        if self.DOWNLOAD_TV_PATH and " => " in self.DOWNLOAD_TV_PATH and self.DOWNLOAD_TV_PATH.split(" => ")[1]:
+            save_paths_in_mp['tv'] = Path(self.DOWNLOAD_TV_PATH.split(" => ")[1])
+        if self.DOWNLOAD_ANIME_PATH and " => " in self.DOWNLOAD_ANIME_PATH and self.DOWNLOAD_ANIME_PATH.split(" => ")[1]:
+            save_paths_in_mp['anime'] = Path(self.DOWNLOAD_ANIME_PATH.split(" => ")[1])
+        return save_paths_in_mp
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

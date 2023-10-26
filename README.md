@@ -127,10 +127,10 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
     - **SYNOLOGYCHAT_TOKEN：** SynologyChat机器人`令牌`
 
 ---
-- **❗DOWNLOAD_PATH：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径保持一致**，否则会导致下载文件无法转移
-- **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`
-- **DOWNLOAD_TV_PATH：** 电视剧下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`
-- **DOWNLOAD_ANIME_PATH：** 动漫下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`
+- **❗DOWNLOAD_PATH：** 下载保存目录，设置格式为`下载保存目录（下载器访问路径） => 下载保存目录（MoviePilot访问路径）`，以` => `为分隔（前后存在一个空格），若两者相同可设置为`下载保存目录`。例如下载器（E:/downloads）运行在windows上而MoviePilot（已挂载E:/downloads为/downloads）运行在Docker上，设置为`E:/downloads => /downloads`
+- **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`,设置方法同下载保存目录
+- **DOWNLOAD_TV_PATH：** 电视剧下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`,设置方法同下载保存目录
+- **DOWNLOAD_ANIME_PATH：** 动漫下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`,设置方法同下载保存目录
 - **DOWNLOAD_CATEGORY：** 下载二级分类开关，`true`/`false`，默认`false`，开启后会根据配置 [category.yaml](https://github.com/jxxghp/MoviePilot/raw/main/config/category.yaml) 自动在下载目录下建立二级目录分类
 - **DOWNLOAD_SUBTITLE：** 下载站点字幕，`true`/`false`，默认`true`
 - **DOWNLOADER_MONITOR：** 下载器监控，`true`/`false`，默认为`true`，开启后下载完成时才会自动整理入库
