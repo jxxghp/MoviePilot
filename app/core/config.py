@@ -204,6 +204,8 @@ class Settings(BaseSettings):
                             "/Season {{season}}" \
                             "/{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}" \
                             "{{fileExt}}"
+    # 转移时覆盖模式
+    OVERWRITE_MODE: str = "nerver"
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
 

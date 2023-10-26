@@ -468,9 +468,25 @@ class FileTransferModule(_ModuleBase):
             # 判断是否要覆盖
             overflag = False
             if new_file.exists():
-                if new_file.stat().st_size < in_path.stat().st_size:
-                    logger.info(f"目标文件已存在，但文件大小更小，将覆盖：{new_file}")
-                    overflag = True
+                # 目标文件已存在
+                logger.info(f"目标文件已存在，转移覆盖模式：{settings.OVERWRITE_MODE}")
+                match settings.OVERWRITE_MODE:
+                    case 'always':
+                        overflag = True
+                    case 'size':
+                        if new_file.stat().st_size < in_path.stat().st_size:
+                            logger.info(f"目标文件文件大小更小，将被覆盖：{new_file}")
+                            overflag = True
+                    case 'never':
+                        pass
+                    case _:
+                        pass
+                if not overflag:
+                    return TransferInfo(success=False,
+                                        message=f"目标文件已存在，转移覆盖模式：{settings.OVERWRITE_MODE}",
+                                        path=in_path,
+                                        target_path=new_file,
+                                        fail_list=[str(in_path)])
             # 原文件大小
             file_size = in_path.stat().st_size
             # 转移文件
