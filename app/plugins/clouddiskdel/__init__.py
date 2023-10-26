@@ -56,29 +56,33 @@ class CloudDiskDel(_PluginBase):
 
         event_data = event.event_data
         logger.info(f"获取到云盘删除请求 {event_data}")
+
         media_path = event_data.get("media_path")
+        if not media_path:
+            logger.error("未获取到删除路径")
+            return
+
         media_name = event_data.get("media_name")
         tmdb_id = event_data.get("tmdb_id")
         media_type = event_data.get("media_type")
         season_num = event_data.get("season_num")
         episode_num = event_data.get("episode_num")
-        if not media_path:
-            logger.error("未获取到删除路径")
-            return
 
         # 判断删除媒体路径是否与配置的媒体库路径相符，相符则继续删除，不符则跳过
         for library_path in list(self._paths.keys()):
             if str(media_path).startswith(library_path):
                 # 替换网盘路径
                 media_path = str(media_path).replace(library_path, self._paths.get(library_path))
+                logger.info(f"获取到moviepilot本地云盘挂载路径 {media_path}")
                 path = Path(media_path)
-                if path.is_file():
+                if path.is_file() or media_path.endswith(".strm"):
                     # 删除文件、nfo、jpg等同名文件
                     pattern = path.stem.replace('[', '?').replace(']', '?')
+                    logger.info(f"开始筛选同名文件 {pattern}")
                     files = path.parent.glob(f"{pattern}.*")
                     for file in files:
                         Path(file).unlink()
-                        logger.info(f"云盘文件 {media_path} 已删除")
+                        logger.info(f"云盘文件 {file} 已删除")
                 else:
                     # 非根目录，才删除目录
                     shutil.rmtree(path)
@@ -130,7 +134,7 @@ class CloudDiskDel(_PluginBase):
             # 发送通知
             self.post_message(
                 mtype=NotificationType.MediaServer,
-                title="网盘同步删除任务完成",
+                title="云盘同步删除任务完成",
                 image=image,
                 text=f"{msg}\n"
                      f"时间 {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}"
@@ -243,6 +247,7 @@ class CloudDiskDel(_PluginBase):
                                         'props': {
                                             'text': '需要开启媒体库删除插件且正确配置排除路径。'
                                                     '主要针对于strm文件删除后同步删除云盘资源。'
+                                                    '如遇删除失败，请检查文件权限问题。'
                                         }
                                     }
                                 ]

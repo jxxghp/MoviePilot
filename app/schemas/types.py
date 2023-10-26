@@ -98,8 +98,8 @@ class ProgressKey(Enum):
 
 # 媒体图片类型
 class MediaImageType(Enum):
-    Poster = "poster"
-    Backdrop = "backdrop"
+    Poster = "poster_path"
+    Backdrop = "backdrop_path"
 
 
 # 消息类型
