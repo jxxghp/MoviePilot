@@ -302,7 +302,7 @@ class SubscribeChain(ChainBase):
 
             # 自动下载
             downloads, lefts = self.downloadchain.batch_download(contexts=matched_contexts,
-                                                                 no_exists=no_exists)
+                                                                 no_exists=no_exists, username=subscribe.username)
             # 更新已经下载的集数
             if downloads \
                     and meta.type == MediaType.TV \
@@ -415,7 +415,7 @@ class SubscribeChain(ChainBase):
             }
         # 订阅默认过滤规则
         return self.systemconfig.get(SystemConfigKey.DefaultFilterRules) or {}
-    
+
     @staticmethod
     def check_filter_rule(torrent_info: TorrentInfo, filter_rule: Dict[str, str]) -> bool:
         """
@@ -621,7 +621,8 @@ class SubscribeChain(ChainBase):
             logger.info(f'{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源')
             if _match_context:
                 # 批量择优下载
-                downloads, lefts = self.downloadchain.batch_download(contexts=_match_context, no_exists=no_exists)
+                downloads, lefts = self.downloadchain.batch_download(contexts=_match_context, no_exists=no_exists,
+                                                                     username=subscribe.username)
                 # 更新已经下载的集数
                 if downloads and meta.type == MediaType.TV:
                     self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)

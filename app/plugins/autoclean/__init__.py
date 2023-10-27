@@ -120,26 +120,26 @@ class AutoClean(_PluginBase):
         days_ago = current_time - timedelta(days=int(self._cleandate))
         clean_date = days_ago.strftime("%Y-%m-%d")
 
-        # 查询用户清理日期之后的下载历史
+        # 查询用户清理日期之前的下载历史，不填默认清理全部用户的下载
         if not self._cleanuser:
             downloadhis_list = self._downloadhis.list_by_user_date(date=clean_date)
-            logger.info(f'获取到日期 {clean_date} 之后的下载历史 {len(downloadhis_list)} 条')
+            logger.info(f'获取到日期 {clean_date} 之前的下载历史 {len(downloadhis_list)} 条')
 
             self.__clean_history(date=clean_date, downloadhis_list=downloadhis_list)
         else:
-            for userid in str(self._cleanuser).split(","):
+            for username in str(self._cleanuser).split(","):
                 downloadhis_list = self._downloadhis.list_by_user_date(date=clean_date,
-                                                                       userid=userid)
+                                                                       username=username)
                 logger.info(
-                    f'获取到用户 {userid} 日期 {clean_date} 之后的下载历史 {len(downloadhis_list)} 条')
-                self.__clean_history(date=clean_date, downloadhis_list=downloadhis_list, userid=userid)
+                    f'获取到用户 {username} 日期 {clean_date} 之前的下载历史 {len(downloadhis_list)} 条')
+                self.__clean_history(date=clean_date, downloadhis_list=downloadhis_list)
 
-    def __clean_history(self, date: str, downloadhis_list: List[DownloadHistory], userid: str = None):
+    def __clean_history(self, date: str, downloadhis_list: List[DownloadHistory]):
         """
         清理下载历史、转移记录
         """
         if not downloadhis_list:
-            logger.warn(f"未获取到日期 {date} 之后的下载记录，停止运行")
+            logger.warn(f"未获取到日期 {date} 之前的下载记录，停止运行")
             return
 
         # 读取历史记录
@@ -159,10 +159,10 @@ class AutoClean(_PluginBase):
         # 输出分组结果
         for key, downloadhis_list in downloadhis_grouped_dict.items():
             logger.info(f"开始清理 {key}")
-
+            result = []
             del_transferhis_cnt = 0
             del_media_name = downloadhis_list[0].title
-            del_media_user = downloadhis_list[0].userid
+            del_media_user = downloadhis_list[0].username
             del_media_type = downloadhis_list[0].type
             del_media_year = downloadhis_list[0].year
             del_media_season = downloadhis_list[0].seasons
@@ -198,28 +198,28 @@ class AutoClean(_PluginBase):
                 # 累加删除数量
                 del_transferhis_cnt += len(transferhis_list)
 
-            # 发送消息
-            if self._notify:
-                self.post_message(
-                    mtype=NotificationType.MediaServer,
-                    title="【定时清理媒体库任务完成】",
-                    text=f"清理媒体名称 {del_media_name}\n"
-                         f"下载媒体用户 {del_media_user}\n"
-                         f"删除历史记录 {del_transferhis_cnt}",
-                    userid=userid)
+            if del_transferhis_cnt:
+                # 发送消息
+                if self._notify:
+                    self.post_message(
+                        mtype=NotificationType.MediaServer,
+                        title="【定时清理媒体库任务完成】",
+                        text=f"清理媒体名称 {del_media_name}\n"
+                             f"下载媒体用户 {del_media_user}\n"
+                             f"删除历史记录 {del_transferhis_cnt}")
 
-            history.append({
-                "type": del_media_type,
-                "title": del_media_name,
-                "year": del_media_year,
-                "season": del_media_season,
-                "episode": del_media_episode,
-                "image": del_image,
-                "del_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
-            })
+                result.append({
+                    "type": del_media_type,
+                    "title": del_media_name,
+                    "year": del_media_year,
+                    "season": del_media_season,
+                    "episode": del_media_episode,
+                    "image": del_image,
+                    "del_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+                })
 
         # 保存历史
-        self.save_data("history", history)
+        self.save_data("history", result)
 
     def get_state(self) -> bool:
         return self._enabled
@@ -236,154 +236,154 @@ class AutoClean(_PluginBase):
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
         return [
-                   {
-                       'component': 'VForm',
-                       'content': [
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'enabled',
-                                                   'label': '启用插件',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'onlyonce',
-                                                   'label': '立即运行一次',
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSwitch',
-                                               'props': {
-                                                   'model': 'notify',
-                                                   'label': '开启通知',
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'cron',
-                                                   'label': '执行周期',
-                                                   'placeholder': '0 0 ? ? ?'
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VSelect',
-                                               'props': {
-                                                   'model': 'cleantype',
-                                                   'label': '清理方式',
-                                                   'items': [
-                                                       {'title': '媒体库文件', 'value': 'dest'},
-                                                       {'title': '源文件', 'value': 'src'},
-                                                       {'title': '所有文件', 'value': 'all'},
-                                                   ]
-                                               }
-                                           }
-                                       ]
-                                   },
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                           'md': 4
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'cleandate',
-                                                   'label': '清理媒体日期',
-                                                   'placeholder': '清理多少天之前的下载记录（天）'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           },
-                           {
-                               'component': 'VRow',
-                               'content': [
-                                   {
-                                       'component': 'VCol',
-                                       'props': {
-                                           'cols': 12,
-                                       },
-                                       'content': [
-                                           {
-                                               'component': 'VTextField',
-                                               'props': {
-                                                   'model': 'cleanuser',
-                                                   'label': '清理下载用户',
-                                                   'placeholder': '多个用户,分割'
-                                               }
-                                           }
-                                       ]
-                                   }
-                               ]
-                           }
-                       ]
-                   }
-               ], {
-                   "enabled": False,
-                   "onlyonce": False,
-                   "notify": False,
-                   "cleantype": "dest",
-                   "cron": "",
-                   "cleanuser": "",
-                   "cleandate": 30
-               }
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'notify',
+                                            'label': '开启通知',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cron',
+                                            'label': '执行周期',
+                                            'placeholder': '0 0 ? ? ?'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'cleantype',
+                                            'label': '清理方式',
+                                            'items': [
+                                                {'title': '媒体库文件', 'value': 'dest'},
+                                                {'title': '源文件', 'value': 'src'},
+                                                {'title': '所有文件', 'value': 'all'},
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cleandate',
+                                            'label': '清理媒体日期',
+                                            'placeholder': '清理多少天之前的下载记录（天）'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cleanuser',
+                                            'label': '清理下载用户名/插件名',
+                                            'placeholder': '多个用户,分割 支持按插件清理下载记录（豆瓣想看、豆瓣榜单、RSS订阅）'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "enabled": False,
+            "onlyonce": False,
+            "notify": False,
+            "cleantype": "dest",
+            "cron": "",
+            "cleanuser": "",
+            "cleandate": 30
+        }
 
     def get_page(self) -> List[dict]:
         """
