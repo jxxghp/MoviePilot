@@ -173,7 +173,13 @@ class AutoBackup(_PluginBase):
         pass
 
     def get_api(self) -> List[Dict[str, Any]]:
-        pass
+        return [{
+            "path": "/backup",
+            "endpoint": self.__backup,
+            "methods": ["GET"],
+            "summary": "MoviePilot备份",
+            "description": "MoviePilot备份",
+        }]
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """

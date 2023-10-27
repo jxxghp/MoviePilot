@@ -489,7 +489,13 @@ class CloudflareSpeedTest(_PluginBase):
         }]
 
     def get_api(self) -> List[Dict[str, Any]]:
-        pass
+        return [{
+            "path": "/cloudflare_speedtest",
+            "endpoint": self.__cloudflareSpeedTest,
+            "methods": ["GET"],
+            "summary": "Cloudflare IP优选",
+            "description": "Cloudflare IP优选",
+        }]
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """
