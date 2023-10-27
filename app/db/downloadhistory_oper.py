@@ -108,10 +108,10 @@ class DownloadHistoryOper(DbOper):
                                            episode=episode,
                                            tmdbid=tmdbid)
 
-    def list_by_user_date(self, date: str, userid: str = None) -> List[DownloadHistory]:
+    def list_by_user_date(self, date: str, username: str = None) -> List[DownloadHistory]:
         """
-        查询某用户某时间之后的下载历史
+        查询某用户某时间之前的下载历史
         """
         return DownloadHistory.list_by_user_date(db=self._db,
                                                  date=date,
-                                                 userid=userid)
+                                                 username=username)
