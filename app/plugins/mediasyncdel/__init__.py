@@ -289,7 +289,7 @@ class MediaSyncDel(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
-                                            'text': '关于路径映射：'
+                                            'text': '关于路径映射（转移后文件）：'
                                                     'emby:/data/series/A.mp4,'
                                                     'moviepilot:/mnt/link/series/A.mp4。'
                                                     '路径映射填/data:/mnt/link。'
