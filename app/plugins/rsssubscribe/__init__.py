@@ -628,7 +628,8 @@ class RssSubscribe(_PluginBase):
                                     media_info=mediainfo,
                                     torrent_info=torrentinfo,
                                 ),
-                                save_path=self._save_path
+                                save_path=self._save_path,
+                                username="RSS订阅"
                             )
                             if not result:
                                 logger.error(f'{title} 下载失败')

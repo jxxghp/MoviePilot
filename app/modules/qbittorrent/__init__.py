@@ -165,6 +165,8 @@ class QbittorrentModule(_ModuleBase):
                     state="paused" if torrent.get('state') == "paused" else "downloading",
                     dlspeed=StringUtils.str_filesize(torrent.get('dlspeed')),
                     upspeed=StringUtils.str_filesize(torrent.get('upspeed')),
+                    left_time=StringUtils.str_secends(
+                        (torrent.get('total_size') - torrent.get('completed')) / torrent.get('dlspeed'))
                 ))
         else:
             return None

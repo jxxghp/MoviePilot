@@ -506,7 +506,8 @@ class DoubanSync(_PluginBase):
                             action = "subscribe"
                         else:
                             # 自动下载
-                            downloads, lefts = self.downloadchain.batch_download(contexts=contexts, no_exists=no_exists)
+                            downloads, lefts = self.downloadchain.batch_download(contexts=contexts, no_exists=no_exists,
+                                                                                 username="豆瓣想看")
                             if downloads and not lefts:
                                 # 全部下载完成
                                 logger.info(f'{mediainfo.title_year} 下载完成')

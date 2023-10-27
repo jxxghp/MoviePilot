@@ -64,6 +64,23 @@ class StringUtils:
         return str(round(time_sec / (b + 1))) + u
 
     @staticmethod
+    def str_secends(time_sec: Union[str, int, float]) -> str:
+        """
+        将秒转为时分秒字符串
+        """
+        hours = time_sec // 3600
+        remainder_seconds = time_sec % 3600
+        minutes = remainder_seconds // 60
+        seconds = remainder_seconds % 60
+
+        time: str = str(int(seconds)) + '秒'
+        if minutes:
+            time = str(int(minutes)) + '分' + time
+        if hours:
+            time = str(int(hours)) + '时' + time
+        return time
+
+    @staticmethod
     def is_chinese(word: Union[str, list]) -> bool:
         """
         判断是否含有中文

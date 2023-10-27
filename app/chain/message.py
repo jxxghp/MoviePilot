@@ -189,7 +189,7 @@ class MessageChain(ChainBase):
                     # 下载种子
                     context: Context = cache_list[int(text) - 1]
                     # 下载
-                    self.downloadchain.download_single(context, userid=userid, channel=channel)
+                    self.downloadchain.download_single(context, userid=userid, channel=channel, username=username)
 
         elif text.lower() == "p":
             # 上一页
@@ -343,7 +343,8 @@ class MessageChain(ChainBase):
         downloads, lefts = self.downloadchain.batch_download(contexts=cache_list,
                                                              no_exists=no_exists,
                                                              channel=channel,
-                                                             userid=userid)
+                                                             userid=userid,
+                                                             username=username)
         if downloads and not lefts:
             # 全部下载完成
             logger.info(f'{_current_media.title_year} 下载完成')
