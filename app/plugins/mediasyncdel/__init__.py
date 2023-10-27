@@ -292,7 +292,8 @@ class MediaSyncDel(_PluginBase):
                                             'text': '关于路径映射：'
                                                     'emby:/data/series/A.mp4,'
                                                     'moviepilot:/mnt/link/series/A.mp4。'
-                                                    '路径映射填/data:/mnt/link'
+                                                    '路径映射填/data:/mnt/link。'
+                                                    '不正确配置会导致查询不到转移记录！'
                                         }
                                     }
                                 ]
@@ -880,7 +881,7 @@ class MediaSyncDel(_PluginBase):
             logger.info(f"正在同步删除 {msg}")
 
             if not transfer_history:
-                logger.info(f"未获取到 {msg} 转移记录")
+                logger.info(f"未获取到 {msg} 转移记录，请检查路径映射是否配置错误，请检查tmdbid获取是否正确")
                 self.save_data("last_time", last_del_time or datetime.datetime.now())
                 continue
 
