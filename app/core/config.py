@@ -131,6 +131,8 @@ class Settings(BaseSettings):
     QB_CATEGORY: bool = False
     # Qbittorrent按顺序下载
     QB_SEQUENTIAL: bool = True
+    # Qbittorrent忽略队列限制，强制继续
+    QB_FORCE_RESUME: bool = False
     # Transmission地址，IP:PORT
     TR_HOST: str = None
     # Transmission用户名
