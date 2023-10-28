@@ -3,6 +3,8 @@ from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException
 
 from app import schemas
+from app.db.models.user import User
+from app.db.userauth import get_current_active_user
 from app.chain.douban import DoubanChain
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
@@ -27,6 +29,7 @@ def read_downloading(
 def add_downloading(
         media_in: schemas.MediaInfo,
         torrent_in: schemas.TorrentInfo,
+        current_user: User = Depends(get_current_active_user),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     添加下载任务
@@ -45,7 +48,7 @@ def add_downloading(
         media_info=mediainfo,
         torrent_info=torrentinfo
     )
-    did = DownloadChain().download_single(context=context)
+    did = DownloadChain().download_single(context=context, username=current_user.name)
     return schemas.Response(success=True if did else False, data={
         "download_id": did
     })

@@ -13,6 +13,7 @@ from apscheduler.triggers.cron import CronTrigger
 from python_hosts import Hosts, HostsEntry
 from requests import Response
 
+from app import schemas
 from app.core.config import settings
 from app.core.event import eventmanager, Event
 from app.log import logger
@@ -143,7 +144,7 @@ class CloudflareSpeedTest(_PluginBase):
             self.__update_config()
             logger.warn(f"Cloudflare CDN优选未指定ip类型，默认ipv4")
 
-        err_flag, release_version = self.__check_envirment()
+        err_flag, release_version = self.__check_environment()
         if err_flag and release_version:
             # 更新版本
             self._version = release_version
@@ -277,7 +278,7 @@ class CloudflareSpeedTest(_PluginBase):
             self._cf_ip = max_ips[0]
             logger.info(f"获取到自定义hosts插件中ip {max_ips[0]} 出现次数最多，已自动校正优选ip")
 
-    def __check_envirment(self):
+    def __check_environment(self):
         """
         环境检查
         """
@@ -489,7 +490,13 @@ class CloudflareSpeedTest(_PluginBase):
         }]
 
     def get_api(self) -> List[Dict[str, Any]]:
-        pass
+        return [{
+            "path": "/cloudflare_speedtest",
+            "endpoint": self.cloudflare_speedtest,
+            "methods": ["GET"],
+            "summary": "Cloudflare IP优选",
+            "description": "Cloudflare IP优选",
+        }]
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """
@@ -719,6 +726,13 @@ class CloudflareSpeedTest(_PluginBase):
 
     def get_page(self) -> List[dict]:
         pass
+
+    def cloudflare_speedtest(self) -> schemas.Response:
+        """
+        API调用CloudflareSpeedTest IP优选
+        """
+        self.__cloudflareSpeedTest()
+        return schemas.Response(success=True)
 
     @staticmethod
     def __read_system_hosts():

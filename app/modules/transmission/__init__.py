@@ -33,7 +33,7 @@ class TransmissionModule(_ModuleBase):
         定时任务，每10分钟调用一次
         """
         # 定时重连
-        if not self.transmission.is_inactive():
+        if self.transmission.is_inactive():
             self.transmission.reconnect()
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
@@ -151,7 +151,7 @@ class TransmissionModule(_ModuleBase):
                     state="paused" if torrent.status == "stopped" else "downloading",
                     dlspeed=StringUtils.str_filesize(dlspeed),
                     upspeed=StringUtils.str_filesize(upspeed),
-                    left_time=StringUtils.str_secends(torrent.left_until_done / dlspeed)
+                    left_time=StringUtils.str_secends(torrent.left_until_done / dlspeed) if dlspeed > 0 else ''
                 ))
         else:
             return None

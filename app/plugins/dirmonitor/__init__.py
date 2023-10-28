@@ -12,6 +12,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 
+from app import schemas
 from app.chain.tmdb import TmdbChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
@@ -534,8 +535,8 @@ class DirMonitor(_PluginBase):
             transferinfo = media_files[0].get("transferinfo")
             file_meta = media_files[0].get("file_meta")
             mediainfo = media_files[0].get("mediainfo")
-            # 判断最后更新时间距现在是已超过10秒，超过则发送消息
-            if (datetime.datetime.now() - last_update_time).total_seconds() > 10:
+            # 判断剧集最后更新时间距现在是已超过10秒或者电影，发送消息
+            if (datetime.datetime.now() - last_update_time).total_seconds() > 10 or mediainfo.type == MediaType.MOVIE:
                 # 发送通知
                 if self._notify:
 
@@ -600,7 +601,20 @@ class DirMonitor(_PluginBase):
         }]
 
     def get_api(self) -> List[Dict[str, Any]]:
-        pass
+        return [{
+            "path": "/directory_sync",
+            "endpoint": self.sync,
+            "methods": ["GET"],
+            "summary": "目录监控同步",
+            "description": "目录监控同步",
+        }]
+
+    def sync(self) -> schemas.Response:
+        """
+        API调用目录同步
+        """
+        self.sync_all()
+        return schemas.Response(success=True)
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         return [
