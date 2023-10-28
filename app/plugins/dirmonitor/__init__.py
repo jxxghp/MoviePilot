@@ -23,7 +23,7 @@ from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas import Notification, NotificationType, TransferInfo, TransferTorrent
+from app.schemas import Notification, NotificationType, TransferInfo, TransferTorrent, DownloadingTorrent
 from app.schemas.types import EventType, MediaType, SystemConfigKey, TorrentStatus
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -278,17 +278,55 @@ class DirMonitor(_PluginBase):
                 if event_path not in self._wait_paths:
                     self._wait_paths.append(event_path)
                 if self._wait_paths:
-                    # 从下载器获取种子列表
-                    torrents: Optional[List[TransferTorrent]] = \
+                    # 从下载器获取已完成种子及文件列表
+                    torrents_completed_files = []
+                    torrents_completed: Optional[List[TransferTorrent]] = \
                         self.transferchian.list_torrents(status=TorrentStatus.TRANSFER)
-                    torrents_name = [torrent.title for torrent in torrents] if torrents else []
+                    for torrent in torrents_completed:
+                        torrents_completed_files.append(
+                            {
+                                "title": torrent.title,
+                                "files": self.transferchian.torrent_files(torrent.hash)
+                            }
+                        )
+                    # 从下载器获取正在下载种子及文件列表
+                    torrents_downloading_files = []
+                    torrents_downloading: Optional[List[DownloadingTorrent]] = \
+                        self.transferchian.list_torrents(status=TorrentStatus.DOWNLOADING)
+                    for torrent in torrents_downloading:
+                        torrents_downloading_files.append(
+                            {
+                                "title": torrent.title,
+                                "files": self.transferchian.torrent_files(torrent.hash)
+                            }
+                        )
+                    # 检查文件是否在下载器中,若在则检查是否已完成
                     wait_paths = self._wait_paths.copy()
                     for wait_path in wait_paths:
-                        for torrent_name in torrents_name:
-                            if torrent_name in wait_path:
+                        is_downloading = False
+                        is_completed = False
+                        for torrent in torrents_completed_files:
+                            # 如果种子名在文件路径中，且文件在种子文件中，则该文件属于该种子任务
+                            if torrent["title"] in wait_path and Path(wait_path).stem in torrent["files"]:
+                                is_completed = True
+                                break
+                        if not is_completed:
+                            for torrent in torrents_downloading_files:
+                                # 如果种子名在文件路径中，且文件在种子文件中，则该文件属于该种子任务
+                                if torrent["title"] in wait_path and Path(wait_path).stem in torrent["files"]:
+                                    is_downloading = True
+                                    break
+                            if not is_downloading:
+                                # 该文件非mp下载器下载，开始转移
                                 self._wait_paths.remove(wait_path)
                                 self.__handle_file(event_path=wait_path, mon_path=mon_path)
-                                break
+                            else:
+                                # 该文件所属下载任务正在下载，暂时转移
+                                continue
+                        else:
+                            # 该文件所属下载任务已完成，开始转移
+                            self._wait_paths.remove(wait_path)
+                            self.__handle_file(event_path=event_path, mon_path=mon_path)
                     # 更新待转移文件列表
                     self.__update_config()
             else:
@@ -692,7 +730,7 @@ class DirMonitor(_PluginBase):
                                         'component': 'VSwitch',
                                         'props': {
                                             'model': 'by_torrent',
-                                            'label': '按种子转移',
+                                            'label': '下载任务延迟转移',
                                         }
                                     }
                                 ]
