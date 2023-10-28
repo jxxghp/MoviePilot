@@ -143,7 +143,7 @@ class CloudflareSpeedTest(_PluginBase):
             self.__update_config()
             logger.warn(f"Cloudflare CDN优选未指定ip类型，默认ipv4")
 
-        err_flag, release_version = self.__check_envirment()
+        err_flag, release_version = self.__check_environment()
         if err_flag and release_version:
             # 更新版本
             self._version = release_version
@@ -277,7 +277,7 @@ class CloudflareSpeedTest(_PluginBase):
             self._cf_ip = max_ips[0]
             logger.info(f"获取到自定义hosts插件中ip {max_ips[0]} 出现次数最多，已自动校正优选ip")
 
-    def __check_envirment(self):
+    def __check_environment(self):
         """
         环境检查
         """
