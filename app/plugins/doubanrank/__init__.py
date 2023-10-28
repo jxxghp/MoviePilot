@@ -496,6 +496,10 @@ class DoubanRank(_PluginBase):
                     if exist_flag:
                         logger.info(f'{mediainfo.title_year} 媒体库中已存在')
                         continue
+                    # 判断用户是否已经添加订阅
+                    if self.subscribechain.exists(mediainfo=mediainfo, meta=meta):
+                        logger.info(f'{mediainfo.title_year} 订阅已存在')
+                        continue
                     # 添加订阅
                     self.subscribechain.add(title=mediainfo.title,
                                             year=mediainfo.year,
