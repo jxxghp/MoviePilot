@@ -88,13 +88,13 @@ class CloudflareSpeedTest(_PluginBase):
             try:
                 if self.get_state() and self._cron:
                     logger.info(f"Cloudflare CDN优选服务启动，周期：{self._cron}")
-                    self._scheduler.add_job(func=self.__cloudflareSpeedTest,
+                    self._scheduler.add_job(func=self.cloudflareSpeedTest,
                                             trigger=CronTrigger.from_crontab(self._cron),
                                             name="Cloudflare优选")
 
                 if self._onlyonce:
                     logger.info(f"Cloudflare CDN优选服务启动，立即运行一次")
-                    self._scheduler.add_job(func=self.__cloudflareSpeedTest, trigger='date',
+                    self._scheduler.add_job(func=self.cloudflareSpeedTest, trigger='date',
                                             run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
                                             name="Cloudflare优选")
                     # 关闭一次性开关
@@ -111,7 +111,7 @@ class CloudflareSpeedTest(_PluginBase):
                 self._scheduler.start()
 
     @eventmanager.register(EventType.CloudFlareSpeedTest)
-    def __cloudflareSpeedTest(self, event: Event = None):
+    def cloudflareSpeedTest(self, event: Event = None):
         """
         CloudflareSpeedTest优选
         """
@@ -491,7 +491,7 @@ class CloudflareSpeedTest(_PluginBase):
     def get_api(self) -> List[Dict[str, Any]]:
         return [{
             "path": "/cloudflare_speedtest",
-            "endpoint": self.__cloudflareSpeedTest,
+            "endpoint": self.cloudflareSpeedTest,
             "methods": ["GET"],
             "summary": "Cloudflare IP优选",
             "description": "Cloudflare IP优选",
