@@ -326,25 +326,25 @@ class Settings(BaseSettings):
         return self.SAVE_TV_PATH
 
     @property
-    def SAVE_PATHS_MP(self) -> dict:
+    def SAVE_PATHS_IN_MP(self) -> dict:
         """
         获取下载保存目录在MoviePilot中的路径
         """
-        SAVE_PATHS_MP = {
+        save_paths_in_mp = {
             "root": None,
             "movie": None,
             "tv": None,
             "anime": None
         }
         if self.DOWNLOAD_PATH and " => " in self.DOWNLOAD_PATH and self.DOWNLOAD_PATH.split(" => ")[1]:
-            SAVE_PATHS_MP['root'] = Path(self.DOWNLOAD_PATH.split(" => ")[1])
+            save_paths_in_mp['root'] = Path(self.DOWNLOAD_PATH.split(" => ")[1])
         if self.DOWNLOAD_MOVIE_PATH and " => " in self.DOWNLOAD_MOVIE_PATH and self.DOWNLOAD_MOVIE_PATH.split(" => ")[1]:
-            SAVE_PATHS_MP['movie'] = Path(self.DOWNLOAD_MOVIE_PATH.split(" => ")[1])
+            save_paths_in_mp['movie'] = Path(self.DOWNLOAD_MOVIE_PATH.split(" => ")[1])
         if self.DOWNLOAD_TV_PATH and " => " in self.DOWNLOAD_TV_PATH and self.DOWNLOAD_TV_PATH.split(" => ")[1]:
-            SAVE_PATHS_MP['tv'] = Path(self.DOWNLOAD_TV_PATH.split(" => ")[1])
+            save_paths_in_mp['tv'] = Path(self.DOWNLOAD_TV_PATH.split(" => ")[1])
         if self.DOWNLOAD_ANIME_PATH and " => " in self.DOWNLOAD_ANIME_PATH and self.DOWNLOAD_ANIME_PATH.split(" => ")[1]:
-            SAVE_PATHS_MP['anime'] = Path(self.DOWNLOAD_ANIME_PATH.split(" => ")[1])
-        return SAVE_PATHS_MP
+            save_paths_in_mp['anime'] = Path(self.DOWNLOAD_ANIME_PATH.split(" => ")[1])
+        return save_paths_in_mp
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
