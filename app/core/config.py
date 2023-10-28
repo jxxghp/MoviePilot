@@ -129,6 +129,8 @@ class Settings(BaseSettings):
     QB_PASSWORD: str = None
     # Qbittorrent分类自动管理
     QB_CATEGORY: bool = False
+    # Qbittorrent按顺序下载
+    QB_SEQUENTIAL: bool = True
     # Transmission地址，IP:PORT
     TR_HOST: str = None
     # Transmission用户名
