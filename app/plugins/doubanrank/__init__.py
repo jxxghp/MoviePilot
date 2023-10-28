@@ -430,7 +430,7 @@ class DoubanRank(_PluginBase):
             "onlyonce": self._onlyonce,
             "vote": self._vote,
             "ranks": self._ranks,
-            "rss_addrs": self._rss_addrs,
+            "rss_addrs": '\n'.join(map(str, self._rss_addrs)),
             "clear": self._clear
         })
 
