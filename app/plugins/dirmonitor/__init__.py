@@ -307,13 +307,13 @@ class DirMonitor(_PluginBase):
                         is_completed = False
                         for torrent in torrents_completed_files:
                             # 如果种子名在文件路径中，且文件在种子文件中，则该文件属于该种子任务
-                            if torrent["title"] in wait_path and Path(wait_path).stem in torrent["files"]:
+                            if torrent["title"] in wait_path and Path(wait_path).name in torrent["files"]:
                                 is_completed = True
                                 break
                         if not is_completed:
                             for torrent in torrents_downloading_files:
                                 # 如果种子名在文件路径中，且文件在种子文件中，则该文件属于该种子任务
-                                if torrent["title"] in wait_path and Path(wait_path).stem in torrent["files"]:
+                                if torrent["title"] in wait_path and Path(wait_path).name in torrent["files"]:
                                     is_downloading = True
                                     break
                             if not is_downloading:
@@ -321,7 +321,7 @@ class DirMonitor(_PluginBase):
                                 self._wait_paths.remove(wait_path)
                                 self.__handle_file(event_path=wait_path, mon_path=mon_path)
                             else:
-                                # 该文件所属下载任务正在下载，暂时转移
+                                # 该文件所属下载任务正在下载，延迟转移
                                 continue
                         else:
                             # 该文件所属下载任务已完成，开始转移
