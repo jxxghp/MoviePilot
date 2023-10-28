@@ -617,14 +617,15 @@ class TransferChain(ChainBase):
             title=msg_title, text=msg_str, image=mediainfo.get_message_image()))
 
     @staticmethod
-    def delete_files(path: Path):
+    def delete_files(path: Path) -> Tuple[bool, str]:
         """
         删除转移后的文件以及空目录
         :param path: 文件路径
+        :return: 成功标识，错误信息
         """
         logger.info(f"开始删除文件以及空目录：{path} ...")
         if not path.exists():
-            return
+            return True, f"文件或目录不存在：{path}"
         if path.is_file():
             # 删除文件、nfo、jpg等同名文件
             pattern = path.stem.replace('[', '?').replace(']', '?')
@@ -636,7 +637,7 @@ class TransferChain(ChainBase):
         elif str(path.parent) == str(path.root):
             # 根目录，不删除
             logger.warn(f"根目录 {path} 不能删除！")
-            return
+            return False, f"根目录 {path} 不能删除！"
         else:
             # 非根目录，才删除目录
             shutil.rmtree(path)
@@ -662,5 +663,10 @@ class TransferChain(ChainBase):
                     # 父目录非根目录，才删除父目录
                     if not SystemUtils.exits_files(parent_path, settings.RMT_MEDIAEXT):
                         # 当前路径下没有媒体文件则删除
-                        shutil.rmtree(parent_path)
+                        try:
+                            shutil.rmtree(parent_path)
+                        except Exception as e:
+                            logger.error(f"删除目录 {parent_path} 失败：{str(e)}")
+                            return False, f"删除目录 {parent_path} 失败：{str(e)}"
                         logger.warn(f"目录 {parent_path} 已删除")
+        return True, ""
