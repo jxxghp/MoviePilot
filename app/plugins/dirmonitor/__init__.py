@@ -12,6 +12,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 
+from app import schemas
 from app.chain.tmdb import TmdbChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
@@ -602,11 +603,18 @@ class DirMonitor(_PluginBase):
     def get_api(self) -> List[Dict[str, Any]]:
         return [{
             "path": "/directory_sync",
-            "endpoint": self.sync_all,
+            "endpoint": self.sync,
             "methods": ["GET"],
             "summary": "目录监控同步",
             "description": "目录监控同步",
         }]
+
+    def sync(self) -> schemas.Response:
+        """
+        API调用目录同步
+        """
+        self.sync_all()
+        return schemas.Response(success=True)
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         return [

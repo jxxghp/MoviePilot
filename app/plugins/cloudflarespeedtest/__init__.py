@@ -13,6 +13,7 @@ from apscheduler.triggers.cron import CronTrigger
 from python_hosts import Hosts, HostsEntry
 from requests import Response
 
+from app import schemas
 from app.core.config import settings
 from app.core.event import eventmanager, Event
 from app.log import logger
@@ -88,13 +89,13 @@ class CloudflareSpeedTest(_PluginBase):
             try:
                 if self.get_state() and self._cron:
                     logger.info(f"Cloudflare CDN优选服务启动，周期：{self._cron}")
-                    self._scheduler.add_job(func=self.cloudflareSpeedTest,
+                    self._scheduler.add_job(func=self.__cloudflareSpeedTest,
                                             trigger=CronTrigger.from_crontab(self._cron),
                                             name="Cloudflare优选")
 
                 if self._onlyonce:
                     logger.info(f"Cloudflare CDN优选服务启动，立即运行一次")
-                    self._scheduler.add_job(func=self.cloudflareSpeedTest, trigger='date',
+                    self._scheduler.add_job(func=self.__cloudflareSpeedTest, trigger='date',
                                             run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
                                             name="Cloudflare优选")
                     # 关闭一次性开关
@@ -111,7 +112,7 @@ class CloudflareSpeedTest(_PluginBase):
                 self._scheduler.start()
 
     @eventmanager.register(EventType.CloudFlareSpeedTest)
-    def cloudflareSpeedTest(self, event: Event = None):
+    def __cloudflareSpeedTest(self, event: Event = None):
         """
         CloudflareSpeedTest优选
         """
@@ -491,7 +492,7 @@ class CloudflareSpeedTest(_PluginBase):
     def get_api(self) -> List[Dict[str, Any]]:
         return [{
             "path": "/cloudflare_speedtest",
-            "endpoint": self.cloudflareSpeedTest,
+            "endpoint": self.cloudflare_speedtest,
             "methods": ["GET"],
             "summary": "Cloudflare IP优选",
             "description": "Cloudflare IP优选",
@@ -725,6 +726,13 @@ class CloudflareSpeedTest(_PluginBase):
 
     def get_page(self) -> List[dict]:
         pass
+
+    def cloudflare_speedtest(self) -> schemas.Response:
+        """
+        API调用CloudflareSpeedTest IP优选
+        """
+        self.__cloudflareSpeedTest()
+        return schemas.Response(success=True)
 
     @staticmethod
     def __read_system_hosts():

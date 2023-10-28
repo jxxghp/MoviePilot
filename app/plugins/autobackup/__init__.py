@@ -9,6 +9,7 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from app import schemas
 from app.core.config import settings
 from app.plugins import _PluginBase
 from typing import Any, List, Dict, Tuple, Optional
@@ -67,7 +68,7 @@ class AutoBackup(_PluginBase):
 
             if self._cron:
                 try:
-                    self._scheduler.add_job(func=self.backup,
+                    self._scheduler.add_job(func=self.__backup,
                                             trigger=CronTrigger.from_crontab(self._cron),
                                             name="自动备份")
                 except Exception as err:
@@ -75,7 +76,7 @@ class AutoBackup(_PluginBase):
 
             if self._onlyonce:
                 logger.info(f"自动备份服务启动，立即运行一次")
-                self._scheduler.add_job(func=self.backup, trigger='date',
+                self._scheduler.add_job(func=self.__backup, trigger='date',
                                         run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
                                         name="自动备份")
                 # 关闭一次性开关
@@ -93,7 +94,7 @@ class AutoBackup(_PluginBase):
                 self._scheduler.print_jobs()
                 self._scheduler.start()
 
-    def backup(self):
+    def __backup(self):
         """
         自动备份、删除备份
         """
@@ -103,12 +104,16 @@ class AutoBackup(_PluginBase):
         bk_path = self.get_data_path()
 
         # 备份
-        zip_file = self.backup(bk_path=bk_path)
+        zip_file = self.backup_file(bk_path=bk_path)
 
         if zip_file:
-            logger.info(f"备份完成 备份文件 {zip_file} ")
+            success = True
+            msg = f"备份完成 备份文件 {zip_file}"
+            logger.info(msg)
         else:
-            logger.error("创建备份失败")
+            success = False
+            msg = "创建备份失败"
+            logger.error(msg)
 
         # 清理备份
         bk_cnt = 0
@@ -140,8 +145,10 @@ class AutoBackup(_PluginBase):
                      f"清理备份数量 {del_cnt}\n"
                      f"剩余备份数量 {bk_cnt - del_cnt}")
 
+        return success, msg
+
     @staticmethod
-    def backup(bk_path: Path = None):
+    def backup_file(bk_path: Path = None):
         """
         @param bk_path     自定义备份路径
         """
@@ -175,11 +182,21 @@ class AutoBackup(_PluginBase):
     def get_api(self) -> List[Dict[str, Any]]:
         return [{
             "path": "/backup",
-            "endpoint": self.backup,
+            "endpoint": self.__backup,
             "methods": ["GET"],
             "summary": "MoviePilot备份",
             "description": "MoviePilot备份",
         }]
+
+    def backup(self) -> schemas.Response:
+        """
+        API调用备份
+        """
+        success, msg = self.__backup()
+        return schemas.Response(
+            success=success,
+            message=msg
+        )
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """
