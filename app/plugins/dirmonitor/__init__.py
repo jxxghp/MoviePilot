@@ -535,8 +535,8 @@ class DirMonitor(_PluginBase):
             transferinfo = media_files[0].get("transferinfo")
             file_meta = media_files[0].get("file_meta")
             mediainfo = media_files[0].get("mediainfo")
-            # 判断最后更新时间距现在是已超过10秒，超过则发送消息
-            if (datetime.datetime.now() - last_update_time).total_seconds() > 10:
+            # 判断剧集最后更新时间距现在是已超过10秒或者电影，发送消息
+            if (datetime.datetime.now() - last_update_time).total_seconds() > 10 or mediainfo.type == MediaType.MOVIE:
                 # 发送通知
                 if self._notify:
 
