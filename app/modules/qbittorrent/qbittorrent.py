@@ -243,7 +243,7 @@ class Qbittorrent(metaclass=Singleton):
                                             is_paused=is_paused,
                                             tags=tags,
                                             use_auto_torrent_management=is_auto,
-                                            is_sequential_download=True,
+                                            is_sequential_download=settings.QB_SEQUENTIAL,
                                             cookie=cookie,
                                             category=category,
                                             **kwargs)

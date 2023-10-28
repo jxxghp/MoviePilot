@@ -143,6 +143,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
     - **QB_USER：** qbittorrent用户名
     - **QB_PASSWORD：** qbittorrent密码
     - **QB_CATEGORY：** qbittorrent分类自动管理，`true`/`false`，默认`false`，开启后会将下载二级分类传递到下载器，由下载器管理下载目录，需要同步开启`DOWNLOAD_CATEGORY`
+    - **QB_SEQUENTIAL：** qbittorrent按顺序下载，`true`/`false`，默认`true`
 
   - `transmission`设置项：
 
