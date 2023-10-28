@@ -26,7 +26,7 @@ class EmbyModule(_ModuleBase):
         定时任务，每10分钟调用一次
         """
         # 定时重连
-        if not self.emby.is_inactive():
+        if self.emby.is_inactive():
             self.emby.reconnect()
 
     def user_authenticate(self, name: str, password: str) -> Optional[str]:
