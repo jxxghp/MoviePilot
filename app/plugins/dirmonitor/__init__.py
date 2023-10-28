@@ -23,8 +23,8 @@ from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas import Notification, NotificationType, TransferInfo
-from app.schemas.types import EventType, MediaType, SystemConfigKey
+from app.schemas import Notification, NotificationType, TransferInfo, TransferTorrent
+from app.schemas.types import EventType, MediaType, SystemConfigKey, TorrentStatus
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
@@ -82,12 +82,14 @@ class DirMonitor(_PluginBase):
     _enabled = False
     _notify = False
     _onlyonce = False
+    _wait_paths = []
     # 模式 compatibility/fast
     _mode = "fast"
     # 转移方式
     _transfer_type = settings.TRANSFER_TYPE
     _monitor_dirs = ""
     _exclude_keywords = ""
+    _by_torrent = False
     # 存储源目录与目的目录关系
     _dirconf: Dict[str, Optional[Path]] = {}
     # 存储源目录转移方式
@@ -114,6 +116,8 @@ class DirMonitor(_PluginBase):
             self._transfer_type = config.get("transfer_type")
             self._monitor_dirs = config.get("monitor_dirs") or ""
             self._exclude_keywords = config.get("exclude_keywords") or ""
+            self._by_torrent = config.get("by_torrent") or False
+            self._wait_paths = config.get("wait_paths") or []
 
         # 停止现有任务
         self.stop_service()
@@ -227,7 +231,9 @@ class DirMonitor(_PluginBase):
             "mode": self._mode,
             "transfer_type": self._transfer_type,
             "monitor_dirs": self._monitor_dirs,
-            "exclude_keywords": self._exclude_keywords
+            "exclude_keywords": self._exclude_keywords,
+            "by_torrent": self._by_torrent,
+            "wait_paths": self._wait_paths
         })
 
     @eventmanager.register(EventType.DirectorySync)
@@ -267,7 +273,26 @@ class DirMonitor(_PluginBase):
         if not event.is_directory:
             # 文件发生变化
             logger.debug("文件%s：%s" % (text, event_path))
-            self.__handle_file(event_path=event_path, mon_path=mon_path)
+            # 按种子转移
+            if self._by_torrent:
+                if event_path not in self._wait_paths:
+                    self._wait_paths.append(event_path)
+                if self._wait_paths:
+                    # 从下载器获取种子列表
+                    torrents: Optional[List[TransferTorrent]] = \
+                        self.transferchian.list_torrents(status=TorrentStatus.TRANSFER)
+                    torrents_name = [torrent.title for torrent in torrents] if torrents else []
+                    wait_paths = self._wait_paths.copy()
+                    for wait_path in wait_paths:
+                        for torrent_name in torrents_name:
+                            if torrent_name in wait_path:
+                                self._wait_paths.remove(wait_path)
+                                self.__handle_file(event_path=wait_path, mon_path=mon_path)
+                                break
+                    # 更新待转移文件列表
+                    self.__update_config()
+            else:
+                self.__handle_file(event_path=event_path, mon_path=mon_path)
 
     def __handle_file(self, event_path: str, mon_path: str):
         """
@@ -628,7 +653,7 @@ class DirMonitor(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -644,7 +669,7 @@ class DirMonitor(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -660,7 +685,23 @@ class DirMonitor(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'by_torrent',
+                                            'label': '按种子转移',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -777,6 +818,7 @@ class DirMonitor(_PluginBase):
             "enabled": False,
             "notify": False,
             "onlyonce": False,
+            "by_torrent": False,
             "mode": "fast",
             "transfer_type": settings.TRANSFER_TYPE,
             "monitor_dirs": "",
