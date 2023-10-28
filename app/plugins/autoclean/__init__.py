@@ -1,4 +1,3 @@
-import logging
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -152,7 +151,7 @@ class AutoClean(_PluginBase):
 
                 # 转strftime
                 clean_date = self.__get_clean_date(clean_date)
-                logging.info(f'{username} 使用 {clean_type} 清理方式，清理 {clean_date} 之前的下载历史')
+                logger.info(f'{username} 使用 {clean_type} 清理方式，清理 {clean_date} 之前的下载历史')
                 downloadhis_list = self._downloadhis.list_by_user_date(date=clean_date,
                                                                        username=username)
                 logger.info(
