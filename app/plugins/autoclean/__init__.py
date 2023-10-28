@@ -137,6 +137,16 @@ class AutoClean(_PluginBase):
             clean_type = self._cleantype
             clean_date = self._cleandate
 
+            # 1.3.7版本及之前处理多位用户
+            if str(self._cleanuser).count(','):
+                for username in str(self._cleanuser).split(","):
+                    downloadhis_list = self._downloadhis.list_by_user_date(date=clean_date,
+                                                                           username=username)
+                    logger.info(
+                        f'获取到用户 {username} 日期 {clean_date} 之前的下载历史 {len(downloadhis_list)} 条')
+                    self.__clean_history(date=clean_date, clean_type=self._cleantype, downloadhis_list=downloadhis_list)
+                return
+
             for userinfo in str(self._cleanuser).split("\n"):
                 if userinfo.count('#'):
                     clean_type = userinfo.split('#')[1]
