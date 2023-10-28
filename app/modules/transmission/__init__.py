@@ -33,7 +33,7 @@ class TransmissionModule(_ModuleBase):
         定时任务，每10分钟调用一次
         """
         # 定时重连
-        if not self.transmission.is_inactive():
+        if self.transmission.is_inactive():
             self.transmission.reconnect()
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
