@@ -88,6 +88,7 @@ class DirMonitor(_PluginBase):
     _transfer_type = settings.TRANSFER_TYPE
     _monitor_dirs = ""
     _exclude_keywords = ""
+    _interval = 10
     # 存储源目录与目的目录关系
     _dirconf: Dict[str, Optional[Path]] = {}
     # 存储源目录转移方式
@@ -114,6 +115,7 @@ class DirMonitor(_PluginBase):
             self._transfer_type = config.get("transfer_type")
             self._monitor_dirs = config.get("monitor_dirs") or ""
             self._exclude_keywords = config.get("exclude_keywords") or ""
+            self._interval = config.get("interval") or 10
 
         # 停止现有任务
         self.stop_service()
@@ -227,7 +229,8 @@ class DirMonitor(_PluginBase):
             "mode": self._mode,
             "transfer_type": self._transfer_type,
             "monitor_dirs": self._monitor_dirs,
-            "exclude_keywords": self._exclude_keywords
+            "exclude_keywords": self._exclude_keywords,
+            "interval": self._interval
         })
 
     @eventmanager.register(EventType.DirectorySync)
@@ -536,7 +539,8 @@ class DirMonitor(_PluginBase):
             file_meta = media_files[0].get("file_meta")
             mediainfo = media_files[0].get("mediainfo")
             # 判断剧集最后更新时间距现在是已超过10秒或者电影，发送消息
-            if (datetime.datetime.now() - last_update_time).total_seconds() > 10 or mediainfo.type == MediaType.MOVIE:
+            if (datetime.datetime.now() - last_update_time).total_seconds() > self._interval \
+                    or mediainfo.type == MediaType.MOVIE:
                 # 发送通知
                 if self._notify:
 
@@ -681,7 +685,7 @@ class DirMonitor(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -701,7 +705,7 @@ class DirMonitor(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
@@ -717,6 +721,23 @@ class DirMonitor(_PluginBase):
                                                 {'title': 'Rclone复制', 'value': 'rclone_copy'},
                                                 {'title': 'Rclone移动', 'value': 'rclone_move'}
                                             ]
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'interval',
+                                            'label': '入库消息延迟',
+                                            'placeholder': '10'
                                         }
                                     }
                                 ]
@@ -770,6 +791,25 @@ class DirMonitor(_PluginBase):
                                 ]
                             }
                         ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'text': '入库消息延迟默认10s，如网络较慢可酌情调大，有助于发送统一入库消息。'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 ]
             }
@@ -780,7 +820,8 @@ class DirMonitor(_PluginBase):
             "mode": "fast",
             "transfer_type": settings.TRANSFER_TYPE,
             "monitor_dirs": "",
-            "exclude_keywords": ""
+            "exclude_keywords": "",
+            "interval": 10
         }
 
     def get_page(self) -> List[dict]:

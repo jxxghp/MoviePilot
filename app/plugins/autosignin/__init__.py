@@ -96,9 +96,10 @@ class AutoSignIn(_PluginBase):
             self._clean = config.get("clean")
 
             # 过滤掉已删除的站点
-            all_sites = [site for site in self.sites.get_indexers() if not site.get("public")] + self.__custom_sites()
-            self._sign_sites = [site.get("id") for site in all_sites if site.get("id") in self._sign_sites]
-            self._login_sites = [site.get("id") for site in all_sites if site.get("id") in self._login_sites]
+            all_sites = [site.id for site in self.siteoper.list_order_by_pri()] + [site.get("id") for site in
+                                                                                   self.__custom_sites()]
+            self._sign_sites = [site_id for site_id in all_sites if site_id in self._sign_sites]
+            self._login_sites = [site_id for site_id in all_sites if site_id in self._login_sites]
             # 保存配置
             self.__update_config()
 

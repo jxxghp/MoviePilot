@@ -115,8 +115,9 @@ class IYUUAutoSeed(_PluginBase):
             self._success_caches = [] if self._clearcache else config.get("success_caches") or []
 
             # 过滤掉已删除的站点
-            self._sites = [site.get("id") for site in self.sites.get_indexers() if
-                           not site.get("public") and site.get("id") in self._sites]
+            all_sites = [site.id for site in self.siteoper.list_order_by_pri()] + [site.get("id") for site in
+                                                                                   self.__custom_sites()]
+            self._sites = [site_id for site_id in all_sites if site_id in self._sites]
             self.__update_config()
 
         # 停止现有任务
@@ -175,9 +176,14 @@ class IYUUAutoSeed(_PluginBase):
         """
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
+        # 站点的可选项（内置站点 + 自定义站点）
+        customSites = self.__custom_sites()
+
         # 站点的可选项
-        site_options = [{"title": site.name, "value": site.id}
-                        for site in self.siteoper.list_order_by_pri()]
+        site_options = ([{"title": site.name, "value": site.id}
+                         for site in self.siteoper.list_order_by_pri()]
+                        + [{"title": site.get("name"), "value": site.get("id")}
+                           for site in customSites])
         return [
             {
                 'component': 'VForm',
@@ -985,6 +991,13 @@ class IYUUAutoSeed(_PluginBase):
                 self._scheduler = None
         except Exception as e:
             print(str(e))
+
+    def __custom_sites(self) -> List[Any]:
+        custom_sites = []
+        custom_sites_config = self.get_config("CustomSites")
+        if custom_sites_config and custom_sites_config.get("enabled"):
+            custom_sites = custom_sites_config.get("sites")
+        return custom_sites
 
     @eventmanager.register(EventType.SiteDeleted)
     def site_deleted(self, event):
