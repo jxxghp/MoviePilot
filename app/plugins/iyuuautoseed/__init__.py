@@ -11,11 +11,9 @@ from lxml import etree
 from ruamel.yaml import CommentedMap
 
 from app.core.config import settings
+from app.core.event import eventmanager
 from app.db.site_oper import SiteOper
 from app.helper.sites import SitesHelper
-
-from app.core.event import eventmanager
-from app.db.models.site import Site
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.modules.qbittorrent import Qbittorrent

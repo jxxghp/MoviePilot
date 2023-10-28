@@ -159,7 +159,6 @@ class AutoClean(_PluginBase):
         # 输出分组结果
         for key, downloadhis_list in downloadhis_grouped_dict.items():
             logger.info(f"开始清理 {key}")
-            result = []
             del_transferhis_cnt = 0
             del_media_name = downloadhis_list[0].title
             del_media_user = downloadhis_list[0].username
@@ -208,7 +207,7 @@ class AutoClean(_PluginBase):
                              f"下载媒体用户 {del_media_user}\n"
                              f"删除历史记录 {del_transferhis_cnt}")
 
-                result.append({
+                history.append({
                     "type": del_media_type,
                     "title": del_media_name,
                     "year": del_media_year,
@@ -219,7 +218,7 @@ class AutoClean(_PluginBase):
                 })
 
         # 保存历史
-        self.save_data("history", result)
+        self.save_data("history", history)
 
     def get_state(self) -> bool:
         return self._enabled
