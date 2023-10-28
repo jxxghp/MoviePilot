@@ -88,7 +88,7 @@ class DirMonitor(_PluginBase):
     _transfer_type = settings.TRANSFER_TYPE
     _monitor_dirs = ""
     _exclude_keywords = ""
-    _interval:int = 10
+    _interval: int = 10
     # 存储源目录与目的目录关系
     _dirconf: Dict[str, Optional[Path]] = {}
     # 存储源目录转移方式
