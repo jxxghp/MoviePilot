@@ -166,7 +166,8 @@ class QbittorrentModule(_ModuleBase):
                     dlspeed=StringUtils.str_filesize(torrent.get('dlspeed')),
                     upspeed=StringUtils.str_filesize(torrent.get('upspeed')),
                     left_time=StringUtils.str_secends(
-                        (torrent.get('total_size') - torrent.get('completed')) / torrent.get('dlspeed'))
+                        (torrent.get('total_size') - torrent.get('completed')) / torrent.get('dlspeed')) if torrent.get(
+                        'dlspeed') > 0 else ''
                 ))
         else:
             return None

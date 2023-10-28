@@ -67,7 +67,7 @@ class AutoBackup(_PluginBase):
 
             if self._cron:
                 try:
-                    self._scheduler.add_job(func=self.__backup,
+                    self._scheduler.add_job(func=self.backup,
                                             trigger=CronTrigger.from_crontab(self._cron),
                                             name="自动备份")
                 except Exception as err:
@@ -75,7 +75,7 @@ class AutoBackup(_PluginBase):
 
             if self._onlyonce:
                 logger.info(f"自动备份服务启动，立即运行一次")
-                self._scheduler.add_job(func=self.__backup, trigger='date',
+                self._scheduler.add_job(func=self.backup, trigger='date',
                                         run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
                                         name="自动备份")
                 # 关闭一次性开关
@@ -93,7 +93,7 @@ class AutoBackup(_PluginBase):
                 self._scheduler.print_jobs()
                 self._scheduler.start()
 
-    def __backup(self):
+    def backup(self):
         """
         自动备份、删除备份
         """
@@ -173,7 +173,13 @@ class AutoBackup(_PluginBase):
         pass
 
     def get_api(self) -> List[Dict[str, Any]]:
-        pass
+        return [{
+            "path": "/backup",
+            "endpoint": self.backup,
+            "methods": ["GET"],
+            "summary": "MoviePilot备份",
+            "description": "MoviePilot备份",
+        }]
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """

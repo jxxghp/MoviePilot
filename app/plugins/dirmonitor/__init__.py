@@ -600,7 +600,13 @@ class DirMonitor(_PluginBase):
         }]
 
     def get_api(self) -> List[Dict[str, Any]]:
-        pass
+        return [{
+            "path": "/directory_sync",
+            "endpoint": self.sync_all,
+            "methods": ["GET"],
+            "summary": "目录监控同步",
+            "description": "目录监控同步",
+        }]
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         return [

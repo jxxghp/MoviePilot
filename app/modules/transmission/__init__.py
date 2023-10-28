@@ -151,7 +151,7 @@ class TransmissionModule(_ModuleBase):
                     state="paused" if torrent.status == "stopped" else "downloading",
                     dlspeed=StringUtils.str_filesize(dlspeed),
                     upspeed=StringUtils.str_filesize(upspeed),
-                    left_time=StringUtils.str_secends(torrent.left_until_done / dlspeed)
+                    left_time=StringUtils.str_secends(torrent.left_until_done / dlspeed) if dlspeed > 0 else ''
                 ))
         else:
             return None
