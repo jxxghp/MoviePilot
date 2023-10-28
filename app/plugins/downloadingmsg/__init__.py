@@ -90,8 +90,8 @@ class DownloadingMsg(_PluginBase):
                 logger.error("未配置管理员用户")
                 return
 
-            for userid in str(self._adminuser).split(","):
-                self.__send_msg(torrents=torrents, userid=userid)
+            for username in str(self._adminuser).split(","):
+                self.__send_msg(torrents=torrents, username=username)
 
         if self._type == "user" or self._type == "both":
             user_torrents = {}
@@ -101,38 +101,38 @@ class DownloadingMsg(_PluginBase):
                 if not downloadhis:
                     logger.warn(f"种子 {torrent.hash} 未获取到MoviePilot下载历史，无法推送下载进度")
                     continue
-                if not downloadhis.userid:
+                if not downloadhis.username:
                     logger.debug(f"种子 {torrent.hash} 未获取到下载用户记录，无法推送下载进度")
                     continue
-                user_torrent = user_torrents.get(downloadhis.userid) or []
+                user_torrent = user_torrents.get(downloadhis.username) or []
                 user_torrent.append(torrent)
-                user_torrents[downloadhis.userid] = user_torrent
+                user_torrents[downloadhis.username] = user_torrent
 
             if not user_torrents or not user_torrents.keys():
                 logger.warn("未获取到用户下载记录，无法推送下载进度")
                 return
 
             # 推送用户下载任务进度
-            for userid in list(user_torrents.keys()):
-                if not userid:
+            for username in list(user_torrents.keys()):
+                if not username:
                     continue
                 # 如果用户是管理员，无需重复推送
-                if (self._type == "admin" or self._type == "both") and self._adminuser and userid in str(
+                if (self._type == "admin" or self._type == "both") and self._adminuser and username in str(
                         self._adminuser).split(","):
                     logger.debug("管理员已推送")
                     continue
 
-                user_torrent = user_torrents.get(userid)
+                user_torrent = user_torrents.get(username)
                 if not user_torrent:
-                    logger.warn(f"未获取到用户 {userid} 下载任务")
+                    logger.warn(f"未获取到用户 {username} 下载任务")
                     continue
                 self.__send_msg(torrents=user_torrent,
-                                userid=userid)
+                                username=username)
 
         if self._type == "all":
             self.__send_msg(torrents=torrents)
 
-    def __send_msg(self, torrents: Optional[List[Union[TransferTorrent, DownloadingTorrent]]], userid: str = None):
+    def __send_msg(self, torrents: Optional[List[Union[TransferTorrent, DownloadingTorrent]]], username: str = None):
         """
         发送消息
         """
@@ -177,7 +177,7 @@ class DownloadingMsg(_PluginBase):
             else:
                 media_name = torrent.title
 
-            if not self._adminuser or userid not in str(self._adminuser).split(","):
+            if not self._adminuser or username not in str(self._adminuser).split(","):
                 # 下载用户发送精简消息
                 messages.append(f"{index}. {media_name} {round(torrent.progress, 1)}%")
             else:
@@ -197,7 +197,7 @@ class DownloadingMsg(_PluginBase):
                           channel=channel,
                           title=title,
                           text="\n".join(messages),
-                          userid=userid)
+                          userid=username)
 
     def get_state(self) -> bool:
         return self._enabled
