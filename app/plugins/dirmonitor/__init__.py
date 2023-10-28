@@ -88,7 +88,7 @@ class DirMonitor(_PluginBase):
     _transfer_type = settings.TRANSFER_TYPE
     _monitor_dirs = ""
     _exclude_keywords = ""
-    _interval = 10
+    _interval:int = 10
     # 存储源目录与目的目录关系
     _dirconf: Dict[str, Optional[Path]] = {}
     # 存储源目录转移方式
@@ -539,7 +539,7 @@ class DirMonitor(_PluginBase):
             file_meta = media_files[0].get("file_meta")
             mediainfo = media_files[0].get("mediainfo")
             # 判断剧集最后更新时间距现在是已超过10秒或者电影，发送消息
-            if (datetime.datetime.now() - last_update_time).total_seconds() > self._interval \
+            if (datetime.datetime.now() - last_update_time).total_seconds() > int(self._interval) \
                     or mediainfo.type == MediaType.MOVIE:
                 # 发送通知
                 if self._notify:
