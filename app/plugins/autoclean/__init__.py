@@ -49,8 +49,8 @@ class AutoClean(_PluginBase):
     _onlyonce = False
     _notify = False
     _cleantype = None
-    _cleanuser = None
     _cleandate = None
+    _cleanuser = None
     _downloadhis = None
     _transferhis = None
 
@@ -67,8 +67,8 @@ class AutoClean(_PluginBase):
             self._onlyonce = config.get("onlyonce")
             self._notify = config.get("notify")
             self._cleantype = config.get("cleantype")
-            self._cleanuser = config.get("cleanuser")
             self._cleandate = config.get("cleandate")
+            self._cleanuser = config.get("cleanuser")
 
             # 加载模块
         if self._enabled:
@@ -96,9 +96,9 @@ class AutoClean(_PluginBase):
                     "onlyonce": False,
                     "cron": self._cron,
                     "cleantype": self._cleantype,
+                    "cleandate": self._cleandate,
                     "enabled": self._enabled,
                     "cleanuser": self._cleanuser,
-                    "cleandate": self._cleandate,
                     "notify": self._notify,
                 })
 
@@ -107,34 +107,69 @@ class AutoClean(_PluginBase):
                 self._scheduler.print_jobs()
                 self._scheduler.start()
 
+    def __get_clean_date(self, deltatime: str = None):
+        # 清理日期
+        current_time = datetime.now()
+        if deltatime:
+            days_ago = current_time - timedelta(days=int(deltatime))
+        else:
+            days_ago = current_time - timedelta(days=int(self._cleandate))
+        return days_ago.strftime("%Y-%m-%d")
+
     def __clean(self):
         """
         定时清理媒体库
         """
         if not self._cleandate:
-            logger.error("未配置清理媒体库时间，停止运行")
+            logger.error("未配置媒体库全局清理时间，停止运行")
             return
-
-        # 清理日期
-        current_time = datetime.now()
-        days_ago = current_time - timedelta(days=int(self._cleandate))
-        clean_date = days_ago.strftime("%Y-%m-%d")
 
         # 查询用户清理日期之前的下载历史，不填默认清理全部用户的下载
         if not self._cleanuser:
+            clean_date = self.__get_clean_date()
             downloadhis_list = self._downloadhis.list_by_user_date(date=clean_date)
             logger.info(f'获取到日期 {clean_date} 之前的下载历史 {len(downloadhis_list)} 条')
+            self.__clean_history(date=clean_date, clean_type=self._cleantype, downloadhis_list=downloadhis_list)
 
-            self.__clean_history(date=clean_date, downloadhis_list=downloadhis_list)
+        # 根据填写的信息判断怎么清理
         else:
-            for username in str(self._cleanuser).split(","):
+            # username:days#cleantype
+            clean_type = self._cleantype
+            clean_date = self._cleandate
+
+            # 1.3.7版本及之前处理多位用户
+            if str(self._cleanuser).count(','):
+                for username in str(self._cleanuser).split(","):
+                    downloadhis_list = self._downloadhis.list_by_user_date(date=clean_date,
+                                                                           username=username)
+                    logger.info(
+                        f'获取到用户 {username} 日期 {clean_date} 之前的下载历史 {len(downloadhis_list)} 条')
+                    self.__clean_history(date=clean_date, clean_type=self._cleantype, downloadhis_list=downloadhis_list)
+                return
+
+            for userinfo in str(self._cleanuser).split("\n"):
+                if userinfo.count('#'):
+                    clean_type = userinfo.split('#')[1]
+                    username_and_days = userinfo.split('#')[0]
+                else:
+                    username_and_days = userinfo
+                if username_and_days.count(':'):
+                    clean_date = username_and_days.split(':')[1]
+                    username = username_and_days.split(':')[0]
+                else:
+                    username = userinfo
+
+                # 转strftime
+                clean_date = self.__get_clean_date(clean_date)
+                logger.info(f'{username} 使用 {clean_type} 清理方式，清理 {clean_date} 之前的下载历史')
                 downloadhis_list = self._downloadhis.list_by_user_date(date=clean_date,
                                                                        username=username)
                 logger.info(
                     f'获取到用户 {username} 日期 {clean_date} 之前的下载历史 {len(downloadhis_list)} 条')
-                self.__clean_history(date=clean_date, downloadhis_list=downloadhis_list)
+                self.__clean_history(date=clean_date, clean_type=clean_type,
+                                     downloadhis_list=downloadhis_list)
 
-    def __clean_history(self, date: str, downloadhis_list: List[DownloadHistory]):
+    def __clean_history(self, date: str, clean_type: str, downloadhis_list: List[DownloadHistory]):
         """
         清理下载历史、转移记录
         """
@@ -143,7 +178,7 @@ class AutoClean(_PluginBase):
             return
 
         # 读取历史记录
-        history = self.get_data('history') or []
+        pulgin_history = self.get_data('history') or []
 
         # 创建一个字典来保存分组结果
         downloadhis_grouped_dict: Dict[tuple, List[DownloadHistory]] = defaultdict(list)
@@ -179,12 +214,12 @@ class AutoClean(_PluginBase):
 
                 for history in transferhis_list:
                     # 册除媒体库文件
-                    if str(self._cleantype == "dest") or str(self._cleantype == "all"):
+                    if clean_type in ["dest", "all"]:
                         TransferChain().delete_files(Path(history.dest))
                         # 删除记录
                         self._transferhis.delete(history.id)
                     # 删除源文件
-                    if str(self._cleantype == "src") or str(self._cleantype == "all"):
+                    if clean_type in ["src", "all"]:
                         TransferChain().delete_files(Path(history.src))
                         # 发送事件
                         eventmanager.send_event(
@@ -207,7 +242,7 @@ class AutoClean(_PluginBase):
                              f"下载媒体用户 {del_media_user}\n"
                              f"删除历史记录 {del_transferhis_cnt}")
 
-                history.append({
+                pulgin_history.append({
                     "type": del_media_type,
                     "title": del_media_name,
                     "year": del_media_year,
@@ -218,7 +253,7 @@ class AutoClean(_PluginBase):
                 })
 
         # 保存历史
-        self.save_data("history", history)
+        self.save_data("history", pulgin_history)
 
     def get_state(self) -> bool:
         return self._enabled
@@ -322,7 +357,7 @@ class AutoClean(_PluginBase):
                                         'component': 'VSelect',
                                         'props': {
                                             'model': 'cleantype',
-                                            'label': '清理方式',
+                                            'label': '全局清理方式',
                                             'items': [
                                                 {'title': '媒体库文件', 'value': 'dest'},
                                                 {'title': '源文件', 'value': 'src'},
@@ -343,7 +378,7 @@ class AutoClean(_PluginBase):
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'cleandate',
-                                            'label': '清理媒体日期',
+                                            'label': '全局清理日期',
                                             'placeholder': '清理多少天之前的下载记录（天）'
                                         }
                                     }
@@ -361,11 +396,17 @@ class AutoClean(_PluginBase):
                                 },
                                 'content': [
                                     {
-                                        'component': 'VTextField',
+                                        'component': 'VTextarea',
                                         'props': {
                                             'model': 'cleanuser',
-                                            'label': '清理下载用户名/插件名',
-                                            'placeholder': '多个用户,分割 支持按插件清理下载记录（豆瓣想看、豆瓣榜单、RSS订阅）'
+                                            'label': '清理配置',
+                                            'rows': 6,
+                                            'placeholder': '每一行一个配置，支持以下几种配置方式，清理方式支持 src、desc、all 分别对应源文件，媒体库文件，所有文件\n'
+                                                           '用户名缺省默认清理所有用户(慎重留空)，清理天数缺省默认使用全局清理天数，清理方式缺省默认使用全局清理方式\n'
+                                                           '用户名/插件名（豆瓣想看、豆瓣榜单、RSS订阅）\n'
+                                                           '用户名#清理方式\n'
+                                                           '用户名:清理天数\n'
+                                                           '用户名:清理天数#清理方式',
                                         }
                                     }
                                 ]
