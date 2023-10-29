@@ -120,6 +120,8 @@ class ChainBase(metaclass=ABCMeta):
         :param tmdbid:   tmdbid
         :return: 识别的媒体信息，包括剧集信息
         """
+        if not tmdbid and hasattr(meta, "tmdbid"):
+            tmdbid = meta.tmdbid
         return self.run_module("recognize_media", meta=meta, mtype=mtype, tmdbid=tmdbid)
 
     def match_doubaninfo(self, name: str, imdbid: str = None,
