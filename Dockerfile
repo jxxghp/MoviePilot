@@ -1,4 +1,4 @@
-FROM python:3.11.4-slim-bullseye
+FROM python:3.11.6-slim-bullseye
 ARG MOVIEPILOT_VERSION
 ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
