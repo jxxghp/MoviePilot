@@ -49,6 +49,10 @@ def lru_cache_without_none(maxsize=None, typed=False):
             if result is not None:
                 return result
 
+        def cache_clear():
+            cache.cache_clear()
+
+        wrapper.cache_clear = cache_clear
         return wrapper
 
     return decorator
