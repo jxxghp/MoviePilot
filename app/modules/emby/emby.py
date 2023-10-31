@@ -815,10 +815,12 @@ class Emby(metaclass=Singleton):
                         "S" + str(message.get('Item', {}).get('ParentIndexNumber')),
                         "E" + str(message.get('Item', {}).get('IndexNumber')),
                         message.get('Item', {}).get('Name'))
-                else:
+                elif message.get('Item', {}).get('SeriesName'):
                     eventItem.item_name = "%s %s" % (
                         message.get('Item', {}).get('SeriesName'),
                         message.get('Item', {}).get('Name'))
+                else:
+                    eventItem.item_name = message.get('Item', {}).get('Name')
                 eventItem.item_id = message.get('Item', {}).get('SeriesId')
                 eventItem.season_id = message.get('Item', {}).get('ParentIndexNumber')
                 eventItem.episode_id = message.get('Item', {}).get('IndexNumber')
