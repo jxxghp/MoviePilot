@@ -488,6 +488,8 @@ class TorrentRemover(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '自动删种存在风险，如设置不当可能导致数据丢失！建议动作先选择暂停，确定条件正确后再改成删除。'
                                         }
                                     }

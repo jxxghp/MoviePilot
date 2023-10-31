@@ -804,6 +804,8 @@ class DirMonitor(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '入库消息延迟默认10s，如网络较慢可酌情调大，有助于发送统一入库消息。'
                                         }
                                     }

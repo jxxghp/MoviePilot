@@ -236,6 +236,8 @@ class BestFilmVersion(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '支持主动定时获取媒体库数据和Webhook实时触发两种方式，两者只能选其一，'
                                                     'Webhook需要在媒体服务器设置发送Webhook报文。'
                                                     'Plex使用主动获取时，建议执行周期设置大于1小时，'

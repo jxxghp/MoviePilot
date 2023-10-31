@@ -308,6 +308,8 @@ class AutoBackup(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '备份文件路径默认为本地映射的config/plugins/AutoBackup。'
                                         }
                                     }

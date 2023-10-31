@@ -266,6 +266,8 @@ class MediaSyncDel(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '媒体库同步方式分为Webhook、日志同步和Scripter X：'
                                                     '1、Webhook需要Emby4.8.0.45及以上开启媒体删除的Webhook。'
                                                     '2、日志同步需要配置检查周期，默认30分钟执行一次。'
@@ -289,6 +291,8 @@ class MediaSyncDel(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '关于路径映射（转移后文件）：'
                                                     'emby:/data/series/A.mp4,'
                                                     'moviepilot:/mnt/link/series/A.mp4。'
@@ -312,6 +316,8 @@ class MediaSyncDel(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '排除路径：命中排除路径后请求云盘删除插件删除云盘资源。'
                                         }
                                     }

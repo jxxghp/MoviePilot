@@ -624,6 +624,8 @@ class NAStoolSync(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '开启清空记录时，会在导入历史数据之前删除MoviePilot之前的记录。'
                                                     '如果转移记录很多，同步时间可能会长（3-10分钟），'
                                                     '所以点击确定后页面没反应是正常现象，后台正在处理。'

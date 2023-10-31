@@ -543,6 +543,8 @@ class SyncDownloadFiles(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '适用于非MoviePilot下载的任务；下载器种子数据较多时，同步时间将会较长，请耐心等候，可查看实时日志了解同步进度；时间间隔建议最少每6小时执行一次，防止上次任务没处理完。'
                                         }
                                     }

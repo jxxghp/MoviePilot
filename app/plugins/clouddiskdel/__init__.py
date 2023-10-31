@@ -249,6 +249,8 @@ class CloudDiskDel(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '需要开启媒体库删除插件且正确配置排除路径。'
                                                     '主要针对于strm文件删除后同步删除云盘资源。'
                                                     '如遇删除失败，请检查文件权限问题。'
@@ -270,6 +272,8 @@ class CloudDiskDel(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '关于路径映射：'
                                                     'emby:/data/series/A.mp4,'
                                                     'moviepilot内云盘挂载路径:/mnt/link/series/A.mp4。'

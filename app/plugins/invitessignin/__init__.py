@@ -277,6 +277,8 @@ class InvitesSignin(_PluginBase):
                                             {
                                                 'component': 'VAlert',
                                                 'props': {
+                                                    'type': 'info',
+                                                    'variant': 'tonal',
                                                     'text': '整点定时签到失败？不妨换个时间试试'
                                                 }
                                             }

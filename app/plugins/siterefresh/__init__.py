@@ -198,6 +198,8 @@ class SiteRefresh(_PluginBase):
                                     {
                                         'component': 'VAlert',
                                         'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
                                             'text': '站点签到提示Cookie过期时自动触发。'
                                                     '不支持开启两步认证的站点。'
                                                     '不是所有站点都支持，失败请手动更新。'

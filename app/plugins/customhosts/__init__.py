@@ -158,6 +158,8 @@ class CustomHosts(_PluginBase):
                                            {
                                                'component': 'VAlert',
                                                'props': {
+                                                   'type': 'info',
+                                                   'variant': 'tonal',
                                                    'text': 'host格式ip host，中间有空格！！！'
                                                            '（注：容器运行则更新容器hosts！非宿主机！）'
                                                }
