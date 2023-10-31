@@ -123,7 +123,7 @@ class ChainBase(metaclass=ABCMeta):
         if not tmdbid and hasattr(meta, "tmdbid"):
             # 识别用名中含指定信息情形
             tmdbid = meta.tmdbid
-            if meta.type in [MediaType.TV, MediaType.MOVIE]:
+            if not mtype and meta.type in [MediaType.TV, MediaType.MOVIE]:
                 mtype = meta.type
         return self.run_module("recognize_media", meta=meta, mtype=mtype, tmdbid=tmdbid)
 
