@@ -71,6 +71,10 @@ class Scheduler(metaclass=Singleton):
             "transfer": {
                 "func": TransferChain().process,
                 "running": False,
+            },
+            "clear_cache": {
+                "func": SchedulerChain().clear_cache,
+                "running": False,
             }
         }
 
@@ -200,6 +204,18 @@ class Scheduler(metaclass=Singleton):
             SchedulerChain().scheduler_job,
             "interval",
             minutes=10
+        )
+
+        # 缓存清理服务，每隔24小时
+        self._scheduler.add_job(
+            self.start,
+            "interval",
+            id="clear_cache",
+            name="缓存清理",
+            hours=24,
+            kwargs={
+                'job_id': 'clear_cache'
+            }
         )
 
         # 打印服务
