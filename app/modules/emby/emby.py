@@ -244,7 +244,7 @@ class Emby(metaclass=Singleton):
                    "&Limit=10"
                    "&IncludeSearchTypes=false"
                    "&api_key=%s") % (
-            self._host, name, self._apikey)
+                      self._host, name, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
             if res:
@@ -803,7 +803,9 @@ class Emby(metaclass=Singleton):
         logger.debug(f"接收到emby webhook：{message}")
         eventItem = schemas.WebhookEventInfo(event=eventType, channel="emby")
         if message.get('Item'):
-            if message.get('Item', {}).get('Type') == 'Episode':
+            if message.get('Item', {}).get('Type') == 'Episode' \
+                    or message.get('Item', {}).get('Type') == 'Series' \
+                    or message.get('Item', {}).get('Type') == 'Season':
                 eventItem.item_type = "TV"
                 if message.get('Item', {}).get('SeriesName') \
                         and message.get('Item', {}).get('ParentIndexNumber') \
