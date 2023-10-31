@@ -212,7 +212,7 @@ class Scheduler(metaclass=Singleton):
             "interval",
             id="clear_cache",
             name="缓存清理",
-            hours=24,
+            hours=settings.CACHE_CONF.get("meta") / 3600,
             kwargs={
                 'job_id': 'clear_cache'
             }
