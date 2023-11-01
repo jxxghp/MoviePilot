@@ -226,7 +226,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 > `part`：段/节  
 > `fileExt`：文件扩展名
 > `tmdbid`：TMDB ID
-> `imdbid`：OMDB ID
+> `imdbid`：IMDB ID
 > `customization`：自定义占位符
 
 `MOVIE_RENAME_FORMAT`默认配置格式：
