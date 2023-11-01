@@ -236,7 +236,6 @@ class RssHelper:
             ret = RequestUtils(proxies=settings.PROXY if proxy else None).get_res(url)
             if not ret:
                 return []
-            ret.encoding = ret.apparent_encoding
         except Exception as err:
             print(str(err))
             return []
