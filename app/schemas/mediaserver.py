@@ -138,3 +138,4 @@ class WebhookEventInfo(BaseModel):
     item_favorite: Optional[bool] = None
     save_reason: Optional[str] = None
     item_isvirtual: Optional[bool] = None
+    media_type: Optional[str] = None

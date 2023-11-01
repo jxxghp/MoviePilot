@@ -158,6 +158,13 @@ class TransferHistory(Base):
                     # 电视剧所有季集
                     result = db.query(TransferHistory).filter(TransferHistory.title == title,
                                                               TransferHistory.year == year).all()
+        # 类型 + 转移路径（emby webhook season无tmdbid场景）
+        elif mtype and season and dest:
+            # 电视剧某季
+            result = db.query(TransferHistory).filter(TransferHistory.type == mtype,
+                                                      TransferHistory.seasons == season,
+                                                      TransferHistory.dest.like(f"{dest}%")).all()
+
         if result:
             return list(result)
         return []

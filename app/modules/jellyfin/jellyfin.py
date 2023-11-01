@@ -466,6 +466,7 @@ class Jellyfin(metaclass=Singleton):
         eventItem.device_name = message.get('DeviceName')
         eventItem.user_name = message.get('NotificationUsername')
         eventItem.client = message.get('ClientName')
+        eventItem.media_type = message.get('ItemType')
         if message.get("ItemType") == "Episode" \
                 or message.get("ItemType") == "Series" \
                 or message.get("ItemType") == "Season":
