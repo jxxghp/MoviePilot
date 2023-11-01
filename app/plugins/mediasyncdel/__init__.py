@@ -4,7 +4,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any, Optional, Union
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -581,7 +581,7 @@ class MediaSyncDel(_PluginBase):
                         episode_num=episode_num)
 
     def __sync_del(self, media_type: str, media_name: str, media_path: str,
-                   tmdb_id: int, season_num: str, episode_num: str):
+                   tmdb_id: Union[int, str], season_num: str, episode_num: str):
         """
         执行删除逻辑
         """
@@ -603,9 +603,6 @@ class MediaSyncDel(_PluginBase):
 
         if not media_type:
             logger.error(f"{media_name} 同步删除失败，未获取到媒体类型，请检查媒体是否刮削")
-            return
-        if not tmdb_id or not str(tmdb_id).isdigit():
-            logger.error(f"{media_name} 同步删除失败，未获取到TMDB ID，请检查媒体是否刮削")
             return
 
         # 查询转移记录
@@ -714,8 +711,8 @@ class MediaSyncDel(_PluginBase):
             "title": media_name,
             "year": year,
             "path": media_path,
-            "season": season_num,
-            "episode": episode_num,
+            "season": season_num if season_num and str(season_num).isdigit() else None,
+            "episode": episode_num if episode_num and str(episode_num).isdigit() else None,
             "image": poster_image,
             "del_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
         })
@@ -724,7 +721,7 @@ class MediaSyncDel(_PluginBase):
         self.save_data("history", history)
 
     def __get_transfer_his(self, media_type: str, media_name: str, media_path: str,
-                           tmdb_id: int, season_num: str, episode_num: str):
+                           tmdb_id: Union[int, str], season_num: str, episode_num: str):
         """
         查询转移记录
         """
@@ -768,9 +765,16 @@ class MediaSyncDel(_PluginBase):
                 logger.error(f"{media_name} 季同步删除失败，未获取到具体季")
                 return
             msg = f'剧集 {media_name} S{season_num} {tmdb_id}'
-            transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
-                                                                               mtype=mtype.value,
-                                                                               season=f'S{season_num}')
+            if tmdb_id and str(tmdb_id).isdigit():
+                # 根据tmdb_id查询转移记录
+                transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
+                                                                                   mtype=mtype.value,
+                                                                                   season=f'S{season_num}')
+            else:
+                # 兼容emby webhook不发送tmdb场景
+                transfer_history: List[TransferHistory] = self._transferhis.get_by(mtype=mtype.value,
+                                                                                   season=f'S{season_num}',
+                                                                                   dest=media_path)
         # 删除剧集S02E02
         elif mtype == MediaType.TV and season_num and episode_num:
             if not season_num or not str(season_num).isdigit() or not episode_num or not str(episode_num).isdigit():
