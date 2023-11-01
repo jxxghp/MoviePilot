@@ -14,7 +14,7 @@ class PluginHelper(metaclass=Singleton):
     @cached(cache=TTLCache(maxsize=1, ttl=1800))
     def get_plugins(self) -> Dict[str, dict]:
         """
-        获取所有插件列表
+        获取Github所有最新插件列表
         """
         pass
 

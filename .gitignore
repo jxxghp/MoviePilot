@@ -5,6 +5,10 @@ dist/
 nginx/
 test.py
 app/helper/sites.py
+app/helper/*.so
+app/helper/*.pyd
+app/plugins/**
 config/user.db
+config/sites/**
 *.pyc
 *.log
