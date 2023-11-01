@@ -803,6 +803,7 @@ class Emby(metaclass=Singleton):
         logger.debug(f"接收到emby webhook：{message}")
         eventItem = schemas.WebhookEventInfo(event=eventType, channel="emby")
         if message.get('Item'):
+            eventItem.media_type = message.get('Item', {}).get('Type')
             if message.get('Item', {}).get('Type') == 'Episode' \
                     or message.get('Item', {}).get('Type') == 'Series' \
                     or message.get('Item', {}).get('Type') == 'Season':

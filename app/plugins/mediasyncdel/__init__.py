@@ -4,7 +4,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import List, Tuple, Dict, Any, Optional, Union
+from typing import List, Tuple, Dict, Any, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -506,7 +506,7 @@ class MediaSyncDel(_PluginBase):
             return
 
         # 媒体类型
-        media_type = event_data.item_type
+        media_type = event_data.media_type
         # 媒体名称
         media_name = event_data.item_name
         # 媒体路径
@@ -517,6 +517,11 @@ class MediaSyncDel(_PluginBase):
         season_num = event_data.season_id
         # 集数
         episode_num = event_data.episode_id
+
+        # 兼容emby webhook season删除没有发送tmdbid
+        if not tmdb_id and str(media_type) != 'Season':
+            logger.error(f"{media_name} 同步删除失败，未获取到TMDB ID，请检查媒体库媒体是否刮削")
+            return
 
         self.__sync_del(media_type=media_type,
                         media_name=media_name,
@@ -573,6 +578,10 @@ class MediaSyncDel(_PluginBase):
         # 集数
         episode_num = event_data.episode_id
 
+        if not tmdb_id or not str(tmdb_id).isdigit():
+            logger.error(f"{media_name} 同步删除失败，未获取到TMDB ID，请检查媒体库媒体是否刮削")
+            return
+
         self.__sync_del(media_type=media_type,
                         media_name=media_name,
                         media_path=media_path,
@@ -581,7 +590,7 @@ class MediaSyncDel(_PluginBase):
                         episode_num=episode_num)
 
     def __sync_del(self, media_type: str, media_name: str, media_path: str,
-                   tmdb_id: Union[int, str], season_num: str, episode_num: str):
+                   tmdb_id: int, season_num: str, episode_num: str):
         """
         执行删除逻辑
         """
@@ -721,7 +730,7 @@ class MediaSyncDel(_PluginBase):
         self.save_data("history", history)
 
     def __get_transfer_his(self, media_type: str, media_name: str, media_path: str,
-                           tmdb_id: Union[int, str], season_num: str, episode_num: str):
+                           tmdb_id: int, season_num: str, episode_num: str):
         """
         查询转移记录
         """
