@@ -71,6 +71,20 @@ class SystemUtils:
         """
         return True if platform.machine() == 'aarch64' else False
 
+    @property
+    def platform(self) -> str:
+        """
+        获取系统平台
+        """
+        if SystemUtils.is_windows():
+            return "Windows"
+        elif SystemUtils.is_macos():
+            return "MacOS"
+        elif SystemUtils.is_aarch64():
+            return "Arm64"
+        else:
+            return "Linux"
+
     @staticmethod
     def copy(src: Path, dest: Path) -> Tuple[int, str]:
         """
