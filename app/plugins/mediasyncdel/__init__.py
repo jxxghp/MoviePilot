@@ -729,12 +729,12 @@ class MediaSyncDel(_PluginBase):
         查询转移记录
         """
         # 季数
-        if season_num and season_num.isdigit():
+        if season_num and str(season_num).isdigit():
             season_num = str(season_num).rjust(2, '0')
         else:
             season_num = None
         # 集数
-        if episode_num and episode_num.isdigit():
+        if episode_num and str(episode_num).isdigit():
             episode_num = str(episode_num).rjust(2, '0')
         else:
             episode_num = None
