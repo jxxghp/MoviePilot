@@ -24,7 +24,7 @@ class PluginHelper(metaclass=Singleton):
         """
         if not repo_url:
             return {}
-        res = RequestUtils(proxies=settings.PROXY).get_res(f"{repo_url}package.json")
+        res = RequestUtils(proxies=settings.PROXY, timeout=10).get_res(f"{repo_url}package.json")
         if res:
             return json.loads(res.text)
         return {}
