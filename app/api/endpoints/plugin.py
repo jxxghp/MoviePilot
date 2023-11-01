@@ -22,6 +22,8 @@ def all_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     local_plugins = PluginManager().get_local_plugins()
     # 在线插件
     online_plugins = PluginManager().get_online_plugins()
+    if not online_plugins:
+        return local_plugins
     # 已安装插件IDS
     installed_ids = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
     # 已经安装的本地
