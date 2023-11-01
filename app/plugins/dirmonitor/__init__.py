@@ -490,9 +490,6 @@ class DirMonitor(_PluginBase):
                     }
                 self._medias[mediainfo.title_year + " " + file_meta.season] = media_list
 
-                # 汇总刷新媒体库
-                if settings.REFRESH_MEDIASERVER:
-                    self.chain.refresh_mediaserver(mediainfo=mediainfo, file_path=transferinfo.target_path)
                 # 广播事件
                 self.eventmanager.send_event(EventType.TransferComplete, {
                     'meta': file_meta,

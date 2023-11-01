@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Optional, Tuple, Union, Any, List, Generator
 
 from app import schemas
@@ -93,15 +92,6 @@ class JellyfinModule(_ModuleBase):
                     server="jellyfin",
                     itemid=itemid
                 )
-
-    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> None:
-        """
-        刷新媒体库
-        :param mediainfo:  识别的媒体信息
-        :param file_path:  文件路径
-        :return: 成功或失败
-        """
-        self.jellyfin.refresh_root_library()
 
     def media_statistic(self) -> List[schemas.Statistic]:
         """

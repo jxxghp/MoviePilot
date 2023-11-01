@@ -153,7 +153,6 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
     - **TR_PASSWORD：** transmission密码
 
 ---
-- **REFRESH_MEDIASERVER：** 入库后是否刷新媒体服务器，`true`/`false`，默认`true`
 - **❗MEDIASERVER：** 媒体服务器，支持`emby`/`jellyfin`/`plex`，同时开启多个使用`,`分隔。还需要配置对应媒体服务器的环境变量，非对应媒体服务器的变量可删除，推荐使用`emby`
 
   - `emby`设置项：

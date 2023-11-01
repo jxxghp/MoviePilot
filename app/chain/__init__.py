@@ -362,15 +362,6 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("media_exists", mediainfo=mediainfo, itemid=itemid)
 
-    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> None:
-        """
-        刷新媒体库
-        :param mediainfo:  识别的媒体信息
-        :param file_path:  文件路径
-        :return: 成功或失败
-        """
-        self.run_module("refresh_mediaserver", mediainfo=mediainfo, file_path=file_path)
-
     def post_message(self, message: Notification) -> None:
         """
         发送消息

@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Optional, Tuple, Union, Any, List, Generator
 
 from app import schemas
@@ -87,24 +86,6 @@ class PlexModule(_ModuleBase):
                     server="plex",
                     itemid=item_id
                 )
-
-    def refresh_mediaserver(self, mediainfo: MediaInfo, file_path: Path) -> None:
-        """
-        刷新媒体库
-        :param mediainfo:  识别的媒体信息
-        :param file_path:  文件路径
-        :return: 成功或失败
-        """
-        items = [
-            schemas.RefreshMediaItem(
-                title=mediainfo.title,
-                year=mediainfo.year,
-                type=mediainfo.type,
-                category=mediainfo.category,
-                target_path=file_path
-            )
-        ]
-        self.plex.refresh_library_by_items(items)
 
     def media_statistic(self) -> List[schemas.Statistic]:
         """

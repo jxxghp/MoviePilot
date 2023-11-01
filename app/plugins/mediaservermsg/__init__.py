@@ -11,9 +11,9 @@ from app.utils.web import WebUtils
 
 class MediaServerMsg(_PluginBase):
     # 插件名称
-    plugin_name = "媒体服务器通知"
+    plugin_name = "媒体库服务器通知"
     # 插件描述
-    plugin_desc = "发送媒体服务器播入、入库等通知消息。"
+    plugin_desc = "发送Emby/Jellyfin/Plex服务器的播放、入库等通知消息。"
     # 插件图标
     plugin_icon = "mediaplay.png"
     # 主题色
@@ -129,6 +129,27 @@ class MediaServerMsg(_PluginBase):
                             }
                         ]
                     },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAlert',
+                                        'props': {
+                                            'type': 'info',
+                                            'variant': 'tonal',
+                                            'text': '需要设置媒体服务器Webhook，回调相对路径为 /api/v1/webhook?token=moviepilot（3001端口），其中 moviepilot 为设置的 API_TOKEN。'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
                 ]
             }
         ], {

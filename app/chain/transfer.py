@@ -375,9 +375,6 @@ class TransferChain(ChainBase):
                 # 媒体目录
                 if transfer_info.target_path.is_file():
                     transfer_info.target_path = transfer_info.target_path.parent
-                # 刷新媒体库，根目录或季目录
-                if settings.REFRESH_MEDIASERVER:
-                    self.refresh_mediaserver(mediainfo=media, file_path=transfer_info.target_path)
                 # 发送通知
                 se_str = None
                 if media.type == MediaType.TV:

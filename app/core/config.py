@@ -155,8 +155,6 @@ class Settings(BaseSettings):
     DOWNLOAD_SUBTITLE: bool = True
     # 媒体服务器 emby/jellyfin/plex，多个媒体服务器,分割
     MEDIASERVER: str = "emby"
-    # 入库刷新媒体库
-    REFRESH_MEDIASERVER: bool = True
     # 媒体服务器同步间隔（小时）
     MEDIASERVER_SYNC_INTERVAL: int = 6
     # 媒体服务器同步黑名单，多个媒体库名称,分割
