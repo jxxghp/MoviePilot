@@ -19,6 +19,7 @@ class ModuleHelper:
 
         submodules: list = []
         packages = importlib.import_module(package_path)
+        importlib.reload(packages)
         for importer, package_name, _ in pkgutil.iter_modules(packages.__path__):
             if package_name.startswith('_'):
                 continue
