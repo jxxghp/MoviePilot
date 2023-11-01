@@ -82,7 +82,9 @@ class PluginHelper(metaclass=Singleton):
             if item.get("download_url"):
                 # 下载插件文件
                 res = RequestUtils(proxies=settings.PROXY).get_res(item["download_url"])
-                if not res or res.status_code != 200:
+                if not res:
+                    return False, f"文件 {item.get('name')} 下载失败！"
+                elif res.status_code != 200:
                     return False, f"下载文件 {item.get('name')} 失败：{res.status_code} - {res.reason}"
                 # 创建插件文件夹
                 file_path = Path(settings.ROOT_PATH) / "app" / item.get("path")

@@ -78,13 +78,10 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
     && mv /dist /public \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" | busybox unzip -d / - \
-    && mv /MoviePilot-Plugins-main/plugins/* /app/app/plugins/ \
+    && mv -f /MoviePilot-Plugins-main/plugins/* /app/app/plugins/ \
     && rm -rf /MoviePilot-Plugins-main \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" | busybox unzip -d / - \
-    && mv /MoviePilot-Resources-main/resources/* /app/app/helper/ \
-    && rm -f /app/config/user.sites.bin \
-    && mkdir -p /app/config/sites \
-    && mv /app/app/helper/user.sites.bin /app/config/sites/user.sites.bin \
+    && mv -f /MoviePilot-Resources-main/resources/* /app/app/helper/ \
     && rm -rf /MoviePilot-Resources-main
 EXPOSE 3000
 VOLUME [ "/config" ]
