@@ -65,6 +65,13 @@ class SystemUtils:
         return True if platform.system() == 'Darwin' else False
 
     @staticmethod
+    def is_aarch64() -> bool:
+        """
+        判断是否为ARM64架构
+        """
+        return True if platform.machine() == 'aarch64' else False
+
+    @staticmethod
     def copy(src: Path, dest: Path) -> Tuple[int, str]:
         """
         复制
