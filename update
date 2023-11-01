@@ -41,8 +41,9 @@ if [ "${MOVIEPILOT_AUTO_UPDATE_DEV}" = "true" ]; then
                     mv /tmp/dist /public
                     mv /tmp/MoviePilot-Plugins-main/plugins/* /app/app/plugins/
                     mv /tmp/MoviePilot-Resources-main/resources/* /app/app/helper/
+                    mkdir -p /app/config/sites
                     mv /app/app/helper/user.sites.bin /app/config/sites/user.sites.bin
-                    rm -rf /tmp MoviePilot-*
+                    rm -rf /tmp/MoviePilot-*
                     echo "程序更新成功，前端版本：${frontend_version}"
                 else
                     echo "前端程序下载失败，继续使用旧的程序来启动..."
