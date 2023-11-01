@@ -23,6 +23,7 @@ if [ "${MOVIEPILOT_AUTO_UPDATE_DEV}" = "true" ]; then
             # 下载插件
             echo "正在下载插件..."
             curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" | busybox unzip -d /tmp -
+            echo "插件下载成功"
             # 检查前端最新版本
             frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name)
             if [[ "${frontend_version}" == *v* ]]; then
