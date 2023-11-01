@@ -210,10 +210,8 @@ class Settings(BaseSettings):
     OVERWRITE_MODE: str = "size"
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
-    # 插件市场地址
-    PLUGIN_MARKET: str = "https://movie-pilot.org/pluginmarket"
-    # 资源包更新地址
-    RESOURCE_HOST: str = "https://movie-pilot.org/resources"
+    # 插件市场仓库地址，多个地址使用,分隔，地址以/结尾
+    PLUGIN_MARKET: str = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/"
 
     @property
     def INNER_CONFIG_PATH(self):

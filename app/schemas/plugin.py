@@ -34,3 +34,9 @@ class Plugin(BaseModel):
     state: Optional[bool] = False
     # 是否有详情页面
     has_page: Optional[bool] = False
+    # 是否有新版本
+    has_update: Optional[bool] = False
+    # 是否本地
+    is_local: Optional[bool] = False
+    # 仓库地址
+    repo_url: Optional[str] = None

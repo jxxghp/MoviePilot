@@ -688,3 +688,26 @@ class StringUtils:
                 break
 
         return ''.join(common_prefix)
+
+    @staticmethod
+    def compare_version(v1: str, v2: str) -> int:
+        """
+        比较两个版本号的大小，v1 > v2时返回1，v1 < v2时返回-1，v1 = v2时返回0
+        """
+        if not v1 or not v2:
+            return 0
+        v1 = v1.replace('v', '')
+        v2 = v2.replace('v', '')
+        v1 = [int(x) for x in v1.split('.')]
+        v2 = [int(x) for x in v2.split('.')]
+        for i in range(min(len(v1), len(v2))):
+            if v1[i] > v2[i]:
+                return 1
+            elif v1[i] < v2[i]:
+                return -1
+        if len(v1) > len(v2):
+            return 1
+        elif len(v1) < len(v2):
+            return -1
+        else:
+            return 0

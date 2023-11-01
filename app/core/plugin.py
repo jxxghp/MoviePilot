@@ -1,14 +1,17 @@
 import traceback
 from typing import List, Any, Dict, Tuple
 
+from app.core.config import settings
 from app.core.event import eventmanager
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.module import ModuleHelper
+from app.helper.plugin import PluginHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
+from app.utils.string import StringUtils
 
 
 class PluginManager(metaclass=Singleton):
@@ -26,6 +29,7 @@ class PluginManager(metaclass=Singleton):
 
     def __init__(self):
         self.siteshelper = SitesHelper()
+        self.pluginhelper = PluginHelper()
         self.init_config()
 
     def init_config(self):
@@ -188,9 +192,91 @@ class PluginManager(metaclass=Singleton):
         """
         return list(self._plugins.keys())
 
-    def get_plugin_apps(self) -> List[dict]:
+    def get_online_plugins(self) -> List[Dict[str, dict]]:
         """
-        获取所有插件信息
+        获取所有在线插件信息
+        """
+        # 返回值
+        all_confs = []
+        if not settings.PLUGIN_MARKET:
+            return all_confs
+        # 已安装插件
+        installed_apps = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
+        # 线上插件列表
+        markets = settings.PLUGIN_MARKET.split(",")
+        for market in markets:
+            online_plugins = self.pluginhelper.get_plugins(market) or {}
+            for pid, plugin in online_plugins.items():
+                # 运行状插件
+                plugin_obj = self._running_plugins.get(pid)
+                # 非运行态插件
+                plugin_static = self._plugins.get(pid)
+                # 基本属性
+                conf = {}
+                # ID
+                conf.update({"id": pid})
+                # 安装状态，是否有新版本
+                if plugin_static:
+                    # 已安装
+                    if pid in installed_apps:
+                        conf.update({"installed": True})
+                    else:
+                        conf.update({"installed": False})
+                    conf.update({"has_update": False})
+                    if plugin_obj:
+                        installed_version = getattr(plugin_static, "plugin_version")
+                        if StringUtils.compare_version(installed_version, plugin.get("version")) < 0:
+                            # 需要更新
+                            conf.update({"installed": False})
+                            conf.update({"has_update": True})
+                else:
+                    # 未安装
+                    conf.update({"installed": False})
+                    conf.update({"has_update": False})
+                # 运行状态
+                if plugin_obj and hasattr(plugin_obj, "get_state"):
+                    conf.update({"state": plugin_obj.get_state()})
+                else:
+                    conf.update({"state": False})
+                # 是否有详情页面
+                conf.update({"has_page": False})
+                if plugin_obj and hasattr(plugin_obj, "get_page"):
+                    if ObjectUtils.check_method(plugin_obj.get_page):
+                        conf.update({"has_page": True})
+                # 权限
+                if plugin.get("level"):
+                    conf.update({"auth_level": plugin.get("level")})
+                    if self.siteshelper.auth_level < plugin.get("level"):
+                        continue
+                # 名称
+                if plugin.get("name"):
+                    conf.update({"plugin_name": plugin.get("name")})
+                # 描述
+                if plugin.get("description"):
+                    conf.update({"plugin_desc": plugin.get("description")})
+                # 版本
+                if plugin.get("version"):
+                    conf.update({"plugin_version": plugin.get("version")})
+                # 图标
+                if plugin.get("icon"):
+                    conf.update({"plugin_icon": plugin.get("icon")})
+                # 主题色
+                if plugin.get("color"):
+                    conf.update({"plugin_color": plugin.get("color")})
+                # 作者
+                if plugin.get("author"):
+                    conf.update({"plugin_author": plugin.get("author")})
+                # 仓库链接
+                conf.update({"repo_url": market})
+                # 本地标志
+                conf.update({"is_local": False})
+                # 汇总
+                all_confs.append(conf)
+        return all_confs
+
+    def get_local_plugins(self) -> List[Dict[str, dict]]:
+        """
+        获取所有本地已下载的插件信息
         """
         # 返回值
         all_confs = []
@@ -209,7 +295,7 @@ class PluginManager(metaclass=Singleton):
             else:
                 conf.update({"installed": False})
             # 运行状态
-            if plugin_obj and hasattr(plugin, "get_state"):
+            if plugin_obj and hasattr(plugin_obj, "get_state"):
                 conf.update({"state": plugin_obj.get_state()})
             else:
                 conf.update({"state": False})
@@ -221,6 +307,7 @@ class PluginManager(metaclass=Singleton):
                     conf.update({"has_page": False})
             # 权限
             if hasattr(plugin, "auth_level"):
+                conf.update({"auth_level": plugin.auth_level})
                 if self.siteshelper.auth_level < plugin.auth_level:
                     continue
             # 名称
@@ -244,6 +331,10 @@ class PluginManager(metaclass=Singleton):
             # 作者链接
             if hasattr(plugin, "author_url"):
                 conf.update({"author_url": plugin.author_url})
+            # 是否需要更新
+            conf.update({"has_update": False})
+            # 本地标志
+            conf.update({"is_local": True})
             # 汇总
             all_confs.append(conf)
         return all_confs
