@@ -538,7 +538,6 @@ class DoubanRank(_PluginBase):
             ret = RequestUtils().get_res(addr)
             if not ret:
                 return []
-            ret.encoding = ret.apparent_encoding
             ret_xml = ret.text
             ret_array = []
             # 解析XML
