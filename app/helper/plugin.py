@@ -76,7 +76,7 @@ class PluginHelper(metaclass=Singleton):
         # 本地存在时先删除
         plugin_dir = Path(settings.ROOT_PATH) / "app" / "plugins" / pid.lower()
         if plugin_dir.exists():
-            shutil.rmtree(plugin_dir)
+            shutil.rmtree(plugin_dir, ignore_errors=True)
         # 下载所有文件
         for item in ret_json:
             if item.get("download_url"):

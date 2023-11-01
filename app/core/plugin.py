@@ -215,24 +215,18 @@ class PluginManager(metaclass=Singleton):
                 conf = {}
                 # ID
                 conf.update({"id": pid})
-                # 安装状态，是否有新版本
-                if plugin_static:
-                    # 已安装
-                    if pid in installed_apps:
-                        conf.update({"installed": True})
-                    else:
-                        conf.update({"installed": False})
-                    conf.update({"has_update": False})
-                    if plugin_obj:
-                        installed_version = getattr(plugin_static, "plugin_version")
-                        if StringUtils.compare_version(installed_version, plugin.get("version")) < 0:
-                            # 需要更新
-                            conf.update({"installed": False})
-                            conf.update({"has_update": True})
+                # 安装状态
+                if pid in installed_apps:
+                    conf.update({"installed": True})
                 else:
-                    # 未安装
                     conf.update({"installed": False})
-                    conf.update({"has_update": False})
+                # 是否有新版本
+                conf.update({"has_update": False})
+                if plugin_static:
+                    installed_version = getattr(plugin_static, "plugin_version")
+                    if StringUtils.compare_version(installed_version, plugin.get("version")) < 0:
+                        # 需要更新
+                        conf.update({"has_update": True})
                 # 运行状态
                 if plugin_obj and hasattr(plugin_obj, "get_state"):
                     conf.update({"state": plugin_obj.get_state()})
