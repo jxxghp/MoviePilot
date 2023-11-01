@@ -24,6 +24,10 @@ if [ "${MOVIEPILOT_AUTO_UPDATE_DEV}" = "true" ]; then
             echo "正在下载插件..."
             curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" | busybox unzip -d /tmp -
             echo "插件下载成功"
+            # 下载资源
+            echo "正在下载资源包..."
+            curl ${CURL_OPTIONS} "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" | busybox unzip -d /tmp -
+            echo "资源包下载成功"
             # 检查前端最新版本
             frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name)
             if [[ "${frontend_version}" == *v* ]]; then
@@ -36,6 +40,9 @@ if [ "${MOVIEPILOT_AUTO_UPDATE_DEV}" = "true" ]; then
                     rm -rf /public
                     mv /tmp/dist /public
                     mv /tmp/MoviePilot-Plugins-main/plugins/* /app/app/plugins/
+                    mv /tmp/MoviePilot-Resources-main/resources/* /app/app/helper/
+                    mv /app/app/helper/user.sites.bin /app/config/sites/user.sites.bin
+                    rm -rf /tmp MoviePilot-*
                     echo "程序更新成功，前端版本：${frontend_version}"
                 else
                     echo "前端程序下载失败，继续使用旧的程序来启动..."

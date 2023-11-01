@@ -98,9 +98,16 @@ jobs:
           New-Item -Path "nginx/logs/__keep__.txt" -ItemType File -Force
           Invoke-WebRequest -Uri "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" -OutFile "MoviePilot-Plugins-main.zip"
           Expand-Archive -Path "MoviePilot-Plugins-main.zip" -DestinationPath "MoviePilot-Plugins-main"
-          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "plugins/"
+          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/"
           Remove-Item -Path "MoviePilot-Plugins-main.zip"
           Remove-Item -Path "MoviePilot-Plugins-main" -Recurse -Force
+          Invoke-WebRequest -Uri "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" -OutFile "MoviePilot-Resources-main.zip"
+          Expand-Archive -Path "MoviePilot-Resources-main.zip" -DestinationPath "MoviePilot-Resources-main"
+          Move-Item -Path "MoviePilot-Resources-main/MoviePilot-Resources-main/resources/*" -Destination "app/helper/"
+          New-Item -Path "config/sites" -ItemType Directory -Force
+          Move-Item -Path "app/helper/user.sites.bin" -Destination "config/sites/user.sites.bin" -Force
+          Remove-Item -Path "MoviePilot-Resources-main.zip"
+          Remove-Item -Path "MoviePilot-Resources-main" -Recurse -Force
         shell: pwsh
 
       - name: Pyinstaller
