@@ -102,12 +102,12 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 - **SUBSCRIBE_RSS_INTERVAL：** RSS订阅模式刷新时间间隔（分钟），默认`30`分钟，不能小于5分钟。
 - **SUBSCRIBE_SEARCH：** 订阅搜索，`true`/`false`，默认`false`，开启后会每隔24小时对所有订阅进行全量搜索，以补齐缺失剧集（一般情况下正常订阅即可，订阅搜索只做为兜底，会增加站点压力，不建议开启）。
 - **SEARCH_SOURCE：** 媒体信息搜索来源，`themoviedb`/`douban`，默认`themoviedb`
----
 - **AUTO_DOWNLOAD_USER：** 远程交互搜索时自动择优下载的用户ID，多个用户使用,分割，未设置需要选择资源或者回复`0`
-- **❗MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`/`synologychat`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
 ---
 - **OCR_HOST：** OCR识别服务器地址，格式：`http(s)://ip:port`，用于识别站点验证码实现自动登录获取Cookie等，不配置默认使用内建服务器`https://movie-pilot.org`，可使用 [这个镜像](https://hub.docker.com/r/jxxghp/moviepilot-ocr) 自行搭建。
 - **PLUGIN_MARKET：** 插件市场仓库地址，多个地址使用`,`分隔，保留最后的/，默认为官方插件仓库：`https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/`。
+---
+- **❗MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`/`synologychat`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
 
   - `wechat`设置项：
 
