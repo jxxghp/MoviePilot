@@ -79,10 +79,11 @@ class PluginHelper(metaclass=Singleton):
                         f.write(res.text)
                 else:
                     # 递归下载子目录
-                    l, m = __get_filelist(f"{_p}/{item.get('name')}")
+                    p = f"{_p}/{item.get('name')}"
+                    l, m = __get_filelist(p)
                     if not l:
                         return False, m
-                    return __download_files(_p, _l)
+                    return __download_files(p, l)
             return True, ""
 
         if not pid or not repo_url:
@@ -119,3 +120,4 @@ class PluginHelper(metaclass=Singleton):
             shutil.rmtree(plugin_dir, ignore_errors=True)
         # 下载所有文件
         __download_files(pid.lower(), file_list)
+        return True, ""

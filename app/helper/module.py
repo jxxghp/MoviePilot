@@ -21,14 +21,17 @@ class ModuleHelper:
         packages = importlib.import_module(package_path)
         importlib.reload(packages)
         for importer, package_name, _ in pkgutil.iter_modules(packages.__path__):
-            if package_name.startswith('_'):
-                continue
-            full_package_name = f'{package_path}.{package_name}'
-            module = importlib.import_module(full_package_name)
-            for name, obj in module.__dict__.items():
-                if name.startswith('_'):
+            try:
+                if package_name.startswith('_'):
                     continue
-                if isinstance(obj, type) and filter_func(name, obj):
-                    submodules.append(obj)
+                full_package_name = f'{package_path}.{package_name}'
+                module = importlib.import_module(full_package_name)
+                for name, obj in module.__dict__.items():
+                    if name.startswith('_'):
+                        continue
+                    if isinstance(obj, type) and filter_func(name, obj):
+                        submodules.append(obj)
+            except Exception as err:
+                print(f'加载模块 {package_name} 失败：{err}')
 
         return submodules
