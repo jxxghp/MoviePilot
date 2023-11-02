@@ -1,7 +1,7 @@
 import json
 import shutil
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional, List
 
 from cachetools import TTLCache, cached
 
@@ -34,8 +34,6 @@ class PluginHelper(metaclass=Singleton):
         """
         安装插件
         """
-        if not pid or not repo_url:
-            return False, "参数错误"
         # 从Github的repo_url获取用户和项目名
         try:
             user, repo = repo_url.split("/")[-4:-2]
@@ -45,6 +43,51 @@ class PluginHelper(metaclass=Singleton):
             return False, "不支持的插件仓库地址格式"
         if SystemUtils.is_frozen():
             return False, "可执行文件模式下，只能安装本地插件"
+
+        def __get_filelist(_p: str) -> Tuple[Optional[list], Optional[str]]:
+            """
+            获取插件的文件列表
+            """
+            file_api = f"https://api.github.com/repos/{user}/{repo}/contents/plugins/{_p.lower()}"
+            r = RequestUtils(proxies=settings.PROXY).get_res(file_api)
+            if not r or r.status_code != 200:
+                return None, f"连接仓库失败：{r.status_code} - {r.reason}"
+            ret = r.json()
+            if ret and ret[0].get("message") == "Not Found":
+                return None, "插件在仓库中不存在"
+            return ret, ""
+
+        def __download_files(_p: str, _l: List[dict]) -> Tuple[bool, str]:
+            """
+            下载插件文件
+            """
+            if not _l:
+                return False, "文件列表为空"
+            for item in _l:
+                if item.get("download_url"):
+                    # 下载插件文件
+                    res = RequestUtils(proxies=settings.PROXY).get_res(item["download_url"])
+                    if not res:
+                        return False, f"文件 {item.get('name')} 下载失败！"
+                    elif res.status_code != 200:
+                        return False, f"下载文件 {item.get('name')} 失败：{res.status_code} - {res.reason}"
+                    # 创建插件文件夹
+                    file_path = Path(settings.ROOT_PATH) / "app" / item.get("path")
+                    if not file_path.parent.exists():
+                        file_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(res.text)
+                else:
+                    # 递归下载子目录
+                    l, m = __get_filelist(f"{_p}/{item.get('name')}")
+                    if not l:
+                        return False, m
+                    return __download_files(_p, _l)
+            return True, ""
+
+        if not pid or not repo_url:
+            return False, "参数错误"
+
         # 获取插件的文件列表
         """
         [
@@ -66,30 +109,13 @@ class PluginHelper(metaclass=Singleton):
             }
         ]
         """
-        file_api = f"https://api.github.com/repos/{user}/{repo}/contents/plugins/{pid.lower()}"
-        res = RequestUtils(proxies=settings.PROXY).get_res(file_api)
-        if not res or res.status_code != 200:
-            return False, f"连接仓库失败：{res.status_code} - {res.reason}"
-        ret_json = res.json()
-        if ret_json and ret_json[0].get("message") == "Not Found":
-            return False, "插件在仓库中不存在"
+        # 获取第一级文件列表
+        file_list, msg = __get_filelist(pid.lower())
+        if not file_list:
+            return False, msg
         # 本地存在时先删除
         plugin_dir = Path(settings.ROOT_PATH) / "app" / "plugins" / pid.lower()
         if plugin_dir.exists():
             shutil.rmtree(plugin_dir, ignore_errors=True)
         # 下载所有文件
-        for item in ret_json:
-            if item.get("download_url"):
-                # 下载插件文件
-                res = RequestUtils(proxies=settings.PROXY).get_res(item["download_url"])
-                if not res:
-                    return False, f"文件 {item.get('name')} 下载失败！"
-                elif res.status_code != 200:
-                    return False, f"下载文件 {item.get('name')} 失败：{res.status_code} - {res.reason}"
-                # 创建插件文件夹
-                file_path = Path(settings.ROOT_PATH) / "app" / item.get("path")
-                if not file_path.parent.exists():
-                    file_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(res.text)
-        return True, ""
+        __download_files(pid.lower(), file_list)
