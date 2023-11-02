@@ -394,7 +394,7 @@ def arr_add_movie(apikey: str,
                                         year=movie.year,
                                         mtype=MediaType.MOVIE,
                                         tmdbid=movie.tmdbId,
-                                        userid="Seerr")
+                                        username="Seerr")
     if sid:
         return {
             "id": sid
@@ -737,7 +737,7 @@ def arr_add_series(apikey: str, tv: schemas.SonarrSeries,
                                             season=season.get("seasonNumber"),
                                             tmdbid=tv.tmdbId,
                                             mtype=MediaType.TV,
-                                            userid="Seerr")
+                                            username="Seerr")
 
     if sid:
         return {
