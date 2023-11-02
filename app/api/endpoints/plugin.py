@@ -25,7 +25,7 @@ def all_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     if not online_plugins:
         return local_plugins
     # 已安装插件IDS
-    installed_ids = [plugin["id"] for plugin in local_plugins]
+    installed_ids = [plugin["id"] for plugin in local_plugins if plugin.get("installed")]
     # 已经安装的本地
     plugins.extend([plugin for plugin in local_plugins if plugin.get("installed")])
     # 未安装的线上插件或者有更新的插件
