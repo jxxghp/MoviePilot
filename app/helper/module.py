@@ -20,13 +20,13 @@ class ModuleHelper:
         submodules: list = []
         importlib.invalidate_caches()
         packages = importlib.import_module(package_path)
-        importlib.reload(packages)
         for importer, package_name, _ in pkgutil.iter_modules(packages.__path__):
             try:
                 if package_name.startswith('_'):
                     continue
                 full_package_name = f'{package_path}.{package_name}'
                 module = importlib.import_module(full_package_name)
+                importlib.reload(module)
                 for name, obj in module.__dict__.items():
                     if name.startswith('_'):
                         continue
