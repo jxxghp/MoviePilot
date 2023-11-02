@@ -1,4 +1,5 @@
 from queue import Queue, Empty
+from typing import Dict, Any
 
 from app.log import logger
 from app.utils.singleton import Singleton
@@ -14,7 +15,7 @@ class EventManager(metaclass=Singleton):
         # 事件队列
         self._eventQueue = Queue()
         # 事件响应函数字典
-        self._handlers = {}
+        self._handlers: Dict[str, Dict[str, Any]] = {}
         # 已禁用的事件响应
         self._disabled_handlers = []
 
@@ -24,12 +25,13 @@ class EventManager(metaclass=Singleton):
         """
         try:
             event = self._eventQueue.get(block=True, timeout=1)
-            handlerList = self._handlers.get(event.event_type) or []
-            if handlerList:
+            handlers = self._handlers.get(event.event_type) or {}
+            if handlers:
                 # 去除掉被禁用的事件响应
-                handlerList = [handler for handler in handlerList
+                handlerList = [handler for handler in handlers.values()
                                if handler.__qualname__.split(".")[0] not in self._disabled_handlers]
-            return event, handlerList
+                return event, handlerList
+            return event, []
         except Empty:
             return None, []
 
@@ -44,13 +46,14 @@ class EventManager(metaclass=Singleton):
         注册事件处理
         """
         try:
-            handlerList = self._handlers[etype.value]
+            handlers = self._handlers[etype.value]
         except KeyError:
-            handlerList = []
-            self._handlers[etype.value] = handlerList
-        if handler not in handlerList:
-            handlerList.append(handler)
-            logger.debug(f"Event Registed：{etype.value} - {handler}")
+            handlers = {}
+            self._handlers[etype.value] = handlers
+        if handler.__qualname__ in handlers:
+            self._handlers[etype.value].pop(handler.__qualname__)
+        self._handlers[etype.value][handler.__qualname__] = handler
+        logger.debug(f"Event Registed：{etype.value} - {handler}")
 
     def disable_events_hander(self, class_name: str):
         """

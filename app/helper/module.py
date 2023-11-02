@@ -18,7 +18,6 @@ class ModuleHelper:
         """
 
         submodules: list = []
-        importlib.invalidate_caches()
         packages = importlib.import_module(package_path)
         for importer, package_name, _ in pkgutil.iter_modules(packages.__path__):
             try:
