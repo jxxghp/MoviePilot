@@ -216,7 +216,7 @@ class PluginManager(metaclass=Singleton):
                 # ID
                 conf.update({"id": pid})
                 # 安装状态
-                if pid in installed_apps:
+                if pid in installed_apps and plugin_static:
                     conf.update({"installed": True})
                 else:
                     conf.update({"installed": False})
