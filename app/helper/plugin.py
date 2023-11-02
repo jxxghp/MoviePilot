@@ -16,7 +16,7 @@ class PluginHelper(metaclass=Singleton):
     插件市场管理，下载安装插件到本地
     """
 
-    @cached(cache=TTLCache(maxsize=1, ttl=1800))
+    @cached(cache=TTLCache(maxsize=10, ttl=1800))
     def get_plugins(self, repo_url: str) -> Dict[str, dict]:
         """
         获取Github所有最新插件列表
