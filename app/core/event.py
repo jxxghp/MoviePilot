@@ -51,9 +51,10 @@ class EventManager(metaclass=Singleton):
             handlers = {}
             self._handlers[etype.value] = handlers
         if handler.__qualname__ in handlers:
-            self._handlers[etype.value].pop(handler.__qualname__)
-        self._handlers[etype.value][handler.__qualname__] = handler
-        logger.debug(f"Event Registed：{etype.value} - {handler}")
+            handlers.pop(handler.__qualname__)
+        else:
+            logger.debug(f"Event Registed：{etype.value} - {handler.__qualname__}")
+        handlers[handler.__qualname__] = handler
 
     def disable_events_hander(self, class_name: str):
         """
