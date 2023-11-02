@@ -192,7 +192,7 @@ class PluginManager(metaclass=Singleton):
         """
         return list(self._plugins.keys())
 
-    def get_online_plugins(self) -> List[Dict[str, dict]]:
+    def get_online_plugins(self) -> List[dict]:
         """
         获取所有在线插件信息
         """
@@ -271,7 +271,7 @@ class PluginManager(metaclass=Singleton):
             all_confs = list({v["id"]: v for v in all_confs}.values())
         return all_confs
 
-    def get_local_plugins(self) -> List[Dict[str, dict]]:
+    def get_local_plugins(self) -> List[dict]:
         """
         获取所有本地已下载的插件信息
         """
