@@ -266,6 +266,9 @@ class PluginManager(metaclass=Singleton):
                 conf.update({"is_local": False})
                 # 汇总
                 all_confs.append(conf)
+        # 按插件ID去重
+        if all_confs:
+            all_confs = list({v["id"]: v for v in all_confs}.values())
         return all_confs
 
     def get_local_plugins(self) -> List[Dict[str, dict]]:
