@@ -120,4 +120,8 @@ class PluginHelper(metaclass=Singleton):
             shutil.rmtree(plugin_dir, ignore_errors=True)
         # 下载所有文件
         __download_files(pid.lower(), file_list)
+        # 插件目录下如有requirements.txt则安装依赖
+        requirements_file = plugin_dir / "requirements.txt"
+        if requirements_file.exists():
+            SystemUtils.execute(f"pip install -r {requirements_file}")
         return True, ""
