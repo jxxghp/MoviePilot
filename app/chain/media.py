@@ -69,7 +69,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             }
         )
         # 每0.5秒循环一次，等待结果，直到10秒后超时
-        for i in range(10):
+        for i in range(20):
             if self.recognize_temp is not None:
                 break
             time.sleep(0.5)
