@@ -41,7 +41,7 @@ install_backend_and_download_resources() {
                             # 清空目录
                             rm -rf /app
                             # 后端程序
-                            mv -f /tmp/App /app
+                            mv /tmp/App /app
                             # 恢复插件目录
                             mv -f /plugins/* /app/app/plugins/
                             # 插件仓库
