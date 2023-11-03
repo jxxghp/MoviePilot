@@ -37,18 +37,23 @@ async def login_access_token(
         logger.warn("登录用户本地不匹配，尝试辅助认证 ...")
         token = UserChain().user_authenticate(form_data.username, form_data.password)
         if not token:
+            logger.warn(f"用户 {form_data.username} 登录失败！")
             raise HTTPException(status_code=401, detail="用户名或密码不正确")
         else:
-            logger.info(f"辅助认证成功，用户信息: {token}")
+            logger.info(f"用户 {form_data.username} 辅助认证成功，用户信息: {token}")
             # 加入用户信息表
             user = User.get_by_name(db=db, name=form_data.username)
             if not user:
-                logger.info(f"用户不存在，创建用户: {form_data.username}")
+                logger.info(f"用户不存在，创建普通用户: {form_data.username}")
                 user = User(name=form_data.username, is_active=True,
                             is_superuser=False, hashed_password=get_password_hash(token))
                 user.create(db)
+            else:
+                # 普通用户权限
+                user.is_superuser = False
     elif not user.is_active:
         raise HTTPException(status_code=403, detail="用户未启用")
+    logger.info(f"用户 {user.name} 登录成功！")
     return schemas.Token(
         access_token=security.create_access_token(
             user.id,
