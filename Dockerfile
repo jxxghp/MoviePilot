@@ -11,8 +11,7 @@ ENV LANG="C.UTF-8" \
     PORT=3001 \
     NGINX_PORT=3000 \
     PROXY_HOST="" \
-    MOVIEPILOT_AUTO_UPDATE=true \
-    MOVIEPILOT_AUTO_UPDATE_DEV=false \
+    MOVIEPILOT_AUTO_UPDATE=release \
     AUTH_SITE="iyuu" \
     IYUU_SIGN=""
 WORKDIR "/app"
@@ -78,12 +77,11 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && FRONTEND_VERSION=$(curl -sL "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name) \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
     && mv /dist /public \
-    && curl -sL "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" | busybox unzip -d / - \
-    && mv -f /MoviePilot-Plugins-main/plugins/* /app/app/plugins/ \
-    && rm -rf /MoviePilot-Plugins-main \
-    && curl -sL "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" | busybox unzip -d / - \
-    && mv -f /MoviePilot-Resources-main/resources/* /app/app/helper/ \
-    && rm -rf /MoviePilot-Resources-main
+    && curl -sL "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
+    && mv -f /tmp/MoviePilot-Plugins-main/plugins/* /app/app/plugins/ \
+    && curl -sL "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
+    && mv -f /tmp/MoviePilot-Resources-main/resources/* /app/app/helper/ \
+    && rm -rf /tmp/*
 EXPOSE 3000
 VOLUME [ "/config" ]
 ENTRYPOINT [ "/entrypoint" ]
