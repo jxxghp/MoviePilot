@@ -74,7 +74,7 @@ install_backend_and_download_resources() {
     fi
 }
 
-if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || elif [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
+if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
     if [ -n "${PROXY_HOST}" ]; then
         CURL_OPTIONS="-sL -x ${PROXY_HOST}"
         PIP_OPTIONS="--proxy=${PROXY_HOST}"
