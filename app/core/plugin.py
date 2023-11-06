@@ -229,7 +229,12 @@ class PluginManager(metaclass=Singleton):
                         conf.update({"has_update": True})
                 # 运行状态
                 if plugin_obj and hasattr(plugin_obj, "get_state"):
-                    conf.update({"state": plugin_obj.get_state()})
+                    try:
+                        state = plugin_obj.get_state()
+                    except Exception as e:
+                        logger.error(f"获取插件 {pid} 状态出错：{str(e)}")
+                        state = False
+                    conf.update({"state": state})
                 else:
                     conf.update({"state": False})
                 # 是否有详情页面
@@ -293,7 +298,12 @@ class PluginManager(metaclass=Singleton):
                 conf.update({"installed": False})
             # 运行状态
             if plugin_obj and hasattr(plugin_obj, "get_state"):
-                conf.update({"state": plugin_obj.get_state()})
+                try:
+                    state = plugin_obj.get_state()
+                except Exception as e:
+                    logger.error(f"获取插件 {pid} 状态出错：{str(e)}")
+                    state = False
+                conf.update({"state": state})
             else:
                 conf.update({"state": False})
             # 是否有详情页面

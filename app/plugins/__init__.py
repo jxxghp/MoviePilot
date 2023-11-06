@@ -86,6 +86,7 @@ class _PluginBase(metaclass=ABCMeta):
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
+        插件配置页面使用Vuetify组件拼装，参考：https://vuetifyjs.com/
         """
         pass
 
@@ -93,6 +94,7 @@ class _PluginBase(metaclass=ABCMeta):
     def get_page(self) -> List[dict]:
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
+        插件详情页面使用Vuetify组件拼装，参考：https://vuetifyjs.com/
         """
         pass
 

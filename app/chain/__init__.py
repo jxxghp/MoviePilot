@@ -372,6 +372,7 @@ class ChainBase(metaclass=ABCMeta):
         self.eventmanager.send_event(etype=EventType.NoticeMessage,
                                      data={
                                          "channel": message.channel,
+                                         "type": message.mtype,
                                          "title": message.title,
                                          "text": message.text,
                                          "image": message.image,

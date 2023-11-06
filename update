@@ -41,7 +41,7 @@ install_backend_and_download_resources() {
                             # 清空目录
                             rm -rf /app
                             # 后端程序
-                            mv -f /tmp/App /app
+                            mv /tmp/App /app
                             # 恢复插件目录
                             mv -f /plugins/* /app/app/plugins/
                             # 插件仓库
@@ -74,39 +74,43 @@ install_backend_and_download_resources() {
     fi
 }
 
-# ...
-
-if [ -n "${PROXY_HOST}" ]; then
-    CURL_OPTIONS="-sL -x ${PROXY_HOST}"
-    PIP_OPTIONS="--proxy=${PROXY_HOST}"
-    echo "使用代理更新程序"
-else
-    CURL_OPTIONS="-sL"
-    echo "不使用代理更新程序"
-fi
-
-if [ "${MOVIEPILOT_AUTO_UPDATE_DEV}" = "true" ]; then
-    echo "Dev 更新模式"
-    install_backend_and_download_resources "heads/main.zip"
-else
-    old_version=$(cat /app/version.py)
-    if [[ "${old_version}" == *APP_VERSION* ]]; then
-        current_version=v$(echo ${old_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
-        echo "当前版本号：${current_version}"
-        new_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" | jq -r .tag_name)
-        if [[ "${new_version}" == *v* ]]; then
-            release_version=${new_version}
-            echo "最新版本号：${release_version}"
-            if [ "${current_version}" != "${release_version}" ]; then
-                echo "发现新版本，开始自动升级..."
-                install_backend_and_download_resources "tags/${release_version}.zip"
+if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || elif [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
+    if [ -n "${PROXY_HOST}" ]; then
+        CURL_OPTIONS="-sL -x ${PROXY_HOST}"
+        PIP_OPTIONS="--proxy=${PROXY_HOST}"
+        echo "使用代理更新程序"
+    else
+        CURL_OPTIONS="-sL"
+        echo "不使用代理更新程序"
+    fi
+    if [ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]; then
+        echo "Dev 更新模式"
+        install_backend_and_download_resources "heads/main.zip"
+    else
+        echo "Release 更新模式"
+        old_version=$(cat /app/version.py)
+        if [[ "${old_version}" == *APP_VERSION* ]]; then
+            current_version=v$(echo ${old_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
+            echo "当前版本号：${current_version}"
+            new_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" | jq -r .tag_name)
+            if [[ "${new_version}" == *v* ]]; then
+                release_version=${new_version}
+                echo "最新版本号：${release_version}"
+                if [ "${current_version}" != "${release_version}" ]; then
+                    echo "发现新版本，开始自动升级..."
+                    install_backend_and_download_resources "tags/${release_version}.zip"
+                else
+                    echo "未发现新版本，跳过更新步骤..."
+                fi
             else
-                echo "未发现新版本，跳过更新步骤..."
+                echo "最新版本号获取失败，继续启动..."
             fi
         else
-            echo "最新版本号获取失败，继续启动..."
+            echo "当前版本号获取失败，继续启动..."
         fi
-    else
-        echo "当前版本号获取失败，继续启动..."
     fi
+elif [[ "${MOVIEPILOT_AUTO_UPDATE}" = "false" ]]; then
+    echo "程序自动升级已关闭，如需自动升级请在创建容器时设置环境变量：MOVIEPILOT_AUTO_UPDATE=release"
+else
+    echo "MOVIEPILOT_AUTO_UPDATE 变量设置错误"
 fi
