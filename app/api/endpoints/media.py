@@ -97,11 +97,15 @@ def media_info(mediaid: str, type_name: str,
             tmdbinfo = MediaChain().get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
             if tmdbinfo:
                 tmdbid = tmdbinfo.get("id")
+            else:
+                return schemas.MediaInfo()
     else:
         if not doubanid and tmdbid:
             doubaninfo = MediaChain().get_doubaninfo_by_tmdbid(tmdbid=tmdbid, mtype=mtype)
             if doubaninfo:
                 doubanid = doubaninfo.get("id")
+            else:
+                return schemas.MediaInfo()
     mediainfo = MediaChain().recognize_media(tmdbid=tmdbid, doubanid=doubanid, mtype=mtype)
     if mediainfo:
         return mediainfo.to_dict()
