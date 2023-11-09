@@ -95,8 +95,10 @@ class SearchChain(ChainBase):
         :param area: 搜索范围，title or imdbid
         """
         # 豆瓣标题处理
-        if mediainfo.douban_id:
-            mediainfo.title = MetaInfo(title=mediainfo.title).name
+        if not mediainfo.tmdb_id:
+            meta = MetaInfo(title=mediainfo.title)
+            mediainfo.title = meta.name
+            mediainfo.season = meta.begin_season
         logger.info(f'开始搜索资源，关键词：{keyword or mediainfo.title} ...')
         # 补充媒体信息
         if not mediainfo.names:
@@ -107,10 +109,14 @@ class SearchChain(ChainBase):
                 logger.error(f'媒体信息识别失败！')
                 return []
         # 缺失的季集
-        if no_exists and no_exists.get(mediainfo.tmdb_id):
+        mediakey = mediainfo.tmdb_id or mediainfo.douban_id
+        if no_exists and no_exists.get(mediakey):
             # 过滤剧集
             season_episodes = {sea: info.episodes
                                for sea, info in no_exists[mediainfo.tmdb_id].items()}
+        elif mediainfo.season:
+            # 豆瓣只搜索当前季
+            season_episodes = {mediainfo.season: []}
         else:
             season_episodes = None
         # 搜索关键词

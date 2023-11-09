@@ -321,7 +321,7 @@ class DownloadChain(ChainBase):
 
     def batch_download(self,
                        contexts: List[Context],
-                       no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
+                       no_exists: Dict[Union[int, str], Dict[int, NotExistMediaInfo]] = None,
                        save_path: str = None,
                        channel: MessageChannel = None,
                        userid: str = None,
@@ -334,34 +334,34 @@ class DownloadChain(ChainBase):
         :param channel:  通知渠道
         :param userid:  用户ID
         :param username: 调用下载的用户名/插件名
-        :return: 已经下载的资源列表、剩余未下载到的剧集 no_exists[tmdb_id] = {season: NotExistMediaInfo}
+        :return: 已经下载的资源列表、剩余未下载到的剧集 no_exists[tmdb_id/douban_id] = {season: NotExistMediaInfo}
         """
         # 已下载的项目
         downloaded_list: List[Context] = []
 
-        def __update_seasons(_tmdbid: int, _need: list, _current: list) -> list:
+        def __update_seasons(_mid: Union[int, str], _need: list, _current: list) -> list:
             """
             更新need_tvs季数，返回剩余季数
-            :param _tmdbid: TMDBID
+            :param _mid: TMDBID
             :param _need: 需要下载的季数
             :param _current: 已经下载的季数
             """
             # 剩余季数
             need = list(set(_need).difference(set(_current)))
             # 清除已下载的季信息
-            seas = copy.deepcopy(no_exists.get(_tmdbid))
+            seas = copy.deepcopy(no_exists.get(_mid))
             for _sea in list(seas):
                 if _sea not in need:
-                    no_exists[_tmdbid].pop(_sea)
-                if not no_exists.get(_tmdbid) and no_exists.get(_tmdbid) is not None:
-                    no_exists.pop(_tmdbid)
+                    no_exists[_mid].pop(_sea)
+                if not no_exists.get(_mid) and no_exists.get(_mid) is not None:
+                    no_exists.pop(_mid)
                     break
             return need
 
-        def __update_episodes(_tmdbid: int, _sea: int, _need: list, _current: set) -> list:
+        def __update_episodes(_mid: Union[int, str], _sea: int, _need: list, _current: set) -> list:
             """
             更新need_tvs集数，返回剩余集数
-            :param _tmdbid: TMDBID
+            :param _mid: TMDBID
             :param _sea: 季数
             :param _need: 需要下载的集数
             :param _current: 已经下载的集数
@@ -369,26 +369,26 @@ class DownloadChain(ChainBase):
             # 剩余集数
             need = list(set(_need).difference(set(_current)))
             if need:
-                not_exist = no_exists[_tmdbid][_sea]
-                no_exists[_tmdbid][_sea] = NotExistMediaInfo(
+                not_exist = no_exists[_mid][_sea]
+                no_exists[_mid][_sea] = NotExistMediaInfo(
                     season=not_exist.season,
                     episodes=need,
                     total_episode=not_exist.total_episode,
                     start_episode=not_exist.start_episode
                 )
             else:
-                no_exists[_tmdbid].pop(_sea)
-                if not no_exists.get(_tmdbid) and no_exists.get(_tmdbid) is not None:
-                    no_exists.pop(_tmdbid)
+                no_exists[_mid].pop(_sea)
+                if not no_exists.get(_mid) and no_exists.get(_mid) is not None:
+                    no_exists.pop(_mid)
             return need
 
-        def __get_season_episodes(tmdbid: int, season: int) -> int:
+        def __get_season_episodes(_mid: Union[int, str], season: int) -> int:
             """
             获取需要的季的集数
             """
-            if not no_exists.get(tmdbid):
+            if not no_exists.get(_mid):
                 return 9999
-            no_exist = no_exists.get(tmdbid)
+            no_exist = no_exists.get(_mid)
             if not no_exist.get(season):
                 return 9999
             return no_exist[season].total_episode
@@ -408,17 +408,17 @@ class DownloadChain(ChainBase):
         if no_exists:
             # 先把整季缺失的拿出来，看是否刚好有所有季都满足的种子 {tmdbid: [seasons]}
             need_seasons: Dict[int, list] = {}
-            for need_tmdbid, need_tv in no_exists.items():
+            for need_mid, need_tv in no_exists.items():
                 for tv in need_tv.values():
                     if not tv:
                         continue
                     # 季列表为空的，代表全季缺失
                     if not tv.episodes:
-                        if not need_seasons.get(need_tmdbid):
-                            need_seasons[need_tmdbid] = []
-                        need_seasons[need_tmdbid].append(tv.season or 1)
+                        if not need_seasons.get(need_mid):
+                            need_seasons[need_mid] = []
+                        need_seasons[need_mid].append(tv.season or 1)
             # 查找整季包含的种子，只处理整季没集的种子或者是集数超过季的种子
-            for need_tmdbid, need_season in need_seasons.items():
+            for need_mid, need_season in need_seasons.items():
                 # 循环种子
                 for context in contexts:
                     # 媒体信息
@@ -436,7 +436,7 @@ class DownloadChain(ChainBase):
                     if meta.episode_list:
                         continue
                     # 匹配TMDBID
-                    if need_tmdbid == media.tmdb_id:
+                    if need_mid == media.tmdb_id or need_mid == media.douban_id:
                         # 种子季是需要季或者子集
                         if set(torrent_season).issubset(set(need_season)):
                             if len(torrent_season) == 1:
@@ -456,7 +456,7 @@ class DownloadChain(ChainBase):
                                 end_ep = max(torrent_episodes)
                                 meta.set_episodes(begin=begin_ep, end=end_ep)
                                 # 需要总集数
-                                need_total = __get_season_episodes(need_tmdbid, torrent_season[0])
+                                need_total = __get_season_episodes(need_mid, torrent_season[0])
                                 if len(torrent_episodes) < need_total:
                                     logger.info(
                                         f"{meta.org_string} 解析文件集数发现不是完整合集")
@@ -480,19 +480,19 @@ class DownloadChain(ChainBase):
                                 # 下载成功
                                 downloaded_list.append(context)
                                 # 更新仍需季集
-                                need_season = __update_seasons(_tmdbid=need_tmdbid,
+                                need_season = __update_seasons(_mid=need_mid,
                                                                _need=need_season,
                                                                _current=torrent_season)
         # 电视剧季内的集匹配
         if no_exists:
             # TMDBID列表
             need_tv_list = list(no_exists)
-            for need_tmdbid in need_tv_list:
+            for need_mid in need_tv_list:
                 # dict[season, [NotExistMediaInfo]]
-                need_tv = no_exists.get(need_tmdbid)
+                need_tv = no_exists.get(need_mid)
                 if not need_tv:
                     continue
-                need_tv_copy = copy.deepcopy(no_exists.get(need_tmdbid))
+                need_tv_copy = copy.deepcopy(no_exists.get(need_mid))
                 # 循环每一季
                 for sea, tv in need_tv_copy.items():
                     # 当前需要季
@@ -516,7 +516,7 @@ class DownloadChain(ChainBase):
                         if media.type != MediaType.TV:
                             continue
                         # 匹配TMDB
-                        if media.tmdb_id == need_tmdbid:
+                        if media.tmdb_id == need_mid or media.douban_id == need_mid:
                             # 不重复添加
                             if context in downloaded_list:
                                 continue
@@ -539,7 +539,7 @@ class DownloadChain(ChainBase):
                                     # 下载成功
                                     downloaded_list.append(context)
                                     # 更新仍需集数
-                                    need_episodes = __update_episodes(_tmdbid=need_tmdbid,
+                                    need_episodes = __update_episodes(_mid=need_mid,
                                                                       _need=need_episodes,
                                                                       _sea=need_season,
                                                                       _current=torrent_episodes)
@@ -548,9 +548,9 @@ class DownloadChain(ChainBase):
         if no_exists:
             # TMDBID列表
             no_exists_list = list(no_exists)
-            for need_tmdbid in no_exists_list:
+            for need_mid in no_exists_list:
                 # dict[season, [NotExistMediaInfo]]
-                need_tv = no_exists.get(need_tmdbid)
+                need_tv = no_exists.get(need_mid)
                 if not need_tv:
                     continue
                 # 需要季列表
@@ -584,7 +584,7 @@ class DownloadChain(ChainBase):
                         if not need_episodes:
                             break
                         # 选中一个单季整季的或单季包括需要的所有集的
-                        if media.tmdb_id == need_tmdbid \
+                        if (media.tmdb_id == need_mid or media.douban_id == need_mid) \
                                 and (not meta.episode_list
                                      or set(meta.episode_list).intersection(set(need_episodes))) \
                                 and len(meta.season_list) == 1 \
@@ -624,7 +624,7 @@ class DownloadChain(ChainBase):
                             end_ep = max(torrent_episodes)
                             meta.set_episodes(begin=begin_ep, end=end_ep)
                             # 更新仍需集数
-                            need_episodes = __update_episodes(_tmdbid=need_tmdbid,
+                            need_episodes = __update_episodes(_mid=need_mid,
                                                               _need=need_episodes,
                                                               _sea=need_season,
                                                               _current=selected_episodes)
@@ -656,8 +656,9 @@ class DownloadChain(ChainBase):
                 "start_episode": int
             ]}
             """
-            if not no_exists.get(mediainfo.tmdb_id):
-                no_exists[mediainfo.tmdb_id] = {
+            mediakey = mediainfo.tmdb_id or mediainfo.douban_id
+            if not no_exists.get(mediakey):
+                no_exists[mediakey] = {
                     _season: NotExistMediaInfo(
                         season=_season,
                         episodes=_episodes,
@@ -666,7 +667,7 @@ class DownloadChain(ChainBase):
                     )
                 }
             else:
-                no_exists[mediainfo.tmdb_id][_season] = NotExistMediaInfo(
+                no_exists[mediakey][_season] = NotExistMediaInfo(
                     season=_season,
                     episodes=_episodes,
                     total_episode=_total,
