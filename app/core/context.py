@@ -437,7 +437,7 @@ class MediaInfo:
             self.season = meta.begin_season
             if self.season:
                 self.type = MediaType.TV
-            else:
+            elif not self.type:
                 self.type = MediaType.MOVIE
         # 评分
         if not self.vote_average:
