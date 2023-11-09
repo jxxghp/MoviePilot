@@ -417,20 +417,28 @@ class MediaInfo:
         if not self.type:
             if isinstance(info.get('media_type'), MediaType):
                 self.type = info.get('media_type')
-            else:
+            elif info.get("type"):
                 self.type = MediaType.MOVIE if info.get("type") == "movie" else MediaType.TV
+            elif info.get("type_name"):
+                self.type = MediaType(info.get("type_name"))
         # 标题
         if not self.title:
-            # 识别标题中的季
-            meta = MetaInfo(info.get("title"))
-            self.season = meta.begin_season
-            self.title = meta.name
+            self.title = info.get("title")
         # 原语种标题
         if not self.original_title:
             self.original_title = info.get("original_title")
         # 年份
         if not self.year:
             self.year = info.get("year")[:4] if info.get("year") else None
+        # 识别标题中的季
+        meta = MetaInfo(info.get("title"))
+        # 季
+        if not self.season:
+            self.season = meta.begin_season
+            if self.season:
+                self.type = MediaType.TV
+            else:
+                self.type = MediaType.MOVIE
         # 评分
         if not self.vote_average:
             rating = info.get("rating")

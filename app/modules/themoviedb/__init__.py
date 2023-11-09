@@ -188,7 +188,7 @@ class TheMovieDbModule(_ModuleBase):
         :reutrn: 媒体信息列表
         """
         # 未启用时返回None
-        if settings.SEARCH_SOURCE != "themoviedb":
+        if settings.RECOGNIZE_SOURCE != "themoviedb":
             return None
 
         if not meta.name:

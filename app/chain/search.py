@@ -94,6 +94,9 @@ class SearchChain(ChainBase):
         :param filter_rule: 过滤规则，为空是使用默认过滤规则
         :param area: 搜索范围，title or imdbid
         """
+        # 豆瓣标题处理
+        if mediainfo.douban_id:
+            mediainfo.title = MetaInfo(title=mediainfo.title).name
         logger.info(f'开始搜索资源，关键词：{keyword or mediainfo.title} ...')
         # 补充媒体信息
         if not mediainfo.names:

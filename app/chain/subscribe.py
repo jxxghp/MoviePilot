@@ -75,6 +75,9 @@ class SubscribeChain(ChainBase):
         else:
             # 豆瓣识别模式
             mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, doubanid=doubanid)
+            if mediainfo:
+                # 豆瓣标题处理
+                mediainfo.title = MetaInfo(mediainfo.title).name
         # 识别失败
         if not mediainfo:
             logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}')
@@ -143,6 +146,7 @@ class SubscribeChain(ChainBase):
         判断订阅是否已存在
         """
         if self.subscribeoper.exists(tmdbid=mediainfo.tmdb_id,
+                                     doubanid=mediainfo.douban_id,
                                      season=meta.begin_season if meta else None):
             return True
         return False

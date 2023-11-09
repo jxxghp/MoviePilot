@@ -7,6 +7,7 @@ from typing import Optional
 
 from app.core.config import settings
 from app.core.meta import MetaBase
+from app.core.metainfo import MetaInfo
 from app.utils.singleton import Singleton
 from app.schemas.types import MediaType
 
@@ -128,24 +129,27 @@ class DoubanCache(metaclass=Singleton):
         with lock:
             if info:
                 # 缓存标题
-                cache_title = info.get("title") \
-                    if info.get("media_type") == MediaType.MOVIE else info.get("name")
+                cache_title = info.get("title")
                 # 缓存年份
-                cache_year = info.get('release_date') \
-                    if info.get("media_type") == MediaType.MOVIE else info.get('first_air_date')
-                if cache_year:
-                    cache_year = cache_year[:4]
+                cache_year = info.get('year')
                 # 类型
                 if isinstance(info.get('media_type'), MediaType):
                     mtype = info.get('media_type')
-                else:
+                elif info.get("type"):
                     mtype = MediaType.MOVIE if info.get("type") == "movie" else MediaType.TV
+                else:
+                    meta = MetaInfo(cache_title)
+                    if meta.begin_season:
+                        mtype = MediaType.TV
+                    else:
+                        mtype = MediaType.MOVIE
                 # 海报
                 poster_path = info.get("pic", {}).get("large")
                 if not poster_path and info.get("cover_url"):
                     poster_path = info.get("cover_url")
                 if not poster_path and info.get("cover"):
                     poster_path = info.get("cover").get("url")
+
                 self._meta_data[self.__get_key(meta)] = {
                         "id": info.get("id"),
                         "type": mtype,

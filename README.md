@@ -78,7 +78,6 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`或其它中转代理服务地址，能连通即可
 - **TMDB_IMAGE_DOMAIN：** TMDB图片地址，默认`image.tmdb.org`，可配置为其它中转代理以加速TMDB图片显示，如：`static-mdb.v.geilijiasu.com`
 - **WALLPAPER：** 登录首页电影海报，`tmdb`/`bing`，默认`tmdb`
-- **SEARCH_SOURCE：** 媒体信息搜索来源，`themoviedb`/`douban`，默认`themoviedb`
 - **RECOGNIZE_SOURCE：** 媒体信息识别来源，`themoviedb`/`douban`，默认`themoviedb`
 - **SCRAP_SOURCE：** 刮削元数据及图片使用的数据源，`themoviedb`/`douban`，默认`themoviedb`
 ---

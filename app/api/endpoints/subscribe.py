@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
+from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
@@ -55,6 +56,11 @@ def create_subscribe(
         mtype = MediaType(subscribe_in.type)
     else:
         mtype = None
+    # 豆瓣标理
+    if subscribe_in.doubanid:
+        meta = MetaInfo(subscribe_in.name)
+        subscribe_in.name = meta.name
+        subscribe_in.season = meta.begin_season
     # 标题转换
     if subscribe_in.name:
         title = subscribe_in.name
@@ -117,7 +123,7 @@ def subscribe_mediaid(
         tmdbid = mediaid[5:]
         if not tmdbid or not str(tmdbid).isdigit():
             return Subscribe()
-        result = Subscribe.exists(db, int(tmdbid), season)
+        result = Subscribe.exists(db, tmdbid=int(tmdbid), season=season)
     elif mediaid.startswith("douban:"):
         doubanid = mediaid[7:]
         if not doubanid:

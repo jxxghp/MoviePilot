@@ -484,7 +484,7 @@ class DoubanModule(_ModuleBase):
         :reutrn: 媒体信息
         """
         # 未启用豆瓣搜索时返回None
-        if settings.SEARCH_SOURCE != "douban":
+        if settings.RECOGNIZE_SOURCE != "douban":
             return None
 
         if not meta.name:
@@ -495,7 +495,7 @@ class DoubanModule(_ModuleBase):
         # 返回数据
         ret_medias = []
         for item_obj in result.get("items"):
-            if meta.type and meta.type.value != item_obj.get("type_name"):
+            if meta.type and meta.type != MediaType.UNKNOWN and meta.type.value != item_obj.get("type_name"):
                 continue
             if item_obj.get("type_name") not in (MediaType.TV.value, MediaType.MOVIE.value):
                 continue

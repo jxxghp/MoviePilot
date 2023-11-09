@@ -45,8 +45,6 @@ class Settings(BaseSettings):
     PROXY_HOST: str = None
     # 媒体识别来源 themoviedb/douban
     RECOGNIZE_SOURCE: str = "themoviedb"
-    # 媒体信息搜索来源 themoviedb/douban
-    SEARCH_SOURCE: str = "themoviedb"
     # 刮削来源 themoviedb/douban
     SCRAP_SOURCE: str = "themoviedb"
     # 刮削入库的媒体文件
