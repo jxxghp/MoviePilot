@@ -36,6 +36,8 @@ def MetaInfo(title: str, subtitle: str = None) -> MetaBase:
     # 修正媒体信息
     if metainfo.get('tmdbid'):
         meta.tmdbid = metainfo['tmdbid']
+    if metainfo.get('doubanid'):
+        meta.tmdbid = metainfo['doubanid']
     if metainfo.get('type'):
         meta.type = metainfo['type']
     if metainfo.get('begin_season'):
@@ -93,6 +95,7 @@ def find_metainfo(title: str) -> Tuple[str, dict]:
     """
     metainfo = {
         'tmdbid': None,
+        'doubanid': None,
         'type': None,
         'begin_season': None,
         'end_season': None,
@@ -108,10 +111,14 @@ def find_metainfo(title: str) -> Tuple[str, dict]:
     if not results:
         return title, metainfo
     for result in results:
-        tmdbid = re.findall(r'(?<=tmdbid=)\d+', result)
         # 查找tmdbid信息
+        tmdbid = re.findall(r'(?<=tmdbid=)\d+', result)
         if tmdbid and tmdbid[0].isdigit():
             metainfo['tmdbid'] = tmdbid[0]
+        # 查找豆瓣id信息
+        doubanid = re.findall(r'(?<=doubanid=)\d+', result)
+        if doubanid and doubanid[0].isdigit():
+            metainfo['doubanid'] = doubanid[0]
         # 查找媒体类型
         mtype = re.findall(r'(?<=type=)\d+', result)
         if mtype:

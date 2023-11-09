@@ -427,6 +427,12 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke(self._urls["doulist_items"] % subject_id,
                              start=start, count=count, _ts=ts)
 
+    def clear_cache(self):
+        """
+        清空LRU缓存
+        """
+        self.__invoke.cache_clear()
+
     def __del__(self):
         if self._session:
             self._session.close()

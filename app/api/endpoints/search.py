@@ -3,8 +3,9 @@ from typing import List, Any
 from fastapi import APIRouter, Depends
 
 from app import schemas
-from app.chain.douban import DoubanChain
+from app.chain.media import MediaChain
 from app.chain.search import SearchChain
+from app.core.config import settings
 from app.core.security import verify_token
 from app.schemas.types import MediaType
 
@@ -21,27 +22,36 @@ async def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/media/{mediaid}", summary="精确搜索资源", response_model=List[schemas.Context])
-def search_by_tmdbid(mediaid: str,
-                     mtype: str = None,
-                     area: str = "title",
-                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def search_by_id(mediaid: str,
+                 mtype: str = None,
+                 area: str = "title",
+                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID/豆瓣ID精确搜索站点资源 tmdb:/douban:/
     """
+    torrents = []
+    if mtype:
+        mtype = MediaType(mtype)
     if mediaid.startswith("tmdb:"):
         tmdbid = int(mediaid.replace("tmdb:", ""))
-        if mtype:
-            mtype = MediaType(mtype)
-        torrents = SearchChain().search_by_tmdbid(tmdbid=tmdbid, mtype=mtype, area=area)
+        if settings.RECOGNIZE_SOURCE == "douban":
+            # 通过TMDBID识别豆瓣ID
+            doubaninfo = MediaChain().get_doubaninfo_by_tmdbid(tmdbid=tmdbid, mtype=mtype)
+            if doubaninfo:
+                torrents = SearchChain().search_by_id(doubanid=doubaninfo.get("id"),
+                                                      mtype=mtype, area=area)
+        else:
+            torrents = SearchChain().search_by_id(tmdbid=tmdbid, mtype=mtype, area=area)
     elif mediaid.startswith("douban:"):
         doubanid = mediaid.replace("douban:", "")
-        # 识别豆瓣信息
-        context = DoubanChain().recognize_by_doubanid(doubanid)
-        if not context or not context.media_info or not context.media_info.tmdb_id:
-            return []
-        torrents = SearchChain().search_by_tmdbid(tmdbid=context.media_info.tmdb_id,
-                                                  mtype=context.media_info.type,
-                                                  area=area)
+        if settings.RECOGNIZE_SOURCE == "themoviedb":
+            # 通过豆瓣ID识别TMDBID
+            tmdbinfo = MediaChain().get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
+            if tmdbinfo:
+                torrents = SearchChain().search_by_id(tmdbid=tmdbinfo.get("id"),
+                                                      mtype=mtype, area=area)
+        else:
+            torrents = SearchChain().search_by_id(doubanid=doubanid, mtype=mtype, area=area)
     else:
         return []
     return [torrent.to_dict() for torrent in torrents]

@@ -23,6 +23,7 @@ class SubscribeOper(DbOper):
                                   tmdbid=mediainfo.tmdb_id,
                                   imdbid=mediainfo.imdb_id,
                                   tvdbid=mediainfo.tvdb_id,
+                                  doubanid=mediainfo.douban_id,
                                   poster=mediainfo.get_poster_image(),
                                   backdrop=mediainfo.get_backdrop_image(),
                                   vote=mediainfo.vote_average,

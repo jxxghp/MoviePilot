@@ -3,14 +3,13 @@ from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException
 
 from app import schemas
-from app.db.models.user import User
-from app.db.userauth import get_current_active_user
-from app.chain.douban import DoubanChain
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.core.context import MediaInfo, Context, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
+from app.db.models.user import User
+from app.db.userauth import get_current_active_user
 from app.schemas import NotExistMediaInfo, MediaType
 
 router = APIRouter()
@@ -61,20 +60,13 @@ def exists(media_in: schemas.MediaInfo,
     查询缺失媒体信息
     """
     # 媒体信息
-    mediainfo = MediaInfo()
     meta = MetaInfo(title=media_in.title)
-    if media_in.tmdb_id:
-        mediainfo.from_dict(media_in.dict())
-    elif media_in.douban_id:
-        context = DoubanChain().recognize_by_doubanid(doubanid=media_in.douban_id)
-        if context:
-            mediainfo = context.media_info
-            meta = context.meta_info
+    mtype = MediaType(media_in.type) if media_in.type else None
+    if media_in.tmdb_id or media_in.douban_id:
+        mediainfo = MediaChain().recognize_media(meta=meta, mtype=mtype,
+                                                 tmdbid=media_in.tmdb_id, doubanid=media_in.douban_id)
     else:
-        context = MediaChain().recognize_by_title(title=f"{media_in.title} {media_in.year}")
-        if context:
-            mediainfo = context.media_info
-            meta = context.meta_info
+        mediainfo = MediaChain().recognize_by_title(title=f"{media_in.title} {media_in.year}")
     # 查询缺失信息
     if not mediainfo or not mediainfo.tmdb_id:
         raise HTTPException(status_code=404, detail="媒体信息不存在")

@@ -59,6 +59,9 @@ class MetaBase(object):
     audio_encode: Optional[str] = None
     # 应用的识别词信息
     apply_words: Optional[List[str]] = None
+    # 附加信息
+    tmdbid: int = None
+    doubanid: str = None
 
     # 副标题解析
     _subtitle_flag = False

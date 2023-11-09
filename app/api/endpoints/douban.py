@@ -28,20 +28,6 @@ def douban_img(imgurl: str) -> Any:
     return None
 
 
-@router.get("/recognize/{doubanid}", summary="豆瓣ID识别", response_model=schemas.Context)
-def recognize_doubanid(doubanid: str,
-                       _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    根据豆瓣ID识别媒体信息
-    """
-    # 识别媒体信息
-    context = DoubanChain().recognize_by_doubanid(doubanid=doubanid)
-    if context:
-        return context.to_dict()
-    else:
-        return schemas.Context()
-
-
 @router.get("/showing", summary="豆瓣正在热映", response_model=List[schemas.MediaInfo])
 def movie_showing(page: int = 1,
                   count: int = 30,

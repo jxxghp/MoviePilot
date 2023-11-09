@@ -31,14 +31,16 @@ class SearchChain(ChainBase):
         self.systemconfig = SystemConfigOper()
         self.torrenthelper = TorrentHelper()
 
-    def search_by_tmdbid(self, tmdbid: int, mtype: MediaType = None, area: str = "title") -> List[Context]:
+    def search_by_id(self, tmdbid: int = None, doubanid: str = None,
+                     mtype: MediaType = None, area: str = "title") -> List[Context]:
         """
-        根据TMDB ID搜索资源，精确匹配，但不不过滤本地存在的资源
+        根据TMDBID/豆瓣ID搜索资源，精确匹配，但不不过滤本地存在的资源
         :param tmdbid: TMDB ID
+        :param doubanid: 豆瓣 ID
         :param mtype: 媒体，电影 or 电视剧
         :param area: 搜索范围，title or imdbid
         """
-        mediainfo = self.recognize_media(tmdbid=tmdbid, mtype=mtype)
+        mediainfo = self.recognize_media(tmdbid=tmdbid, doubanid=doubanid, mtype=mtype)
         if not mediainfo:
             logger.error(f'{tmdbid} 媒体信息识别失败！')
             return []
@@ -96,7 +98,8 @@ class SearchChain(ChainBase):
         # 补充媒体信息
         if not mediainfo.names:
             mediainfo: MediaInfo = self.recognize_media(mtype=mediainfo.type,
-                                                        tmdbid=mediainfo.tmdb_id)
+                                                        tmdbid=mediainfo.tmdb_id,
+                                                        doubanid=mediainfo.douban_id)
             if not mediainfo:
                 logger.error(f'媒体信息识别失败！')
                 return []
@@ -154,6 +157,7 @@ class SearchChain(ChainBase):
         if mediainfo:
             self.progress.start(ProgressKey.Search)
             logger.info(f'开始匹配，总 {_total} 个资源 ...')
+            logger.info(f"标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
             self.progress.update(value=0, text=f'开始匹配，总 {_total} 个资源 ...', key=ProgressKey.Search)
             for torrent in torrents:
                 _count += 1

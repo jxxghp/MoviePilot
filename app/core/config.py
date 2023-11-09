@@ -43,14 +43,16 @@ class Settings(BaseSettings):
     WALLPAPER: str = "tmdb"
     # 网络代理 IP:PORT
     PROXY_HOST: str = None
-    # 媒体信息搜索来源
+    # 媒体识别来源 themoviedb/douban
+    RECOGNIZE_SOURCE: str = "themoviedb"
+    # 媒体信息搜索来源 themoviedb/douban
     SEARCH_SOURCE: str = "themoviedb"
+    # 刮削来源 themoviedb/douban
+    SCRAP_SOURCE: str = "themoviedb"
     # 刮削入库的媒体文件
     SCRAP_METADATA: bool = True
     # 新增已入库媒体是否跟随TMDB信息变化
     SCRAP_FOLLOW_TMDB: bool = True
-    # 刮削来源
-    SCRAP_SOURCE: str = "themoviedb"
     # TMDB图片地址
     TMDB_IMAGE_DOMAIN: str = "image.tmdb.org"
     # TMDB API地址

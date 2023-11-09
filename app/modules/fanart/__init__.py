@@ -326,17 +326,19 @@ class FanartModule(_ModuleBase):
         :param mediainfo:  识别的媒体信息
         :return: 更新后的媒体信息
         """
+        if not mediainfo.tmdb_id and not mediainfo.tvdb_id:
+            return None
         if mediainfo.type == MediaType.MOVIE:
             result = self.__request_fanart(mediainfo.type, mediainfo.tmdb_id)
         else:
             if mediainfo.tvdb_id:
                 result = self.__request_fanart(mediainfo.type, mediainfo.tvdb_id)
             else:
-                logger.info(f"{mediainfo.title_year} 没有tvdbid，无法获取Fanart图片")
-                return
+                logger.info(f"{mediainfo.title_year} 没有tvdbid，无法获取fanart图片")
+                return None
         if not result or result.get('status') == 'error':
-            logger.warn(f"没有获取到 {mediainfo.title_year} 的Fanart图片数据")
-            return
+            logger.warn(f"没有获取到 {mediainfo.title_year} 的fanart图片数据")
+            return None
         # 获取所有图片
         for name, images in result.items():
             if not images:

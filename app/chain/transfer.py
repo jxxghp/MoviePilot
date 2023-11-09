@@ -66,7 +66,8 @@ class TransferChain(ChainBase):
                     mtype = MediaType(downloadhis.type)
                     # 按TMDBID识别
                     mediainfo = self.recognize_media(mtype=mtype,
-                                                     tmdbid=downloadhis.tmdbid)
+                                                     tmdbid=downloadhis.tmdbid,
+                                                     doubanid=downloadhis.doubanid)
                 else:
                     # 非MoviePilot下载的任务，按文件识别
                     mediainfo = None
@@ -449,7 +450,7 @@ class TransferChain(ChainBase):
 
         def args_error():
             self.post_message(Notification(channel=channel,
-                                           title="请输入正确的命令格式：/redo [id] [tmdbid]|[类型]，"
+                                           title="请输入正确的命令格式：/redo [id] [tmdbid/豆瓣id]|[类型]，"
                                                  "[id]历史记录编号", userid=userid))
 
         if not arg_str:
@@ -464,31 +465,32 @@ class TransferChain(ChainBase):
         if not logid.isdigit():
             args_error()
             return
-        # TMDB ID
-        tmdb_strs = arg_strs[1].split('|')
-        tmdbid = tmdb_strs[0]
+        # TMDBID/豆瓣ID
+        id_strs = arg_strs[1].split('|')
+        media_id = id_strs[0]
         if not logid.isdigit():
             args_error()
             return
         # 类型
-        type_str = tmdb_strs[1] if len(tmdb_strs) > 1 else None
+        type_str = id_strs[1] if len(id_strs) > 1 else None
         if not type_str or type_str not in [MediaType.MOVIE.value, MediaType.TV.value]:
             args_error()
             return
         state, errmsg = self.re_transfer(logid=int(logid),
-                                         mtype=MediaType(type_str), tmdbid=int(tmdbid))
+                                         mtype=MediaType(type_str),
+                                         mediaid=media_id)
         if not state:
             self.post_message(Notification(channel=channel, title="手动整理失败",
                                            text=errmsg, userid=userid))
             return
 
-    def re_transfer(self, logid: int,
-                    mtype: MediaType = None, tmdbid: int = None) -> Tuple[bool, str]:
+    def re_transfer(self, logid: int, mtype: MediaType = None,
+                    mediaid: str = None) -> Tuple[bool, str]:
         """
         根据历史记录，重新识别转移，只支持简单条件
         :param logid: 历史记录ID
         :param mtype: 媒体类型
-        :param tmdbid: TMDB ID
+        :param mediaid: TMDB ID/豆瓣ID
         """
         # 查询历史记录
         history: TransferHistory = self.transferhis.get(logid)
@@ -501,13 +503,14 @@ class TransferChain(ChainBase):
             return False, f"源目录不存在：{src_path}"
         dest_path = Path(history.dest) if history.dest else None
         # 查询媒体信息
-        if mtype and tmdbid:
-            mediainfo = self.recognize_media(mtype=mtype, tmdbid=tmdbid)
+        if mtype and mediaid:
+            mediainfo = self.recognize_media(mtype=mtype, tmdbid=int(mediaid) if str(mediaid).isdigit() else None,
+                                             doubanid=mediaid)
         else:
             meta = MetaInfoPath(src_path)
             mediainfo = self.recognize_media(meta=meta)
         if not mediainfo:
-            return False, f"未识别到媒体信息，类型：{mtype.value}，tmdbid：{tmdbid}"
+            return False, f"未识别到媒体信息，类型：{mtype.value}，id：{mediaid}"
         # 重新执行转移
         logger.info(f"{src_path.name} 识别为：{mediainfo.title_year}")
         # 更新媒体图片

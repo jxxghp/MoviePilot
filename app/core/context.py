@@ -414,7 +414,6 @@ class MediaInfo:
         # 豆瓣ID
         self.douban_id = str(info.get("id"))
         # 类型
-
         if not self.type:
             if isinstance(info.get('media_type'), MediaType):
                 self.type = info.get('media_type')
@@ -422,10 +421,10 @@ class MediaInfo:
                 self.type = MediaType.MOVIE if info.get("type") == "movie" else MediaType.TV
         # 标题
         if not self.title:
-            self.title = info.get("title")
             # 识别标题中的季
-            meta = MetaInfo(self.title)
+            meta = MetaInfo(info.get("title"))
             self.season = meta.begin_season
+            self.title = meta.name
         # 原语种标题
         if not self.original_title:
             self.original_title = info.get("original_title")
@@ -472,14 +471,22 @@ class MediaInfo:
             self.actors = info.get("actors") or []
         # 别名
         if not self.names:
-            self.names = info.get("aka") or []
+            akas = info.get("aka")
+            if akas:
+                self.names = [re.sub(r'\([港台豆友译名]+\)', "", aka) for aka in akas]
         # 剧集
         if self.type == MediaType.TV and not self.seasons:
             meta = MetaInfo(info.get("title"))
-            if meta.begin_season:
-                episodes_count = info.get("episodes_count")
-                if episodes_count:
-                    self.seasons[meta.begin_season] = list(range(1, episodes_count + 1))
+            season = meta.begin_season or 1
+            episodes_count = info.get("episodes_count")
+            if episodes_count:
+                self.seasons[season] = list(range(1, episodes_count + 1))
+        # 季年份
+        if self.type == MediaType.TV and not self.season_years:
+            season = self.season or 1
+            self.season_years = {
+                season: self.year
+            }
         # 剩余属性赋值
         for key, value in info.items():
             if not hasattr(self, key):

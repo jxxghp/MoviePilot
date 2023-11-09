@@ -6,10 +6,11 @@ from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
 
 from app.chain import ChainBase
-from app.chain.douban import DoubanChain
 from app.chain.download import DownloadChain
+from app.chain.media import MediaChain
 from app.chain.search import SearchChain
 from app.chain.torrents import TorrentsChain
+from app.core.config import settings
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
@@ -51,29 +52,32 @@ class SubscribeChain(ChainBase):
         识别媒体信息并添加订阅
         """
         logger.info(f'开始添加订阅，标题：{title} ...')
-        metainfo = None
         mediainfo = None
-        if not tmdbid and doubanid:
-            # 将豆瓣信息转换为TMDB信息
-            context = DoubanChain().recognize_by_doubanid(doubanid)
-            if context:
-                metainfo = context.meta_info
-                mediainfo = context.media_info
+        metainfo = MetaInfo(title)
+        if year:
+            metainfo.year = year
+        if mtype:
+            metainfo.type = mtype
+        if season:
+            metainfo.type = MediaType.TV
+            metainfo.begin_season = season
+        # 识别媒体信息
+        if settings.RECOGNIZE_SOURCE == "themoviedb":
+            # TMDB识别模式
+            if not tmdbid and doubanid:
+                # 将豆瓣信息转换为TMDB信息
+                tmdbinfo = MediaChain().get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
+                if tmdbinfo:
+                    mediainfo = MediaInfo(tmdb_info=tmdbinfo)
+            else:
+                # 识别TMDB信息
+                mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid)
         else:
-            # 识别元数据
-            metainfo = MetaInfo(title)
-            if year:
-                metainfo.year = year
-            if mtype:
-                metainfo.type = mtype
-            if season:
-                metainfo.type = MediaType.TV
-                metainfo.begin_season = season
-            # 识别媒体信息
-            mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid)
+            # 豆瓣识别模式
+            mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, doubanid=doubanid)
         # 识别失败
-        if not mediainfo or not metainfo or not mediainfo.tmdb_id:
-            logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}')
+        if not mediainfo:
+            logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}')
             return None, "未识别到媒体信息"
         # 更新媒体图片
         self.obtain_images(mediainfo=mediainfo)
@@ -86,16 +90,17 @@ class SubscribeChain(ChainBase):
                 if not mediainfo.seasons:
                     # 补充媒体信息
                     mediainfo = self.recognize_media(mtype=mediainfo.type,
-                                                     tmdbid=mediainfo.tmdb_id)
+                                                     tmdbid=mediainfo.tmdb_id,
+                                                     doubanid=mediainfo.douban_id)
                     if not mediainfo:
                         logger.error(f"媒体信息识别失败！")
                         return None, "媒体信息识别失败"
                     if not mediainfo.seasons:
-                        logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}")
+                        logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}")
                         return None, "媒体信息中没有季集信息"
                 total_episode = len(mediainfo.seasons.get(season) or [])
                 if not total_episode:
-                    logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}')
+                    logger.error(f'未获取到总集数，标题：{title}，tmdbid：{tmdbid}, doubanid：{doubanid}')
                     return None, f"未获取到第 {season} 季的总集数"
                 kwargs.update({
                     'total_episode': total_episode
@@ -106,8 +111,7 @@ class SubscribeChain(ChainBase):
                     'lack_episode': kwargs.get('total_episode')
                 })
         # 添加订阅
-        sid, err_msg = self.subscribeoper.add(mediainfo, doubanid=doubanid,
-                                              season=season, username=username, **kwargs)
+        sid, err_msg = self.subscribeoper.add(mediainfo, season=season, username=username, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
@@ -179,7 +183,9 @@ class SubscribeChain(ChainBase):
             meta.begin_season = subscribe.season or None
             meta.type = MediaType(subscribe.type)
             # 识别媒体信息
-            mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type, tmdbid=subscribe.tmdbid)
+            mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
+                                                        tmdbid=subscribe.tmdbid,
+                                                        doubanid=subscribe.doubanid)
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue
@@ -475,7 +481,8 @@ class SubscribeChain(ChainBase):
             meta.begin_season = subscribe.season or None
             meta.type = MediaType(subscribe.type)
             # 识别媒体信息
-            mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type, tmdbid=subscribe.tmdbid)
+            mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
+                                                        tmdbid=subscribe.tmdbid, doubanid=subscribe.doubanid)
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue
@@ -661,7 +668,8 @@ class SubscribeChain(ChainBase):
             meta.begin_season = subscribe.season or None
             meta.type = MediaType(subscribe.type)
             # 识别媒体信息
-            mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type, tmdbid=subscribe.tmdbid)
+            mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
+                                                        tmdbid=subscribe.tmdbid, doubanid=subscribe.doubanid)
             if not mediainfo:
                 logger.warn(f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}')
                 continue

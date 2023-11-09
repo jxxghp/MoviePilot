@@ -25,17 +25,21 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         :param page:  页码
         :return: 媒体信息列表
         """
+        if settings.RECOGNIZE_SOURCE != "themoviedb":
+            return None
         return self.run_module("tmdb_discover", mtype=mtype,
                                sort_by=sort_by, with_genres=with_genres,
                                with_original_language=with_original_language,
                                page=page)
 
-    def tmdb_trending(self, page: int = 1) -> List[dict]:
+    def tmdb_trending(self, page: int = 1) -> Optional[List[dict]]:
         """
         TMDB流行趋势
         :param page: 第几页
         :return: TMDB信息列表
         """
+        if settings.RECOGNIZE_SOURCE != "themoviedb":
+            return None
         return self.run_module("tmdb_trending", page=page)
 
     def tmdb_seasons(self, tmdbid: int) -> List[schemas.TmdbSeason]:

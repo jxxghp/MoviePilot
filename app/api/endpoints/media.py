@@ -4,10 +4,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app import schemas
-from app.chain.douban import DoubanChain
 from app.chain.media import MediaChain
-from app.chain.tmdb import TmdbChain
-from app.core.context import MediaInfo
+from app.core.config import settings
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.db import get_db
@@ -81,26 +79,30 @@ def exists(title: str = None,
 
 
 @router.get("/{mediaid}", summary="查询媒体详情", response_model=schemas.MediaInfo)
-def tmdb_info(mediaid: str, type_name: str,
-              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def media_info(mediaid: str, type_name: str,
+               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据媒体ID查询themoviedb或豆瓣媒体信息，type_name: 电影/电视剧
     """
     mtype = MediaType(type_name)
+    tmdbid, doubanid = None, None
     if mediaid.startswith("tmdb:"):
-        result = TmdbChain().tmdb_info(int(mediaid[5:]), mtype)
-        return MediaInfo(tmdb_info=result).to_dict()
+        tmdbid = int(mediaid[5:])
     elif mediaid.startswith("douban:"):
-        # 查询豆瓣信息
-        doubaninfo = DoubanChain().douban_info(doubanid=mediaid[7:])
-        if not doubaninfo:
-            return schemas.MediaInfo()
-        result = DoubanChain().recognize_by_doubaninfo(doubaninfo)
-        if result:
-            # TMDB
-            return result.media_info.to_dict()
-        else:
-            # 豆瓣
-            return MediaInfo(douban_info=doubaninfo).to_dict()
-    else:
+        doubanid = mediaid[7:]
+    if not tmdbid and not doubanid:
         return schemas.MediaInfo()
+    if settings.RECOGNIZE_SOURCE == "themoviedb":
+        if not tmdbid and doubanid:
+            tmdbinfo = MediaChain().get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
+            if tmdbinfo:
+                tmdbid = tmdbinfo.get("id")
+    else:
+        if not doubanid and tmdbid:
+            doubaninfo = MediaChain().get_doubaninfo_by_tmdbid(tmdbid=tmdbid, mtype=mtype)
+            if doubaninfo:
+                doubanid = doubaninfo.get("id")
+    mediainfo = MediaChain().recognize_media(tmdbid=tmdbid, doubanid=doubanid, mtype=mtype)
+    if mediainfo:
+        return mediainfo.to_dict()
+    return schemas.MediaInfo()

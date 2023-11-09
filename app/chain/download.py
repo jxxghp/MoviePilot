@@ -682,6 +682,7 @@ class DownloadChain(ChainBase):
         if mediainfo.type == MediaType.MOVIE:
             # 电影
             itemid = self.mediaserver.get_item_id(mtype=mediainfo.type.value,
+                                                  title=mediainfo.title,
                                                   tmdbid=mediainfo.tmdb_id)
             exists_movies: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if exists_movies:
@@ -692,7 +693,8 @@ class DownloadChain(ChainBase):
             if not mediainfo.seasons:
                 # 补充媒体信息
                 mediainfo: MediaInfo = self.recognize_media(mtype=mediainfo.type,
-                                                            tmdbid=mediainfo.tmdb_id)
+                                                            tmdbid=mediainfo.tmdb_id,
+                                                            doubanid=mediainfo.douban_id)
                 if not mediainfo:
                     logger.error(f"媒体信息识别失败！")
                     return False, {}
@@ -701,6 +703,7 @@ class DownloadChain(ChainBase):
                     return False, {}
             # 电视剧
             itemid = self.mediaserver.get_item_id(mtype=mediainfo.type.value,
+                                                  title=mediainfo.title,
                                                   tmdbid=mediainfo.tmdb_id,
                                                   season=mediainfo.season)
             # 媒体库已存在的剧集

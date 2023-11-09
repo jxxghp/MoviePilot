@@ -43,7 +43,8 @@ class TheMovieDbModule(_ModuleBase):
 
     def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
-                        tmdbid: int = None) -> Optional[MediaInfo]:
+                        tmdbid: int = None,
+                        **kwargs) -> Optional[MediaInfo]:
         """
         识别媒体信息
         :param meta:     识别的元数据
@@ -51,6 +52,9 @@ class TheMovieDbModule(_ModuleBase):
         :param tmdbid:   tmdbid
         :return: 识别的媒体信息，包括剧集信息
         """
+        if settings.RECOGNIZE_SOURCE != "themoviedb":
+            return None
+
         if not meta:
             cache_info = {}
         else:
@@ -112,11 +116,11 @@ class TheMovieDbModule(_ModuleBase):
         else:
             # 使用缓存信息
             if cache_info.get("title"):
-                logger.info(f"{meta.name} 使用识别缓存：{cache_info.get('title')}")
+                logger.info(f"{meta.name} 使用TMDB识别缓存：{cache_info.get('title')}")
                 info = self.tmdb.get_info(mtype=cache_info.get("type"),
                                           tmdbid=cache_info.get("id"))
             else:
-                logger.info(f"{meta.name} 使用识别缓存：无法识别")
+                logger.info(f"{meta.name} 使用TMDB识别缓存：无法识别")
                 info = None
 
         if info:
@@ -129,11 +133,11 @@ class TheMovieDbModule(_ModuleBase):
             mediainfo = MediaInfo(tmdb_info=info)
             mediainfo.set_category(cat)
             if meta:
-                logger.info(f"{meta.name} 识别结果：{mediainfo.type.value} "
+                logger.info(f"{meta.name} TMDB识别结果：{mediainfo.type.value} "
                             f"{mediainfo.title_year} "
                             f"{mediainfo.tmdb_id}")
             else:
-                logger.info(f"{tmdbid} 识别结果：{mediainfo.type.value} "
+                logger.info(f"{tmdbid} TMDB识别结果：{mediainfo.type.value} "
                             f"{mediainfo.title_year}")
 
             # 补充剧集年份
@@ -143,9 +147,30 @@ class TheMovieDbModule(_ModuleBase):
                     mediainfo.season_years = episode_years
             return mediainfo
         else:
-            logger.info(f"{meta.name if meta else tmdbid} 未匹配到媒体信息")
+            logger.info(f"{meta.name if meta else tmdbid} 未匹配到TMDB媒体信息")
 
         return None
+
+    def match_doubaninfo(self, name: str, mtype: MediaType = None,
+                         year: str = None, season: int = None) -> dict:
+        """
+        搜索和匹配TMDB信息
+        :param name:  名称
+        :param mtype:  类型
+        :param year:  年份
+        :param season:  季号
+        """
+        # 搜索
+        logger.info(f"开始使用 名称：{name}、年份：{year} 匹配TMDB信息 ...")
+        info = self.tmdb.match(name=name,
+                               year=year,
+                               mtype=mtype,
+                               season_year=year,
+                               season_number=season)
+        if info and not info.get("genres"):
+            info = self.tmdb.get_info(mtype=info.get("media_type"),
+                                      tmdbid=info.get("id"))
+        return info
 
     def tmdb_info(self, tmdbid: int, mtype: MediaType) -> Optional[dict]:
         """

@@ -107,28 +107,34 @@ class ChainBase(metaclass=ABCMeta):
                     # 中止继续执行
                     break
             except Exception as err:
-                logger.error(f"运行模块 {method} 出错：{module.__class__.__name__} - {str(err)}\n{traceback.print_exc()}")
+                logger.error(
+                    f"运行模块 {method} 出错：{module.__class__.__name__} - {str(err)}\n{traceback.print_exc()}")
         return result
 
     def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
-                        tmdbid: int = None) -> Optional[MediaInfo]:
+                        tmdbid: int = None,
+                        doubanid: str = None) -> Optional[MediaInfo]:
         """
         识别媒体信息
         :param meta:     识别的元数据
         :param mtype:    识别的媒体类型，与tmdbid配套
         :param tmdbid:   tmdbid
+        :param doubanid: 豆瓣ID
         :return: 识别的媒体信息，包括剧集信息
         """
+        # 识别用名中含指定信息情形
+        if not mtype and meta and meta.type in [MediaType.TV, MediaType.MOVIE]:
+            mtype = meta.type
         if not tmdbid and hasattr(meta, "tmdbid"):
-            # 识别用名中含指定信息情形
             tmdbid = meta.tmdbid
-            if not mtype and meta.type in [MediaType.TV, MediaType.MOVIE]:
-                mtype = meta.type
-        return self.run_module("recognize_media", meta=meta, mtype=mtype, tmdbid=tmdbid)
+        if not doubanid and hasattr(meta, "doubanid"):
+            doubanid = meta.doubanid
+        return self.run_module("recognize_media", meta=meta, mtype=mtype,
+                               tmdbid=tmdbid, doubanid=doubanid)
 
     def match_doubaninfo(self, name: str, imdbid: str = None,
-                         mtype: str = None, year: str = None, season: int = None) -> Optional[dict]:
+                         mtype: MediaType = None, year: str = None, season: int = None) -> Optional[dict]:
         """
         搜索和匹配豆瓣信息
         :param name: 标题
@@ -138,6 +144,18 @@ class ChainBase(metaclass=ABCMeta):
         :param season: 季
         """
         return self.run_module("match_doubaninfo", name=name, imdbid=imdbid,
+                               mtype=mtype, year=year, season=season)
+
+    def match_tmdbinfo(self, name: str, mtype: MediaType = None,
+                       year: str = None, season: int = None) -> Optional[dict]:
+        """
+        搜索和匹配TMDB信息
+        :param name: 标题
+        :param mtype: 类型
+        :param year: 年份
+        :param season: 季
+        """
+        return self.run_module("match_tmdbinfo", name=name,
                                mtype=mtype, year=year, season=season)
 
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
@@ -164,13 +182,14 @@ class ChainBase(metaclass=ABCMeta):
                                image_prefix=image_prefix, image_type=image_type,
                                season=season, episode=episode)
 
-    def douban_info(self, doubanid: str) -> Optional[dict]:
+    def douban_info(self, doubanid: str, mtype: MediaType = None) -> Optional[dict]:
         """
         获取豆瓣信息
         :param doubanid: 豆瓣ID
+        :param mtype: 媒体类型
         :return: 豆瓣信息
         """
-        return self.run_module("douban_info", doubanid=doubanid)
+        return self.run_module("douban_info", doubanid=doubanid, mtype=mtype)
 
     def tvdb_info(self, tvdbid: int) -> Optional[dict]:
         """

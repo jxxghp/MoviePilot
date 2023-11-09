@@ -39,10 +39,12 @@ class MediaServerOper(DbOper):
             # 优先按TMDBID查
             item = MediaServerItem.exist_by_tmdbid(self._db, tmdbid=kwargs.get("tmdbid"),
                                                    mtype=kwargs.get("mtype"))
-        else:
+        elif kwargs.get("title"):
             # 按标题、类型、年份查
             item = MediaServerItem.exists_by_title(self._db, title=kwargs.get("title"),
                                                    mtype=kwargs.get("mtype"), year=kwargs.get("year"))
+        else:
+            return None
         if not item:
             return None
 
