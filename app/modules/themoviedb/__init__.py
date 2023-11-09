@@ -151,8 +151,8 @@ class TheMovieDbModule(_ModuleBase):
 
         return None
 
-    def match_doubaninfo(self, name: str, mtype: MediaType = None,
-                         year: str = None, season: int = None) -> dict:
+    def match_tmdbinfo(self, name: str, mtype: MediaType = None,
+                       year: str = None, season: int = None) -> dict:
         """
         搜索和匹配TMDB信息
         :param name:  名称
