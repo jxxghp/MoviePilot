@@ -477,6 +477,26 @@ class DoubanModule(_ModuleBase):
             return []
         return infos.get("subject_collection_items")
 
+    def movie_hot(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取豆瓣热门电影
+        """
+        infos = self.doubanapi.movie_hot_gaia(start=(page - 1) * count,
+                                              count=count)
+        if not infos:
+            return []
+        return infos.get("subject_collection_items")
+
+    def tv_hot(self, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取豆瓣热门剧集
+        """
+        infos = self.doubanapi.tv_hot(start=(page - 1) * count,
+                                      count=count)
+        if not infos:
+            return []
+        return infos.get("subject_collection_items")
+
     def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
         """
         搜索媒体信息

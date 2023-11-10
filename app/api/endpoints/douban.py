@@ -127,6 +127,28 @@ def tv_animation(page: int = 1,
     return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
 
 
+@router.get("/movie_hot", summary="豆瓣热门电影", response_model=List[schemas.MediaInfo])
+def movie_hot(page: int = 1,
+              count: int = 30,
+              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    热门电影
+    """
+    movies = DoubanChain().movie_hot(page=page, count=count)
+    return [MediaInfo(douban_info=movie).to_dict() for movie in movies]
+
+
+@router.get("/tv_hot", summary="豆瓣热门电视剧", response_model=List[schemas.MediaInfo])
+def tv_hot(page: int = 1,
+           count: int = 30,
+           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    热门电视剧
+    """
+    tvs = DoubanChain().tv_hot(page=page, count=count)
+    return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
+
+
 @router.get("/{doubanid}", summary="查询豆瓣详情", response_model=schemas.MediaInfo)
 def douban_info(doubanid: str,
                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:

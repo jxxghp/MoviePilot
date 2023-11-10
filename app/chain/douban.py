@@ -1,6 +1,7 @@
 from typing import Optional, List
 
 from app.chain import ChainBase
+from app.core.config import settings
 from app.schemas import MediaType
 from app.utils.singleton import Singleton
 
@@ -10,7 +11,7 @@ class DoubanChain(ChainBase, metaclass=Singleton):
     豆瓣处理链，单例运行
     """
 
-    def movie_top250(self, page: int = 1, count: int = 30) -> List[dict]:
+    def movie_top250(self, page: int = 1, count: int = 30) -> Optional[List[dict]]:
         """
         获取豆瓣电影TOP250
         :param page:  页码
@@ -18,19 +19,19 @@ class DoubanChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("movie_top250", page=page, count=count)
 
-    def movie_showing(self, page: int = 1, count: int = 30) -> List[dict]:
+    def movie_showing(self, page: int = 1, count: int = 30) -> Optional[List[dict]]:
         """
         获取正在上映的电影
         """
         return self.run_module("movie_showing", page=page, count=count)
 
-    def tv_weekly_chinese(self, page: int = 1, count: int = 30) -> List[dict]:
+    def tv_weekly_chinese(self, page: int = 1, count: int = 30) -> Optional[List[dict]]:
         """
         获取本周中国剧集榜
         """
         return self.run_module("tv_weekly_chinese", page=page, count=count)
 
-    def tv_weekly_global(self, page: int = 1, count: int = 30) -> List[dict]:
+    def tv_weekly_global(self, page: int = 1, count: int = 30) -> Optional[List[dict]]:
         """
         获取本周全球剧集榜
         """
@@ -50,8 +51,24 @@ class DoubanChain(ChainBase, metaclass=Singleton):
         return self.run_module("douban_discover", mtype=mtype, sort=sort, tags=tags,
                                page=page, count=count)
 
-    def tv_animation(self, page: int = 1, count: int = 30) -> List[dict]:
+    def tv_animation(self, page: int = 1, count: int = 30) -> Optional[List[dict]]:
         """
         获取动画剧集
         """
         return self.run_module("tv_animation", page=page, count=count)
+
+    def movie_hot(self, page: int = 1, count: int = 30) -> Optional[List[dict]]:
+        """
+        获取热门电影
+        """
+        if settings.RECOGNIZE_SOURCE != "douban":
+            return None
+        return self.run_module("movie_hot", page=page, count=count)
+
+    def tv_hot(self, page: int = 1, count: int = 30) -> Optional[List[dict]]:
+        """
+        获取热门剧集
+        """
+        if settings.RECOGNIZE_SOURCE != "douban":
+            return None
+        return self.run_module("tv_hot", page=page, count=count)
