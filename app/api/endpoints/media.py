@@ -7,7 +7,7 @@ from app import schemas
 from app.chain.media import MediaChain
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
-from app.core.security import verify_token
+from app.core.security import verify_token, verify_uri_token
 from app.db import get_db
 from app.db.mediaserver_oper import MediaServerOper
 from app.schemas import MediaType
@@ -29,6 +29,17 @@ def recognize(title: str,
     return schemas.Context()
 
 
+@router.get("/recognize2", summary="识别种子媒体信息（API_TOKEN）", response_model=schemas.Context)
+def recognize2(title: str,
+               subtitle: str = None,
+               _: str = Depends(verify_uri_token)) -> Any:
+    """
+    根据标题、副标题识别媒体信息 API_TOKEN认证（?token=xxx）
+    """
+    # 识别媒体信息
+    return recognize(title, subtitle)
+
+
 @router.get("/recognize_file", summary="识别媒体信息（文件）", response_model=schemas.Context)
 def recognize(path: str,
               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -40,6 +51,16 @@ def recognize(path: str,
     if context:
         return context.to_dict()
     return schemas.Context()
+
+
+@router.get("/recognize_file2", summary="识别文件媒体信息（API_TOKEN）", response_model=schemas.Context)
+def recognize2(path: str,
+               _: str = Depends(verify_uri_token)) -> Any:
+    """
+    根据文件路径识别媒体信息 API_TOKEN认证（?token=xxx）
+    """
+    # 识别媒体信息
+    return recognize(path)
 
 
 @router.get("/search", summary="搜索媒体信息", response_model=List[schemas.MediaInfo])

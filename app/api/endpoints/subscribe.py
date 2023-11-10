@@ -8,7 +8,7 @@ from app import schemas
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
-from app.core.security import verify_token
+from app.core.security import verify_token, verify_uri_token
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
 from app.db.models.user import User
@@ -28,7 +28,7 @@ def start_subscribe_add(title: str, year: str,
                          mtype=mtype, tmdbid=tmdbid, season=season, username=username)
 
 
-@router.get("/", summary="所有订阅", response_model=List[schemas.Subscribe])
+@router.get("/", summary="查询所有订阅", response_model=List[schemas.Subscribe])
 def read_subscribes(
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -40,6 +40,14 @@ def read_subscribes(
         if subscribe.sites:
             subscribe.sites = json.loads(subscribe.sites)
     return subscribes
+
+
+@router.get("/list", summary="查询所有订阅（API_TOKEN）", response_model=List[schemas.Subscribe])
+def list_subscribes(_: str = Depends(verify_uri_token)) -> Any:
+    """
+    查询所有订阅 API_TOKEN认证（?token=xxx）
+    """
+    return read_subscribes()
 
 
 @router.post("/", summary="新增订阅", response_model=schemas.Response)

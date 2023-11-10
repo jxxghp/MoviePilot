@@ -59,8 +59,7 @@ def get_token(token: str = None) -> str:
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="token请求参数缺失",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="token请求参数缺失"
         )
     return token
 
@@ -72,8 +71,7 @@ def verify_uri_token(token: str = Depends(get_token)) -> str:
     if token != settings.API_TOKEN:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="token校验不通过",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="token校验不通过"
         )
     return token
 

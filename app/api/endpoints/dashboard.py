@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.chain.dashboard import DashboardChain
 from app.core.config import settings
-from app.core.security import verify_token
+from app.core.security import verify_token, verify_uri_token
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
 from app.scheduler import Scheduler
@@ -34,6 +34,14 @@ def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
         return schemas.Statistic()
 
 
+@router.get("/statistic2", summary="媒体数量统计（API_TOKEN）", response_model=schemas.Statistic)
+def statistic2(_: str = Depends(verify_uri_token)) -> Any:
+    """
+    查询媒体数量统计信息 API_TOKEN认证（?token=xxx）
+    """
+    return statistic()
+
+
 @router.get("/storage", summary="存储空间", response_model=schemas.Storage)
 def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -44,6 +52,14 @@ def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
         total_storage=total_storage,
         used_storage=total_storage - free_storage
     )
+
+
+@router.get("/storage2", summary="存储空间（API_TOKEN）", response_model=schemas.Storage)
+def storage2(_: str = Depends(verify_uri_token)) -> Any:
+    """
+    查询存储空间信息 API_TOKEN认证（?token=xxx）
+    """
+    return storage()
 
 
 @router.get("/processes", summary="进程信息", response_model=List[schemas.ProcessInfo])
@@ -73,12 +89,28 @@ def downloader(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
         return schemas.DownloaderInfo()
 
 
+@router.get("/downloader2", summary="下载器信息（API_TOKEN）", response_model=schemas.DownloaderInfo)
+def downloader2(_: str = Depends(verify_uri_token)) -> Any:
+    """
+    查询下载器信息 API_TOKEN认证（?token=xxx）
+    """
+    return downloader()
+
+
 @router.get("/schedule", summary="后台服务", response_model=List[schemas.ScheduleInfo])
 def schedule(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询后台服务信息
     """
     return Scheduler().list()
+
+
+@router.get("/schedule2", summary="后台服务（API_TOKEN）", response_model=List[schemas.ScheduleInfo])
+def schedule2(_: str = Depends(verify_uri_token)) -> Any:
+    """
+    查询下载器信息 API_TOKEN认证（?token=xxx）
+    """
+    return schedule()
 
 
 @router.get("/transfer", summary="文件整理统计", response_model=List[int])
@@ -99,9 +131,25 @@ def cpu(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return SystemUtils.cpu_usage()
 
 
+@router.get("/cpu2", summary="获取当前CPU使用率（API_TOKEN）", response_model=int)
+def cpu2(_: str = Depends(verify_uri_token)) -> Any:
+    """
+    获取当前CPU使用率 API_TOKEN认证（?token=xxx）
+    """
+    return cpu()
+
+
 @router.get("/memory", summary="获取当前内存使用量和使用率", response_model=List[int])
 def memory(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取当前内存使用率
     """
     return SystemUtils.memory_usage()
+
+
+@router.get("/memory2", summary="获取当前内存使用量和使用率（API_TOKEN）", response_model=List[int])
+def memory2(_: str = Depends(verify_uri_token)) -> Any:
+    """
+    获取当前内存使用率 API_TOKEN认证（?token=xxx）
+    """
+    return memory()
