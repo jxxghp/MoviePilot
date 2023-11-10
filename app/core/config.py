@@ -335,12 +335,6 @@ class Settings(BaseSettings):
         with self.LOG_PATH as p:
             if not p.exists():
                 p.mkdir(parents=True, exist_ok=True)
-        with self.SAVE_PATH as p:
-            if not p.exists():
-                p.mkdir(parents=True, exist_ok=True)
-        for path in self.LIBRARY_PATHS:
-            if not path.exists():
-                path.mkdir(parents=True, exist_ok=True)
 
     class Config:
         case_sensitive = True
