@@ -169,8 +169,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         # 识别
         meta = MetaInfo(content)
         if not meta.name:
-            logger.warn(f'{title} 未识别到元数据！')
-            return meta, []
+            meta.cn_name = content
         # 合并信息
         if mtype:
             meta.type = mtype
