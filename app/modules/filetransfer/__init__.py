@@ -480,16 +480,20 @@ class FileTransferModule(_ModuleBase):
                         if new_file.stat().st_size < in_path.stat().st_size:
                             logger.info(f"目标文件文件大小更小，将被覆盖：{new_file}")
                             overflag = True
+                        else:
+                            return TransferInfo(success=False,
+                                                message=f"媒体库中已存在，且质量更好",
+                                                path=in_path,
+                                                target_path=new_file,
+                                                fail_list=[str(in_path)])
                     case 'never':
-                        pass
+                        return TransferInfo(success=False,
+                                            message=f"媒体库中已存在，当前设置为不覆盖",
+                                            path=in_path,
+                                            target_path=new_file,
+                                            fail_list=[str(in_path)])
                     case _:
                         pass
-                if not overflag:
-                    return TransferInfo(success=False,
-                                        message=f"目标文件已存在，转移覆盖模式：{settings.OVERWRITE_MODE}",
-                                        path=in_path,
-                                        target_path=new_file,
-                                        fail_list=[str(in_path)])
             # 原文件大小
             file_size = in_path.stat().st_size
             # 转移文件
