@@ -276,9 +276,6 @@ class TransferChain(ChainBase):
 
                 logger.info(f"{file_path.name} 识别为：{file_mediainfo.type.value} {file_mediainfo.title_year}")
 
-                # 更新媒体图片
-                self.obtain_images(mediainfo=file_mediainfo)
-
                 # 获取集数据
                 if file_mediainfo.type == MediaType.TV:
                     episodes_info = self.tmdbchain.tmdb_episodes(tmdbid=file_mediainfo.tmdb_id,
@@ -506,15 +503,15 @@ class TransferChain(ChainBase):
         if mtype and mediaid:
             mediainfo = self.recognize_media(mtype=mtype, tmdbid=int(mediaid) if str(mediaid).isdigit() else None,
                                              doubanid=mediaid)
+            if mediainfo:
+                # 更新媒体图片
+                self.obtain_images(mediainfo=mediainfo)
         else:
-            meta = MetaInfoPath(src_path)
-            mediainfo = self.mediachain.recognize_by_meta(meta)
+            mediainfo = self.mediachain.recognize_by_path(str(src_path))
         if not mediainfo:
             return False, f"未识别到媒体信息，类型：{mtype.value}，id：{mediaid}"
         # 重新执行转移
         logger.info(f"{src_path.name} 识别为：{mediainfo.title_year}")
-        # 更新媒体图片
-        self.obtain_images(mediainfo=mediainfo)
 
         # 删除旧的已整理文件
         if history.dest:
