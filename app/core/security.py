@@ -56,12 +56,14 @@ def get_token(token: str = None) -> str:
     """
     从请求URL中获取token
     """
-    if token is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="token请求参数缺失"
-        )
     return token
+
+
+def get_apikey(apikey: str = None) -> str:
+    """
+    从请求URL中获取apikey
+    """
+    return apikey
 
 
 def verify_uri_token(token: str = Depends(get_token)) -> str:
@@ -74,6 +76,18 @@ def verify_uri_token(token: str = Depends(get_token)) -> str:
             detail="token校验不通过"
         )
     return token
+
+
+def verify_uri_apikey(apikey: str = Depends(get_apikey)) -> str:
+    """
+    通过依赖项使用apikey进行身份认证
+    """
+    if apikey != settings.API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="apikey校验不通过"
+        )
+    return apikey
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
