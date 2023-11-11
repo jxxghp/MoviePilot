@@ -82,7 +82,7 @@ def verify_uri_apikey(apikey: str = Depends(get_apikey)) -> str:
     """
     通过依赖项使用apikey进行身份认证
     """
-    if apikey != settings.API_KEY:
+    if apikey != settings.API_TOKEN:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="apikey校验不通过"
