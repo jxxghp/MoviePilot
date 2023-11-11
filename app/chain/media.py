@@ -26,13 +26,13 @@ class MediaChain(ChainBase, metaclass=Singleton):
     # 临时识别结果 {title, name, year, season, episode}
     recognize_temp: Optional[dict] = None
 
-    def recognize_by_title(self, title: str, subtitle: str = None) -> Optional[MediaInfo]:
+    def recognize_by_meta(self, metainfo: MetaBase) -> Optional[MediaInfo]:
         """
         根据主副标题识别媒体信息
         """
+        title = metainfo.title
+        subtitle = metainfo.subtitle
         logger.info(f'开始识别媒体信息，标题：{title}，副标题：{subtitle} ...')
-        # 识别元数据
-        metainfo = MetaInfo(title, subtitle)
         # 识别媒体信息
         mediainfo: MediaInfo = self.recognize_media(meta=metainfo)
         if not mediainfo:

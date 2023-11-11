@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.chain.media import MediaChain
 from app.core.config import settings
+from app.core.context import Context
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token, verify_uri_token
 from app.db import get_db
@@ -23,9 +24,10 @@ def recognize(title: str,
     根据标题、副标题识别媒体信息
     """
     # 识别媒体信息
-    context = MediaChain().recognize_by_title(title=title, subtitle=subtitle)
-    if context:
-        return context.to_dict()
+    metainfo = MetaInfo(title, subtitle)
+    mediainfo = MediaChain().recognize_by_meta(metainfo)
+    if mediainfo:
+        return Context(meta_info=metainfo, media_info=mediainfo).to_dict()
     return schemas.Context()
 
 
@@ -41,8 +43,8 @@ def recognize2(title: str,
 
 
 @router.get("/recognize_file", summary="识别媒体信息（文件）", response_model=schemas.Context)
-def recognize(path: str,
-              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def recognize_file(path: str,
+                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据文件路径识别媒体信息
     """
@@ -54,13 +56,13 @@ def recognize(path: str,
 
 
 @router.get("/recognize_file2", summary="识别文件媒体信息（API_TOKEN）", response_model=schemas.Context)
-def recognize2(path: str,
-               _: str = Depends(verify_uri_token)) -> Any:
+def recognize_file2(path: str,
+                    _: str = Depends(verify_uri_token)) -> Any:
     """
     根据文件路径识别媒体信息 API_TOKEN认证（?token=xxx）
     """
     # 识别媒体信息
-    return recognize(path)
+    return recognize_file(path)
 
 
 @router.get("/search", summary="搜索媒体信息", response_model=List[schemas.MediaInfo])

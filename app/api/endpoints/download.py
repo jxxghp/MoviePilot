@@ -62,11 +62,18 @@ def exists(media_in: schemas.MediaInfo,
     # 媒体信息
     meta = MetaInfo(title=media_in.title)
     mtype = MediaType(media_in.type) if media_in.type else None
+    if mtype:
+        meta.type = mtype
+    if media_in.season:
+        meta.begin_season = media_in.season
+        meta.type = MediaType.TV
+    if media_in.year:
+        meta.year = media_in.year
     if media_in.tmdb_id or media_in.douban_id:
         mediainfo = MediaChain().recognize_media(meta=meta, mtype=mtype,
                                                  tmdbid=media_in.tmdb_id, doubanid=media_in.douban_id)
     else:
-        mediainfo = MediaChain().recognize_by_title(title=f"{media_in.title} {media_in.year}")
+        mediainfo = MediaChain().recognize_by_meta(metainfo=meta)
     # 查询缺失信息
     if not mediainfo or not mediainfo.tmdb_id:
         raise HTTPException(status_code=404, detail="媒体信息不存在")

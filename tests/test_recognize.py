@@ -15,7 +15,7 @@ class RecognizeTest(TestCase):
         pass
 
     def test_recognize(self):
-        media_info = MediaChain().recognize_by_title(title="我和我的祖国 2019")
+        media_info = MediaChain().recognize_by_meta(MetaInfo("我和我的祖国 2019"))
         self.assertEqual(media_info.tmdb_id, 612845)
         exists = DownloadChain().get_no_exists_info(MetaInfo("我和我的祖国 2019"), media_info)
         self.assertTrue(exists[0])
