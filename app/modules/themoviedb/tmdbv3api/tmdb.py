@@ -4,11 +4,11 @@ import logging
 import os
 import time
 from datetime import datetime
+from functools import lru_cache
 
 import requests
 import requests.exceptions
 
-from app.utils.common import lru_cache_without_none
 from app.utils.http import RequestUtils
 from .exceptions import TMDbException
 
@@ -137,13 +137,17 @@ class TMDb(object):
     def cache(self, cache):
         os.environ[self.TMDB_CACHE_ENABLED] = str(cache)
 
-    @lru_cache_without_none(maxsize=REQUEST_CACHE_MAXSIZE)
+    @lru_cache(maxsize=REQUEST_CACHE_MAXSIZE)
     def cached_request(self, method, url, data, json,
                        _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         缓存请求，时间默认1天，None不缓存
         """
-        return self.request(method, url, data, json)
+        req = self.request(method, url, data, json)
+        if req is None:
+            # 禁止缓存None
+            raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
+        return req
 
     def request(self, method, url, data, json):
         if method == "GET":
@@ -173,7 +177,7 @@ class TMDb(object):
             req = self.request(method, url, data, json)
 
         if req is None:
-            raise TMDbException("Failed to establish a new connection: no response from the server.")
+            raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
 
         headers = req.headers
 
@@ -188,11 +192,11 @@ class TMDb(object):
             sleep_time = self._reset - current_time
 
             if self.wait_on_rate_limit:
-                logger.warning("Rate limit reached. Sleeping for: %d" % sleep_time)
+                logger.warning("达到请求频率限制，休眠：%d 秒..." % sleep_time)
                 time.sleep(abs(sleep_time))
                 return self._request_obj(action, params, call_cached, method, data, json, key)
             else:
-                raise TMDbException("Rate limit reached. Try again in %d seconds." % sleep_time)
+                raise TMDbException("达到请求频率限制，将在 %d 秒后重试..." % sleep_time)
 
         json = req.json()
 

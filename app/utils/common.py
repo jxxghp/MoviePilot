@@ -1,6 +1,5 @@
 import time
 from typing import Any
-from functools import lru_cache
 
 
 def retry(ExceptionToCheck: Any,
@@ -33,26 +32,3 @@ def retry(ExceptionToCheck: Any,
         return f_retry
 
     return deco_retry
-
-
-def lru_cache_without_none(maxsize=None, typed=False):
-    """
-    不缓存None的lru_cache
-    :param maxsize: 缓存大小
-    :param typed: 是否区分参数类型
-    """
-    def decorator(func):
-        cache = lru_cache(maxsize=maxsize, typed=typed)(func)
-
-        def wrapper(*args, **kwargs):
-            result = cache(*args, **kwargs)
-            if result is not None:
-                return result
-
-        def cache_clear():
-            cache.cache_clear()
-
-        wrapper.cache_clear = cache_clear
-        return wrapper
-
-    return decorator
