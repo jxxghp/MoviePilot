@@ -4,6 +4,7 @@ from typing import Dict, List, Union
 from cachetools import cached, TTLCache
 
 from app.chain import ChainBase
+from app.chain.media import MediaChain
 from app.core.config import settings
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.metainfo import MetaInfo
@@ -32,6 +33,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         self.siteoper = SiteOper()
         self.rsshelper = RssHelper()
         self.systemconfig = SystemConfigOper()
+        self.mediachain = MediaChain()
 
     def remote_refresh(self, channel: MessageChannel, userid: Union[str, int] = None):
         """
@@ -166,7 +168,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                     # 识别
                     meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
                     # 识别媒体信息
-                    mediainfo: MediaInfo = self.recognize_media(meta=meta)
+                    mediainfo: MediaInfo = self.mediachain.recognize_by_meta(meta)
                     if not mediainfo:
                         logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
                         # 存储空的媒体信息

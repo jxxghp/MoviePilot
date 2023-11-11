@@ -244,7 +244,7 @@ class TransferChain(ChainBase):
 
                 if not mediainfo:
                     # 识别媒体信息
-                    file_mediainfo = self.recognize_media(meta=file_meta)
+                    file_mediainfo = self.mediachain.recognize_by_meta(file_meta)
                 else:
                     file_mediainfo = mediainfo
 
@@ -508,7 +508,7 @@ class TransferChain(ChainBase):
                                              doubanid=mediaid)
         else:
             meta = MetaInfoPath(src_path)
-            mediainfo = self.recognize_media(meta=meta)
+            mediainfo = self.mediachain.recognize_by_meta(meta)
         if not mediainfo:
             return False, f"未识别到媒体信息，类型：{mtype.value}，id：{mediaid}"
         # 重新执行转移
