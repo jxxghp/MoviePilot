@@ -143,17 +143,16 @@ class TMDb(object):
         """
         缓存请求，时间默认1天，None不缓存
         """
-        req = self.request(method, url, data, json)
-        if req is None:
-            # 禁止缓存None
-            raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
-        return req
+        return self.request(method, url, data, json)
 
     def request(self, method, url, data, json):
         if method == "GET":
-            return self._req.get_res(url, params=data, json=json)
+            req = self._req.get_res(url, params=data, json=json)
         else:
-            return self._req.post_res(url, data=data, json=json)
+            req = self._req.post_res(url, data=data, json=json)
+        if req is None:
+            raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
+        return req
 
     def cache_clear(self):
         return self.cached_request.cache_clear()
@@ -161,7 +160,7 @@ class TMDb(object):
     def _request_obj(self, action, params="", call_cached=True,
                      method="GET", data=None, json=None, key=None):
         if self.api_key is None or self.api_key == "":
-            raise TMDbException("No API key found.")
+            raise TMDbException("TheMovieDb API Key 未设置！")
 
         url = "https://%s/3%s?api_key=%s&%s&language=%s" % (
             self.domain,
@@ -177,7 +176,7 @@ class TMDb(object):
             req = self.request(method, url, data, json)
 
         if req is None:
-            raise TMDbException("无法连接TheMovieDb，请检查网络连接！")
+            return None
 
         headers = req.headers
 
