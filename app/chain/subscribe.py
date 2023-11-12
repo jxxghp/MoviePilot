@@ -34,6 +34,7 @@ class SubscribeChain(ChainBase):
         self.searchchain = SearchChain()
         self.subscribeoper = SubscribeOper()
         self.torrentschain = TorrentsChain()
+        self.mediachain = MediaChain()
         self.message = MessageHelper()
         self.systemconfig = SystemConfigOper()
 
@@ -66,7 +67,7 @@ class SubscribeChain(ChainBase):
             # TMDB识别模式
             if not tmdbid and doubanid:
                 # 将豆瓣信息转换为TMDB信息
-                tmdbinfo = MediaChain().get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
+                tmdbinfo = self.mediachain.get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
                 if tmdbinfo:
                     mediainfo = MediaInfo(tmdb_info=tmdbinfo)
             else:
@@ -116,6 +117,9 @@ class SubscribeChain(ChainBase):
                 })
         # 更新媒体图片
         self.obtain_images(mediainfo=mediainfo)
+        # 合并信息
+        if doubanid:
+            mediainfo.douban_id = doubanid
         # 添加订阅
         sid, err_msg = self.subscribeoper.add(mediainfo, season=season, username=username, **kwargs)
         if not sid:
