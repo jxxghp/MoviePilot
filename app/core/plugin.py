@@ -30,12 +30,11 @@ class PluginManager(metaclass=Singleton):
     def __init__(self):
         self.siteshelper = SitesHelper()
         self.pluginhelper = PluginHelper()
-        self.update_online_plugin()
+        self.systemconfig = SystemConfigOper()
+        self.install_online_plugin()
         self.init_config()
 
     def init_config(self):
-        # 配置管理
-        self.systemconfig = SystemConfigOper()
         # 停止已有插件
         self.stop()
         # 启动插件
@@ -103,35 +102,32 @@ class PluginManager(metaclass=Singleton):
         self._plugins = {}
         self._running_plugins = {}
 
-    @staticmethod
-    def update_online_plugin():
+    def install_online_plugin(self):
         """
-        更新三方插件
+        安装本地不存在的在线插件
         """
+        logger.info("开始安装在线插件...")
         # 已安装插件
-        install_plugins = SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
+        install_plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
         # 在线插件
-        online_plugins = PluginManager().get_online_plugins()
+        online_plugins = self.get_online_plugins()
         if not online_plugins:
-            logger.error("未获取到在线插件，停止运行")
+            logger.error("未获取到在线插件")
             return
-
         # 支持更新的插件自动更新
         for plugin in online_plugins:
             # 只处理已安装的插件
-            if str(plugin.get("id")) in install_plugins:
-                # 有更新 或者 重置后本地未安装的
-                if plugin.get("has_update") or not plugin.get("installed"):
-                    # 下载安装
-                    state, msg = PluginHelper().install(pid=plugin.get("id"),
-                                                        repo_url=plugin.get("repo_url"))
-                    # 安装失败
-                    if not state:
-                        logger.error(
-                            f"插件 {plugin.get('plugin_name')} 更新失败，最新版本 {plugin.get('plugin_version')}")
-                        continue
-
-                    logger.info(f"插件 {plugin.get('plugin_name')} 更新成功，最新版本 {plugin.get('plugin_version')}")
+            if plugin.get("id") in install_plugins and not plugin.get("installed"):
+                # 下载安装
+                state, msg = self.pluginhelper.install(pid=plugin.get("id"),
+                                            fi           repo_url=plugin.get("repo_url"))
+                # 安装失败
+                if not state:
+                    logger.error(
+                        f"插件 {plugin.get('plugin_name')} v{plugin.get('plugin_version')} 安装失败：{msg}")
+                    continue
+                logger.info(f"插件 {plugin.get('plugin_name')} 安装成功，版本：{plugin.get('plugin_version')}")
+        logger.info("在线插件安装完成")
 
     def get_plugin_config(self, pid: str) -> dict:
         """
