@@ -44,7 +44,6 @@ class PluginManager(metaclass=Singleton):
         """
         启动加载插件
         """
-
         # 扫描插件目录
         plugins = ModuleHelper.load(
             "app.plugins",
@@ -117,7 +116,7 @@ class PluginManager(metaclass=Singleton):
         # 支持更新的插件自动更新
         for plugin in online_plugins:
             # 只处理已安装的插件
-            if plugin.get("id") in install_plugins and not plugin.get("installed"):
+            if plugin.get("id") in install_plugins and not self.is_plugin_exists(plugin.get("id")):
                 # 下载安装
                 state, msg = self.pluginhelper.install(pid=plugin.get("id"),
                                                        repo_url=plugin.get("repo_url"))
@@ -372,3 +371,13 @@ class PluginManager(metaclass=Singleton):
             # 汇总
             all_confs.append(conf)
         return all_confs
+
+    @staticmethod
+    def is_plugin_exists(pid: str) -> bool:
+        """
+        判断插件是否存在
+        """
+        if not pid:
+            return False
+        plugin_dir = settings.ROOT_PATH / "app" / "plugins" / pid.lower()
+        return plugin_dir.exists()
