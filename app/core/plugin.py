@@ -120,7 +120,7 @@ class PluginManager(metaclass=Singleton):
             if plugin.get("id") in install_plugins and not plugin.get("installed"):
                 # 下载安装
                 state, msg = self.pluginhelper.install(pid=plugin.get("id"),
-                                            fi           repo_url=plugin.get("repo_url"))
+                                                       repo_url=plugin.get("repo_url"))
                 # 安装失败
                 if not state:
                     logger.error(
