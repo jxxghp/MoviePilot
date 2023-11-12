@@ -8,7 +8,7 @@ from jinja2 import Template
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
-from app.core.metainfo import MetaInfo
+from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.log import logger
 from app.modules import _ModuleBase
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode
@@ -416,6 +416,14 @@ class FileTransferModule(_ModuleBase):
                 rename_dict=self.__get_naming_dict(meta=in_meta,
                                                    mediainfo=mediainfo)
             ).parent
+            # 目录已存在时不处理
+            if new_path.exists():
+                logger.warn(f"目标目录已存在：{new_path}")
+                return TransferInfo(success=False,
+                                    message=f"目标目录已存在：{new_path}",
+                                    path=in_path,
+                                    target_path=new_path,
+                                    is_bluray=bluray_flag)
             # 转移蓝光原盘
             retcode = self.__transfer_dir(file_path=in_path,
                                           new_path=new_path,
@@ -475,8 +483,10 @@ class FileTransferModule(_ModuleBase):
                 logger.info(f"目标文件已存在，转移覆盖模式：{settings.OVERWRITE_MODE}")
                 match settings.OVERWRITE_MODE:
                     case 'always':
+                        # 总是覆盖同名文件
                         overflag = True
                     case 'size':
+                        # 存在时大覆盖小
                         if new_file.stat().st_size < in_path.stat().st_size:
                             logger.info(f"目标文件文件大小更小，将被覆盖：{new_file}")
                             overflag = True
@@ -487,11 +497,16 @@ class FileTransferModule(_ModuleBase):
                                                 target_path=new_file,
                                                 fail_list=[str(in_path)])
                     case 'never':
+                        # 存在不覆盖
                         return TransferInfo(success=False,
                                             message=f"媒体库中已存在，当前设置为不覆盖",
                                             path=in_path,
                                             target_path=new_file,
                                             fail_list=[str(in_path)])
+                    case 'latest':
+                        # 仅保留最新版本
+                        self.delete_all_version_files(new_file)
+                        overflag = True
                     case _:
                         pass
             # 原文件大小
@@ -720,3 +735,34 @@ class FileTransferModule(_ModuleBase):
                 return ExistMediaInfo(type=MediaType.TV, seasons=seasons)
         # 不存在
         return None
+
+    @staticmethod
+    def delete_all_version_files(path: Path) -> bool:
+        """
+        删除目录下的所有版本文件
+        :param path: 目录路径
+        """
+        if not path.exists():
+            return False
+        # 识别文件中的季集信息
+        meta = MetaInfoPath(path)
+        season = meta.season
+        episode = meta.episode
+        # 检索媒体文件
+        logger.warn(f"正在删除目标目录中其它版本的文件：{path.parent}")
+        media_files = SystemUtils.list_files(directory=path.parent, extensions=settings.RMT_MEDIAEXT)
+        if not media_files:
+            logger.info(f"目录中没有媒体文件：{path.parent}")
+            return False
+        # 删除文件
+        for media_file in media_files:
+            if media_file == path:
+                continue
+            # 识别文件中的季集信息
+            filemeta = MetaInfoPath(media_file)
+            # 相同季集的文件才删除
+            if filemeta.season != season or filemeta.episode != episode:
+                continue
+            logger.info(f"正在删除文件：{media_file}")
+            media_file.unlink()
+        return True
