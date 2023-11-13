@@ -97,7 +97,10 @@ class Subscribe(Base):
 
     @staticmethod
     @db_query
-    def get_by_title(db: Session, title: str):
+    def get_by_title(db: Session, title: str, season: int = None):
+        if season:
+            return db.query(Subscribe).filter(Subscribe.name == title,
+                                              Subscribe.season == season).first()
         return db.query(Subscribe).filter(Subscribe.name == title).first()
 
     @staticmethod

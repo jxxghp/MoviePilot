@@ -142,7 +142,9 @@ def subscribe_mediaid(
 
     if not result and title:
         meta = MetaInfo(title)
-        result = Subscribe.get_by_title(db, meta.name)
+        if season:
+            meta.begin_season = season
+        result = Subscribe.get_by_title(db, title=meta.name, season=meta.begin_season)
 
     if result and result.sites:
         result.sites = json.loads(result.sites)
