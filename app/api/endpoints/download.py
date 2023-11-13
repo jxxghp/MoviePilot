@@ -75,15 +75,16 @@ def exists(media_in: schemas.MediaInfo,
     else:
         mediainfo = MediaChain().recognize_by_meta(metainfo=meta)
     # 查询缺失信息
-    if not mediainfo or not mediainfo.tmdb_id:
+    if not mediainfo:
         raise HTTPException(status_code=404, detail="媒体信息不存在")
+    mediakey = mediainfo.tmdb_id or mediainfo.douban_id
     exist_flag, no_exists = DownloadChain().get_no_exists_info(meta=meta, mediainfo=mediainfo)
     if mediainfo.type == MediaType.MOVIE:
         # 电影已存在时返回空列表，存在时返回空对像列表
         return [] if exist_flag else [NotExistMediaInfo()]
-    elif no_exists and no_exists.get(mediainfo.tmdb_id):
+    elif no_exists and no_exists.get(mediakey):
         # 电视剧返回缺失的剧集
-        return list(no_exists.get(mediainfo.tmdb_id).values())
+        return list(no_exists.get(mediakey).values())
     return []
 
 

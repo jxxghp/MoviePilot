@@ -1,4 +1,3 @@
-import copy
 from typing import Any
 
 from app.chain.download import *
@@ -110,9 +109,10 @@ class MessageChain(ChainBase):
                 # 发送缺失的媒体信息
                 if no_exists:
                     # 发送消息
+                    mediakey = mediainfo.tmdb_id or mediainfo.douban_id
                     messages = [
                         f"第 {sea} 季缺失 {StringUtils.str_series(no_exist.episodes) if no_exist.episodes else no_exist.total_episode} 集"
-                        for sea, no_exist in no_exists.get(mediainfo.tmdb_id).items()]
+                        for sea, no_exist in no_exists.get(mediakey).items()]
                     self.post_message(Notification(channel=channel,
                                                    title=f"{mediainfo.title_year}：\n" + "\n".join(messages),
                                                    userid=userid))

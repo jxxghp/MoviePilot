@@ -715,7 +715,7 @@ class DownloadChain(ChainBase):
                     if not episodes:
                         continue
                     # 全季不存在
-                    if meta.season_list \
+                    if meta.sea \
                             and season not in meta.season_list:
                         continue
                     # 总集数
@@ -726,7 +726,7 @@ class DownloadChain(ChainBase):
             else:
                 # 存在一些，检查每季缺失的季集
                 for season, episodes in mediainfo.seasons.items():
-                    if meta.begin_season \
+                    if meta.sea \
                             and season not in meta.season_list:
                         continue
                     if not episodes:
