@@ -12,6 +12,7 @@ from app.schemas.types import SystemConfigKey
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
+from app.utils.system import SystemUtils
 
 
 class PluginManager(metaclass=Singleton):
@@ -105,6 +106,8 @@ class PluginManager(metaclass=Singleton):
         """
         安装本地不存在的在线插件
         """
+        if SystemUtils.is_frozen():
+            return
         logger.info("开始安装在线插件...")
         # 已安装插件
         install_plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []

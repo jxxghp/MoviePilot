@@ -1,11 +1,14 @@
+import re
 import xml.dom.minidom
 from typing import List, Tuple, Union
 from urllib.parse import urljoin
 
+import chardet
 from lxml import etree
 
 from app.core.config import settings
 from app.helper.browser import PlaywrightHelper
+from app.log import logger
 from app.utils.dom import DomUtils
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
@@ -240,8 +243,28 @@ class RssHelper:
             print(str(err))
             return []
         if ret:
-            ret_xml = ret.text
+            ret_xml = ""
             try:
+                # 使用chardet检测字符编码
+                raw_data = ret.content
+                if raw_data:
+                    try:
+                        result = chardet.detect(raw_data)
+                        encoding = result['encoding']
+                        # 解码为字符串
+                        ret_xml = raw_data.decode(encoding)
+                    except Exception as e:
+                        logger.debug(f"chardet解码失败：{str(e)}")
+                        # 探测utf-8解码
+                        match = re.search(r'encoding\s*=\s*["\']([^"\']+)["\']', ret.text)
+                        if match:
+                            encoding = match.group(1)
+                            if encoding:
+                                ret_xml = raw_data.decode(encoding)
+                        else:
+                            ret.encoding = ret.apparent_encoding
+                if not ret_xml:
+                    ret_xml = ret.text
                 # 解析XML
                 dom_tree = xml.dom.minidom.parseString(ret_xml)
                 rootNode = dom_tree.documentElement
