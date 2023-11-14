@@ -213,7 +213,7 @@ class SearchChain(ChainBase):
                     continue
                 # 在副标题中判断是否存在标题与原语种标题
                 if torrent.description:
-                    subtitle = torrent.description.split()
+                    subtitle = re.split(r'[\s/|]+', torrent.description)
                     if (StringUtils.is_chinese(mediainfo.title)
                         and str(mediainfo.title) in subtitle) \
                             or (StringUtils.is_chinese(mediainfo.original_title)
