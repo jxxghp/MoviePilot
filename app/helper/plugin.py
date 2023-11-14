@@ -49,12 +49,7 @@ class PluginHelper(metaclass=Singleton):
             获取插件的文件列表
             """
             file_api = f"https://api.github.com/repos/{user}/{repo}/contents/plugins/{_p.lower()}"
-            headers = {}
-            if settings.GITHUB_TOKEN:
-                headers = {
-                    "Authorization": f"Bearer {settings.GITHUB_TOKEN}"
-                }
-            r = RequestUtils(proxies=settings.PROXY, headers=headers).get_res(file_api)
+            r = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(file_api)
             if not r or r.status_code != 200:
                 return None, f"连接仓库失败：{r.status_code} - {r.reason}"
             ret = r.json()

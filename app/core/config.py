@@ -323,6 +323,17 @@ class Settings(BaseSettings):
             return Path(self.DOWNLOAD_ANIME_PATH)
         return self.SAVE_TV_PATH
 
+    @property
+    def GITHUB_HEADERS(self):
+        """
+        Github请求头
+        """
+        if self.GITHUB_TOKEN:
+            return {
+                "Authorization": f"Bearer {self.GITHUB_TOKEN}"
+            }
+        return {}
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         with self.CONFIG_PATH as p:
