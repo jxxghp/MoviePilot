@@ -5,7 +5,7 @@ download_and_unzip() {
     url="$1"
     target_dir="$2"
     echo "正在下载 ${url}..."
-    curl ${CURL_OPTIONS} "$url" | busybox unzip -d /tmp -
+    curl ${CURL_OPTIONS} "$url" ${CURL_HEADERS} | busybox unzip -d /tmp -
     if [ $? -eq 0 ]; then
         if [ -e /tmp/MoviePilot-* ]; then
             mv /tmp/MoviePilot-* /tmp/${target_dir}
