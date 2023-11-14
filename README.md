@@ -105,6 +105,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 ---
 - **OCR_HOST：** OCR识别服务器地址，格式：`http(s)://ip:port`，用于识别站点验证码实现自动登录获取Cookie等，不配置默认使用内建服务器`https://movie-pilot.org`，可使用 [这个镜像](https://hub.docker.com/r/jxxghp/moviepilot-ocr) 自行搭建。
 - **PLUGIN_MARKET：** 插件市场仓库地址，多个地址使用`,`分隔，保留最后的/，默认为官方插件仓库：`https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/`。
+- **GITHUB_TOKEN：** Github token，提高请求api限流阈值 ghp_****（仅支持环境变量配置）
 ---
 - **❗MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`/`synologychat`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
 

@@ -212,6 +212,8 @@ class Settings(BaseSettings):
     BIG_MEMORY_MODE: bool = False
     # 插件市场仓库地址，多个地址使用,分隔，地址以/结尾
     PLUGIN_MARKET: str = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/"
+    # Github token，提高请求api限流阈值 ghp_****
+    GITHUB_TOKEN: str = None
 
     @property
     def INNER_CONFIG_PATH(self):
