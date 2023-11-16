@@ -22,9 +22,11 @@ from app.core.plugin import PluginManager
 from app.db.init import init_db, update_db
 from app.helper.thread import ThreadHelper
 from app.helper.display import DisplayHelper
+from app.helper.resource import ResourceHelper
 from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
 from app.command import Command
+
 
 # App
 App = FastAPI(title=settings.PROJECT_NAME,
@@ -169,6 +171,8 @@ def start_module():
     DisplayHelper()
     # 站点管理
     SitesHelper()
+    # 资源包检测
+    ResourceHelper()
     # 加载模块
     ModuleManager()
     # 加载插件

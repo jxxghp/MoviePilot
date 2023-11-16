@@ -214,6 +214,8 @@ class Settings(BaseSettings):
     PLUGIN_MARKET: str = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/"
     # Github token，提高请求api限流阈值 ghp_****
     GITHUB_TOKEN: str = None
+    # 自动检查和更新站点资源包（站点索引、认证等）
+    AUTO_UPDATE_RESOURCE: bool = True
 
     @property
     def INNER_CONFIG_PATH(self):

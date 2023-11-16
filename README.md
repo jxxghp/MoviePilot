@@ -70,7 +70,8 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 - **PGID**：运行程序用户的`gid`，默认`0`（仅支持环境变量配置）
 - **UMASK**：掩码权限，默认`000`，可以考虑设置为`022`（仅支持环境变量配置）
 - **PROXY_HOST：** 网络代理，访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`（仅支持环境变量配置）
-- **MOVIEPILOT_AUTO_UPDATE**：重启更新，`true`/`release`/`dev`/`false`，默认`release` **注意：如果出现网络问题可以配置`PROXY_HOST`**（仅支持环境变量配置）
+- **MOVIEPILOT_AUTO_UPDATE：** 重启时自动更新，`true`/`release`/`dev`/`false`，默认`release`，需要能正常连接Github **注意：如果出现网络问题可以配置`PROXY_HOST`**（仅支持环境变量配置）
+- **AUTO_UPDATE_RESOURCE**：启动时自动检测和更新资源包（站点索引及认证等），`true`/`false`，默认`true`，需要能正常连接Github，仅支持Docker
 ---
 - **❗SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
 - **❗SUPERUSER_PASSWORD：** 超级管理员初始密码，默认`password`，建议修改为复杂密码
