@@ -142,7 +142,7 @@ jobs:
         run: |
           wget http://nginx.org/download/nginx-1.25.2.zip
           unzip nginx-1.25.2.zip
-          mv nginx-1.25.2/nginx-1.25.2 nginx
+          mv nginx-1.25.2 nginx
           rm nginx-1.25.2.zip
           rm -rf nginx-1.25.2
           
