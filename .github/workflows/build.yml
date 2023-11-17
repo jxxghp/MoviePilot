@@ -176,7 +176,7 @@ jobs:
       - name: Upload Ubuntu File
         uses: actions/upload-artifact@v3
         with:
-          name: ubuntu
+          name: linux
           path: dist/MoviePilot
 
   Create-release:
@@ -200,7 +200,7 @@ jobs:
         run: |
           mkdir releases
           mv ./windows/MoviePilot.exe ./releases/MoviePilot_v${{ env.app_version }}.exe
-          mv ./ubuntu/dist/MoviePilot ./releases/MoviePilot_amd64_v${{ env.app_version }}
+          mv ./linux/dist/MoviePilot ./releases/MoviePilot_linux_v${{ env.app_version }}
 
       - name: Create Release
         id: create_release
