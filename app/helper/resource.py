@@ -68,6 +68,8 @@ class ResourceHelper(metaclass=Singleton):
                 continue
             if StringUtils.compare_version(version, local_version) > 0:
                 logger.info(f"{rname} 资源包有更新，最新版本：v{version}")
+            else:
+                continue
             # 需要安装
             need_updates[rname] = target
         if need_updates:
@@ -90,7 +92,7 @@ class ResourceHelper(metaclass=Singleton):
                     elif res.status_code != 200:
                         logger.error(f"下载文件 {item.get('name')} 失败：{res.status_code} - {res.reason}")
                     # 创建插件文件夹
-                    file_path = self._base_dir / save_path
+                    file_path = self._base_dir / save_path / item.get("name")
                     if not file_path.parent.exists():
                         file_path.parent.mkdir(parents=True, exist_ok=True)
                     # 写入文件
