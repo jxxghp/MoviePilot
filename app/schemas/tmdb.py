@@ -49,3 +49,14 @@ class TmdbPerson(BaseModel):
     popularity: Optional[float] = None
     images: Optional[dict] = {}
     biography: Optional[str] = None
+
+
+class DoubanPerson(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+    roles: Optional[list] = []
+    title: Optional[str] = None
+    url: Optional[str] = None
+    character: Optional[str] = None
+    avatar: Optional[dict] = None
+    latin_name: Optional[str] = None

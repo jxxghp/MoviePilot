@@ -382,35 +382,35 @@ class TheMovieDbModule(_ModuleBase):
             return f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/{image_prefix}{image_path}"
         return None
 
-    def movie_similar(self, tmdbid: int) -> List[dict]:
+    def tmdb_movie_similar(self, tmdbid: int) -> List[dict]:
         """
         根据TMDBID查询类似电影
         :param tmdbid:  TMDBID
         """
         return self.tmdb.get_movie_similar(tmdbid=tmdbid)
 
-    def tv_similar(self, tmdbid: int) -> List[dict]:
+    def tmdb_tv_similar(self, tmdbid: int) -> List[dict]:
         """
         根据TMDBID查询类似电视剧
         :param tmdbid:  TMDBID
         """
         return self.tmdb.get_tv_similar(tmdbid=tmdbid)
 
-    def movie_recommend(self, tmdbid: int) -> List[dict]:
+    def tmdb_movie_recommend(self, tmdbid: int) -> List[dict]:
         """
         根据TMDBID查询推荐电影
         :param tmdbid:  TMDBID
         """
         return self.tmdb.get_movie_recommend(tmdbid=tmdbid)
 
-    def tv_recommend(self, tmdbid: int) -> List[dict]:
+    def tmdb_tv_recommend(self, tmdbid: int) -> List[dict]:
         """
         根据TMDBID查询推荐电视剧
         :param tmdbid:  TMDBID
         """
         return self.tmdb.get_tv_recommend(tmdbid=tmdbid)
 
-    def movie_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
+    def tmdb_movie_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
         """
         根据TMDBID查询电影演职员表
         :param tmdbid:  TMDBID
@@ -418,7 +418,7 @@ class TheMovieDbModule(_ModuleBase):
         """
         return self.tmdb.get_movie_credits(tmdbid=tmdbid, page=page)
 
-    def tv_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
+    def tmdb_tv_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
         """
         根据TMDBID查询电视剧演职员表
         :param tmdbid:  TMDBID
@@ -426,14 +426,14 @@ class TheMovieDbModule(_ModuleBase):
         """
         return self.tmdb.get_tv_credits(tmdbid=tmdbid, page=page)
 
-    def person_detail(self, person_id: int) -> dict:
+    def tmdb_person_detail(self, person_id: int) -> dict:
         """
         根据TMDBID查询人物详情
         :param person_id:  人物ID
         """
         return self.tmdb.get_person_detail(person_id=person_id)
 
-    def person_credits(self, person_id: int, page: int = 1) -> List[dict]:
+    def tmdb_person_credits(self, person_id: int, page: int = 1) -> List[dict]:
         """
         根据TMDBID查询人物参演作品
         :param person_id:  人物ID

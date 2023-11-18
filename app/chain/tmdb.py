@@ -62,28 +62,28 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         根据TMDBID查询类似电影
         :param tmdbid:  TMDBID
         """
-        return self.run_module("movie_similar", tmdbid=tmdbid)
+        return self.run_module("tmdb_movie_similar", tmdbid=tmdbid)
 
     def tv_similar(self, tmdbid: int) -> List[dict]:
         """
         根据TMDBID查询类似电视剧
         :param tmdbid:  TMDBID
         """
-        return self.run_module("tv_similar", tmdbid=tmdbid)
+        return self.run_module("tmdb_tv_similar", tmdbid=tmdbid)
 
     def movie_recommend(self, tmdbid: int) -> List[dict]:
         """
         根据TMDBID查询推荐电影
         :param tmdbid:  TMDBID
         """
-        return self.run_module("movie_recommend", tmdbid=tmdbid)
+        return self.run_module("tmdb_movie_recommend", tmdbid=tmdbid)
 
     def tv_recommend(self, tmdbid: int) -> List[dict]:
         """
         根据TMDBID查询推荐电视剧
         :param tmdbid:  TMDBID
         """
-        return self.run_module("tv_recommend", tmdbid=tmdbid)
+        return self.run_module("tmdb_tv_recommend", tmdbid=tmdbid)
 
     def movie_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
         """
@@ -91,7 +91,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return self.run_module("movie_credits", tmdbid=tmdbid, page=page)
+        return self.run_module("tmdb_movie_credits", tmdbid=tmdbid, page=page)
 
     def tv_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
         """
@@ -99,14 +99,14 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return self.run_module("tv_credits", tmdbid=tmdbid, page=page)
+        return self.run_module("tmdb_tv_credits", tmdbid=tmdbid, page=page)
 
     def person_detail(self, person_id: int) -> dict:
         """
         根据TMDBID查询演职员详情
         :param person_id:  人物ID
         """
-        return self.run_module("person_detail", person_id=person_id)
+        return self.run_module("tmdb_person_detail", person_id=person_id)
 
     def person_credits(self, person_id: int, page: int = 1) -> List[dict]:
         """
@@ -114,7 +114,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         :param person_id:  人物ID
         :param page:  页码
         """
-        return self.run_module("person_credits", person_id=person_id, page=page)
+        return self.run_module("tmdb_person_credits", person_id=person_id, page=page)
 
     @cached(cache=TTLCache(maxsize=1, ttl=3600))
     def get_random_wallpager(self):

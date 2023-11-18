@@ -664,3 +664,49 @@ class DoubanModule(_ModuleBase):
         """
         self.doubanapi.clear_cache()
         self.cache.clear()
+
+    def douban_movie_credits(self, doubanid: str, page: int = 1, count: int = 20) -> List[dict]:
+        """
+        根据TMDBID查询电影演职员表
+        :param doubanid:  豆瓣ID
+        :param page:  页码
+        :param count:  数量
+        """
+        result = self.doubanapi.movie_celebrities(subject_id=doubanid)
+        if not result:
+            return []
+        ret_list = result.get("actors") or []
+        if ret_list:
+            return ret_list[(page - 1) * count: page * count]
+        else:
+            return []
+
+    def douban_tv_credits(self, doubanid: str, page: int = 1, count: int = 20) -> List[dict]:
+        """
+        根据TMDBID查询电视剧演职员表
+        :param doubanid:  豆瓣ID
+        :param page:  页码
+        :param count:  数量
+        """
+        result = self.doubanapi.tv_celebrities(subject_id=doubanid)
+        if not result:
+            return []
+        ret_list = result.get("actors") or []
+        if ret_list:
+            return ret_list[(page - 1) * count: page * count]
+        else:
+            return []
+
+    def douban_movie_recommend(self, doubanid: int) -> List[dict]:
+        """
+        根据豆瓣ID查询推荐电影
+        :param doubanid:  豆瓣ID
+        """
+        return self.doubanapi.movie_recommendations(subject_id=doubanid) or []
+
+    def douban_tv_recommend(self, doubanid: int) -> List[dict]:
+        """
+        根据豆瓣ID查询推荐电视剧
+        :param doubanid:  豆瓣ID
+        """
+        return self.doubanapi.tv_recommendations(subject_id=doubanid) or []

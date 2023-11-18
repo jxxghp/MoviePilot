@@ -72,3 +72,33 @@ class DoubanChain(ChainBase, metaclass=Singleton):
         if settings.RECOGNIZE_SOURCE != "douban":
             return None
         return self.run_module("tv_hot", page=page, count=count)
+
+    def movie_credits(self, doubanid: str, page: int = 1) -> List[dict]:
+        """
+        根据TMDBID查询电影演职人员
+        :param doubanid:  豆瓣ID
+        :param page:  页码
+        """
+        return self.run_module("douban_movie_credits", doubanid=doubanid, page=page)
+
+    def tv_credits(self, doubanid: int, page: int = 1) -> List[dict]:
+        """
+        根据TMDBID查询电视剧演职人员
+        :param doubanid:  豆瓣ID
+        :param page:  页码
+        """
+        return self.run_module("douban_tv_credits", doubanid=doubanid, page=page)
+
+    def movie_recommend(self, doubanid: str) -> List[dict]:
+        """
+        根据豆瓣ID查询推荐电影
+        :param doubanid:  豆瓣ID
+        """
+        return self.run_module("douban_movie_recommend", doubanid=doubanid)
+
+    def tv_recommend(self, doubanid: str) -> List[dict]:
+        """
+        根据豆瓣ID查询推荐电视剧
+        :param doubanid:  豆瓣ID
+        """
+        return self.run_module("douban_tv_recommend", doubanid=doubanid)

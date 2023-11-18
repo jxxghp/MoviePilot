@@ -495,6 +495,18 @@ class MediaInfo:
             self.season_years = {
                 season: self.year
             }
+        # 风格
+        if not self.genres:
+            self.genres = [{"id": genre, "name": genre} for genre in info.get("genres") or []]
+        # 时长
+        if not self.runtime and info.get("durations"):
+            # 查找数字
+            match = re.search(r'\d+', info.get("durations")[0])
+            if match:
+                self.runtime = int(match.group())
+        # 国家
+        if not self.production_countries:
+            self.production_countries = [{"id": country, "name": country} for country in info.get("countries") or []]
         # 剩余属性赋值
         for key, value in info.items():
             if not hasattr(self, key):
