@@ -131,5 +131,6 @@ def media_info(mediaid: str, type_name: str,
                 return schemas.MediaInfo()
     mediainfo = MediaChain().recognize_media(tmdbid=tmdbid, doubanid=doubanid, mtype=mtype)
     if mediainfo:
+        MediaChain().obtain_images(mediainfo)
         return mediainfo.to_dict()
     return schemas.MediaInfo()

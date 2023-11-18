@@ -430,25 +430,49 @@ class DoubanApi(metaclass=Singleton):
     def movie_recommendations(self, subject_id: str, start: int = 0, count: int = 20,
                               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
-            电影推荐
-            :param subject_id: 电影id
-            :param start: 开始
-            :param count: 数量
-            :param ts: 时间戳
-            """
+        电影推荐
+        :param subject_id: 电影id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
         return self.__invoke(self._urls["movie_recommendations"] % subject_id,
                              start=start, count=count, _ts=ts)
 
     def tv_recommendations(self, subject_id: str, start: int = 0, count: int = 20,
                            ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
-                电视剧推荐
-                :param subject_id: 电视剧id
-                :param start: 开始
-                :param count: 数量
-                :param ts: 时间戳
-                """
+        电视剧推荐
+        :param subject_id: 电视剧id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
         return self.__invoke(self._urls["tv_recommendations"] % subject_id,
+                             start=start, count=count, _ts=ts)
+
+    def movie_photos(self, subject_id: str, start: int = 0, count: int = 20,
+                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        """
+        电影剧照
+        :param subject_id: 电影id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
+        return self.__invoke(self._urls["movie_photos"] % subject_id,
+                             start=start, count=count, _ts=ts)
+
+    def tv_photos(self, subject_id: str, start: int = 0, count: int = 20,
+                  ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        """
+        电视剧剧照
+        :param subject_id: 电视剧id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
+        return self.__invoke(self._urls["tv_photos"] % subject_id,
                              start=start, count=count, _ts=ts)
 
     def clear_cache(self):

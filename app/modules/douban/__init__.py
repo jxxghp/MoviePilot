@@ -658,6 +658,35 @@ class DoubanModule(_ModuleBase):
                     logger.error(f"刮削文件 {file} 失败，原因：{str(e)}")
         logger.info(f"{path} 刮削完成")
 
+    def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
+        """
+        补充抓取媒体信息图片
+        :param mediainfo:  识别的媒体信息
+        :return: 更新后的媒体信息
+        """
+        if settings.RECOGNIZE_SOURCE != "douban":
+            return None
+        if not mediainfo.douban_id:
+            return None
+        if mediainfo.backdrop_path:
+            # 没有图片缺失
+            return mediainfo
+        # 调用图片接口
+        if not mediainfo.backdrop_path:
+            if mediainfo.type == MediaType.MOVIE:
+                info = self.doubanapi.movie_photos(mediainfo.douban_id)
+            else:
+                info = self.doubanapi.tv_photos(mediainfo.douban_id)
+            if not info:
+                return mediainfo
+            images = info.get("photos")
+            # 背景图
+            if images:
+                backdrop = images[0].get("image", {}).get("large") or {}
+                if backdrop:
+                    mediainfo.backdrop_path = backdrop.get("url")
+        return mediainfo
+
     def clear_cache(self):
         """
         清除缓存

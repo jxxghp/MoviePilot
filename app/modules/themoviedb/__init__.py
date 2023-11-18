@@ -312,6 +312,8 @@ class TheMovieDbModule(_ModuleBase):
         :param mediainfo:  识别的媒体信息
         :return: 更新后的媒体信息
         """
+        if settings.RECOGNIZE_SOURCE != "themoviedb":
+            return None
         if not mediainfo.tmdb_id:
             return mediainfo
         if mediainfo.logo_path \
