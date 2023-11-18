@@ -193,6 +193,14 @@ class Settings(BaseSettings):
     LIBRARY_TV_NAME: str = None
     # 动漫媒体库目录名，默认"电视剧/动漫"
     LIBRARY_ANIME_NAME: str = None
+    # 直接分别指定电影/电视剧/动漫媒体库的路径
+    LIBRARY_USE_PATH: bool = None
+    # 电影媒体库路径，默认不使用，路径无效时使用目录名
+    LIBRARY_MOVIE_PATH: str = None
+    # 电视剧媒体库路径，默认不使用，路径无效时使用目录名
+    LIBRARY_TV_PATH: str = None
+    # 动漫媒体库路径，默认不使用，路径无效时使用目录名
+    LIBRARY_ANIME_PATH: str = None
     # 二级分类
     LIBRARY_CATEGORY: bool = True
     # 电视剧动漫的分类genre_ids

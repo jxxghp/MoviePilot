@@ -1,3 +1,4 @@
+import os
 import re
 from pathlib import Path
 from threading import Lock
@@ -342,21 +343,38 @@ class FileTransferModule(_ModuleBase):
         if mediainfo.type == MediaType.MOVIE:
             # 电影
             if settings.LIBRARY_MOVIE_NAME:
-                target_dir = target_dir / settings.LIBRARY_MOVIE_NAME / mediainfo.category
+                target_dir = (
+                    Path(settings.LIBRARY_MOVIE_PATH)
+                    if settings.LIBRARY_USE_PATH
+                    and os.path.isdir(settings.LIBRARY_MOVIE_PATH)
+                    else target_dir / settings.LIBRARY_MOVIE_NAME / mediainfo.category
+                )
             else:
                 # 目的目录加上类型和二级分类
                 target_dir = target_dir / mediainfo.type.value / mediainfo.category
 
         if mediainfo.type == MediaType.TV:
             # 电视剧
-            if settings.LIBRARY_ANIME_NAME \
-                    and mediainfo.genre_ids \
-                    and set(mediainfo.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
+            if (
+                settings.LIBRARY_ANIME_NAME
+                and mediainfo.genre_ids
+                and set(mediainfo.genre_ids).intersection(set(settings.ANIME_GENREIDS))
+            ):
                 # 动漫
-                target_dir = target_dir / settings.LIBRARY_ANIME_NAME / mediainfo.category
+                target_dir = (
+                    Path(settings.LIBRARY_ANIME_PATH)
+                    if settings.LIBRARY_USE_PATH
+                    and os.path.isdir(settings.LIBRARY_MOVIE_PATH)
+                    else target_dir / settings.LIBRARY_ANIME_NAME / mediainfo.category
+                )
             elif settings.LIBRARY_TV_NAME:
                 # 电视剧
-                target_dir = target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
+                target_dir = (
+                    Path(settings.LIBRARY_TV_PATH)
+                    if settings.LIBRARY_USE_PATH
+                    and os.path.isdir(settings.LIBRARY_MOVIE_PATH)
+                    else target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
+                )
             else:
                 # 目的目录加上类型和二级分类
                 target_dir = target_dir / mediainfo.type.value / mediainfo.category
