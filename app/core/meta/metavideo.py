@@ -34,6 +34,7 @@ class MetaVideo(MetaBase):
     _name_no_begin_re = r"^\[.+?]"
     _name_no_chinese_re = r".*版|.*字幕"
     _name_se_words = ['共', '第', '季', '集', '话', '話', '期']
+    _name_movie_words = ['剧场版', '劇場版', '电影版', '電影版']
     _name_nostring_re = r"^PTS|^JADE|^AOD|^CHC|^[A-Z]{1,4}TV[\-0-9UVHDK]*" \
                         r"|HBO$|\s+HBO|\d{1,2}th|\d{1,2}bit|NETFLIX|AMAZON|IMAX|^3D|\s+3D|^BBC\s+|\s+BBC|BBC$|DISNEY\+?|XXX|\s+DC$" \
                         r"|[第\s共]+[0-9一二三四五六七八九十\-\s]+季" \
@@ -182,8 +183,9 @@ class MetaVideo(MetaBase):
             if not self.cn_name:
                 self.cn_name = token
             elif not self._stop_cnname_flag:
-                if not re.search("%s" % self._name_no_chinese_re, token, flags=re.IGNORECASE) \
-                        and not re.search("%s" % self._name_se_words, token, flags=re.IGNORECASE):
+                if re.search("%s" % self._name_movie_words, token, flags=re.IGNORECASE) \
+                        or (not re.search("%s" % self._name_no_chinese_re, token, flags=re.IGNORECASE)
+                            and not re.search("%s" % self._name_se_words, token, flags=re.IGNORECASE)):
                     self.cn_name = "%s %s" % (self.cn_name, token)
                 self._stop_cnname_flag = True
         else:

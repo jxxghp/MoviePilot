@@ -87,7 +87,7 @@ class SystemChain(ChainBase, metaclass=Singleton):
         """
         获取最新版本
         """
-        version_res = RequestUtils(proxies=settings.PROXY).get_res(
+        version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
             "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest")
         if version_res:
             ver_json = version_res.json()

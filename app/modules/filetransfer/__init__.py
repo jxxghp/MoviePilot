@@ -416,14 +416,6 @@ class FileTransferModule(_ModuleBase):
                 rename_dict=self.__get_naming_dict(meta=in_meta,
                                                    mediainfo=mediainfo)
             ).parent
-            # 目录已存在时不处理
-            if new_path.exists():
-                logger.warn(f"目标目录已存在：{new_path}")
-                return TransferInfo(success=False,
-                                    message=f"目标目录已存在：{new_path}",
-                                    path=in_path,
-                                    target_path=new_path,
-                                    is_bluray=bluray_flag)
             # 转移蓝光原盘
             retcode = self.__transfer_dir(file_path=in_path,
                                           new_path=new_path,

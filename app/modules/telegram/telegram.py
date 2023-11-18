@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.context import MediaInfo, Context
 from app.core.metainfo import MetaInfo
 from app.log import logger
+from app.utils.common import retry
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
@@ -174,6 +175,7 @@ class Telegram(metaclass=Singleton):
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
+    @retry(Exception, logger=logger)
     def __send_request(self, userid: str = None, image="", caption="") -> bool:
         """
         向Telegram发送报文
@@ -181,7 +183,9 @@ class Telegram(metaclass=Singleton):
 
         if image:
             req = RequestUtils(proxies=settings.PROXY).get_res(image)
-            if req and req.content:
+            if req is None:
+                raise Exception("获取图片失败")
+            if req.content:
                 image_file = Path(settings.TEMP_PATH) / Path(image).name
                 image_file.write_bytes(req.content)
                 photo = InputFile(image_file)
@@ -189,12 +193,15 @@ class Telegram(metaclass=Singleton):
                                            photo=photo,
                                            caption=caption,
                                            parse_mode="Markdown")
+                if ret is None:
+                    raise Exception("发送图片消息失败")
                 if ret:
                     return True
         ret = self._bot.send_message(chat_id=userid or self._telegram_chat_id,
                                      text=caption,
                                      parse_mode="Markdown")
-
+        if ret is None:
+            raise Exception("发送文本消息失败")
         return True if ret else False
 
     def register_commands(self, commands: Dict[str, dict]):

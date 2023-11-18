@@ -5,7 +5,7 @@ download_and_unzip() {
     url="$1"
     target_dir="$2"
     echo "正在下载 ${url}..."
-    curl ${CURL_OPTIONS} "$url" | busybox unzip -d /tmp -
+    curl ${CURL_OPTIONS} "$url" ${CURL_HEADERS} | busybox unzip -d /tmp -
     if [ $? -eq 0 ]; then
         if [ -e /tmp/MoviePilot-* ]; then
             mv /tmp/MoviePilot-* /tmp/${target_dir}
@@ -30,7 +30,7 @@ install_backend_and_download_resources() {
                 download_and_unzip "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" "Resources"
                 if [ $? -eq 0 ]; then
                     echo "资源包下载成功"
-                    frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name)
+                    frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" ${CURL_HEADERS} | jq -r .tag_name)
                     if [[ "${frontend_version}" == *v* ]]; then
                         download_and_unzip "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"
                         if [ $? -eq 0 ]; then
@@ -83,6 +83,11 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
         CURL_OPTIONS="-sL"
         echo "不使用代理更新程序"
     fi
+    if [ -n "${GITHUB_TOKEN}" ]; then
+        CURL_HEADERS="--header 'Authorization: Bearer ${GITHUB_TOKEN}'"
+    else
+        CURL_HEADERS=""
+    fi
     if [ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]; then
         echo "Dev 更新模式"
         install_backend_and_download_resources "heads/main.zip"
@@ -92,7 +97,7 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
         if [[ "${old_version}" == *APP_VERSION* ]]; then
             current_version=v$(echo ${old_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
             echo "当前版本号：${current_version}"
-            new_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" | jq -r .tag_name)
+            new_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" ${CURL_HEADERS} | jq -r .tag_name)
             if [[ "${new_version}" == *v* ]]; then
                 release_version=${new_version}
                 echo "最新版本号：${release_version}"

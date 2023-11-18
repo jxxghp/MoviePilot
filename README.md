@@ -70,7 +70,8 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 - **PGID**：运行程序用户的`gid`，默认`0`（仅支持环境变量配置）
 - **UMASK**：掩码权限，默认`000`，可以考虑设置为`022`（仅支持环境变量配置）
 - **PROXY_HOST：** 网络代理，访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`（仅支持环境变量配置）
-- **MOVIEPILOT_AUTO_UPDATE**：重启更新，`true`/`release`/`dev`/`false`，默认`release` **注意：如果出现网络问题可以配置`PROXY_HOST`**（仅支持环境变量配置）
+- **MOVIEPILOT_AUTO_UPDATE：** 重启时自动更新，`true`/`release`/`dev`/`false`，默认`release`，需要能正常连接Github **注意：如果出现网络问题可以配置`PROXY_HOST`**（仅支持环境变量配置）
+- **AUTO_UPDATE_RESOURCE**：启动时自动检测和更新资源包（站点索引及认证等），`true`/`false`，默认`true`，需要能正常连接Github，仅支持Docker
 ---
 - **❗SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
 - **❗SUPERUSER_PASSWORD：** 超级管理员初始密码，默认`password`，建议修改为复杂密码
@@ -105,6 +106,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 ---
 - **OCR_HOST：** OCR识别服务器地址，格式：`http(s)://ip:port`，用于识别站点验证码实现自动登录获取Cookie等，不配置默认使用内建服务器`https://movie-pilot.org`，可使用 [这个镜像](https://hub.docker.com/r/jxxghp/moviepilot-ocr) 自行搭建。
 - **PLUGIN_MARKET：** 插件市场仓库地址，多个地址使用`,`分隔，保留最后的/，默认为官方插件仓库：`https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/`。
+- **GITHUB_TOKEN：** Github token，提高请求api限流阈值 ghp_****（仅支持环境变量配置）
 ---
 - **❗MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`/`synologychat`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
 
@@ -190,7 +192,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 `AUTH_SITE`支持配置多个认证站点，使用`,`分隔，如：`iyuu,hhclub`，会依次执行认证操作，直到有一个站点认证成功。
 
-- **❗AUTH_SITE：** 认证站点，认证资源`v1.0.1`支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`/`xingtan`/`ptvicomo`
+- **❗AUTH_SITE：** 认证站点，认证资源`v1.0.2`支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`/`xingtan`/`ptvicomo`/`agsvpt`
 
 |      站点      |                          参数                           |
 |:------------:|:-----------------------------------------------------:|
@@ -208,6 +210,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 |    ptlsp     |        `PTLSP_UID`：用户ID<br/>`PTLSP_PASSKEY`：密钥        |
 |   xingtan    |      `XINGTAN_UID`：用户ID<br/>`XINGTAN_PASSKEY`：密钥      |
 |   ptvicomo   |     `PTVICOMO_UID`：用户ID<br/>`PTVICOMO_PASSKEY`：密钥     |
+|    agsvpt    |      `AGSVPT_UID`：用户ID<br/>`AGSVPT_PASSKEY`：密钥       |
 
 
 ### 2. **进阶配置**

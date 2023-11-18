@@ -212,6 +212,10 @@ class Settings(BaseSettings):
     BIG_MEMORY_MODE: bool = False
     # 插件市场仓库地址，多个地址使用,分隔，地址以/结尾
     PLUGIN_MARKET: str = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/"
+    # Github token，提高请求api限流阈值 ghp_****
+    GITHUB_TOKEN: str = None
+    # 自动检查和更新站点资源包（站点索引、认证等）
+    AUTO_UPDATE_RESOURCE: bool = True
 
     @property
     def INNER_CONFIG_PATH(self):
@@ -320,6 +324,17 @@ class Settings(BaseSettings):
         if self.DOWNLOAD_ANIME_PATH:
             return Path(self.DOWNLOAD_ANIME_PATH)
         return self.SAVE_TV_PATH
+
+    @property
+    def GITHUB_HEADERS(self):
+        """
+        Github请求头
+        """
+        if self.GITHUB_TOKEN:
+            return {
+                "Authorization": f"Bearer {self.GITHUB_TOKEN}"
+            }
+        return {}
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
