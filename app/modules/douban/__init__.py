@@ -618,10 +618,17 @@ class DoubanModule(_ModuleBase):
             else:
                 doubaninfo = self.douban_info(doubanid=mediainfo.douban_id,
                                               mtype=mediainfo.type)
+            if not doubaninfo:
+                logger(f"未获取到 {mediainfo.douban_id} 的豆瓣媒体信息，无法刮削！")
+                return
+            # 豆瓣媒体信息
+            mediainfo = MediaInfo(douban_info=doubaninfo)
+            # 补充图片
+            self.obtain_images(mediainfo)
             # 刮削路径
             scrape_path = path / path.name
             self.scraper.gen_scraper_files(meta=meta,
-                                           mediainfo=MediaInfo(douban_info=doubaninfo),
+                                           mediainfo=mediainfo,
                                            file_path=scrape_path,
                                            transfer_type=transfer_type)
         else:
@@ -649,9 +656,16 @@ class DoubanModule(_ModuleBase):
                     else:
                         doubaninfo = self.douban_info(doubanid=mediainfo.douban_id,
                                                       mtype=mediainfo.type)
+                    if not doubaninfo:
+                        logger(f"未获取到 {mediainfo.douban_id} 的豆瓣媒体信息，无法刮削！")
+                        continue
+                    # 豆瓣媒体信息
+                    mediainfo = MediaInfo(douban_info=doubaninfo)
+                    # 补充图片
+                    self.obtain_images(mediainfo)
                     # 刮削
                     self.scraper.gen_scraper_files(meta=meta,
-                                                   mediainfo=MediaInfo(douban_info=doubaninfo),
+                                                   mediainfo=mediainfo,
                                                    file_path=file,
                                                    transfer_type=transfer_type)
                 except Exception as e:
@@ -726,14 +740,14 @@ class DoubanModule(_ModuleBase):
         else:
             return []
 
-    def douban_movie_recommend(self, doubanid: int) -> List[dict]:
+    def douban_movie_recommend(self, doubanid: str) -> List[dict]:
         """
         根据豆瓣ID查询推荐电影
         :param doubanid:  豆瓣ID
         """
         return self.doubanapi.movie_recommendations(subject_id=doubanid) or []
 
-    def douban_tv_recommend(self, doubanid: int) -> List[dict]:
+    def douban_tv_recommend(self, doubanid: str) -> List[dict]:
         """
         根据豆瓣ID查询推荐电视剧
         :param doubanid:  豆瓣ID

@@ -81,7 +81,7 @@ class DoubanChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("douban_movie_credits", doubanid=doubanid, page=page)
 
-    def tv_credits(self, doubanid: int, page: int = 1) -> List[dict]:
+    def tv_credits(self, doubanid: str, page: int = 1) -> List[dict]:
         """
         根据TMDBID查询电视剧演职人员
         :param doubanid:  豆瓣ID

@@ -41,6 +41,10 @@ class DoubanScraper:
                 # 生成电影图片
                 self.__save_image(url=mediainfo.poster_path,
                                   file_path=file_path.with_name(f"poster{Path(mediainfo.poster_path).suffix}"))
+                # 背景图
+                if mediainfo.backdrop_path:
+                    self.__save_image(url=mediainfo.backdrop_path,
+                                      file_path=file_path.with_name(f"backdrop{Path(mediainfo.backdrop_path).suffix}"))
             # 电视剧
             else:
                 # 不存在时才处理
@@ -51,6 +55,10 @@ class DoubanScraper:
                 # 生成根目录图片
                 self.__save_image(url=mediainfo.poster_path,
                                   file_path=file_path.with_name(f"poster{Path(mediainfo.poster_path).suffix}"))
+                # 背景图
+                if mediainfo.backdrop_path:
+                    self.__save_image(url=mediainfo.backdrop_path,
+                                      file_path=file_path.with_name(f"backdrop{Path(mediainfo.backdrop_path).suffix}"))
                 # 季目录NFO
                 if not file_path.with_name("season.nfo").exists():
                     self.__gen_tv_season_nfo_file(mediainfo=mediainfo,
