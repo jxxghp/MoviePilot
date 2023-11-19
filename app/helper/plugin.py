@@ -50,7 +50,7 @@ class PluginHelper(metaclass=Singleton):
             获取插件的文件列表
             """
             file_api = f"https://api.github.com/repos/{user}/{repo}/contents/plugins/{_p.lower()}"
-            r = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS, timeout=10).get_res(file_api)
+            r = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS, timeout=30).get_res(file_api)
             if not r or r.status_code != 200:
                 return None, f"连接仓库失败：{r.status_code} - {r.reason}"
             ret = r.json()
@@ -68,7 +68,7 @@ class PluginHelper(metaclass=Singleton):
                 if item.get("download_url"):
                     # 下载插件文件
                     res = RequestUtils(proxies=settings.PROXY,
-                                       headers=settings.GITHUB_HEADERS, timeout=30).get_res(item["download_url"])
+                                       headers=settings.GITHUB_HEADERS, timeout=60).get_res(item["download_url"])
                     if not res:
                         return False, f"文件 {item.get('name')} 下载失败！"
                     elif res.status_code != 200:

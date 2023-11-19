@@ -75,7 +75,7 @@ class ResourceHelper(metaclass=Singleton):
         if need_updates:
             # 下载文件信息列表
             r = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS,
-                             timeout=10).get_res(self._files_api)
+                             timeout=30).get_res(self._files_api)
             if not r or r.status_code != 200:
                 return None, f"连接仓库失败：{r.status_code} - {r.reason}"
             files_info = r.json()
@@ -84,9 +84,9 @@ class ResourceHelper(metaclass=Singleton):
                 if not save_path:
                     continue
                 if item.get("download_url"):
-                    # 下载插件文件
+                    # 下载资源文件
                     res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS,
-                                       timeout=60).get_res(item["download_url"])
+                                       timeout=180).get_res(item["download_url"])
                     if not res:
                         logger.error(f"文件 {item.get('name')} 下载失败！")
                     elif res.status_code != 200:
