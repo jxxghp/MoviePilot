@@ -184,7 +184,7 @@ jobs:
         run: |
           mkdir releases
           mv ./windows/MoviePilot.exe ./releases/MoviePilot_Win_v${{ env.app_version }}.exe
-          mv ./linux-amd64/dist/MoviePilot_Amd64 ./releases/MoviePilot_Amd64_v${{ env.app_version }}
+          mv ./linux-amd64/MoviePilot_Amd64 ./releases/MoviePilot_Amd64_v${{ env.app_version }}
 
       - name: Create Release
         id: create_release
