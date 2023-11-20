@@ -19,6 +19,8 @@ def collect_pkg_data(package: str, include_py_files: bool = False, subdir: str =
         pkg_path = Path(pkg_dir)
     # Walk through all file in the given package, looking for data files.
     data_toc = TOC()
+    if not pkg_path.exists():
+        return data_toc
     for file in pkg_path.rglob('*'):
         if file.is_file():
             extension = file.suffix
@@ -37,6 +39,8 @@ def collect_local_submodules(package: str):
     package_dir = Path(package.replace('.', os.sep))
     submodules = [package]
     # Walk through all file in the given package, looking for data files.
+    if not package_dir.exists():
+        return []
     for file in package_dir.rglob('*.py'):
         if file.name == '__init__.py':
             module = f"{file.parent}".replace(os.sep, '.')
