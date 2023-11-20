@@ -561,7 +561,7 @@ class DoubanModule(_ModuleBase):
                 continue
             if mtype and mtype.value != type_name:
                 continue
-            if mtype == MediaType.TV and not season:
+            if mtype and mtype == MediaType.TV and not season:
                 season = 1
             item = item_obj.get("target")
             title = item.get("title")
