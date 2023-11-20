@@ -192,7 +192,7 @@ class DownloadChain(ChainBase):
                                                                       channel=channel,
                                                                       userid=userid)
             if not content:
-                return
+                return None
         else:
             content = torrent_file
             # 获取种子文件的文件夹名和文件清单

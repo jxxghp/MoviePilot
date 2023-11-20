@@ -447,5 +447,7 @@ class TheMovieDbModule(_ModuleBase):
         """
         清除缓存
         """
+        logger.info("开始清除TMDB缓存 ...")
         self.tmdb.clear_cache()
         self.cache.clear()
+        logger.info("TMDB缓存清除完成")

@@ -705,8 +705,10 @@ class DoubanModule(_ModuleBase):
         """
         清除缓存
         """
+        logger.info("开始清除豆瓣缓存 ...")
         self.doubanapi.clear_cache()
         self.cache.clear()
+        logger.info("豆瓣缓存清除完成")
 
     def douban_movie_credits(self, doubanid: str, page: int = 1, count: int = 20) -> List[dict]:
         """

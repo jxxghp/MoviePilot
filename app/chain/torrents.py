@@ -60,6 +60,15 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         else:
             return self.load_cache(self._rss_file) or {}
 
+    def clear_torrents(self):
+        """
+        清理种子缓存数据
+        """
+        logger.info(f'开始清理种子缓存数据 ...')
+        self.remove_cache(self._spider_file)
+        self.remove_cache(self._rss_file)
+        logger.info(f'种子缓存数据清理完成')
+
     @cached(cache=TTLCache(maxsize=128, ttl=595))
     def browse(self, domain: str) -> List[TorrentInfo]:
         """
