@@ -45,7 +45,7 @@ class PluginHelper(metaclass=Singleton):
         if not repo_url:
             return None, None
         try:
-            user, repo = repo_url.split("/")[-4:-2]
+            user, repo = repo_url.split("/")[-3:-1]
         except Exception as e:
             print(str(e))
             return None, None
