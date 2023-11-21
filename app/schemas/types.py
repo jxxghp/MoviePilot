@@ -16,16 +16,12 @@ class TorrentStatus(Enum):
 class EventType(Enum):
     # 插件重载
     PluginReload = "plugin.reload"
+    # 插件动作
+    PluginAction = "plugin.action"
     # 执行命令
     CommandExcute = "command.excute"
-    # 站点签到
-    SiteSignin = "site.signin"
-    # 站点数据统计
-    SiteStatistic = "site.statistic"
     # 站点删除
     SiteDeleted = "site.deleted"
-    # 豆瓣想看
-    DoubanSync = "douban.sync"
     # Webhook消息
     WebhookMessage = "webhook.message"
     # 转移完成
@@ -44,14 +40,6 @@ class EventType(Enum):
     NameRecognize = "name.recognize"
     # 名称识别结果
     NameRecognizeResult = "name.recognize.result"
-    # 目录监控同步
-    DirectorySync = "directory.sync"
-    # Cloudflare IP优选
-    CloudFlareSpeedTest = "cloudflare.speedtest"
-    # 站点自动登录更新Cookie、Ua
-    SiteLogin = "site.login"
-    # 网盘删除
-    NetworkDiskDel = "networkdisk.del"
 
 
 # 系统配置Key字典
