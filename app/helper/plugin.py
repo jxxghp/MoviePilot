@@ -44,8 +44,12 @@ class PluginHelper(metaclass=Singleton):
         """
         if not repo_url:
             return None, None
+        if not repo_url.endswith("/"):
+            repo_url += "/"
+        if repo_url.count("/") < 6:
+            repo_url = f"{repo_url}main/"
         try:
-            user, repo = repo_url.split("/")[-3:-1]
+            user, repo = repo_url.split("/")[-4:-2]
         except Exception as e:
             print(str(e))
             return None, None
