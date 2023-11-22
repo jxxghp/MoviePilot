@@ -57,7 +57,14 @@ class DownloadHistoryOper(DbOper):
         按fullpath查询下载文件记录
         :param fullpath: 数据key
         """
-        return DownloadFiles.get_by_fullpath(self._db, fullpath)
+        return DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=False)
+
+    def get_files_by_fullpath(self, fullpath: str) -> List[DownloadFiles]:
+        """
+        按fullpath查询下载文件记录
+        :param fullpath: 数据key
+        """
+        return DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=True)
 
     def get_files_by_savepath(self, fullpath: str) -> List[DownloadFiles]:
         """
@@ -78,7 +85,7 @@ class DownloadHistoryOper(DbOper):
         按fullpath查询下载文件记录hash
         :param fullpath: 数据key
         """
-        fileinfo: DownloadFiles = DownloadFiles.get_by_fullpath(self._db, fullpath)
+        fileinfo: DownloadFiles = DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=False)
         if fileinfo:
             return fileinfo.download_hash
         return ""
@@ -115,3 +122,13 @@ class DownloadHistoryOper(DbOper):
         return DownloadHistory.list_by_user_date(db=self._db,
                                                  date=date,
                                                  username=username)
+
+    def list_by_date(self, date: str, type: str, tmdbid: str, seasons: str = None) -> List[DownloadHistory]:
+        """
+        查询某时间之后的下载历史
+        """
+        return DownloadHistory.list_by_date(db=self._db,
+                                            date=date,
+                                            type=type,
+                                            tmdbid=tmdbid,
+                                            seasons=seasons)

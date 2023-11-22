@@ -123,6 +123,24 @@ class DownloadHistory(Base):
                 DownloadHistory.id.desc()).all()
         return list(result)
 
+    @staticmethod
+    @db_query
+    def list_by_date(db: Session, date: str, type: str, tmdbid: str, seasons: str = None):
+        """
+        查询某时间之后的下载历史
+        """
+        if seasons:
+            return db.query(DownloadHistory).filter(DownloadHistory.date > date,
+                                                    DownloadHistory.type == type,
+                                                    DownloadHistory.tmdbid == tmdbid,
+                                                    DownloadHistory.seasons == seasons).order_by(
+                DownloadHistory.id.desc()).all()
+        else:
+            return db.query(DownloadHistory).filter(DownloadHistory.date > date,
+                                                    DownloadHistory.type == type,
+                                                    DownloadHistory.tmdbid == tmdbid).order_by(
+                DownloadHistory.id.desc()).all()
+
 
 class DownloadFiles(Base):
     """
@@ -157,9 +175,13 @@ class DownloadFiles(Base):
 
     @staticmethod
     @db_query
-    def get_by_fullpath(db: Session, fullpath: str):
-        return db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath).order_by(
-            DownloadFiles.id.desc()).first()
+    def get_by_fullpath(db: Session, fullpath: str, all_files: bool = False):
+        if not all_files:
+            return db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath).order_by(
+                DownloadFiles.id.desc()).first()
+        else:
+            return db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath).order_by(
+                DownloadFiles.id.desc()).all()
 
     @staticmethod
     @db_query
