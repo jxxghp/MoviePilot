@@ -1,7 +1,7 @@
 import secrets
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseSettings
 
@@ -156,7 +156,7 @@ class Settings(BaseSettings):
     # 媒体服务器 emby/jellyfin/plex，多个媒体服务器,分割
     MEDIASERVER: str = "emby"
     # 媒体服务器同步间隔（小时）
-    MEDIASERVER_SYNC_INTERVAL: int = 6
+    MEDIASERVER_SYNC_INTERVAL: Optional[int] = 6
     # 媒体服务器同步黑名单，多个媒体库名称,分割
     MEDIASERVER_SYNC_BLACKLIST: str = None
     # EMBY服务器地址，IP:PORT
@@ -180,7 +180,7 @@ class Settings(BaseSettings):
     # CookieCloud端对端加密密码
     COOKIECLOUD_PASSWORD: str = None
     # CookieCloud同步间隔（分钟）
-    COOKIECLOUD_INTERVAL: int = 60 * 24
+    COOKIECLOUD_INTERVAL: Optional[int] = 60 * 24
     # OCR服务器地址
     OCR_HOST: str = "https://movie-pilot.org"
     # CookieCloud对应的浏览器UA
