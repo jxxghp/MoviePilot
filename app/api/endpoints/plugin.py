@@ -89,7 +89,7 @@ def plugin_form(plugin_id: str,
 @router.get("/page/{plugin_id}", summary="获取插件数据页面")
 def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
     """
-    根据插件ID获取插件配置信息
+    根据插件ID获取插件数据页面
     """
     return PluginManager().get_plugin_page(plugin_id)
 
@@ -106,7 +106,7 @@ def plugin_config(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token
 def set_plugin_config(plugin_id: str, conf: dict,
                       _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    根据插件ID获取插件配置信息
+    更新插件配置
     """
     # 保存配置
     PluginManager().save_plugin_config(plugin_id, conf)
