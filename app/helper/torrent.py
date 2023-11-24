@@ -14,12 +14,16 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.schemas.types import MediaType, SystemConfigKey
+from app.utils.singleton import Singleton
 
 
-class TorrentHelper:
+class TorrentHelper(metaclass=Singleton):
     """
     种子帮助类
     """
+
+    # 失败的种子：站点链接
+    _invalid_torrents = []
 
     def __init__(self):
         self.system_config = SystemConfigOper()
@@ -123,6 +127,8 @@ class TorrentHelper:
         elif req.status_code == 429:
             return None, None, "", [], "触发站点流控，请稍后重试"
         else:
+            # 把错误的种子记下来，避免重复使用
+            self.add_invalid(url)
             return None, None, "", [], f"下载种子出错，状态码：{req.status_code}"
 
     @staticmethod
@@ -276,3 +282,16 @@ class TorrentHelper:
                 continue
             episodes = list(set(episodes).union(set(meta.episode_list)))
         return episodes
+
+    def is_invalid(self, url: str) -> bool:
+        """
+        判断种子是否是无效种子
+        """
+        return url in self._invalid_torrents
+
+    def add_invalid(self, url: str):
+        """
+        添加无效种子
+        """
+        if url not in self._invalid_torrents:
+            self._invalid_torrents.append(url)
