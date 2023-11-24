@@ -360,7 +360,7 @@ class MessageChain(ChainBase):
         else:
             # 未完成下载
             logger.info(f'{_current_media.title_year} 未下载未完整，添加订阅 ...')
-            if _current_media.type == MediaType.TV:
+            if downloads and _current_media.type == MediaType.TV:
                 # 获取已下载剧集
                 downloaded = [download.meta_info.begin_episode for download in downloads
                               if download.meta_info.begin_episode]
