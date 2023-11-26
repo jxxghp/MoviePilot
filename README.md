@@ -42,8 +42,11 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 - Windows
 
-  下载 [MoviePilot.exe](https://github.com/jxxghp/MoviePilot/releases)，双击运行后自动生成配置文件目录。
+  下载 [MoviePilot.exe](https://github.com/jxxghp/MoviePilot/releases)，双击运行后自动生成配置文件目录，访问：http://localhost:3000
 
+- 群晖套件
+
+  添加套件源：https://spk7.imnks.com/
 
 - 本地运行
 
@@ -51,6 +54,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
   2) 将工程 [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources) resources目录下的所有文件复制到`app/helper`目录
   3) 执行命令：`pip install -r requirements.txt` 安装依赖
   4) 执行命令：`python app/main.py` 启动服务
+  5) 自行完成前端项目部署
 
 ## 配置
 
