@@ -62,7 +62,7 @@ def install_plugin(plugin_id: str,
         state, msg = PluginHelper().install(pid=plugin_id, repo_url=repo_url)
         if not state:
             # 安装失败
-            return schemas.Response(success=False, msg=msg)
+            return schemas.Response(success=False, message=msg)
     # 安装插件
     if plugin_id not in install_plugins:
         install_plugins.append(plugin_id)
