@@ -147,6 +147,14 @@ class PluginManager(metaclass=Singleton):
             return False
         return self.systemconfig.set(self._config_key % pid, conf)
 
+    def delete_plugin_config(self, pid: str) -> bool:
+        """
+        删除插件配置
+        """
+        if not self._plugins.get(pid):
+            return False
+        return self.systemconfig.delete(self._config_key % pid)
+
     def get_plugin_form(self, pid: str) -> Tuple[List[dict], Dict[str, Any]]:
         """
         获取插件表单

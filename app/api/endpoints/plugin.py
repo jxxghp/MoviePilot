@@ -94,6 +94,15 @@ def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token))
     return PluginManager().get_plugin_page(plugin_id)
 
 
+@router.get("/reset/{plugin_id}", summary="重置插件配置", response_model=schemas.Response)
+def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+    """
+    根据插件ID重置插件配置
+    """
+    PluginManager().delete_plugin_config(plugin_id)
+    return schemas.Response(success=True)
+
+
 @router.get("/{plugin_id}", summary="获取插件配置")
 def plugin_config(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> dict:
     """
