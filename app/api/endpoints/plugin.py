@@ -99,7 +99,10 @@ def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)
     """
     根据插件ID重置插件配置
     """
+    # 删除配置
     PluginManager().delete_plugin_config(plugin_id)
+    # 重新生效插件
+    PluginManager().reload_plugin(plugin_id, {})
     return schemas.Response(success=True)
 
 
