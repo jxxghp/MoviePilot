@@ -39,7 +39,6 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
   docker pull jxxghp/moviepilot:latest
   ```
 
-
 - Windows
 
   下载 [MoviePilot.exe](https://github.com/jxxghp/MoviePilot/releases)，双击运行后自动生成配置文件目录，访问：http://localhost:3000
@@ -58,29 +57,52 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 ## 配置
 
-项目的所有配置均通过环境变量进行设置，支持两种配置方式：
-- 在Docker环境变量部分或Windows系统环境变量中进行参数配置，如未自动显示配置项则需要手动增加对应环境变量。
-- 下载 [app.env](https://github.com/jxxghp/MoviePilot/raw/main/config/app.env) 配置文件，修改好配置后放置到配置文件映射路径根目录，配置项可根据说明自主增减。
-
 配置文件映射路径：`/config`，配置项生效优先级：环境变量 > env文件 > 默认值，**部分参数如路径映射、站点认证、权限端口、时区等必须通过环境变量进行配置**。
 
 > ❗号标识的为必填项，其它为可选项，可选项可删除配置变量从而使用默认值。
 
-### 1. **基础设置**
+### 1. **环境变量**
 
-- **❗NGINX_PORT：** WEB服务端口，默认`3000`，可自行修改，不能与API服务端口冲突（仅支持环境变量配置）
-- **❗PORT：** API服务端口，默认`3001`，可自行修改，不能与WEB服务端口冲突（仅支持环境变量配置）
-- **PUID**：运行程序用户的`uid`，默认`0`（仅支持环境变量配置）
-- **PGID**：运行程序用户的`gid`，默认`0`（仅支持环境变量配置）
-- **UMASK**：掩码权限，默认`000`，可以考虑设置为`022`（仅支持环境变量配置）
-- **PROXY_HOST：** 网络代理，访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`（仅支持环境变量配置）
-- **MOVIEPILOT_AUTO_UPDATE：** 重启时自动更新，`true`/`release`/`dev`/`false`，默认`release`，需要能正常连接Github **注意：如果出现网络问题可以配置`PROXY_HOST`**（仅支持环境变量配置）
+- **❗NGINX_PORT：** WEB服务端口，默认`3000`，可自行修改，不能与API服务端口冲突
+- **❗PORT：** API服务端口，默认`3001`，可自行修改，不能与WEB服务端口冲突
+- **PUID**：运行程序用户的`uid`，默认`0`
+- **PGID**：运行程序用户的`gid`，默认`0`
+- **UMASK**：掩码权限，默认`000`，可以考虑设置为`022`
+- **PROXY_HOST：** 网络代理，访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`
+- **MOVIEPILOT_AUTO_UPDATE：** 重启时自动更新，`true`/`release`/`dev`/`false`，默认`release`，需要能正常连接Github **注意：如果出现网络问题可以配置`PROXY_HOST`**
 - **AUTO_UPDATE_RESOURCE**：启动时自动检测和更新资源包（站点索引及认证等），`true`/`false`，默认`true`，需要能正常连接Github，仅支持Docker
-- **GITHUB_TOKEN：** Github token，提高自动更新等请求Github Api的限流阈值，格式：ghp_****（仅支持环境变量配置）
----
-- **❗SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面
-- **❗SUPERUSER_PASSWORD：** 超级管理员初始密码，默认`password`，建议修改为复杂密码
+- **❗AUTH_SITE：** 认证站点（认证通过后才能使用站点相关功能），支持配置多个认证站点，使用`,`分隔，如：`iyuu,hhclub`，会依次执行认证操作，直到有一个站点认证成功。  
+
+  配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数，认证资源`v1.0.2`支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`/`xingtan`/`ptvicomo`/`agsvpt`
+  
+  |      站点      |                          参数                           |
+  |:------------:|:-----------------------------------------------------:|
+  |     iyuu     |                 `IYUU_SIGN`：IYUU登录令牌                  |
+  |    hhclub    |     `HHCLUB_USERNAME`：用户名<br/>`HHCLUB_PASSKEY`：密钥     |
+  |  audiences   |    `AUDIENCES_UID`：用户ID<br/>`AUDIENCES_PASSKEY`：密钥    |
+  |   hddolby    |      `HDDOLBY_ID`：用户ID<br/>`HDDOLBY_PASSKEY`：密钥       |
+  |     zmpt     |         `ZMPT_UID`：用户ID<br/>`ZMPT_PASSKEY`：密钥         |
+  |   freefarm   |     `FREEFARM_UID`：用户ID<br/>`FREEFARM_PASSKEY`：密钥     |
+  |    hdfans    |       `HDFANS_UID`：用户ID<br/>`HDFANS_PASSKEY`：密钥       |
+  | wintersakura | `WINTERSAKURA_UID`：用户ID<br/>`WINTERSAKURA_PASSKEY`：密钥 |
+  |    leaves    |       `LEAVES_UID`：用户ID<br/>`LEAVES_PASSKEY`：密钥       |
+  |    1ptba     |        `1PTBA_UID`：用户ID<br/>`1PTBA_PASSKEY`：密钥        |
+  |   icc2022    |      `ICC2022_UID`：用户ID<br/>`ICC2022_PASSKEY`：密钥      |
+  |    ptlsp     |        `PTLSP_UID`：用户ID<br/>`PTLSP_PASSKEY`：密钥        |
+  |   xingtan    |      `XINGTAN_UID`：用户ID<br/>`XINGTAN_PASSKEY`：密钥      |
+  |   ptvicomo   |     `PTVICOMO_UID`：用户ID<br/>`PTVICOMO_PASSKEY`：密钥     |
+  |    agsvpt    |      `AGSVPT_UID`：用户ID<br/>`AGSVPT_PASSKEY`：密钥       |
+
+
+### 2. **app.env配置文件**
+
+下载 [app.env 模板](https://github.com/jxxghp/MoviePilot/raw/main/config/app.env)，修改后放配置文件目录下，app.env 的所有配置项也可以通过环境变量进行配置。
+
+- **❗SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面，**注意：启动一次后再次修改该值不会生效，除非删除数据库文件！**
+- **❗SUPERUSER_PASSWORD：** 超级管理员初始密码，默认`password`，建议修改为复杂密码，**注意：启动一次后再次修改该值不会生效，除非删除数据库文件！**
 - **❗API_TOKEN：** API密钥，默认`moviepilot`，在媒体服务器Webhook、微信回调等地址配置中需要加上`?token=`该值，建议修改为复杂字符串
+- **BIG_MEMORY_MODE：** 大内存模式，默认为`false`，开启后会增加缓存数量，占用更多的内存，但响应速度会更快
+- **GITHUB_TOKEN：** Github token，提高自动更新、插件安装等请求Github Api的限流阈值，格式：ghp_****
 ---
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`、`tmdb.movie-pilot.org` 或其它中转代理服务地址，能连通即可
 - **TMDB_IMAGE_DOMAIN：** TMDB图片地址，默认`image.tmdb.org`，可配置为其它中转代理以加速TMDB图片显示，如：`static-mdb.v.geilijiasu.com`
@@ -186,85 +208,53 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
     - **PLEX_TOKEN：** Plex网页Url中的`X-Plex-Token`，通过浏览器F12->网络从请求URL中获取
 - **MEDIASERVER_SYNC_INTERVAL:** 媒体服务器同步间隔（小时），默认`6`，留空则不同步
 - **MEDIASERVER_SYNC_BLACKLIST:** 媒体服务器同步黑名单，多个媒体库名称使用,分割
+---
+- **MOVIE_RENAME_FORMAT：** 电影重命名格式，基于jinjia2语法
 
+  `MOVIE_RENAME_FORMAT`支持的配置项：
 
-### 2. **用户认证**
+  > `title`： 标题  
+  > `original_name`： 原文件名  
+  > `original_title`： 原语种标题  
+  > `name`： 识别名称  
+  > `year`： 年份  
+  > `resourceType`：资源类型  
+  > `effect`：特效  
+  > `edition`： 版本（资源类型+特效）  
+  > `videoFormat`： 分辨率  
+  > `releaseGroup`： 制作组/字幕组  
+  > `customization`： 自定义占位符  
+  > `videoCodec`： 视频编码  
+  > `audioCodec`： 音频编码  
+  > `tmdbid`： TMDBID  
+  > `imdbid`： IMDBID  
+  > `part`：段/节  
+  > `fileExt`：文件扩展名
+  > `tmdbid`：TMDB ID
+  > `imdbid`：IMDB ID
+  > `customization`：自定义占位符
+  
+  `MOVIE_RENAME_FORMAT`默认配置格式：
+  
+  ```
+  {{title}}{% if year %} ({{year}}){% endif %}/{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if videoFormat %} - {{videoFormat}}{% endif %}{{fileExt}}
+  ```
 
-`MoviePilot`需要认证后才能使用，配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数（**仅能通过环境变量配置**）
+- **TV_RENAME_FORMAT：** 电视剧重命名格式，基于jinjia2语法
 
-`AUTH_SITE`支持配置多个认证站点，使用`,`分隔，如：`iyuu,hhclub`，会依次执行认证操作，直到有一个站点认证成功。
-
-- **❗AUTH_SITE：** 认证站点，认证资源`v1.0.2`支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`1ptba`/`icc2022`/`ptlsp`/`xingtan`/`ptvicomo`/`agsvpt`
-
-|      站点      |                          参数                           |
-|:------------:|:-----------------------------------------------------:|
-|     iyuu     |                 `IYUU_SIGN`：IYUU登录令牌                  |
-|    hhclub    |     `HHCLUB_USERNAME`：用户名<br/>`HHCLUB_PASSKEY`：密钥     |
-|  audiences   |    `AUDIENCES_UID`：用户ID<br/>`AUDIENCES_PASSKEY`：密钥    |
-|   hddolby    |      `HDDOLBY_ID`：用户ID<br/>`HDDOLBY_PASSKEY`：密钥       |
-|     zmpt     |         `ZMPT_UID`：用户ID<br/>`ZMPT_PASSKEY`：密钥         |
-|   freefarm   |     `FREEFARM_UID`：用户ID<br/>`FREEFARM_PASSKEY`：密钥     |
-|    hdfans    |       `HDFANS_UID`：用户ID<br/>`HDFANS_PASSKEY`：密钥       |
-| wintersakura | `WINTERSAKURA_UID`：用户ID<br/>`WINTERSAKURA_PASSKEY`：密钥 |
-|    leaves    |       `LEAVES_UID`：用户ID<br/>`LEAVES_PASSKEY`：密钥       |
-|    1ptba     |        `1PTBA_UID`：用户ID<br/>`1PTBA_PASSKEY`：密钥        |
-|   icc2022    |      `ICC2022_UID`：用户ID<br/>`ICC2022_PASSKEY`：密钥      |
-|    ptlsp     |        `PTLSP_UID`：用户ID<br/>`PTLSP_PASSKEY`：密钥        |
-|   xingtan    |      `XINGTAN_UID`：用户ID<br/>`XINGTAN_PASSKEY`：密钥      |
-|   ptvicomo   |     `PTVICOMO_UID`：用户ID<br/>`PTVICOMO_PASSKEY`：密钥     |
-|    agsvpt    |      `AGSVPT_UID`：用户ID<br/>`AGSVPT_PASSKEY`：密钥       |
-
-
-### 2. **进阶配置**
-
-- **BIG_MEMORY_MODE：** 大内存模式，默认为`false`，开启后会增加缓存数量，占用更多的内存，但响应速度会更快
-
-- **MOVIE_RENAME_FORMAT：** 电影重命名格式
-
-`MOVIE_RENAME_FORMAT`支持的配置项：
-
-> `title`： 标题  
-> `original_name`： 原文件名  
-> `original_title`： 原语种标题  
-> `name`： 识别名称  
-> `year`： 年份  
-> `resourceType`：资源类型  
-> `effect`：特效  
-> `edition`： 版本（资源类型+特效）  
-> `videoFormat`： 分辨率  
-> `releaseGroup`： 制作组/字幕组  
-> `customization`： 自定义占位符  
-> `videoCodec`： 视频编码  
-> `audioCodec`： 音频编码  
-> `tmdbid`： TMDBID  
-> `imdbid`： IMDBID  
-> `part`：段/节  
-> `fileExt`：文件扩展名
-> `tmdbid`：TMDB ID
-> `imdbid`：IMDB ID
-> `customization`：自定义占位符
-
-`MOVIE_RENAME_FORMAT`默认配置格式：
-
-```
-{{title}}{% if year %} ({{year}}){% endif %}/{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if videoFormat %} - {{videoFormat}}{% endif %}{{fileExt}}
-```
-
-- **TV_RENAME_FORMAT：** 电视剧重命名格式
-
-`TV_RENAME_FORMAT`额外支持的配置项：
-
-> `season`： 季号  
-> `episode`： 集号  
-> `season_episode`： 季集 SxxExx  
-> `episode_title`： 集标题
-
-`TV_RENAME_FORMAT`默认配置格式：
-
-```
-{{title}}{% if year %} ({{year}}){% endif %}/Season {{season}}/{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}{{fileExt}}
-```
-
+  `TV_RENAME_FORMAT`额外支持的配置项：
+  
+  > `season`： 季号  
+  > `episode`： 集号  
+  > `season_episode`： 季集 SxxExx  
+  > `episode_title`： 集标题
+  
+  `TV_RENAME_FORMAT`默认配置格式：
+  
+  ```
+  {{title}}{% if year %} ({{year}}){% endif %}/Season {{season}}/{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}{{fileExt}}
+  ```
+  
 
 ### 3. **优先级规则**
 
