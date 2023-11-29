@@ -16,7 +16,7 @@ class Qbittorrent(metaclass=Singleton):
     _host: str = None
     _port: int = None
     _username: str = None
-    _passowrd: str = None
+    _password: str = None
 
     qbc: Client = None
 
