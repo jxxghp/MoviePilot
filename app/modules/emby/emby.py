@@ -366,7 +366,7 @@ class Emby(metaclass=Singleton):
                         season_episodes[season_index] = []
                     season_episodes[season_index].append(episode_index)
                 # 返回
-                return tv_item.get("Id"), season_episodes
+                return item_id, season_episodes
         except Exception as e:
             logger.error(f"连接Shows/Id/Episodes出错：" + str(e))
             return None, None

@@ -1,7 +1,7 @@
 import secrets
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseSettings
 
@@ -156,7 +156,7 @@ class Settings(BaseSettings):
     # 媒体服务器 emby/jellyfin/plex，多个媒体服务器,分割
     MEDIASERVER: str = "emby"
     # 媒体服务器同步间隔（小时）
-    MEDIASERVER_SYNC_INTERVAL: int = 6
+    MEDIASERVER_SYNC_INTERVAL: Optional[int] = 6
     # 媒体服务器同步黑名单，多个媒体库名称,分割
     MEDIASERVER_SYNC_BLACKLIST: str = None
     # EMBY服务器地址，IP:PORT
@@ -180,7 +180,7 @@ class Settings(BaseSettings):
     # CookieCloud端对端加密密码
     COOKIECLOUD_PASSWORD: str = None
     # CookieCloud同步间隔（分钟）
-    COOKIECLOUD_INTERVAL: int = 60 * 24
+    COOKIECLOUD_INTERVAL: Optional[int] = 60 * 24
     # OCR服务器地址
     OCR_HOST: str = "https://movie-pilot.org"
     # CookieCloud对应的浏览器UA
@@ -211,7 +211,7 @@ class Settings(BaseSettings):
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
     # 插件市场仓库地址，多个地址使用,分隔，地址以/结尾
-    PLUGIN_MARKET: str = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/"
+    PLUGIN_MARKET: str = "https://github.com/jxxghp/MoviePilot-Plugins"
     # Github token，提高请求api限流阈值 ghp_****
     GITHUB_TOKEN: str = None
     # 自动检查和更新站点资源包（站点索引、认证等）

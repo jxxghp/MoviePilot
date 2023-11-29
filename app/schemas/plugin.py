@@ -14,8 +14,6 @@ class Plugin(BaseModel):
     plugin_desc: Optional[str] = None
     # 插件图标
     plugin_icon: Optional[str] = None
-    # 主题色
-    plugin_color: Optional[str] = None
     # 插件版本
     plugin_version: Optional[str] = None
     # 插件作者

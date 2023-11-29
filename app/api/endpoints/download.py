@@ -104,7 +104,7 @@ def stop_downloading(
         hashString: str,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    控制下载任务
+    暂停下载任务
     """
     ret = DownloadChain().set_downloading(hashString, "stop")
     return schemas.Response(success=True if ret else False)
@@ -115,7 +115,7 @@ def remove_downloading(
         hashString: str,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    控制下载任务
+    删除下载任务
     """
     ret = DownloadChain().remove_downloading(hashString)
     return schemas.Response(success=True if ret else False)
