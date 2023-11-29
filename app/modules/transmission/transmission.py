@@ -24,10 +24,16 @@ class Transmission(metaclass=Singleton):
               "peersGettingFromUs", "peersSendingToUs", "uploadRatio", "uploadedEver", "downloadedEver", "downloadDir",
               "error", "errorString", "doneDate", "queuePosition", "activityDate", "trackers"]
 
-    def __init__(self):
-        self._host, self._port = StringUtils.get_domain_address(address=settings.TR_HOST, prefix=False)
-        self._username = settings.TR_USER
-        self._password = settings.TR_PASSWORD
+    def __init__(self, host: str = None, port: int = None, username: str = None, password: str = None):
+        """
+        若不设置参数，则创建配置文件设置的下载器
+        """
+        if host and port:
+            self._host, self._port = host, port
+        else:
+            self._host, self._port = StringUtils.get_domain_address(address=settings.TR_HOST, prefix=False)
+        self._username = username if username else settings.TR_USER
+        self._password = password if password else settings.TR_PASSWORD
         if self._host and self._port:
             self.trc = self.__login_transmission()
 
