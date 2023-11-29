@@ -296,9 +296,6 @@ class PluginManager(metaclass=Singleton):
                 # 图标
                 if plugin.get("icon"):
                     conf.update({"plugin_icon": plugin.get("icon")})
-                # 主题色
-                if plugin.get("color"):
-                    conf.update({"plugin_color": plugin.get("color")})
                 # 作者
                 if plugin.get("author"):
                     conf.update({"plugin_author": plugin.get("author")})
@@ -366,9 +363,6 @@ class PluginManager(metaclass=Singleton):
             # 图标
             if hasattr(plugin, "plugin_icon"):
                 conf.update({"plugin_icon": plugin.plugin_icon})
-            # 主题色
-            if hasattr(plugin, "plugin_color"):
-                conf.update({"plugin_color": plugin.plugin_color})
             # 作者
             if hasattr(plugin, "plugin_author"):
                 conf.update({"plugin_author": plugin.plugin_author})

@@ -1,10 +1,10 @@
 import json
 import time
 from datetime import datetime
-from typing import Union
+from typing import Union, Any
 
 import tailer
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response
 from fastapi.responses import StreamingResponse
 
 from app import schemas
@@ -22,6 +22,19 @@ from app.utils.system import SystemUtils
 from version import APP_VERSION
 
 router = APIRouter()
+
+
+@router.get("/img/{imgurl:path}", summary="图片代理")
+def get_img(imgurl: str) -> Any:
+    """
+    通过图片代理（使用代理服务器）
+    """
+    if not imgurl:
+        return None
+    response = RequestUtils(ua=settings.USER_AGENT, proxies=settings.PROXY).get_res(url=imgurl)
+    if response:
+        return Response(content=response.content, media_type="image/jpeg")
+    return None
 
 
 @router.get("/env", summary="查询系统环境变量", response_model=schemas.Response)
