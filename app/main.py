@@ -101,6 +101,9 @@ def start_tray():
     if not SystemUtils.is_frozen():
         return
 
+    if not SystemUtils.is_windows():
+        return
+
     def open_web():
         """
         调用浏览器打开前端页面

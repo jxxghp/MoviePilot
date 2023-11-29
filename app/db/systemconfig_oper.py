@@ -56,6 +56,20 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             return self.__SYSTEMCONF
         return self.__SYSTEMCONF.get(key)
 
+    def delete(self, key: Union[str, SystemConfigKey]):
+        """
+        删除系统设置
+        """
+        if isinstance(key, SystemConfigKey):
+            key = key.value
+        # 更新内存
+        self.__SYSTEMCONF.pop(key, None)
+        # 写入数据库
+        conf = SystemConfig.get_by_key(self._db, key)
+        if conf:
+            conf.delete(self._db, conf.id)
+        return True
+
     def __del__(self):
         if self._db:
             self._db.close()

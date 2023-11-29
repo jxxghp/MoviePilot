@@ -283,6 +283,10 @@ class DownloadChain(ChainBase):
                     if not file_meta.begin_episode \
                             or file_meta.begin_episode not in episodes:
                         continue
+                # 只处理视频格式
+                if not Path(file).suffix \
+                        or Path(file).suffix not in settings.RMT_MEDIAEXT:
+                    continue
                 files_to_add.append({
                     "download_hash": _hash,
                     "downloader": settings.DOWNLOADER,

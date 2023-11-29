@@ -16,6 +16,8 @@ class PluginHelper(metaclass=Singleton):
     插件市场管理，下载安装插件到本地
     """
 
+    _base_url = "https://raw.githubusercontent.com/%s/%s/main/"
+
     @cached(cache=TTLCache(maxsize=10, ttl=1800))
     def get_plugins(self, repo_url: str) -> Dict[str, dict]:
         """
@@ -24,26 +26,46 @@ class PluginHelper(metaclass=Singleton):
         """
         if not repo_url:
             return {}
+        user, repo = self.get_repo_info(repo_url)
+        if not user or not repo:
+            return {}
+        raw_url = self._base_url % (user, repo)
         res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS,
-                           timeout=10).get_res(f"{repo_url}package.json")
+                           timeout=10).get_res(f"{raw_url}package.json")
         if res:
             return json.loads(res.text)
         return {}
 
     @staticmethod
-    def install(pid: str, repo_url: str) -> Tuple[bool, str]:
+    def get_repo_info(repo_url: str) -> Tuple[Optional[str], Optional[str]]:
         """
-        安装插件
+        获取Github仓库信息
+        :param repo_url: Github仓库地址
         """
-        # 从Github的repo_url获取用户和项目名
+        if not repo_url:
+            return None, None
+        if not repo_url.endswith("/"):
+            repo_url += "/"
+        if repo_url.count("/") < 6:
+            repo_url = f"{repo_url}main/"
         try:
             user, repo = repo_url.split("/")[-4:-2]
         except Exception as e:
-            return False, f"不支持的插件仓库地址格式：{str(e)}"
-        if not user or not repo:
-            return False, "不支持的插件仓库地址格式"
+            print(str(e))
+            return None, None
+        return user, repo
+
+    def install(self, pid: str, repo_url: str) -> Tuple[bool, str]:
+        """
+        安装插件
+        """
         if SystemUtils.is_frozen():
             return False, "可执行文件模式下，只能安装本地插件"
+
+        # 从Github的repo_url获取用户和项目名
+        user, repo = self.get_repo_info(repo_url)
+        if not user or not repo:
+            return False, "不支持的插件仓库地址格式"
 
         def __get_filelist(_p: str) -> Tuple[Optional[list], Optional[str]]:
             """

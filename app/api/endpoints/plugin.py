@@ -62,7 +62,7 @@ def install_plugin(plugin_id: str,
         state, msg = PluginHelper().install(pid=plugin_id, repo_url=repo_url)
         if not state:
             # 安装失败
-            return schemas.Response(success=False, msg=msg)
+            return schemas.Response(success=False, message=msg)
     # 安装插件
     if plugin_id not in install_plugins:
         install_plugins.append(plugin_id)
@@ -89,9 +89,21 @@ def plugin_form(plugin_id: str,
 @router.get("/page/{plugin_id}", summary="获取插件数据页面")
 def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
     """
-    根据插件ID获取插件配置信息
+    根据插件ID获取插件数据页面
     """
     return PluginManager().get_plugin_page(plugin_id)
+
+
+@router.get("/reset/{plugin_id}", summary="重置插件配置", response_model=schemas.Response)
+def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+    """
+    根据插件ID重置插件配置
+    """
+    # 删除配置
+    PluginManager().delete_plugin_config(plugin_id)
+    # 重新生效插件
+    PluginManager().reload_plugin(plugin_id, {})
+    return schemas.Response(success=True)
 
 
 @router.get("/{plugin_id}", summary="获取插件配置")
@@ -106,7 +118,7 @@ def plugin_config(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token
 def set_plugin_config(plugin_id: str, conf: dict,
                       _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    根据插件ID获取插件配置信息
+    更新插件配置
     """
     # 保存配置
     PluginManager().save_plugin_config(plugin_id, conf)

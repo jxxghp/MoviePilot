@@ -264,7 +264,7 @@ def delete_subscribe(
 async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
                           authorization: str = Header(None)) -> Any:
     """
-    Jellyseerr/Overseerr订阅
+    Jellyseerr/Overseerr网络勾子通知订阅
     """
     if not authorization or authorization != settings.API_TOKEN:
         raise HTTPException(

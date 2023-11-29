@@ -147,6 +147,14 @@ class PluginManager(metaclass=Singleton):
             return False
         return self.systemconfig.set(self._config_key % pid, conf)
 
+    def delete_plugin_config(self, pid: str) -> bool:
+        """
+        删除插件配置
+        """
+        if not self._plugins.get(pid):
+            return False
+        return self.systemconfig.delete(self._config_key % pid)
+
     def get_plugin_form(self, pid: str) -> Tuple[List[dict], Dict[str, Any]]:
         """
         获取插件表单
@@ -288,9 +296,6 @@ class PluginManager(metaclass=Singleton):
                 # 图标
                 if plugin.get("icon"):
                     conf.update({"plugin_icon": plugin.get("icon")})
-                # 主题色
-                if plugin.get("color"):
-                    conf.update({"plugin_color": plugin.get("color")})
                 # 作者
                 if plugin.get("author"):
                     conf.update({"plugin_author": plugin.get("author")})
@@ -358,9 +363,6 @@ class PluginManager(metaclass=Singleton):
             # 图标
             if hasattr(plugin, "plugin_icon"):
                 conf.update({"plugin_icon": plugin.plugin_icon})
-            # 主题色
-            if hasattr(plugin, "plugin_color"):
-                conf.update({"plugin_color": plugin.plugin_color})
             # 作者
             if hasattr(plugin, "plugin_author"):
                 conf.update({"plugin_author": plugin.plugin_author})

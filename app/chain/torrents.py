@@ -12,6 +12,7 @@ from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.rss import RssHelper
 from app.helper.sites import SitesHelper
+from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import Notification
 from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType
@@ -34,6 +35,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         self.rsshelper = RssHelper()
         self.systemconfig = SystemConfigOper()
         self.mediachain = MediaChain()
+        self.torrenthelper = TorrentHelper()
 
     def remote_refresh(self, channel: MessageChannel, userid: Union[str, int] = None):
         """
@@ -142,6 +144,11 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
 
         # 读取缓存
         torrents_cache = self.get_torrents()
+
+        # 缓存过滤掉无效种子
+        for _domain, _torrents in torrents_cache.items():
+            torrents_cache[_domain] = [_torrent for _torrent in _torrents
+                                       if not self.torrenthelper.is_invalid(_torrent.torrent_info.enclosure)]
 
         # 所有站点索引
         indexers = self.siteshelper.get_indexers()
