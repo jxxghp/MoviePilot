@@ -355,3 +355,15 @@ class Transmission(metaclass=Singleton):
         except Exception as err:
             logger.error(f"设置种子出错：{str(err)}")
             return False
+
+    def change_torrent(self, hash_string, tracker_list: List = None):
+        """
+        tr4.0及以上弃用直接设置tracker 共用change方法
+        https://github.com/trim21/transmission-rpc/blob/8eb82629492a0eeb0bb565f82c872bf9ccdcb313/transmission_rpc/client.py#L654
+        """
+        try:
+            self.trc.change_torrent(ids=hash_string,
+                                    tracker_list=tracker_list)
+        except Exception as err:
+            logger.error(f"设置种子出错：{str(err)}")
+            return False
