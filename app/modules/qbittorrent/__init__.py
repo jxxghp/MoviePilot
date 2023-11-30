@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List
 
 from qbittorrentapi import TorrentFilesList
+from torrentool.torrent import Torrent
 
 from app import schemas
 from app.core.config import settings
@@ -47,6 +48,21 @@ class QbittorrentModule(_ModuleBase):
         :param category:  分类
         :return: 种子Hash，错误信息
         """
+
+        def __get_torrent_name():
+            """
+            获取种子名称
+            """
+            try:
+                if isinstance(content, Path):
+                    torrentinfo = Torrent.from_file(content)
+                else:
+                    torrentinfo = Torrent.from_string(content)
+                return torrentinfo.name
+            except Exception as e:
+                logger.error(f"获取种子名称失败：{e}")
+                return ""
+
         if not content:
             return
         if isinstance(content, Path) and not content.exists():
@@ -70,6 +86,24 @@ class QbittorrentModule(_ModuleBase):
             category=category
         )
         if not state:
+            # 读取种子的名称
+            torrent_name = __get_torrent_name()
+            if not torrent_name:
+                return None, f"添加种子任务失败：无法读取种子文件"
+            # 查询所有下载器的种子
+            torrents, error = self.qbittorrent.get_torrents()
+            if error:
+                return None, "无法连接qbittorrent下载器"
+            if torrents:
+                for torrent in torrents:
+                    if torrent.get("name") == torrent_name:
+                        torrent_hash = torrent.get("hash")
+                        logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.get('name')}")
+                        # 给种子打上标签
+                        if settings.TORRENT_TAG:
+                            logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
+                            self.qbittorrent.set_torrents_tag(ids=torrent_hash, tags=[settings.TORRENT_TAG])
+                        return torrent_hash, f"下载任务已存在"
             return None, f"添加种子任务失败：{content}"
         else:
             # 获取种子Hash
