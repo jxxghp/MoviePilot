@@ -277,28 +277,17 @@ class Transmission(metaclass=Singleton):
             logger.error(f"设置速度限制出错：{str(err)}")
             return False
 
-    def recheck_torrents(self, ids: Union[str, list]):
+    def recheck_torrents(self, ids: Union[str, list]) -> bool:
         """
         重新校验种子
         """
         if not self.trc:
             return False
         try:
-            return self.trc.verify_torrent(ids=ids)
+            self.trc.verify_torrent(ids=ids)
+            return True
         except Exception as err:
             logger.error(f"重新校验种子出错：{str(err)}")
-            return False
-
-    def add_trackers(self, ids: Union[str, list], trackers: list):
-        """
-        添加Tracker
-        """
-        if not self.trc:
-            return False
-        try:
-            return self.trc.change_torrent(ids=ids, tracker_list=[trackers])
-        except Exception as err:
-            logger.error(f"添加Tracker出错：{str(err)}")
             return False
 
     def change_torrent(self,
@@ -306,7 +295,7 @@ class Transmission(metaclass=Singleton):
                        upload_limit=None,
                        download_limit=None,
                        ratio_limit=None,
-                       seeding_time_limit=None):
+                       seeding_time_limit=None) -> bool:
         """
         设置种子
         :param hash_string: ID
@@ -352,18 +341,22 @@ class Transmission(metaclass=Singleton):
                                     seedRatioLimit=seedRatioLimit,
                                     seedIdleMode=seedIdleMode,
                                     seedIdleLimit=seedIdleLimit)
+            return True
         except Exception as err:
             logger.error(f"设置种子出错：{str(err)}")
             return False
 
-    def update_tracker(self, hash_string, tracker_list: List = None):
+    def update_tracker(self, hash_string: str, tracker_list: list = None) -> bool:
         """
         tr4.0及以上弃用直接设置tracker 共用change方法
         https://github.com/trim21/transmission-rpc/blob/8eb82629492a0eeb0bb565f82c872bf9ccdcb313/transmission_rpc/client.py#L654
         """
+        if not self.trc:
+            return False
         try:
             self.trc.change_torrent(ids=hash_string,
                                     tracker_list=tracker_list)
+            return True
         except Exception as err:
             logger.error(f"修改tracker出错：{str(err)}")
             return False

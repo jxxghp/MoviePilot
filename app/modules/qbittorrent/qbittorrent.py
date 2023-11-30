@@ -358,26 +358,28 @@ class Qbittorrent(metaclass=Singleton):
             logger.error(f"设置速度限制出错：{str(err)}")
             return False
 
-    def recheck_torrents(self, ids: Union[str, list]):
+    def recheck_torrents(self, ids: Union[str, list]) -> bool:
         """
         重新校验种子
         """
         if not self.qbc:
             return False
         try:
-            return self.qbc.torrents_recheck(torrent_hashes=ids)
+            self.qbc.torrents_recheck(torrent_hashes=ids)
+            return True
         except Exception as err:
             logger.error(f"重新校验种子出错：{str(err)}")
             return False
 
-    def add_trackers(self, ids: Union[str, list], trackers: list):
+    def update_tracker(self, hash_string: str, tracker_list: list) -> bool:
         """
         添加tracker
         """
         if not self.qbc:
             return False
         try:
-            return self.qbc.torrents_add_trackers(torrent_hashes=ids, urls=trackers)
+            self.qbc.torrents_add_trackers(torrent_hash=hash_string, urls=tracker_list)
+            return True
         except Exception as err:
-            logger.error(f"添加tracker出错：{str(err)}")
+            logger.error(f"修改tracker出错：{str(err)}")
             return False
