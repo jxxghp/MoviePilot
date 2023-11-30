@@ -102,6 +102,7 @@ class QbittorrentModule(_ModuleBase):
                         # 给种子打上标签
                         if settings.TORRENT_TAG:
                             logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
+                            self.qbittorrent.remove_torrents_tag(ids=torrent_hash, tag=['已整理'])
                             self.qbittorrent.set_torrents_tag(ids=torrent_hash, tags=[settings.TORRENT_TAG])
                         return torrent_hash, f"下载任务已存在"
             return None, f"添加种子任务失败：{content}"
