@@ -2,6 +2,7 @@ import shutil
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List
 
+from torrentool.torrent import Torrent
 from transmission_rpc import File
 
 from app import schemas
@@ -47,6 +48,21 @@ class TransmissionModule(_ModuleBase):
         :param category:  分类，TR中未使用
         :return: 种子Hash
         """
+
+        def __get_torrent_name():
+            """
+            获取种子名称
+            """
+            try:
+                if isinstance(content, Path):
+                    torrentinfo = Torrent.from_file(content)
+                else:
+                    torrentinfo = Torrent.from_string(content)
+                return torrentinfo.name
+            except Exception as e:
+                logger.error(f"获取种子名称失败：{e}")
+                return ""
+
         if not content:
             return
         if isinstance(content, Path) and not content.exists():
@@ -68,6 +84,32 @@ class TransmissionModule(_ModuleBase):
             cookie=cookie
         )
         if not torrent:
+            # 读取种子的名称
+            torrent_name = __get_torrent_name()
+            if not torrent_name:
+                return None, f"添加种子任务失败：无法读取种子文件"
+            # 查询所有下载器的种子
+            torrents, error = self.transmission.get_torrents()
+            if error:
+                return None, "无法连接transmission下载器"
+            if torrents:
+                for torrent in torrents:
+                    if torrent.name == torrent_name:
+                        torrent_hash = torrent.hashString
+                        logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.name}")
+                        # 给种子打上标签
+                        if settings.TORRENT_TAG:
+                            logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
+                            # 种子标签
+                            labels = [str(tag).strip()
+                                      for tag in torrent.labels] if hasattr(torrent, "labels") else []
+                            if "已整理" in labels:
+                                labels.remove("已整理")
+                                self.transmission.set_torrent_tag(ids=torrent_hash, tags=labels)
+                            if settings.TORRENT_TAG and settings.TORRENT_TAG not in labels:
+                                labels.append(settings.TORRENT_TAG)
+                                self.transmission.set_torrent_tag(ids=torrent_hash, tags=labels)
+                        return torrent_hash, f"下载任务已存在"
             return None, f"添加种子任务失败：{content}"
         else:
             torrent_hash = torrent.hashString

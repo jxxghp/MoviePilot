@@ -98,11 +98,13 @@ class QbittorrentModule(_ModuleBase):
                 for torrent in torrents:
                     if torrent.get("name") == torrent_name:
                         torrent_hash = torrent.get("hash")
+                        torrent_tags = [str(tag).strip() for tag in torrent.get("tags").split(',')]
                         logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.get('name')}")
                         # 给种子打上标签
-                        if settings.TORRENT_TAG:
-                            logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
+                        if "已整理" in torrent_tags:
                             self.qbittorrent.remove_torrents_tag(ids=torrent_hash, tag=['已整理'])
+                        if settings.TORRENT_TAG and settings.TORRENT_TAG not in torrent_tags:
+                            logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
                             self.qbittorrent.set_torrents_tag(ids=torrent_hash, tags=[settings.TORRENT_TAG])
                         return torrent_hash, f"下载任务已存在"
             return None, f"添加种子任务失败：{content}"
