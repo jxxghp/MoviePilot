@@ -20,10 +20,16 @@ class Qbittorrent(metaclass=Singleton):
 
     qbc: Client = None
 
-    def __init__(self):
-        self._host, self._port = StringUtils.get_domain_address(address=settings.QB_HOST, prefix=True)
-        self._username = settings.QB_USER
-        self._password = settings.QB_PASSWORD
+    def __init__(self, host: str = None, port: int = None, username: str = None, password: str = None):
+        """
+        若不设置参数，则创建配置文件设置的下载器
+        """
+        if host and port:
+            self._host, self._port = host, port
+        else:
+            self._host, self._port = StringUtils.get_domain_address(address=settings.QB_HOST, prefix=True)
+        self._username = username if username else settings.QB_USER
+        self._password = password if password else settings.QB_PASSWORD
         if self._host and self._port:
             self.qbc = self.__login_qbittorrent()
 
