@@ -49,7 +49,7 @@ class QbittorrentModule(_ModuleBase):
         :return: 种子Hash，错误信息
         """
 
-        def __get_torrent_name():
+        def __get_torrent_info() -> Tuple[str, int]:
             """
             获取种子名称
             """
@@ -58,10 +58,10 @@ class QbittorrentModule(_ModuleBase):
                     torrentinfo = Torrent.from_file(content)
                 else:
                     torrentinfo = Torrent.from_string(content)
-                return torrentinfo.name
+                return torrentinfo.name, torrentinfo.total_size
             except Exception as e:
                 logger.error(f"获取种子名称失败：{e}")
-                return ""
+                return "", 0
 
         if not content:
             return
@@ -87,7 +87,7 @@ class QbittorrentModule(_ModuleBase):
         )
         if not state:
             # 读取种子的名称
-            torrent_name = __get_torrent_name()
+            torrent_name, torrent_size = __get_torrent_info()
             if not torrent_name:
                 return None, f"添加种子任务失败：无法读取种子文件"
             # 查询所有下载器的种子
@@ -96,7 +96,8 @@ class QbittorrentModule(_ModuleBase):
                 return None, "无法连接qbittorrent下载器"
             if torrents:
                 for torrent in torrents:
-                    if torrent.get("name") == torrent_name:
+                    # 名称与大小相等则认为是同一个种子
+                    if torrent.get("name") == torrent_name and torrent.get("total_size") == torrent_size:
                         torrent_hash = torrent.get("hash")
                         torrent_tags = [str(tag).strip() for tag in torrent.get("tags").split(',')]
                         logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.get('name')}")
