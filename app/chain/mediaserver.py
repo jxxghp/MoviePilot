@@ -52,7 +52,7 @@ class MediaServerChain(ChainBase):
             # 汇总统计
             total_count = 0
             # 清空登记薄
-            self.dboper.empty(server=settings.MEDIASERVER)
+            self.dboper.empty()
             # 同步黑名单
             sync_blacklist = settings.MEDIASERVER_SYNC_BLACKLIST.split(
                 ",") if settings.MEDIASERVER_SYNC_BLACKLIST else []
