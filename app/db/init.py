@@ -9,6 +9,7 @@ from app.core.security import get_password_hash
 from app.db import Engine, SessionFactory
 from app.db.models import Base
 from app.db.models.user import User
+from app.helper.module import ModuleHelper
 from app.log import logger
 
 
@@ -17,8 +18,8 @@ def init_db():
     初始化数据库
     """
     # 导入模块，避免建表缺失
-    for module in Path(__file__).with_name("models").glob("*.py"):
-        importlib.import_module(f"app.db.models.{module.stem}")
+    models_path = Path(__file__).with_name("models")
+    ModuleHelper.dynamic_import_all_modules(models_path, "app.db.models")
     # 全量建表
     Base.metadata.create_all(bind=Engine)
     # 初始化超级管理员
