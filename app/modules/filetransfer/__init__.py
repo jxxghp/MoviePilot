@@ -547,12 +547,14 @@ class FileTransferModule(_ModuleBase):
         return {
             # 标题
             "title": mediainfo.title,
-            # 原文件名
-            "original_name": f"{meta.org_string}{file_ext}",
             # 原语种标题
             "original_title": mediainfo.original_title,
-            # 识别名称
+            # 原文件名
+            "original_name": f"{meta.org_string}{file_ext}",
+            # 识别名称（优先使用中文）
             "name": meta.name,
+            # 识别的英文名称（可能为空）
+            "en_name": meta.en_name,
             # 年份
             "year": mediainfo.year or meta.year,
             # 资源类型
@@ -573,6 +575,8 @@ class FileTransferModule(_ModuleBase):
             "tmdbid": mediainfo.tmdb_id,
             # IMDBID
             "imdbid": mediainfo.imdb_id,
+            # 豆瓣ID
+            "doubanid": mediainfo.douban_id,
             # 季号
             "season": meta.season_seq,
             # 集号
