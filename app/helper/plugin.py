@@ -107,7 +107,7 @@ class PluginHelper(metaclass=Singleton):
                     l, m = __get_filelist(p)
                     if not l:
                         return False, m
-                    return __download_files(p, l)
+                    __download_files(p, l)
             return True, ""
 
         if not pid or not repo_url:
