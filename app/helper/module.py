@@ -40,7 +40,7 @@ class ModuleHelper:
     @staticmethod
     def dynamic_import_all_modules(base_path: Path, package_name: str):
         """
-        动态导入所有模块到全局对象
+        动态导入目录下所有模块
         """
         modules = []
         # 遍历文件夹，找到所有模块文件
@@ -48,14 +48,5 @@ class ModuleHelper:
             file_name = file.stem
             if file_name != "__init__":
                 modules.append(file_name)
-        # 保存已有的全局对象
-        existing_globals = set(globals().keys())
-        # 动态导入并添加到全局命名空间
-        for module in modules:
-            full_module_name = f"{package_name}.{module}"
-            import_module = importlib.import_module(full_module_name)
-            module_globals = import_module.__dict__
-            # 仅导入全局对象中不存在的部分
-            new_objects = {name: value for name, value in module_globals.items() if name not in existing_globals}
-            # 更新全局命名空间
-            globals().update(new_objects)
+                full_module_name = f"{package_name}.{file_name}"
+                importlib.import_module(full_module_name)

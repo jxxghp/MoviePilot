@@ -1,8 +1,7 @@
 from sqlalchemy import Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
-from app.db import db_query
-from app.db.models import Base
+from app.db import db_query, Base
 
 
 class SiteIcon(Base):
