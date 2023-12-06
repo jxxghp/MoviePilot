@@ -120,10 +120,11 @@ class TmdbScraper:
                                                        file_path=file_path)
                     # 集的图片
                     episode_image = episodeinfo.get("still_path")
+                    image_path = file_path.with_name(file_path.stem + "-thumb").with_suffix(Path(episode_image).suffix)
                     if episode_image:
                         self.__save_image(
                             f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{episode_image}",
-                            file_path.with_suffix(Path(episode_image).suffix))
+                            image_path)
         except Exception as e:
             logger.error(f"{file_path} 刮削失败：{str(e)}")
 
