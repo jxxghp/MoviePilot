@@ -45,10 +45,16 @@ class FileTransferModule(_ModuleBase):
         """
         # 获取目标路径
         if not target:
+            # 根据源目录选择一个媒体库
             target = self.get_target_path(in_path=path)
+            # 拼装媒体库一、二级子目录
+            target = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target)
         elif not target.exists() or target.is_file():
-            # 目的路径不存在或者是文件时，找对应的媒体库目录
+            # 根据目的目录选择一个媒体库
             target = self.get_library_path(target)
+            # 拼装媒体库一、二级子目录
+            target = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target)
+
         if not target:
             logger.error("未找到媒体库目录，无法转移文件")
             return TransferInfo(success=False,
@@ -56,6 +62,7 @@ class FileTransferModule(_ModuleBase):
                                 message="未找到媒体库目录")
         else:
             logger.info(f"获取转移目标路径：{target}")
+
         # 转移
         return self.transfer_media(in_path=path,
                                    in_meta=meta,
@@ -339,6 +346,8 @@ class FileTransferModule(_ModuleBase):
         :param mediainfo: 媒体信息
         :target_dir: 媒体库根目录
         """
+        if not target_dir:
+            return target_dir
         if mediainfo.type == MediaType.MOVIE:
             # 电影
             if settings.LIBRARY_MOVIE_NAME:
@@ -392,9 +401,6 @@ class FileTransferModule(_ModuleBase):
                 return TransferInfo(success=False,
                                     path=in_path,
                                     message=f"{target_dir} 目标路径不存在")
-
-        # 媒体库目的目录
-        target_dir = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_dir)
 
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \
@@ -657,20 +663,19 @@ class FileTransferModule(_ModuleBase):
                     continue
             if target_path:
                 return target_path
-        # 顺序匹配第1个满足空间存储要求的目录
-        if in_path.exists():
-            file_size = in_path.stat().st_size
-            for path in dest_paths:
-                if SystemUtils.free_space(path) > file_size:
-                    return path
+            # 顺序匹配第1个满足空间存储要求的目录
+            if in_path.exists():
+                file_size = in_path.stat().st_size
+                for path in dest_paths:
+                    if SystemUtils.free_space(path) > file_size:
+                        return path
         # 默认返回第1个
         return dest_paths[0]
 
-    def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, **kwargs) -> Optional[ExistMediaInfo]:
         """
-        判断媒体文件是否存在于本地文件系统
+        判断媒体文件是否存在于本地文件系统，只支持标准媒体库结构
         :param mediainfo:  识别的媒体信息
-        :param itemid:  媒体服务器ItemID
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
         if not settings.LIBRARY_PATHS:
