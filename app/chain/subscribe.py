@@ -367,7 +367,7 @@ class SubscribeChain(ChainBase):
         """
         if not subscribe.best_version:
             # 非洗板
-            if not lefts:
+            if (not lefts and meta.type == MediaType.TV) or (downloads and meta.type == MediaType.MOVIE):
                 # 全部下载完成
                 logger.info(f'{mediainfo.title_year} 完成订阅')
                 self.subscribeoper.delete(subscribe.id)
@@ -375,14 +375,12 @@ class SubscribeChain(ChainBase):
                 self.post_message(Notification(mtype=NotificationType.Subscribe,
                                                title=f'{mediainfo.title_year} {meta.season} 已完成订阅',
                                                image=mediainfo.get_message_image()))
-            elif downloads:
-                # 下载到了内容但不完整
-                if meta.type == MediaType.TV:
-                    # 电视剧更新已下载集数
-                    self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
-                    # 更新订阅剩余集数和时间
-                    self.__update_lack_episodes(lefts=lefts, subscribe=subscribe,
-                                                mediainfo=mediainfo, update_date=True)
+            elif downloads and meta.type == MediaType.TV:
+                # 电视剧更新已下载集数
+                self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
+                # 更新订阅剩余集数和时间
+                self.__update_lack_episodes(lefts=lefts, subscribe=subscribe,
+                                            mediainfo=mediainfo, update_date=True)
             else:
                 # 未下载到内容且不完整
                 logger.info(f'{mediainfo.title_year} 未下载完整，继续订阅 ...')
