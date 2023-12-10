@@ -120,7 +120,7 @@ def find_metainfo(title: str) -> Tuple[str, dict]:
         if doubanid and doubanid[0].isdigit():
             metainfo['doubanid'] = doubanid[0]
         # 查找媒体类型
-        mtype = re.findall(r'(?<=type=)\d+', result)
+        mtype = re.findall(r'(?<=type=)\w+', result)
         if mtype:
             match mtype[0]:
                 case "movie":
