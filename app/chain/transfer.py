@@ -259,8 +259,8 @@ class TransferChain(ChainBase):
                     )
                     self.post_message(Notification(
                         mtype=NotificationType.Manual,
-                        title=f"{file_path.name} 未识别到媒体信息，无法入库！\n"
-                              f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别转移。"
+                        title=f"{file_path.name} 未识别到媒体信息，无法入库！",
+                        text=f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别转移。"
                     ))
                     # 计数
                     processed_num += 1
