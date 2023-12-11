@@ -187,11 +187,11 @@ class Settings(BaseSettings):
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.57"
     # 媒体库目录，多个目录使用,分隔
     LIBRARY_PATH: str = None
-    # 电影媒体库目录名，默认"电影"
-    LIBRARY_MOVIE_NAME: str = None
-    # 电视剧媒体库目录名，默认"电视剧"
-    LIBRARY_TV_NAME: str = None
-    # 动漫媒体库目录名，默认"电视剧/动漫"
+    # 电影媒体库目录名
+    LIBRARY_MOVIE_NAME: str = "电影"
+    # 电视剧媒体库目录名
+    LIBRARY_TV_NAME: str = "电视剧"
+    # 动漫媒体库目录名，不设置时使用电视剧目录
     LIBRARY_ANIME_NAME: str = None
     # 二级分类
     LIBRARY_CATEGORY: bool = True

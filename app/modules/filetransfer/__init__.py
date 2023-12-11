@@ -45,15 +45,20 @@ class FileTransferModule(_ModuleBase):
         """
         # 获取目标路径
         if not target:
-            # 根据源目录选择一个媒体库
+            # 未指定目的目录，根据源目录选择一个媒体库
             target = self.get_target_path(in_path=path)
             # 拼装媒体库一、二级子目录
             target = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target)
-        elif not target.exists() or target.is_file():
-            # 根据目的目录选择一个媒体库
-            target = self.get_library_path(target)
-            # 拼装媒体库一、二级子目录
-            target = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target)
+        else:
+            # 指定了目的目录
+            if not target.exists():
+                # 指定目的目录不存在，创建目录
+                target.mkdir(parents=True, exist_ok=True)
+            elif target.is_file():
+                # 指定目录是个文件，提取文件的有效目录
+                target = target.parent
+            # 只拼装二级子目录（不要一级目录）
+            target = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target, typename_dir=False)
 
         if not target:
             logger.error("未找到媒体库目录，无法转移文件")
@@ -340,35 +345,42 @@ class FileTransferModule(_ModuleBase):
                                            over_flag=over_flag)
 
     @staticmethod
-    def __get_dest_dir(mediainfo: MediaInfo, target_dir: Path) -> Path:
+    def __get_dest_dir(mediainfo: MediaInfo, target_dir: Path, typename_dir: bool = True) -> Path:
         """
         根据设置并装媒体库目录
         :param mediainfo: 媒体信息
         :target_dir: 媒体库根目录
+        :typename_dir: 是否加上类型目录
         """
         if not target_dir:
             return target_dir
+
         if mediainfo.type == MediaType.MOVIE:
             # 电影
-            if settings.LIBRARY_MOVIE_NAME:
+            if typename_dir:
+                # 目的目录加上类型和二级分类
                 target_dir = target_dir / settings.LIBRARY_MOVIE_NAME / mediainfo.category
             else:
-                # 目的目录加上类型和二级分类
-                target_dir = target_dir / mediainfo.type.value / mediainfo.category
+                # 目的目录加上二级分类
+                target_dir = target_dir / mediainfo.category
 
         if mediainfo.type == MediaType.TV:
             # 电视剧
-            if settings.LIBRARY_ANIME_NAME \
-                    and mediainfo.genre_ids \
+            if mediainfo.genre_ids \
                     and set(mediainfo.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
                 # 动漫
-                target_dir = target_dir / settings.LIBRARY_ANIME_NAME / mediainfo.category
-            elif settings.LIBRARY_TV_NAME:
-                # 电视剧
-                target_dir = target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
+                if typename_dir:
+                    target_dir = target_dir / (settings.LIBRARY_ANIME_NAME
+                                               or settings.LIBRARY_TV_NAME) / mediainfo.category
+                else:
+                    target_dir = target_dir / mediainfo.category
             else:
-                # 目的目录加上类型和二级分类
-                target_dir = target_dir / mediainfo.type.value / mediainfo.category
+                # 电视剧
+                if typename_dir:
+                    target_dir = target_dir / settings.LIBRARY_TV_NAME / mediainfo.category
+                else:
+                    target_dir = target_dir / mediainfo.category
+
         return target_dir
 
     def transfer_media(self,
