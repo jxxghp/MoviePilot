@@ -57,6 +57,8 @@ class Subscribe(BaseModel):
     best_version: Optional[int] = 0
     # 当前优先级
     current_priority: Optional[int] = None
+    # 保存路径
+    save_path: Optional[str] = None
 
     class Config:
         orm_mode = True

@@ -320,7 +320,8 @@ class SubscribeChain(ChainBase):
             downloads, lefts = self.downloadchain.batch_download(
                 contexts=matched_contexts,
                 no_exists=no_exists,
-                username=subscribe.username
+                username=subscribe.username,
+                save_path=subscribe.save_path
             )
 
             # 判断是否应完成订阅
@@ -674,8 +675,10 @@ class SubscribeChain(ChainBase):
 
             # 开始批量择优下载
             logger.info(f'{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源')
-            downloads, lefts = self.downloadchain.batch_download(contexts=_match_context, no_exists=no_exists,
-                                                                 username=subscribe.username)
+            downloads, lefts = self.downloadchain.batch_download(contexts=_match_context,
+                                                                 no_exists=no_exists,
+                                                                 username=subscribe.username,
+                                                                 save_path=subscribe.save_path)
             # 判断是否要完成订阅
             self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
                                          downloads=downloads, lefts=lefts)
