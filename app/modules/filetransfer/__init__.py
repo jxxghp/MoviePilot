@@ -51,12 +51,11 @@ class FileTransferModule(_ModuleBase):
             target = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target)
         else:
             # 指定了目的目录
-            if not target.exists():
-                # 指定目的目录不存在，创建目录
-                target.mkdir(parents=True, exist_ok=True)
-            elif target.is_file():
-                # 指定目录是个文件，提取文件的有效目录
-                target = target.parent
+            if target.is_file():
+                logger.error(f"转移目标路径是一个文件 {target} 是一个文件")
+                return TransferInfo(success=False,
+                                    path=path,
+                                    message=f"{target} 不是有效目录")
             # 只拼装二级子目录（不要一级目录）
             target = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target, typename_dir=False)
 
@@ -410,9 +409,8 @@ class FileTransferModule(_ModuleBase):
         if transfer_type not in ['rclone_copy', 'rclone_move']:
             # 检查目标路径
             if not target_dir.exists():
-                return TransferInfo(success=False,
-                                    path=in_path,
-                                    message=f"{target_dir} 目标路径不存在")
+                logger.info(f"目标路径不存在，正在创建：{target_dir} ...")
+                target_dir.mkdir(parents=True, exist_ok=True)
 
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \
