@@ -82,6 +82,7 @@ def create_subscribe(
                                         doubanid=subscribe_in.doubanid,
                                         username=current_user.name,
                                         best_version=subscribe_in.best_version,
+                                        save_path=subscribe_in.save_path,
                                         exist_ok=True)
     return schemas.Response(success=True if sid else False, message=message, data={
         "id": sid

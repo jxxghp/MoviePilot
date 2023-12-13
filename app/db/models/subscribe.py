@@ -65,6 +65,8 @@ class Subscribe(Base):
     best_version = Column(Integer, default=0)
     # 当前优先级
     current_priority = Column(Integer)
+    # 保存路径
+    save_path = Column(String)
 
     @staticmethod
     @db_query
