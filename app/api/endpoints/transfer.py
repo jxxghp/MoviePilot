@@ -47,9 +47,11 @@ def manual_transfer(path: str = None,
     :param _: Token校验
     """
     force = False
+    target = Path(target) if target else None
+    transfer = TransferChain()
     if logid:
         # 查询历史记录
-        history = TransferHistory.get(db, logid)
+        history: TransferHistory = TransferHistory.get(db, logid)
         if not history:
             return schemas.Response(success=False, message=f"历史记录不存在，ID：{logid}")
         # 强制转移
@@ -59,18 +61,15 @@ def manual_transfer(path: str = None,
         # 目的路径
         if history.dest and str(history.dest) != "None":
             # 删除旧的已整理文件
-            TransferChain().delete_files(Path(history.dest))
+            transfer.delete_files(Path(history.dest))
             if not target:
-                target = history.dest
+                target = transfer.get_root_path(path=history.dest,
+                                                type_name=history.type,
+                                                category=history.category)
     elif path:
         in_path = Path(path)
     else:
         return schemas.Response(success=False, message=f"缺少参数：path/logid")
-
-    if target and target != "None":
-        target = Path(target)
-    else:
-        target = None
 
     # 类型
     mtype = MediaType(type_name) if type_name else None
@@ -84,7 +83,7 @@ def manual_transfer(path: str = None,
             offset=episode_offset,
         )
     # 开始转移
-    state, errormsg = TransferChain().manual_transfer(
+    state, errormsg = transfer.manual_transfer(
         in_path=in_path,
         target=target,
         tmdbid=tmdbid,

@@ -481,6 +481,24 @@ class TransferChain(ChainBase):
                                            text=errmsg, userid=userid))
             return
 
+    @staticmethod
+    def get_root_path(path: str, type_name: str, category: str) -> Path:
+        """
+        计算媒体库目录的根路径
+        """
+        if not path or path == "None":
+            return None
+        index = -2
+        if type_name != '电影':
+            index = -3
+        if category:
+            index -= 1
+        if '/' in path:
+            retpath = '/'.join(path.split('/')[:index])
+        else:
+            retpath = '\\'.join(path.split('\\')[:index])
+        return Path(retpath)
+
     def re_transfer(self, logid: int, mtype: MediaType = None,
                     mediaid: str = None) -> Tuple[bool, str]:
         """
@@ -498,7 +516,7 @@ class TransferChain(ChainBase):
         src_path = Path(history.src)
         if not src_path.exists():
             return False, f"源目录不存在：{src_path}"
-        dest_path = Path(history.dest) if history.dest else None
+        dest_path = self.get_root_path(path=history.dest, type_name=history.type, category=history.category)
         # 查询媒体信息
         if mtype and mediaid:
             mediainfo = self.recognize_media(mtype=mtype, tmdbid=int(mediaid) if str(mediaid).isdigit() else None,
