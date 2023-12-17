@@ -60,12 +60,16 @@ def MetaInfoPath(path: Path) -> MetaBase:
     根据路径识别元数据
     :param path: 路径
     """
-    # 上级目录元数据
-    dir_meta = MetaInfo(title=path.parent.name)
     # 文件元数据，不包含后缀
     file_meta = MetaInfo(title=path.stem)
+    # 上级目录元数据
+    dir_meta = MetaInfo(title=path.parent.name)
     # 合并元数据
     file_meta.merge(dir_meta)
+    # 上上级目录元数据
+    root_meta = MetaInfo(title=path.parent.parent.name)
+    # 合并元数据
+    file_meta.merge(root_meta)
     return file_meta
 
 
