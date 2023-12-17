@@ -212,12 +212,15 @@ class TheMovieDbModule(_ModuleBase):
 
         return [MediaInfo(tmdb_info=info) for info in results]
 
-    def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str) -> None:
+    def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str,
+                        force_nfo: bool = False, force_img: bool = False) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径
         :param mediainfo:  识别的媒体信息
         :param transfer_type:  转移类型
+        :param force_nfo:  强制刮削nfo
+        :param force_img:  强制刮削图片
         :return: 成功或失败
         """
         if settings.SCRAP_SOURCE != "themoviedb":
@@ -229,13 +232,17 @@ class TheMovieDbModule(_ModuleBase):
             scrape_path = path / path.name
             self.scraper.gen_scraper_files(mediainfo=mediainfo,
                                            file_path=scrape_path,
-                                           transfer_type=transfer_type)
+                                           transfer_type=transfer_type,
+                                           force_nfo=force_nfo,
+                                           force_img=force_img)
         elif path.is_file():
             # 单个文件
             logger.info(f"开始刮削媒体库文件：{path} ...")
             self.scraper.gen_scraper_files(mediainfo=mediainfo,
                                            file_path=path,
-                                           transfer_type=transfer_type)
+                                           transfer_type=transfer_type,
+                                           force_nfo=force_nfo,
+                                           force_img=force_img)
         else:
             # 目录下的所有文件
             logger.info(f"开始刮削目录：{path} ...")
@@ -244,7 +251,9 @@ class TheMovieDbModule(_ModuleBase):
                     continue
                 self.scraper.gen_scraper_files(mediainfo=mediainfo,
                                                file_path=file,
-                                               transfer_type=transfer_type)
+                                               transfer_type=transfer_type,
+                                               force_nfo=force_nfo,
+                                               force_img=force_img)
         logger.info(f"{path} 刮削完成")
 
     def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,
