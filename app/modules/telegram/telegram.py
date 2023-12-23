@@ -197,9 +197,17 @@ class Telegram(metaclass=Singleton):
                     raise Exception("发送图片消息失败")
                 if ret:
                     return True
-        ret = self._bot.send_message(chat_id=userid or self._telegram_chat_id,
-                                     text=caption,
-                                     parse_mode="Markdown")
+        # 按4096分段循环发送消息
+        ret = None
+        if len(caption) > 4095:
+            for i in range(0, len(caption), 4095):
+                ret = self._bot.send_message(chat_id=userid or self._telegram_chat_id,
+                                             text=caption[i:i + 4095],
+                                             parse_mode="Markdown")
+        else:
+            ret = self._bot.send_message(chat_id=userid or self._telegram_chat_id,
+                                         text=caption,
+                                         parse_mode="Markdown")
         if ret is None:
             raise Exception("发送文本消息失败")
         return True if ret else False
