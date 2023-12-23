@@ -103,8 +103,11 @@ class TransferHistory(Base):
 
     @staticmethod
     @db_query
-    def count(db: Session):
-        return db.query(func.count(TransferHistory.id)).first()[0]
+    def count(db: Session, status: bool = None):
+        if status is not None:
+            return db.query(func.count(TransferHistory.id)).filter(TransferHistory.status == status).first()[0]
+        else:
+            return db.query(func.count(TransferHistory.id)).first()[0]
 
     @staticmethod
     @db_query

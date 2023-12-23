@@ -61,7 +61,7 @@ def transfer_history(title: str = None,
                                                count=count, status=status)
     else:
         result = TransferHistory.list_by_page(db, page=page, count=count, status=status)
-        total = TransferHistory.count(db)
+        total = TransferHistory.count(db, status=status)
 
     return schemas.Response(success=True,
                             data={
