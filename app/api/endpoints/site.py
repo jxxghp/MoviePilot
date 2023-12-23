@@ -228,10 +228,11 @@ def read_rss_sites(db: Session = Depends(get_db)) -> List[dict]:
     """
     # 选中的rss站点
     selected_sites = SystemConfigOper().get(SystemConfigKey.RssSites) or []
+
     # 所有站点
     all_site = Site.list_order_by_pri(db)
-    if not selected_sites or not all_site:
-        return []
+    if not selected_sites:
+        return all_site
 
     # 选中的rss站点
     rss_sites = [site for site in all_site if site and site.id in selected_sites]
