@@ -42,16 +42,25 @@ def delete_download_history(history_in: schemas.DownloadHistory,
 def transfer_history(title: str = None,
                      page: int = 1,
                      count: int = 30,
+                     status: bool = None,
                      db: Session = Depends(get_db),
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询转移历史记录
     """
+    if title == "失败":
+        title = None
+        status = False
+    elif title == "成功":
+        title = None
+        status = True
+
     if title:
-        total = TransferHistory.count_by_title(db, title)
-        result = TransferHistory.list_by_title(db, title, page, count)
+        total = TransferHistory.count_by_title(db, title=title, status=status)
+        result = TransferHistory.list_by_title(db, title=title, page=page,
+                                               count=count, status=status)
     else:
-        result = TransferHistory.list_by_page(db, page, count)
+        result = TransferHistory.list_by_page(db, page=page, count=count, status=status)
         total = TransferHistory.count(db)
 
     return schemas.Response(success=True,
