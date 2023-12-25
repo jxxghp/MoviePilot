@@ -846,7 +846,7 @@ class Emby(metaclass=Singleton):
                 eventItem.overview = message.get('Item', {}).get('Overview')
             eventItem.percentage = message.get('TranscodingInfo', {}).get('CompletionPercentage')
             if not eventItem.percentage:
-                if message.get('PlaybackInfo', {}).get('PositionTicks'):
+                if message.get('PlaybackInfo', {}).get('PositionTicks') and message.get('Item', {}).get('RunTimeTicks'):
                     eventItem.percentage = message.get('PlaybackInfo', {}).get('PositionTicks') / \
                                            message.get('Item', {}).get('RunTimeTicks') * 100
         if message.get('Session'):
