@@ -368,7 +368,8 @@ class SubscribeChain(ChainBase):
         """
         if not subscribe.best_version:
             # 非洗板
-            if (not lefts and meta.type == MediaType.TV) or (downloads and meta.type == MediaType.MOVIE):
+            if ((not lefts and meta.type == MediaType.TV)
+                    or ((downloads or not lefts) and meta.type == MediaType.MOVIE)):
                 # 全部下载完成
                 logger.info(f'{mediainfo.title_year} 完成订阅')
                 self.subscribeoper.delete(subscribe.id)
