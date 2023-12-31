@@ -368,12 +368,12 @@ class SubscribeChain(ChainBase):
         """
         mediakey = subscribe.tmdbid or subscribe.doubanid
         # 是否有剩余集
-        no_lefts = lefts is None or not lefts.get(mediakey)
+        no_lefts = not lefts or not lefts.get(mediakey)
         # 是否完成订阅
         if not subscribe.best_version:
             # 非洗板
             if ((no_lefts and meta.type == MediaType.TV)
-                    or ((downloads or no_lefts) and meta.type == MediaType.MOVIE)):
+                    or ((downloads or no_lefts) and lefts is not None and meta.type == MediaType.MOVIE)):
                 # 全部下载完成
                 logger.info(f'{mediainfo.title_year} 完成订阅')
                 self.subscribeoper.delete(subscribe.id)
