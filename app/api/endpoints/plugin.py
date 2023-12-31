@@ -36,11 +36,9 @@ def all_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
             plugin["installed"] = False
             plugins.append(plugin)
     # 本地未安装的插件
+    plugin_ids = [plugin["id"] for plugin in plugins]
     for plugin in local_plugins:
-        if plugin["id"] not in installed_ids:
-            plugins.append(plugin)
-        elif plugin.get("has_update"):
-            plugin["installed"] = False
+        if plugin["id"] not in plugin_ids:
             plugins.append(plugin)
 
     return plugins
