@@ -329,7 +329,8 @@ class DownloadChain(ChainBase):
                        save_path: str = None,
                        channel: MessageChannel = None,
                        userid: str = None,
-                       username: str = None) -> Tuple[List[Context], Dict[int, Dict[int, NotExistMediaInfo]]]:
+                       username: str = None
+                       ) -> Tuple[List[Context], Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
         """
         根据缺失数据，自动种子列表中组合择优下载
         :param contexts:  资源上下文列表
@@ -509,7 +510,7 @@ class DownloadChain(ChainBase):
                     start_episode = tv.start_episode or 1
                     # 缺失整季的转化为缺失集进行比较
                     if not need_episodes:
-                        need_episodes = list(range(start_episode, total_episode))
+                        need_episodes = list(range(start_episode, total_episode + 1))
                     # 循环种子
                     for context in contexts:
                         # 媒体信息
@@ -640,7 +641,7 @@ class DownloadChain(ChainBase):
                            mediainfo: MediaInfo,
                            no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
                            totals: Dict[int, int] = None
-                           ) -> Tuple[bool, Dict[int, Dict[int, NotExistMediaInfo]]]:
+                           ) -> Tuple[bool, Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
         """
         检查媒体库，查询是否存在，对于剧集同时返回不存在的季集信息
         :param meta: 元数据
