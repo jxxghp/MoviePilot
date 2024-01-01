@@ -733,5 +733,7 @@ class StringUtils:
             return f'{diff_days}天{diff_hours}小时{diff_minutes}分钟'
         elif diff_hours > 0:
             return f'{diff_hours}小时{diff_minutes}分钟'
-        else:
+        elif diff_minutes > 0:
             return f'{diff_minutes}分钟'
+        else:
+            return ''

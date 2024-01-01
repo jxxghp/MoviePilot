@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.schemas.types import MediaType
+from app.utils.string import StringUtils
 
 
 @dataclass
@@ -109,12 +110,22 @@ class TorrentInfo:
         """
         return self.get_free_string(self.uploadvolumefactor, self.downloadvolumefactor)
 
+    @property
+    def freedate_diff(self):
+        """
+        返回免费剩余时间
+        """
+        if not self.freedate:
+            return ""
+        return StringUtils.diff_time_str(self.freedate)
+
     def to_dict(self):
         """
         返回字典
         """
         dicts = asdict(self)
         dicts["volume_factor"] = self.volume_factor
+        dicts["freedate_diff"] = self.freedate_diff
         return dicts
 
 

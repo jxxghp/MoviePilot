@@ -549,12 +549,12 @@ class TorrentSpider:
 
     def __get_free_date(self, torrent):
         # free date
-        if 'free_date' not in self.fields:
+        if 'freedate' not in self.fields:
             return
-        selector = self.fields.get('free_date', {})
-        free_date = torrent(selector.get('selector', '')).clone()
-        self.__remove(free_date, selector)
-        items = self.__attribute_or_text(free_date, selector)
+        selector = self.fields.get('freedate', {})
+        freedate = torrent(selector.get('selector', '')).clone()
+        self.__remove(freedate, selector)
+        items = self.__attribute_or_text(freedate, selector)
         self.torrents_info['freedate'] = self.__index(items, selector)
         self.torrents_info['freedate'] = self.__filter_text(self.torrents_info.get('freedate'),
                                                             selector.get('filters'))
