@@ -711,3 +711,27 @@ class StringUtils:
             return -1
         else:
             return 0
+
+    @staticmethod
+    def diff_time_str(time_str: str):
+        """
+        输入YYYY-MM-DD HH24:MI:SS 格式的时间字符串，返回距离现在的剩余时间：xx天xx小时xx分钟
+        """
+        if not time_str:
+            return ''
+        try:
+            time_obj = datetime.datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            return ''
+        now = datetime.datetime.now()
+        diff = time_obj - now
+        diff_seconds = diff.seconds
+        diff_days = diff.days
+        diff_hours = diff_seconds // 3600
+        diff_minutes = (diff_seconds % 3600) // 60
+        if diff_days > 0:
+            return f'{diff_days}天{diff_hours}小时{diff_minutes}分钟'
+        elif diff_hours > 0:
+            return f'{diff_hours}小时{diff_minutes}分钟'
+        else:
+            return f'{diff_minutes}分钟'

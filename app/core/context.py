@@ -44,6 +44,8 @@ class TorrentInfo:
     pubdate: str = None
     # 已过时间
     date_elapsed: str = None
+    # 免费截止时间
+    freedate: str = None
     # 上传因子
     uploadvolumefactor: float = None
     # 下载因子

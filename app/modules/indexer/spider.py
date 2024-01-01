@@ -12,9 +12,9 @@ from ruamel.yaml import CommentedMap
 from app.core.config import settings
 from app.helper.browser import PlaywrightHelper
 from app.log import logger
+from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
-from app.schemas.types import MediaType
 
 
 class TorrentSpider:
@@ -547,6 +547,29 @@ class TorrentSpider:
         else:
             self.torrents_info['labels'] = []
 
+    def __get_free_date(self, torrent):
+        # free date
+        if 'free_date' not in self.fields:
+            return
+        selector = self.fields.get('free_date', {})
+        free_date = torrent(selector.get('selector', '')).clone()
+        self.__remove(free_date, selector)
+        items = self.__attribute_or_text(free_date, selector)
+        self.torrents_info['freedate'] = self.__index(items, selector)
+        self.torrents_info['freedate'] = self.__filter_text(self.torrents_info.get('freedate'),
+                                                            selector.get('filters'))
+
+    def __get_hit_and_run(self, torrent):
+        # hitandrun
+        if 'hr' not in self.fields:
+            return
+        selector = self.fields.get('hr', {})
+        hit_and_run = torrent(selector.get('selector', ''))
+        if hit_and_run:
+            self.torrents_info['hit_and_run'] = True
+        else:
+            self.torrents_info['hit_and_run'] = False
+
     def get_info(self, torrent) -> dict:
         """
         解析单条种子数据
@@ -566,13 +589,15 @@ class TorrentSpider:
             self.__get_uploadvolumefactor(torrent)
             self.__get_pubdate(torrent)
             self.__get_date_elapsed(torrent)
+            self.__get_free_date(torrent)
             self.__get_labels(torrent)
+            self.__get_hit_and_run(torrent)
         except Exception as err:
             logger.error("%s 搜索出现错误：%s" % (self.indexername, str(err)))
         return self.torrents_info
 
     @staticmethod
-    def __filter_text(text, filters):
+    def __filter_text(text: str, filters: list):
         """
         对文件进行处理
         """
@@ -613,7 +638,7 @@ class TorrentSpider:
                 item.remove(v)
 
     @staticmethod
-    def __attribute_or_text(item, selector):
+    def __attribute_or_text(item, selector: dict):
         if not selector:
             return item
         if not item:
@@ -625,7 +650,7 @@ class TorrentSpider:
         return items
 
     @staticmethod
-    def __index(items, selector):
+    def __index(items: list, selector: dict):
         if not items:
             return None
         if selector:

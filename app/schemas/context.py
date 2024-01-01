@@ -196,6 +196,8 @@ class TorrentInfo(BaseModel):
     pubdate: Optional[str] = None
     # 已过时间
     date_elapsed: Optional[str] = None
+    # 免费截止时间
+    freedate: Optional[str] = None
     # 上传因子
     uploadvolumefactor: Optional[float] = None
     # 下载因子

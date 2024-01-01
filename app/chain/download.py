@@ -55,6 +55,8 @@ class DownloadChain(ChainBase):
             msg_text = f"{msg_text}\n种子：{torrent.title}"
         if torrent.pubdate:
             msg_text = f"{msg_text}\n发布时间：{torrent.pubdate}"
+        if torrent.freedate:
+            msg_text = f"{msg_text}\n免费时间：{StringUtils.diff_time_str(torrent.freedate)}"
         if torrent.seeders:
             msg_text = f"{msg_text}\n做种数：{torrent.seeders}"
         if torrent.uploadvolumefactor and torrent.downloadvolumefactor:
