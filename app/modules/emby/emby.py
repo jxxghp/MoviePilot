@@ -25,6 +25,7 @@ class Emby(metaclass=Singleton):
         self._apikey = settings.EMBY_API_KEY
         self.user = self.get_user(settings.SUPERUSER)
         self.folders = self.get_emby_folders()
+        self.serverid = self.get_server_id()
 
     def is_inactive(self) -> bool:
         """
@@ -907,3 +908,118 @@ class Emby(metaclass=Singleton):
         except Exception as e:
             logger.error(f"连接Emby出错：" + str(e))
             return None
+
+    def __get_play_url(self, item_id: str) -> str:
+        """
+        拼装媒体播放链接
+        :param item_id: 媒体的的ID
+        """
+        return f"{self._host}web/index.html#!/item?id={item_id}&context=home&serverId={self.serverid}"
+
+    def __get_backdrop_url(self, item_id: str, image_tag: str) -> str:
+        """
+        获取Emby的Backdrop图片地址
+        :param: item_id: 在Emby中的ID
+        :param: image_tag: 图片的tag
+        :param: remote 是否远程使用，TG微信等客户端调用应为True
+        :param: inner 是否NT内部调用，为True是会使用NT中转
+        """
+        if not self._host or not self._apikey:
+            return ""
+        if not image_tag or not item_id:
+            return ""
+        return f"{self._host}Items/{item_id}/" \
+               f"Images/Backdrop?tag={image_tag}&fillWidth=666&api_key={self._apikey}"
+
+    def __get_local_image_by_id(self, item_id: str) -> str:
+        """
+        根据ItemId从媒体服务器查询本地图片地址
+        :param: item_id: 在Emby中的ID
+        :param: remote 是否远程使用，TG微信等客户端调用应为True
+        :param: inner 是否NT内部调用，为True是会使用NT中转
+        """
+        if not self._host or not self._apikey:
+            return ""
+        return "%sItems/%s/Images/Primary" % (self._host, item_id)
+
+    def get_resume(self, num: int = 12) -> Optional[List[schemas.MediaServerPlayItem]]:
+        """
+        获得继续观看
+        """
+        if not self._host or not self._apikey:
+            return None
+        req_url = f"{self._host}Users/{self.user}/Items/Resume?Limit={num}&MediaTypes=Video&api_key={self._apikey}"
+        try:
+            res = RequestUtils().get_res(req_url)
+            if res:
+                result = res.json().get("Items") or []
+                ret_resume = []
+                for item in result:
+                    if item.get("Type") not in ["Movie", "Episode"]:
+                        continue
+                    item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
+                    link = self.__get_play_url(item.get("Id"))
+                    if item_type == MediaType.MOVIE.value:
+                        title = item.get("Name")
+                    else:
+                        if item.get("ParentIndexNumber") == 1:
+                            title = f'{item.get("SeriesName")} 第{item.get("IndexNumber")}集'
+                        else:
+                            title = f'{item.get("SeriesName")} 第{item.get("ParentIndexNumber")}季第{item.get("IndexNumber")}集'
+                    if item_type == MediaType.MOVIE.value:
+                        if item.get("BackdropImageTags"):
+                            image = self.__get_backdrop_url(item_id=item.get("Id"),
+                                                            image_tag=item.get("BackdropImageTags")[0])
+                        else:
+                            image = self.__get_local_image_by_id(item.get("Id"))
+                    else:
+                        image = self.__get_backdrop_url(item_id=item.get("SeriesId"),
+                                                        image_tag=item.get("SeriesPrimaryImageTag"))
+                        if not image:
+                            image = self.__get_local_image_by_id(item.get("SeriesId"))
+                    ret_resume.append(schemas.MediaServerPlayItem(
+                        id=item.get("Id"),
+                        name=title,
+                        type=item_type,
+                        image=image,
+                        link=link,
+                        percent=item.get("UserData", {}).get("PlayedPercentage")
+                    ))
+                return ret_resume
+            else:
+                logger.error(f"Users/Items/Resume 未获取到返回数据")
+        except Exception as e:
+            logger.error(f"连接Users/Items/Resume出错：" + str(e))
+        return []
+
+    def get_latest(self, num: int = 20) -> Optional[List[schemas.MediaServerPlayItem]]:
+        """
+        获得最近更新
+        """
+        if not self._host or not self._apikey:
+            return None
+        req_url = f"{self._host}Users/{self.user}/Items/Latest?Limit={num}&MediaTypes=Video&api_key={self._apikey}"
+        try:
+            res = RequestUtils().get_res(req_url)
+            if res:
+                result = res.json() or []
+                ret_latest = []
+                for item in result:
+                    if item.get("Type") not in ["Movie", "Series"]:
+                        continue
+                    item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
+                    link = self.__get_play_url(item.get("Id"))
+                    image = self.__get_local_image_by_id(item_id=item.get("Id"))
+                    ret_latest.append(schemas.MediaServerPlayItem(
+                        id=item.get("Id"),
+                        name=item.get("Name"),
+                        type=item_type,
+                        image=image,
+                        link=link
+                    ))
+                return ret_latest
+            else:
+                logger.error(f"Users/Items/Latest 未获取到返回数据")
+        except Exception as e:
+            logger.error(f"连接Users/Items/Latest出错：" + str(e))
+        return []

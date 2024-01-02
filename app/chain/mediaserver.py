@@ -44,6 +44,18 @@ class MediaServerChain(ChainBase):
         """
         return self.run_module("mediaserver_tv_episodes", server=server, item_id=item_id)
 
+    def playing(self, server: str, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+        """
+        获取媒体服务器正在播放信息
+        """
+        return self.run_module("mediaserver_playing", server=server, count=count)
+
+    def latest(self, server: str, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+        """
+        获取媒体服务器最新入库条目
+        """
+        return self.run_module("mediaserver_latest", server=server, count=count)
+
     def sync(self):
         """
         同步媒体库所有数据到本地数据库

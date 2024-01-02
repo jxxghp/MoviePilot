@@ -139,3 +139,15 @@ class WebhookEventInfo(BaseModel):
     save_reason: Optional[str] = None
     item_isvirtual: Optional[bool] = None
     media_type: Optional[str] = None
+
+
+class MediaServerPlayItem(BaseModel):
+    """
+    媒体服务器可播放项目信息
+    """
+    id: Optional[Union[str, int]] = None
+    name: Optional[str] = None
+    type: Optional[str] = None
+    image: Optional[str] = None
+    link: Optional[str] = None
+    percent: Optional[float] = None

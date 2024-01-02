@@ -141,3 +141,19 @@ class EmbyModule(_ModuleBase):
             season=season,
             episodes=episodes
         ) for season, episodes in seasoninfo.items()]
+
+    def mediaserver_playing(self, server: str, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+        """
+        获取媒体服务器正在播放信息
+        """
+        if server != "emby":
+            return []
+        return self.emby.get_resume(count)
+
+    def mediaserver_latest(self, server: str, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+        """
+        获取媒体服务器最新入库条目
+        """
+        if server != "emby":
+            return []
+        return self.emby.get_latest(count)

@@ -543,3 +543,62 @@ class Plex(metaclass=Singleton):
         获取plex对象，以便直接操作
         """
         return self._plex
+
+    def __get_play_url(self, item_id: str) -> str:
+        """
+        拼装媒体播放链接
+        :param item_id: 媒体的的ID
+        """
+        return f'{self._host}#!/server/{self._plex.machineIdentifier}/details?key={item_id}'
+
+    def get_resume(self, num: int = 12) -> Optional[List[schemas.MediaServerPlayItem]]:
+        """
+        获取继续观看的媒体
+        """
+        if not self._plex:
+            return []
+        items = self._plex.fetchItems('/hubs/continueWatching/items', container_start=0, container_size=num)
+        ret_resume = []
+        for item in items:
+            item_type = MediaType.MOVIE.value if item.TYPE == "movie" else MediaType.TV.value
+            if item_type == MediaType.MOVIE.value:
+                name = item.title
+            else:
+                if item.parentIndex == 1:
+                    name = "%s 第%s集" % (item.grandparentTitle, item.index)
+                else:
+                    name = "%s 第%s季第%s集" % (item.grandparentTitle, item.parentIndex, item.index)
+            link = self.__get_play_url(item.key)
+            image = item.artUrl
+            ret_resume.append(schemas.MediaServerPlayItem(
+                id=item.key,
+                name=name,
+                type=item_type,
+                image=image,
+                link=link,
+                percent=item.viewOffset / item.duration * 100 if item.viewOffset and item.duration else 0
+            ))
+        return ret_resume
+
+    def get_latest(self, num: int = 20) -> Optional[List[schemas.MediaServerPlayItem]]:
+        """
+        获取最近添加媒体
+        """
+        if not self._plex:
+            return None
+        items = self._plex.fetchItems('/library/recentlyAdded', container_start=0, container_size=num)
+        ret_resume = []
+        for item in items:
+            item_type = MediaType.MOVIE.value if item.TYPE == "movie" else MediaType.TV.value
+            link = self.__get_play_url(item.key)
+            title = item.title if item_type == MediaType.MOVIE.value else \
+                "%s 第%s季" % (item.parentTitle, item.index)
+            image = item.posterUrl
+            ret_resume.append(schemas.MediaServerPlayItem(
+                id=item.key,
+                name=title,
+                type=item_type,
+                image=image,
+                link=link
+            ))
+        return ret_resume
