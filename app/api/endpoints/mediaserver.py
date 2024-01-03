@@ -21,20 +21,22 @@ router = APIRouter()
 
 
 @router.get("/play/{itemid}", summary="在线播放")
-def play_item(itemid: str) -> Any:
+def play_item(itemid: str) -> schemas.Response:
     """
-    跳转媒体服务器播放页面
+    获取媒体服务器播放页面地址
     """
     if not itemid:
-        return
+        return schemas.Response(success=False, msg="参数错误")
     if not settings.MEDIASERVER:
-        return
+        return schemas.Response(success=False, msg="未配置媒体服务器")
     mediaserver = settings.MEDIASERVER.split(",")[0]
     play_url = MediaServerChain().get_play_url(server=mediaserver, item_id=itemid)
     # 重定向到play_url
     if not play_url:
-        return
-    return RedirectResponse(url=play_url)
+        return schemas.Response(success=False, msg="未找到播放地址")
+    return schemas.Response(success=True, data={
+        "url": play_url
+    })
 
 
 @router.get("/exists", summary="本地是否存在", response_model=schemas.Response)
