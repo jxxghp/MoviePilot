@@ -2,7 +2,7 @@ import pickle
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Tuple
 from typing import List, Optional
 
 from app.chain import ChainBase
@@ -153,7 +153,8 @@ class SearchChain(ChainBase):
                 return []
         # 使用过滤规则再次过滤
         torrents = self.filter_torrents_by_rule(torrents=torrents,
-                                                filter_rule=filter_rule)
+                                                filter_rule=filter_rule,
+                                                seasons=mediainfo.seasons)
         if not torrents:
             logger.warn(f'{keyword or mediainfo.title} 没有符合过滤规则的资源')
             return []
@@ -336,12 +337,14 @@ class SearchChain(ChainBase):
 
     def filter_torrents_by_rule(self,
                                 torrents: List[TorrentInfo],
-                                filter_rule: Dict[str, str] = None
+                                filter_rule: Dict[str, str] = None,
+                                seasons: Dict[int, list] = None,
                                 ) -> List[TorrentInfo]:
         """
         使用过滤规则过滤种子
         :param torrents: 种子列表
         :param filter_rule: 过滤规则
+        :param seasons: 季集信息
         """
 
         if not filter_rule:
@@ -359,6 +362,22 @@ class SearchChain(ChainBase):
         resolution = filter_rule.get("resolution")
         # 特效
         effect = filter_rule.get("effect")
+        # 大小
+        size = filter_rule.get("size")
+
+        def __get_size_range(size_str: str) -> Tuple[float, float]:
+            """
+            获取大小范围
+            """
+            if not size_str:
+                return 0, 0
+            size_range = size_str.split("-")
+            if len(size_range) == 1:
+                return 0, float(size_range[0])
+            elif len(size_range) == 2:
+                return float(size_range[0]), float(size_range[1])
+            else:
+                return 0, 0
 
         def __filter_torrent(t: TorrentInfo) -> bool:
             """
@@ -393,6 +412,30 @@ class SearchChain(ChainBase):
                 if not re.search(r"%s" % effect, t.title, re.I):
                     logger.info(f"{t.title} 不匹配特效规则 {effect}")
                     return False
+
+            # 大小
+            if size:
+                # 大小范围
+                begin_size, end_size = __get_size_range(size)
+                if begin_size and end_size:
+                    meta = MetaInfo(title=t.title, subtitle=t.description)
+                    # 集数
+                    if meta.type == MediaType.TV:
+                        # 电视剧
+                        season = meta.begin_season or 1
+                        if meta.total_episode:
+                            # 识别的总集数
+                            episodes_num = meta.total_episode
+                        else:
+                            # 整季集数
+                            episodes_num = len(seasons.get(season) or [1]) if seasons else 1
+                    else:
+                        # 电影
+                        episodes_num = 1
+                    # 比较大小
+                    if not (begin_size * 1024 ** 3 <= (t.size / episodes_num) <= end_size * 1024 ** 3):
+                        logger.info(f"{t.title} {StringUtils.str_filesize(t.size)} 不匹配大小规则 {size}")
+                        return False
 
             return True
 
