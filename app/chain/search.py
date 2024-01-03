@@ -373,13 +373,15 @@ class SearchChain(ChainBase):
             """
             if not size_str:
                 return 0, 0
-            size_range = size_str.split("-")
-            if len(size_range) == 1:
-                return 0, float(size_range[0])
-            elif len(size_range) == 2:
-                return float(size_range[0]), float(size_range[1])
-            else:
-                return 0, 0
+            try:
+                size_range = size_str.split("-")
+                if len(size_range) == 1:
+                    return 0, float(size_range[0])
+                elif len(size_range) == 2:
+                    return float(size_range[0]), float(size_range[1])
+            except Exception as e:
+                print(str(e))
+            return 0, 0
 
         def __filter_torrent(t: TorrentInfo) -> bool:
             """
