@@ -16,6 +16,8 @@ from app.utils.singleton import Singleton
 
 class Plex(metaclass=Singleton):
 
+    _plex = None
+
     def __init__(self):
         self._host = settings.PLEX_HOST
         if self._host:
