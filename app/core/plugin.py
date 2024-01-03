@@ -243,6 +243,8 @@ class PluginManager(metaclass=Singleton):
         markets = settings.PLUGIN_MARKET.split(",")
         for market in markets:
             online_plugins = self.pluginhelper.get_plugins(market) or {}
+            if not online_plugins:
+                logger.warn(f"获取插件库失败 {market}")
             for pid, plugin in online_plugins.items():
                 # 运行状插件
                 plugin_obj = self._running_plugins.get(pid)
