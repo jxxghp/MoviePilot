@@ -148,6 +148,14 @@ class JellyfinModule(_ModuleBase):
             return []
         return self.jellyfin.get_resume(count)
 
+    def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
+        """
+        获取媒体库播放地址
+        """
+        if server != "jellyfin":
+            return None
+        return self.jellyfin.get_play_url(item_id)
+
     def mediaserver_latest(self, server: str, count: int = 20) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目

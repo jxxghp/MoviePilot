@@ -66,6 +66,10 @@ class MediaServerLibrary(BaseModel):
     type: Optional[str] = None
     # 封面图
     image: Optional[str] = None
+    # 封面图列表
+    image_list: Optional[List[str]] = None
+    # 跳转链接
+    link: Optional[str] = None
 
 
 class MediaServerItem(BaseModel):

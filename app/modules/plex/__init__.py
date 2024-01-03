@@ -149,3 +149,11 @@ class PlexModule(_ModuleBase):
         if server != "plex":
             return []
         return self.plex.get_latest(count)
+
+    def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
+        """
+        获取媒体库播放地址
+        """
+        if server != "plex":
+            return None
+        return self.plex.get_play_url(item_id)

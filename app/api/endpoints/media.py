@@ -1,7 +1,6 @@
 from typing import List, Any
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.media import MediaChain
@@ -9,8 +8,6 @@ from app.core.config import settings
 from app.core.context import Context
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token, verify_uri_token
-from app.db import get_db
-from app.db.mediaserver_oper import MediaServerOper
 from app.schemas import MediaType
 
 router = APIRouter()
@@ -77,28 +74,6 @@ def search_by_title(title: str,
     if medias:
         return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
     return []
-
-
-@router.get("/exists", summary="本地是否存在", response_model=schemas.Response)
-def exists(title: str = None,
-           year: int = None,
-           mtype: str = None,
-           tmdbid: int = None,
-           season: int = None,
-           db: Session = Depends(get_db),
-           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    判断本地是否存在
-    """
-    meta = MetaInfo(title)
-    if not season:
-        season = meta.begin_season
-    exist = MediaServerOper(db).exists(
-        title=meta.name, year=year, mtype=mtype, tmdbid=tmdbid, season=season
-    )
-    return schemas.Response(success=True if exist else False, data={
-        "item": exist or {}
-    })
 
 
 @router.get("/{mediaid}", summary="查询媒体详情", response_model=schemas.MediaInfo)

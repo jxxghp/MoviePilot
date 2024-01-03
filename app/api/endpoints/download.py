@@ -1,16 +1,14 @@
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.download import DownloadChain
-from app.chain.media import MediaChain
 from app.core.context import MediaInfo, Context, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.db.models.user import User
 from app.db.userauth import get_current_active_user
-from app.schemas import NotExistMediaInfo, MediaType
 
 router = APIRouter()
 
@@ -51,41 +49,6 @@ def add_downloading(
     return schemas.Response(success=True if did else False, data={
         "download_id": did
     })
-
-
-@router.post("/notexists", summary="查询缺失媒体信息", response_model=List[NotExistMediaInfo])
-def exists(media_in: schemas.MediaInfo,
-           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    查询缺失媒体信息
-    """
-    # 媒体信息
-    meta = MetaInfo(title=media_in.title)
-    mtype = MediaType(media_in.type) if media_in.type else None
-    if mtype:
-        meta.type = mtype
-    if media_in.season:
-        meta.begin_season = media_in.season
-        meta.type = MediaType.TV
-    if media_in.year:
-        meta.year = media_in.year
-    if media_in.tmdb_id or media_in.douban_id:
-        mediainfo = MediaChain().recognize_media(meta=meta, mtype=mtype,
-                                                 tmdbid=media_in.tmdb_id, doubanid=media_in.douban_id)
-    else:
-        mediainfo = MediaChain().recognize_by_meta(metainfo=meta)
-    # 查询缺失信息
-    if not mediainfo:
-        raise HTTPException(status_code=404, detail="媒体信息不存在")
-    mediakey = mediainfo.tmdb_id or mediainfo.douban_id
-    exist_flag, no_exists = DownloadChain().get_no_exists_info(meta=meta, mediainfo=mediainfo)
-    if mediainfo.type == MediaType.MOVIE:
-        # 电影已存在时返回空列表，存在时返回空对像列表
-        return [] if exist_flag else [NotExistMediaInfo()]
-    elif no_exists and no_exists.get(mediakey):
-        # 电视剧返回缺失的剧集
-        return list(no_exists.get(mediakey).values())
-    return []
 
 
 @router.get("/start/{hashString}", summary="开始任务", response_model=schemas.Response)

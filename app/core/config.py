@@ -161,14 +161,20 @@ class Settings(BaseSettings):
     MEDIASERVER_SYNC_BLACKLIST: str = None
     # EMBY服务器地址，IP:PORT
     EMBY_HOST: str = None
+    # EMBY外网地址，http(s)://DOMAIN:PORT，未设置时使用EMBY_HOST
+    EMBY_PLAY_HOST: str = None
     # EMBY Api Key
     EMBY_API_KEY: str = None
     # Jellyfin服务器地址，IP:PORT
     JELLYFIN_HOST: str = None
+    # Jellyfin外网地址，http(s)://DOMAIN:PORT，未设置时使用JELLYFIN_HOST
+    JELLYFIN_PLAY_HOST: str = None
     # Jellyfin Api Key
     JELLYFIN_API_KEY: str = None
     # Plex服务器地址，IP:PORT
     PLEX_HOST: str = None
+    # Plex外网地址，http(s)://DOMAIN:PORT，未设置时使用PLEX_HOST
+    PLEX_PLAY_HOST: str = None
     # Plex Token
     PLEX_TOKEN: str = None
     # 转移方式 link/copy/move/softlink

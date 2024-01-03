@@ -195,16 +195,19 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
   - `emby`设置项：
 
     - **EMBY_HOST：** Emby服务器地址，格式：`ip:port`，https需要添加`https://`前缀
+    - **EMBY_PLAY_HOST：** EMBY外网地址，格式：`http(s)://DOMAIN:PORT`，未设置时使用`EMBY_HOST`
     - **EMBY_API_KEY：** Emby Api Key，在`设置->高级->API密钥`处生成
 
   - `jellyfin`设置项：
 
     - **JELLYFIN_HOST：** Jellyfin服务器地址，格式：`ip:port`，https需要添加`https://`前缀
+    - **JELLYFIN_PLAY_HOST：** Jellyfin外网地址，格式：`http(s)://DOMAIN:PORT`，未设置时使用`JELLYFIN_HOST`
     - **JELLYFIN_API_KEY：** Jellyfin Api Key，在`设置->高级->API密钥`处生成
 
   - `plex`设置项：
 
     - **PLEX_HOST：** Plex服务器地址，格式：`ip:port`，https需要添加`https://`前缀
+    - **PLEX_PLAY_HOST：** Plex外网地址，格式：`http(s)://DOMAIN:PORT`，未设置时使用`PLEX_HOST`
     - **PLEX_TOKEN：** Plex网页Url中的`X-Plex-Token`，通过浏览器F12->网络从请求URL中获取
 - **MEDIASERVER_SYNC_INTERVAL:** 媒体服务器同步间隔（小时），默认`6`，留空则不同步
 - **MEDIASERVER_SYNC_BLACKLIST:** 媒体服务器同步黑名单，多个媒体库名称使用,分割
