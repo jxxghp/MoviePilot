@@ -660,14 +660,18 @@ class Jellyfin(metaclass=Singleton):
                         image = self.__get_local_image_by_id(item.get("Id"))
                     if item_type == MediaType.MOVIE.value:
                         title = item.get("Name")
+                        subtitle = item.get("Year")
                     else:
                         if item.get("ParentIndexNumber") == 1:
-                            title = f'{item.get("SeriesName")} 第{item.get("IndexNumber")}集'
+                            title = f'{item.get("SeriesName")}'
+                            subtitle = f'第{item.get("IndexNumber")}集'
                         else:
-                            title = f'{item.get("SeriesName")} 第{item.get("ParentIndexNumber")}季第{item.get("IndexNumber")}集'
+                            title = f'{item.get("SeriesName")}'
+                            subtitle = f'第{item.get("ParentIndexNumber")}季 第{item.get("IndexNumber")}集'
                     ret_resume.append(schemas.MediaServerPlayItem(
                         id=item.get("Id"),
-                        name=title,
+                        title=title,
+                        subtitle=subtitle,
                         type=item_type,
                         image=image,
                         link=link,
@@ -700,7 +704,7 @@ class Jellyfin(metaclass=Singleton):
                     image = self.__get_local_image_by_id(item_id=item.get("Id"))
                     ret_latest.append(schemas.MediaServerPlayItem(
                         id=item.get("Id"),
-                        name=item.get("Name"),
+                        title=item.get("Name"),
                         type=item_type,
                         image=image,
                         link=link

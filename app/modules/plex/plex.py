@@ -612,17 +612,21 @@ class Plex(metaclass=Singleton):
         for item in items:
             item_type = MediaType.MOVIE.value if item.TYPE == "movie" else MediaType.TV.value
             if item_type == MediaType.MOVIE.value:
-                name = item.title
+                title = item.title
+                subtitle = item.year
             else:
                 if item.parentIndex == 1:
-                    name = "%s 第%s集" % (item.grandparentTitle, item.index)
+                    title = item.grandparentTitle
+                    subtitle = f"第{item.index}集"
                 else:
-                    name = "%s 第%s季第%s集" % (item.grandparentTitle, item.parentIndex, item.index)
+                    title = item.grandparentTitle
+                    subtitle = f"第{item.parentIndex}季 第{item.index}集"
             link = self.get_play_url(item.key)
             image = item.artUrl
             ret_resume.append(schemas.MediaServerPlayItem(
                 id=item.key,
-                name=name,
+                title=title,
+                subtitle=subtitle,
                 type=item_type,
                 image=image,
                 link=link,
@@ -646,7 +650,7 @@ class Plex(metaclass=Singleton):
             image = item.posterUrl
             ret_resume.append(schemas.MediaServerPlayItem(
                 id=item.key,
-                name=title,
+                title=title,
                 type=item_type,
                 image=image,
                 link=link
