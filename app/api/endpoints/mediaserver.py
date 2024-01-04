@@ -2,7 +2,6 @@ from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from starlette.responses import RedirectResponse
 
 from app import schemas
 from app.chain.download import DownloadChain
@@ -118,3 +117,27 @@ def not_exists(media_in: schemas.MediaInfo,
         # 电视剧返回缺失的剧集
         return list(no_exists.get(mediakey).values())
     return []
+
+
+@router.get("/latest", summary="最新入库条目", response_model=List[schemas.MediaServerPlayItem])
+def latest(count: int = 20,
+           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    获取媒体服务器最新入库条目
+    """
+    if not settings.MEDIASERVER:
+        return []
+    mediaserver = settings.MEDIASERVER.split(",")[0]
+    return MediaServerChain().latest(server=mediaserver, count=count)
+
+
+@router.get("/playing", summary="正在播放条目", response_model=List[schemas.MediaServerPlayItem])
+def playing(count: int = 20,
+            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    获取媒体服务器正在播放条目
+    """
+    if not settings.MEDIASERVER:
+        return []
+    mediaserver = settings.MEDIASERVER.split(",")[0]
+    return MediaServerChain().playing(server=mediaserver, count=count)
