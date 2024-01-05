@@ -615,12 +615,8 @@ class Plex(metaclass=Singleton):
                 title = item.title
                 subtitle = item.year
             else:
-                if item.parentIndex == 1:
-                    title = item.grandparentTitle
-                    subtitle = f"第{item.index}集"
-                else:
-                    title = item.grandparentTitle
-                    subtitle = f"第{item.parentIndex}季 第{item.index}集"
+                title = item.grandparentTitle
+                subtitle = f"S{item.parentIndex}:E{item.index} - {item.title}"
             link = self.get_play_url(item.key)
             image = item.artUrl
             ret_resume.append(schemas.MediaServerPlayItem(
@@ -651,6 +647,7 @@ class Plex(metaclass=Singleton):
             ret_resume.append(schemas.MediaServerPlayItem(
                 id=item.key,
                 title=title,
+                subtitle=item.year,
                 type=item_type,
                 image=image,
                 link=link

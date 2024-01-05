@@ -951,7 +951,7 @@ class Emby(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return ""
-        return "%sItems/%s/Images/Primary" % (self._host, item_id)
+        return "%sItems/%s/Images/Primary" % (self._playhost or self._host, item_id)
 
     def get_resume(self, num: int = 12) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
@@ -972,14 +972,10 @@ class Emby(metaclass=Singleton):
                     link = self.get_play_url(item.get("Id"))
                     if item_type == MediaType.MOVIE.value:
                         title = item.get("Name")
-                        subtitle = item.get("Year")
+                        subtitle = item.get("ProductionYear")
                     else:
-                        if item.get("ParentIndexNumber") == 1:
-                            title = f'{item.get("SeriesName")}'
-                            subtitle = f'第{item.get("IndexNumber")}集'
-                        else:
-                            title = f'{item.get("SeriesName")}'
-                            subtitle = f'第{item.get("ParentIndexNumber")}季 第{item.get("IndexNumber")}集'
+                        title = f'{item.get("SeriesName")}'
+                        subtitle = f'S{item.get("ParentIndexNumber")}:{item.get("IndexNumber")} - {item.get("Name")}'
                     if item_type == MediaType.MOVIE.value:
                         if item.get("BackdropImageTags"):
                             image = self.__get_backdrop_url(item_id=item.get("Id"),
@@ -1028,6 +1024,7 @@ class Emby(metaclass=Singleton):
                     ret_latest.append(schemas.MediaServerPlayItem(
                         id=item.get("Id"),
                         title=item.get("Name"),
+                        subtitle=item.get("ProductionYear"),
                         type=item_type,
                         image=image,
                         link=link

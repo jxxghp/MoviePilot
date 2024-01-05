@@ -120,7 +120,7 @@ def not_exists(media_in: schemas.MediaInfo,
 
 
 @router.get("/latest", summary="最新入库条目", response_model=List[schemas.MediaServerPlayItem])
-def latest(count: int = 20,
+def latest(count: int = 18,
            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器最新入库条目
@@ -132,7 +132,7 @@ def latest(count: int = 20,
 
 
 @router.get("/playing", summary="正在播放条目", response_model=List[schemas.MediaServerPlayItem])
-def playing(count: int = 20,
+def playing(count: int = 18,
             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器正在播放条目
