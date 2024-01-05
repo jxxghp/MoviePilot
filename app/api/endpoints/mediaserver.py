@@ -132,7 +132,7 @@ def latest(count: int = 18,
 
 
 @router.get("/playing", summary="正在播放条目", response_model=List[schemas.MediaServerPlayItem])
-def playing(count: int = 18,
+def playing(count: int = 12,
             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器正在播放条目
