@@ -16,6 +16,7 @@ from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
+from app.core.plugin import PluginManager
 from app.log import logger
 from app.utils.singleton import Singleton
 from app.utils.timer import TimerUtils
@@ -226,6 +227,27 @@ class Scheduler(metaclass=Singleton):
                 'job_id': 'clear_cache'
             }
         )
+
+        # 注册插件公共服务
+        plugin_services = PluginManager().get_plugin_services()
+        for service in plugin_services:
+            try:
+                self._jobs[service["id"]] = {
+                    "func": service["func"],
+                    "running": False,
+                }
+                self._scheduler.add_job(
+                    self.start,
+                    service["trigger"],
+                    id=service["id"],
+                    name=service["name"],
+                    **service["kwargs"],
+                    kwargs={
+                        'job_id': service["id"]
+                    }
+                )
+            except Exception as e:
+                logger.error(f"注册插件服务失败：{str(e)} - {service}")
 
         # 打印服务
         logger.debug(self._scheduler.print_jobs())

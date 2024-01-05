@@ -57,7 +57,7 @@ class _PluginBase(metaclass=ABCMeta):
     @abstractmethod
     def get_command() -> List[Dict[str, Any]]:
         """
-        获取插件命令
+        注册插件远程命令
         [{
             "cmd": "/xx",
             "event": EventType.xx,
@@ -71,13 +71,26 @@ class _PluginBase(metaclass=ABCMeta):
     @abstractmethod
     def get_api(self) -> List[Dict[str, Any]]:
         """
-        获取插件API
+        注册插件API
         [{
             "path": "/xx",
             "endpoint": self.xxx,
             "methods": ["GET", "POST"],
             "summary": "API名称",
             "description": "API说明"
+        }]
+        """
+        pass
+
+    def get_service(self) -> List[Dict[str, Any]]:
+        """
+        注册插件公共服务
+        [{
+            “id”: “服务ID”,
+            "name": "服务名称",
+            "trigger": "触发器：cron/interval/date/CronTrigger.from_crontab()",
+            "func": self.xxx,
+            "kwargs": {} # 定时器参数
         }]
         """
         pass

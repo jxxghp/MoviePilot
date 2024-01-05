@@ -213,6 +213,26 @@ class PluginManager(metaclass=Singleton):
                 ret_apis.extend(apis)
         return ret_apis
 
+    def get_plugin_services(self) -> List[Dict[str, Any]]:
+        """
+        获取插件服务
+        [{
+            "id": "服务ID",
+            "name": "服务名称",
+            "trigger": "触发器：cron、interval、date、CronTrigger.from_crontab()",
+            "func": self.xxx,
+            "kwagrs": {} # 定时器参数
+        }]
+        """
+        ret_services = []
+        for pid, plugin in self._running_plugins.items():
+            if hasattr(plugin, "get_service") \
+                    and ObjectUtils.check_method(plugin.get_service):
+                services = plugin.get_service()
+                if services:
+                    ret_services.extend(services)
+        return ret_services
+
     def run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
         """
         运行插件方法
