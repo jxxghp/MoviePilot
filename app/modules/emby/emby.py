@@ -959,7 +959,7 @@ class Emby(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return None
-        req_url = f"{self._host}Users/{self.user}/Items/Resume?Limit={num}&MediaTypes=Video&api_key={self._apikey}"
+        req_url = f"{self._host}Users/{self.user}/Items/Resume?Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear"
         try:
             res = RequestUtils().get_res(req_url)
             if res:
@@ -1009,7 +1009,7 @@ class Emby(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return None
-        req_url = f"{self._host}Users/{self.user}/Items/Latest?Limit={num}&MediaTypes=Video&api_key={self._apikey}"
+        req_url = f"{self._host}Users/{self.user}/Items/Latest?Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear"
         try:
             res = RequestUtils().get_res(req_url)
             if res:
