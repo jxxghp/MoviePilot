@@ -951,7 +951,7 @@ class Emby(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return ""
-        return "%sItems/%s/Images/Primary" % (self._playhost or self._host, item_id)
+        return "%sItems/%s/Images/Primary" % (self._host, item_id)
 
     def get_resume(self, num: int = 12) -> Optional[List[schemas.MediaServerPlayItem]]:
         """

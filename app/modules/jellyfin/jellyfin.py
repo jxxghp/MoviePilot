@@ -619,7 +619,7 @@ class Jellyfin(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return ""
-        return "%sItems/%s/Images/Primary" % (self._playhost or self._host, item_id)
+        return "%sItems/%s/Images/Primary" % (self._host, item_id)
 
     def __get_backdrop_url(self, item_id: str, image_tag: str) -> str:
         """
