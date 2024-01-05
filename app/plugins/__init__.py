@@ -86,7 +86,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         注册插件公共服务
         [{
-            “id”: “服务ID”,
+            "id": "服务ID",
             "name": "服务名称",
             "trigger": "触发器：cron/interval/date/CronTrigger.from_crontab()",
             "func": self.xxx,
