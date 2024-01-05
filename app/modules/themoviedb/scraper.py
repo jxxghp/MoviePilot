@@ -135,7 +135,8 @@ class TmdbScraper:
                                                        file_path=file_path)
                     # 集的图片
                     episode_image = episodeinfo.get("still_path")
-                    image_path = file_path.with_name(file_path.stem + "-thumb").with_suffix(Path(episode_image).suffix)
+                    image_path = file_path.with_name(file_path.stem + "-thumb.jpg").with_suffix(
+                        Path(episode_image).suffix)
                     if episode_image and (self._force_img or not image_path.exists()):
                         self.__save_image(
                             f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{episode_image}",
