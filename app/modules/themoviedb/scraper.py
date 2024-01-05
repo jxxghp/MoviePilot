@@ -81,7 +81,7 @@ class TmdbScraper:
                                            dir_path=file_path.parents[1])
                 # 生成根目录图片
                 for attr_name, attr_value in vars(mediainfo).items():
-                    if attr_value \
+                    if attr_name \
                             and attr_name.endswith("_path") \
                             and not attr_name.startswith("season") \
                             and attr_value \
