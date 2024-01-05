@@ -141,3 +141,14 @@ def playing(count: int = 20,
         return []
     mediaserver = settings.MEDIASERVER.split(",")[0]
     return MediaServerChain().playing(server=mediaserver, count=count)
+
+
+@router.get("/library", summary="媒体库列表", response_model=List[schemas.MediaServerLibrary])
+def library(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    获取媒体服务器媒体库列表
+    """
+    if not settings.MEDIASERVER:
+        return []
+    mediaserver = settings.MEDIASERVER.split(",")[0]
+    return MediaServerChain().librarys(server=mediaserver)
