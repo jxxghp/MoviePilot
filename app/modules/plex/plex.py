@@ -124,7 +124,7 @@ class Plex(metaclass=Singleton):
                     path=library.locations,
                     type=library_type,
                     image_list=image_list,
-                    link=f"{self._playhost or self._host}#!/media/{self._plex.machineIdentifier}"
+                    link=f"{self._playhost or self._host}web/index.html#!/media/{self._plex.machineIdentifier}"
                          f"/com.plexapp.plugins.library?source={library.key}"
                 )
             )
