@@ -108,7 +108,10 @@ class Plex(metaclass=Singleton):
             logger.error(f"获取媒体服务器所有媒体库列表出错：{str(err)}")
             return []
         libraries = []
+        black_list = (settings.MEDIASERVER_SYNC_BLACKLIST or '').split(",")
         for library in self._libraries:
+            if library.title in black_list:
+                continue
             match library.type:
                 case "movie":
                     library_type = MediaType.MOVIE.value

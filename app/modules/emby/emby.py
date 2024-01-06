@@ -91,7 +91,10 @@ class Emby(metaclass=Singleton):
         if not self._host or not self._apikey:
             return []
         libraries = []
+        black_list = (settings.MEDIASERVER_SYNC_BLACKLIST or '').split(",")
         for library in self.__get_emby_librarys() or []:
+            if library.get("Name") in black_list:
+                continue
             match library.get("CollectionType"):
                 case "movies":
                     library_type = MediaType.MOVIE.value

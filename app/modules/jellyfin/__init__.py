@@ -101,11 +101,11 @@ class JellyfinModule(_ModuleBase):
         media_statistic.user_count = self.jellyfin.get_user_count()
         return [media_statistic]
 
-    def mediaserver_librarys(self, server: str) -> Optional[List[schemas.MediaServerLibrary]]:
+    def mediaserver_librarys(self, server: str = None) -> Optional[List[schemas.MediaServerLibrary]]:
         """
         媒体库列表
         """
-        if server != "jellyfin":
+        if server and server != "jellyfin":
             return None
         return self.jellyfin.get_librarys()
 
@@ -140,11 +140,11 @@ class JellyfinModule(_ModuleBase):
             episodes=episodes
         ) for season, episodes in seasoninfo.items()]
 
-    def mediaserver_playing(self, server: str, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_playing(self, count: int = 20, server: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
-        if server != "jellyfin":
+        if server and server != "jellyfin":
             return []
         return self.jellyfin.get_resume(count)
 
@@ -156,10 +156,10 @@ class JellyfinModule(_ModuleBase):
             return None
         return self.jellyfin.get_play_url(item_id)
 
-    def mediaserver_latest(self, server: str, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_latest(self, count: int = 20, server: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """
-        if server != "jellyfin":
+        if server and server != "jellyfin":
             return []
         return self.jellyfin.get_latest(count)

@@ -95,11 +95,11 @@ class PlexModule(_ModuleBase):
         media_statistic.user_count = 1
         return [media_statistic]
 
-    def mediaserver_librarys(self, server: str) -> Optional[List[schemas.MediaServerLibrary]]:
+    def mediaserver_librarys(self, server: str = None) -> Optional[List[schemas.MediaServerLibrary]]:
         """
         媒体库列表
         """
-        if server != "plex":
+        if server and server != "plex":
             return None
         return self.plex.get_librarys()
 
@@ -134,19 +134,19 @@ class PlexModule(_ModuleBase):
             episodes=episodes
         ) for season, episodes in seasoninfo.items()]
 
-    def mediaserver_playing(self, server: str, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_playing(self, count: int = 20, server: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
-        if server != "plex":
+        if server and server != "plex":
             return []
         return self.plex.get_resume(count)
 
-    def mediaserver_latest(self, server: str, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_latest(self, count: int = 20, server: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """
-        if server != "plex":
+        if server and server != "plex":
             return []
         return self.plex.get_latest(count)
 

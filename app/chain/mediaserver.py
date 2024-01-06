@@ -20,7 +20,7 @@ class MediaServerChain(ChainBase):
         super().__init__()
         self.dboper = MediaServerOper()
 
-    def librarys(self, server: str) -> List[schemas.MediaServerLibrary]:
+    def librarys(self, server: str = None) -> List[schemas.MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库
         """
@@ -44,17 +44,17 @@ class MediaServerChain(ChainBase):
         """
         return self.run_module("mediaserver_tv_episodes", server=server, item_id=item_id)
 
-    def playing(self, server: str, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+    def playing(self, count: int = 20, server: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
-        return self.run_module("mediaserver_playing", server=server, count=count)
+        return self.run_module("mediaserver_playing", count=count, server=server)
 
-    def latest(self, server: str, count: int = 20) -> List[schemas.MediaServerPlayItem]:
+    def latest(self, count: int = 20, server: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """
-        return self.run_module("mediaserver_latest", server=server, count=count)
+        return self.run_module("mediaserver_latest", count=count, server=server)
 
     def get_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
