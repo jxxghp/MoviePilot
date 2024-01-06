@@ -58,7 +58,12 @@ def exists(title: str = None,
     exist: MediaServerItem = MediaServerOper(db).exists(
         title=meta.name, year=year, mtype=mtype, tmdbid=tmdbid, season=season
     )
-    if not exist:
+    if exist:
+        ret_info = {
+            "id": exist.item_id
+        }
+    """
+    else:
         # 服务器是否存在
         mediainfo = MediaInfo()
         mediainfo.from_dict({
@@ -75,10 +80,7 @@ def exists(title: str = None,
             ret_info = {
                 "id": exist.itemid
             }
-    else:
-        ret_info = {
-            "id": exist.item_id
-        }
+    """
     return schemas.Response(success=True if exist else False, data={
         "item": ret_info
     })
