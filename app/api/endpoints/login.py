@@ -56,7 +56,9 @@ async def login_access_token(
     logger.info(f"用户 {user.name} 登录成功！")
     return schemas.Token(
         access_token=security.create_access_token(
-            user.id,
+            userid=user.id,
+            username=user.name,
+            super_user=user.is_superuser,
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         ),
         token_type="bearer",

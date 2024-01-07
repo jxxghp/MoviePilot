@@ -14,3 +14,7 @@ class Token(BaseModel):
 class TokenPayload(BaseModel):
     # 用户ID
     sub: Optional[int] = None
+    # 用户名
+    username: Optional[str] = None
+    # 超级用户
+    super_user: Optional[bool] = None

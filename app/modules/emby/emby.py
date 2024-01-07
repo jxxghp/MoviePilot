@@ -66,13 +66,17 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接Library/SelectableMediaFolders 出错：" + str(e))
             return []
 
-    def __get_emby_librarys(self) -> List[dict]:
+    def __get_emby_librarys(self, username: str = None) -> List[dict]:
         """
         获取Emby媒体库列表
         """
         if not self._host or not self._apikey:
             return []
-        req_url = f"{self._host}emby/Users/{self.user}/Views?api_key={self._apikey}"
+        if username:
+            user = self.get_user(username)
+        else:
+            user = self.user
+        req_url = f"{self._host}emby/Users/{user}/Views?api_key={self._apikey}"
         try:
             res = RequestUtils().get_res(req_url)
             if res:
@@ -84,7 +88,7 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接User/Views 出错：" + str(e))
             return []
 
-    def get_librarys(self) -> List[schemas.MediaServerLibrary]:
+    def get_librarys(self, username: str = None) -> List[schemas.MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -92,7 +96,7 @@ class Emby(metaclass=Singleton):
             return []
         libraries = []
         black_list = (settings.MEDIASERVER_SYNC_BLACKLIST or '').split(",")
-        for library in self.__get_emby_librarys() or []:
+        for library in self.__get_emby_librarys(username) or []:
             if library.get("Name") in black_list:
                 continue
             match library.get("CollectionType"):
@@ -956,13 +960,18 @@ class Emby(metaclass=Singleton):
             return ""
         return "%sItems/%s/Images/Primary" % (self._host, item_id)
 
-    def get_resume(self, num: int = 12) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_resume(self, num: int = 12, username: str = None) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获得继续观看
         """
         if not self._host or not self._apikey:
             return None
-        req_url = f"{self._host}Users/{self.user}/Items/Resume?Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear"
+        if username:
+            user = self.get_user(username)
+        else:
+            user = self.user
+        req_url = (f"{self._host}Users/{user}/Items/Resume?"
+                   f"Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear")
         try:
             res = RequestUtils().get_res(req_url)
             if res:
@@ -1006,13 +1015,18 @@ class Emby(metaclass=Singleton):
             logger.error(f"连接Users/Items/Resume出错：" + str(e))
         return []
 
-    def get_latest(self, num: int = 20) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_latest(self, num: int = 20, username: str = None) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
         获得最近更新
         """
         if not self._host or not self._apikey:
             return None
-        req_url = f"{self._host}Users/{self.user}/Items/Latest?Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear"
+        if username:
+            user = self.get_user(username)
+        else:
+            user = self.user
+        req_url = (f"{self._host}Users/{user}/Items/Latest?"
+                   f"Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear")
         try:
             res = RequestUtils().get_res(req_url)
             if res:

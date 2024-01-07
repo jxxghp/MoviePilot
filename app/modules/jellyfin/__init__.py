@@ -101,13 +101,13 @@ class JellyfinModule(_ModuleBase):
         media_statistic.user_count = self.jellyfin.get_user_count()
         return [media_statistic]
 
-    def mediaserver_librarys(self, server: str = None) -> Optional[List[schemas.MediaServerLibrary]]:
+    def mediaserver_librarys(self, server: str = None, username: str = None) -> Optional[List[schemas.MediaServerLibrary]]:
         """
         媒体库列表
         """
         if server and server != "jellyfin":
             return None
-        return self.jellyfin.get_librarys()
+        return self.jellyfin.get_librarys(username)
 
     def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator]:
         """
@@ -140,13 +140,14 @@ class JellyfinModule(_ModuleBase):
             episodes=episodes
         ) for season, episodes in seasoninfo.items()]
 
-    def mediaserver_playing(self, count: int = 20, server: str = None) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_playing(self, count: int = 20,
+                            server: str = None, username: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
         if server and server != "jellyfin":
             return []
-        return self.jellyfin.get_resume(count)
+        return self.jellyfin.get_resume(num=count, username=username)
 
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
@@ -156,10 +157,11 @@ class JellyfinModule(_ModuleBase):
             return None
         return self.jellyfin.get_play_url(item_id)
 
-    def mediaserver_latest(self, count: int = 20, server: str = None) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_latest(self, count: int = 20,
+                           server: str = None, username: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """
         if server and server != "jellyfin":
             return []
-        return self.jellyfin.get_latest(count)
+        return self.jellyfin.get_latest(num=count, username=username)
