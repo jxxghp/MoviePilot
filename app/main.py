@@ -27,8 +27,7 @@ from app.helper.sites import SitesHelper
 from app.helper.message import MessageHelper
 from app.scheduler import Scheduler
 from app.command import Command, CommandChian
-from app.schemas import Notification
-
+from app.schemas import Notification, NotificationType
 
 # App
 App = FastAPI(title=settings.PROJECT_NAME,
@@ -150,6 +149,7 @@ def check_auth():
         MessageHelper().put(f"注意：{err_msg}")
         CommandChian().post_message(
             Notification(
+                mtype=NotificationType.Manual,
                 title="MoviePilot用户认证",
                 text=err_msg
             )
