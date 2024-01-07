@@ -143,4 +143,4 @@ def library(userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器媒体库列表
     """
-    return MediaServerChain().librarys(userinfo.username) or []
+    return MediaServerChain().librarys(username=userinfo.username) or []
