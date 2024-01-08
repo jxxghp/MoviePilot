@@ -679,6 +679,7 @@ class Jellyfin(metaclass=Singleton):
                     ret_resume.append(schemas.MediaServerPlayItem(
                         id=item.get("Id"),
                         title=title,
+                        year=item.get("ProductionYear"),
                         subtitle=subtitle,
                         type=item_type,
                         image=image,
