@@ -20,18 +20,7 @@ def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询媒体数量统计信息
     """
-    media_statistics: Optional[List[schemas.Statistic]] = DashboardChain().media_statistic()
-    if media_statistics:
-        # 汇总各媒体库统计信息
-        ret_statistic = schemas.Statistic()
-        for media_statistic in media_statistics:
-            ret_statistic.movie_count += media_statistic.movie_count
-            ret_statistic.tv_count += media_statistic.tv_count
-            ret_statistic.episode_count += media_statistic.episode_count
-            ret_statistic.user_count += media_statistic.user_count
-        return ret_statistic
-    else:
-        return schemas.Statistic()
+    return DashboardChain().media_statistic()
 
 
 @router.get("/statistic2", summary="媒体数量统计（API_TOKEN）", response_model=schemas.Statistic)
