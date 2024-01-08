@@ -976,9 +976,10 @@ class Emby(metaclass=Singleton):
             return None
 
         ret_resume = []
+        library_limit = int(num / len(user_librarys))
         for library in user_librarys:
             req_url = (f"{self._host}Users/{user}/Items/Resume?"
-                       f"Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear&ParentId={library.id}")
+                       f"Limit={library_limit}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear&ParentId={library.id}")
             try:
                 res = RequestUtils().get_res(req_url)
                 if res:
@@ -1036,9 +1037,10 @@ class Emby(metaclass=Singleton):
             return None
 
         ret_latest = []
+        library_limit = int(num / len(user_librarys))
         for library in user_librarys:
             req_url = (f"{self._host}Users/{user}/Items/Latest?"
-                       f"Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear&ParentId={library.id}")
+                       f"Limit={library_limit}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear&ParentId={library.id}")
             try:
                 res = RequestUtils().get_res(req_url)
                 if res:
