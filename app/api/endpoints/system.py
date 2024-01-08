@@ -24,14 +24,17 @@ from version import APP_VERSION
 router = APIRouter()
 
 
-@router.get("/img/{imgurl:path}", summary="图片代理")
-def get_img(imgurl: str) -> Any:
+@router.get("/img/{imgurl:path}/{proxy}", summary="图片代理")
+def get_img(imgurl: str, proxy: bool = False) -> Any:
     """
     通过图片代理（使用代理服务器）
     """
     if not imgurl:
         return None
-    response = RequestUtils(ua=settings.USER_AGENT, proxies=settings.PROXY).get_res(url=imgurl)
+    if proxy:
+        response = RequestUtils(ua=settings.USER_AGENT, proxies=settings.PROXY).get_res(url=imgurl)
+    else:
+        response = RequestUtils(ua=settings.USER_AGENT).get_res(url=imgurl)
     if response:
         return Response(content=response.content, media_type="image/jpeg")
     return None
