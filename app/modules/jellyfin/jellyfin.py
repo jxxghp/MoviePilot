@@ -653,44 +653,50 @@ class Jellyfin(metaclass=Singleton):
             user = self.get_user(username)
         else:
             user = self.user
-        req_url = (f"{self._host}Users/{user}/Items/Resume?"
-                   f"Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear")
-        try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                result = res.json().get("Items") or []
-                ret_resume = []
-                for item in result:
-                    if item.get("Type") not in ["Movie", "Episode"]:
-                        continue
-                    item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
-                    link = self.get_play_url(item.get("Id"))
-                    if item.get("BackdropImageTags"):
-                        image = self.__get_backdrop_url(item_id=item.get("Id"),
-                                                        image_tag=item.get("BackdropImageTags")[0])
-                    else:
-                        image = self.__get_local_image_by_id(item.get("Id"))
-                    if item_type == MediaType.MOVIE.value:
-                        title = item.get("Name")
-                        subtitle = item.get("ProductionYear")
-                    else:
-                        title = f'{item.get("SeriesName")}'
-                        subtitle = f'S{item.get("ParentIndexNumber")}:{item.get("IndexNumber")} - {item.get("Name")}'
-                    ret_resume.append(schemas.MediaServerPlayItem(
-                        id=item.get("Id"),
-                        title=title,
-                        subtitle=subtitle,
-                        type=item_type,
-                        image=image,
-                        link=link,
-                        percent=item.get("UserData", {}).get("PlayedPercentage")
-                    ))
-                return ret_resume
-            else:
-                logger.error(f"Users/Items/Resume 未获取到返回数据")
-        except Exception as e:
-            logger.error(f"连接Users/Items/Resume出错：" + str(e))
-        return []
+
+        user_librarys = self.get_librarys(username=user)
+        if not user_librarys:
+            return None
+
+        ret_resume = []
+        for library in user_librarys:
+            req_url = (f"{self._host}Users/{user}/Items/Resume?"
+                       f"Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear&ParentId={library.id}")
+            try:
+                res = RequestUtils().get_res(req_url)
+                if res:
+                    result = res.json().get("Items") or []
+                    ret_resume = []
+                    for item in result:
+                        if item.get("Type") not in ["Movie", "Episode"]:
+                            continue
+                        item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
+                        link = self.get_play_url(item.get("Id"))
+                        if item.get("BackdropImageTags"):
+                            image = self.__get_backdrop_url(item_id=item.get("Id"),
+                                                            image_tag=item.get("BackdropImageTags")[0])
+                        else:
+                            image = self.__get_local_image_by_id(item.get("Id"))
+                        if item_type == MediaType.MOVIE.value:
+                            title = item.get("Name")
+                            subtitle = item.get("ProductionYear")
+                        else:
+                            title = f'{item.get("SeriesName")}'
+                            subtitle = f'S{item.get("ParentIndexNumber")}:{item.get("IndexNumber")} - {item.get("Name")}'
+                        ret_resume.append(schemas.MediaServerPlayItem(
+                            id=item.get("Id"),
+                            title=title,
+                            subtitle=subtitle,
+                            type=item_type,
+                            image=image,
+                            link=link,
+                            percent=item.get("UserData", {}).get("PlayedPercentage")
+                        ))
+                else:
+                    logger.error(f"Users/Items/Resume 未获取到返回数据")
+            except Exception as e:
+                logger.error(f"连接Users/Items/Resume出错：" + str(e))
+        return ret_resume
 
     def get_latest(self, num=20, username: str = None) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
@@ -702,30 +708,36 @@ class Jellyfin(metaclass=Singleton):
             user = self.get_user(username)
         else:
             user = self.user
-        req_url = (f"{self._host}Users/{user}/Items/Latest?"
-                   f"Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear")
-        try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                result = res.json() or []
-                ret_latest = []
-                for item in result:
-                    if item.get("Type") not in ["Movie", "Series"]:
-                        continue
-                    item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
-                    link = self.get_play_url(item.get("Id"))
-                    image = self.__get_local_image_by_id(item_id=item.get("Id"))
-                    ret_latest.append(schemas.MediaServerPlayItem(
-                        id=item.get("Id"),
-                        title=item.get("Name"),
-                        subtitle=item.get("ProductionYear"),
-                        type=item_type,
-                        image=image,
-                        link=link
-                    ))
-                return ret_latest
-            else:
-                logger.error(f"Users/Items/Latest 未获取到返回数据")
-        except Exception as e:
-            logger.error(f"连接Users/Items/Latest出错：" + str(e))
-        return []
+
+        user_librarys = self.get_librarys(username=user)
+        if not user_librarys:
+            return None
+
+        ret_latest = []
+        for library in user_librarys:
+            req_url = (f"{self._host}Users/{user}/Items/Latest?"
+                       f"Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear&ParentId={library.id}")
+            try:
+                res = RequestUtils().get_res(req_url)
+                if res:
+                    result = res.json() or []
+                    ret_latest = []
+                    for item in result:
+                        if item.get("Type") not in ["Movie", "Series"]:
+                            continue
+                        item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
+                        link = self.get_play_url(item.get("Id"))
+                        image = self.__get_local_image_by_id(item_id=item.get("Id"))
+                        ret_latest.append(schemas.MediaServerPlayItem(
+                            id=item.get("Id"),
+                            title=item.get("Name"),
+                            subtitle=item.get("ProductionYear"),
+                            type=item_type,
+                            image=image,
+                            link=link
+                        ))
+                else:
+                    logger.error(f"Users/Items/Latest 未获取到返回数据")
+            except Exception as e:
+                logger.error(f"连接Users/Items/Latest出错：" + str(e))
+        return ret_latest
