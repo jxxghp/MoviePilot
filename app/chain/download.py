@@ -357,12 +357,13 @@ class DownloadChain(ChainBase):
             need = list(set(_need).difference(set(_current)))
             # 清除已下载的季信息
             seas = copy.deepcopy(no_exists.get(_mid))
-            for _sea in list(seas):
-                if _sea not in need:
-                    no_exists[_mid].pop(_sea)
-                if not no_exists.get(_mid) and no_exists.get(_mid) is not None:
-                    no_exists.pop(_mid)
-                    break
+            if seas:
+                for _sea in list(seas):
+                    if _sea not in need:
+                        no_exists[_mid].pop(_sea)
+                    if not no_exists.get(_mid) and no_exists.get(_mid) is not None:
+                        no_exists.pop(_mid)
+                        break
             return need
 
         def __update_episodes(_mid: Union[int, str], _sea: int, _need: list, _current: set) -> list:
@@ -490,6 +491,9 @@ class DownloadChain(ChainBase):
                                 need_season = __update_seasons(_mid=need_mid,
                                                                _need=need_season,
                                                                _current=torrent_season)
+                                if not need_season:
+                                    # 全部下载完成
+                                    break
         # 电视剧季内的集匹配
         if no_exists:
             # TMDBID列表
