@@ -326,6 +326,8 @@ class FanartModule(_ModuleBase):
         :param mediainfo:  识别的媒体信息
         :return: 更新后的媒体信息
         """
+        if not settings.FANART_ENABLE:
+            return None
         if not mediainfo.tmdb_id and not mediainfo.tvdb_id:
             return None
         if mediainfo.type == MediaType.MOVIE:
