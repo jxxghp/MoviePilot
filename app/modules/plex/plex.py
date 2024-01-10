@@ -626,7 +626,6 @@ class Plex(metaclass=Singleton):
             ret_resume.append(schemas.MediaServerPlayItem(
                 id=item.key,
                 title=title,
-                year=item.year,
                 subtitle=subtitle,
                 type=item_type,
                 image=image,
