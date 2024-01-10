@@ -66,11 +66,3 @@ class MediaServerItem(Base):
         return db.query(MediaServerItem).filter(MediaServerItem.title == title,
                                                 MediaServerItem.item_type == mtype,
                                                 MediaServerItem.year == str(year)).first()
-
-    @staticmethod
-    @db_query
-    def list_by_type(db: Session, mtype: str = None):
-        if mtype:
-            return db.query(MediaServerItem).filter(MediaServerItem.item_type == mtype).all()
-        else:
-            return db.query(MediaServerItem).all()

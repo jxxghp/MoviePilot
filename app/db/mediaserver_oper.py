@@ -65,9 +65,3 @@ class MediaServerOper(DbOper):
         if not item:
             return None
         return str(item.item_id)
-
-    def list_by_type(self, mtype: str = None):
-        """
-        获取指定类型的媒体服务器数据
-        """
-        return MediaServerItem.list_by_type(self._db, mtype=mtype)
