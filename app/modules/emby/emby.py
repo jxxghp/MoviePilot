@@ -971,14 +971,22 @@ class Emby(metaclass=Singleton):
         else:
             user = self.user
         req_url = (f"{self._host}Users/{user}/Items/Resume?"
-                   f"Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear")
+                   f"Limit=100&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear,Path")
         try:
             res = RequestUtils().get_res(req_url)
             if res:
                 result = res.json().get("Items") or []
                 ret_resume = []
+                # 用户媒体库列表（排除黑名单）
+                user_librarys = self.get_librarys(username=user)
                 for item in result:
+                    if len(ret_resume) == num:
+                        break
                     if item.get("Type") not in ["Movie", "Episode"]:
+                        continue
+                    item_path = item.get("Path")
+                    if item_path and user_librarys and not any(
+                            library.name in item_path for library in user_librarys):
                         continue
                     item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
                     link = self.get_play_url(item.get("Id"))
@@ -1026,14 +1034,22 @@ class Emby(metaclass=Singleton):
         else:
             user = self.user
         req_url = (f"{self._host}Users/{user}/Items/Latest?"
-                   f"Limit={num}&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear")
+                   f"Limit=100&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear,Path")
         try:
             res = RequestUtils().get_res(req_url)
             if res:
                 result = res.json() or []
                 ret_latest = []
+                # 用户媒体库列表（排除黑名单）
+                user_librarys = self.get_librarys(username=user)
                 for item in result:
+                    if len(ret_latest) == num:
+                        break
                     if item.get("Type") not in ["Movie", "Series"]:
+                        continue
+                    item_path = item.get("Path")
+                    if item_path and user_librarys and not any(
+                            library.name in item_path for library in user_librarys):
                         continue
                     item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
                     link = self.get_play_url(item.get("Id"))
