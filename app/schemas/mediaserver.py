@@ -151,7 +151,6 @@ class MediaServerPlayItem(BaseModel):
     """
     id: Optional[Union[str, int]] = None
     title: Optional[str] = None
-    year: Optional[str] = None
     subtitle: Optional[str] = None
     type: Optional[str] = None
     image: Optional[str] = None

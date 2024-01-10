@@ -48,33 +48,13 @@ class MediaServerChain(ChainBase):
         """
         获取媒体服务器正在播放信息
         """
-        playing_items = self.run_module("mediaserver_playing", count=100, server=server, username=username)
-        # 判断是否在同步的媒体数据中
-        exists_items = []
-        for item in playing_items:
-            if self.dboper.exists(mtype=item.type,
-                                  title=item.title,
-                                  year=item.year):
-                exists_items.append(item)
-                if len(exists_items) == count:
-                    break
-        return exists_items
+        return self.run_module("mediaserver_playing", count=count, server=server, username=username)
 
     def latest(self, count: int = 20, server: str = None, username: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """
-        latest_items = self.run_module("mediaserver_latest", count=100, server=server, username=username)
-        # 判断是否在同步的媒体数据中
-        exists_items = []
-        for item in latest_items:
-            if self.dboper.exists(mtype=item.type,
-                                  title=item.title,
-                                  year=item.subtitle):
-                exists_items.append(item)
-                if len(exists_items) == count:
-                    break
-        return exists_items
+        return self.run_module("mediaserver_latest", count=count, server=server, username=username)
 
     def get_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
