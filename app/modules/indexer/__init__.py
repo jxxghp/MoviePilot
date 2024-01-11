@@ -43,7 +43,7 @@ class IndexerModule(_ModuleBase):
         # 确认搜索的名字
         if not keywords:
             # 浏览种子页
-            keywords = [None]
+            keywords = ['']
 
         # 开始索引
         result_array = []

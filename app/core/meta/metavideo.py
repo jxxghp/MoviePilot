@@ -270,7 +270,7 @@ class MetaVideo(MetaBase):
                 self.tokens.get_next()
             self._last_token_type = "part"
             self._continue_flag = False
-            self._stop_name_flag = False
+            # self._stop_name_flag = False
 
     def __init_year(self, token: str):
         if not self.name:
