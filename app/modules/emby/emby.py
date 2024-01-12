@@ -1076,19 +1076,9 @@ class Emby(metaclass=Singleton):
         if not self._host or not self._apikey:
             return []
         library_folders = []
-        req_url = f"{self._host}emby/Library/SelectableMediaFolders?api_key={self._apikey}"
-        try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                black_list = (settings.MEDIASERVER_SYNC_BLACKLIST or '').split(",")
-                for library in res.json() or []:
-                    if library.get("Name") in black_list:
-                        continue
-                    library_folders += [folder.get("Path") for folder in library.get("SubFolders")]
-                return library_folders
-            else:
-                logger.error(f"Library/SelectableMediaFolders 未获取到返回数据")
-                return []
-        except Exception as e:
-            logger.error(f"连接Library/SelectableMediaFolders 出错：" + str(e))
-            return []
+        black_list = (settings.MEDIASERVER_SYNC_BLACKLIST or '').split(",")
+        for library in self.get_emby_folders() or []:
+            if library.get("Name") in black_list:
+                continue
+            library_folders += [folder.get("Path") for folder in library.get("SubFolders")]
+        return library_folders

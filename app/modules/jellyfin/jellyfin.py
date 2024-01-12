@@ -45,6 +45,24 @@ class Jellyfin(metaclass=Singleton):
         self.user = self.get_user()
         self.serverid = self.get_server_id()
 
+    def get_jellyfin_folders(self) -> List[dict]:
+        """
+        获取Jellyfin媒体库路径列表
+        """
+        if not self._host or not self._apikey:
+            return []
+        req_url = "%Library/SelectableMediaFolders?api_key=%s" % (self._host, self._apikey)
+        try:
+            res = RequestUtils().get_res(req_url)
+            if res:
+                return res.json()
+            else:
+                logger.error(f"Library/SelectableMediaFolders 未获取到返回数据")
+                return []
+        except Exception as e:
+            logger.error(f"连接Library/SelectableMediaFolders 出错：" + str(e))
+            return []
+
     def __get_jellyfin_librarys(self, username: str = None) -> List[dict]:
         """
         获取Jellyfin媒体库的信息
@@ -753,19 +771,9 @@ class Jellyfin(metaclass=Singleton):
         if not self._host or not self._apikey:
             return []
         library_folders = []
-        req_url = f"{self._host}Library/SelectableMediaFolders?api_key={self._apikey}"
-        try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                black_list = (settings.MEDIASERVER_SYNC_BLACKLIST or '').split(",")
-                for library in res.json() or []:
-                    if library.get("Name") in black_list:
-                        continue
-                    library_folders += [folder.get("Path") for folder in library.get("SubFolders")]
-                return library_folders
-            else:
-                logger.error(f"Library/SelectableMediaFolders 未获取到返回数据")
-                return []
-        except Exception as e:
-            logger.error(f"连接Library/SelectableMediaFolders 出错：" + str(e))
-            return []
+        black_list = (settings.MEDIASERVER_SYNC_BLACKLIST or '').split(",")
+        for library in self.get_jellyfin_folders() or []:
+            if library.get("Name") in black_list:
+                continue
+            library_folders += [folder.get("Path") for folder in library.get("SubFolders")]
+        return library_folders
