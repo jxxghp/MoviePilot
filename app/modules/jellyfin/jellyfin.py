@@ -660,16 +660,16 @@ class Jellyfin(metaclass=Singleton):
             if res:
                 result = res.json().get("Items") or []
                 ret_resume = []
-                # 用户媒体库列表（排除黑名单）
-                user_librarys = self.get_librarys(username=user)
+                # 用户媒体库文件夹列表（排除黑名单）
+                library_folders = self.get_user_library_folders()
                 for item in result:
                     if len(ret_resume) == num:
                         break
                     if item.get("Type") not in ["Movie", "Episode"]:
                         continue
                     item_path = item.get("Path")
-                    if item_path and user_librarys and not any(
-                            library.name in item_path for library in user_librarys):
+                    if item_path and library_folders and not any(
+                            str(item_path).startswith(folder) for folder in library_folders):
                         continue
                     item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
                     link = self.get_play_url(item.get("Id"))
@@ -717,16 +717,16 @@ class Jellyfin(metaclass=Singleton):
             if res:
                 result = res.json() or []
                 ret_latest = []
-                # 用户媒体库列表（排除黑名单）
-                user_librarys = self.get_librarys(username=user)
+                # 用户媒体库文件夹列表（排除黑名单）
+                library_folders = self.get_user_library_folders()
                 for item in result:
                     if len(ret_latest) == num:
                         break
                     if item.get("Type") not in ["Movie", "Series"]:
                         continue
                     item_path = item.get("Path")
-                    if item_path and user_librarys and not any(
-                            library.name in item_path for library in user_librarys):
+                    if item_path and library_folders and not any(
+                            str(item_path).startswith(folder) for folder in library_folders):
                         continue
                     item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
                     link = self.get_play_url(item.get("Id"))
@@ -745,3 +745,27 @@ class Jellyfin(metaclass=Singleton):
         except Exception as e:
             logger.error(f"连接Users/Items/Latest出错：" + str(e))
         return []
+
+    def get_user_library_folders(self):
+        """
+        获取Emby媒体库文件夹列表（排除黑名单）
+        """
+        if not self._host or not self._apikey:
+            return []
+        library_folders = []
+        req_url = f"{self._host}Library/SelectableMediaFolders?api_key={self._apikey}"
+        try:
+            res = RequestUtils().get_res(req_url)
+            if res:
+                black_list = (settings.MEDIASERVER_SYNC_BLACKLIST or '').split(",")
+                for library in res.json() or []:
+                    if library.get("Name") in black_list:
+                        continue
+                    library_folders += [folder.get("Path") for folder in library.get("SubFolders")]
+                return library_folders
+            else:
+                logger.error(f"Library/SelectableMediaFolders 未获取到返回数据")
+                return []
+        except Exception as e:
+            logger.error(f"连接Library/SelectableMediaFolders 出错：" + str(e))
+            return []
