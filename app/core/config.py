@@ -35,8 +35,6 @@ class Settings(BaseSettings):
     CONFIG_DIR: str = None
     # 超级管理员
     SUPERUSER: str = "admin"
-    # 超级管理员初始密码
-    SUPERUSER_PASSWORD: str = "password"
     # API密钥，需要更换
     API_TOKEN: str = "moviepilot"
     # 登录页面电影海报,tmdb/bing
