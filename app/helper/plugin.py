@@ -147,5 +147,5 @@ class PluginHelper(metaclass=Singleton):
         # 插件目录下如有requirements.txt则安装依赖
         requirements_file = plugin_dir / "requirements.txt"
         if requirements_file.exists():
-            SystemUtils.execute(f"pip install -r {requirements_file}")
+            SystemUtils.execute(f"pip install -r {requirements_file} > /dev/null 2>&1")
         return True, ""
