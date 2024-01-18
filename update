@@ -84,7 +84,7 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
         echo "不使用代理更新程序"
     fi
     if [ -n "${GITHUB_TOKEN}" ]; then
-        CURL_HEADERS="--header 'Authorization: Bearer ${GITHUB_TOKEN}'"
+        CURL_HEADERS="--oauth2-bearer ${GITHUB_TOKEN}"
     else
         CURL_HEADERS=""
     fi
