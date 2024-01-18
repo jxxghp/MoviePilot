@@ -1,4 +1,5 @@
 import base64
+import re
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -59,6 +60,10 @@ def update_user(
     """
     user_info = user_in.dict()
     if user_info.get("password"):
+        # 正则表达式匹配密码包含大写字母、小写字母、数字
+        pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]+$'
+        if not re.match(pattern, user_info.get("password")):
+            return schemas.Response(success=False, message="密码需包含大写小写数字")
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
     user = User.get_by_name(db, name=user_info["name"])

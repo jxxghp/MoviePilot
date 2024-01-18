@@ -1,3 +1,6 @@
+import random
+import string
+
 from alembic.command import upgrade
 from alembic.config import Config
 
@@ -14,13 +17,24 @@ def init_db():
     """
     # 全量建表
     Base.metadata.create_all(bind=Engine)
+
+
+def init_super_user():
+    """
+    初始化超级管理员
+    """
     # 初始化超级管理员
     with SessionFactory() as db:
         _user = User.get_by_name(db=db, name=settings.SUPERUSER)
         if not _user:
+            # 定义包含数字、大小写字母的字符集合
+            characters = string.ascii_letters + string.digits
+            # 生成随机密码
+            random_password = ''.join(random.choice(characters) for _ in range(16))
+            logger.info(f"初始化超级管理员随机密码 {random_password} 请登录系统后在设定中修改。 注：该密码只会显示一次，请注意保存。")
             _user = User(
                 name=settings.SUPERUSER,
-                hashed_password=get_password_hash(settings.SUPERUSER_PASSWORD),
+                hashed_password=get_password_hash(random_password),
                 is_superuser=True,
             )
             _user.create(db)
