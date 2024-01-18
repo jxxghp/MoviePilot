@@ -13,6 +13,8 @@
 
 ## 安装
 
+### 首次安装请立即修改默认密码！如非必要不要暴露到公网。如被盗取管理账号权限，将会导致站点Cookie等敏感数据泄露！
+
 ### 1. **安装CookieCloud插件**
 
 站点信息需要通过CookieCloud同步获取，因此需要安装CookieCloud插件，将浏览器中的站点Cookie数据同步到云端后再同步到MoviePilot使用。 插件下载地址请点击 [这里](https://github.com/easychen/CookieCloud/releases)。
