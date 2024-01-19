@@ -100,8 +100,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 下载 [app.env 模板](https://github.com/jxxghp/MoviePilot/raw/main/config/app.env)，修改后放配置文件目录下，app.env 的所有配置项也可以通过环境变量进行配置。
 
-- **❗SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面，**注意：启动一次后再次修改该值不会生效，除非删除数据库文件！**
-- **❗SUPERUSER_PASSWORD：** 超级管理员初始密码，默认`password`，建议修改为复杂密码，**注意：启动一次后再次修改该值不会生效，除非删除数据库文件！**
+- **❗SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面。`初始化超级管理员密码仅会生成一次，请在日志中查看并自行登录系统修改`。**注意：启动一次后再次修改该值不会生效，除非删除数据库文件！**
 - **❗API_TOKEN：** API密钥，默认`moviepilot`，在媒体服务器Webhook、微信回调等地址配置中需要加上`?token=`该值，建议修改为复杂字符串
 - **BIG_MEMORY_MODE：** 大内存模式，默认为`false`，开启后会增加缓存数量，占用更多的内存，但响应速度会更快
 - **GITHUB_TOKEN：** Github token，提高自动更新、插件安装等请求Github Api的限流阈值，格式：ghp_****
