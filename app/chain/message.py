@@ -144,7 +144,7 @@ class MessageChain(ChainBase):
                 # 判断是否设置自动下载
                 auto_download_user = settings.AUTO_DOWNLOAD_USER
                 # 匹配到自动下载用户
-                if auto_download_user and any(userid == user for user in auto_download_user.split(",")):
+                if auto_download_user and (auto_download_user == "all" or any(userid == user for user in auto_download_user.split(","))):
                     logger.info(f"用户 {userid} 在自动下载用户中，开始自动择优下载")
                     # 自动选择下载
                     self.__auto_download(channel=channel,
