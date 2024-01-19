@@ -31,7 +31,7 @@ def init_super_user():
             characters = string.ascii_letters + string.digits
             # 生成随机密码
             random_password = ''.join(random.choice(characters) for _ in range(16))
-            logger.info(f"初始化超级管理员随机密码 {random_password} 请登录系统后在设定中修改。 注：该密码只会显示一次，请注意保存。")
+            logger.info(f"【超级管理员初始密码】{random_password} 请登录系统后在设定中修改。 注：该密码只会显示一次，请注意保存。")
             _user = User(
                 name=settings.SUPERUSER,
                 hashed_password=get_password_hash(random_password),

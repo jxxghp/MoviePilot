@@ -182,6 +182,8 @@ def start_module():
     """
     启动模块
     """
+    # 初始化超级管理员
+    init_super_user()
     # 虚拟显示
     DisplayHelper()
     # 站点管理
@@ -202,8 +204,6 @@ def start_module():
     start_frontend()
     # 检查认证状态
     check_auth()
-    # 初始化超级管理员
-    init_super_user()
 
 
 if __name__ == '__main__':
