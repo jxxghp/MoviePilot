@@ -63,7 +63,7 @@ def update_user(
         # 正则表达式匹配密码包含大写字母、小写字母、数字
         pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]+$'
         if not re.match(pattern, user_info.get("password")):
-            return schemas.Response(success=False, message="密码需包含大写小写数字")
+            return schemas.Response(success=False, message="密码需要同时包含大小写和数字")
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
     user = User.get_by_name(db, name=user_info["name"])
