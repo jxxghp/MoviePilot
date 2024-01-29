@@ -425,7 +425,7 @@ class SearchChain(ChainBase):
                     size = movie_size
                 # 大小范围
                 begin_size, end_size = __get_size_range(size)
-                if begin_size and end_size:
+                if begin_size is not None and end_size is not None:
                     meta = MetaInfo(title=t.title, subtitle=t.description)
                     # 集数
                     if mediainfo.type == MediaType.TV:
