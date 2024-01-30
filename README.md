@@ -54,7 +54,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
   1) 将工程 [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins) plugins目录下的所有文件复制到`app/plugins`目录
   2) 将工程 [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources) resources目录下的所有文件复制到`app/helper`目录
   3) 执行命令：`pip install -r requirements.txt` 安装依赖
-  4) 执行命令：`python app/main.py` 启动服务
+  4) 执行命令：`PYTHONPATH=. python app/main.py` 启动服务
   5) 根据前端项目 [MoviePilot-Frontend](https://github.com/jxxghp/MoviePilot-Frontend) 说明，启动前端服务
 
 ## 配置
