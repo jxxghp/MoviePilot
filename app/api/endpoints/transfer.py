@@ -56,16 +56,20 @@ def manual_transfer(path: str = None,
             return schemas.Response(success=False, message=f"历史记录不存在，ID：{logid}")
         # 强制转移
         force = True
-        # 源路径
-        in_path = Path(history.src)
-        # 目的路径
-        if history.dest and str(history.dest) != "None":
-            # 删除旧的已整理文件
-            transfer.delete_files(Path(history.dest))
-            if not target:
-                target = transfer.get_root_path(path=history.dest,
-                                                type_name=history.type,
-                                                category=history.category)
+        if history.status:
+            # 重新整理成功的转移，则使用成功的 dest 做 in_path
+            in_path = Path(history.dest)
+        else:
+            # 源路径
+            in_path = Path(history.src)
+            # 目的路径
+            if history.dest and str(history.dest) != "None":
+                # 删除旧的已整理文件
+                transfer.delete_files(Path(history.dest))
+                if not target:
+                    target = transfer.get_root_path(path=history.dest,
+                                                    type_name=history.type,
+                                                    category=history.category)
     elif path:
         in_path = Path(path)
     else:
