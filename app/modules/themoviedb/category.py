@@ -18,6 +18,12 @@ class CategoryHelper(metaclass=Singleton):
 
     def __init__(self):
         self._category_path: Path = settings.CONFIG_PATH / "category.yaml"
+        self.init()
+
+    def init(self):
+        """
+        初始化
+        """
         # 二级分类策略关闭
         if not settings.LIBRARY_CATEGORY:
             return
