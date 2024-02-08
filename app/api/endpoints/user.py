@@ -60,10 +60,10 @@ def update_user(
     """
     user_info = user_in.dict()
     if user_info.get("password"):
-        # 正则表达式匹配密码包含大写字母、小写字母、数字
-        pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]+$'
+        # 正则表达式匹配密码包含字母、数字、特殊字符中的至少两项
+        pattern = r'^(?![a-zA-Z]+$)(?!\d+$)(?![^\da-zA-Z\s]+$).{6,50}$'
         if not re.match(pattern, user_info.get("password")):
-            return schemas.Response(success=False, message="密码需要同时包含大小写和数字")
+            return schemas.Response(success=False, message="密码需要同时包含字母、数字、特殊字符中的至少两项，且长度大于6位")
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
     user = User.get_by_name(db, name=user_info["name"])
