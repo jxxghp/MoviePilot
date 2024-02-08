@@ -37,7 +37,7 @@ def manual_transfer(path: str = None,
     :param type_name: 媒体类型、电影/电视剧
     :param tmdbid: tmdbid
     :param season: 剧集季号
-    :param transfer_type: 转移类型，move/copy
+    :param transfer_type: 转移类型，move/copy 等
     :param episode_format: 剧集识别格式
     :param episode_detail: 剧集识别详细信息
     :param episode_part: 剧集识别分集信息
@@ -56,16 +56,20 @@ def manual_transfer(path: str = None,
             return schemas.Response(success=False, message=f"历史记录不存在，ID：{logid}")
         # 强制转移
         force = True
-        # 源路径
-        in_path = Path(history.src)
-        # 目的路径
-        if history.dest and str(history.dest) != "None":
-            # 删除旧的已整理文件
-            transfer.delete_files(Path(history.dest))
-            if not target:
-                target = transfer.get_root_path(path=history.dest,
-                                                type_name=history.type,
-                                                category=history.category)
+        if history.status and ("move" in history.mode):
+            # 重新整理成功的转移，则使用成功的 dest 做 in_path
+            in_path = Path(history.dest)
+        else:
+            # 源路径
+            in_path = Path(history.src)
+            # 目的路径
+            if history.dest and str(history.dest) != "None":
+                # 删除旧的已整理文件
+                transfer.delete_files(Path(history.dest))
+                if not target:
+                    target = transfer.get_root_path(path=history.dest,
+                                                    type_name=history.type,
+                                                    category=history.category)
     elif path:
         in_path = Path(path)
     else:
