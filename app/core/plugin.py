@@ -137,7 +137,11 @@ class PluginManager(metaclass=Singleton):
         """
         if not self._plugins.get(pid):
             return {}
-        return self.systemconfig.get(self._config_key % pid) or {}
+        conf = self.systemconfig.get(self._config_key % pid)
+        if conf:
+            # 去掉空Key
+            return {k: v for k, v in conf.items() if k}
+        return {}
 
     def save_plugin_config(self, pid: str, conf: dict) -> bool:
         """
