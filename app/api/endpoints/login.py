@@ -40,11 +40,11 @@ async def login_access_token(
             logger.warn(f"用户 {form_data.username} 登录失败！")
             raise HTTPException(status_code=401, detail="用户名或密码不正确")
         else:
-            logger.info(f"用户 {form_data.username} 辅助认证成功，用户信息: {token}")
+            logger.info(f"用户 {form_data.username} 辅助认证成功，用户信息: {token}，以普通用户登录...")
             # 加入用户信息表
             user = User.get_by_name(db=db, name=form_data.username)
             if not user:
-                logger.info(f"用户不存在，创建普通用户: {form_data.username}")
+                logger.info(f"用户不存在，创建用户: {form_data.username}")
                 user = User(name=form_data.username, is_active=True,
                             is_superuser=False, hashed_password=get_password_hash(token))
                 user.create(db)
