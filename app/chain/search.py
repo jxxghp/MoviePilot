@@ -1,5 +1,6 @@
 import pickle
 import re
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, Tuple
@@ -74,7 +75,7 @@ class SearchChain(ChainBase):
         try:
             return pickle.loads(results)
         except Exception as e:
-            print(str(e))
+            logger.error(f'加载搜索结果失败：{str(e)} - {traceback.format_exc()}')
             return []
 
     def process(self, mediainfo: MediaInfo,
@@ -380,7 +381,7 @@ class SearchChain(ChainBase):
                 elif len(size_range) == 2:
                     return float(size_range[0]), float(size_range[1])
             except Exception as e:
-                print(str(e))
+                logger.error(f"解析大小范围失败：{str(e)} - {traceback.format_exc()}")
             return 0, 0
 
         def __filter_torrent(t: TorrentInfo) -> bool:

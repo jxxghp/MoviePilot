@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 import importlib
 import pkgutil
+import traceback
 from pathlib import Path
+
+from app.log import logger
 
 
 class ModuleHelper:
@@ -33,7 +36,7 @@ class ModuleHelper:
                     if isinstance(obj, type) and filter_func(name, obj):
                         submodules.append(obj)
             except Exception as err:
-                print(f'加载模块 {package_name} 失败：{err}')
+                logger.error(f'加载模块 {package_name} 失败：{str(err)} - {traceback.format_exc()}')
 
         return submodules
 

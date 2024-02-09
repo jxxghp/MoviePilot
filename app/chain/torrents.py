@@ -1,4 +1,5 @@
 import re
+import traceback
 from typing import Dict, List, Union
 
 from cachetools import cached, TTLCache
@@ -246,5 +247,5 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                 self.post_message(
                     Notification(mtype=NotificationType.SiteMessage, title=f"站点 {domain} RSS链接已过期"))
         except Exception as e:
-            print(str(e))
+            logger.error(f"站点 {domain} RSS链接自动获取失败：{str(e)} - {traceback.format_exc()}")
             self.post_message(Notification(mtype=NotificationType.SiteMessage, title=f"站点 {domain} RSS链接已过期"))

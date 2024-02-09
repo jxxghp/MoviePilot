@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import os
+import traceback
 from datetime import datetime, timedelta
 from typing import Any, Union, Optional
 import jwt
@@ -15,6 +16,8 @@ from passlib.context import CryptContext
 from app import schemas
 from app.core.config import settings
 from cryptography.fernet import Fernet
+
+from app.log import logger
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ALGORITHM = "HS256"
@@ -112,7 +115,7 @@ def decrypt(data: bytes, key: bytes) -> Optional[bytes]:
     try:
         return fernet.decrypt(data)
     except Exception as e:
-        print(str(e))
+        logger.error(f"解密失败：{str(e)} - {traceback.format_exc()}")
         return None
 
 

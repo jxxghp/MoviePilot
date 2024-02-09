@@ -1,11 +1,13 @@
 import json
 import shutil
+import traceback
 from pathlib import Path
 from typing import Dict, Tuple, Optional, List
 
 from cachetools import TTLCache, cached
 
 from app.core.config import settings
+from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.system import SystemUtils
@@ -51,7 +53,7 @@ class PluginHelper(metaclass=Singleton):
         try:
             user, repo = repo_url.split("/")[-4:-2]
         except Exception as e:
-            print(str(e))
+            logger.error(f"解析Github仓库地址失败：{str(e)} - {traceback.format_exc()}")
             return None, None
         return user, repo
 

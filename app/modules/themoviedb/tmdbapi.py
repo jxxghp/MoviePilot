@@ -213,8 +213,7 @@ class TmdbHelper:
             logger.error(f"连接TMDB出错：{str(err)}")
             return None
         except Exception as e:
-            logger.error(f"连接TMDB出错：{str(e)}")
-            print(traceback.print_exc())
+            logger.error(f"连接TMDB出错：{str(e)} - {traceback.format_exc()}")
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
         if len(movies) == 0:
@@ -261,8 +260,7 @@ class TmdbHelper:
             logger.error(f"连接TMDB出错：{str(err)}")
             return None
         except Exception as e:
-            logger.error(f"连接TMDB出错：{str(e)}")
-            print(traceback.print_exc())
+            logger.error(f"连接TMDB出错：{str(e)} - {traceback.format_exc()}")
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
         if len(tvs) == 0:
@@ -313,7 +311,7 @@ class TmdbHelper:
                             return True
             except Exception as e1:
                 logger.error(f"连接TMDB出错：{e1}")
-                print(traceback.print_exc())
+                print(traceback.format_exc())
                 return False
             return False
 
@@ -324,7 +322,7 @@ class TmdbHelper:
             return None
         except Exception as e:
             logger.error(f"连接TMDB出错：{str(e)}")
-            print(traceback.print_exc())
+            print(traceback.format_exc())
             return None
 
         if len(tvs) == 0:
@@ -404,7 +402,7 @@ class TmdbHelper:
             return None
         except Exception as e:
             logger.error(f"连接TMDB出错：{str(e)}")
-            print(traceback.print_exc())
+            print(traceback.format_exc())
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
         # 返回结果

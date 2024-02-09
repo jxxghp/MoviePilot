@@ -1,6 +1,7 @@
 import copy
 import datetime
 import re
+import traceback
 from typing import List
 from urllib.parse import quote, urlencode
 
@@ -608,8 +609,8 @@ class TorrentSpider:
         for filter_item in filters:
             if not text:
                 break
+            method_name = filter_item.get("name")
             try:
-                method_name = filter_item.get("name")
                 args = filter_item.get("args")
                 if method_name == "re_search" and isinstance(args, list):
                     text = re.search(r"%s" % args[0], text).group(args[-1])
@@ -624,7 +625,7 @@ class TorrentSpider:
                 elif method_name == "appendleft":
                     text = f"{args}{text}"
             except Exception as err:
-                print(str(err))
+                logger.debug(f'过滤器 {method_name} 处理失败：{str(err)} - {traceback.format_exc()}')
         return text.strip()
 
     @staticmethod

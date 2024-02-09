@@ -1,9 +1,11 @@
+import traceback
 from typing import List, Tuple
 
 import cn2an
 import regex as re
 
 from app.db.systemconfig_oper import SystemConfigOper
+from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.singleton import Singleton
 
@@ -62,7 +64,7 @@ class WordsMatcher(metaclass=Singleton):
                     appley_words.append(word)
 
             except Exception as err:
-                print(str(err))
+                logger.error(f"自定义识别词预处理标题失败：{str(err)} - {traceback.format_exc()}")
 
         return title, appley_words
 
@@ -77,7 +79,7 @@ class WordsMatcher(metaclass=Singleton):
             else:
                 return re.sub(r'%s' % replaced, r'%s' % replace, title), "", True
         except Exception as err:
-            print(str(err))
+            logger.error(f"自定义识别词正则替换失败：{str(err)} - {traceback.format_exc()}")
             return title, str(err), False
 
     @staticmethod
@@ -129,5 +131,5 @@ class WordsMatcher(metaclass=Singleton):
                 title = re.sub(episode_offset_re, r'%s' % episode_num[1], title)
             return title, "", True
         except Exception as err:
-            print(str(err))
+            logger.error(f"自定义识别词集数偏移失败：{str(err)} - {traceback.format_exc()}")
             return title, str(err), False

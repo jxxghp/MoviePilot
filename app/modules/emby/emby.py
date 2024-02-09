@@ -1,5 +1,6 @@
 import json
 import re
+import traceback
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Generator, Tuple
 
@@ -535,7 +536,7 @@ class Emby(metaclass=Singleton):
                     if item_path.is_relative_to(subfolder_path):
                         return folder.get("Id")
                 except Exception as err:
-                    print(str(err))
+                    logger.debug(f"匹配子目录出错：{err} - {traceback.format_exc()}")
         # 如果找不到，只要路径中有分类目录名就命中
         for folder in self.folders:
             for subfolder in folder.get("SubFolders"):

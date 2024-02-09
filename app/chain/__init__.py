@@ -108,7 +108,7 @@ class ChainBase(metaclass=ABCMeta):
                     break
             except Exception as err:
                 logger.error(
-                    f"运行模块 {method} 出错：{module.__class__.__name__} - {str(err)}\n{traceback.print_exc()}")
+                    f"运行模块 {method} 出错：{module.__class__.__name__} - {str(err)}\n{traceback.format_exc()}")
         return result
 
     def recognize_media(self, meta: MetaBase = None,

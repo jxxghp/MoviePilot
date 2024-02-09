@@ -1,12 +1,14 @@
 import pickle
 import random
 import time
+import traceback
 from pathlib import Path
 from threading import RLock
 from typing import Optional
 
 from app.core.config import settings
 from app.core.meta import MetaBase
+from app.log import logger
 from app.utils.singleton import Singleton
 from app.schemas.types import MediaType
 
@@ -118,7 +120,7 @@ class TmdbCache(metaclass=Singleton):
                 return data
             return {}
         except Exception as e:
-            print(str(e))
+            logger.error(f'加载缓存失败：{str(e)} - {traceback.format_exc()}')
             return {}
 
     def update(self, meta: MetaBase, info: dict) -> None:

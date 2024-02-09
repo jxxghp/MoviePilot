@@ -315,8 +315,7 @@ class Command(metaclass=Singleton):
                 else:
                     logger.info(f"{command.get('description')} 执行完成")
             except Exception as err:
-                logger.error(f"执行命令 {cmd} 出错：{str(err)}")
-                traceback.print_exc()
+                logger.error(f"执行命令 {cmd} 出错：{str(err)} - {traceback.format_exc()}")
 
     @staticmethod
     def send_plugin_event(etype: EventType, data: dict) -> None:

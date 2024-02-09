@@ -1,9 +1,11 @@
+import traceback
 from dataclasses import dataclass, asdict
 from typing import Union, Optional, List, Self
 
 import cn2an
 import regex as re
 
+from app.log import logger
 from app.utils.string import StringUtils
 from app.schemas.types import MediaType
 
@@ -127,7 +129,7 @@ class MetaBase(object):
                     else:
                         begin_season = int(cn2an.cn2an(seasons, mode='smart'))
                 except Exception as err:
-                    print(str(err))
+                    logger.debug(f'识别季失败：{str(err)} - {traceback.format_exc()}')
                     return
                 if self.begin_season is None and isinstance(begin_season, int):
                     self.begin_season = begin_season
@@ -158,7 +160,7 @@ class MetaBase(object):
                     else:
                         begin_episode = int(cn2an.cn2an(episodes, mode='smart'))
                 except Exception as err:
-                    print(str(err))
+                    logger.debug(f'识别集失败：{str(err)} - {traceback.format_exc()}')
                     return
                 if self.begin_episode is None and isinstance(begin_episode, int):
                     self.begin_episode = begin_episode
@@ -181,7 +183,7 @@ class MetaBase(object):
                     try:
                         self.total_episode = int(cn2an.cn2an(episode_all.strip(), mode='smart'))
                     except Exception as err:
-                        print(str(err))
+                        logger.debug(f'识别集失败：{str(err)} - {traceback.format_exc()}')
                         return
                     self.begin_episode = None
                     self.end_episode = None
@@ -197,7 +199,7 @@ class MetaBase(object):
                     try:
                         self.total_season = int(cn2an.cn2an(season_all.strip(), mode='smart'))
                     except Exception as err:
-                        print(str(err))
+                        logger.debug(f'识别季失败：{str(err)} - {traceback.format_exc()}')
                         return
                     self.begin_season = 1
                     self.end_season = self.total_season

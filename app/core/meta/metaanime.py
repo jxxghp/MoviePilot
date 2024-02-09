@@ -1,9 +1,12 @@
 import re
+import traceback
+
 import zhconv
 import anitopy
 from app.core.meta.customization import CustomizationMatcher
 from app.core.meta.metabase import MetaBase
 from app.core.meta.releasegroup import ReleaseGroupsMatcher
+from app.log import logger
 from app.utils.string import StringUtils
 from app.schemas.types import MediaType
 
@@ -117,7 +120,7 @@ class MetaAnime(MetaBase):
                         else:
                             self.total_episode = 1
                     except Exception as err:
-                        print(str(err))
+                        logger.debug(f"解析集数失败：{str(err)} - {traceback.format_exc()}")
                         self.begin_episode = None
                         self.end_episode = None
                     self.type = MediaType.TV
@@ -162,7 +165,7 @@ class MetaAnime(MetaBase):
             if not self.type:
                 self.type = MediaType.TV
         except Exception as e:
-            print(str(e))
+            logger.error(f"解析动漫信息失败：{str(e)} - {traceback.format_exc()}")
 
     @staticmethod
     def __prepare_title(title: str):
