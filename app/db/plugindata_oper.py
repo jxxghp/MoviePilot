@@ -28,18 +28,21 @@ class PluginDataOper(DbOper):
         else:
             PluginData(plugin_id=plugin_id, key=key, value=value).create(self._db)
 
-    def get_data(self, plugin_id: str, key: str) -> Any:
+    def get_data(self, plugin_id: str, key: str = None) -> Any:
         """
         获取插件数据
         :param plugin_id: 插件id
         :param key: 数据key
         """
-        data = PluginData.get_plugin_data_by_key(self._db, plugin_id, key)
-        if not data:
-            return None
-        if ObjectUtils.is_obj(data.value):
-            return json.loads(data.value)
-        return data.value
+        if key:
+            data = PluginData.get_plugin_data_by_key(self._db, plugin_id, key)
+            if not data:
+                return None
+            if ObjectUtils.is_obj(data.value):
+                return json.loads(data.value)
+            return data.value
+        else:
+            return PluginData.get_plugin_data(self._db, plugin_id)
 
     def del_data(self, plugin_id: str, key: str) -> Any:
         """

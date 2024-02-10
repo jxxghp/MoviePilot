@@ -166,7 +166,7 @@ class _PluginBase(metaclass=ABCMeta):
             plugin_id = self.__class__.__name__
         self.plugindata.save(plugin_id, key, value)
 
-    def get_data(self, key: str, plugin_id: str = None) -> Any:
+    def get_data(self, key: str = None, plugin_id: str = None) -> Any:
         """
         获取插件数据
         :param key: 数据key
