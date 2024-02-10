@@ -552,6 +552,20 @@ class FileTransferModule(_ModuleBase):
         :param file_ext: 文件扩展名
         :param episodes_info: 当前季的全部集信息
         """
+
+        def __convert_invalid_characters(filename: str):
+            if not filename:
+                return filename
+            invalid_characters = r'\/:*?"<>|'
+            # 创建半角到全角字符的转换表
+            halfwidth_chars = "".join([chr(i) for i in range(33, 127)])
+            fullwidth_chars = "".join([chr(i + 0xFEE0) for i in range(33, 127)])
+            translation_table = str.maketrans(halfwidth_chars, fullwidth_chars)
+            # 将不支持的字符替换为对应的全角字符
+            for char in invalid_characters:
+                filename = filename.replace(char, char.translate(translation_table))
+            return filename
+
         # 获取集标题
         episode_title = None
         if meta.begin_episode and episodes_info:
@@ -562,9 +576,9 @@ class FileTransferModule(_ModuleBase):
 
         return {
             # 标题
-            "title": mediainfo.title,
+            "title": __convert_invalid_characters(mediainfo.title),
             # 原语种标题
-            "original_title": mediainfo.original_title,
+            "original_title": __convert_invalid_characters(mediainfo.original_title),
             # 原文件名
             "original_name": f"{meta.org_string}{file_ext}",
             # 识别名称（优先使用中文）
