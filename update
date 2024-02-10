@@ -38,6 +38,8 @@ install_backend_and_download_resources() {
                             # 备份插件目录
                             rm -rf /plugins
                             mv /app/app/plugins /plugins
+                            # 不备份__init__.py
+                            rm -f /plugins/__init__.py
                             # 清空目录
                             rm -rf /app
                             # 后端程序
