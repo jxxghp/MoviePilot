@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List, Any
 
 from fastapi import APIRouter, Depends
@@ -6,7 +7,7 @@ from app import schemas
 from app.chain.media import MediaChain
 from app.core.config import settings
 from app.core.context import Context
-from app.core.metainfo import MetaInfo
+from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.core.security import verify_token, verify_uri_token
 from app.schemas import MediaType
 
@@ -74,6 +75,28 @@ def search_by_title(title: str,
     if medias:
         return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
     return []
+
+
+@router.get("/scrape", summary="刮削媒体信息", response_model=schemas.Response)
+def scrape(path: str,
+           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    刮削媒体信息
+    """
+    if not path:
+        return schemas.Response(success=False, message="刮削路径无效")
+    scrape_path = Path(path)
+    if not scrape_path.exists():
+        return schemas.Response(success=False, message="刮削路径不存在")
+    # 识别
+    chain = MediaChain()
+    meta = MetaInfoPath(scrape_path)
+    mediainfo = chain.recognize_media(meta)
+    if not media_info:
+        return schemas.Response(success=False, message="刮削失败，无法识别媒体信息")
+    # 刮削
+    chain.scrape_metadata(path=scrape_path, mediainfo=mediainfo, transfer_type=settings.TRANSFER_TYPE)
+    return schemas.Response(success=True, message="刮削完成")
 
 
 @router.get("/{mediaid}", summary="查询媒体详情", response_model=schemas.MediaInfo)
