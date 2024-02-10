@@ -57,12 +57,14 @@ class TorrentSpider:
     fields: dict = {}
     # 页码
     page: int = 0
-    # 搜索条数
+    # 搜索条数, 默认: 100条
     result_num: int = 100
     # 单个种子信息
     torrents_info: dict = {}
     # 种子列表
     torrents_info_array: list = []
+    # 搜索超时, 默认: 30秒
+    _timeout = 30
 
     def __init__(self,
                  indexer: CommentedMap,
@@ -92,6 +94,8 @@ class TorrentSpider:
         self.fields = indexer.get('torrents').get('fields')
         self.render = indexer.get('render')
         self.domain = indexer.get('domain')
+        self.result_num = int(indexer.get('result_num') or 100)
+        self._timeout = int(indexer.get('timeout') or 30)
         self.page = page
         if self.domain and not str(self.domain).endswith("/"):
             self.domain = self.domain + "/"
@@ -234,14 +238,15 @@ class TorrentSpider:
                 url=searchurl,
                 cookies=self.cookie,
                 ua=self.ua,
-                proxies=self.proxy_server
+                proxies=self.proxy_server,
+                timeout=self._timeout
             )
         else:
             # requests请求
             ret = RequestUtils(
                 ua=self.ua,
                 cookies=self.cookie,
-                timeout=30,
+                timeout=self._timeout,
                 referer=self.referer,
                 proxies=self.proxies
             ).get_res(searchurl, allow_redirects=True)

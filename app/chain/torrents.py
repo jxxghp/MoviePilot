@@ -99,7 +99,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         if not site.get("rss"):
             logger.error(f'站点 {domain} 未配置RSS地址！')
             return []
-        rss_items = self.rsshelper.parse(site.get("rss"), True if site.get("proxy") else False)
+        rss_items = self.rsshelper.parse(site.get("rss"), True if site.get("proxy") else False, timeout=int(site.get("timeout") or 30))
         if rss_items is None:
             # rss过期，尝试保留原配置生成新的rss
             self.__renew_rss_url(domain=domain, site=site)
