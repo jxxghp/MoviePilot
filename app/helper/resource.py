@@ -34,7 +34,11 @@ class ResourceHelper(metaclass=Singleton):
         logger.info("开始检测资源包版本...")
         res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS, timeout=10).get_res(self._repo)
         if res:
-            resource_info = json.loads(res.text)
+            try:
+                resource_info = json.loads(res.text)
+            except json.JSONDecodeError:
+                logger.error("资源包仓库数据解析失败！")
+                return
         else:
             logger.warn("无法连接资源包仓库！")
             return

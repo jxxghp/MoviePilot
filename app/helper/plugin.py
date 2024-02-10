@@ -35,7 +35,11 @@ class PluginHelper(metaclass=Singleton):
         res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS,
                            timeout=10).get_res(f"{raw_url}package.json")
         if res:
-            return json.loads(res.text)
+            try:
+                return json.loads(res.text)
+            except json.JSONDecodeError:
+                logger.error(f"插件包数据解析失败：{res.text}")
+                return {}
         return {}
 
     @staticmethod
