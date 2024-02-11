@@ -71,11 +71,11 @@ class SubscribeChain(ChainBase):
                 if tmdbinfo:
                     mediainfo = MediaInfo(tmdb_info=tmdbinfo)
             else:
-                # 识别TMDB信息
-                mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid)
+                # 识别TMDB信息，不使用缓存
+                mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid, cache=False)
         else:
-            # 豆瓣识别模式
-            mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, doubanid=doubanid)
+            # 豆瓣识别模式，不使用缓存
+            mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, doubanid=doubanid, cache=False)
             if mediainfo:
                 # 豆瓣标题处理
                 meta = MetaInfo(mediainfo.title)
@@ -96,7 +96,8 @@ class SubscribeChain(ChainBase):
                     # 补充媒体信息
                     mediainfo = self.recognize_media(mtype=mediainfo.type,
                                                      tmdbid=mediainfo.tmdb_id,
-                                                     doubanid=mediainfo.douban_id)
+                                                     doubanid=mediainfo.douban_id,
+                                                     cache=False)
                     if not mediainfo:
                         logger.error(f"媒体信息识别失败！")
                         return None, "媒体信息识别失败"
@@ -197,7 +198,8 @@ class SubscribeChain(ChainBase):
             # 识别媒体信息
             mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
                                                         tmdbid=subscribe.tmdbid,
-                                                        doubanid=subscribe.doubanid)
+                                                        doubanid=subscribe.doubanid,
+                                                        cache=False)
             if not mediainfo:
                 logger.warn(
                     f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
@@ -523,7 +525,8 @@ class SubscribeChain(ChainBase):
             # 识别媒体信息
             mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
                                                         tmdbid=subscribe.tmdbid,
-                                                        doubanid=subscribe.doubanid)
+                                                        doubanid=subscribe.doubanid,
+                                                        cache=False)
             if not mediainfo:
                 logger.warn(
                     f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
@@ -709,7 +712,9 @@ class SubscribeChain(ChainBase):
             meta.type = MediaType(subscribe.type)
             # 识别媒体信息
             mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
-                                                        tmdbid=subscribe.tmdbid, doubanid=subscribe.doubanid)
+                                                        tmdbid=subscribe.tmdbid,
+                                                        doubanid=subscribe.doubanid,
+                                                        cache=False)
             if not mediainfo:
                 logger.warn(
                     f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')

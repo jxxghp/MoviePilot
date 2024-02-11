@@ -35,12 +35,14 @@ class DoubanModule(_ModuleBase):
     def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
                         doubanid: str = None,
+                        cache: bool = True,
                         **kwargs) -> Optional[MediaInfo]:
         """
         识别媒体信息
         :param meta:     识别的元数据
         :param mtype:    识别的媒体类型，与doubanid配套
         :param doubanid: 豆瓣ID
+        :param cache:    是否使用缓存
         :return: 识别的媒体信息，包括剧集信息
         """
         if settings.RECOGNIZE_SOURCE != "douban":
@@ -48,11 +50,17 @@ class DoubanModule(_ModuleBase):
 
         if not meta:
             cache_info = {}
+        elif not meta.name:
+            logger.error("识别媒体信息时未提供元数据名称")
+            return None
         else:
             if mtype:
                 meta.type = mtype
+            if doubanid:
+                meta.doubanid = doubanid
+            # 读取缓存
             cache_info = self.cache.get(meta)
-        if not cache_info:
+        if not cache_info or not cache:
             # 缓存没有或者强制不使用缓存
             if doubanid:
                 # 直接查询详情
@@ -80,7 +88,7 @@ class DoubanModule(_ModuleBase):
                 logger.error("识别媒体信息时未提供元数据或豆瓣ID")
                 return None
             # 保存到缓存
-            if meta:
+            if meta and cache:
                 self.cache.update(meta, info)
         else:
             # 使用缓存信息

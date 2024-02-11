@@ -114,13 +114,15 @@ class ChainBase(metaclass=ABCMeta):
     def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
                         tmdbid: int = None,
-                        doubanid: str = None) -> Optional[MediaInfo]:
+                        doubanid: str = None,
+                        cache: bool = True) -> Optional[MediaInfo]:
         """
         识别媒体信息
         :param meta:     识别的元数据
         :param mtype:    识别的媒体类型，与tmdbid配套
         :param tmdbid:   tmdbid
         :param doubanid: 豆瓣ID
+        :param cache:    是否使用缓存
         :return: 识别的媒体信息，包括剧集信息
         """
         # 识别用名中含指定信息情形
@@ -131,7 +133,7 @@ class ChainBase(metaclass=ABCMeta):
         if not doubanid and hasattr(meta, "doubanid"):
             doubanid = meta.doubanid
         return self.run_module("recognize_media", meta=meta, mtype=mtype,
-                               tmdbid=tmdbid, doubanid=doubanid)
+                               tmdbid=tmdbid, doubanid=doubanid, cache=cache)
 
     def match_doubaninfo(self, name: str, imdbid: str = None,
                          mtype: MediaType = None, year: str = None, season: int = None) -> Optional[dict]:
