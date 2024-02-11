@@ -37,22 +37,25 @@ install_backend_and_download_resources() {
                             echo "前端程序下载成功"
                             # 备份插件目录
                             rm -rf /plugins
-                            mv /app/app/plugins /plugins
+                            mkdir -p /plugins
+                            cp -a /app/app/plugins/* /plugins/
                             # 不备份__init__.py
                             rm -f /plugins/__init__.py
                             # 清空目录
                             rm -rf /app
+                            mkdir -p /app
                             # 后端程序
-                            mv /tmp/App /app
+                            cp -a /tmp/App/* /app/
                             # 恢复插件目录
-                            mv -f /plugins/* /app/app/plugins/
+                            cp -a /plugins/* /app/app/plugins/
                             # 插件仓库
                             rsync -av --remove-source-files /tmp/Plugins/plugins/* /app/app/plugins/
                             # 资源包
-                            mv -f /tmp/Resources/resources/* /app/app/helper/
+                            cp -a /tmp/Resources/resources/* /app/app/helper/
                             # 前端程序
                             rm -rf /public
-                            mv /tmp/dist /public
+                            mkdir -p /public
+                            cp -a /tmp/dist/* /public/
                             # 清理临时目录
                             rm -rf /tmp/*
                             echo "程序更新成功，前端版本：${frontend_version}，后端版本：${1}"
