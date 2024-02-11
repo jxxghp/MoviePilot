@@ -20,7 +20,7 @@ class PluginHelper(metaclass=Singleton):
 
     _base_url = "https://raw.githubusercontent.com/%s/%s/main/"
 
-    @cached(cache=TTLCache(maxsize=10, ttl=1800))
+    @cached(cache=TTLCache(maxsize=100, ttl=1800))
     def get_plugins(self, repo_url: str) -> Dict[str, dict]:
         """
         获取Github所有最新插件列表
