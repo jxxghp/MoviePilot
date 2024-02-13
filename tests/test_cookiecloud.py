@@ -2,7 +2,7 @@
 
 from unittest import TestCase
 
-from app.chain.cookiecloud import CookieCloudChain
+from app.chain.site import SiteChain
 
 
 class CookieCloudTest(TestCase):
@@ -13,5 +13,5 @@ class CookieCloudTest(TestCase):
         pass
 
     def test_cookiecloud(self):
-        result = CookieCloudChain().process()
+        result = SiteChain().sync_cookies()
         self.assertTrue(result[0])

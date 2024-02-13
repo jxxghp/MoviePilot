@@ -9,8 +9,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app import schemas
 from app.chain import ChainBase
-from app.chain.cookiecloud import CookieCloudChain
 from app.chain.mediaserver import MediaServerChain
+from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
@@ -56,7 +56,7 @@ class Scheduler(metaclass=Singleton):
         # 各服务的运行状态
         self._jobs = {
             "cookiecloud": {
-                "func": CookieCloudChain().process,
+                "func": SiteChain().sync_cookies,
                 "running": False,
             },
             "mediaserver_sync": {
