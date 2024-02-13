@@ -54,6 +54,10 @@ def add_site(
     site_in.id = None
     site = Site(**site_in.dict())
     site.create(db)
+    # 通知缓存站点图标
+    EventManager().send_event(EventType.CacheSiteIcon, {
+        "domain": domain
+    })
     return schemas.Response(success=True)
 
 
@@ -71,6 +75,10 @@ def update_site(
     if not site:
         return schemas.Response(success=False, message="站点不存在")
     site.update(db, site_in.dict())
+    # 通知缓存站点图标
+    EventManager().send_event(EventType.CacheSiteIcon, {
+        "domain": site_in.domain
+    })
     return schemas.Response(success=True)
 
 

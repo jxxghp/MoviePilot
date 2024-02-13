@@ -1,20 +1,17 @@
-import base64
-from typing import Tuple, Optional
-from urllib.parse import urljoin
-
-from lxml import etree
+from typing import Tuple
 
 from app.chain import ChainBase
 from app.chain.site import SiteChain
 from app.core.config import settings
+from app.core.event import EventManager
 from app.db.site_oper import SiteOper
-from app.db.siteicon_oper import SiteIconOper
 from app.helper.cloudflare import under_challenge
 from app.helper.cookiecloud import CookieCloudHelper
 from app.helper.message import MessageHelper
 from app.helper.rss import RssHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
+from app.schemas.types import EventType
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
 
@@ -27,7 +24,6 @@ class CookieCloudChain(ChainBase):
     def __init__(self):
         super().__init__()
         self.siteoper = SiteOper()
-        self.siteiconoper = SiteIconOper()
         self.siteshelper = SitesHelper()
         self.rsshelper = RssHelper()
         self.sitechain = SiteChain()
@@ -123,22 +119,11 @@ class CookieCloudChain(ChainBase):
                                   public=1 if indexer.get("public") else 0)
                 _add_count += 1
 
-            # 保存站点图标
+            # 通知缓存站点图标
             if indexer:
-                site_icon = self.siteiconoper.get_by_domain(domain)
-                if not site_icon or not site_icon.base64:
-                    logger.info(f"开始缓存站点 {indexer.get('name')} 图标 ...")
-                    icon_url, icon_base64 = self.__parse_favicon(url=indexer.get("domain"),
-                                                                 cookie=cookie,
-                                                                 ua=settings.USER_AGENT)
-                    if icon_url:
-                        self.siteiconoper.update_icon(name=indexer.get("name"),
-                                                      domain=domain,
-                                                      icon_url=icon_url,
-                                                      icon_base64=icon_base64)
-                        logger.info(f"缓存站点 {indexer.get('name')} 图标成功")
-                    else:
-                        logger.warn(f"缓存站点 {indexer.get('name')} 图标失败")
+                EventManager().send_event(EventType.CacheSiteIcon, {
+                    "domain": domain,
+                })
         # 处理完成
         ret_msg = f"更新了{_update_count}个站点，新增了{_add_count}个站点"
         if _fail_count > 0:
@@ -147,32 +132,3 @@ class CookieCloudChain(ChainBase):
             self.message.put(f"CookieCloud同步成功, {ret_msg}")
         logger.info(f"CookieCloud同步成功：{ret_msg}")
         return True, ret_msg
-
-    @staticmethod
-    def __parse_favicon(url: str, cookie: str, ua: str) -> Tuple[str, Optional[str]]:
-        """
-        解析站点favicon,返回base64 fav图标
-        :param url: 站点地址
-        :param cookie: Cookie
-        :param ua: User-Agent
-        :return:
-        """
-        favicon_url = urljoin(url, "favicon.ico")
-        res = RequestUtils(cookies=cookie, timeout=60, ua=ua).get_res(url=url)
-        if res:
-            html_text = res.text
-        else:
-            logger.error(f"获取站点页面失败：{url}")
-            return favicon_url, None
-        html = etree.HTML(html_text)
-        if html:
-            fav_link = html.xpath('//head/link[contains(@rel, "icon")]/@href')
-            if fav_link:
-                favicon_url = urljoin(url, fav_link[0])
-
-        res = RequestUtils(cookies=cookie, timeout=20, ua=ua).get_res(url=favicon_url)
-        if res:
-            return favicon_url, base64.b64encode(res.content).decode()
-        else:
-            logger.error(f"获取站点图标失败：{favicon_url}")
-        return favicon_url, None

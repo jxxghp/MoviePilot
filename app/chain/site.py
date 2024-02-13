@@ -1,16 +1,25 @@
+import base64
 import re
-from typing import Union, Tuple
+from typing import Tuple, Optional
+from typing import Union
+from urllib.parse import urljoin
+
+from lxml import etree
 
 from app.chain import ChainBase
 from app.core.config import settings
+from app.core.event import eventmanager, Event
 from app.db.models.site import Site
 from app.db.site_oper import SiteOper
+from app.db.siteicon_oper import SiteIconOper
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.cookie import CookieHelper
 from app.helper.message import MessageHelper
+from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import MessageChannel, Notification
+from app.schemas.types import EventType
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
 from app.utils.string import StringUtils
@@ -24,6 +33,8 @@ class SiteChain(ChainBase):
     def __init__(self):
         super().__init__()
         self.siteoper = SiteOper()
+        self.siteiconoper = SiteIconOper()
+        self.siteshelper = SitesHelper()
         self.cookiehelper = CookieHelper()
         self.message = MessageHelper()
 
@@ -86,6 +97,77 @@ class SiteChain(ChainBase):
             if user_info and user_info.get("data"):
                 return True, "连接成功"
         return False, "Cookie已失效"
+
+    @staticmethod
+    def __parse_favicon(url: str, cookie: str, ua: str) -> Tuple[str, Optional[str]]:
+        """
+        解析站点favicon,返回base64 fav图标
+        :param url: 站点地址
+        :param cookie: Cookie
+        :param ua: User-Agent
+        :return:
+        """
+        favicon_url = urljoin(url, "favicon.ico")
+        res = RequestUtils(cookies=cookie, timeout=60, ua=ua).get_res(url=url)
+        if res:
+            html_text = res.text
+        else:
+            logger.error(f"获取站点页面失败：{url}")
+            return favicon_url, None
+        html = etree.HTML(html_text)
+        if html:
+            fav_link = html.xpath('//head/link[contains(@rel, "icon")]/@href')
+            if fav_link:
+                favicon_url = urljoin(url, fav_link[0])
+
+        res = RequestUtils(cookies=cookie, timeout=20, ua=ua).get_res(url=favicon_url)
+        if res:
+            return favicon_url, base64.b64encode(res.content).decode()
+        else:
+            logger.error(f"获取站点图标失败：{favicon_url}")
+        return favicon_url, None
+
+    @eventmanager.register(EventType.CacheSiteIcon)
+    def cache_site_icon(self, event: Event):
+        """
+        缓存站点图标
+        """
+        if not event:
+            return
+        event_data = event.event_data or {}
+        # 主域名
+        domain = event_data.get("domain")
+        if not domain:
+            return
+        if str(domain).startswith("http"):
+            domain = StringUtils.get_url_domain(domain)
+        # 站点信息
+        siteinfo = self.siteoper.get_by_domain(domain)
+        if not siteinfo:
+            logger.warn(f"未维护站点 {domain} 信息！")
+            return
+        # Cookie
+        cookie = siteinfo.cookie
+        # 索引器
+        indexer = self.siteshelper.get_indexer(domain)
+        if not indexer:
+            logger.warn(f"站点 {domain} 索引器不存在！")
+            return
+        # 查询站点图标
+        site_icon = self.siteiconoper.get_by_domain(domain)
+        if not site_icon or not site_icon.base64:
+            logger.info(f"开始缓存站点 {indexer.get('name')} 图标 ...")
+            icon_url, icon_base64 = self.__parse_favicon(url=indexer.get("domain"),
+                                                         cookie=cookie,
+                                                         ua=settings.USER_AGENT)
+            if icon_url:
+                self.siteiconoper.update_icon(name=indexer.get("name"),
+                                              domain=domain,
+                                              icon_url=icon_url,
+                                              icon_base64=icon_base64)
+                logger.info(f"缓存站点 {indexer.get('name')} 图标成功")
+            else:
+                logger.warn(f"缓存站点 {indexer.get('name')} 图标失败")
 
     def test(self, url: str) -> Tuple[bool, str]:
         """
