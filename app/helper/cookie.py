@@ -6,6 +6,7 @@ from playwright.sync_api import Page
 
 from app.helper.browser import PlaywrightHelper
 from app.helper.ocr import OcrHelper
+from app.helper.twofa import TwoFactorAuth
 from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
@@ -71,12 +72,14 @@ class CookieHelper:
                            url: str,
                            username: str,
                            password: str,
+                           two_step_code: str = None,
                            proxies: dict = None) -> Tuple[Optional[str], Optional[str], str]:
         """
         获取站点cookie和ua
         :param url: 站点地址
         :param username: 用户名
         :param password: 密码
+        :param two_step_code: 二步验证码或密钥
         :param proxies: 代理
         :return: cookie、ua、message
         """
@@ -107,6 +110,15 @@ class CookieHelper:
                     break
             if not password_xpath:
                 return None, None, "未找到密码输入框"
+            # 处理二步验证码
+            two_step_code = TwoFactorAuth(two_step_code).get_code()
+            # 查找二步验证码输入框
+            twostep_xpath = None
+            if two_step_code:
+                for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
+                    if html.xpath(xpath):
+                        twostep_xpath = xpath
+                        break
             # 查找验证码输入框
             captcha_xpath = None
             for xpath in self._SITE_LOGIN_XPATH.get("captcha"):
@@ -138,6 +150,9 @@ class CookieHelper:
                 page.fill(username_xpath, username)
                 # 输入密码
                 page.fill(password_xpath, password)
+                # 输入二步验证码
+                if twostep_xpath:
+                    page.fill(twostep_xpath, two_step_code)
                 # 识别验证码
                 if captcha_xpath and captcha_img_url:
                     captcha_element = page.query_selector(captcha_xpath)
