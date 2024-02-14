@@ -134,7 +134,7 @@ def update_cookie(
         site_id: int,
         username: str,
         password: str,
-        two_step_code: str = None,
+        code: str = None,
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -151,7 +151,7 @@ def update_cookie(
     state, message = SiteChain().update_cookie(site_info=site_info,
                                                username=username,
                                                password=password,
-                                               two_step_code=two_step_code)
+                                               two_step_code=code)
     return schemas.Response(success=state, message=message)
 
 
