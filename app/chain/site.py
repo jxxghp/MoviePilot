@@ -350,7 +350,7 @@ class SiteChain(ChainBase):
         title = f"共有 {len(site_list)} 个站点，回复对应指令操作：" \
                 f"\n- 禁用站点：/site_disable [id]" \
                 f"\n- 启用站点：/site_enable [id]" \
-                f"\n- 更新站点Cookie：/site_cookie [id] [username] [password]"
+                f"\n- 更新站点Cookie：/site_cookie [id] [username] [password] [2fa_code/secret]"
         messages = []
         for site in site_list:
             if site.render:
@@ -416,12 +416,13 @@ class SiteChain(ChainBase):
         self.remote_list(channel, userid)
 
     def update_cookie(self, site_info: Site,
-                      username: str, password: str) -> Tuple[bool, str]:
+                      username: str, password: str, two_step_code: str = None) -> Tuple[bool, str]:
         """
         根据用户名密码更新站点Cookie
         :param site_info: 站点信息
         :param username: 用户名
         :param password: 密码
+        :param two_step_code: 二步验证码或密钥
         :return: (是否成功, 错误信息)
         """
         # 更新站点Cookie
@@ -429,6 +430,7 @@ class SiteChain(ChainBase):
             url=site_info.url,
             username=username,
             password=password,
+            two_step_code=two_step_code,
             proxies=settings.PROXY_HOST if site_info.proxy else None
         )
         if result:
@@ -446,8 +448,8 @@ class SiteChain(ChainBase):
         """
         使用用户名密码更新站点Cookie
         """
-        err_title = "请输入正确的命令格式：/site_cookie [id] [username] [password]，" \
-                    "[id]为站点编号，[uername]为站点用户名，[password]为站点密码"
+        err_title = "请输入正确的命令格式：/site_cookie [id] [username] [password] [2fa_code/secret]，" \
+                    "[id]为站点编号，[uername]为站点用户名，[password]为站点密码，[2fa_code/secret]为站点二步验证码或密钥"
         if not arg_str:
             self.post_message(Notification(
                 channel=channel,
@@ -455,7 +457,11 @@ class SiteChain(ChainBase):
             return
         arg_str = str(arg_str).strip()
         args = arg_str.split()
-        if len(args) != 3:
+        # 二步验证码
+        two_step_code = None
+        if len(args) == 4:
+            two_step_code = args[3]
+        elif len(args) != 3:
             self.post_message(Notification(
                 channel=channel,
                 title=err_title, userid=userid))
@@ -485,7 +491,8 @@ class SiteChain(ChainBase):
         # 更新Cookie
         status, msg = self.update_cookie(site_info=site_info,
                                          username=username,
-                                         password=password)
+                                         password=password,
+                                         two_step_code=two_step_code)
         if not status:
             logger.error(msg)
             self.post_message(Notification(
