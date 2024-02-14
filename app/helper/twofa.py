@@ -4,6 +4,7 @@ import hmac
 import struct
 import sys
 import time
+
 from app.log import logger
 
 
@@ -16,7 +17,8 @@ class TwoFactorAuth:
             self.code = code_or_secret
             self.secret = None
 
-    def __calc(self, secret_key: str) -> str:
+    @staticmethod
+    def __calc(secret_key: str) -> str:
         try:
             input_time = int(time.time()) // 30
             key = base64.b32decode(secret_key)
@@ -28,12 +30,12 @@ class TwoFactorAuth:
                 else ord(str(google_code[19])) & 15
             )
             google_code = str(
-                (struct.unpack(">I", google_code[o : o + 4])[0] & 0x7FFFFFFF) % 1000000
+                (struct.unpack(">I", google_code[o: o + 4])[0] & 0x7FFFFFFF) % 1000000
             )
             return f"0{google_code}" if len(google_code) == 5 else google_code
         except Exception as e:
             logger.error(f"计算动态验证码失败：{str(e)}")
-            return None
+            return ""
 
     def get_code(self) -> str:
         return self.code or self.__calc(self.secret)
