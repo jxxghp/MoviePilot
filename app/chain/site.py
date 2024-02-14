@@ -139,6 +139,18 @@ class SiteChain(ChainBase):
         """
         通过CookieCloud同步站点Cookie
         """
+
+        def __indexer_domain(inx: dict, sub_domain: str) -> str:
+            """
+            根据主域名获取索引器地址
+            """
+            if StringUtils.get_url_domain(inx.get("domain")) == sub_domain:
+                return inx.get("domain")
+            for ext_d in inx.get("ext_domains"):
+                if StringUtils.get_url_domain(ext_d) == sub_domain:
+                    return ext_d
+            return sub_domain
+
         logger.info("开始同步CookieCloud站点 ...")
         cookies, msg = self.cookiecloud.download()
         if not cookies:
@@ -151,11 +163,12 @@ class SiteChain(ChainBase):
         _add_count = 0
         _fail_count = 0
         for domain, cookie in cookies.items():
-            # 获取站点信息
+            # 索引器信息
             indexer = self.siteshelper.get_indexer(domain)
+            # 数据库的站点信息
             site_info = self.siteoper.get_by_domain(domain)
             if site_info:
-                # 检查站点连通性
+                # 站点已存在，检查站点连通性
                 status, msg = self.test(domain)
                 # 更新站点Cookie
                 if status:
@@ -181,9 +194,10 @@ class SiteChain(ChainBase):
                 _update_count += 1
             elif indexer:
                 # 新增站点
+                domain_url = __indexer_domain(inx=indexer, sub_domain=domain)
                 res = RequestUtils(cookies=cookie,
                                    ua=settings.USER_AGENT
-                                   ).get_res(url=indexer.get("domain"))
+                                   ).get_res(url=domain_url)
                 if res and res.status_code in [200, 500, 403]:
                     if not indexer.get("public") and not SiteUtils.is_logged_in(res.text):
                         _fail_count += 1
@@ -203,9 +217,9 @@ class SiteChain(ChainBase):
                     continue
                 # 获取rss地址
                 rss_url = None
-                if not indexer.get("public") and indexer.get("domain"):
+                if not indexer.get("public") and domain_url:
                     # 自动生成rss地址
-                    rss_url, errmsg = self.rsshelper.get_rss_link(url=indexer.get("domain"),
+                    rss_url, errmsg = self.rsshelper.get_rss_link(url=domain_url,
                                                                   cookie=cookie,
                                                                   ua=settings.USER_AGENT)
                     if errmsg:
@@ -213,7 +227,7 @@ class SiteChain(ChainBase):
                 # 插入数据库
                 logger.info(f"新增站点 {indexer.get('name')} ...")
                 self.siteoper.add(name=indexer.get("name"),
-                                  url=indexer.get("domain"),
+                                  url=domain_url,
                                   domain=domain,
                                   cookie=cookie,
                                   rss=rss_url,

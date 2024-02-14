@@ -111,8 +111,8 @@ def cookie_cloud_sync(background_tasks: BackgroundTasks,
 
 
 @router.get("/reset", summary="重置站点", response_model=schemas.Response)
-def cookie_cloud_sync(db: Session = Depends(get_db),
-                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def reset(db: Session = Depends(get_db),
+          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     清空所有站点数据并重新同步CookieCloud站点信息
     """
