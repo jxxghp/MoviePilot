@@ -67,8 +67,10 @@ def set_env_setting(env: dict,
     """
     for k, v in env.items():
         if hasattr(settings, k):
+            if v == "None":
+                v = None
             setattr(settings, k, v)
-            if v is None or str(v) == "None":
+            if v is None:
                 v = ''
             else:
                 v = str(v)
@@ -120,8 +122,10 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
     更新系统设置
     """
     if hasattr(settings, key):
+        if value == "None":
+            value = None
         setattr(settings, key, value)
-        if value is None or str(value) == "None":
+        if value is None:
             value = ''
         else:
             value = str(value)
