@@ -8,10 +8,9 @@ from app.core.config import settings
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
 
 
-class Jellyfin(metaclass=Singleton):
+class Jellyfin:
 
     def __init__(self):
         self._host = settings.JELLYFIN_HOST
