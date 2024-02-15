@@ -59,7 +59,9 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 ## 配置
 
-配置文件映射路径：`/config`，配置项生效优先级：环境变量 > env文件 > 默认值，**部分参数如路径映射、站点认证、权限端口、时区等必须通过环境变量进行配置**。
+大部分配置可启动后通过WEB管理界面进行配置，但仍有部分配置需要通过环境变量/配置文件进行配置。
+
+配置文件映射路径：`/config`，配置项生效优先级：环境变量 > env文件（或通过WEB界面配置） > 默认值。
 
 > ❗号标识的为必填项，其它为可选项，可选项可删除配置变量从而使用默认值。
 
@@ -72,7 +74,6 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 - **UMASK**：掩码权限，默认`000`，可以考虑设置为`022`
 - **PROXY_HOST：** 网络代理，访问themoviedb或者重启更新需要使用代理访问，格式为`http(s)://ip:port`、`socks5://user:pass@host:port`
 - **MOVIEPILOT_AUTO_UPDATE：** 重启时自动更新，`true`/`release`/`dev`/`false`，默认`release`，需要能正常连接Github **注意：如果出现网络问题可以配置`PROXY_HOST`**
-- **AUTO_UPDATE_RESOURCE**：启动时自动检测和更新资源包（站点索引及认证等），`true`/`false`，默认`true`，需要能正常连接Github，仅支持Docker
 - **❗AUTH_SITE：** 认证站点（认证通过后才能使用站点相关功能），支持配置多个认证站点，使用`,`分隔，如：`iyuu,hhclub`，会依次执行认证操作，直到有一个站点认证成功。  
 
   配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数，认证资源`v1.1.1`支持`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`ptba` /`icc2022`/`ptlsp`/`xingtan`/`ptvicomo`/`agsvpt`
@@ -96,123 +97,30 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
   |    agsvpt    |       `AGSVPT_UID`：用户ID<br/>`AGSVPT_PASSKEY`：密钥       |
 
 
-### 2. **app.env配置文件**
+### 2. **环境变量 / 配置文件**
 
-下载 [app.env 模板](https://github.com/jxxghp/MoviePilot/raw/main/config/app.env)，修改后放配置文件目录下，app.env 的所有配置项也可以通过环境变量进行配置。
+配置文件名：`app.env`，放配置文件根目录。
 
-- **❗SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面。**注意：1、初始密码为自动生成，需要在首次运行时的后台日志中查看，成功登录后可以设定中修改；2、启动一次后再次修改该值不会生效，除非删除数据库文件！**
+- **❗SUPERUSER：** 超级管理员用户名，默认`admin`，安装后使用该用户登录后台管理界面，**注意：启动一次后再次修改该值不会生效，除非删除数据库文件！**
 - **❗API_TOKEN：** API密钥，默认`moviepilot`，在媒体服务器Webhook、微信回调等地址配置中需要加上`?token=`该值，建议修改为复杂字符串
 - **BIG_MEMORY_MODE：** 大内存模式，默认为`false`，开启后会增加缓存数量，占用更多的内存，但响应速度会更快
 - **GITHUB_TOKEN：** Github token，提高自动更新、插件安装等请求Github Api的限流阈值，格式：ghp_****
+- **DEV:** 开发者模式，`true`/`false`，默认`false`，开启后会暂停所有定时任务
+- **AUTO_UPDATE_RESOURCE**：启动时自动检测和更新资源包（站点索引及认证等），`true`/`false`，默认`true`，需要能正常连接Github，仅支持Docker镜像
 ---
 - **TMDB_API_DOMAIN：** TMDB API地址，默认`api.themoviedb.org`，也可配置为`api.tmdb.org`、`tmdb.movie-pilot.org` 或其它中转代理服务地址，能连通即可
 - **TMDB_IMAGE_DOMAIN：** TMDB图片地址，默认`image.tmdb.org`，可配置为其它中转代理以加速TMDB图片显示，如：`static-mdb.v.geilijiasu.com`
 - **WALLPAPER：** 登录首页电影海报，`tmdb`/`bing`，默认`tmdb`
 - **RECOGNIZE_SOURCE：** 媒体信息识别来源，`themoviedb`/`douban`，默认`themoviedb`，使用`douban`时不支持二级分类
 - **FANART_ENABLE：** Fanart开关，`true`/`false`，默认`true`，关闭后刮削的图片类型会大幅减少
----
-- **SCRAP_METADATA：** 刮削入库的媒体文件，`true`/`false`，默认`true`
 - **SCRAP_SOURCE：** 刮削元数据及图片使用的数据源，`themoviedb`/`douban`，默认`themoviedb`
 - **SCRAP_FOLLOW_TMDB：** 新增已入库媒体是否跟随TMDB信息变化，`true`/`false`，默认`true`，为`false`时即使TMDB信息变化了也会仍然按历史记录中已入库的信息进行刮削
 ---
-- **❗LIBRARY_PATH：** 媒体库目录，多个目录使用`,`分隔
-- **LIBRARY_MOVIE_NAME：** 电影媒体库目录名称（不是完整路径），默认`电影`
-- **LIBRARY_TV_NAME：** 电视剧媒体库目录称（不是完整路径），默认`电视剧`
-- **LIBRARY_ANIME_NAME：** 动漫媒体库目录称（不是完整路径），默认`电视剧/动漫`
-- **LIBRARY_CATEGORY：** 媒体库二级分类开关，`true`/`false`，默认`false`，开启后会根据配置 [category.yaml](https://github.com/jxxghp/MoviePilot/raw/main/config/category.yaml) 自动在媒体库目录下建立二级目录分类
-- **❗TRANSFER_TYPE：** 整理转移方式，支持`link`/`copy`/`move`/`softlink`/`rclone_copy`/`rclone_move`  **注意：在`link`和`softlink`转移方式下，转移后的文件会继承源文件的权限掩码，不受`UMASK`影响；rclone需要自行映射rclone配置目录到容器中或在容器内完成rclone配置，节点名称必须为：`MP`**
-- **OVERWRITE_MODE：** 转移覆盖模式，默认为`size`，支持`nerver`/`size`/`always`/`latest`，分别表示`不覆盖同名文件`/`同名文件根据文件大小覆盖（大覆盖小）`/`总是覆盖同名文件`/`仅保留最新版本，删除旧版本文件（包括非同名文件）`
----
-- **❗COOKIECLOUD_HOST：** CookieCloud服务器地址，格式：`http(s)://ip:port`，不配置默认使用内建服务器`https://movie-pilot.org/cookiecloud`
-- **❗COOKIECLOUD_KEY：** CookieCloud用户KEY
-- **❗COOKIECLOUD_PASSWORD：** CookieCloud端对端加密密码
-- **❗COOKIECLOUD_INTERVAL：** CookieCloud同步间隔（分钟）
-- **❗USER_AGENT：** CookieCloud保存Cookie对应的浏览器UA，建议配置，设置后可增加连接站点的成功率，同步站点后可以在管理界面中修改
----
-- **SUBSCRIBE_MODE：** 订阅模式，`rss`/`spider`，默认`spider`，`rss`模式通过定时刷新RSS来匹配订阅（RSS地址会自动获取，也可手动维护），对站点压力小，同时可设置订阅刷新周期，24小时运行，但订阅和下载通知不能过滤和显示免费，推荐使用rss模式。
-- **SUBSCRIBE_RSS_INTERVAL：** RSS订阅模式刷新时间间隔（分钟），默认`30`分钟，不能小于5分钟。
-- **SUBSCRIBE_SEARCH：** 订阅搜索，`true`/`false`，默认`false`，开启后会每隔24小时对所有订阅进行全量搜索，以补齐缺失剧集（一般情况下正常订阅即可，订阅搜索只做为兜底，会增加站点压力，不建议开启）。
 - **AUTO_DOWNLOAD_USER：** 远程交互搜索时自动择优下载的用户ID（消息通知渠道的用户ID），多个用户使用,分割，设置为 all 代表全部用户自动择优下载，未设置需要手动选择资源或者回复`0`才自动择优下载
 ---
 - **OCR_HOST：** OCR识别服务器地址，格式：`http(s)://ip:port`，用于识别站点验证码实现自动登录获取Cookie等，不配置默认使用内建服务器`https://movie-pilot.org`，可使用 [这个镜像](https://hub.docker.com/r/jxxghp/moviepilot-ocr) 自行搭建。
 ---
-- **❗MESSAGER：** 消息通知渠道，支持 `telegram`/`wechat`/`slack`/`synologychat`，开启多个渠道时使用`,`分隔。同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`telegram`
-
-  - `wechat`设置项：
-
-    - **WECHAT_CORPID：** WeChat企业ID
-    - **WECHAT_APP_SECRET：** WeChat应用Secret
-    - **WECHAT_APP_ID：** WeChat应用ID
-    - **WECHAT_TOKEN：** WeChat消息回调的Token
-    - **WECHAT_ENCODING_AESKEY：** WeChat消息回调的EncodingAESKey
-    - **WECHAT_ADMINS：** WeChat管理员列表，多个管理员用英文逗号分隔（可选）
-    - **WECHAT_PROXY：** WeChat代理服务器（后面不要加/）
-
-  - `telegram`设置项：
-
-    - **TELEGRAM_TOKEN：** Telegram Bot Token
-    - **TELEGRAM_CHAT_ID：** Telegram Chat ID
-    - **TELEGRAM_USERS：** Telegram 用户ID，多个使用,分隔，只有用户ID在列表中才可以使用Bot，如未设置则均可以使用Bot
-    - **TELEGRAM_ADMINS：** Telegram 管理员ID，多个使用,分隔，只有管理员才可以操作Bot菜单，如未设置则均可以操作菜单（可选）
-
-  - `slack`设置项：
-
-    - **SLACK_OAUTH_TOKEN：** Slack Bot User OAuth Token
-    - **SLACK_APP_TOKEN：** Slack App-Level Token
-    - **SLACK_CHANNEL：** Slack 频道名称，默认`全体`（可选）
-  
-  - `synologychat`设置项：
-
-    - **SYNOLOGYCHAT_WEBHOOK：** 在Synology Chat中创建机器人，获取机器人`传入URL`
-    - **SYNOLOGYCHAT_TOKEN：** SynologyChat机器人`令牌`
----
-- **❗DOWNLOAD_PATH：** 下载保存目录，**注意：需要将`moviepilot`及`下载器`的映射路径保持一致**，否则会导致下载文件无法转移
-- **DOWNLOAD_MOVIE_PATH：** 电影下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`
-- **DOWNLOAD_TV_PATH：** 电视剧下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`
-- **DOWNLOAD_ANIME_PATH：** 动漫下载保存目录路径，不设置则下载到`DOWNLOAD_PATH`
-- **DOWNLOAD_CATEGORY：** 下载二级分类开关，`true`/`false`，默认`false`，开启后会根据配置 [category.yaml](https://github.com/jxxghp/MoviePilot/raw/main/config/category.yaml) 自动在下载目录下建立二级目录分类
 - **DOWNLOAD_SUBTITLE：** 下载站点字幕，`true`/`false`，默认`true`
----
-- **❗DOWNLOADER：** 下载器，支持`qbittorrent`/`transmission`，QB版本号要求>= 4.3.9，TR版本号要求>= 3.0，同时还需要配置对应渠道的环境变量，非对应渠道的变量可删除，推荐使用`qbittorrent`
-
-  - `qbittorrent`设置项：
-
-    - **QB_HOST：** qbittorrent地址，格式：`ip:port`，https需要添加`https://`前缀
-    - **QB_USER：** qbittorrent用户名
-    - **QB_PASSWORD：** qbittorrent密码
-    - **QB_CATEGORY：** qbittorrent分类自动管理，`true`/`false`，默认`false`，开启后会将下载二级分类传递到下载器，由下载器管理下载目录，需要同步开启`DOWNLOAD_CATEGORY`
-    - **QB_SEQUENTIAL：** qbittorrent按顺序下载，`true`/`false`，默认`true`
-    - **QB_FORCE_RESUME：** qbittorrent忽略队列限制，强制继续，`true`/`false`，默认 `false`
-
-  - `transmission`设置项：
-
-    - **TR_HOST：** transmission地址，格式：`ip:port`，https需要添加`https://`前缀
-    - **TR_USER：** transmission用户名
-    - **TR_PASSWORD：** transmission密码
-- **DOWNLOADER_MONITOR：** 下载器监控，`true`/`false`，默认为`true`，开启后下载完成时才会自动整理入库
-- **TORRENT_TAG：** 下载器种子标签，默认为`MOVIEPILOT`，设置后只有MoviePilot添加的下载才会处理，留空所有下载器中的任务均会处理
----
-- **❗MEDIASERVER：** 媒体服务器，支持`emby`/`jellyfin`/`plex`，同时开启多个使用`,`分隔。还需要配置对应媒体服务器的环境变量，非对应媒体服务器的变量可删除，推荐使用`emby`
-
-  - `emby`设置项：
-
-    - **EMBY_HOST：** Emby服务器地址，格式：`ip:port`，https需要添加`https://`前缀
-    - **EMBY_PLAY_HOST：** EMBY外网地址，格式：`http(s)://DOMAIN:PORT`，未设置时使用`EMBY_HOST`
-    - **EMBY_API_KEY：** Emby Api Key，在`设置->高级->API密钥`处生成
-
-  - `jellyfin`设置项：
-
-    - **JELLYFIN_HOST：** Jellyfin服务器地址，格式：`ip:port`，https需要添加`https://`前缀
-    - **JELLYFIN_PLAY_HOST：** Jellyfin外网地址，格式：`http(s)://DOMAIN:PORT`，未设置时使用`JELLYFIN_HOST`
-    - **JELLYFIN_API_KEY：** Jellyfin Api Key，在`设置->高级->API密钥`处生成
-
-  - `plex`设置项：
-
-    - **PLEX_HOST：** Plex服务器地址，格式：`ip:port`，https需要添加`https://`前缀
-    - **PLEX_PLAY_HOST：** Plex外网地址，格式：`http(s)://DOMAIN:PORT`，未设置时使用`PLEX_HOST`
-    - **PLEX_TOKEN：** Plex网页Url中的`X-Plex-Token`，通过浏览器F12->网络从请求URL中获取
-- **MEDIASERVER_SYNC_INTERVAL:** 媒体服务器同步间隔（小时），默认`6`，留空则不同步
-- **MEDIASERVER_SYNC_BLACKLIST:** 媒体服务器同步黑名单，多个媒体库名称使用,分割
 ---
 - **MOVIE_RENAME_FORMAT：** 电影重命名格式，基于jinjia2语法
 
@@ -263,7 +171,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 ### 3. **优先级规则**
 
-- 仅支持使用内置规则进行排列组合，内置规则有：`蓝光原盘`、`4K`、`1080P`、`中文字幕`、`特效字幕`、`H265`、`H264`、`杜比`、`HDR`、`REMUX`、`WEB-DL`、`免费`、`国语配音` 等
+- 仅支持使用内置规则进行排列组合，通过设置多层规则来实现优先级顺序匹配
 - 符合任一层级规则的资源将被标识选中，匹配成功的层级做为该资源的优先级，排越前面优先级超高
 - 不符合过滤规则所有层级规则的资源将不会被选中
 
@@ -274,13 +182,14 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 ## 使用
 
-- 通过CookieCloud同步快速同步站点，不需要使用的站点可在WEB管理界面中禁用，无法同步的站点可手动新增。
-- 通过WEB进行管理，将WEB添加到手机桌面获得类App使用效果，管理界面端口：`3000`，后台API端口：`3001`。
-- 通过下载器监控或使用目录监控插件实现自动整理入库刮削（二选一）。
-- 通过微信/Telegram/Slack/SynologyChat远程管理，其中微信/Telegram将会自动添加操作菜单（微信菜单条数有限制，部分菜单不显示）；微信需要在官方页面设置回调地址，SynologyChat需要设置机器人传入地址，地址相对路径为：`/api/v1/message/`。
-- 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`（`3001`端口），其中`moviepilot`为设置的`API_TOKEN`。
-- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr（`API服务端口`），可使用Overseerr/Jellyseerr浏览订阅。
-- 映射宿主机docker.sock文件到容器`/var/run/docker.sock`，以支持内建重启操作。实例：`-v /var/run/docker.sock:/var/run/docker.sock:ro`
+- 通过设置的超级管理员用户登录管理界面（默认用户：admin，默认端口：3000），**注意：初始密码为自动生成，需要在首次运行时的后台日志中查看！**
+- 通过CookieCloud同步快速添加站点，不需要使用的站点可在WEB管理界面中禁用或删除，无法同步的站点可手动新增。
+- 通过打开下载器监控实现下载完成后自动整理入库并刮削媒体信息。
+- 通过微信/Telegram/Slack/SynologyChat远程管理，其中微信/Telegram将会自动添加操作菜单（微信菜单条数有限制，部分菜单不显示）；微信需要在官方页面设置回调地址，SynologyChat需要设置机器人传入地址，地址相对路径均为：`/api/v1/message/`。
+- 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`。
+- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，可使用Overseerr/Jellyseerr浏览订阅。
+- 映射宿主机docker.sock文件到容器`/var/run/docker.sock`，以支持内建重启操作。实例：`-v /var/run/docker.sock:/var/run/docker.sock:ro`。
+- 将WEB页面添加到手机桌面图标可获得与App一样的使用体验。
 
 ### **注意**
 - 容器首次启动需要下载浏览器内核，根据网络情况可能需要较长时间，此时无法登录。可映射`/moviepilot`目录避免容器重置后重新触发浏览器内核下载。 
