@@ -11,10 +11,9 @@ from app import schemas
 from app.core.config import settings
 from app.log import logger
 from app.schemas import MediaType
-from app.utils.singleton import Singleton
 
 
-class Plex(metaclass=Singleton):
+class Plex:
 
     _plex = None
 
