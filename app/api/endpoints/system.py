@@ -48,7 +48,7 @@ def get_env_setting(_: schemas.TokenPayload = Depends(verify_token)):
     查询系统环境变量，包括当前版本号
     """
     info = settings.dict(
-        exclude={"SECRET_KEY", "SUPERUSER_PASSWORD", "API_TOKEN", "COOKIECLOUD_KEY", "COOKIECLOUD_PASSWORD"}
+        exclude={"SECRET_KEY", "SUPERUSER_PASSWORD"}
     )
     info.update({
         "VERSION": APP_VERSION,
@@ -68,7 +68,11 @@ def set_env_setting(env: dict,
     for k, v in env.items():
         if hasattr(settings, k):
             setattr(settings, k, v)
-            set_key(settings.CONFIG_PATH / "app.env", k, str(v))
+            if v is None or str(v) == "None":
+                v = ''
+            else:
+                v = str(v)
+            set_key(settings.CONFIG_PATH / "app.env", k, v)
     return schemas.Response(success=True)
 
 
@@ -117,7 +121,7 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
     """
     if hasattr(settings, key):
         setattr(settings, key, value)
-        if value is None:
+        if value is None or str(value) == "None":
             value = ''
         else:
             value = str(value)
