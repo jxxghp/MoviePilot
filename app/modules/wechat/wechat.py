@@ -9,13 +9,12 @@ from app.core.context import MediaInfo, Context
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
 lock = threading.Lock()
 
 
-class WeChat(metaclass=Singleton):
+class WeChat:
     # 企业微信Token
     _access_token = None
     # 企业微信Token过期时间
