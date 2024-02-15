@@ -93,13 +93,14 @@ class Scheduler(metaclass=Singleton):
             return
 
         # CookieCloud定时同步
-        if settings.COOKIECLOUD_INTERVAL:
+        if settings.COOKIECLOUD_INTERVAL \
+                and str(settings.COOKIECLOUD_INTERVAL).isdigit():
             self._scheduler.add_job(
                 self.start,
                 "interval",
                 id="cookiecloud",
                 name="同步CookieCloud站点",
-                minutes=settings.COOKIECLOUD_INTERVAL,
+                minutes=int(settings.COOKIECLOUD_INTERVAL),
                 next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=1),
                 kwargs={
                     'job_id': 'cookiecloud'
@@ -107,13 +108,14 @@ class Scheduler(metaclass=Singleton):
             )
 
         # 媒体服务器同步
-        if settings.MEDIASERVER_SYNC_INTERVAL:
+        if settings.MEDIASERVER_SYNC_INTERVAL \
+                and str(settings.MEDIASERVER_SYNC_INTERVAL).isdigit():
             self._scheduler.add_job(
                 self.start,
                 "interval",
                 id="mediaserver_sync",
                 name="同步媒体服务器",
-                hours=settings.MEDIASERVER_SYNC_INTERVAL,
+                hours=int(settings.MEDIASERVER_SYNC_INTERVAL),
                 next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=5),
                 kwargs={
                     'job_id': 'mediaserver_sync'
@@ -173,16 +175,17 @@ class Scheduler(metaclass=Singleton):
                     })
         else:
             # RSS订阅模式
-            if not settings.SUBSCRIBE_RSS_INTERVAL:
+            if not settings.SUBSCRIBE_RSS_INTERVAL \
+                    or not str(settings.SUBSCRIBE_RSS_INTERVAL).isdigit():
                 settings.SUBSCRIBE_RSS_INTERVAL = 30
-            elif settings.SUBSCRIBE_RSS_INTERVAL < 5:
+            elif int(settings.SUBSCRIBE_RSS_INTERVAL) < 5:
                 settings.SUBSCRIBE_RSS_INTERVAL = 5
             self._scheduler.add_job(
                 self.start,
                 "interval",
                 id="subscribe_refresh",
                 name="RSS订阅刷新",
-                minutes=settings.SUBSCRIBE_RSS_INTERVAL,
+                minutes=int(settings.SUBSCRIBE_RSS_INTERVAL),
                 kwargs={
                     'job_id': 'subscribe_refresh'
                 }
