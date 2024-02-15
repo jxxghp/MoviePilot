@@ -111,10 +111,10 @@ class CookieHelper:
             if not password_xpath:
                 return None, None, "未找到密码输入框"
             # 处理二步验证码
-            two_step_code = TwoFactorAuth(two_step_code).get_code()
+            otp_code = TwoFactorAuth(two_step_code).get_code()
             # 查找二步验证码输入框
             twostep_xpath = None
-            if two_step_code:
+            if otp_code:
                 for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
                     if html.xpath(xpath):
                         twostep_xpath = xpath
@@ -152,7 +152,7 @@ class CookieHelper:
                 page.fill(password_xpath, password)
                 # 输入二步验证码
                 if twostep_xpath:
-                    page.fill(twostep_xpath, two_step_code)
+                    page.fill(twostep_xpath, otp_code)
                 # 识别验证码
                 if captcha_xpath and captcha_img_url:
                     captcha_element = page.query_selector(captcha_xpath)
