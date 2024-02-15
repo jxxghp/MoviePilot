@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Union, Any
 
 import tailer
+from dotenv import set_key
 from fastapi import APIRouter, HTTPException, Depends, Response
 from fastapi.responses import StreamingResponse
 
@@ -96,13 +97,14 @@ def get_setting(key: str,
 
 
 @router.post("/setting/{key}", summary="更新系统设置", response_model=schemas.Response)
-def set_setting(key: str, value: Union[list, dict, str, int] = None,
+def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
                 _: schemas.TokenPayload = Depends(verify_token)):
     """
     更新系统设置
     """
     if hasattr(settings, key):
         setattr(settings, key, value)
+        set_key(settings.CONFIG_PATH / "app.env", key, str(value))
     else:
         SystemConfigOper().set(key, value)
     return schemas.Response(success=True)
