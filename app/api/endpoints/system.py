@@ -48,7 +48,7 @@ def get_env_setting(_: schemas.TokenPayload = Depends(verify_token)):
     查询系统环境变量，包括当前版本号
     """
     info = settings.dict(
-        exclude={"SECRET_KEY", "SUPERUSER_PASSWORD", "API_TOKEN"}
+        exclude={"SECRET_KEY", "SUPERUSER_PASSWORD", "API_TOKEN", "COOKIECLOUD_KEY", "COOKIECLOUD_PASSWORD"}
     )
     info.update({
         "VERSION": APP_VERSION,
@@ -57,6 +57,19 @@ def get_env_setting(_: schemas.TokenPayload = Depends(verify_token)):
     })
     return schemas.Response(success=True,
                             data=info)
+
+
+@router.post("/env", summary="更新系统环境变量", response_model=schemas.Response)
+def set_env_setting(env: dict,
+                    _: schemas.TokenPayload = Depends(verify_token)):
+    """
+    更新系统环境变量
+    """
+    for k, v in env.items():
+        if hasattr(settings, k):
+            setattr(settings, k, v)
+            set_key(settings.CONFIG_PATH / "app.env", k, str(v))
+    return schemas.Response(success=True)
 
 
 @router.get("/progress/{process_type}", summary="实时进度")

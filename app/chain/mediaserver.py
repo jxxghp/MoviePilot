@@ -66,18 +66,18 @@ class MediaServerChain(ChainBase):
         """
         同步媒体库所有数据到本地数据库
         """
+        # 设置的媒体服务器
+        if not settings.MEDIASERVER:
+            return
+        # 同步黑名单
+        sync_blacklist = settings.MEDIASERVER_SYNC_BLACKLIST.split(
+            ",") if settings.MEDIASERVER_SYNC_BLACKLIST else []
+        mediaservers = settings.MEDIASERVER.split(",")
         with lock:
             # 汇总统计
             total_count = 0
             # 清空登记薄
             self.dboper.empty()
-            # 同步黑名单
-            sync_blacklist = settings.MEDIASERVER_SYNC_BLACKLIST.split(
-                ",") if settings.MEDIASERVER_SYNC_BLACKLIST else []
-            # 设置的媒体服务器
-            if not settings.MEDIASERVER:
-                return
-            mediaservers = settings.MEDIASERVER.split(",")
             # 遍历媒体服务器
             for mediaserver in mediaservers:
                 logger.info(f"开始同步媒体库 {mediaserver} 的数据 ...")
