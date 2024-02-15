@@ -8,11 +8,10 @@ from qbittorrentapi.transfer import TransferInfoDictionary
 
 from app.core.config import settings
 from app.log import logger
-from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
 
-class Qbittorrent(metaclass=Singleton):
+class Qbittorrent:
     _host: str = None
     _port: int = None
     _username: str = None
