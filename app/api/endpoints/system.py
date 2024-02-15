@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from app import schemas
 from app.chain.search import SearchChain
 from app.core.config import settings
+from app.core.module import ModuleManager
 from app.core.security import verify_token
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
@@ -85,8 +86,12 @@ def get_setting(key: str,
     """
     查询系统设置
     """
+    if hasattr(settings, key):
+        value = getattr(settings, key)
+    else:
+        value = SystemConfigOper().get(key)
     return schemas.Response(success=True, data={
-        "value": SystemConfigOper().get(key)
+        "value": value
     })
 
 
@@ -96,7 +101,10 @@ def set_setting(key: str, value: Union[list, dict, str, int] = None,
     """
     更新系统设置
     """
-    SystemConfigOper().set(key, value)
+    if hasattr(settings, key):
+        setattr(settings, key, value)
+    else:
+        SystemConfigOper().set(key, value)
     return schemas.Response(success=True)
 
 
@@ -136,21 +144,22 @@ def get_logging(token: str, length: int = 50):
         )
 
     log_path = settings.LOG_PATH / 'moviepilot.log'
+
     def log_generator():
         # 读取文件末尾50行，不使用tailer模块
         with open(log_path, 'r', encoding='utf-8') as f:
             for line in f.readlines()[-max(length, 50):]:
                 yield 'data: %s\n\n' % line
         while True:
-            for text in tailer.follow(open(log_path, 'r', encoding='utf-8')):
-                yield 'data: %s\n\n' % (text or '')
+            for t in tailer.follow(open(log_path, 'r', encoding='utf-8')):
+                yield 'data: %s\n\n' % (t or '')
             time.sleep(1)
 
     # 根据length参数返回不同的响应
     if length == -1:
-         # 返回全部日志作为文本响应
-        with open(log_path, 'r', encoding='utf-8') as f:
-            text = f.read()
+        # 返回全部日志作为文本响应
+        with open(log_path, 'r', encoding='utf-8') as file:
+            text = file.read()
         return Response(content=text, media_type="text/plain")
     else:
         # 返回SSE流响应
@@ -239,6 +248,16 @@ def restart_system(_: schemas.TokenPayload = Depends(verify_token)):
     # 执行重启
     ret, msg = SystemUtils.restart()
     return schemas.Response(success=ret, message=msg)
+
+
+@router.get("/reload", summary="重新加载模块", response_model=schemas.Response)
+def reload_module(_: schemas.TokenPayload = Depends(verify_token)):
+    """
+    重新加载模块
+    """
+    ModuleManager().stop()
+    ModuleManager().load_modules()
+    return schemas.Response(success=True)
 
 
 @router.get("/runscheduler", summary="运行服务", response_model=schemas.Response)
