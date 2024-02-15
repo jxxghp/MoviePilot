@@ -117,7 +117,11 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
     """
     if hasattr(settings, key):
         setattr(settings, key, value)
-        set_key(settings.CONFIG_PATH / "app.env", key, str(value))
+        if value is None:
+            value = ''
+        else:
+            value = str(value)
+        set_key(settings.CONFIG_PATH / "app.env", key, value)
     else:
         SystemConfigOper().set(key, value)
     return schemas.Response(success=True)
