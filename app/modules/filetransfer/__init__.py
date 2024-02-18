@@ -496,7 +496,7 @@ class FileTransferModule(_ModuleBase):
                     case 'size':
                         # 存在时大覆盖小
                         if new_file.stat().st_size < in_path.stat().st_size:
-                            logger.info(f"目标文件文件大小更小，将被覆盖：{new_file}")
+                            logger.info(f"目标文件文件大小更小，将覆盖：{new_file}")
                             overflag = True
                         else:
                             return TransferInfo(success=False,
@@ -513,10 +513,13 @@ class FileTransferModule(_ModuleBase):
                                             fail_list=[str(in_path)])
                     case 'latest':
                         # 仅保留最新版本
-                        self.delete_all_version_files(new_file)
+                        logger.info(f"仅保留最新版本，将覆盖：{new_file}")
                         overflag = True
-                    case _:
-                        pass
+            else:
+                if settings.OVERWRITE_MODE == 'latest':
+                    # 文件不存在，但仅保留最新版本
+                    logger.info(f"转移覆盖模式：{settings.OVERWRITE_MODE}，仅保留最新版本")
+                    self.delete_all_version_files(new_file)
             # 原文件大小
             file_size = in_path.stat().st_size
             # 转移文件
