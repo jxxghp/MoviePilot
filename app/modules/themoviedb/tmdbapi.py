@@ -555,6 +555,8 @@ class TmdbHelper:
             tmdb_info['names'] = self.__get_names(tmdb_info)
             # 转换中文标题
             self.__update_tmdbinfo_cn_title(tmdb_info)
+            # 转换英文标题
+            self.__update_tmdbinfo_en_title(tmdb_info)
 
         return tmdb_info
 
@@ -594,6 +596,38 @@ class TmdbHelper:
                     tmdb_info['title'] = cn_title
                 else:
                     tmdb_info['name'] = cn_title
+
+    @staticmethod
+    def __update_tmdbinfo_en_title(tmdb_info: dict):
+        """
+        更新TMDB信息中的英文名称
+        """
+
+        def __get_tmdb_english_title(tmdbinfo):
+            """
+            从别名中获取英文标题
+            """
+            if not tmdbinfo:
+                return None
+            translations = tmdb_info.get("translations", {}).get("translations", [])
+            for translation in translations:
+                if translation.get("iso_3166_1") == "US":
+                    return translation.get("data", {}).get("title") if tmdbinfo.get("media_type") == MediaType.MOVIE \
+                        else translation.get("data", {}).get("name")
+            return None
+
+        # 查找英文名
+        org_title = (
+            tmdb_info.get("original_title")
+            if tmdb_info.get("media_type") == MediaType.MOVIE
+            else tmdb_info.get("original_name")
+        )
+        if tmdb_info.get("original_language") == "en":
+            tmdb_info['en_title'] = org_title
+        # TODO: 对于日文标题，使用罗马字作为英文标题可能更合适？
+        else:
+            en_title = __get_tmdb_english_title(tmdb_info)
+            tmdb_info['en_title'] = en_title or org_title
 
     def __get_movie_detail(self,
                            tmdbid: int,

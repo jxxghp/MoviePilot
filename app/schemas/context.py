@@ -67,6 +67,8 @@ class MediaInfo(BaseModel):
     type: Optional[str] = None
     # 媒体标题
     title: Optional[str] = None
+    # 英文标题
+    en_title: Optional[str] = None
     # 年份
     year: Optional[str] = None
     # 标题（年份）

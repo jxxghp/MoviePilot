@@ -129,6 +129,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
   `MOVIE_RENAME_FORMAT`支持的配置项：
 
   > `title`： TMDB/豆瓣中的标题  
+  > `en_title`： TMDB中的英文标题 （暂不支持豆瓣）
   > `original_title`： TMDB/豆瓣中的原语种标题  
   > `name`： 从文件名中识别的名称（同时存在中英文时，优先使用中文）
   > `en_name`：从文件名中识别的英文名称（可能为空）

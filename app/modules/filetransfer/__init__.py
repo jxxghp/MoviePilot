@@ -580,6 +580,8 @@ class FileTransferModule(_ModuleBase):
         return {
             # 标题
             "title": __convert_invalid_characters(mediainfo.title),
+            # 英文标题
+            "en_title": __convert_invalid_characters(mediainfo.en_title),
             # 原语种标题
             "original_title": __convert_invalid_characters(mediainfo.original_title),
             # 原文件名
