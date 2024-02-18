@@ -68,7 +68,7 @@ class Settings(BaseSettings):
                           '.m4v', '.flv', '.m2ts', '.strm',
                           '.tp']
     # 支持的字幕文件后缀格式
-    RMT_SUBEXT: list = ['.srt', '.ass', '.ssa']
+    RMT_SUBEXT: list = ['.srt', '.ass', '.ssa', '.sup']
     # 支持的音轨文件后缀格式
     RMT_AUDIO_TRACK_EXT: list = ['.mka']
     # 索引器
