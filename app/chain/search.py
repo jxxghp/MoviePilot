@@ -123,10 +123,8 @@ class SearchChain(ChainBase):
         # 搜索关键词
         if keyword:
             keywords = [keyword]
-        elif mediainfo.original_title and mediainfo.title != mediainfo.original_title:
-            keywords = [mediainfo.title, mediainfo.original_title]
         else:
-            keywords = [mediainfo.title]
+            keywords = list({mediainfo.title, mediainfo.original_title, mediainfo.en_title} - {None})
         # 执行搜索
         torrents: List[TorrentInfo] = self.__search_all_sites(
             mediainfo=mediainfo,
@@ -168,6 +166,7 @@ class SearchChain(ChainBase):
         if mediainfo:
             self.progress.start(ProgressKey.Search)
             logger.info(f'开始匹配，总 {_total} 个资源 ...')
+            # 英文标题应该在别名/原标题中，不需要再匹配
             logger.info(f"标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
             self.progress.update(value=0, text=f'开始匹配，总 {_total} 个资源 ...', key=ProgressKey.Search)
             for torrent in torrents:
