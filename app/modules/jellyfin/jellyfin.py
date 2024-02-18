@@ -50,7 +50,7 @@ class Jellyfin:
         """
         if not self._host or not self._apikey:
             return []
-        req_url = "%Library/SelectableMediaFolders?api_key=%s" % (self._host, self._apikey)
+        req_url = "%sLibrary/SelectableMediaFolders?api_key=%s" % (self._host, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
             if res:
