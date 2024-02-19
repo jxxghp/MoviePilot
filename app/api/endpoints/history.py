@@ -96,7 +96,8 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
         eventmanager.send_event(
             EventType.DownloadFileDeleted,
             {
-                "src": history.src
+                "src": history.src,
+                "hash": history.download_hash
             }
         )
     # 删除记录

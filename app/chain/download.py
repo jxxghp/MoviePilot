@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple, Set, Dict, Union
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.context import MediaInfo, TorrentInfo, Context
+from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
@@ -838,3 +839,16 @@ class DownloadChain(ChainBase):
         删除下载任务
         """
         return self.remove_torrents(hashs=[hash_str])
+
+    @eventmanager.register(EventType.DownloadFileDeleted)
+    def download_file_deleted(self, event: Event):
+        """
+        下载文件删除时，同步删除下载任务
+        """
+        if not event:
+            return
+        hash_str = event.event_data.get("hash")
+        if not hash_str:
+            return
+        logger.warn(f"检测到下载源文件被删除，删除下载任务：{hash_str}")
+        self.remove_torrents(hashs=[hash_str])
