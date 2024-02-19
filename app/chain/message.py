@@ -44,19 +44,35 @@ class MessageChain(ChainBase):
         self.eventmanager = EventManager()
         self.torrenthelper = TorrentHelper()
 
-    @staticmethod
     def __get_noexits_info(
+            self,
             _meta: MetaBase,
             _mediainfo: MediaInfo) -> Dict[Union[int, str], Dict[int, NotExistMediaInfo]]:
         """
         获取缺失的媒体信息
         """
         if _mediainfo.type == MediaType.TV:
+            if not _mediainfo.seasons:
+                # 补充媒体信息
+                _mediainfo = self.mediachain.recognize_media(mtype=_mediainfo.type,
+                                                             tmdbid=_mediainfo.tmdb_id,
+                                                             doubanid=_mediainfo.douban_id,
+                                                             cache=False)
+                if not _mediainfo:
+                    logger.warn(f"{_mediainfo.tmdb_id or _mediainfo.douban_id} 媒体信息识别失败！")
+                    return {}
+                if not _mediainfo.seasons:
+                    logger.warn(f"媒体信息中没有季集信息，"
+                                f"标题：{_mediainfo.title}，"
+                                f"tmdbid：{_mediainfo.tmdb_id}，doubanid：{_mediainfo.douban_id}")
+                    return {}
+            # KEY
             _mediakey = _mediainfo.tmdb_id or _mediainfo.douban_id
             _no_exists = {
                 _mediakey: {}
             }
             if _meta.begin_season:
+                # 指定季
                 episodes = _mediainfo.seasons.get(_meta.begin_season)
                 if not episodes:
                     return {}
@@ -67,6 +83,7 @@ class MessageChain(ChainBase):
                     start_episode=episodes[0]
                 )
             else:
+                # 所有季
                 for sea, eps in _mediainfo.seasons.items():
                     if not eps:
                         continue
