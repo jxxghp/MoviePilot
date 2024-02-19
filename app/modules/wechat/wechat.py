@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.context import MediaInfo, Context
 from app.core.metainfo import MetaInfo
 from app.log import logger
+from app.utils.common import retry
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
@@ -46,6 +47,7 @@ class WeChat:
         if self._corpid and self._appsecret and self._appid:
             self.__get_access_token()
 
+    @retry(Exception, logger=logger)
     def __get_access_token(self, force=False):
         """
         获取微信Token
@@ -74,6 +76,7 @@ class WeChat:
                     logger.error(f"获取微信access_token失败，错误码：{res.status_code}，错误原因：{res.reason}")
                 else:
                     logger.error(f"获取微信access_token失败，未获取到返回信息")
+                    raise Exception("获取微信access_token失败，网络连接失败")
             except Exception as e:
                 logger.error(f"获取微信access_token失败，错误信息：{str(e)}")
                 return None
