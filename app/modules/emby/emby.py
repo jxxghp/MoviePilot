@@ -932,9 +932,9 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return None
-        url = url.replace("[HOST]", self._host) \
-            .replace("[APIKEY]", self._apikey) \
-            .replace("[USER]", self.user)
+        url = url.replace("[HOST]", self._host or '') \
+            .replace("[APIKEY]", self._apikey or '') \
+            .replace("[USER]", self.user or '')
         try:
             return RequestUtils(content_type="application/json").get_res(url=url)
         except Exception as e:
@@ -950,9 +950,9 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return None
-        url = url.replace("[HOST]", self._host) \
-            .replace("[APIKEY]", self._apikey) \
-            .replace("[USER]", self.user)
+        url = url.replace("[HOST]", self._host or '') \
+            .replace("[APIKEY]", self._apikey or '') \
+            .replace("[USER]", self.user or '')
         try:
             return RequestUtils(
                 headers=headers,
