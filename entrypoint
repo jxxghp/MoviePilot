@@ -1,17 +1,19 @@
 #!/bin/bash
+# shellcheck shell=bash
+# shellcheck disable=SC2016
 
 # 使用 `envsubst` 将模板文件中的 ${NGINX_PORT} 替换为实际的环境变量值
 envsubst '${NGINX_PORT}${PORT}' < /etc/nginx/nginx.template.conf > /etc/nginx/nginx.conf
 # 自动更新
 cd /
 /usr/local/bin/mp_update
-cd /app
+cd /app || exit
 # 更改 moviepilot userid 和 groupid
-groupmod -o -g ${PGID} moviepilot
-usermod -o -u ${PUID} moviepilot
+groupmod -o -g "${PGID}" moviepilot
+usermod -o -u "${PUID}" moviepilot
 # 更改文件权限
 chown -R moviepilot:moviepilot \
-    ${HOME} \
+    "${HOME}" \
     /app \
     /public \
     /config \
@@ -27,6 +29,6 @@ if [ -S "/var/run/docker.sock" ]; then
     haproxy -f /app/haproxy.cfg
 fi
 # 设置后端服务权限掩码
-umask ${UMASK}
+umask "${UMASK}"
 # 启动后端服务
 exec dumb-init gosu moviepilot:moviepilot python3 app/main.py
