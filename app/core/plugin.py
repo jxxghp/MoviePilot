@@ -73,7 +73,9 @@ class PluginManager(metaclass=Singleton):
                 # 存储运行实例
                 self._running_plugins[plugin_id] = plugin_obj
                 logger.info(f"Plugin Loaded：{plugin_id}")
-                # 设置事件注册状态可用
+                # 启用的插件才设置事件注册状态可用
+                if not plugin_obj.get_state():
+                    continue
                 eventmanager.enable_events_hander(plugin_id)
             except Exception as err:
                 logger.error(f"加载插件 {plugin_id} 出错：{str(err)} - {traceback.format_exc()}")
@@ -85,6 +87,12 @@ class PluginManager(metaclass=Singleton):
         if not self._running_plugins.get(plugin_id):
             return
         self._running_plugins[plugin_id].init_plugin(conf)
+        if self._running_plugins[plugin_id].get_state():
+            # 设置启用的插件事件注册状态可用
+            eventmanager.enable_events_hander(plugin_id)
+        else:
+            # 设置事件状态为不可用
+            eventmanager.disable_events_hander(plugin_id)
 
     def stop(self):
         """
