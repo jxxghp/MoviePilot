@@ -1,6 +1,7 @@
 #!/bin/bash
 # shellcheck shell=bash
 # shellcheck disable=SC2086
+# shellcheck disable=SC2144
 
 # 下载及解压
 download_and_unzip() {
@@ -8,7 +9,9 @@ download_and_unzip() {
     target_dir="$2"
     echo "正在下载 ${url}..."
     if curl ${CURL_OPTIONS} "${url}" ${CURL_HEADERS} | busybox unzip -d /tmp -; then
-        mv /tmp/MoviePilot-* /tmp/"${target_dir}"
+        if [ -e /tmp/MoviePilot-* ]; then
+            mv /tmp/MoviePilot-* /tmp/"${target_dir}"
+        fi
     else
         return 1
     fi
