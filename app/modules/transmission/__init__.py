@@ -220,13 +220,14 @@ class TransmissionModule(_ModuleBase):
                     logger.warn(f"删除残留文件夹：{path}")
                     shutil.rmtree(path, ignore_errors=True)
 
-    def remove_torrents(self, hashs: Union[str, list]) -> bool:
+    def remove_torrents(self, hashs: Union[str, list], delete_file: bool = True) -> bool:
         """
         删除下载器种子
         :param hashs:  种子Hash
+        :param delete_file:  是否删除文件
         :return: bool
         """
-        return self.transmission.delete_torrents(delete_file=True, ids=hashs)
+        return self.transmission.delete_torrents(delete_file=delete_file, ids=hashs)
 
     def start_torrents(self, hashs: Union[list, str]) -> bool:
         """

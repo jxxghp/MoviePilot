@@ -342,13 +342,14 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("transfer_completed", hashs=hashs, path=path)
 
-    def remove_torrents(self, hashs: Union[str, list]) -> bool:
+    def remove_torrents(self, hashs: Union[str, list], delete_file: bool = True) -> bool:
         """
         删除下载器种子
         :param hashs:  种子Hash
+        :param delete_file: 是否删除文件
         :return: bool
         """
-        return self.run_module("remove_torrents", hashs=hashs)
+        return self.run_module("remove_torrents", hashs=hashs, delete_file=delete_file)
 
     def start_torrents(self, hashs: Union[list, str]) -> bool:
         """

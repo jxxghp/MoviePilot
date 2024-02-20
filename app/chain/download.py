@@ -850,5 +850,5 @@ class DownloadChain(ChainBase):
         hash_str = event.event_data.get("hash")
         if not hash_str:
             return
-        logger.warn(f"检测到下载源文件被删除，删除下载任务：{hash_str}")
-        self.remove_torrents(hashs=[hash_str])
+        logger.warn(f"检测到下载源文件被删除，删除下载任务（不含文件）：{hash_str}")
+        self.remove_torrents(hashs=[hash_str], delete_file=False)
