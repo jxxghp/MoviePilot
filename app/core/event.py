@@ -37,9 +37,13 @@ class EventManager(metaclass=Singleton):
 
     def check(self, etype: EventType):
         """
-        检查事件是否存在响应
+        检查事件是否存在响应，去除掉被禁用的事件响应
         """
-        return etype.value in self._handlers
+        if etype.value not in self._handlers:
+            return False
+        handlers = self._handlers.get(etype.value)
+        return any([handler for handler in handlers.values()
+                    if handler.__qualname__.split(".")[0] not in self._disabled_handlers])
 
     def add_event_listener(self, etype: EventType, handler: type):
         """
