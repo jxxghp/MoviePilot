@@ -19,6 +19,8 @@ class TwoFactorAuth:
 
     @staticmethod
     def __calc(secret_key: str) -> str:
+        if not secret_key:
+            return ""
         try:
             input_time = int(time.time()) // 30
             key = base64.b32decode(secret_key)
