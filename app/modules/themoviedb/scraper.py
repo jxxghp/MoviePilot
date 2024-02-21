@@ -358,7 +358,7 @@ class TmdbScraper:
         """
         try:
             logger.info(f"正在下载{file_path.stem}图片：{url} ...")
-            r = RequestUtils().get_res(url=url, raise_exception=True)
+            r = RequestUtils(proxies=settings.PROXY).get_res(url=url, raise_exception=True)
             if r:
                 if self._transfer_type in ['rclone_move', 'rclone_copy']:
                     self.__save_remove_file(file_path, r.content)

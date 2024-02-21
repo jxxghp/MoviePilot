@@ -286,6 +286,34 @@ class MediaInfo:
         """
         初始化媒信息
         """
+        from app.chain.tmdb import TmdbChain
+        import zhconv
+        from app.log import logger
+        
+        def __get_chinese_name(personinfo: dict) -> str:
+            """
+            获取TMDB别名中的中文名
+            """
+            try:
+                also_known_as = personinfo.get("also_known_as") or []
+                if also_known_as:
+                    for name in also_known_as:
+                        if name and StringUtils.is_chinese(name):
+                            # 使用cn2an将繁体转化为简体
+                            return zhconv.convert(name, "zh-hans")
+            except Exception as err:
+                logger.error(f"获取人物中文名失败：{err}")
+            return ""
+        
+        def __modify_person_name(person: dict):
+            """
+            修改人物名
+            """
+            person_tmdbid = person.get("id")
+            person_tmdbinfo = TmdbChain().person_detail(int(person_tmdbid))
+            cn_name = __get_chinese_name(person_tmdbinfo)
+            if cn_name:
+                person["name"] = cn_name
 
         def __directors_actors(tmdbinfo: dict) -> Tuple[List[dict], List[dict]]:
             """
@@ -335,9 +363,11 @@ class MediaInfo:
             actors = []
             for cast in _credits.get("cast"):
                 if cast.get("known_for_department") == "Acting":
+                    __modify_person_name(cast)
                     actors.append(cast)
             for crew in _credits.get("crew"):
                 if crew.get("job") in ["Director", "Writer", "Editor", "Producer"]:
+                    __modify_person_name(crew)
                     directors.append(crew)
             return directors, actors
 
