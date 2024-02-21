@@ -13,39 +13,50 @@ router = APIRouter()
 
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
-def all_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "all") -> Any:
     """
-    查询所有插件清单，包括本地插件和在线插件
+    查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
     """
-    plugins = []
     # 本地插件
     local_plugins = PluginManager().get_local_plugins()
+    # 已安装插件
+    installed_plugins = [plugin for plugin in local_plugins if plugin.get("installed")]
+    # 未安装的本地插件
+    not_installed_plugins = [plugin for plugin in local_plugins if not plugin.get("installed")]
+    if state == "installed":
+        return installed_plugins
+
     # 在线插件
     online_plugins = PluginManager().get_online_plugins()
     if not online_plugins:
+        # 没有获取在线插件
+        if state == "market":
+            # 返回未安装的本地插件
+            return not_installed_plugins
         return local_plugins
+
+    # 插件市场插件清单
+    market_plugins = []
     # 已安装插件IDS
-    installed_ids = [plugin["id"] for plugin in local_plugins if plugin.get("installed")]
-    # 已经安装的本地
-    plugins.extend([plugin for plugin in local_plugins if plugin.get("installed")])
+    _installed_ids = [plugin["id"] for plugin in installed_plugins]
     # 未安装的线上插件或者有更新的插件
     for plugin in online_plugins:
-        if plugin["id"] not in installed_ids:
-            plugins.append(plugin)
+        if plugin["id"] not in _installed_ids:
+            market_plugins.append(plugin)
         elif plugin.get("has_update"):
             plugin["installed"] = False
-            plugins.append(plugin)
-    # 本地插件存在但未安装，且本地插件不在online插件中
-    plugin_ids = [plugin["id"] for plugin in plugins]
+            market_plugins.append(plugin)
+    # 未安装的本地插件，且不在线上插件中
+    _plugin_ids = [plugin["id"] for plugin in market_plugins]
     for plugin in local_plugins:
-        if plugin["id"] not in installed_ids \
-                and plugin["id"] not in plugin_ids:
-            plugins.append(plugin)
-    return plugins
+        if plugin["id"] not in _installed_ids \
+                and plugin["id"] not in _plugin_ids:
+            market_plugins.append(plugin)
+    return market_plugins
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
-def installed_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def installed(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询用户已安装插件清单
     """
@@ -53,10 +64,10 @@ def installed_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/install/{plugin_id}", summary="安装插件", response_model=schemas.Response)
-def install_plugin(plugin_id: str,
-                   repo_url: str = "",
-                   force: bool = False,
-                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def install(plugin_id: str,
+            repo_url: str = "",
+            force: bool = False,
+            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     安装插件
     """
