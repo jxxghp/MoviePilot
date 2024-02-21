@@ -48,11 +48,15 @@ def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "a
             market_plugins.append(plugin)
     # 未安装的本地插件，且不在线上插件中
     _plugin_ids = [plugin["id"] for plugin in market_plugins]
-    for plugin in local_plugins:
-        if plugin["id"] not in _installed_ids \
-                and plugin["id"] not in _plugin_ids:
+    for plugin in not_installed_plugins:
+        if plugin["id"] not in _plugin_ids:
             market_plugins.append(plugin)
-    return market_plugins
+    # 返回插件清单
+    if state == "market":
+        # 返回未安装的插件
+        return market_plugins
+    # 返回所有插件
+    return installed_plugins + market_plugins
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
