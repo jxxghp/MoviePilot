@@ -1,14 +1,16 @@
 #!/bin/bash
+# shellcheck shell=bash
+# shellcheck disable=SC2086
+# shellcheck disable=SC2144
 
 # 下载及解压
 download_and_unzip() {
     url="$1"
     target_dir="$2"
     echo "正在下载 ${url}..."
-    curl ${CURL_OPTIONS} "$url" ${CURL_HEADERS} | busybox unzip -d /tmp -
-    if [ $? -eq 0 ]; then
+    if curl ${CURL_OPTIONS} "${url}" ${CURL_HEADERS} | busybox unzip -d /tmp -; then
         if [ -e /tmp/MoviePilot-* ]; then
-            mv /tmp/MoviePilot-* /tmp/${target_dir}
+            mv /tmp/MoviePilot-* /tmp/"${target_dir}"
         fi
     else
         return 1
@@ -17,59 +19,62 @@ download_and_unzip() {
 
 # 下载程序资源，$1: 后端版本路径
 install_backend_and_download_resources() {
-    download_and_unzip "https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"
-    if [ $? -eq 0 ]; then
+    if download_and_unzip "https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"; then
         echo "后端程序下载成功"
         pip install ${PIP_OPTIONS} --upgrade pip
-        pip install ${PIP_OPTIONS} -r /tmp/App/requirements.txt
-        if [ $? -eq 0 ]; then
+        if pip install ${PIP_OPTIONS} -r /tmp/App/requirements.txt; then
             echo "安装依赖成功"
-            download_and_unzip "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" "Plugins"
-            if [ $? -eq 0 ]; then
-                echo "插件下载成功"
-                download_and_unzip "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" "Resources"
-                if [ $? -eq 0 ]; then
-                    echo "资源包下载成功"
-                    frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" ${CURL_HEADERS} | jq -r .tag_name)
-                    if [[ "${frontend_version}" == *v* ]]; then
-                        download_and_unzip "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"
-                        if [ $? -eq 0 ]; then
-                            echo "前端程序下载成功"
-                            # 备份插件目录
-                            rm -rf /plugins
-                            mkdir -p /plugins
-                            cp -a /app/app/plugins/* /plugins/
-                            # 不备份__init__.py
-                            rm -f /plugins/__init__.py
-                            # 清空目录
-                            rm -rf /app
-                            mkdir -p /app
-                            # 后端程序
-                            cp -a /tmp/App/* /app/
-                            # 恢复插件目录
-                            cp -a /plugins/* /app/app/plugins/
-                            # 插件仓库
-                            rsync -av --remove-source-files /tmp/Plugins/plugins/* /app/app/plugins/
+            frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" ${CURL_HEADERS} | jq -r .tag_name)
+            if [[ "${frontend_version}" == *v* ]]; then
+                if download_and_unzip "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"; then
+                    echo "前端程序下载成功"
+                    # 清空目录
+                    rm -rf /app
+                    mkdir -p /app
+                    # 后端程序
+                    cp -a /tmp/App/* /app/
+                    # 前端程序
+                    rm -rf /public
+                    mkdir -p /public
+                    cp -a /tmp/dist/* /public/
+                    # 清理临时目录
+                    rm -rf /tmp/*
+                    echo "程序部分更新成功，前端版本：${frontend_version}，后端版本：${1}"s
+                    echo "开始更新插件..."
+                    if download_and_unzip "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" "Plugins"; then
+                        echo "插件下载成功"
+                        # 备份插件目录
+                        rm -rf /plugins
+                        mkdir -p /plugins
+                        cp -a /app/app/plugins/* /plugins/
+                        # 不备份__init__.py
+                        rm -f /plugins/__init__.py
+                        # 恢复插件目录
+                        cp -a /plugins/* /app/app/plugins/
+                        # 插件仓库
+                        rsync -av --remove-source-files /tmp/Plugins/plugins/* /app/app/plugins/
+                        # 清理临时目录
+                        rm -rf /tmp/*
+                        echo "插件更新成功"
+                        echo "开始更新资源包..."
+                        if download_and_unzip "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" "Resources"; then
+                            echo "资源包下载成功"
                             # 资源包
                             cp -a /tmp/Resources/resources/* /app/app/helper/
-                            # 前端程序
-                            rm -rf /public
-                            mkdir -p /public
-                            cp -a /tmp/dist/* /public/
                             # 清理临时目录
                             rm -rf /tmp/*
-                            echo "程序更新成功，前端版本：${frontend_version}，后端版本：${1}"
+                            echo "资源包更新成功"
                         else
-                            echo "前端程序下载失败，继续使用旧的程序来启动..."
+                            echo "资源包下载失败，继续使用旧的资源包来启动..."
                         fi
                     else
-                        echo "前端最新版本号获取失败，继续启动..."
+                        echo "插件下载失败，继续使用旧的插件来启动..."
                     fi
                 else
-                    echo "资源包下载失败，继续使用旧的程序来启动..."
+                    echo "前端程序下载失败，继续使用旧的程序来启动..."
                 fi
             else
-                echo "插件下载失败，继续使用旧的程序来启动..."
+                echo "前端最新版本号获取失败，继续启动..."
             fi
         else
             echo "安装依赖失败，请重新拉取镜像"
@@ -100,7 +105,7 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
         echo "Release 更新模式"
         old_version=$(cat /app/version.py)
         if [[ "${old_version}" == *APP_VERSION* ]]; then
-            current_version=v$(echo ${old_version} | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
+            current_version=v$(echo "${old_version}" | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
             echo "当前版本号：${current_version}"
             new_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" ${CURL_HEADERS} | jq -r .tag_name)
             if [[ "${new_version}" == *v* ]]; then

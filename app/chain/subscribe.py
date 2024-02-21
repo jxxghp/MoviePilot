@@ -704,7 +704,7 @@ class SubscribeChain(ChainBase):
             return
         # 遍历订阅
         for subscribe in subscribes:
-            logger.info(f'开始检查订阅：{subscribe.name} ...')
+            logger.info(f'开始更新订阅元数据：{subscribe.name} ...')
             # 生成元数据
             meta = MetaInfo(subscribe.name)
             meta.year = subscribe.year
@@ -721,7 +721,7 @@ class SubscribeChain(ChainBase):
                 continue
             # 对于电视剧，获取当前季的总集数
             episodes = mediainfo.seasons.get(subscribe.season) or []
-            if len(episodes) > (subscribe.total_episode or 0):
+            if len(episodes):
                 total_episode = len(episodes)
                 lack_episode = subscribe.lack_episode + (total_episode - subscribe.total_episode)
                 logger.info(
@@ -742,7 +742,7 @@ class SubscribeChain(ChainBase):
                 "total_episode": total_episode,
                 "lack_episode": lack_episode
             })
-            logger.info(f'订阅 {subscribe.name} 更新完成')
+            logger.info(f'{subscribe.name} 订阅元数据更新完成')
 
     def __update_subscribe_note(self, subscribe: Subscribe, downloads: List[Context]):
         """

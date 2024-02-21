@@ -6,11 +6,10 @@ from transmission_rpc.session import SessionStats
 
 from app.core.config import settings
 from app.log import logger
-from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
 
-class Transmission(metaclass=Singleton):
+class Transmission:
     _host: str = None
     _port: int = None
     _username: str = None

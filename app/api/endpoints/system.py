@@ -66,6 +66,8 @@ def set_env_setting(env: dict,
     更新系统环境变量
     """
     for k, v in env.items():
+        if k == "undefined":
+            continue
         if hasattr(settings, k):
             if v == "None":
                 v = None

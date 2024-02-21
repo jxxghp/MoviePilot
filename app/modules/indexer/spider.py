@@ -157,7 +157,7 @@ class TorrentSpider:
                 search_mode = "0"
 
             # 搜索URL
-            indexer_params = self.search.get("params") or {}
+            indexer_params = self.search.get("params", {}).copy()
             if indexer_params:
                 search_area = indexer_params.get('search_area')
                 # search_area非0表示支持imdbid搜索

@@ -8,10 +8,9 @@ from app.core.config import settings
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
 
 
-class Jellyfin(metaclass=Singleton):
+class Jellyfin:
 
     def __init__(self):
         self._host = settings.JELLYFIN_HOST
@@ -51,7 +50,7 @@ class Jellyfin(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return []
-        req_url = "%Library/SelectableMediaFolders?api_key=%s" % (self._host, self._apikey)
+        req_url = "%sLibrary/SelectableMediaFolders?api_key=%s" % (self._host, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
             if res:
@@ -633,9 +632,9 @@ class Jellyfin(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return None
-        url = url.replace("[HOST]", self._host) \
-            .replace("[APIKEY]", self._apikey) \
-            .replace("[USER]", self.user)
+        url = url.replace("[HOST]", self._host or '') \
+            .replace("[APIKEY]", self._apikey or '') \
+            .replace("[USER]", self.user or '')
         try:
             return RequestUtils(accept_type="application/json").get_res(url=url)
         except Exception as e:
@@ -651,9 +650,9 @@ class Jellyfin(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return None
-        url = url.replace("[HOST]", self._host) \
-            .replace("[APIKEY]", self._apikey) \
-            .replace("[USER]", self.user)
+        url = url.replace("[HOST]", self._host or '') \
+            .replace("[APIKEY]", self._apikey or '') \
+            .replace("[USER]", self.user or '')
         try:
             return RequestUtils(
                 headers=headers

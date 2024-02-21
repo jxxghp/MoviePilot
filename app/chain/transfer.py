@@ -482,7 +482,7 @@ class TransferChain(ChainBase):
             return
 
     @staticmethod
-    def get_root_path(path: str, type_name: str, category: str) -> Path:
+    def get_root_path(path: str, type_name: str, category: str) -> Optional[Path]:
         """
         计算媒体库目录的根路径
         """

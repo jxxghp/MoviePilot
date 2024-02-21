@@ -68,7 +68,7 @@ class Settings(BaseSettings):
                           '.m4v', '.flv', '.m2ts', '.strm',
                           '.tp']
     # 支持的字幕文件后缀格式
-    RMT_SUBEXT: list = ['.srt', '.ass', '.ssa']
+    RMT_SUBEXT: list = ['.srt', '.ass', '.ssa', '.sup']
     # 支持的音轨文件后缀格式
     RMT_AUDIO_TRACK_EXT: list = ['.mka']
     # 索引器
@@ -223,32 +223,17 @@ class Settings(BaseSettings):
     # 自动检查和更新站点资源包（站点索引、认证等）
     AUTO_UPDATE_RESOURCE: bool = True
 
-    @validator("SUBSCRIBE_RSS_INTERVAL", pre=True, always=True)
-    def convert_rss_interval(cls, value):
+    @validator("SUBSCRIBE_RSS_INTERVAL",
+               "COOKIECLOUD_INTERVAL",
+               "MEDIASERVER_SYNC_INTERVAL",
+               pre=True, always=True)
+    def convert_int(cls, value):
         if not value:
             return 0
         try:
             return int(value)
         except (ValueError, TypeError):
-            raise ValueError("SUBSCRIBE_RSS_INTERVAL设置有误，不是数字！")
-
-    @validator("COOKIECLOUD_INTERVAL", pre=True, always=True)
-    def convert_cookiecloud_interval(cls, value):
-        if not value:
-            return 0
-        try:
-            return int(value)
-        except (ValueError, TypeError):
-            raise ValueError("COOKIECLOUD_INTERVAL设置有误，不是数字！")
-
-    @validator("MEDIASERVER_SYNC_INTERVAL", pre=True, always=True)
-    def convert_mediaserver_sync_interval(cls, value):
-        if not value:
-            return 0
-        try:
-            return int(value)
-        except (ValueError, TypeError):
-            raise ValueError("MEDIASERVER_SYNC_INTERVAL设置有误，不是数字！")
+            raise ValueError(f"{value} 格式错误，不是有效数字！")
 
     @property
     def INNER_CONFIG_PATH(self):

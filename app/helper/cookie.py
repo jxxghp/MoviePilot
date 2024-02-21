@@ -52,7 +52,8 @@ class CookieHelper:
         ],
         "twostep": [
             '//input[@name="two_step_code"]',
-            '//input[@name="2fa_secret"]'
+            '//input[@name="2fa_secret"]',
+            '//input[@name="otp"]'
         ]
     }
 
@@ -111,10 +112,10 @@ class CookieHelper:
             if not password_xpath:
                 return None, None, "未找到密码输入框"
             # 处理二步验证码
-            two_step_code = TwoFactorAuth(two_step_code).get_code()
+            otp_code = TwoFactorAuth(two_step_code).get_code()
             # 查找二步验证码输入框
             twostep_xpath = None
-            if two_step_code:
+            if otp_code:
                 for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
                     if html.xpath(xpath):
                         twostep_xpath = xpath
@@ -152,7 +153,7 @@ class CookieHelper:
                 page.fill(password_xpath, password)
                 # 输入二步验证码
                 if twostep_xpath:
-                    page.fill(twostep_xpath, two_step_code)
+                    page.fill(twostep_xpath, otp_code)
                 # 识别验证码
                 if captcha_xpath and captcha_img_url:
                     captcha_element = page.query_selector(captcha_xpath)
@@ -179,6 +180,24 @@ class CookieHelper:
             except Exception as e:
                 logger.error(f"仿真登录失败：{str(e)}")
                 return None, None, f"仿真登录失败：{str(e)}"
+            # 对于某二次验证码为单页面的站点，输入二次验证码
+            if "verify" in page.url:
+                if not otp_code:
+                    return None, None, "需要二次验证码"
+                html = etree.HTML(page.content())
+                for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
+                    if html.xpath(xpath):
+                        try:
+                            # 刷新一下 2fa code
+                            otp_code = TwoFactorAuth(two_step_code).get_code()
+                            page.fill(xpath, otp_code)
+                            # 登录按钮 xpath 理论上相同，不再重复查找
+                            page.click(submit_xpath)
+                            page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                        except Exception as e:
+                            logger.error(f"二次验证码输入失败：{str(e)}")
+                            return None, None, f"二次验证码输入失败：{str(e)}"
+                        break
             # 登录后的源码
             html_text = page.content()
             if not html_text:

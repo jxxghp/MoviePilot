@@ -14,13 +14,12 @@ from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.common import retry
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
 apihelper.proxy = settings.PROXY
 
 
-class Telegram(metaclass=Singleton):
+class Telegram:
     _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
     _event = Event()
     _bot: telebot.TeleBot = None

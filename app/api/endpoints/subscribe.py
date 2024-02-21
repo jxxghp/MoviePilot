@@ -140,12 +140,13 @@ def subscribe_mediaid(
         if not doubanid:
             return Subscribe()
         result = Subscribe.get_by_doubanid(db, doubanid)
-
-    if not result and title:
-        meta = MetaInfo(title)
-        if season:
-            meta.begin_season = season
-        result = Subscribe.get_by_title(db, title=meta.name, season=meta.begin_season)
+        # 豆瓣已订阅如果 id 搜索无结果使用标题搜索
+        # 会造成同名结果也会被返回
+        if not result and title:
+            meta = MetaInfo(title)
+            if season:
+                meta.begin_season = season
+            result = Subscribe.get_by_title(db, title=meta.name, season=meta.begin_season)
 
     if result and result.sites:
         result.sites = json.loads(result.sites)

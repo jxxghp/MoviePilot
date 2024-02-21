@@ -11,10 +11,9 @@ from app.core.config import settings
 from app.log import logger
 from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
 
 
-class Emby(metaclass=Singleton):
+class Emby:
 
     def __init__(self):
         self._host = settings.EMBY_HOST
@@ -933,9 +932,9 @@ class Emby(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return None
-        url = url.replace("[HOST]", self._host) \
-            .replace("[APIKEY]", self._apikey) \
-            .replace("[USER]", self.user)
+        url = url.replace("[HOST]", self._host or '') \
+            .replace("[APIKEY]", self._apikey or '') \
+            .replace("[USER]", self.user or '')
         try:
             return RequestUtils(content_type="application/json").get_res(url=url)
         except Exception as e:
@@ -951,9 +950,9 @@ class Emby(metaclass=Singleton):
         """
         if not self._host or not self._apikey:
             return None
-        url = url.replace("[HOST]", self._host) \
-            .replace("[APIKEY]", self._apikey) \
-            .replace("[USER]", self.user)
+        url = url.replace("[HOST]", self._host or '') \
+            .replace("[APIKEY]", self._apikey or '') \
+            .replace("[USER]", self.user or '')
         try:
             return RequestUtils(
                 headers=headers,

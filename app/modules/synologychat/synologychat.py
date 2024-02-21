@@ -9,13 +9,12 @@ from app.core.context import MediaInfo, Context
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.http import RequestUtils
-from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
 lock = Lock()
 
 
-class SynologyChat(metaclass=Singleton):
+class SynologyChat:
     def __init__(self):
         self._req = RequestUtils(content_type="application/x-www-form-urlencoded")
         self._webhook_url = settings.SYNOLOGYCHAT_WEBHOOK
