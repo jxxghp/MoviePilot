@@ -44,7 +44,6 @@ def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "a
         if plugin["id"] not in _installed_ids:
             market_plugins.append(plugin)
         elif plugin.get("has_update"):
-            plugin["installed"] = False
             market_plugins.append(plugin)
     # 未安装的本地插件，且不在线上插件中
     _plugin_ids = [plugin["id"] for plugin in market_plugins]
