@@ -26,7 +26,7 @@ class WordsMatcher(metaclass=Singleton):
         # 读取自定义识别词
         words: List[str] = self.systemconfig.get(SystemConfigKey.CustomIdentifiers) or []
         for word in words:
-            if not word:
+            if not word or word.find('#') == 0:
                 continue
             try:
                 if word.count(" => ") and word.count(" && ") and word.count(" >> ") and word.count(" <> "):
