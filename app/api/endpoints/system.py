@@ -187,6 +187,8 @@ def get_logging(token: str, length: int = 50, logfile: str = "moviepilot.log"):
     # 根据length参数返回不同的响应
     if length == -1:
         # 返回全部日志作为文本响应
+        if not log_path.exists():
+            return Response(content="日志文件不存在！", media_type="text/plain")
         with open(log_path, 'r', encoding='utf-8') as file:
             text = file.read()
         return Response(content=text, media_type="text/plain")
