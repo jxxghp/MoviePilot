@@ -40,6 +40,32 @@ class LoggerManager:
     # 默认日志文件
     _default_log_file = "moviepilot.log"
 
+    def __get_caller(self):
+        """
+        获取调用者的文件名称与插件名称(如果是插件调用内置的模块, 也能写入到插件日志文件中)
+        """
+        # 调用者文件名称
+        caller_name = None
+        # 调用者插件名称
+        plugin_name = None
+        for i in inspect.stack():
+            filepath = Path(i.filename)
+            parts = filepath.parts
+            if not caller_name and parts and parts[-1].endswith(".py") and parts[-1] != "log.py":
+                # 设定调用者文件名称
+                if parts[-1] == "__init__.py":
+                    caller_name = parts[-2]
+                else:
+                    caller_name = parts[-1]
+            if "app" in parts:
+                if not plugin_name and "plugins" in parts:
+                    # 设定调用者插件名称
+                    plugin_name = parts[parts.index("plugins") + 1]
+                if "main.py" in parts:
+                    # 已经到达程序的入口
+                    break
+        return caller_name or "log.py", plugin_name
+
     @staticmethod
     def __setup_logger(log_file: str):
         """
@@ -66,7 +92,7 @@ class LoggerManager:
         # 终端日志
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.DEBUG)
-        console_formatter = CustomFormatter("%(leveltext)s%(name)s - %(message)s")
+        console_formatter = CustomFormatter(f"%(leveltext)s%(message)s")
         console_handler.setFormatter(console_formatter)
         _logger.addHandler(console_handler)
 
@@ -77,23 +103,23 @@ class LoggerManager:
                                            backupCount=3,
                                            encoding='utf-8')
         file_handler.setLevel(logging.INFO)
-        file_formater = CustomFormatter("【%(levelname)s】%(asctime)s - %(name)s - %(message)s")
+        file_formater = CustomFormatter(f"【%(levelname)s】%(asctime)s - %(message)s")
         file_handler.setFormatter(file_formater)
         _logger.addHandler(file_handler)
 
         return _logger
 
-    def logger(self, path: str) -> logging.Logger:
+    def logger(self, method, msg, *args, **kwargs) -> logging.Logger:
         """
         获取模块的logger
         :param path: 当前运行程序路径
         """
-        filepath = Path(path)
 
+        # 获取调用者文件名和插件名
+        caller_name, plugin_name = self.__get_caller()
         # 区分插件日志
-        if "plugins" in filepath.parts:
+        if plugin_name:
             # 使用插件日志文件
-            plugin_name = filepath.parts[filepath.parts.index("plugins") + 1]
             logfile = Path("plugins") / f"{plugin_name}.log"
         else:
             # 使用默认日志文件
@@ -104,44 +130,45 @@ class LoggerManager:
         if not _logger:
             _logger = self.__setup_logger(logfile)
             self._loggers[logfile] = _logger
-        return _logger
+        if hasattr(_logger, method):
+            method = getattr(_logger, method)
+            method(f"{caller_name} - {msg}", *args, **kwargs)
 
     def info(self, msg, *args, **kwargs):
         """
-        重载info方法，按模块区分输出
+        重载info方法
         """
-        self.logger(inspect.stack()[1].filename).info(msg, *args, **kwargs)
+        self.logger("info", msg, *args, **kwargs)
 
     def debug(self, msg, *args, **kwargs):
         """
-        重载debug方法，按模块区分输出
+        重载debug方法
         """
-        self.logger(inspect.stack()[1].filename).debug(msg, *args, **kwargs)
+        self.logger("debug", msg, *args, **kwargs)
 
     def warning(self, msg, *args, **kwargs):
         """
-        重载warning方法，按模块区分输出
+        重载warning方法
         """
-        self.logger(inspect.stack()[1].filename).warning(msg, *args, **kwargs)
+        self.logger("warning", msg, *args, **kwargs)
 
     def warn(self, msg, *args, **kwargs):
         """
-        重载warn方法，按模块区分输出
+        重载warn方法
         """
-        self.warning(msg, *args, **kwargs)
+        self.logger("warning", msg, *args, **kwargs)
 
     def error(self, msg, *args, **kwargs):
         """
-        重载error方法，按模块区分输出
+        重载error方法
         """
-        self.logger(inspect.stack()[1].filename).error(msg, *args, **kwargs)
+        self.logger("error", msg, *args, **kwargs)
 
     def critical(self, msg, *args, **kwargs):
         """
-        重载critical方法，按模块区分输出
+        重载critical方法
         """
-        self.logger(inspect.stack()[1].filename).critical(msg, *args, **kwargs)
-
+        self.logger("critical", msg, *args, **kwargs)
 
 # 初始化公共日志
 logger = LoggerManager()
