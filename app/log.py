@@ -48,10 +48,10 @@ class LoggerManager:
         caller_name = None
         # 调用者插件名称
         plugin_name = None
-        for i in inspect.stack():
+        for i in inspect.stack()[3:]:
             filepath = Path(i.filename)
             parts = filepath.parts
-            if not caller_name and parts and parts[-1].endswith(".py") and parts[-1] != "log.py":
+            if not caller_name:
                 # 设定调用者文件名称
                 if parts[-1] == "__init__.py":
                     caller_name = parts[-2]
@@ -61,9 +61,13 @@ class LoggerManager:
                 if not plugin_name and "plugins" in parts:
                     # 设定调用者插件名称
                     plugin_name = parts[parts.index("plugins") + 1]
+                    break
                 if "main.py" in parts:
                     # 已经到达程序的入口
                     break
+            elif len(parts) != 1:
+                # 已经超出程序范围
+                break
         return caller_name or "log.py", plugin_name
 
     @staticmethod
