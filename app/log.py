@@ -141,3 +141,4 @@ class LoggerManager:
 
 # 初始化公共日志
 logger = LoggerManager()
+logger.warn = logger.warning
