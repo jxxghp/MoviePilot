@@ -28,8 +28,6 @@ class CustomFormatter(logging.Formatter):
     def format(self, record):
         seperator = " " * (8 - len(record.levelname))
         record.leveltext = level_name_colors[record.levelno](record.levelname + ":") + seperator
-        if record.filename == "__init__.py":
-            record.filename = Path(record.pathname).parent.name
         return super().format(record)
 
 
@@ -68,7 +66,7 @@ class LoggerManager:
         # 终端日志
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.DEBUG)
-        console_formatter = CustomFormatter("%(leveltext)s%(filename)s - %(message)s")
+        console_formatter = CustomFormatter("%(leveltext)s%(name)s - %(message)s")
         console_handler.setFormatter(console_formatter)
         _logger.addHandler(console_handler)
 
@@ -79,7 +77,7 @@ class LoggerManager:
                                            backupCount=3,
                                            encoding='utf-8')
         file_handler.setLevel(logging.INFO)
-        file_formater = CustomFormatter("【%(levelname)s】%(asctime)s - %(filename)s - %(message)s")
+        file_formater = CustomFormatter("【%(levelname)s】%(asctime)s - %(name)s - %(message)s")
         file_handler.setFormatter(file_formater)
         _logger.addHandler(file_handler)
 
@@ -125,6 +123,12 @@ class LoggerManager:
         重载warning方法，按模块区分输出
         """
         self.logger(inspect.stack()[1].filename).warning(msg, *args, **kwargs)
+
+    def warn(self, msg, *args, **kwargs):
+        """
+        重载warn方法，按模块区分输出
+        """
+        self.warning(msg, *args, **kwargs)
 
     def error(self, msg, *args, **kwargs):
         """
