@@ -74,7 +74,7 @@ class EventManager(metaclass=Singleton):
         """
         if class_name in self._disabled_handlers:
             self._disabled_handlers.remove(class_name)
-            logger.debug(f"Event Enabled：{class_name}")
+        logger.debug(f"Event Enabled：{class_name}")
 
     def send_event(self, etype: EventType, data: dict = None):
         """
