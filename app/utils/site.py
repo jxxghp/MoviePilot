@@ -24,7 +24,8 @@ class SiteUtils:
             ' or contains(@onclick, "logout")'
             ' or contains(@href, "usercp")]',
             '//form[contains(@action, "logout")]',
-            '//div[@class="user-info-side"]'
+            '//div[@class="user-info-side"]',
+            '//a[@id="myitem"]'
         ]
         for xpath in xpaths:
             if html.xpath(xpath):
