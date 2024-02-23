@@ -360,12 +360,14 @@ class Scheduler(metaclass=Singleton):
                 job_id = job.id.split("|")[0]
                 if not self._jobs.get(job_id):
                     continue
+                # 任务状态
+                status = "正在运行" if self._jobs[job_id].get("running") else "等待"
                 # 下次运行时间
                 next_run = TimerUtils.time_difference(job.next_run_time)
                 schedulers.append(schemas.ScheduleInfo(
                     id=job_id,
                     name=job.name,
-                    status="等待",
+                    status=status,
                     next_run=next_run
                 ))
             return schedulers
