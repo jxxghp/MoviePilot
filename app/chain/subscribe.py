@@ -279,7 +279,8 @@ class SubscribeChain(ChainBase):
                                                 no_exists=no_exists,
                                                 sites=sites,
                                                 priority_rule=priority_rule,
-                                                filter_rule=filter_rule)
+                                                filter_rule=filter_rule,
+                                                area="imdbid" if subscribe.search_imdbid else "title")
             if not contexts:
                 logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
                 self.finish_subscribe_or_not(subscribe=subscribe, meta=meta,

@@ -83,10 +83,11 @@ def create_subscribe(
                                         username=current_user.name,
                                         best_version=subscribe_in.best_version,
                                         save_path=subscribe_in.save_path,
+                                        search_imdbid=subscribe_in.search_imdbid,
                                         exist_ok=True)
-    return schemas.Response(success=True if sid else False, message=message, data={
-        "id": sid
-    })
+    return schemas.Response(
+        success=bool(sid), message=message, data={"id": sid}
+    )
 
 
 @router.put("/", summary="更新订阅", response_model=schemas.Response)
