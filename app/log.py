@@ -40,7 +40,8 @@ class LoggerManager:
     # 默认日志文件
     _default_log_file = "moviepilot.log"
 
-    def __get_caller(self):
+    @staticmethod
+    def __get_caller():
         """
         获取调用者的文件名称与插件名称(如果是插件调用内置的模块, 也能写入到插件日志文件中)
         """
@@ -113,10 +114,11 @@ class LoggerManager:
 
         return _logger
 
-    def logger(self, method, msg, *args, **kwargs) -> logging.Logger:
+    def logger(self, method: str, msg: str, *args, **kwargs):
         """
         获取模块的logger
-        :param path: 当前运行程序路径
+        :param method: 日志方法
+        :param msg: 日志信息
         """
 
         # 获取调用者文件名和插件名
@@ -138,41 +140,42 @@ class LoggerManager:
             method = getattr(_logger, method)
             method(f"{caller_name} - {msg}", *args, **kwargs)
 
-    def info(self, msg, *args, **kwargs):
+    def info(self, msg: str, *args, **kwargs):
         """
         重载info方法
         """
         self.logger("info", msg, *args, **kwargs)
 
-    def debug(self, msg, *args, **kwargs):
+    def debug(self, msg: str, *args, **kwargs):
         """
         重载debug方法
         """
         self.logger("debug", msg, *args, **kwargs)
 
-    def warning(self, msg, *args, **kwargs):
+    def warning(self, msg: str, *args, **kwargs):
         """
         重载warning方法
         """
         self.logger("warning", msg, *args, **kwargs)
 
-    def warn(self, msg, *args, **kwargs):
+    def warn(self, msg: str, *args, **kwargs):
         """
         重载warn方法
         """
         self.logger("warning", msg, *args, **kwargs)
 
-    def error(self, msg, *args, **kwargs):
+    def error(self, msg: str, *args, **kwargs):
         """
         重载error方法
         """
         self.logger("error", msg, *args, **kwargs)
 
-    def critical(self, msg, *args, **kwargs):
+    def critical(self, msg: str, *args, **kwargs):
         """
         重载critical方法
         """
         self.logger("critical", msg, *args, **kwargs)
+
 
 # 初始化公共日志
 logger = LoggerManager()
