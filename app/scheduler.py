@@ -284,6 +284,8 @@ class Scheduler(metaclass=Singleton):
                 plugin_services = PluginManager().run_plugin_method(pid, "get_service") or []
             except:
                 return
+            # 获取插件名称
+            plugin_name = PluginManager().get_plugin_attr(pid, "plugin_name")
             # 开始注册插件服务
             for service in plugin_services:
                 try:
@@ -292,6 +294,7 @@ class Scheduler(metaclass=Singleton):
                         "func": service["func"],
                         "name": service["name"],
                         "pid": pid,
+                        "plugin_name": plugin_name,
                         "running": False,
                     }
                     self._scheduler.add_job(
@@ -304,7 +307,7 @@ class Scheduler(metaclass=Singleton):
                             'job_id': sid
                         }
                     )
-                    logger.info(f"注册插件服务({pid})：{service['name']}")
+                    logger.info(f"注册插件服务({plugin_name})：{service['name']}")
                 except Exception as e:
                     logger.error(f"注册插件服务失败：{str(e)} - {service}")
 
@@ -313,6 +316,8 @@ class Scheduler(metaclass=Singleton):
         移除插件定时服务
         """
         with self._lock:
+            # 获取插件名称
+            plugin_name = PluginManager().get_plugin_attr(pid, "plugin_name")
             for job_id, service in self._jobs.copy().items():
                 try:
                     if service.get("pid") == pid:
@@ -321,7 +326,7 @@ class Scheduler(metaclass=Singleton):
                             self._scheduler.remove_job(job_id)
                         except:
                             pass
-                        logger.info(f"移除插件服务({pid})：{service.get('name')}")
+                        logger.info(f"移除插件服务({plugin_name})：{service.get('name')}")
                 except Exception as e:
                     logger.error(f"移除插件服务失败：{str(e)} - {job_id}: {service}")
 
@@ -338,16 +343,14 @@ class Scheduler(metaclass=Singleton):
             # 按照下次运行时间排序
             jobs.sort(key=lambda x: x.next_run_time)
             # 将正在运行的任务提取出来 (保障一次性任务正常显示)
-            for job_id, value in self._jobs.items():
-                name = value.get("name")
-                if value.get("running") and name:
-                    if name not in added:
-                        added.append(name)
-                    else:
-                        continue
+            for job_id, service in self._jobs.items():
+                name = service.get("name")
+                plugin_name = service.get("plugin_name")
+                if service.get("running") and name and plugin_name:
                     schedulers.append(schemas.ScheduleInfo(
                         id=job_id,
                         name=name,
+                        provider=plugin_name,
                         status="正在运行",
                         next_run="~"
                     ))
@@ -358,15 +361,17 @@ class Scheduler(metaclass=Singleton):
                 else:
                     continue
                 job_id = job.id.split("|")[0]
-                if not self._jobs.get(job_id):
+                service = self._jobs.get(job_id)
+                if not service:
                     continue
                 # 任务状态
-                status = "正在运行" if self._jobs[job_id].get("running") else "等待"
+                status = "正在运行" if service.get("running") else "等待"
                 # 下次运行时间
                 next_run = TimerUtils.time_difference(job.next_run_time)
                 schedulers.append(schemas.ScheduleInfo(
                     id=job_id,
                     name=job.name,
+                    provider=service.get("plugin_name", "MoviePilot"),
                     status=status,
                     next_run=next_run
                 ))
