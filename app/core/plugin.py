@@ -262,6 +262,12 @@ class PluginManager(metaclass=Singleton):
         """
         return list(self._plugins.keys())
 
+    def get_running_plugin_ids(self) -> List[str]:
+        """
+        获取所有运行态插件ID
+        """
+        return list(self._running_plugins.keys())
+
     def get_online_plugins(self) -> List[dict]:
         """
         获取所有在线插件信息

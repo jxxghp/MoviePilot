@@ -8,6 +8,7 @@ from app.core.security import verify_token
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.plugin import PluginHelper
 from app.schemas.types import SystemConfigKey
+from app.scheduler import Scheduler
 
 router = APIRouter()
 
@@ -90,6 +91,8 @@ def install(plugin_id: str,
         SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
     # 重载插件管理器
     PluginManager().init_config()
+    # 注册插件服务
+    Scheduler().update_plugin_job(plugin_id)
     return schemas.Response(success=True)
 
 
@@ -123,6 +126,8 @@ def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)
     PluginManager().delete_plugin_config(plugin_id)
     # 重新生效插件
     PluginManager().reload_plugin(plugin_id, {})
+    # 注册插件服务
+    Scheduler().update_plugin_job(plugin_id)
     return schemas.Response(success=True)
 
 
@@ -144,6 +149,8 @@ def set_plugin_config(plugin_id: str, conf: dict,
     PluginManager().save_plugin_config(plugin_id, conf)
     # 重新生效插件
     PluginManager().reload_plugin(plugin_id, conf)
+    # 注册插件服务
+    Scheduler().update_plugin_job(plugin_id)
     return schemas.Response(success=True)
 
 
@@ -163,6 +170,8 @@ def uninstall_plugin(plugin_id: str,
     SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
     # 重载插件管理器
     PluginManager().init_config()
+    # 移除插件服务
+    Scheduler().remove_plugin_job(plugin_id)
     return schemas.Response(success=True)
 
 
