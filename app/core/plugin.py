@@ -246,6 +246,16 @@ class PluginManager(metaclass=Singleton):
                     ret_services.extend(services)
         return ret_services
 
+    def get_plugin_attr(self, pid: str, attr: str) -> Any:
+        """
+        获取插件属性
+        """
+        if not self._running_plugins.get(pid):
+            return None
+        if not hasattr(self._running_plugins[pid], attr):
+            return None
+        return getattr(self._running_plugins[pid], attr)
+
     def run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
         """
         运行插件方法
@@ -261,6 +271,12 @@ class PluginManager(metaclass=Singleton):
         获取所有插件ID
         """
         return list(self._plugins.keys())
+
+    def get_running_plugin_ids(self) -> List[str]:
+        """
+        获取所有运行态插件ID
+        """
+        return list(self._running_plugins.keys())
 
     def get_online_plugins(self) -> List[dict]:
         """

@@ -56,6 +56,8 @@ class ScheduleInfo(BaseModel):
     id: Optional[str] = None
     # 名称
     name: Optional[str] = None
+    # 提供者
+    provider: Optional[str] = None
     # 状态
     status: Optional[str] = None
     # 下次执行时间
