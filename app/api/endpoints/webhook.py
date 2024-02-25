@@ -4,7 +4,6 @@ from fastapi import APIRouter, BackgroundTasks, Request, Depends
 
 from app import schemas
 from app.chain.webhook import WebhookChain
-from app.core.config import settings
 from app.core.security import verify_uri_token
 
 router = APIRouter()

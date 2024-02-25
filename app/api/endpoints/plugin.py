@@ -7,8 +7,8 @@ from app.core.plugin import PluginManager
 from app.core.security import verify_token
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.plugin import PluginHelper
-from app.schemas.types import SystemConfigKey
 from app.scheduler import Scheduler
+from app.schemas.types import SystemConfigKey
 
 router = APIRouter()
 
@@ -118,7 +118,7 @@ def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token))
 
 
 @router.get("/reset/{plugin_id}", summary="重置插件配置", response_model=schemas.Response)
-def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据插件ID重置插件配置
     """

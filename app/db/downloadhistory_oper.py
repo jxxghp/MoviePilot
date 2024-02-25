@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import List
 
 from app.db import DbOper
