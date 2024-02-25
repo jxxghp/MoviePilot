@@ -41,7 +41,7 @@ class Scheduler(metaclass=Singleton):
     # 定时服务
     _scheduler = BackgroundScheduler(timezone=settings.TZ,
                                      executors={
-                                         'default': ThreadPoolExecutor(20)
+                                         'default': ThreadPoolExecutor(100)
                                      })
     # 退出事件
     _event = threading.Event()
@@ -292,14 +292,16 @@ class Scheduler(metaclass=Singleton):
             # 开始注册插件服务
             for service in plugin_services:
                 try:
-                    sid = f"{pid}_{service['id']}"
-                    self._jobs[sid] = {
-                        "func": service["func"],
-                        "name": service["name"],
-                        "pid": pid,
-                        "plugin_name": plugin_name,
-                        "running": False,
-                    }
+                    sid = f"{service['id']}"
+                    job_id = sid.split("|")[0]
+                    if job_id not in self._jobs:
+                        self._jobs[job_id] = {
+                            "func": service["func"],
+                            "name": service["name"],
+                            "pid": pid,
+                            "plugin_name": plugin_name,
+                            "running": False,
+                        }
                     self._scheduler.add_job(
                         self.start,
                         service["trigger"],
@@ -307,12 +309,12 @@ class Scheduler(metaclass=Singleton):
                         name=service["name"],
                         **service["kwargs"],
                         kwargs={
-                            'job_id': sid
+                            'job_id': job_id
                         }
                     )
-                    logger.info(f"注册插件服务({plugin_name})：{service['name']}")
+                    logger.info(f"注册插件{plugin_name}服务：{service['name']} - {service['trigger']}")
                 except Exception as e:
-                    logger.error(f"注册插件服务失败：{str(e)} - {service}")
+                    logger.error(f"注册插件{plugin_name}服务失败：{str(e)} - {service}")
 
     def remove_plugin_job(self, pid: str):
         """
@@ -350,12 +352,13 @@ class Scheduler(metaclass=Singleton):
                 name = service.get("name")
                 plugin_name = service.get("plugin_name")
                 if service.get("running") and name and plugin_name:
+                    if name not in added:
+                        added.append(name)
                     schedulers.append(schemas.ScheduleInfo(
                         id=job_id,
                         name=name,
                         provider=plugin_name,
                         status="正在运行",
-                        next_run="~"
                     ))
             # 获取其他待执行任务
             for job in jobs:
@@ -374,7 +377,7 @@ class Scheduler(metaclass=Singleton):
                 schedulers.append(schemas.ScheduleInfo(
                     id=job_id,
                     name=job.name,
-                    provider=service.get("plugin_name", "MoviePilot"),
+                    provider=service.get("plugin_name", "系统"),
                     status=status,
                     next_run=next_run
                 ))
