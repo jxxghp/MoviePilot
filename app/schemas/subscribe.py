@@ -59,6 +59,8 @@ class Subscribe(BaseModel):
     current_priority: Optional[int] = None
     # 保存路径
     save_path: Optional[str] = None
+    # 是否使用 imdbid 搜索
+    search_imdbid: Optional[int] = 0
 
     class Config:
         orm_mode = True
