@@ -1,10 +1,12 @@
 import logging
 import threading
+import traceback
 from datetime import datetime, timedelta
 from typing import List
 
 import pytz
 from apscheduler.executors.pool import ThreadPoolExecutor
+from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app import schemas
@@ -266,7 +268,7 @@ class Scheduler(metaclass=Singleton):
         with self._lock:
             try:
                 self._jobs[job_id]["running"] = False
-            except:
+            except KeyError:
                 pass
             # 如果是单次任务, 应立即移除缓存
             if not self._scheduler.get_job(job_id):
@@ -282,7 +284,8 @@ class Scheduler(metaclass=Singleton):
         with self._lock:
             try:
                 plugin_services = PluginManager().run_plugin_method(pid, "get_service") or []
-            except:
+            except Exception as e:
+                logger.error(f"运行插件 {pid} 服务失败：{str(e)} - {traceback.format_exc()}")
                 return
             # 获取插件名称
             plugin_name = PluginManager().get_plugin_attr(pid, "plugin_name")
@@ -324,7 +327,7 @@ class Scheduler(metaclass=Singleton):
                         self._jobs.pop(job_id, None)
                         try:
                             self._scheduler.remove_job(job_id)
-                        except:
+                        except JobLookupError:
                             pass
                         logger.info(f"移除插件服务({plugin_name})：{service.get('name')}")
                 except Exception as e:
