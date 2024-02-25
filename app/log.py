@@ -62,6 +62,8 @@ class LoggerManager:
                 if not plugin_name and "plugins" in parts:
                     # 设定调用者插件名称
                     plugin_name = parts[parts.index("plugins") + 1]
+                    if plugin_name == "__init__.py":
+                        plugin_name = "plugin"
                     break
                 if "main.py" in parts:
                     # 已经到达程序的入口

@@ -377,7 +377,7 @@ class Scheduler(metaclass=Singleton):
                 schedulers.append(schemas.ScheduleInfo(
                     id=job_id,
                     name=job.name,
-                    provider=service.get("plugin_name", "系统"),
+                    provider=service.get("plugin_name", "[系统]"),
                     status=status,
                     next_run=next_run
                 ))
