@@ -430,6 +430,7 @@ class TorrentSpider:
         item = self.__index(items, selector)
         if item:
             peers_val = item.split("/")[0]
+            peers_val = peers_val.replace(",", "")
             peers_val = self.__filter_text(peers_val,
                                            selector.get('filters'))
             self.torrents_info['peers'] = int(peers_val) if peers_val and peers_val.isdigit() else 0
@@ -447,6 +448,7 @@ class TorrentSpider:
         item = self.__index(items, selector)
         if item:
             seeders_val = item.split("/")[0]
+            seeders_val = seeders_val.replace(",", "")
             seeders_val = self.__filter_text(seeders_val,
                                              selector.get('filters'))
             self.torrents_info['seeders'] = int(seeders_val) if seeders_val and seeders_val.isdigit() else 0
@@ -464,6 +466,7 @@ class TorrentSpider:
         item = self.__index(items, selector)
         if item:
             grabs_val = item.split("/")[0]
+            grabs_val = grabs_val.replace(",", "")
             grabs_val = self.__filter_text(grabs_val,
                                            selector.get('filters'))
             self.torrents_info['grabs'] = int(grabs_val) if grabs_val and grabs_val.isdigit() else 0
