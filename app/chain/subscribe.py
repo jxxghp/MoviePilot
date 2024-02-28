@@ -452,7 +452,7 @@ class SubscribeChain(ChainBase):
         获取订阅过滤规则，同时组合默认规则
         """
         # 默认过滤规则
-        default_rule = self.systemconfig.get(SystemConfigKey.DefaultFilterRules)
+        default_rule = self.systemconfig.get(SystemConfigKey.DefaultFilterRules) or {}
         return {
             "include": subscribe.include or default_rule.get("include"),
             "exclude": subscribe.exclude or default_rule.get("exclude"),
