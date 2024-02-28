@@ -242,6 +242,19 @@ class Transmission:
             logger.error(f"设置下载文件状态出错：{str(err)}")
             return False
 
+    def set_unwanted_files(self, tid: str, file_ids: list) -> bool:
+        """
+        设置下载文件的状态
+        """
+        if not self.trc:
+            return False
+        try:
+            self.trc.change_torrent(ids=tid, files_unwanted=file_ids)
+            return True
+        except Exception as err:
+            logger.error(f"设置下载文件状态出错：{str(err)}")
+            return False
+
     def transfer_info(self) -> Optional[SessionStats]:
         """
         获取传输信息
@@ -359,3 +372,4 @@ class Transmission:
         except Exception as err:
             logger.error(f"修改tracker出错：{str(err)}")
             return False
+
