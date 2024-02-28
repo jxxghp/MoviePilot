@@ -1,6 +1,5 @@
 import json
 import random
-import re
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
@@ -18,6 +17,7 @@ from app.db.models.subscribe import Subscribe
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
+from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo, Notification
 from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType
@@ -37,6 +37,7 @@ class SubscribeChain(ChainBase):
         self.mediachain = MediaChain()
         self.message = MessageHelper()
         self.systemconfig = SystemConfigOper()
+        self.torrenthelper = TorrentHelper()
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,
@@ -446,64 +447,19 @@ class SubscribeChain(ChainBase):
 
     def get_filter_rule(self, subscribe: Subscribe):
         """
-        获取订阅过滤规则，没有则返回默认规则
+        获取订阅过滤规则，同时组合默认规则
         """
         # 默认过滤规则
-        if (subscribe.include
-                or subscribe.exclude
-                or subscribe.quality
-                or subscribe.resolution
-                or subscribe.effect):
-            return {
-                "include": subscribe.include,
-                "exclude": subscribe.exclude,
-                "quality": subscribe.quality,
-                "resolution": subscribe.resolution,
-                "effect": subscribe.effect,
-            }
-        # 订阅默认过滤规则
-        return self.systemconfig.get(SystemConfigKey.DefaultFilterRules) or {}
-
-    @staticmethod
-    def check_filter_rule(torrent_info: TorrentInfo, filter_rule: Dict[str, str]) -> bool:
-        """
-        检查种子是否匹配订阅过滤规则
-        """
-        if not filter_rule:
-            return True
-        # 包含
-        include = filter_rule.get("include")
-        if include:
-            if not re.search(r"%s" % include,
-                             f"{torrent_info.title} {torrent_info.description}", re.I):
-                logger.info(f"{torrent_info.title} 不匹配包含规则 {include}")
-                return False
-        # 排除
-        exclude = filter_rule.get("exclude")
-        if exclude:
-            if re.search(r"%s" % exclude,
-                         f"{torrent_info.title} {torrent_info.description}", re.I):
-                logger.info(f"{torrent_info.title} 匹配排除规则 {exclude}")
-                return False
-        # 质量
-        quality = filter_rule.get("quality")
-        if quality:
-            if not re.search(r"%s" % quality, torrent_info.title, re.I):
-                logger.info(f"{torrent_info.title} 不匹配质量规则 {quality}")
-                return False
-        # 分辨率
-        resolution = filter_rule.get("resolution")
-        if resolution:
-            if not re.search(r"%s" % resolution, torrent_info.title, re.I):
-                logger.info(f"{torrent_info.title} 不匹配分辨率规则 {resolution}")
-                return False
-        # 特效
-        effect = filter_rule.get("effect")
-        if effect:
-            if not re.search(r"%s" % effect, torrent_info.title, re.I):
-                logger.info(f"{torrent_info.title} 不匹配特效规则 {effect}")
-                return False
-        return True
+        default_rule = self.systemconfig.get(SystemConfigKey.DefaultFilterRules)
+        return {
+            "include": subscribe.include or default_rule.get("include"),
+            "exclude": subscribe.exclude or default_rule.get("exclude"),
+            "quality": subscribe.quality or default_rule.get("quality"),
+            "resolution": subscribe.resolution or default_rule.get("resolution"),
+            "effect": subscribe.effect or default_rule.get("effect"),
+            "tv_size": subscribe.tv_size or default_rule.get("tv_size"),
+            "movie_size": subscribe.movie_size or default_rule.get("movie_size"),
+        }
 
     def match(self, torrents: Dict[str, List[Context]]):
         """
@@ -662,8 +618,9 @@ class SubscribeChain(ChainBase):
                                     continue
 
                     # 过滤规则
-                    if not self.check_filter_rule(torrent_info=torrent_info,
-                                                  filter_rule=filter_rule):
+                    if not self.torrenthelper.filter_torrent(torrent_info=torrent_info,
+                                                             filter_rule=filter_rule,
+                                                             mediainfo=torrent_mediainfo):
                         continue
 
                     # 洗版时，优先级小于已下载优先级的不要
