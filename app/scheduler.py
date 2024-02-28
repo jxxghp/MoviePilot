@@ -258,21 +258,19 @@ class Scheduler(metaclass=Singleton):
                 logger.warning(f"定时任务 {job_id} 正在运行 ...")
                 return
             self._jobs[job_id]["running"] = True
+        # 开始运行
         try:
             if not kwargs:
                 kwargs = job.get("kwargs") or {}
             job["func"](*args, **kwargs)
         except Exception as e:
             logger.error(f"定时任务 {job_id} 执行失败：{str(e)}")
-        # 如果在job["func"]()运行时, 编辑配置导致任务被移除时, 该id已经不存在, 忽略错误
+        # 运行结束
         with self._lock:
             try:
                 self._jobs[job_id]["running"] = False
             except KeyError:
                 pass
-            # 如果是单次任务, 应立即移除缓存
-            if not self._scheduler.get_job(job_id):
-                self._jobs.pop(job_id, None)
 
     def update_plugin_job(self, pid: str):
         """
