@@ -1,5 +1,6 @@
 import json
 import random
+import re
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
@@ -21,6 +22,7 @@ from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo, Notification
 from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType
+from app.utils.string import StringUtils
 
 
 class SubscribeChain(ChainBase):
@@ -547,15 +549,71 @@ class SubscribeChain(ChainBase):
             # 遍历缓存种子
             _match_context = []
             for domain, contexts in torrents.items():
+                logger.info(f'开始匹配站点：{domain}，共缓存了 {len(contexts)} 个种子...')
                 for context in contexts:
                     # 检查是否匹配
                     torrent_meta = context.meta_info
                     torrent_mediainfo = context.media_info
                     torrent_info = context.torrent_info
-                    # 比对TMDBID和类型
-                    if torrent_mediainfo.tmdb_id != mediainfo.tmdb_id \
-                            or torrent_mediainfo.type != mediainfo.type:
-                        continue
+
+                    # 如果识别了媒体信息，则比对TMDBID和类型
+                    if torrent_mediainfo.tmdb_id or torrent_mediainfo.douban_id:
+                        if torrent_mediainfo.type != mediainfo.type:
+                            continue
+                        if torrent_mediainfo.tmdb_id \
+                                and torrent_mediainfo.tmdb_id != mediainfo.tmdb_id:
+                            continue
+                        if torrent_mediainfo.douban_id \
+                                and torrent_mediainfo.douban_id != mediainfo.douban_id:
+                            continue
+                        logger.info(f'{mediainfo.title_year} 通过媒体信息匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
+                    else:
+                        # 按标题匹配
+                        # 比对类型
+                        if (torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV) \
+                                or (torrent_meta.type != MediaType.TV and mediainfo.type == MediaType.TV):
+                            continue
+                        # 比对年份
+                        if mediainfo.year:
+                            if mediainfo.type == MediaType.TV:
+                                # 剧集年份，每季的年份可能不同
+                                if torrent_meta.year and torrent_meta.year not in [year for year in
+                                                                                   mediainfo.season_years.values()]:
+                                    continue
+                            else:
+                                # 电影年份，上下浮动1年
+                                if torrent_meta.year not in [str(int(mediainfo.year) - 1),
+                                                             mediainfo.year,
+                                                             str(int(mediainfo.year) + 1)]:
+                                    continue
+                        # 标题匹配标志
+                        title_match = False
+                        # 比对标题和原语种标题
+                        meta_name = StringUtils.clear_upper(torrent_meta.name)
+                        if meta_name in [
+                            StringUtils.clear_upper(mediainfo.title),
+                            StringUtils.clear_upper(mediainfo.original_title)
+                        ]:
+                            title_match = True
+                        # 在副标题中判断是否存在标题与原语种标题
+                        if not title_match and torrent_info.description:
+                            subtitle = re.split(r'[\s/|]+', torrent_info.description)
+                            if (StringUtils.is_chinese(mediainfo.title)
+                                and str(mediainfo.title) in subtitle) \
+                                    or (StringUtils.is_chinese(mediainfo.original_title)
+                                        and str(mediainfo.original_title) in subtitle):
+                                title_match = True
+                        # 比对别名和译名
+                        if not title_match:
+                            for name in mediainfo.names:
+                                if StringUtils.clear_upper(name) == meta_name:
+                                    title_match = True
+                                    break
+                        if not title_match:
+                            continue
+                        # 标题匹配成功
+                        logger.info(f'{mediainfo.title_year} 通过名称匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
+
                     # 优先级过滤规则
                     if subscribe.best_version:
                         priority_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
@@ -569,12 +627,14 @@ class SubscribeChain(ChainBase):
                         # 不符合过滤规则
                         logger.info(f"{torrent_info.title} 不匹配当前过滤规则")
                         continue
+
                     # 不在订阅站点范围的不处理
                     if subscribe.sites:
                         sub_sites = json.loads(subscribe.sites)
                         if sub_sites and torrent_info.site not in sub_sites:
                             logger.info(f"{torrent_info.title} 不符合 {torrent_mediainfo.title_year} 订阅站点要求")
                             continue
+
                     # 如果是电视剧
                     if torrent_mediainfo.type == MediaType.TV:
                         # 有多季的不要
