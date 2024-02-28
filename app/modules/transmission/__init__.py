@@ -121,20 +121,25 @@ class TransmissionModule(_ModuleBase):
                     return torrent_hash, "获取种子文件失败，下载任务可能在暂停状态"
                 # 需要的文件信息
                 file_ids = []
+                unwanted_file_ids = []
                 for torrent_file in torrent_files:
                     file_id = torrent_file.id
                     file_name = torrent_file.name
                     meta_info = MetaInfo(file_name)
                     if not meta_info.episode_list:
+                        unwanted_file_ids.append(file_id)
                         continue
                     selected = set(meta_info.episode_list).issubset(set(episodes))
                     if not selected:
+                        unwanted_file_ids.append(file_id)
                         continue
                     file_ids.append(file_id)
                 # 选择文件
                 self.transmission.set_files(torrent_hash, file_ids)
+                self.transmission.set_unwanted_files(torrent_hash, unwanted_file_ids)
                 # 开始任务
                 self.transmission.start_torrents(torrent_hash)
+                return torrent_hash, "添加下载任务成功"
             else:
                 return torrent_hash, "添加下载任务成功"
 
