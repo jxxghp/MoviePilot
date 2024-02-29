@@ -56,7 +56,7 @@ class TimerUtils:
 
         days = time_difference.days
         hours, remainder = divmod(time_difference.seconds, 3600)
-        minutes, _ = divmod(remainder, 60)
+        minutes, second = divmod(remainder, 60)
 
         time_difference_string = ""
         if days > 0:
@@ -65,6 +65,8 @@ class TimerUtils:
             time_difference_string += f"{hours}小时"
         if minutes > 0:
             time_difference_string += f"{minutes}分钟"
+        if not time_difference_string and second:
+            time_difference_string = f"{second}秒"
 
         return time_difference_string
 
