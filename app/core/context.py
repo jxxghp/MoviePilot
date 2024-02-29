@@ -57,6 +57,8 @@ class TorrentInfo:
     labels: list = field(default_factory=list)
     # 种子优先级
     pri_order: int = 0
+    # 种子分类 电影/电视剧
+    category: str = None
 
     def __setattr__(self, name: str, value: Any):
         self.__dict__[name] = value

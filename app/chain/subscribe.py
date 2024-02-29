@@ -566,12 +566,14 @@ class SubscribeChain(ChainBase):
                         if torrent_mediainfo.douban_id \
                                 and torrent_mediainfo.douban_id != mediainfo.douban_id:
                             continue
-                        logger.info(f'{mediainfo.title_year} 通过媒体信息匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
+                        logger.info(f'{mediainfo.title_year} 通过媒体信ID匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
                     else:
                         # 按标题匹配
-                        # 比对类型
-                        if (torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV) \
-                                or (torrent_meta.type != MediaType.TV and mediainfo.type == MediaType.TV):
+                        # 比对种子识别类型
+                        if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
+                            continue
+                        # 比对种子在站点中的类型
+                        if torrent_info.category == MediaType.TV.value and mediainfo.type != MediaType.TV:
                             continue
                         # 比对年份
                         if mediainfo.year:

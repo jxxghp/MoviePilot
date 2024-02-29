@@ -16,7 +16,7 @@ from app.helper.sites import SitesHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import Notification
-from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType
+from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType, MediaType
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
@@ -184,6 +184,10 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                     logger.info(f'处理资源：{torrent.title} ...')
                     # 识别
                     meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+                    # 使用站点种子分类，校正类型识别
+                    if meta.type != MediaType.TV \
+                            and torrent.category == MediaType.TV.value:
+                        meta.type = MediaType.TV
                     # 识别媒体信息
                     mediainfo: MediaInfo = self.mediachain.recognize_by_meta(meta)
                     if not mediainfo:

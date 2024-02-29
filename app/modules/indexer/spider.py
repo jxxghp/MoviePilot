@@ -3,7 +3,7 @@ import datetime
 import re
 import traceback
 from typing import List
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse, parse_qs
 
 import chardet
 from jinja2 import Template
@@ -276,7 +276,7 @@ class TorrentSpider:
         return self.parse(page_source)
 
     def __get_title(self, torrent):
-        # title default
+        # title default text
         if 'title' not in self.fields:
             return
         selector = self.fields.get('title', {})
@@ -306,7 +306,7 @@ class TorrentSpider:
                                                          selector.get('filters'))
 
     def __get_description(self, torrent):
-        # title optional
+        # title optional text
         if 'description' not in self.fields:
             return
         selector = self.fields.get('description', {})
@@ -352,7 +352,7 @@ class TorrentSpider:
                                                                selector.get('filters'))
 
     def __get_detail(self, torrent):
-        # details
+        # details page text
         if 'details' not in self.fields:
             return
         selector = self.fields.get('details', {})
@@ -373,7 +373,7 @@ class TorrentSpider:
                 self.torrents_info['page_url'] = detail_link
 
     def __get_download(self, torrent):
-        # download link
+        # download link text
         if 'download' not in self.fields:
             return
         selector = self.fields.get('download', {})
@@ -403,7 +403,7 @@ class TorrentSpider:
                                                           selector.get('filters'))
 
     def __get_size(self, torrent):
-        # torrent size
+        # torrent size int
         if 'size' not in self.fields:
             return
         selector = self.fields.get('size', {})
@@ -420,7 +420,7 @@ class TorrentSpider:
             self.torrents_info['size'] = 0
 
     def __get_leechers(self, torrent):
-        # torrent leechers
+        # torrent leechers int
         if 'leechers' not in self.fields:
             return
         selector = self.fields.get('leechers', {})
@@ -438,7 +438,7 @@ class TorrentSpider:
             self.torrents_info['peers'] = 0
 
     def __get_seeders(self, torrent):
-        # torrent leechers
+        # torrent leechers int
         if 'seeders' not in self.fields:
             return
         selector = self.fields.get('seeders', {})
@@ -456,7 +456,7 @@ class TorrentSpider:
             self.torrents_info['seeders'] = 0
 
     def __get_grabs(self, torrent):
-        # torrent grabs
+        # torrent grabs int
         if 'grabs' not in self.fields:
             return
         selector = self.fields.get('grabs', {})
@@ -474,7 +474,7 @@ class TorrentSpider:
             self.torrents_info['grabs'] = 0
 
     def __get_pubdate(self, torrent):
-        # torrent pubdate
+        # torrent pubdate yyyy-mm-dd hh:mm:ss
         if 'date_added' not in self.fields:
             return
         selector = self.fields.get('date_added', {})
@@ -486,7 +486,7 @@ class TorrentSpider:
                                                            selector.get('filters'))
 
     def __get_date_elapsed(self, torrent):
-        # torrent pubdate
+        # torrent data elaspsed text
         if 'date_elapsed' not in self.fields:
             return
         selector = self.fields.get('date_elapsed', {})
@@ -498,7 +498,7 @@ class TorrentSpider:
                                                                 selector.get('filters'))
 
     def __get_downloadvolumefactor(self, torrent):
-        # downloadvolumefactor
+        # downloadvolumefactor int
         selector = self.fields.get('downloadvolumefactor', {})
         if not selector:
             return
@@ -521,7 +521,7 @@ class TorrentSpider:
                     self.torrents_info['downloadvolumefactor'] = int(downloadvolumefactor.group(1))
 
     def __get_uploadvolumefactor(self, torrent):
-        # uploadvolumefactor
+        # uploadvolumefactor int
         selector = self.fields.get('uploadvolumefactor', {})
         if not selector:
             return
@@ -544,7 +544,7 @@ class TorrentSpider:
                     self.torrents_info['uploadvolumefactor'] = int(uploadvolumefactor.group(1))
 
     def __get_labels(self, torrent):
-        # labels
+        # labels ['label1', 'label2']
         if 'labels' not in self.fields:
             return
         selector = self.fields.get('labels', {})
@@ -557,7 +557,7 @@ class TorrentSpider:
             self.torrents_info['labels'] = []
 
     def __get_free_date(self, torrent):
-        # free date
+        # free date yyyy-mm-dd hh:mm:ss
         if 'freedate' not in self.fields:
             return
         selector = self.fields.get('freedate', {})
@@ -569,7 +569,7 @@ class TorrentSpider:
                                                             selector.get('filters'))
 
     def __get_hit_and_run(self, torrent):
-        # hitandrun
+        # hitandrun True/False
         if 'hr' not in self.fields:
             return
         selector = self.fields.get('hr', {})
@@ -579,28 +579,71 @@ class TorrentSpider:
         else:
             self.torrents_info['hit_and_run'] = False
 
+    def __get_category(self, torrent):
+        # category 电影/电视剧
+        if 'category' not in self.fields:
+            return
+        selector = self.fields.get('category', {})
+        category = torrent(selector.get('selector', '')).clone()
+        self.__remove(category, selector)
+        items = self.__attribute_or_text(category, selector)
+        category_value = self.__index(items, selector)
+        category_value = self.__filter_text(category_value,
+                                            selector.get('filters'))
+        if category_value and self.category:
+            tv_cats = [str(cat.get("id")) for cat in self.category.get("tv") or []]
+            movie_cats = [str(cat.get("id")) for cat in self.category.get("movie") or []]
+            if category_value in tv_cats \
+                    and category_value not in movie_cats:
+                self.torrents_info['category'] = MediaType.TV.value
+            elif category_value in movie_cats:
+                self.torrents_info['category'] = MediaType.MOVIE.value
+            else:
+                self.torrents_info['category'] = MediaType.UNKNOWN.value
+        else:
+            self.torrents_info['category'] = MediaType.UNKNOWN.value
+
     def get_info(self, torrent) -> dict:
         """
         解析单条种子数据
         """
         self.torrents_info = {}
         try:
+            # 标题
             self.__get_title(torrent)
+            # 描述
             self.__get_description(torrent)
+            # 详情页面
             self.__get_detail(torrent)
+            # 下载链接
             self.__get_download(torrent)
+            # 完成数
             self.__get_grabs(torrent)
+            # 下载数
             self.__get_leechers(torrent)
+            # 做种数
             self.__get_seeders(torrent)
+            # 大小
             self.__get_size(torrent)
+            # IMDBID
             self.__get_imdbid(torrent)
+            # 下载系数
             self.__get_downloadvolumefactor(torrent)
+            # 上传系数
             self.__get_uploadvolumefactor(torrent)
+            # 发布时间
             self.__get_pubdate(torrent)
+            # 已发布时间
             self.__get_date_elapsed(torrent)
+            # 免费载止时间
             self.__get_free_date(torrent)
+            # 标签
             self.__get_labels(torrent)
+            # HR
             self.__get_hit_and_run(torrent)
+            # 分类
+            self.__get_category(torrent)
+
         except Exception as err:
             logger.error("%s 搜索出现错误：%s" % (self.indexername, str(err)))
         return self.torrents_info
@@ -632,6 +675,11 @@ class TorrentSpider:
                     text = text.strip()
                 elif method_name == "appendleft":
                     text = f"{args}{text}"
+                elif method_name == "querystring":
+                    parsed_url = urlparse(text)
+                    query_params = parse_qs(parsed_url.query)
+                    param_value = query_params.get(args)
+                    text = param_value[0] if param_value else ''
             except Exception as err:
                 logger.debug(f'过滤器 {method_name} 处理失败：{str(err)} - {traceback.format_exc()}')
         return text.strip()
