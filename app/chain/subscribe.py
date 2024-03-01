@@ -262,10 +262,7 @@ class SubscribeChain(ChainBase):
                         logger.info(f'订阅 {mediainfo.title_year} {meta.season} 缺失集：{no_exists_info.episodes}')
 
             # 站点范围
-            if subscribe.sites:
-                sites = json.loads(subscribe.sites)
-            else:
-                sites = None
+            sites = self.get_sub_sites(subscribe)
 
             # 优先级过滤规则
             if subscribe.best_version:
@@ -422,6 +419,15 @@ class SubscribeChain(ChainBase):
             self.torrentschain.refresh(sites=sites)
         )
 
+    def get_sub_sites(self, subscribe: Subscribe) -> List[int]:
+        """
+        获取订阅中涉及的站点清单
+        """
+        if subscribe.sites:
+            return json.loads(subscribe.sites)
+        # 默认站点
+        return self.systemconfig.get(SystemConfigKey.RssSites) or []
+
     def get_subscribed_sites(self) -> Optional[List[int]]:
         """
         获取订阅中涉及的所有站点清单（节约资源）
@@ -431,14 +437,11 @@ class SubscribeChain(ChainBase):
         subscribes = self.subscribeoper.list('R')
         if not subscribes:
             return None
-        # 获取所有站点
-        ret_sites = self.systemconfig.get(SystemConfigKey.RssSites) or []
+        ret_sites = []
         # 刷新订阅选中的Rss站点
         for subscribe in subscribes:
             # 刷新选中的站点
-            if subscribe.sites:
-                if sub_sites := json.loads(subscribe.sites):
-                    ret_sites.extend(sub_sites)
+            ret_sites.extend(self.get_sub_sites(subscribe))
         # 去重
         if ret_sites:
             ret_sites = list(set(ret_sites))
@@ -629,11 +632,10 @@ class SubscribeChain(ChainBase):
                         continue
 
                     # 不在订阅站点范围的不处理
-                    if subscribe.sites:
-                        sub_sites = json.loads(subscribe.sites)
-                        if sub_sites and torrent_info.site not in sub_sites:
-                            logger.info(f"{torrent_info.title} 不符合 {torrent_mediainfo.title_year} 订阅站点要求")
-                            continue
+                    sub_sites = self.get_sub_sites(subscribe)
+                    if sub_sites and torrent_info.site not in sub_sites:
+                        logger.info(f"{torrent_info.site_name} - {torrent_info.title} 不符合订阅站点要求")
+                        continue
 
                     # 如果是电视剧
                     if torrent_mediainfo.type == MediaType.TV:
