@@ -113,7 +113,7 @@ class QbittorrentModule(_ModuleBase):
             # 获取种子Hash
             torrent_hash = self.qbittorrent.get_torrent_id_by_tag(tags=tag)
             if not torrent_hash:
-                return None, f"获取种子Hash失败：{content}"
+                return None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{content}"
             else:
                 if is_paused:
                     # 种子文件

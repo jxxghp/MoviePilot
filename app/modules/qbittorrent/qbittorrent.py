@@ -179,7 +179,7 @@ class Qbittorrent:
         通过标签多次尝试获取刚添加的种子ID，并移除标签
         """
         torrent_id = None
-        # QB添加下载后需要时间，重试5次每次等待5秒
+        # QB添加下载后需要时间，重试10次每次等待3秒
         for i in range(1, 10):
             time.sleep(3)
             torrent_id = self.__get_last_add_torrentid_by_tag(tags=tags,
