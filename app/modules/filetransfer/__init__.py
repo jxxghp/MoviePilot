@@ -319,7 +319,7 @@ class FileTransferModule(_ModuleBase):
         :param transfer_type: RmtMode转移方式
         :param over_flag: 是否覆盖，为True时会先删除再转移
         """
-        if new_file.exists():
+        if new_file.exists() or new_file.is_symlink():
             if not over_flag:
                 logger.warn(f"文件已存在：{new_file}")
                 return 0
@@ -486,35 +486,41 @@ class FileTransferModule(_ModuleBase):
 
             # 判断是否要覆盖
             overflag = False
-            if new_file.exists():
-                # 目标文件已存在
-                logger.info(f"目标文件已存在，转移覆盖模式：{settings.OVERWRITE_MODE}")
-                match settings.OVERWRITE_MODE:
-                    case 'always':
-                        # 总是覆盖同名文件
+            target_file = new_file
+            if new_file.exists() or new_file.is_symlink():
+                if new_file.is_symlink():
+                    target_file = new_file.readlink()
+                    if not target_file.exists():
                         overflag = True
-                    case 'size':
-                        # 存在时大覆盖小
-                        if new_file.stat().st_size < in_path.stat().st_size:
-                            logger.info(f"目标文件文件大小更小，将覆盖：{new_file}")
+                if not overflag:
+                    # 目标文件已存在
+                    logger.info(f"目标文件已存在，转移覆盖模式：{settings.OVERWRITE_MODE}")
+                    match settings.OVERWRITE_MODE:
+                        case 'always':
+                            # 总是覆盖同名文件
                             overflag = True
-                        else:
+                        case 'size':
+                            # 存在时大覆盖小
+                            if target_file.stat().st_size < in_path.stat().st_size:
+                                logger.info(f"目标文件文件大小更小，将覆盖：{new_file}")
+                                overflag = True
+                            else:
+                                return TransferInfo(success=False,
+                                                    message=f"媒体库中已存在，且质量更好",
+                                                    path=in_path,
+                                                    target_path=new_file,
+                                                    fail_list=[str(in_path)])
+                        case 'never':
+                            # 存在不覆盖
                             return TransferInfo(success=False,
-                                                message=f"媒体库中已存在，且质量更好",
+                                                message=f"媒体库中已存在，当前设置为不覆盖",
                                                 path=in_path,
                                                 target_path=new_file,
                                                 fail_list=[str(in_path)])
-                    case 'never':
-                        # 存在不覆盖
-                        return TransferInfo(success=False,
-                                            message=f"媒体库中已存在，当前设置为不覆盖",
-                                            path=in_path,
-                                            target_path=new_file,
-                                            fail_list=[str(in_path)])
-                    case 'latest':
-                        # 仅保留最新版本
-                        logger.info(f"仅保留最新版本，将覆盖：{new_file}")
-                        overflag = True
+                        case 'latest':
+                            # 仅保留最新版本
+                            logger.info(f"仅保留最新版本，将覆盖：{new_file}")
+                            overflag = True
             else:
                 if settings.OVERWRITE_MODE == 'latest':
                     # 文件不存在，但仅保留最新版本
