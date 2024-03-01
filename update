@@ -30,6 +30,12 @@ install_backend_and_download_resources() {
             if [[ "${frontend_version}" == *v* ]]; then
                 if download_and_unzip "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"; then
                     echo "前端程序下载成功"
+                    # 提前备份插件目录
+                    rm -rf /plugins
+                    mkdir -p /plugins
+                    cp -a /app/app/plugins/* /plugins/
+                    # 不备份__init__.py
+                    rm -f /plugins/__init__.py
                     # 清空目录
                     rm -rf /app
                     mkdir -p /app
@@ -45,12 +51,6 @@ install_backend_and_download_resources() {
                     echo "开始更新插件..."
                     if download_and_unzip "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" "Plugins"; then
                         echo "插件下载成功"
-                        # 备份插件目录
-                        rm -rf /plugins
-                        mkdir -p /plugins
-                        cp -a /app/app/plugins/* /plugins/
-                        # 不备份__init__.py
-                        rm -f /plugins/__init__.py
                         # 恢复插件目录
                         cp -a /plugins/* /app/app/plugins/
                         # 插件仓库
