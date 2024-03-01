@@ -431,16 +431,14 @@ class SubscribeChain(ChainBase):
         subscribes = self.subscribeoper.list('R')
         if not subscribes:
             return None
-        ret_sites = []
+        # 获取所有站点
+        ret_sites = self.systemconfig.get(SystemConfigKey.RssSites) or []
         # 刷新订阅选中的Rss站点
         for subscribe in subscribes:
-            # 如果有一个订阅没有选择站点，则刷新所有订阅站点
-            if not subscribe.sites:
-                return []
             # 刷新选中的站点
-            sub_sites = json.loads(subscribe.sites)
-            if sub_sites:
-                ret_sites.extend(sub_sites)
+            if subscribe.sites:
+                if sub_sites := json.loads(subscribe.sites):
+                    ret_sites.extend(sub_sites)
         # 去重
         if ret_sites:
             ret_sites = list(set(ret_sites))
