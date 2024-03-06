@@ -75,9 +75,9 @@ class VoceChat:
 
         try:
             if text:
-                caption = f"*{title}*\n{text}"
+                caption = f"**{title}**\n{text}"
             else:
-                caption = f"*{title}*"
+                caption = f"**{title}**"
 
             if userid:
                 chat_id = userid
@@ -98,7 +98,7 @@ class VoceChat:
             return None
 
         try:
-            index, image, caption = 1, "", "*%s*" % title
+            index, image, caption = 1, "", "**%s**" % title
             for media in medias:
                 if not image:
                     image = media.get_message_image()
@@ -140,7 +140,7 @@ class VoceChat:
             return False
 
         try:
-            index, caption = 1, "*%s*" % title
+            index, caption = 1, "**%s**" % title
             mediainfo = torrents[0].media_info
             for context in torrents:
                 torrent = context.torrent_info
@@ -185,6 +185,7 @@ class VoceChat:
         idstr = userid[4:]
         with lock:
             try:
+                logger.info(f"VoceChat发送消息：action={action}, userid={userid}, text={caption}")
                 result = self._client.post_res(f"{self._host}api/bot/{action}/{idstr}", data=caption)
                 if result and result.status_code == 200:
                     return True
@@ -192,8 +193,7 @@ class VoceChat:
                     logger.error(f"VoceChat发送消息失败，错误码：{result.status_code}")
                     return False
                 else:
-                    logger.error("VoceChat发送消息失败，无法连接")
-                    return False
+                    raise Exception("VoceChat发送消息失败，连接失败")
             except Exception as msg_e:
                 logger.error(f"VoceChat发送消息错误：{str(msg_e)}")
             return False
