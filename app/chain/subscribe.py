@@ -741,7 +741,7 @@ class SubscribeChain(ChainBase):
                 continue
             # 对于电视剧，获取当前季的总集数
             episodes = mediainfo.seasons.get(subscribe.season) or []
-            if len(episodes):
+            if not subscribe.manual_total_episode and len(episodes):
                 total_episode = len(episodes)
                 lack_episode = subscribe.lack_episode + (total_episode - subscribe.total_episode)
                 logger.info(
