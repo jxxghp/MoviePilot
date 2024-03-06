@@ -188,7 +188,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 - 通过设置的超级管理员用户登录管理界面（默认用户：admin，默认端口：3000），**注意：初始密码为自动生成，需要在首次运行时的后台日志中查看！**
 - 通过CookieCloud同步快速添加站点，不需要使用的站点可在WEB管理界面中禁用或删除，无法同步的站点可手动新增。
 - 通过打开下载器监控实现下载完成后自动整理入库并刮削媒体信息。
-- 通过微信/Telegram/Slack/SynologyChat远程管理，其中微信/Telegram将会自动添加操作菜单（微信菜单条数有限制，部分菜单不显示）；微信需要在官方页面设置回调地址，SynologyChat需要设置机器人传入地址，地址相对路径均为：`/api/v1/message/`。
+- 通过`微信`/`Telegram`/`Slack`/`SynologyChat`/`VoceChat`远程管理，其中 微信/Telegram 将会自动添加操作菜单（微信菜单条数有限制，部分菜单不显示）；微信需要在官方页面设置回调地址，SynologyChat/VoceChat 需要设置机器人传入地址/Webhook，地址相对路径均为：`/api/v1/message/`。
 - 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`。
 - 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，可使用Overseerr/Jellyseerr浏览订阅。
 - 映射宿主机docker.sock文件到容器`/var/run/docker.sock`，以支持内建重启操作。实例：`-v /var/run/docker.sock:/var/run/docker.sock:ro`。

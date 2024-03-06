@@ -36,6 +36,14 @@ async def user_message(background_tasks: BackgroundTasks, request: Request):
     return schemas.Response(success=True)
 
 
+@router.get("/", summary="VoceChat验证")
+def vocechat_verify() -> Any:
+    """
+    VoceChat验证响应
+    """
+    return {"status": "OK"}
+
+
 @router.get("/", summary="微信验证")
 def wechat_verify(echostr: str, msg_signature: str,
                   timestamp: Union[str, int], nonce: str) -> Any:
@@ -58,14 +66,6 @@ def wechat_verify(echostr: str, msg_signature: str,
         logger.error("微信请求验证失败 VerifyURL ret: %s" % str(ret))
     # 验证URL成功，将sEchoStr返回给企业号
     return PlainTextResponse(sEchoStr)
-
-
-@router.get("/", summary="VoceChat验证")
-def vocechat_verify() -> Any:
-    """
-    VoceChat验证响应
-    """
-    return {"status": "OK"}
 
 
 @router.get("/switchs", summary="查询通知消息渠道开关", response_model=List[NotificationSwitch])
