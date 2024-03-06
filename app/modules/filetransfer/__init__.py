@@ -27,8 +27,28 @@ class FileTransferModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self):
-        pass
+    def test(self) -> Tuple[bool, str]:
+        """
+        测试模块连接性
+        """
+        if not settings.DOWNLOAD_PATH:
+            return False, "下载目录未设置"
+        # 检查下载目录
+        download_path = Path(settings.DOWNLOAD_PATH)
+        if not download_path.exists():
+            return False, "下载目录不存在"
+        if not settings.LIBRARY_PATH:
+            return False, "媒体库目录未设置"
+        # 下载目录的设备ID
+        download_devid = download_path.stat().st_dev
+        # 比较媒体库目录的设备ID
+        for path in settings.LIBRARY_PATHS:
+            library_path = Path(path)
+            if not library_path.exists():
+                return False, f"目录不存在：{library_path}"
+            if library_path.stat().st_dev != download_devid:
+                return False, "下载目录与媒体库目录不在同一设备，将导致硬链接失败"
+        return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
