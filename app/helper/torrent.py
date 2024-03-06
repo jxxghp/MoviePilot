@@ -324,6 +324,12 @@ class TorrentHelper(metaclass=Singleton):
 
         if not filter_rule:
             return True
+        
+        # 最少做种人数
+        min_seeders = filter_rule.get("min_seeders")
+        if min_seeders and torrent_info.seeders < int(min_seeders):
+            logger.info(f"{torrent_info.title} 做种人数不足 {min_seeders}")
+            return False
         # 包含
         include = filter_rule.get("include")
         if include:

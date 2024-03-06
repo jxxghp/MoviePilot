@@ -462,6 +462,7 @@ class SubscribeChain(ChainBase):
             "effect": subscribe.effect or default_rule.get("effect"),
             "tv_size": default_rule.get("tv_size"),
             "movie_size": default_rule.get("movie_size"),
+            "min_seeders": default_rule.get("min_seeders"),
         }
 
     def match(self, torrents: Dict[str, List[Context]]):
