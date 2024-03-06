@@ -8,7 +8,7 @@ class CookieCloudHelper:
 
     _ignore_cookies: list = ["CookieAutoDeleteBrowsingDataCleanup", "CookieAutoDeleteCleaningDiscarded"]
 
-    def __init__(self, server, key, password):
+    def __init__(self, server: str, key: str, password: str):
         self._server = server
         self._key = key
         self._password = password
@@ -21,8 +21,8 @@ class CookieCloudHelper:
         """
         if not self._server or not self._key or not self._password:
             return None, "CookieCloud参数不正确"
-        req_url = "%s/get/%s" % (self._server, self._key)
-        ret = self._req.post_res(url=req_url, json={"password": self._password})
+        req_url = "%s/get/%s" % (self._server, str(self._key).strip())
+        ret = self._req.post_res(url=req_url, json={"password": str(self._password).strip()})
         if ret and ret.status_code == 200:
             result = ret.json()
             if not result:
