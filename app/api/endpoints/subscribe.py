@@ -116,6 +116,9 @@ def update_subscribe(
             subscribe_dict["lack_episode"] = (subscribe.lack_episode
                                               + (subscribe_in.total_episode
                                                  - (subscribe.total_episode or 0)))
+    # 是否手动修改过总集数
+    if subscribe_in.total_episode != subscribe.total_episode:
+        subscribe_dict["manual_total_episode"] = 1
     subscribe.update(db, subscribe_dict)
     return schemas.Response(success=True)
 

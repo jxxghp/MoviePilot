@@ -69,6 +69,8 @@ class Subscribe(Base):
     save_path = Column(String)
     # 是否使用 imdbid 搜索
     search_imdbid = Column(Integer, default=0)
+    # 是否手动修改过总集数 0否 1是
+    manual_total_episode = Column(Integer, default=0)
 
     @staticmethod
     @db_query
