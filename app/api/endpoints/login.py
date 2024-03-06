@@ -49,6 +49,9 @@ async def login_access_token(
                             is_superuser=False, hashed_password=get_password_hash(token))
                 user.create(db)
             else:
+                # 辅助验证用户若未启用，则禁止登录
+                if not user.is_active:
+                    raise HTTPException(status_code=403, detail="用户未启用")
                 # 普通用户权限
                 user.is_superuser = False
     elif not user.is_active:
