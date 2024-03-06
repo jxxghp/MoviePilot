@@ -34,6 +34,9 @@ class SubtitleModule(_ModuleBase):
     def stop(self) -> None:
         pass
 
+    def test(self):
+        pass
+
     def download_added(self, context: Context, download_dir: Path, torrent_path: Path = None) -> None:
         """
         添加下载任务成功后，从站点下载字幕，保存到下载目录

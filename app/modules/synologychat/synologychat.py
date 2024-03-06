@@ -25,6 +25,17 @@ class SynologyChat:
     def check_token(self, token: str) -> bool:
         return True if token == self._token else False
 
+    def get_state(self) -> bool:
+        """
+        获取状态
+        """
+        if not self._webhook_url or not self._token:
+            return False
+        ret = self.__get_bot_users()
+        if ret:
+            return True
+        return False
+
     def send_msg(self, title: str, text: str = "", image: str = "", userid: str = "") -> Optional[bool]:
         """
         发送Telegram消息

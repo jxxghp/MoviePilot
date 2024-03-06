@@ -61,6 +61,12 @@ class Telegram:
             self._polling_thread.start()
             logger.info("Telegram消息接收服务启动")
 
+    def get_state(self) -> bool:
+        """
+        获取状态
+        """
+        return self._bot is not None
+
     def send_msg(self, title: str, text: str = "", image: str = "", userid: str = "") -> Optional[bool]:
         """
         发送Telegram消息

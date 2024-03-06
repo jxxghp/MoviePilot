@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple, Union
 from ruamel.yaml import CommentedMap
 
 from app.core.context import TorrentInfo
+from app.helper.sites import SitesHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.indexer.mtorrent import MTorrentSpider
@@ -24,6 +25,15 @@ class IndexerModule(_ModuleBase):
 
     def stop(self):
         pass
+
+    def test(self) -> Tuple[bool, str]:
+        """
+        测试模块连接性
+        """
+        sites = SitesHelper().get_indexers()
+        if not sites:
+            return False, "未配置站点或未通过用户认证"
+        return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "INDEXER", "builtin"

@@ -28,6 +28,16 @@ class JellyfinModule(_ModuleBase):
     def stop(self):
         pass
 
+    def test(self) -> Tuple[bool, str]:
+        """
+        测试模块连接性
+        """
+        if self.jellyfin.is_inactive():
+            self.jellyfin.reconnect()
+        if self.jellyfin.is_inactive():
+            return False, "无法连接Jellyfin，请检查参数配置"
+        return True, ""
+
     def user_authenticate(self, name: str, password: str) -> Optional[str]:
         """
         使用Emby用户辅助完成用户认证

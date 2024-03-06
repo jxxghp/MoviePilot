@@ -47,6 +47,12 @@ class WeChat:
         if self._corpid and self._appsecret and self._appid:
             self.__get_access_token()
 
+    def get_state(self):
+        """
+        获取状态
+        """
+        return True if self.__get_access_token else False
+
     @retry(Exception, logger=logger)
     def __get_access_token(self, force=False):
         """

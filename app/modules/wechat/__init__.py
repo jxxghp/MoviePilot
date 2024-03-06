@@ -20,6 +20,15 @@ class WechatModule(_ModuleBase):
     def stop(self):
         pass
 
+    def test(self) -> Tuple[bool, str]:
+        """
+        测试模块连接性
+        """
+        state = self.wechat.get_state()
+        if state:
+            return True, ""
+        return False, "获取微信token失败"
+
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MESSAGER", "wechat"
 

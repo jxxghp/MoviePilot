@@ -12,6 +12,7 @@ from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.modules.themoviedb.tmdbapi import TmdbHelper
 from app.schemas.types import MediaType, MediaImageType
+from app.utils.http import RequestUtils
 from app.utils.system import SystemUtils
 
 
@@ -37,6 +38,17 @@ class TheMovieDbModule(_ModuleBase):
 
     def stop(self):
         self.cache.save()
+
+    def test(self) -> Tuple[bool, str]:
+        """
+        测试模块连接性
+        """
+        ret = RequestUtils().get_res(f"https://{settings.TMDB_API_DOMAIN}/3/movie/550?api_key={settings.TMDB_API_KEY}")
+        if ret and ret.status_code == 200:
+            return True, ""
+        elif ret:
+            return False, f"无法连接 {settings.TMDB_API_DOMAIN}，错误码：{ret.status_code}"
+        return False, f"{settings.TMDB_API_DOMAIN} 网络连接失败"
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass

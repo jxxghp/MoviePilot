@@ -1,4 +1,4 @@
-from typing import Generator, Optional
+from typing import Generator, Optional, Tuple
 
 from app.core.config import settings
 from app.helper.module import ModuleHelper
@@ -50,6 +50,18 @@ class ModuleManager(metaclass=Singleton):
         for _, module in self._running_modules.items():
             if hasattr(module, "stop"):
                 module.stop()
+
+    def test(self, modleid: str) -> Tuple[bool, str]:
+        """
+        测试模块
+        """
+        if modleid not in self._running_modules:
+            return False, "模块未加载，请检查参数设置"
+        module = self._running_modules[modleid]
+        if hasattr(module, "test") \
+                and ObjectUtils.check_method(getattr(module, "test")):
+            return module.test()
+        return True, "模块不支持测试"
 
     @staticmethod
     def check_setting(setting: Optional[tuple]) -> bool:

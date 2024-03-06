@@ -17,6 +17,16 @@ class PlexModule(_ModuleBase):
     def stop(self):
         pass
 
+    def test(self) -> Tuple[bool, str]:
+        """
+        测试模块连接性
+        """
+        if self.plex.is_inactive():
+            self.plex.reconnect()
+        if self.plex.is_inactive():
+            return False, "无法连接Plex，请检查参数配置"
+        return True, ""
+
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "plex"
 

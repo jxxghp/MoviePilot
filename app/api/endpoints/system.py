@@ -197,33 +197,6 @@ def get_logging(token: str, length: int = 50, logfile: str = "moviepilot.log"):
         return StreamingResponse(log_generator(), media_type="text/event-stream")
 
 
-@router.get("/nettest", summary="测试网络连通性")
-def nettest(url: str,
-            proxy: bool,
-            _: schemas.TokenPayload = Depends(verify_token)):
-    """
-    测试网络连通性
-    """
-    # 记录开始的毫秒数
-    start_time = datetime.now()
-    url = url.replace("{TMDBAPIKEY}", settings.TMDB_API_KEY)
-    result = RequestUtils(proxies=settings.PROXY if proxy else None,
-                          ua=settings.USER_AGENT).get_res(url)
-    # 计时结束的毫秒数
-    end_time = datetime.now()
-    # 计算相关秒数
-    if result and result.status_code == 200:
-        return schemas.Response(success=True, data={
-            "time": round((end_time - start_time).microseconds / 1000)
-        })
-    elif result:
-        return schemas.Response(success=False, message=f"错误码：{result.status_code}", data={
-            "time": round((end_time - start_time).microseconds / 1000)
-        })
-    else:
-        return schemas.Response(success=False, message="网络连接失败！")
-
-
 @router.get("/versions", summary="查询Github所有Release版本", response_model=schemas.Response)
 def latest_version(_: schemas.TokenPayload = Depends(verify_token)):
     """
@@ -267,6 +240,53 @@ def ruletest(title: str,
     return schemas.Response(success=True, data={
         "priority": 100 - result[0].pri_order + 1
     })
+
+
+@router.get("/nettest", summary="测试网络连通性")
+def nettest(url: str,
+            proxy: bool,
+            _: schemas.TokenPayload = Depends(verify_token)):
+    """
+    测试网络连通性
+    """
+    # 记录开始的毫秒数
+    start_time = datetime.now()
+    url = url.replace("{TMDBAPIKEY}", settings.TMDB_API_KEY)
+    result = RequestUtils(proxies=settings.PROXY if proxy else None,
+                          ua=settings.USER_AGENT).get_res(url)
+    # 计时结束的毫秒数
+    end_time = datetime.now()
+    # 计算相关秒数
+    if result and result.status_code == 200:
+        return schemas.Response(success=True, data={
+            "time": round((end_time - start_time).microseconds / 1000)
+        })
+    elif result:
+        return schemas.Response(success=False, message=f"错误码：{result.status_code}", data={
+            "time": round((end_time - start_time).microseconds / 1000)
+        })
+    else:
+        return schemas.Response(success=False, message="网络连接失败！")
+
+
+@router.get("/modulelist", summary="查询已加载的模块ID列表", response_model=schemas.Response)
+def modulelist(_: schemas.TokenPayload = Depends(verify_token)):
+    """
+    查询已加载的模块ID列表
+    """
+    module_ids = [module.__name__ for module in ModuleManager().get_modules("test")]
+    return schemas.Response(success=True, data={
+        "ids": module_ids
+    })
+
+
+@router.get("/moduletest/{moduleid}", summary="模块可用性测试", response_model=schemas.Response)
+def moduletest(moduleid: str, _: schemas.TokenPayload = Depends(verify_token)):
+    """
+    模块可用性测试接口
+    """
+    state, errmsg = ModuleManager().test(moduleid)
+    return schemas.Response(success=state, message=errmsg)
 
 
 @router.get("/restart", summary="重启系统", response_model=schemas.Response)

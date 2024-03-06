@@ -17,6 +17,16 @@ class EmbyModule(_ModuleBase):
     def stop(self):
         pass
 
+    def test(self) -> Tuple[bool, str]:
+        """
+        测试模块连接性
+        """
+        if self.emby.is_inactive():
+            self.emby.reconnect()
+        if self.emby.is_inactive():
+            return False, "无法连接Emby，请检查参数配置"
+        return True, ""
+
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "emby"
 

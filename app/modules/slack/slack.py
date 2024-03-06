@@ -87,6 +87,12 @@ class Slack:
             except Exception as err:
                 logger.error("Slack消息接收服务停止失败: %s" % str(err))
 
+    def get_state(self) -> bool:
+        """
+        获取状态
+        """
+        return True if self._client else False
+
     def send_msg(self, title: str, text: str = "", image: str = "", url: str = "", userid: str = ""):
         """
         发送Telegram消息
