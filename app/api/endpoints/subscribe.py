@@ -111,14 +111,14 @@ def update_subscribe(
         # 没有缺失集数时，缺失集数清空，避免更新为0
         subscribe_dict.pop("lack_episode")
     elif subscribe_in.total_episode:
-        # 是否手动修改过总集数
-        if subscribe_in.total_episode != subscribe.total_episode:
-            subscribe_dict["manual_total_episode"] = 1
         # 总集数增加时，缺失集数也要增加
         if subscribe_in.total_episode > (subscribe.total_episode or 0):
             subscribe_dict["lack_episode"] = (subscribe.lack_episode
                                               + (subscribe_in.total_episode
                                                  - (subscribe.total_episode or 0)))
+    # 是否手动修改过总集数
+    if subscribe_in.total_episode != subscribe.total_episode:
+        subscribe_dict["manual_total_episode"] = 1
     subscribe.update(db, subscribe_dict)
     return schemas.Response(success=True)
 
