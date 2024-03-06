@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     AUTH_SITE: str = ""
     # 交互搜索自动下载用户ID，使用,分割
     AUTO_DOWNLOAD_USER: Optional[str] = None
-    # 消息通知渠道 telegram/wechat/slack，多个通知渠道用,分隔
+    # 消息通知渠道 telegram/wechat/slack/synologychat/vocechat，多个通知渠道用,分隔
     MESSAGER: str = "telegram"
     # WeChat企业ID
     WECHAT_CORPID: Optional[str] = None
@@ -117,6 +117,12 @@ class Settings(BaseSettings):
     SYNOLOGYCHAT_WEBHOOK: str = ""
     # SynologyChat Token
     SYNOLOGYCHAT_TOKEN: str = ""
+    # VoceChat地址
+    VOCECHAT_HOST: str = ""
+    # VoceChat ApiKey
+    VOCECHAT_API_KEY: str = ""
+    # VoceChat 频道ID
+    VOCECHAT_CHANNEL_ID: str = ""
     # 下载器 qbittorrent/transmission
     DOWNLOADER: str = "qbittorrent"
     # 下载器监控开关

@@ -53,3 +53,5 @@ class NotificationSwitch(BaseModel):
     slack: Optional[bool] = False
     # SynologyChat开关
     synologychat: Optional[bool] = False
+    # VoceChat开关
+    vocechat: Optional[bool] = False

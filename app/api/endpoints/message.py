@@ -40,7 +40,7 @@ async def user_message(background_tasks: BackgroundTasks, request: Request):
 def wechat_verify(echostr: str, msg_signature: str,
                   timestamp: Union[str, int], nonce: str) -> Any:
     """
-    用户消息响应
+    微信验证响应
     """
     logger.info(f"收到微信验证请求: {echostr}")
     try:
@@ -60,6 +60,14 @@ def wechat_verify(echostr: str, msg_signature: str,
     return PlainTextResponse(sEchoStr)
 
 
+@router.get("/", summary="VoceChat验证")
+def vocechat_verify() -> Any:
+    """
+    VoceChat验证响应
+    """
+    return {"status": "OK"}
+
+
 @router.get("/switchs", summary="查询通知消息渠道开关", response_model=List[NotificationSwitch])
 def read_switchs(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -72,7 +80,7 @@ def read_switchs(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
         for noti in NotificationType:
             return_list.append(NotificationSwitch(mtype=noti.value, wechat=True,
                                                   telegram=True, slack=True,
-                                                  synologychat=True))
+                                                  synologychat=True, vocechat=True))
     else:
         for switch in switchs:
             return_list.append(NotificationSwitch(**switch))
