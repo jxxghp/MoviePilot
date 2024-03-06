@@ -46,8 +46,9 @@ class FileTransferModule(_ModuleBase):
             library_path = Path(path)
             if not library_path.exists():
                 return False, f"目录不存在：{library_path}"
-            if library_path.stat().st_dev != download_devid:
-                return False, "下载目录与媒体库目录不在同一设备，将导致硬链接失败"
+            if settings.TRANSFER_TYPE == "link":
+                if library_path.stat().st_dev != download_devid:
+                    return False, "下载目录与媒体库目录不在同一设备，将导致硬链接失败"
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
