@@ -185,11 +185,11 @@ class VoceChat:
         idstr = userid[4:]
         with lock:
             try:
-                logger.info(f"VoceChat发送消息：action={action}, userid={userid}, text={caption}")
-                result = self._client.post_res(f"{self._host}api/bot/{action}/{idstr}", data=caption)
+                logger.info(f"VoceChat发送消息：action={action}, userid={idstr}, text={caption}")
+                result = self._client.post_res(f"{self._host}api/bot/{action}/{idstr}", data=caption.encode("utf-8"))
                 if result and result.status_code == 200:
                     return True
-                elif result:
+                elif result is not None:
                     logger.error(f"VoceChat发送消息失败，错误码：{result.status_code}")
                     return False
                 else:
