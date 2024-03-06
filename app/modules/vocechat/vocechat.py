@@ -188,9 +188,12 @@ class VoceChat:
                 result = self._client.post_res(f"{self._host}api/bot/{action}/{idstr}", data=caption)
                 if result and result.status_code == 200:
                     return True
+                elif result:
+                    logger.error(f"VoceChat发送消息失败，错误码：{result.status_code}")
+                    return False
                 else:
-                    logger.error(f"VoceChat发送消息失败：{result.text}")
+                    logger.error("VoceChat发送消息失败，无法连接")
                     return False
             except Exception as msg_e:
                 logger.error(f"VoceChat发送消息错误：{str(msg_e)}")
-                return False
+            return False

@@ -30,7 +30,8 @@ class VoceChatModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "MESSAGER", "vocechat"
 
-    def message_parser(self, body: Any, form: Any,
+    @staticmethod
+    def message_parser(body: Any, form: Any,
                        args: Any) -> Optional[CommingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
@@ -58,13 +59,6 @@ class VoceChatModule(_ModuleBase):
               "target": { "gid": 2 } //发送给谁，gid代表是发送给频道，uid代表是发送给个人，此时的数据结构举例：{"uid":1}
             }
             """
-            # URL参数
-            print("----VoceChat Body----")
-            print(body)
-            print("----VoceChat from----")
-            print(form)
-            print("----VoceChat args----")
-            print(args)
             # 报文体
             msg_body = json.loads(body)
             # 类型
