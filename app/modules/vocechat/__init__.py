@@ -66,11 +66,12 @@ class VoceChatModule(_ModuleBase):
             if msg_type != "normal":
                 # 非新消息
                 return None
+            logger.debug(f"收到VoceChat请求：{msg_body}")
             # 文本内容
             content = msg_body.get("detail", {}).get("content")
             # 用户ID
             gid = msg_body.get("target", {}).get("gid")
-            if gid and gid == settings.VOCECHAT_CHANNEL_ID:
+            if gid and str(gid) == str(settings.VOCECHAT_CHANNEL_ID):
                 # 来自监听频道的消息
                 userid = f"GID#{gid}"
             else:
