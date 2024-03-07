@@ -139,7 +139,6 @@ class VoceChat:
 
         try:
             index, caption = 1, "**%s**" % title
-            mediainfo = torrents[0].media_info
             for context in torrents:
                 torrent = context.torrent_info
                 site_name = torrent.site_name
@@ -180,17 +179,13 @@ class VoceChat:
         else:
             action = "send_to_user"
         idstr = userid[4:]
+
         with lock:
-            try:
-                logger.info(f"VoceChat发送消息：action={action}, userid={idstr}, text={caption}")
-                result = self._client.post_res(f"{self._host}api/bot/{action}/{idstr}", data=caption.encode("utf-8"))
-                if result and result.status_code == 200:
-                    return True
-                elif result is not None:
-                    logger.error(f"VoceChat发送消息失败，错误码：{result.status_code}")
-                    return False
-                else:
-                    raise Exception("VoceChat发送消息失败，连接失败")
-            except Exception as msg_e:
-                logger.error(f"VoceChat发送消息错误：{str(msg_e)}")
-            return False
+            result = self._client.post_res(f"{self._host}api/bot/{action}/{idstr}", data=caption.encode("utf-8"))
+            if result and result.status_code == 200:
+                return True
+            elif result is not None:
+                logger.error(f"VoceChat发送消息失败，错误码：{result.status_code}")
+                return False
+            else:
+                raise Exception("VoceChat发送消息失败，连接失败")
