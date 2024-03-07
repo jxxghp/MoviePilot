@@ -23,7 +23,7 @@ class PlexModule(_ModuleBase):
         """
         if self.plex.is_inactive():
             self.plex.reconnect()
-        if self.plex.is_inactive():
+        if not self.plex.get_librarys():
             return False, "无法连接Plex，请检查参数配置"
         return True, ""
 

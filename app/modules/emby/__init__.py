@@ -23,7 +23,7 @@ class EmbyModule(_ModuleBase):
         """
         if self.emby.is_inactive():
             self.emby.reconnect()
-        if self.emby.is_inactive():
+        if not self.emby.get_user():
             return False, "无法连接Emby，请检查参数配置"
         return True, ""
 

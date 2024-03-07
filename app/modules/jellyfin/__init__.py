@@ -34,7 +34,7 @@ class JellyfinModule(_ModuleBase):
         """
         if self.jellyfin.is_inactive():
             self.jellyfin.reconnect()
-        if self.jellyfin.is_inactive():
+        if not self.jellyfin.get_user():
             return False, "无法连接Jellyfin，请检查参数配置"
         return True, ""
 
