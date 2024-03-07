@@ -43,7 +43,8 @@ class TheMovieDbModule(_ModuleBase):
         """
         测试模块连接性
         """
-        ret = RequestUtils().get_res(f"https://{settings.TMDB_API_DOMAIN}/3/movie/550?api_key={settings.TMDB_API_KEY}")
+        ret = RequestUtils(proxies=settings.PROXY).get_res(
+            f"https://{settings.TMDB_API_DOMAIN}/3/movie/550?api_key={settings.TMDB_API_KEY}")
         if ret and ret.status_code == 200:
             return True, ""
         elif ret:
