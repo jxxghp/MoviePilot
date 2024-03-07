@@ -98,10 +98,8 @@ class VoceChat:
             return None
 
         try:
-            index, image, caption = 1, "", "**%s**" % title
+            index, caption = 1, "**%s**" % title
             for media in medias:
-                if not image:
-                    image = media.get_message_image()
                 if media.vote_average:
                     caption = "%s\n%s. [%s](%s)\n_%s，%s_" % (caption,
                                                              index,
@@ -163,8 +161,7 @@ class VoceChat:
             else:
                 chat_id = f"GID#{self._channel_id}"
 
-            return self.__send_request(userid=chat_id, caption=caption,
-                                       image=mediainfo.get_message_image())
+            return self.__send_request(userid=chat_id, caption=caption)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
