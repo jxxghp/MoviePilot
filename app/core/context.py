@@ -164,7 +164,7 @@ class MediaInfo:
     # LOGO
     logo_path: str = None
     # 评分
-    vote_average: int = 0
+    vote_average: float = 0
     # 描述
     overview: str = None
     # 风格ID
