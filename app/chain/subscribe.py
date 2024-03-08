@@ -143,9 +143,8 @@ class SubscribeChain(ChainBase):
                 text = f"评分：{mediainfo.vote_average}，来自用户：{username or userid}"
             else:
                 text = f"评分：{mediainfo.vote_average}"
-            # 广而告之
-            self.post_message(Notification(channel=channel,
-                                           mtype=NotificationType.Subscribe,
+            # 群发
+            self.post_message(Notification(mtype=NotificationType.Subscribe,
                                            title=f"{mediainfo.title_year} {metainfo.season} 已添加订阅",
                                            text=text,
                                            image=mediainfo.get_message_image()))
