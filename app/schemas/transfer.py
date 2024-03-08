@@ -31,6 +31,7 @@ class DownloadingTorrent(BaseModel):
     dlspeed: Optional[str] = None
     media: Optional[dict] = {}
     userid: Optional[str] = None
+    username: Optional[str] = None
     left_time: Optional[str] = None
 
 
