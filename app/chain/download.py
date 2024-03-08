@@ -408,8 +408,8 @@ class DownloadChain(ChainBase):
         # 如果是电影，直接下载
         for context in contexts:
             if context.media_info.type == MediaType.MOVIE:
-                if self.download_single(context, save_path=save_path,
-                                        channel=channel, userid=userid, username=username):
+                if self.download_single(context, save_path=save_path, channel=channel,
+                                        userid=userid, username=username):
                     # 下载成功
                     downloaded_list.append(context)
 
@@ -482,8 +482,9 @@ class DownloadChain(ChainBase):
                                     )
                             else:
                                 # 下载
-                                download_id = self.download_single(context, save_path=save_path,
-                                                                   channel=channel, userid=userid, username=username)
+                                download_id = self.download_single(context,
+                                                                   save_path=save_path, channel=channel,
+                                                                   userid=userid, username=username)
 
                             if download_id:
                                 # 下载成功
@@ -545,8 +546,9 @@ class DownloadChain(ChainBase):
                             # 为需要集的子集则下载
                             if torrent_episodes.issubset(set(need_episodes)):
                                 # 下载
-                                download_id = self.download_single(context, save_path=save_path,
-                                                                   channel=channel, userid=userid, username=username)
+                                download_id = self.download_single(context,
+                                                                   save_path=save_path, channel=channel,
+                                                                   userid=userid, username=username)
                                 if download_id:
                                     # 下载成功
                                     downloaded_list.append(context)
