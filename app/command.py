@@ -267,7 +267,10 @@ class Command(metaclass=Singleton):
         停止事件处理线程
         """
         self._event.set()
-        self._thread.join()
+        try:
+            self._thread.join()
+        except Exception as e:
+            logger.error(f"停止事件处理线程出错：{str(e)} - {traceback.format_exc()}")
 
     def get_commands(self):
         """

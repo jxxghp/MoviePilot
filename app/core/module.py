@@ -51,6 +51,13 @@ class ModuleManager(metaclass=Singleton):
             if hasattr(module, "stop"):
                 module.stop()
 
+    def reload(self):
+        """
+        重新加载所有模块
+        """
+        self.stop()
+        self.load_modules()
+
     def test(self, modleid: str) -> Tuple[bool, str]:
         """
         测试模块

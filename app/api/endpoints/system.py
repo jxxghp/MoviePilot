@@ -306,8 +306,8 @@ def reload_module(_: schemas.TokenPayload = Depends(verify_token)):
     """
     重新加载模块
     """
-    ModuleManager().stop()
-    ModuleManager().load_modules()
+    ModuleManager().reload()
+    Scheduler().init()
     return schemas.Response(success=True)
 
 

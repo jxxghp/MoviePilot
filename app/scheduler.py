@@ -39,16 +39,21 @@ class Scheduler(metaclass=Singleton):
     定时任务管理
     """
     # 定时服务
-    _scheduler = BackgroundScheduler(timezone=settings.TZ,
-                                     executors={
-                                         'default': ThreadPoolExecutor(100)
-                                     })
+    _scheduler = None
     # 退出事件
     _event = threading.Event()
     # 锁
     _lock = threading.Lock()
+    # 各服务的运行状态
+    _jobs = {}
 
     def __init__(self):
+        self.init()
+
+    def init(self):
+        """
+        初始化定时服务
+        """
 
         def clear_cache():
             """
@@ -92,9 +97,18 @@ class Scheduler(metaclass=Singleton):
             }
         }
 
+        # 停止定时服务
+        self.stop()
+
         # 调试模式不启动定时服务
         if settings.DEV:
             return
+
+        # 创建定时服务
+        self._scheduler = BackgroundScheduler(timezone=settings.TZ,
+                                              executors={
+                                                  'default': ThreadPoolExecutor(100)
+                                              })
 
         # CookieCloud定时同步
         if settings.COOKIECLOUD_INTERVAL \
@@ -385,6 +399,12 @@ class Scheduler(metaclass=Singleton):
         """
         关闭定时服务
         """
-        self._event.set()
-        if self._scheduler.running:
-            self._scheduler.shutdown()
+        try:
+            if self._scheduler:
+                self._event.set()
+                self._scheduler.remove_all_jobs()
+                if self._scheduler.running:
+                    self._scheduler.shutdown()
+                self._scheduler = None
+        except Exception as e:
+            logger.error(f"停止定时任务失败：：{str(e)} - {traceback.format_exc()}")
