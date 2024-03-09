@@ -15,7 +15,7 @@ class DashboardChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("media_statistic")
 
-    def downloader_info(self) -> schemas.DownloaderInfo:
+    def downloader_info(self) -> Optional[List[schemas.DownloaderInfo]]:
         """
         下载器信息
         """

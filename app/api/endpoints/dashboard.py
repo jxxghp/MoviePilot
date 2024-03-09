@@ -75,18 +75,16 @@ def downloader(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询下载器信息
     """
-    transfer_info = DashboardChain().downloader_info()
-    free_space = SystemUtils.free_space(settings.SAVE_PATH)
-    if transfer_info:
-        return schemas.DownloaderInfo(
-            download_speed=transfer_info.download_speed,
-            upload_speed=transfer_info.upload_speed,
-            download_size=transfer_info.download_size,
-            upload_size=transfer_info.upload_size,
-            free_space=free_space
-        )
-    else:
-        return schemas.DownloaderInfo()
+    downloader_info = schemas.DownloaderInfo()
+    transfer_infos = DashboardChain().downloader_info()
+    if transfer_infos:
+        for transfer_info in transfer_infos:
+            downloader_info.download_speed += transfer_info.download_speed
+            downloader_info.upload_speed += transfer_info.upload_speed
+            downloader_info.download_size += transfer_info.download_size
+            downloader_info.upload_size += transfer_info.upload_size
+        downloader_info.free_space = SystemUtils.free_space(settings.SAVE_PATH)
+    return downloader_info
 
 
 @router.get("/downloader2", summary="下载器信息（API_TOKEN）", response_model=schemas.DownloaderInfo)
