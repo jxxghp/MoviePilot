@@ -69,6 +69,8 @@ class Settings(BaseSettings):
                           '.tp']
     # 支持的字幕文件后缀格式
     RMT_SUBEXT: list = ['.srt', '.ass', '.ssa', '.sup']
+    # 下载器临时文件后缀
+    DOWNLOAD_TMPEXT: list = ['.!qB', '.part']
     # 支持的音轨文件后缀格式
     RMT_AUDIO_TRACK_EXT: list = ['.mka']
     # 索引器

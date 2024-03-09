@@ -324,24 +324,26 @@ class TorrentHelper(metaclass=Singleton):
 
         if not filter_rule:
             return True
+
+        # 匹配内容
+        content = f"{torrent_info.title} {torrent_info.description} {' '.join(torrent_info.labels or [])}"
         
         # 最少做种人数
         min_seeders = filter_rule.get("min_seeders")
         if min_seeders and torrent_info.seeders < int(min_seeders):
             logger.info(f"{torrent_info.title} 做种人数不足 {min_seeders}")
             return False
+
         # 包含
         include = filter_rule.get("include")
         if include:
-            if not re.search(r"%s" % include,
-                             f"{torrent_info.title} {torrent_info.description}", re.I):
+            if not re.search(r"%s" % include, content, re.I):
                 logger.info(f"{torrent_info.title} 不匹配包含规则 {include}")
                 return False
         # 排除
         exclude = filter_rule.get("exclude")
         if exclude:
-            if re.search(r"%s" % exclude,
-                         f"{torrent_info.title} {torrent_info.description}", re.I):
+            if re.search(r"%s" % exclude, content, re.I):
                 logger.info(f"{torrent_info.title} 匹配排除规则 {exclude}")
                 return False
         # 质量

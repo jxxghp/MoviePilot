@@ -39,11 +39,18 @@ class FilterModule(_ModuleBase):
         # 中字
         "CNSUB": {
             "include": [
-                r'[中国國繁简](/|\s|\\|\|)?[繁简英粤]|[英简繁](/|\s|\\|\|)?[中繁简]|繁體|简体|[中国國][字配]|国语|國語|中文|中字|简日|繁日|简繁|繁体|([\s,.-\[])(CHT|CHS|cht|chs)(|[\s,.-\]])'],
+                r'[中国國繁简](/|\s|\\|\|)?[繁简英粤]|[英简繁](/|\s|\\|\|)?[中繁简]'
+                r'|繁體|简体|[中国國][字配]|国语|國語|中文|中字|简日|繁日|简繁|繁体'
+                r'|([\s,.-\[])(CHT|CHS|cht|chs)(|[\s,.-\]])'],
             "exclude": [],
             "tmdb": {
                 "original_language": "zh,cn"
             }
+        },
+        # 官种
+        "GZ": {
+            "include": [r'官方', r'官种'],
+            "match": ["labels"]
         },
         # 特效字幕
         "SPECSUB": {
@@ -256,14 +263,30 @@ class FilterModule(_ModuleBase):
         # 符合TMDB规则的直接返回True，即不过滤
         if tmdb and self.__match_tmdb(tmdb):
             return True
+        # 匹配项：标题、副标题、标签
+        content = f"{torrent.title} {torrent.description} {' '.join(torrent.labels or [])}"
+        # 只匹配指定关键字
+        match_content = []
+        matchs = self.rule_set[rule_name].get("match") or []
+        if matchs:
+            for match in matchs:
+                if not hasattr(torrent, match):
+                    continue
+                match_value = getattr(torrent, match)
+                if not match_value:
+                    continue
+                if isinstance(match_value, list):
+                    match_content.extend(match_value)
+                else:
+                    match_content.append(match_value)
+        if match_content:
+            content = " ".join(match_content)
         # 包含规则项
         includes = self.rule_set[rule_name].get("include") or []
         # 排除规则项
         excludes = self.rule_set[rule_name].get("exclude") or []
         # FREE规则
         downloadvolumefactor = self.rule_set[rule_name].get("downloadvolumefactor")
-        # 匹配项
-        content = f"{torrent.title} {torrent.description} {' '.join(torrent.labels or [])}"
         for include in includes:
             if not re.search(r"%s" % include, content, re.IGNORECASE):
                 # 未发现包含项

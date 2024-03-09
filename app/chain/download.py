@@ -212,7 +212,7 @@ class DownloadChain(ChainBase):
                     if _media.genre_ids \
                             and set(_media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
                         # 动漫
-                        download_dir = settings.SAVE_ANIME_PATH
+                        download_dir = settings.SAVE_ANIME_PATH / _media.category
                     else:
                         # 电视剧
                         download_dir = settings.SAVE_TV_PATH / _media.category

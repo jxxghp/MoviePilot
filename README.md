@@ -185,13 +185,25 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 ## 使用
 
-- 通过设置的超级管理员用户登录管理界面（默认用户：admin，默认端口：3000），**注意：初始密码为自动生成，需要在首次运行时的后台日志中查看！**
-- 通过CookieCloud同步快速添加站点，不需要使用的站点可在WEB管理界面中禁用或删除，无法同步的站点可手动新增。
-- 通过打开下载器监控实现下载完成后自动整理入库并刮削媒体信息。
-- 通过`微信`/`Telegram`/`Slack`/`SynologyChat`/`VoceChat`远程管理，其中 微信/Telegram 将会自动添加操作菜单（微信菜单条数有限制，部分菜单不显示）；微信回调地址、SynologyChat传入地址地址相对路径均为：`/api/v1/message/`；VoceChat的Webhook地址相对路径为：`/api/v1/message/?token=moviepilot`，其中moviepilot为设置的`API_TOKEN`。
-- 设置媒体服务器Webhook，通过MoviePilot发送播放通知等。Webhook回调相对路径为`/api/v1/webhook?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`。
-- 将MoviePilot做为Radarr或Sonarr服务器添加到Overseerr或Jellyseerr，可使用Overseerr/Jellyseerr浏览订阅。
-- 映射宿主机docker.sock文件到容器`/var/run/docker.sock`，以支持内建重启操作。实例：`-v /var/run/docker.sock:/var/run/docker.sock:ro`。
+### 1. **WEB后台管理**
+- 通过设置的超级管理员用户登录后台管理界面（`SUPERUSER`配置项，默认用户：admin，默认端口：3000）
+> ❗**注意：超级管理员用户初始密码为自动生成，需要在首次运行时的后台日志中查看！** 如首次运行日志丢失，则需要删除配置文件目录下的`user.db`文件，然后重启服务。
+### 2. **站点维护**
+- 通过CookieCloud同步快速添加站点，不需要使用的站点可在WEB管理界面中禁用或删除，无法同步的站点也可手动新增。
+- 需要通过环境变量设置用户认证信息且认证成功后才能使用站点相关功能，未认证通过时站点相关的插件也会无法显示。
+### 3. **文件整理**
+- 默认通过监控下载器实现下载完成后自动整理入库并刮削媒体信息，需要后台打开`下载器监控`开关，且仅会处理通过MoviePilot添加下载的任务。
+- 使用`目录监控`等插件实现更灵活的自动整理。
+### 4. **通知交互**
+- 支持通过`微信`/`Telegram`/`Slack`/`SynologyChat`/`VoceChat`等渠道远程管理和订阅下载，其中 微信/Telegram 将会自动添加操作菜单（微信菜单条数有限制，部分菜单不显示）。
+- `微信`回调地址、`SynologyChat`传入地址地址相对路径均为：`/api/v1/message/`；`VoceChat`的Webhook地址相对路径为：`/api/v1/message/?token=moviepilot`，其中moviepilot为设置的`API_TOKEN`。
+### 5. **订阅与搜索**
+- 通过MoviePilot管理后台搜索和订阅。
+- 将MoviePilot做为`Radarr`或`Sonarr`服务器添加到`Overseerr`或`Jellyseerr`，可使用`Overseerr/Jellyseerr`浏览和添加订阅。
+- 安装`豆瓣榜单订阅`、`猫眼订阅`等插件，实现自动订阅豆瓣榜单、猫眼榜单等。
+### 6. **其他**
+- 通过设置媒体服务器Webhook指向MoviePilot（相对路径为`/api/v1/webhook?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`），可实现通过MoviePilot发送播放通知，以及配合各类插件实现播放限速等功能。
+- 映射宿主机`docker.sock`文件到容器`/var/run/docker.sock`，可支持应用内建重启操作。实例：`-v /var/run/docker.sock:/var/run/docker.sock:ro`。
 - 将WEB页面添加到手机桌面图标可获得与App一样的使用体验。
 
 ### **注意**
@@ -217,6 +229,13 @@ location /cgi-bin/message/send {
 location  /cgi-bin/menu/create {
     proxy_pass https://qyapi.weixin.qq.com;
 }
+```
+
+- 部分插件功能基于文件系统监控实现（如`目录监控`等），需在宿主机上（不是docker容器内）执行以下命令并重启：
+```shell
+echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf
+echo fs.inotify.max_user_instances=524288 | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
 ```
 
 ![image](https://github.com/jxxghp/MoviePilot/assets/51039935/f2654b09-26f3-464f-a0af-1de3f97832ee)
