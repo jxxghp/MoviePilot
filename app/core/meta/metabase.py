@@ -131,6 +131,10 @@ class MetaBase(object):
                 except Exception as err:
                     logger.debug(f'识别季失败：{str(err)} - {traceback.format_exc()}')
                     return
+                if begin_season and begin_season > 100:
+                    return
+                if end_season and end_season > 100:
+                    return
                 if self.begin_season is None and isinstance(begin_season, int):
                     self.begin_season = begin_season
                     self.total_season = 1
