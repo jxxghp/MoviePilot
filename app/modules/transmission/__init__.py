@@ -32,8 +32,8 @@ class TransmissionModule(_ModuleBase):
         """
         if self.transmission.is_inactive():
             self.transmission.reconnect()
-        if self.transmission.is_inactive():
-            return False, "无法连接Transmission，请检查参数配置"
+        if not self.transmission.transfer_info():
+            return False, "无法获取Transmission状态，请检查参数配置"
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:

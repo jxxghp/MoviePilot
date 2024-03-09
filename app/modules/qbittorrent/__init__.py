@@ -32,8 +32,8 @@ class QbittorrentModule(_ModuleBase):
         """
         if self.qbittorrent.is_inactive():
             self.qbittorrent.reconnect()
-        if self.qbittorrent.is_inactive():
-            return False, "无法连接Qbittorrent，请检查参数配置"
+        if not self.qbittorrent.transfer_info():
+            return False, "无法获取Qbittorrent状态，请检查参数配置"
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
