@@ -278,7 +278,7 @@ class Scheduler(metaclass=Singleton):
                 kwargs = job.get("kwargs") or {}
             job["func"](*args, **kwargs)
         except Exception as e:
-            logger.error(f"定时任务 {job_id} 执行失败：{str(e)}")
+            logger.error(f"定时任务 {job_id} 执行失败：{str(e)} - {traceback.format_exc()}")
         # 运行结束
         with self._lock:
             try:
