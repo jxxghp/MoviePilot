@@ -166,6 +166,10 @@ class MetaBase(object):
                 except Exception as err:
                     logger.debug(f'识别集失败：{str(err)} - {traceback.format_exc()}')
                     return
+                if begin_episode and begin_episode >= 10000:
+                    return
+                if end_episode and end_episode >= 10000:
+                    return
                 if self.begin_episode is None and isinstance(begin_episode, int):
                     self.begin_episode = begin_episode
                     self.total_episode = 1
