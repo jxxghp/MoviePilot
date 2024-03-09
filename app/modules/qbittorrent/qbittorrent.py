@@ -119,9 +119,9 @@ class Qbittorrent:
                                             tags=tags)
         return None if error else torrents or []
 
-    def remove_torrents_tag(self, ids: Union[str, list], tag: Union[str, list]) -> bool:
+    def delete_torrents_tag(self, ids: Union[str, list], tag: Union[str, list]) -> bool:
         """
-        移除种子Tag
+        删除Tag
         :param ids: 种子Hash列表
         :param tag: 标签内容
         """
@@ -131,9 +131,24 @@ class Qbittorrent:
             self.qbc.torrents_delete_tags(torrent_hashes=ids, tags=tag)
             return True
         except Exception as err:
+            logger.error(f"删除种子Tag出错：{str(err)}")
+            return False
+        
+    def remove_torrents_tag(self, ids: Union[str, list], tag: Union[str, list]) -> bool:
+        """
+        移除种子Tag
+        :param ids: 种子Hash列表
+        :param tag: 标签内容
+        """
+        if not self.qbc:
+            return False
+        try:
+            self.qbc.torrents_remove_tags(torrent_hashes=ids, tags=tag)
+            return True
+        except Exception as err:
             logger.error(f"移除种子Tag出错：{str(err)}")
             return False
-
+        
     def set_torrents_tag(self, ids: Union[str, list], tags: list):
         """
         设置种子状态为已整理，以及是否强制做种
@@ -187,7 +202,7 @@ class Qbittorrent:
             if torrent_id is None:
                 continue
             else:
-                self.remove_torrents_tag(torrent_id, tags)
+                self.delete_torrents_tag(torrent_id, tags)
                 break
         return torrent_id
 
