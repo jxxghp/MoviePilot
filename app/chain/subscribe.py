@@ -856,26 +856,39 @@ class SubscribeChain(ChainBase):
                 f"\n- 删除订阅：/subscribe_delete [id]" \
                 f"\n- 搜索订阅：/subscribe_search [id]" \
                 f"\n- 刷新订阅：/subscribe_refresh"
-        messages = []
+        medias = []
         for subscribe in subscribes:
+            media = MediaInfo()
             if subscribe.type == MediaType.MOVIE.value:
-                if subscribe.tmdbid:
-                    link = f"https://www.themoviedb.org/movie/{subscribe.tmdbid}"
-                else:
-                    link = f"https://movie.douban.com/subject/{subscribe.doubanid}"
-                messages.append(f"{subscribe.id}. [{subscribe.name}（{subscribe.year}）]({link})")
+                media.from_dict({
+                    "type": subscribe.type,
+                    "title": subscribe.name,
+                    "year": subscribe.year,
+                    "tmdb_id": subscribe.tmdbid,
+                    "backdrop_path": subscribe.backdrop,
+                    "poster_path": subscribe.poster,
+                    "vote_average": subscribe.vote,
+                    "overview": subscribe.description,
+                })
             else:
-                if subscribe.tmdbid:
-                    link = f"https://www.themoviedb.org/tv/{subscribe.tmdbid}"
-                else:
-                    link = f"https://movie.douban.com/subject/{subscribe.doubanid}"
-                messages.append(f"{subscribe.id}. [{subscribe.name}（{subscribe.year}）]({link}) "
-                                f"第{subscribe.season}季 "
-                                f"_{subscribe.total_episode - (subscribe.lack_episode or subscribe.total_episode)}"
-                                f"/{subscribe.total_episode}_")
+                media.from_dict({
+                    "type": subscribe.type,
+                    "name": subscribe.name,
+                    "year": subscribe.year,
+                    "tmdb_id": subscribe.tmdbid,
+                    "backdrop_path": subscribe.backdrop,
+                    "poster_path": subscribe.poster,
+                    "vote_average": f"{subscribe.total_episode - (subscribe.lack_episode or subscribe.total_episode)}"
+                                    f"/{subscribe.total_episode}",
+                    "overview": subscribe.description,
+                    "season": subscribe.season
+                })
+            medias.append(media)
         # 发送列表
-        self.post_message(Notification(channel=channel,
-                                       title=title, text='\n'.join(messages), userid=userid))
+        self.post_medias_message(
+            message=Notification(channel=channel, title=title, userid=userid),
+            medias=medias
+        )
 
     def remote_delete(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
         """
