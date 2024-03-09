@@ -290,6 +290,8 @@ class Scheduler(metaclass=Singleton):
         """
         更新插件定时服务
         """
+        if not self._scheduler:
+            return
         # 移除该插件的全部服务
         self.remove_plugin_job(pid)
         # 获取插件服务列表
@@ -332,6 +334,8 @@ class Scheduler(metaclass=Singleton):
         """
         移除插件定时服务
         """
+        if not self._scheduler:
+            return
         with self._lock:
             # 获取插件名称
             plugin_name = PluginManager().get_plugin_attr(pid, "plugin_name")
@@ -351,6 +355,8 @@ class Scheduler(metaclass=Singleton):
         """
         当前所有任务
         """
+        if not self._scheduler:
+            return []
         with self._lock:
             # 返回计时任务
             schedulers = []

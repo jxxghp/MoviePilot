@@ -292,7 +292,7 @@ class DownloadChain(ChainBase):
                     continue
                 files_to_add.append({
                     "download_hash": _hash,
-                    "downloader": settings.DOWNLOADER,
+                    "downloader": settings.DEFAULT_DOWNLOADER,
                     "fullpath": str(download_dir / _folder_name / file),
                     "savepath": str(download_dir / _folder_name),
                     "filepath": file,

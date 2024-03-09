@@ -125,7 +125,7 @@ class Settings(BaseSettings):
     VOCECHAT_API_KEY: str = ""
     # VoceChat 频道ID
     VOCECHAT_CHANNEL_ID: str = ""
-    # 下载器 qbittorrent/transmission
+    # 下载器 qbittorrent/transmission，启用多个下载器时使用,分隔，只有第一个会被默认使用
     DOWNLOADER: str = "qbittorrent"
     # 下载器监控开关
     DOWNLOADER_MONITOR: bool = True
@@ -361,6 +361,24 @@ class Settings(BaseSettings):
                 "Authorization": f"Bearer {self.GITHUB_TOKEN}"
             }
         return {}
+
+    @property
+    def DEFAULT_DOWNLOADER(self):
+        """
+        默认下载器
+        """
+        if not self.DOWNLOADER:
+            return None
+        return self.DOWNLOADER.split(",")[0]
+
+    @property
+    def DOWNLOADERS(self):
+        """
+        下载器列表
+        """
+        if not self.DOWNLOADER:
+            return []
+        return self.DOWNLOADER.split(",")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

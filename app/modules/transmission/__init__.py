@@ -73,8 +73,12 @@ class TransmissionModule(_ModuleBase):
                 logger.error(f"获取种子名称失败：{e}")
                 return "", 0
 
+        # 不是默认下载器不处理
+        if settings.DEFAULT_DOWNLOADER != "transmission":
+            return None
+
         if not content:
-            return
+            return None
         if isinstance(content, Path) and not content.exists():
             return None, f"种子文件不存在：{content}"
 
