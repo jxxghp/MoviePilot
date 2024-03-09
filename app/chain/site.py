@@ -370,11 +370,11 @@ class SiteChain(ChainBase):
             if site.render:
                 render_str = "🧭"
             else:
-                render_str = "⚠️"
+                render_str = ""
             if site.is_active:
                 messages.append(f"{site.id}. {site.name} {render_str}")
             else:
-                messages.append(f"{site.id}. {site.name} ")
+                messages.append(f"{site.id}. {site.name} ⚠️")
         # 发送列表
         self.post_message(Notification(
             channel=channel,
