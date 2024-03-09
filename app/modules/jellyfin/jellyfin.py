@@ -68,11 +68,11 @@ class Jellyfin:
         """
         if not self._host or not self._apikey:
             return []
-        req_url = "%sLibrary/VirtualFolders/Query?api_key=%s" % (self._host, self._apikey)
+        req_url = "%sLibrary/VirtualFolders?api_key=%s" % (self._host, self._apikey)
         try:
             res = RequestUtils().get_res(req_url)
             if res:
-                library_items = res.json().get("Items")
+                library_items = res.json()
                 librarys = []
                 for library_item in library_items:
                     library_name = library_item.get('Name')
@@ -91,10 +91,10 @@ class Jellyfin:
                         })
                 return librarys
             else:
-                logger.error(f"Library/VirtualFolders/Query 未获取到返回数据")
+                logger.error(f"Library/VirtualFolders 未获取到返回数据")
                 return []
         except Exception as e:
-            logger.error(f"连接Library/VirtualFolders/Query 出错：" + str(e))
+            logger.error(f"连接Library/VirtualFolders 出错：" + str(e))
             return []
 
     def __get_jellyfin_librarys(self, username: str = None) -> List[dict]:
