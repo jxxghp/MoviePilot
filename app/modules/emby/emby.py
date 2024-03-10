@@ -458,7 +458,7 @@ class Emby:
         :param item_id: 在Emby中的ID
         :param image_type: 图片类型，如Backdrop、Primary
         """
-        if self._playhost is None or self._playhost == "":
+        if not self._playhost:
             logger.error("Emby外网播放地址未能获取或为空")
             return None
 
