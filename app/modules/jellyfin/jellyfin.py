@@ -422,19 +422,43 @@ class Jellyfin:
             return None
         req_url = "%sItems/%s/RemoteImages?api_key=%s" % (self._host, item_id, self._apikey)
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils(timeout=10).get_res(req_url)
             if res:
                 images = res.json().get("Images")
                 for image in images:
                     if image.get("ProviderName") == "TheMovieDb" and image.get("Type") == image_type:
                         return image.get("Url")
+                # return images[0].get("Url") # 首选无则返回第一张
             else:
-                logger.error(f"Items/RemoteImages 未获取到返回数据")
-                return None
+                logger.info(f"Items/RemoteImages 未获取到返回数据，采用本地图片")
+                return self.generate_external_image_link(item_id, image_type)
         except Exception as e:
             logger.error(f"连接Items/Id/RemoteImages出错：" + str(e))
             return None
         return None
+
+    def generate_external_image_link(self, item_id, image_type):
+        """
+        根据ItemId和imageType查询本地对应图片
+        :param item_id: 在Jellyfin中的ID
+        :param image_type: 图片类型，如Backdrop、Primary
+        """
+        if not self._playhost:
+            logger.error("Jellyfin外网播放地址未能获取或为空")
+            return None
+
+        req_url = "%sItems/%s/Images/%s" % (self._playhost, item_id, image_type)
+        try:
+            res = RequestUtils().get_res(req_url)
+            if res or res.status_code == 404:
+                logger.info("影片图片链接:{}".format(res.url))
+                return res.url
+            else:
+                logger.info("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
+                return None
+        except Exception as e:
+            logger.error(f"连接Items/Id/Images出错：" + str(e))
+            return None
 
     def refresh_root_library(self) -> bool:
         """
