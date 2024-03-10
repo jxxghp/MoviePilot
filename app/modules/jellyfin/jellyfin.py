@@ -446,6 +446,10 @@ class Jellyfin:
         if not self._playhost:
             logger.error("Jellyfin外网播放地址未能获取或为空")
             return None
+        # 检测是否为TV
+        parent_id = self.get_itemId_ancestors(item_id, 0, "ParentBackdropItemId")
+        if parent_id:
+            item_id = parent_id
 
         req_url = "%sItems/%s/Images/%s" % (self._playhost, item_id, image_type)
         try:
@@ -459,6 +463,25 @@ class Jellyfin:
         except Exception as e:
             logger.error(f"连接Items/Id/Images出错：" + str(e))
             return None
+
+    def get_itemId_ancestors(self, item_id, index, key):
+        """
+        获得itemId的父item
+        :param item_id: 在Jellyfin中剧集的ID (S01E02的E02的item_id)
+        :param index: 第几个json对象
+        :param key: 需要得到父item中的键值对
+        """
+        req_url = "%sItems/%s/Ancestors?api_key=%s" % (self._host, item_id, self._apikey)
+        try:
+            res = RequestUtils().get_res(req_url)
+            if res:
+                return res.json()[index].get(key)
+            else:
+                logger.error(f"Items/Id/Ancestors 未获取到返回数据")
+                return False
+        except Exception as e:
+            logger.error(f"连接Items/Id/Ancestors出错：" + str(e))
+            return False
 
     def refresh_root_library(self) -> bool:
         """
