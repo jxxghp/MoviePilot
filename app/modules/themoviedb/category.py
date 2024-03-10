@@ -107,7 +107,7 @@ class CategoryHelper(metaclass=Singleton):
         :return: 二级分类的名称
         """
         genre_ids = tmdb_info.get("genre_ids") or []
-        if genre_ids \
+        if self._anime_categorys and genre_ids \
                 and set(genre_ids).intersection(set(settings.ANIME_GENREIDS)):
             return self.get_category(self._anime_categorys, tmdb_info)
         return self.get_category(self._tv_categorys, tmdb_info)
