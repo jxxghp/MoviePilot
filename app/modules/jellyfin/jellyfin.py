@@ -450,11 +450,11 @@ class Jellyfin:
         req_url = "%sItems/%s/Images/%s" % (self._playhost, item_id, image_type)
         try:
             res = RequestUtils().get_res(req_url)
-            if res or res.status_code == 404:
+            if res and res.status_code != 404:
                 logger.info("影片图片链接:{}".format(res.url))
                 return res.url
             else:
-                logger.info("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
+                logger.error("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
                 return None
         except Exception as e:
             logger.error(f"连接Items/Id/Images出错：" + str(e))
