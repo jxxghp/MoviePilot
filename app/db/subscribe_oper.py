@@ -83,3 +83,9 @@ class SubscribeOper(DbOper):
         subscribe = self.get(sid)
         subscribe.update(self._db, payload)
         return subscribe
+
+    def list_by_type(self, mtype: str, days: int = 7) -> Subscribe:
+        """
+        获取指定类型的订阅
+        """
+        return Subscribe.list_by_type(self._db, mtype=mtype, days=days)

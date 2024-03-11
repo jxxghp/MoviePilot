@@ -1,3 +1,5 @@
+import time
+
 from sqlalchemy import Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
@@ -126,3 +128,13 @@ class Subscribe(Base):
         if subscribe:
             subscribe.delete(db, subscribe.id)
         return True
+
+    @staticmethod
+    @db_query
+    def list_by_type(db: Session, mtype: str, days: int):
+        result = db.query(Subscribe) \
+            .filter(Subscribe.type == mtype,
+                    Subscribe.date >= time.strftime("%Y-%m-%d %H:%M:%S",
+                                                    time.localtime(time.time() - 86400 * int(days)))
+                    ).all()
+        return list(result)
