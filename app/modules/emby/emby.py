@@ -452,11 +452,12 @@ class Emby:
             return None
         return None
 
-    def generate_external_image_link(self, item_id, image_type):
+    def generate_external_image_link(self, item_id: str, image_type: str) -> Optional[str]:
         """
         根据ItemId和imageType查询本地对应图片
         :param item_id: 在Emby中的ID
         :param image_type: 图片类型，如Backdrop、Primary
+        :return: 图片对应在外网播放器中的URL
         """
         if not self._playhost:
             logger.error("Emby外网播放地址未能获取或为空")

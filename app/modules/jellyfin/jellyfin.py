@@ -437,11 +437,12 @@ class Jellyfin:
             return None
         return None
 
-    def generate_external_image_link(self, item_id, image_type):
+    def generate_external_image_link(self, item_id: str, image_type: str) -> Optional[str]:
         """
         根据ItemId和imageType查询本地对应图片
         :param item_id: 在Jellyfin中的ID
         :param image_type: 图片类型，如Backdrop、Primary
+        :return: 图片对应在外网播放器中的URL
         """
         if not self._playhost:
             logger.error("Jellyfin外网播放地址未能获取或为空")
@@ -464,12 +465,13 @@ class Jellyfin:
             logger.error(f"连接Items/Id/Images出错：" + str(e))
             return None
 
-    def get_itemId_ancestors(self, item_id, index, key):
+    def get_itemId_ancestors(self, item_id: str, index: int, key: str) -> Optional[Union[str, list, int, dict, bool]]:
         """
         获得itemId的父item
         :param item_id: 在Jellyfin中剧集的ID (S01E02的E02的item_id)
         :param index: 第几个json对象
         :param key: 需要得到父item中的键值对
+        :return key对应类型的值
         """
         req_url = "%sItems/%s/Ancestors?api_key=%s" % (self._host, item_id, self._apikey)
         try:
@@ -478,10 +480,10 @@ class Jellyfin:
                 return res.json()[index].get(key)
             else:
                 logger.error(f"Items/Id/Ancestors 未获取到返回数据")
-                return False
+                return None
         except Exception as e:
             logger.error(f"连接Items/Id/Ancestors出错：" + str(e))
-            return False
+            return None
 
     def refresh_root_library(self) -> bool:
         """
