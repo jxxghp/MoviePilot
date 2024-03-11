@@ -437,27 +437,52 @@ class Jellyfin:
             return None
         return None
 
-    def generate_external_image_link(self, item_id, image_type):
+    def generate_external_image_link(self, item_id: str, image_type: str) -> Optional[str]:
         """
         根据ItemId和imageType查询本地对应图片
         :param item_id: 在Jellyfin中的ID
         :param image_type: 图片类型，如Backdrop、Primary
+        :return: 图片对应在外网播放器中的URL
         """
         if not self._playhost:
             logger.error("Jellyfin外网播放地址未能获取或为空")
             return None
+        # 检测是否为TV
+        parent_id = self.get_itemId_ancestors(item_id, 0, "ParentBackdropItemId")
+        if parent_id:
+            item_id = parent_id
 
         req_url = "%sItems/%s/Images/%s" % (self._playhost, item_id, image_type)
         try:
             res = RequestUtils().get_res(req_url)
-            if res or res.status_code == 404:
+            if res and res.status_code != 404:
                 logger.info("影片图片链接:{}".format(res.url))
                 return res.url
             else:
-                logger.info("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
+                logger.error("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
                 return None
         except Exception as e:
             logger.error(f"连接Items/Id/Images出错：" + str(e))
+            return None
+
+    def get_itemId_ancestors(self, item_id: str, index: int, key: str) -> Optional[Union[str, list, int, dict, bool]]:
+        """
+        获得itemId的父item
+        :param item_id: 在Jellyfin中剧集的ID (S01E02的E02的item_id)
+        :param index: 第几个json对象
+        :param key: 需要得到父item中的键值对
+        :return key对应类型的值
+        """
+        req_url = "%sItems/%s/Ancestors?api_key=%s" % (self._host, item_id, self._apikey)
+        try:
+            res = RequestUtils().get_res(req_url)
+            if res:
+                return res.json()[index].get(key)
+            else:
+                logger.error(f"Items/Id/Ancestors 未获取到返回数据")
+                return None
+        except Exception as e:
+            logger.error(f"连接Items/Id/Ancestors出错：" + str(e))
             return None
 
     def refresh_root_library(self) -> bool:
