@@ -131,3 +131,11 @@ class DownloadHistoryOper(DbOper):
                                             type=type,
                                             tmdbid=tmdbid,
                                             seasons=seasons)
+
+    def list_by_type(self, mtype: str, days: int = 7) -> List[DownloadHistory]:
+        """
+        获取指定类型的下载历史
+        """
+        return DownloadHistory.list_by_type(db=self._db,
+                                            mtype=mtype,
+                                            days=days)

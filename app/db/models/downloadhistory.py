@@ -1,3 +1,5 @@
+import time
+
 from sqlalchemy import Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
@@ -139,6 +141,16 @@ class DownloadHistory(Base):
                                                     DownloadHistory.type == type,
                                                     DownloadHistory.tmdbid == tmdbid).order_by(
                 DownloadHistory.id.desc()).all()
+
+    @staticmethod
+    @db_query
+    def list_by_type(db: Session, mtype: str, days: int):
+        result = db.query(DownloadHistory) \
+            .filter(DownloadHistory.type == mtype,
+                    DownloadHistory.date >= time.strftime("%Y-%m-%d %H:%M:%S",
+                                                          time.localtime(time.time() - 86400 * int(days)))
+                    ).all()
+        return list(result)
 
 
 class DownloadFiles(Base):
