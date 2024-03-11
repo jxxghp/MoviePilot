@@ -431,28 +431,32 @@ class Jellyfin:
                 # return images[0].get("Url") # 首选无则返回第一张
             else:
                 logger.info(f"Items/RemoteImages 未获取到返回数据，采用本地图片")
-                return self.generate_external_image_link(item_id, image_type)
+                return self.generate_image_link(item_id, image_type, True)
         except Exception as e:
             logger.error(f"连接Items/Id/RemoteImages出错：" + str(e))
             return None
         return None
 
-    def generate_external_image_link(self, item_id: str, image_type: str) -> Optional[str]:
+    def generate_image_link(self, item_id: str, image_type: str, host_type: bool) -> Optional[str]:
         """
         根据ItemId和imageType查询本地对应图片
         :param item_id: 在Jellyfin中的ID
         :param image_type: 图片类型，如Backdrop、Primary
-        :return: 图片对应在外网播放器中的URL
+        :param host_type: True为外网链接, False为内网链接
+        :return: 图片对应在host_type的播放器中的URL
         """
         if not self._playhost:
             logger.error("Jellyfin外网播放地址未能获取或为空")
             return None
         # 检测是否为TV
-        parent_id = self.get_itemId_ancestors(item_id, 0, "ParentBackdropItemId")
-        if parent_id:
-            item_id = parent_id
+        _parent_id = self.get_itemId_ancestors(item_id, 0, "ParentBackdropItemId")
+        if _parent_id:
+            item_id = _parent_id
 
-        req_url = "%sItems/%s/Images/%s" % (self._playhost, item_id, image_type)
+        _host = self._host
+        if host_type:
+            _host = self._playhost
+        req_url = "%sItems/%s/Images/%s" % (_host, item_id, image_type)
         try:
             res = RequestUtils().get_res(req_url)
             if res and res.status_code != 404:
@@ -779,6 +783,10 @@ class Jellyfin:
                                                         image_tag=item.get("BackdropImageTags")[0])
                     else:
                         image = self.__get_local_image_by_id(item.get("Id"))
+                    # 小部分剧集无[xxx-S01E01-thumb.jpg]图片
+                    image_res = RequestUtils().get_res(image)
+                    if not image_res or image_res.status_code == 404:
+                        image =  self.generate_image_link(item.get("Id"), "Backdrop", False)
                     if item_type == MediaType.MOVIE.value:
                         title = item.get("Name")
                         subtitle = item.get("ProductionYear")
