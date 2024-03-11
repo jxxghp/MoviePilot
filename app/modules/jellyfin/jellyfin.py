@@ -786,7 +786,7 @@ class Jellyfin:
                     # 小部分剧集无[xxx-S01E01-thumb.jpg]图片
                     image_res = RequestUtils().get_res(image)
                     if not image_res or image_res.status_code == 404:
-                        image =  self.generate_image_link(item.get("Id"), "Backdrop", False)
+                        image = self.generate_image_link(item.get("Id"), "Backdrop", False)
                     if item_type == MediaType.MOVIE.value:
                         title = item.get("Name")
                         subtitle = item.get("ProductionYear")

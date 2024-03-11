@@ -449,7 +449,6 @@ class Emby:
             return self.generate_external_image_link(item_id, image_type)
         except Exception as e:
             logger.error(f"连接Items/Id/RemoteImages出错：" + str(e))
-            return None
         return None
 
     def generate_external_image_link(self, item_id: str, image_type: str) -> Optional[str]:
