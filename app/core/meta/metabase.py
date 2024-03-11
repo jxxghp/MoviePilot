@@ -131,6 +131,10 @@ class MetaBase(object):
                 except Exception as err:
                     logger.debug(f'识别季失败：{str(err)} - {traceback.format_exc()}')
                     return
+                if begin_season and begin_season > 100:
+                    return
+                if end_season and end_season > 100:
+                    return
                 if self.begin_season is None and isinstance(begin_season, int):
                     self.begin_season = begin_season
                     self.total_season = 1
@@ -161,6 +165,10 @@ class MetaBase(object):
                         begin_episode = int(cn2an.cn2an(episodes, mode='smart'))
                 except Exception as err:
                     logger.debug(f'识别集失败：{str(err)} - {traceback.format_exc()}')
+                    return
+                if begin_episode and begin_episode >= 10000:
+                    return
+                if end_episode and end_episode >= 10000:
                     return
                 if self.begin_episode is None and isinstance(begin_episode, int):
                     self.begin_episode = begin_episode
