@@ -309,7 +309,7 @@ class TmdbScraper:
         # 添加时间
         DomUtils.add_node(doc, root, "dateadded", time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
         # TMDBID
-        uniqueid = DomUtils.add_node(doc, root, "uniqueid", str(tmdbid))
+        uniqueid = DomUtils.add_node(doc, root, "uniqueid", str(episodeinfo.get("id")))
         uniqueid.setAttribute("type", "tmdb")
         uniqueid.setAttribute("default", "true")
         # tmdbid
