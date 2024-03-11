@@ -132,7 +132,7 @@ class TheMovieDbModule(_ModuleBase):
                 logger.error("识别媒体信息时未提供元数据或tmdbid")
                 return None
             # 保存到缓存
-            if meta and cache:
+            if meta:
                 self.cache.update(meta, info)
         else:
             # 使用缓存信息
