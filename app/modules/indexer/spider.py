@@ -383,9 +383,19 @@ class TorrentSpider:
         item = self.__index(items, selector)
         download_link = self.__filter_text(item, selector.get('filters'))
         if download_link:
-            if not download_link.startswith("http") and not download_link.startswith("magnet"):
-                self.torrents_info['enclosure'] = self.domain + download_link[1:] if download_link.startswith(
-                    "/") else self.domain + download_link
+            if not download_link.startswith("http") \
+                    and not download_link.startswith("magnet"):
+                _scheme, _domain = StringUtils.get_url_netloc(self.domain)
+                if _domain in download_link:
+                    if download_link.startswith("/"):
+                        self.torrents_info['enclosure'] = f"{_scheme}:{download_link}"
+                    else:
+                        self.torrents_info['enclosure'] = f"{_scheme}://{download_link}"
+                else:
+                    if download_link.startswith("/"):
+                        self.torrents_info['enclosure'] = f"{self.domain}{download_link[1:]}"
+                    else:
+                        self.torrents_info['enclosure'] = f"{self.domain}{download_link}"
             else:
                 self.torrents_info['enclosure'] = download_link
 
