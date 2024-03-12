@@ -124,7 +124,14 @@ class SearchChain(ChainBase):
         if keyword:
             keywords = [keyword]
         else:
-            keywords = list({mediainfo.title, mediainfo.original_title, mediainfo.en_title} - {None})
+            keywords = list(
+                {
+                    mediainfo.title,
+                    mediainfo.original_title,
+                    mediainfo.en_title,
+                    mediainfo.sg_title
+                } - {None}
+            )
         # 执行搜索
         torrents: List[TorrentInfo] = self.__search_all_sites(
             mediainfo=mediainfo,

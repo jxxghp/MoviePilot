@@ -553,10 +553,10 @@ class TmdbHelper:
             tmdb_info['genre_ids'] = __get_genre_ids(tmdb_info.get('genres'))
             # 别名和译名
             tmdb_info['names'] = self.__get_names(tmdb_info)
+            # 转换多语种标题
+            self.__update_tmdbinfo_extra_title(tmdb_info)
             # 转换中文标题
             self.__update_tmdbinfo_cn_title(tmdb_info)
-            # 转换英文标题
-            self.__update_tmdbinfo_en_title(tmdb_info)
 
         return tmdb_info
 
@@ -585,49 +585,61 @@ class TmdbHelper:
                         return title
             return tmdbinfo.get("title") if tmdbinfo.get("media_type") == MediaType.MOVIE else tmdbinfo.get("name")
 
-        # 查找中文名
+        # 原标题
         org_title = tmdb_info.get("title") \
             if tmdb_info.get("media_type") == MediaType.MOVIE \
             else tmdb_info.get("name")
+        # 查找中文名
         if not StringUtils.is_chinese(org_title):
             cn_title = __get_tmdb_chinese_title(tmdb_info)
             if cn_title and cn_title != org_title:
+                # 使用中文别名
                 if tmdb_info.get("media_type") == MediaType.MOVIE:
                     tmdb_info['title'] = cn_title
                 else:
                     tmdb_info['name'] = cn_title
+            else:
+                # 使用新加坡名
+                sg_title = tmdb_info.get("sg_title")
+                if sg_title and sg_title != org_title and StringUtils.is_chinese(sg_title):
+                    if tmdb_info.get("media_type") == MediaType.MOVIE:
+                        tmdb_info['title'] = sg_title
+                    else:
+                        tmdb_info['name'] = sg_title
 
     @staticmethod
-    def __update_tmdbinfo_en_title(tmdb_info: dict):
+    def __update_tmdbinfo_extra_title(tmdb_info: dict):
         """
-        更新TMDB信息中的英文名称
+        更新TMDB信息中的其它语种名称
         """
 
-        def __get_tmdb_english_title(tmdbinfo):
+        def __get_tmdb_lang_title(tmdbinfo: dict, lang: str = "US"):
             """
-            从别名中获取英文标题
+            从译名中获取其它语种标题
             """
             if not tmdbinfo:
                 return None
             translations = tmdb_info.get("translations", {}).get("translations", [])
             for translation in translations:
-                if translation.get("iso_3166_1") == "US":
+                if translation.get("iso_3166_1") == lang:
                     return translation.get("data", {}).get("title") if tmdbinfo.get("media_type") == MediaType.MOVIE \
                         else translation.get("data", {}).get("name")
             return None
 
-        # 查找英文名
+        # 原标题
         org_title = (
             tmdb_info.get("original_title")
             if tmdb_info.get("media_type") == MediaType.MOVIE
             else tmdb_info.get("original_name")
         )
+        # 查找英文名
         if tmdb_info.get("original_language") == "en":
             tmdb_info['en_title'] = org_title
-        # TODO: 对于日文标题，使用罗马字作为英文标题可能更合适？
         else:
-            en_title = __get_tmdb_english_title(tmdb_info)
+            en_title = __get_tmdb_lang_title(tmdb_info, "US")
             tmdb_info['en_title'] = en_title or org_title
+        # 查找新加坡名（用于替代中文名）
+        tmdb_info['sg_title'] = __get_tmdb_lang_title(tmdb_info, "SG") or org_title
 
     def __get_movie_detail(self,
                            tmdbid: int,
