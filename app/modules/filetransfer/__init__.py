@@ -195,6 +195,8 @@ class FileTransferModule(_ModuleBase):
                 if (org_path.stem == Path(sub_file_name).stem) or \
                         (sub_metainfo.cn_name and sub_metainfo.cn_name == metainfo.cn_name) \
                         or (sub_metainfo.en_name and sub_metainfo.en_name == metainfo.en_name):
+                    if metainfo.part and metainfo.part != sub_metainfo.part:
+                        continue
                     if metainfo.season \
                             and metainfo.season != sub_metainfo.season:
                         continue
