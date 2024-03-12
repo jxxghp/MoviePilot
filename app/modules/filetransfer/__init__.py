@@ -34,21 +34,31 @@ class FileTransferModule(_ModuleBase):
         if not settings.DOWNLOAD_PATH:
             return False, "下载目录未设置"
         # 检查下载目录
-        download_path = Path(settings.DOWNLOAD_PATH)
-        if not download_path.exists():
-            return False, "下载目录不存在"
+        download_paths: List[str] = []
+        for path in [settings.DOWNLOAD_PATH,
+                     settings.DOWNLOAD_MOVIE_PATH,
+                     settings.DOWNLOAD_TV_PATH,
+                     settings.DWONLOAD_ANIME_PATH]:
+            if not path:
+                continue
+            download_path = Path(path)
+            if not download_path.exists():
+                return False, f"目录 {download_path} 不存在"
+            download_paths.append(path)
+        # 下载目录的设备ID
+        download_devids = [Path(path).stat().st_dev for path in download_paths]
+        # 检查媒体库目录
         if not settings.LIBRARY_PATH:
             return False, "媒体库目录未设置"
-        # 下载目录的设备ID
-        download_devid = download_path.stat().st_dev
         # 比较媒体库目录的设备ID
         for path in settings.LIBRARY_PATHS:
             library_path = Path(path)
             if not library_path.exists():
                 return False, f"目录不存在：{library_path}"
             if settings.DOWNLOADER_MONITOR and settings.TRANSFER_TYPE == "link":
-                if library_path.stat().st_dev != download_devid:
-                    return False, f"下载目录 {download_path} 与媒体库目录 {library_path} 不在同一设备，将无法硬链接"
+                if library_path.stat().st_dev not in download_devids:
+                    return False, f"媒体库目录 {library_path} " \
+                                  f"与下载目录 {','.join(download_paths)} 不在同一设备，将无法硬链接"
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
