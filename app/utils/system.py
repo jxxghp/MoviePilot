@@ -389,6 +389,8 @@ class SystemUtils:
         """
         判断是否为蓝光原盘目录
         """
+        if not dir_path.is_dir():
+            return False
         # 蓝光原盘目录必备的文件或文件夹
         required_files = ['BDMV', 'CERTIFICATE']
         # 检查目录下是否存在所需文件或文件夹
