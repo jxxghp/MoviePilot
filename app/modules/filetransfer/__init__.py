@@ -38,7 +38,7 @@ class FileTransferModule(_ModuleBase):
         for path in [settings.DOWNLOAD_PATH,
                      settings.DOWNLOAD_MOVIE_PATH,
                      settings.DOWNLOAD_TV_PATH,
-                     settings.DWONLOAD_ANIME_PATH]:
+                     settings.DOWNLOAD_ANIME_PATH]:
             if not path:
                 continue
             download_path = Path(path)
