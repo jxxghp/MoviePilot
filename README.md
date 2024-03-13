@@ -219,6 +219,14 @@ location / {
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
+- 反代使用ssl时，需要开启`http2`，否则会导致日志加载时间过长或不可用。以`Nginx`为例：
+```nginx configuration
+server{
+    listen 443 ssl;
+    http2 on;
+    ...
+}
+```
 - 新建的企业微信应用需要固定公网IP的代理才能收到消息，代理添加以下代码：
 ```nginx configuration
 location /cgi-bin/gettoken {
