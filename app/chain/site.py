@@ -302,20 +302,21 @@ class SiteChain(ChainBase):
         if not site_info:
             return False, f"站点【{url}】不存在"
 
-        # 特殊站点测试
-        if self.special_site_test.get(domain):
-            return self.special_site_test[domain](site_info)
-
-        # 通用站点测试
-        site_url = site_info.url
-        site_cookie = site_info.cookie
-        ua = site_info.ua
-        render = site_info.render
-        public = site_info.public
-        proxies = settings.PROXY if site_info.proxy else None
-        proxy_server = settings.PROXY_SERVER if site_info.proxy else None
         # 模拟登录
         try:
+            # 特殊站点测试
+            if self.special_site_test.get(domain):
+                return self.special_site_test[domain](site_info)
+
+            # 通用站点测试
+            site_url = site_info.url
+            site_cookie = site_info.cookie
+            ua = site_info.ua
+            render = site_info.render
+            public = site_info.public
+            proxies = settings.PROXY if site_info.proxy else None
+            proxy_server = settings.PROXY_SERVER if site_info.proxy else None
+
             # 访问链接
             if render:
                 page_source = PlaywrightHelper().get_page_source(url=site_url,
