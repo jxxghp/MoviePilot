@@ -16,6 +16,7 @@ from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.core.module import ModuleManager
 from app.db.message_oper import MessageOper
+from app.helper.message import MessageHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
     WebhookEventInfo, TmdbEpisode
@@ -35,6 +36,7 @@ class ChainBase(metaclass=ABCMeta):
         self.modulemanager = ModuleManager()
         self.eventmanager = EventManager()
         self.messageoper = MessageOper()
+        self.messagehelper = MessageHelper()
 
     @staticmethod
     def load_cache(filename: str) -> Any:
@@ -420,6 +422,7 @@ class ChainBase(metaclass=ABCMeta):
                                          "userid": message.userid,
                                      })
         # 保存消息
+        self.messagehelper.put(message, role="user")
         self.messageoper.add(channel=message.channel, mtype=message.mtype,
                              title=message.title, text=message.text,
                              image=message.image, link=message.link,

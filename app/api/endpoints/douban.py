@@ -90,7 +90,7 @@ def movie_top250(page: int = 1,
     """
     浏览豆瓣剧集信息
     """
-    movies = DoubanChain().movie_top250(page=page, count=count)
+    movies = DoubanChain().movie_top250(page=page, count=count) or []
     return [MediaInfo(douban_info=movie).to_dict() for movie in movies]
 
 
@@ -101,7 +101,7 @@ def tv_weekly_chinese(page: int = 1,
     """
     中国每周剧集口碑榜
     """
-    tvs = DoubanChain().tv_weekly_chinese(page=page, count=count)
+    tvs = DoubanChain().tv_weekly_chinese(page=page, count=count) or []
     return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
 
 
@@ -112,7 +112,7 @@ def tv_weekly_global(page: int = 1,
     """
     全球每周剧集口碑榜
     """
-    tvs = DoubanChain().tv_weekly_global(page=page, count=count)
+    tvs = DoubanChain().tv_weekly_global(page=page, count=count) or []
     return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
 
 
@@ -123,7 +123,7 @@ def tv_animation(page: int = 1,
     """
     热门动画剧集
     """
-    tvs = DoubanChain().tv_animation(page=page, count=count)
+    tvs = DoubanChain().tv_animation(page=page, count=count) or []
     return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
 
 
@@ -134,7 +134,7 @@ def movie_hot(page: int = 1,
     """
     热门电影
     """
-    movies = DoubanChain().movie_hot(page=page, count=count)
+    movies = DoubanChain().movie_hot(page=page, count=count) or []
     return [MediaInfo(douban_info=movie).to_dict() for movie in movies]
 
 
@@ -145,7 +145,7 @@ def tv_hot(page: int = 1,
     """
     热门电视剧
     """
-    tvs = DoubanChain().tv_hot(page=page, count=count)
+    tvs = DoubanChain().tv_hot(page=page, count=count) or []
     return [MediaInfo(douban_info=tv).to_dict() for tv in tvs]
 
 

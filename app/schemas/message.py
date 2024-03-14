@@ -38,6 +38,17 @@ class Notification(BaseModel):
     # 用户ID
     userid: Optional[Union[str, int]] = None
 
+    def dict(self):
+        return {
+            "channel": self.channel.value if self.channel else None,
+            "mtype": self.mtype.value if self.mtype else None,
+            "title": self.title,
+            "text": self.text,
+            "image": self.image,
+            "link": self.link,
+            "userid": self.userid
+        }
+
 
 class NotificationSwitch(BaseModel):
     """

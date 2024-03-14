@@ -43,7 +43,7 @@ class FileTransferModule(_ModuleBase):
                 continue
             download_path = Path(path)
             if not download_path.exists():
-                return False, f"目录 {download_path} 不存在"
+                return False, f"下载目录 {download_path} 不存在"
             download_paths.append(path)
         # 下载目录的设备ID
         download_devids = [Path(path).stat().st_dev for path in download_paths]
@@ -54,7 +54,7 @@ class FileTransferModule(_ModuleBase):
         for path in settings.LIBRARY_PATHS:
             library_path = Path(path)
             if not library_path.exists():
-                return False, f"目录不存在：{library_path}"
+                return False, f"媒体库目录不存在：{library_path}"
             if settings.DOWNLOADER_MONITOR and settings.TRANSFER_TYPE == "link":
                 if library_path.stat().st_dev not in download_devids:
                     return False, f"媒体库目录 {library_path} " \

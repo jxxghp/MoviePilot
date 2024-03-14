@@ -138,7 +138,7 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
 
 
 @router.get("/message", summary="实时消息")
-def get_message(token: str):
+def get_message(token: str, role: str = "sys"):
     """
     实时获取系统消息，返回格式为SSE
     """
@@ -152,7 +152,7 @@ def get_message(token: str):
 
     def event_generator():
         while True:
-            detail = message.get()
+            detail = message.get(role)
             yield 'data: %s\n\n' % (detail or '')
             time.sleep(3)
 
