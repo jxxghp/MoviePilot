@@ -1,8 +1,7 @@
 import json
 import queue
-from typing import Any, Union, Optional
+from typing import Optional, Any
 
-from app.schemas import Notification
 from app.utils.singleton import Singleton
 
 
@@ -14,7 +13,7 @@ class MessageHelper(metaclass=Singleton):
         self.sys_queue = queue.Queue()
         self.user_queue = queue.Queue()
 
-    def put(self, message: Union[str, Notification], role: str = "sys"):
+    def put(self, message: Any, role: str = "sys"):
         """
         存消息
         :param message: 消息
@@ -23,10 +22,10 @@ class MessageHelper(metaclass=Singleton):
         if role == "sys":
             self.sys_queue.put(message)
         else:
-            if isinstance(message, Notification):
-                self.user_queue.put(json.dumps(message.dict()))
-            else:
+            if isinstance(message, str):
                 self.user_queue.put(message)
+            elif hasattr(message, "dict"):
+                self.user_queue.put(json.dumps(message.dict()))
 
     def get(self, role: str = "sys") -> Optional[str]:
         """

@@ -18,6 +18,18 @@ class CommingMessage(BaseModel):
     # 消息体
     text: Optional[str] = None
 
+    def dict(self):
+        """
+        转换为字典
+        """
+        return {
+            "userid": self.userid,
+            "username": self.username,
+            "channel": self.channel.value if self.channel else None,
+            "text": self.text,
+            "action": 0
+        }
+
 
 class Notification(BaseModel):
     """
@@ -46,7 +58,8 @@ class Notification(BaseModel):
             "text": self.text,
             "image": self.image,
             "link": self.link,
-            "userid": self.userid
+            "userid": self.userid,
+            "action": 1
         }
 
 

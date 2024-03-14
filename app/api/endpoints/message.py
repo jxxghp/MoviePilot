@@ -8,11 +8,13 @@ from app import schemas
 from app.chain.message import MessageChain
 from app.core.config import settings
 from app.core.security import verify_token
+from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
+from app.db.userauth import get_current_active_superuser
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.schemas import NotificationSwitch
-from app.schemas.types import SystemConfigKey, NotificationType
+from app.schemas.types import SystemConfigKey, NotificationType, MessageChannel
 
 router = APIRouter()
 
@@ -33,6 +35,20 @@ async def user_message(background_tasks: BackgroundTasks, request: Request):
     form = await request.form()
     args = request.query_params
     background_tasks.add_task(start_message_chain, body, form, args)
+    return schemas.Response(success=True)
+
+
+@router.post("/web", summary="接收WEB消息", response_model=schemas.Response)
+async def web_message(text: str, current_user: User = Depends(get_current_active_superuser)):
+    """
+    WEB消息响应
+    """
+    MessageChain().handle_message(
+        channel=MessageChannel.Web,
+        userid=current_user.id,
+        username=current_user.name,
+        text=text
+    )
     return schemas.Response(success=True)
 
 
@@ -103,7 +119,7 @@ def read_switchs(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 def set_switchs(switchs: List[NotificationSwitch],
                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    查询通知消息渠道开关
+    设置通知消息渠道开关
     """
     switch_list = []
     for switch in switchs:
