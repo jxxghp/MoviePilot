@@ -1,7 +1,11 @@
+import json
+
 from typing import Tuple, Optional
+from hashlib import md5
 
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
+from app.utils.common import decrypt
 
 
 class CookieCloudHelper:
@@ -22,11 +26,25 @@ class CookieCloudHelper:
         if not self._server or not self._key or not self._password:
             return None, "CookieCloud参数不正确"
         req_url = "%s/get/%s" % (self._server, str(self._key).strip())
-        ret = self._req.post_res(url=req_url, json={"password": str(self._password).strip()})
+        ret = self._req.get_res(url=req_url)
         if ret and ret.status_code == 200:
             result = ret.json()
             if not result:
-                return {}, "未下载到数据"
+                return {}, "未下载到数据"        
+            encrypted = result.get("encrypted")
+            if not encrypted:
+                return {}, "未获取到cookie密文"
+            else:
+                crypt_key = self.get_crypt_key()
+                try:
+                    decrypted_data = decrypt(encrypted, crypt_key).decode('utf-8')
+                    result = json.loads(decrypted_data)
+                except Exception as e:
+                    return {}, "cookie解密失败" + str(e)
+
+            if not result:
+                return {}, "cookie解密为空"
+            
             if result.get("cookie_data"):
                 contents = result.get("cookie_data")
             else:
@@ -66,3 +84,11 @@ class CookieCloudHelper:
             return None, f"同步CookieCloud失败，错误码：{ret.status_code}"
         else:
             return None, "CookieCloud请求失败，请检查服务器地址、用户KEY及加密密码是否正确"
+        
+    def get_crypt_key(self) -> bytes:
+        """
+        使用UUID和密码生成CookieCloud的加解密密钥
+        """
+        md5_generator = md5()
+        md5_generator.update((str(self._key).strip() + '-' + str(self._password).strip()).encode('utf-8'))
+        return (md5_generator.hexdigest()[:16]).encode('utf-8')
