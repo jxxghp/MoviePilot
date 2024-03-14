@@ -189,9 +189,16 @@ class TmdbHelper:
                                                   season_year,
                                                   season_number)
             if not info:
-                logger.debug(
-                    f"正在识别{mtype.value}：{name}, 年份={year} ...")
-                info = self.__search_tv_by_name(name, year)
+                year_range = [year]
+                if year:
+                    year_range.append(str(int(year) + 1))
+                    year_range.append(str(int(year) - 1))
+                for year in year_range:
+                    logger.debug(
+                        f"正在识别{mtype.value}：{name}, 年份={year} ...")
+                    info = self.__search_tv_by_name(name, year)
+                    if info:
+                        break
             if info:
                 info['media_type'] = MediaType.TV
         # 返回

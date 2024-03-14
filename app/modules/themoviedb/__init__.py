@@ -67,7 +67,11 @@ class TheMovieDbModule(_ModuleBase):
         :param cache:    是否使用缓存
         :return: 识别的媒体信息，包括剧集信息
         """
-        if settings.RECOGNIZE_SOURCE != "themoviedb":
+        if not tmdbid and not meta:
+            return None
+
+        if meta and not tmdbid \
+                and settings.RECOGNIZE_SOURCE != "themoviedb":
             return None
 
         if not meta:
@@ -182,7 +186,7 @@ class TheMovieDbModule(_ModuleBase):
         :param season:  季号
         """
         # 搜索
-        logger.info(f"开始使用 名称：{name}、年份：{year} 匹配TMDB信息 ...")
+        logger.info(f"开始使用 名称：{name} 年份：{year} 匹配TMDB信息 ...")
         info = self.tmdb.match(name=name,
                                year=year,
                                mtype=mtype,

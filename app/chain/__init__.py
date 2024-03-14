@@ -15,6 +15,7 @@ from app.core.context import MediaInfo, TorrentInfo
 from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.core.module import ModuleManager
+from app.db.message_oper import MessageOper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
     WebhookEventInfo, TmdbEpisode
@@ -33,6 +34,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         self.modulemanager = ModuleManager()
         self.eventmanager = EventManager()
+        self.messageoper = MessageOper()
 
     @staticmethod
     def load_cache(filename: str) -> Any:
@@ -403,6 +405,10 @@ class ChainBase(metaclass=ABCMeta):
         :param message:  消息体
         :return: 成功或失败
         """
+        logger.info(f"发送消息：channel={message.channel}，"
+                    f"title={message.title}, "
+                    f"text={message.text}，"
+                    f"userid={message.userid}")
         # 发送事件
         self.eventmanager.send_event(etype=EventType.NoticeMessage,
                                      data={
@@ -413,10 +419,12 @@ class ChainBase(metaclass=ABCMeta):
                                          "image": message.image,
                                          "userid": message.userid,
                                      })
-        logger.info(f"发送消息：channel={message.channel}，"
-                    f"title={message.title}, "
-                    f"text={message.text}，"
-                    f"userid={message.userid}")
+        # 保存消息
+        self.messageoper.add(channel=message.channel, mtype=message.mtype,
+                             title=message.title, text=message.text,
+                             image=message.image, link=message.link,
+                             userid=message.userid, action=1)
+        # 发送
         self.run_module("post_message", message=message)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:

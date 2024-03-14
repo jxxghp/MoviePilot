@@ -200,6 +200,7 @@ class DownloadFiles(Base):
         result = db.query(DownloadFiles).filter(DownloadFiles.savepath == savepath).all()
         return list(result)
 
+    @staticmethod
     @db_update
     def delete_by_fullpath(db: Session, fullpath: str):
         db.query(DownloadFiles).filter(DownloadFiles.fullpath == fullpath,
