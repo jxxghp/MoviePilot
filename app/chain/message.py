@@ -12,9 +12,11 @@ from app.core.config import settings
 from app.core.context import MediaInfo, Context
 from app.core.event import EventManager
 from app.core.meta import MetaBase
+from app.db.message_oper import MessageOper
+from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import Notification, NotExistMediaInfo
+from app.schemas import Notification, NotExistMediaInfo, CommingMessage
 from app.schemas.types import EventType, MessageChannel, MediaType
 from app.utils.string import StringUtils
 
@@ -43,6 +45,8 @@ class MessageChain(ChainBase):
         self.mediachain = MediaChain()
         self.eventmanager = EventManager()
         self.torrenthelper = TorrentHelper()
+        self.messagehelper = MessageHelper()
+        self.messageoper = MessageOper()
 
     def __get_noexits_info(
             self,
@@ -100,10 +104,8 @@ class MessageChain(ChainBase):
 
     def process(self, body: Any, form: Any, args: Any) -> None:
         """
-        识别消息内容，执行操作
+        调用模块识别消息内容
         """
-        # 申明全局变量
-        global _current_page, _current_meta, _current_media
         # 获取消息内容
         info = self.message_parser(body=body, form=form, args=args)
         if not info:
@@ -122,10 +124,35 @@ class MessageChain(ChainBase):
         if not text:
             logger.debug(f'未识别到消息内容：：{body}{form}{args}')
             return
+        # 处理消息
+        self.handle_message(channel=channel, userid=userid, username=username, text=text)
+
+    def handle_message(self, channel: MessageChannel, userid: Union[str, int], username: str, text: str) -> None:
+        """
+        识别消息内容，执行操作
+        """
+        # 申明全局变量
+        global _current_page, _current_meta, _current_media
         # 加载缓存
         user_cache: Dict[str, dict] = self.load_cache(self._cache_file) or {}
         # 处理消息
         logger.info(f'收到用户消息内容，用户：{userid}，内容：{text}')
+        # 保存消息
+        self.messagehelper.put(
+            CommingMessage(
+                userid=userid,
+                username=username,
+                channel=channel,
+                text=text
+            ), role="user")
+        self.messageoper.add(
+            channel=channel,
+            userid=userid,
+            username=username,
+            text=text,
+            action=0
+        )
+        # 处理消息
         if text.startswith('/'):
             # 执行命令
             self.eventmanager.send_event(
