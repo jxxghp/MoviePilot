@@ -133,7 +133,7 @@ class Qbittorrent:
         except Exception as err:
             logger.error(f"删除种子Tag出错：{str(err)}")
             return False
-        
+
     def remove_torrents_tag(self, ids: Union[str, list], tag: Union[str, list]) -> bool:
         """
         移除种子Tag
@@ -148,7 +148,7 @@ class Qbittorrent:
         except Exception as err:
             logger.error(f"移除种子Tag出错：{str(err)}")
             return False
-        
+
     def set_torrents_tag(self, ids: Union[str, list], tags: list):
         """
         设置种子状态为已整理，以及是否强制做种
@@ -371,6 +371,24 @@ class Qbittorrent:
         except Exception as err:
             logger.error(f"设置速度限制出错：{str(err)}")
             return False
+
+    def get_speed_limit(self):
+        """
+        获取QB速度
+        :return: 返回download_limit 和upload_limit ，默认是0
+        """
+        if not self.qbc:
+            return False
+
+        download_limit = 0
+        upload_limit = 0
+        try:
+            download_limit = self.qbc.transfer.download_limit
+            upload_limit = self.qbc.transfer.upload_limit
+        except Exception as err:
+            logger.error(f"获取速度限制出错：{str(err)}")
+
+        return (download_limit/1024, upload_limit/1024)
 
     def recheck_torrents(self, ids: Union[str, list]) -> bool:
         """
