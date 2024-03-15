@@ -43,7 +43,9 @@ class SiteChain(ChainBase):
         self.cookiecloud = CookieCloudHelper(
             server=settings.COOKIECLOUD_HOST,
             key=settings.COOKIECLOUD_KEY,
-            password=settings.COOKIECLOUD_PASSWORD
+            password=settings.COOKIECLOUD_PASSWORD,
+            enable_local=settings.COOKIECLOUD_ENABLE_LOCAL,
+            local_path=settings.COOKIE_PATH
         )
 
         # 特殊站点登录验证

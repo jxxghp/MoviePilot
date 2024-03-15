@@ -1,10 +1,12 @@
-import time
 import base64
+import json
+import time
 
-from typing import Any
+from hashlib import md5
+from typing import Any, Dict, Optional
+
 from Crypto import Random
 from Crypto.Cipher import AES
-from hashlib import md5
 
 
 def retry(ExceptionToCheck: Any,
@@ -82,3 +84,21 @@ def decrypt(encrypted: str | bytes, passphrase: bytes) -> bytes:
     aes = AES.new(key, AES.MODE_CBC, iv)
     data = aes.decrypt(encrypted[16:])
     return data[:-(data[-1] if type(data[-1]) == int else ord(data[-1]))]
+
+
+def get_decrypted_cookie_data(uuid: str, password: str,
+                              encrypted: str) -> Optional[Dict[str, Any]]:
+    key_md5 = md5()
+    key_md5.update((uuid + '-' + password).encode('utf-8'))
+    aes_key = (key_md5.hexdigest()[:16]).encode('utf-8')
+
+    if encrypted is not None:
+        try:
+            decrypted_data = decrypt(encrypted, aes_key).decode('utf-8')
+            decrypted_data = json.loads(decrypted_data)
+            if 'cookie_data' in decrypted_data:
+                return decrypted_data
+        except Exception as e:
+            return None
+    else:
+        return None

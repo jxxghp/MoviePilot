@@ -5,6 +5,7 @@ from .site import *
 from .subscribe import *
 from .context import *
 from .servarr import *
+from .servcookie import *
 from .plugin import *
 from .history import *
 from .dashboard import *
