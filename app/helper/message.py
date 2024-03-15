@@ -1,5 +1,6 @@
 import json
 import queue
+import time
 from typing import Optional, Any
 
 from app.utils.singleton import Singleton
@@ -24,8 +25,10 @@ class MessageHelper(metaclass=Singleton):
         else:
             if isinstance(message, str):
                 self.user_queue.put(message)
-            elif hasattr(message, "dict"):
-                self.user_queue.put(json.dumps(message.dict()))
+            elif hasattr(message, "to_dict"):
+                content = message.to_dict()
+                content['date'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                self.user_queue.put(json.dumps(content))
 
     def get(self, role: str = "sys") -> Optional[str]:
         """
