@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -144,3 +144,9 @@ def library(userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     获取媒体服务器媒体库列表
     """
     return MediaServerChain().librarys(username=userinfo.username) or []
+
+
+@router.get("/play_activity", summary="获取播放活动日志", response_model=Dict)
+def play_activity(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    media_server = settings.MEDIASERVER
+    return MediaServerChain().get_play_activity(server=media_server)

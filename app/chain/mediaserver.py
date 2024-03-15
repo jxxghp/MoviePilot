@@ -1,6 +1,6 @@
 import json
 import threading
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Dict
 
 from app import schemas
 from app.chain import ChainBase
@@ -61,6 +61,12 @@ class MediaServerChain(ChainBase):
         获取播放地址
         """
         return self.run_module("mediaserver_play_url", server=server, item_id=item_id)
+
+    def get_play_activity(self, server: str = None) -> Dict:
+        """
+        获取播放活动
+        """
+        return self.run_module("mediaserver_play_history", server=server)
 
     def sync(self):
         """

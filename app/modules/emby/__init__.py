@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union, Any, List, Generator
+from typing import Optional, Tuple, Union, Any, List, Generator, Dict
 
 from app import schemas
 from app.core.context import MediaInfo
@@ -177,3 +177,8 @@ class EmbyModule(_ModuleBase):
         if server and server != "emby":
             return []
         return self.emby.get_latest(num=count, username=username)
+
+    def mediaserver_play_history(self, server: str = None) -> Dict:
+        if server and "emby" not in server:
+            return {}
+        return self.emby.get_play_history()

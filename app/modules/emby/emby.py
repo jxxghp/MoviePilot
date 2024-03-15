@@ -1,6 +1,7 @@
 import json
 import re
 import traceback
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Generator, Tuple
 
@@ -1142,3 +1143,62 @@ class Emby:
                 continue
             library_folders += [folder for folder in library.get("Path")]
         return library_folders
+
+    def get_activity_log_items(self, start_index: int = None, limit: int = None, min_date: str = None) -> List | None:
+        """
+            获取Emby活动日志.默认获取过去一年的所有活动日志
+        """
+        if not self._host or not self._apikey:
+            return None
+        req_url = f"{self._host}emby/System/ActivityLog/Entries"
+        req_data = {
+            "IncludeItemTypes": "ActivityLogEntry",
+            "api_key": self._apikey
+        }
+        if start_index:
+            req_data["StartIndex"] = start_index
+        if limit:
+            req_data["Limit"] = limit
+        if min_date:
+            req_data["MinDate"] = min_date
+        else:
+            # 获取当前日期
+            current_date = datetime.now()
+            # 计算去年这个日期
+            last_year_date = current_date - timedelta(days=365)
+            iso_date = last_year_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+            req_data["MinDate"] = iso_date
+        try:
+            res = RequestUtils().get_res(req_url, params=req_data)
+            if res:
+                result = res.json().get("Items") or []
+                return result
+            else:
+                logger.error(f"emby/System/ActivityLog 未获取到返回数据")
+        except Exception as e:
+            logger.error(f"获取Emby活动日志出错：" + str(e))
+        return []
+
+    def get_play_history(self) -> Dict:
+        """
+            提供活动图所需数据
+        """
+        items: List = self.get_activity_log_items()
+        filter_items = [{
+            "Id": item.get("Id"),
+            "Name": item.get("Name"),
+            "Date": item.get("Date")} for item in items if
+            item.get("Type") in ["VideoPlayback", "VideoPlaybackStopped"]]
+
+        ret = {}
+        for item in filter_items:
+            date = datetime.fromisoformat(item.get("Date"))+timedelta(hours=8)
+            date = date.strftime('%Y-%m-%d')
+            if date not in ret:
+                ret[date] = {"date": date, "activities": [{"id": item.get("Id"), "name": item.get("Name"),"date":item.get("Date")}],
+                             "count": 1}
+            else:
+                ret[date]["activities"].append({"id": item.get("Id"), "name": item.get("Name"),"date":item.get("Date")})
+                ret[date]["count"] += 1
+
+        return ret
