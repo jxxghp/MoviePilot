@@ -14,6 +14,8 @@ from app.utils.common import get_decrypted_cookie_data
 
 class GzipRequest(Request):
 
+    _body: bytes = b""
+
     async def body(self) -> bytes:
         if not hasattr(self, "_body"):
             body = await super().body()
@@ -66,10 +68,9 @@ async def update_cookie(req: schemas.CookieData):
     content = json.dumps({"encrypted": req.encrypted})
     with open(file_path, encoding="utf-8", mode="w") as file:
         file.write(content)
-    read_content = None
     with open(file_path, encoding="utf-8", mode="r") as file:
         read_content = file.read()
-    if (read_content == content):
+    if read_content == content:
         return {"action": "done"}
     else:
         return {"action": "error"}
