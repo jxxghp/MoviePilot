@@ -14,11 +14,12 @@ class MessageHelper(metaclass=Singleton):
         self.sys_queue = queue.Queue()
         self.user_queue = queue.Queue()
 
-    def put(self, message: Any, role: str = "sys"):
+    def put(self, message: Any, role: str = "sys", note: dict = None):
         """
         存消息
         :param message: 消息
         :param role: 消息通道 sys/user
+        :param note: 附件json
         """
         if role == "sys":
             self.sys_queue.put(message)
@@ -28,6 +29,7 @@ class MessageHelper(metaclass=Singleton):
             elif hasattr(message, "to_dict"):
                 content = message.to_dict()
                 content['date'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                content['note'] = json.dumps(note) if note else None
                 self.user_queue.put(json.dumps(content))
 
     def get(self, role: str = "sys") -> Optional[str]:

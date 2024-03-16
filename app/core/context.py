@@ -615,6 +615,7 @@ class MediaInfo:
         """
         返回字典
         """
+        self.clear()
         dicts = asdict(self)
         dicts["type"] = self.type.value if self.type else None
         dicts["detail_link"] = self.detail_link
