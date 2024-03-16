@@ -289,6 +289,29 @@ class Transmission:
             logger.error(f"设置速度限制出错：{str(err)}")
             return False
 
+    def get_speed_limit(self):
+        """
+        获取TR速度
+        :return: download_limit 下载速度 默认是0
+                 upload_limit 上传速度   默认是0
+        """
+        if not self.trc:
+            return False
+
+        download_limit = 0
+        upload_limit = 0
+        try:
+            download_limit = self.trc.get_session().get(settings.TR_DOWN_LIMIT_FIELD_NAME)
+            upload_limit = self.trc.get_session().get(settings.TR_UP_LIMIT_FIELD_NAME)
+
+        except Exception as err:
+            logger.error(f"获取速度限制出错：{str(err)}")
+
+        return (
+            download_limit,
+            upload_limit
+        )
+
     def recheck_torrents(self, ids: Union[str, list]) -> bool:
         """
         重新校验种子
