@@ -71,8 +71,8 @@ class SystemUtils:
         """
         return True if platform.machine() == 'aarch64' else False
 
-    @property
-    def platform(self) -> str:
+    @staticmethod
+    def platform() -> str:
         """
         获取系统平台
         """
