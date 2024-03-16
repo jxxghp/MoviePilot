@@ -35,14 +35,14 @@ class CookieCloudHelper:
             # 开启本地服务时，从本地直接读取数据
             result = self.load_local_encrypt_data(self._key)
             if not result:
-                return {}, "未从本地CookieCloud服务加载到cookie数据"
+                return {}, "未从本地CookieCloud服务加载到cookie数据，请检查服务器设置、用户KEY及加密密码是否正确"
         else:
             req_url = "%s/get/%s" % (self._server, str(self._key).strip())
             ret = self._req.get_res(url=req_url)
             if ret and ret.status_code == 200:
                 result = ret.json()
                 if not result:
-                    return {}, "未从" + self._server + "下载到数据"
+                    return {},f"未从{self._server}下载到cookie数据"
             elif ret:
                 return None, f"远程同步CookieCloud失败，错误码：{ret.status_code}"
             else:
@@ -108,7 +108,6 @@ class CookieCloudHelper:
 
     def load_local_encrypt_data(self,uuid: str) -> Dict[str, Any]:
         file_path = os.path.join(self._local_path, os.path.basename(uuid) + ".json")
-
         # 检查文件是否存在
         if not os.path.exists(file_path):
             return None
