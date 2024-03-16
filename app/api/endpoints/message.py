@@ -49,7 +49,7 @@ def web_message(text: str, current_user: User = Depends(get_current_active_super
     """
     MessageChain().handle_message(
         channel=MessageChannel.Web,
-        userid=current_user.id,
+        userid=current_user.name,
         username=current_user.name,
         text=text
     )
