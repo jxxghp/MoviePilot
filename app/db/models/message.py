@@ -10,9 +10,9 @@ class Message(Base):
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
     # 消息渠道
-    channel = Column(String, nullable=False)
+    channel = Column(String)
     # 消息类型
-    mtype = Column(String, nullable=False)
+    mtype = Column(String)
     # 标题
     title = Column(String)
     # 文本内容
