@@ -437,12 +437,13 @@ class ChainBase(metaclass=ABCMeta):
         :param medias:  媒体列表
         :return: 成功或失败
         """
-        self.messagehelper.put(message, role="user")
+        note_list = [media.to_dict() for media in medias]
+        self.messagehelper.put(message, role="user", note=note_list)
         self.messageoper.add(channel=message.channel, mtype=message.mtype,
                              title=message.title, text=message.text,
                              image=message.image, link=message.link,
                              userid=message.userid, action=1,
-                             note=[media.to_dict() for media in medias])
+                             note=note_list)
         return self.run_module("post_medias_message", message=message, medias=medias)
 
     def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
@@ -452,12 +453,13 @@ class ChainBase(metaclass=ABCMeta):
         :param torrents:  种子列表
         :return: 成功或失败
         """
-        self.messagehelper.put(message, role="user")
+        note_list = [torrent.torrent_info.to_dict() for torrent in torrents]
+        self.messagehelper.put(message, role="user", note=note_list)
         self.messageoper.add(channel=message.channel, mtype=message.mtype,
                              title=message.title, text=message.text,
                              image=message.image, link=message.link,
                              userid=message.userid, action=1,
-                             note=[torrent.to_dict() for torrent in torrents])
+                             note=note_list)
         return self.run_module("post_torrents_message", message=message, torrents=torrents)
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str,

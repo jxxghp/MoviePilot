@@ -55,7 +55,7 @@ class ResourceHelper(metaclass=Singleton):
             target = resource.get("target")
             version = resource.get("version")
             # 判断平台
-            if platform and platform != SystemUtils.platform:
+            if platform and platform != SystemUtils.platform():
                 continue
             # 判断本地是否存在
             local_path = self._base_dir / target / rname

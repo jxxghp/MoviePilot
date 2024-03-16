@@ -21,7 +21,11 @@
 
 ### 2. **安装CookieCloud服务端（可选）**
 
-MoviePilot内置了公共CookieCloud服务器，如果需要自建服务，可参考 [CookieCloud](https://github.com/easychen/CookieCloud) 项目进行搭建，docker镜像请点击 [这里](https://hub.docker.com/r/easychen/cookiecloud)。
+通过CookieCloud可以快速同步浏览器中保存的站点数据到MoviePilot，支持以下服务方式：
+
+- 使用公共CookieCloud服务器（默认）：服务器地址为：https://movie-pilot.org/cookiecloud
+- 使用内建的本地Cookie服务：设置`COOKIECLOUD_ENABLE_LOCAL`为`true`时启用，服务地址为：`http://localhost:${NGINX_PORT}/cookiecloud/`, Cookie数据加密保存在配置文件目录下的`cookies`文件中
+- 自建服务CookieCloud服务器：参考 [CookieCloud](https://github.com/easychen/CookieCloud) 项目进行搭建，docker镜像请点击 [这里](https://hub.docker.com/r/easychen/cookiecloud)
 
 **声明：** 本项目不会收集用户敏感数据，Cookie同步也是基于CookieCloud项目实现，非本项目提供的能力。技术角度上CookieCloud采用端到端加密，在个人不泄露`用户KEY`和`端对端加密密码`的情况下第三方无法窃取任何用户信息（包括服务器持有者）。如果你不放心，可以不使用公共服务或者不使用本项目，但如果使用后发生了任何信息泄露与本项目无关！
 
@@ -221,10 +225,10 @@ location / {
 ```
 - 反代使用ssl时，需要开启`http2`，否则会导致日志加载时间过长或不可用。以`Nginx`为例：
 ```nginx configuration
-server{
+server {
     listen 443 ssl;
     http2 on;
-    ...
+    # ...
 }
 ```
 - 新建的企业微信应用需要固定公网IP的代理才能收到消息，代理添加以下代码：
