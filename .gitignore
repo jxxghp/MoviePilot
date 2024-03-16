@@ -10,7 +10,9 @@ app/helper/*.pyd
 app/helper/*.bin
 app/plugins/**
 !app/plugins/__init__.py
+config/cookies/**
 config/user.db
 config/sites/**
 *.pyc
 *.log
+.vscode

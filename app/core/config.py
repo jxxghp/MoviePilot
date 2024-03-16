@@ -187,6 +187,8 @@ class Settings(BaseSettings):
     PLEX_TOKEN: Optional[str] = None
     # 转移方式 link/copy/move/softlink
     TRANSFER_TYPE: str = "copy"
+    # CookieCloud是否启动本地服务
+    COOKIECLOUD_ENABLE_LOCAL: Optional[bool] = False
     # CookieCloud服务器地址
     COOKIECLOUD_HOST: str = "https://movie-pilot.org/cookiecloud"
     # CookieCloud用户KEY
@@ -275,6 +277,10 @@ class Settings(BaseSettings):
     @property
     def LOG_PATH(self):
         return self.CONFIG_PATH / "logs"
+    
+    @property
+    def COOKIE_PATH(self):
+        return self.CONFIG_PATH / "cookies"
 
     @property
     def CACHE_CONF(self):
@@ -395,6 +401,9 @@ class Settings(BaseSettings):
             if not p.exists():
                 p.mkdir(parents=True, exist_ok=True)
         with self.LOG_PATH as p:
+            if not p.exists():
+                p.mkdir(parents=True, exist_ok=True)
+        with self.COOKIE_PATH as p:
             if not p.exists():
                 p.mkdir(parents=True, exist_ok=True)
 
