@@ -1,5 +1,6 @@
+import json
 import time
-from typing import Optional, Union
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,7 @@ class MessageOper(DbOper):
             link: str = None,
             userid: str = None,
             action: int = 1,
+            note: dict = None,
             **kwargs):
         """
         新增媒体服务器数据
@@ -36,6 +38,7 @@ class MessageOper(DbOper):
         :param link: 链接
         :param userid: 用户ID
         :param action: 消息方向：0-接收息，1-发送消息
+        :param note: 附件json
         """
         kwargs.update({
             "channel": channel.value if channel else '',
@@ -46,7 +49,8 @@ class MessageOper(DbOper):
             "link": link,
             "userid": userid,
             "action": action,
-            "reg_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            "reg_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            "note": json.dumps(note or {})
         })
         Message(**kwargs).create(self._db)
 

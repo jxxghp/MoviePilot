@@ -147,8 +147,7 @@ class MessageChain(ChainBase):
             ), role="user")
         self.messageoper.add(
             channel=channel,
-            userid=userid,
-            username=username,
+            userid=username or userid,
             text=text,
             action=0
         )
