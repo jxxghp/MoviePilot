@@ -372,13 +372,13 @@ class Qbittorrent:
             logger.error(f"设置速度限制出错：{str(err)}")
             return False
 
-    def get_speed_limit(self):
+    def get_speed_limit(self) -> Optional[Tuple[float, float]]:
         """
         获取QB速度
         :return: 返回download_limit 和upload_limit ，默认是0
         """
         if not self.qbc:
-            return False
+            return None
 
         download_limit = 0
         upload_limit = 0
@@ -388,7 +388,7 @@ class Qbittorrent:
         except Exception as err:
             logger.error(f"获取速度限制出错：{str(err)}")
 
-        return (download_limit/1024, upload_limit/1024)
+        return download_limit / 1024, upload_limit / 1024
 
     def recheck_torrents(self, ids: Union[str, list]) -> bool:
         """

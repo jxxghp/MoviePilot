@@ -23,12 +23,12 @@ class Message(Base):
     link = Column(String)
     # 用户ID
     userid = Column(String)
-    # 用户名
-    username = Column(String)
     # 登记时间
     reg_time = Column(String)
     # 消息方向：0-接收息，1-发送消息
     action = Column(Integer)
+    # 附件json
+    note = Column(String)
 
     @staticmethod
     @db_query

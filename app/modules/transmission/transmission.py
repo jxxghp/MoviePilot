@@ -289,20 +289,20 @@ class Transmission:
             logger.error(f"设置速度限制出错：{str(err)}")
             return False
 
-    def get_speed_limit(self):
+    def get_speed_limit(self) -> Optional[Tuple[float, float]]:
         """
         获取TR速度
         :return: download_limit 下载速度 默认是0
                  upload_limit 上传速度   默认是0
         """
         if not self.trc:
-            return False
+            return None
 
         download_limit = 0
         upload_limit = 0
         try:
-            download_limit = self.trc.get_session().get(settings.TR_DOWN_LIMIT_FIELD_NAME)
-            upload_limit = self.trc.get_session().get(settings.TR_UP_LIMIT_FIELD_NAME)
+            download_limit = self.trc.get_session().get('speed_limit_down')
+            upload_limit = self.trc.get_session().get('speed_limit_up')
 
         except Exception as err:
             logger.error(f"获取速度限制出错：{str(err)}")
@@ -395,4 +395,3 @@ class Transmission:
         except Exception as err:
             logger.error(f"修改tracker出错：{str(err)}")
             return False
-
