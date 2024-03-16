@@ -17,6 +17,20 @@ class CommingMessage(BaseModel):
     channel: Optional[MessageChannel] = None
     # 消息体
     text: Optional[str] = None
+    # 时间
+    date: Optional[str] = None
+    # 消息方向
+    action: Optional[int] = 0
+
+    def to_dict(self):
+        """
+        转换为字典
+        """
+        items = self.dict()
+        for k, v in items.items():
+            if isinstance(v, MessageChannel):
+                items[k] = v.value
+        return items
 
 
 class Notification(BaseModel):
@@ -37,6 +51,21 @@ class Notification(BaseModel):
     link: Optional[str] = None
     # 用户ID
     userid: Optional[Union[str, int]] = None
+    # 时间
+    date: Optional[str] = None
+    # 消息方向
+    action: Optional[int] = 1
+
+    def to_dict(self):
+        """
+        转换为字典
+        """
+        items = self.dict()
+        for k, v in items.items():
+            if isinstance(v, MessageChannel) \
+                    or isinstance(v, NotificationType):
+                items[k] = v.value
+        return items
 
 
 class NotificationSwitch(BaseModel):

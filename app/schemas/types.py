@@ -117,3 +117,4 @@ class MessageChannel(Enum):
     Slack = "Slack"
     SynologyChat = "SynologyChat"
     VoceChat = "VoceChat"
+    Web = "Web"
