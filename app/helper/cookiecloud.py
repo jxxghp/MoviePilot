@@ -1,31 +1,27 @@
-import os
 import json
-
-from typing import Any, Dict, Tuple, Optional
+import os
 from hashlib import md5
+from typing import Any, Dict, Tuple, Optional
 
-from app.core.config import Settings, settings
+from app.core.config import settings
+from app.utils.common import decrypt
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
-from app.utils.common import decrypt
 
 
 class CookieCloudHelper:
-
     _ignore_cookies: list = ["CookieAutoDeleteBrowsingDataCleanup", "CookieAutoDeleteCleaningDiscarded"]
 
-    def __init__(self, settings: Settings):
-        self._setting = settings
+    def __init__(self):
         self._sync_setting()
         self._req = RequestUtils(content_type="application/json")
-        
+
     def _sync_setting(self):
-        if self._setting:
-            self._server = settings.COOKIECLOUD_HOST
-            self._key = settings.COOKIECLOUD_KEY
-            self._password = settings.COOKIECLOUD_PASSWORD
-            self._enable_local = settings.COOKIECLOUD_ENABLE_LOCAL
-            self._local_path = settings.COOKIE_PATH
+        self._server = settings.COOKIECLOUD_HOST
+        self._key = settings.COOKIECLOUD_KEY
+        self._password = settings.COOKIECLOUD_PASSWORD
+        self._enable_local = settings.COOKIECLOUD_ENABLE_LOCAL
+        self._local_path = settings.COOKIE_PATH
 
     def download(self) -> Tuple[Optional[dict], str]:
         """
@@ -34,12 +30,12 @@ class CookieCloudHelper:
         """
         # 更新为最新设置
         self._sync_setting()
-        
-        if (not self._server and
-                not self._enable_local) or not self._key or not self._password:
+
+        if ((not self._server and not self._enable_local)
+                or not self._key
+                or not self._password):
             return None, "CookieCloud参数不正确"
 
-        result = None
         if self._enable_local:
             # 开启本地服务时，从本地直接读取数据
             result = self._load_local_encrypt_data(self._key)
@@ -51,7 +47,7 @@ class CookieCloudHelper:
             if ret and ret.status_code == 200:
                 result = ret.json()
                 if not result:
-                    return {},f"未从{self._server}下载到cookie数据"
+                    return {}, f"未从{self._server}下载到cookie数据"
             elif ret:
                 return None, f"远程同步CookieCloud失败，错误码：{ret.status_code}"
             else:
@@ -101,8 +97,8 @@ class CookieCloudHelper:
             # 站点Cookie
             cookie_str = ";".join(
                 [f"{content.get('name')}={content.get('value')}"
-                    for content in content_list
-                    if content.get("name") and content.get("name") not in self._ignore_cookies]
+                 for content in content_list
+                 if content.get("name") and content.get("name") not in self._ignore_cookies]
             )
             ret_cookies[domain] = cookie_str
         return ret_cookies, ""
@@ -115,7 +111,7 @@ class CookieCloudHelper:
         md5_generator.update((str(self._key).strip() + '-' + str(self._password).strip()).encode('utf-8'))
         return (md5_generator.hexdigest()[:16]).encode('utf-8')
 
-    def _load_local_encrypt_data(self,uuid: str) -> Dict[str, Any]:
+    def _load_local_encrypt_data(self, uuid: str) -> Dict[str, Any]:
         file_path = os.path.join(self._local_path, os.path.basename(uuid) + ".json")
         # 检查文件是否存在
         if not os.path.exists(file_path):
