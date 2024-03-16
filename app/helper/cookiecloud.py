@@ -4,6 +4,7 @@ import json
 from typing import Any, Dict, Tuple, Optional
 from hashlib import md5
 
+from app.core.config import Settings, settings
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.common import decrypt
@@ -13,19 +14,27 @@ class CookieCloudHelper:
 
     _ignore_cookies: list = ["CookieAutoDeleteBrowsingDataCleanup", "CookieAutoDeleteCleaningDiscarded"]
 
-    def __init__(self, server: str, key: str, password: str, enable_local: bool, local_path: str):
-        self._server = server
-        self._key = key
-        self._password = password
-        self._enable_local = enable_local
-        self._local_path = local_path
+    def __init__(self, settings: Settings):
+        self._setting = settings
+        self._sync_setting()
         self._req = RequestUtils(content_type="application/json")
+        
+    def _sync_setting(self):
+        if self._setting:
+            self._server = settings.COOKIECLOUD_HOST
+            self._key = settings.COOKIECLOUD_KEY
+            self._password = settings.COOKIECLOUD_PASSWORD
+            self._enable_local = settings.COOKIECLOUD_ENABLE_LOCAL
+            self._local_path = settings.COOKIE_PATH
 
     def download(self) -> Tuple[Optional[dict], str]:
         """
         从CookieCloud下载数据
         :return: Cookie数据、错误信息
         """
+        # 更新为最新设置
+        self._sync_setting()
+        
         if (not self._server and
                 not self._enable_local) or not self._key or not self._password:
             return None, "CookieCloud参数不正确"
@@ -33,7 +42,7 @@ class CookieCloudHelper:
         result = None
         if self._enable_local:
             # 开启本地服务时，从本地直接读取数据
-            result = self.load_local_encrypt_data(self._key)
+            result = self._load_local_encrypt_data(self._key)
             if not result:
                 return {}, "未从本地CookieCloud服务加载到cookie数据，请检查服务器设置、用户KEY及加密密码是否正确"
         else:
@@ -52,7 +61,7 @@ class CookieCloudHelper:
         if not encrypted:
             return {}, "未获取到cookie密文"
         else:
-            crypt_key = self.get_crypt_key()
+            crypt_key = self._get_crypt_key()
             try:
                 decrypted_data = decrypt(encrypted, crypt_key).decode('utf-8')
                 result = json.loads(decrypted_data)
@@ -98,7 +107,7 @@ class CookieCloudHelper:
             ret_cookies[domain] = cookie_str
         return ret_cookies, ""
 
-    def get_crypt_key(self) -> bytes:
+    def _get_crypt_key(self) -> bytes:
         """
         使用UUID和密码生成CookieCloud的加解密密钥
         """
@@ -106,7 +115,7 @@ class CookieCloudHelper:
         md5_generator.update((str(self._key).strip() + '-' + str(self._password).strip()).encode('utf-8'))
         return (md5_generator.hexdigest()[:16]).encode('utf-8')
 
-    def load_local_encrypt_data(self,uuid: str) -> Dict[str, Any]:
+    def _load_local_encrypt_data(self,uuid: str) -> Dict[str, Any]:
         file_path = os.path.join(self._local_path, os.path.basename(uuid) + ".json")
         # 检查文件是否存在
         if not os.path.exists(file_path):
