@@ -17,12 +17,12 @@ from app.log import logger
 # 定义一个全局集合来存储注册的主机
 _registered_hosts = {
     'api.themoviedb.org',
-    'api.thetvdb.com',
-    'webservice.fanart.tv',
     'api.tmdb.org',
+    'webservice.fanart.tv',
     'api.github.com',
     'github.com',
     'raw.githubusercontent.com',
+    'api.telegram.org'
 }
 
 # 定义一个全局线程池执行器
