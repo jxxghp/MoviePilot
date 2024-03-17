@@ -50,6 +50,9 @@ def add_site(
         return schemas.Response(success=False, message=f"{domain} 站点己存在")
     # 保存站点信息
     site_in.domain = domain
+    # 校正地址格式
+    _scheme, _netloc = StringUtils.get_url_netloc(site_in.url)
+    site_in.url = f"{_scheme}://{_netloc}/"
     site_in.name = site_info.get("name")
     site_in.id = None
     site = Site(**site_in.dict())
@@ -74,6 +77,9 @@ def update_site(
     site = Site.get(db, site_in.id)
     if not site:
         return schemas.Response(success=False, message="站点不存在")
+    # 校正地址格式
+    _scheme, _netloc = StringUtils.get_url_netloc(site_in.url)
+    site_in.url = f"{_scheme}://{_netloc}/"
     site.update(db, site_in.dict())
     # 通知缓存站点图标
     EventManager().send_event(EventType.CacheSiteIcon, {
