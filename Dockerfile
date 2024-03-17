@@ -34,10 +34,16 @@ RUN apt-get update -y \
         rsync \
         ffmpeg \
     && \
-    if [ "$(uname -m)" = "x86_64" ]; \
-        then ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
-    elif [ "$(uname -m)" = "aarch64" ]; \
-        then ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1; \
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1 \
+        && wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb \
+        && apt-get install -y ./cloudflared-linux-amd64.deb \
+        && rm -f ./cloudflared-linux-amd64.deb; \
+    elif [ "$(uname -m)" = "aarch64" ]; then \
+        ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1 \
+        && wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 \
+        && mv -f ./cloudflared-linux-arm64 /usr/local/bin/cloudflared \
+        && chmod +x /usr/local/bin/cloudflared; \
     fi \
     && curl https://rclone.org/install.sh | bash \
     && apt-get autoremove -y \
@@ -67,13 +73,15 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && cp -f /app/update /usr/local/bin/mp_update \
     && cp -f /app/entrypoint /entrypoint \
     && chmod +x /entrypoint /usr/local/bin/mp_update \
-    && mkdir -p ${HOME} /var/lib/haproxy/server-state \
+    && mkdir -p ${HOME} ${HOME}/.cloudflared/ /var/lib/haproxy/server-state \
+    && cp -f /app/cloudflared.yml ${HOME}/.cloudflared/config.yml \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
     && python_ver=$(python3 -V | awk '{print $2}') \
     && echo "/app/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
+    && echo "nameserver 127.0.0.1" > /etc/resolv.conf \
     && locale-gen zh_CN.UTF-8 \
     && FRONTEND_VERSION=$(curl -sL "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name) \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \

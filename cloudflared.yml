@@ -1,0 +1,4 @@
+proxies:
+  - name: MP_Doh_Proxy
+    url: https://1.1.1.1/dns-query
+    mode: DOH
