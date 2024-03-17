@@ -34,18 +34,17 @@ RUN apt-get update -y \
         rsync \
         ffmpeg \
     && \
-    if [ "$(uname -m)" = "x86_64" ]; then \
-        ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1 \
-        && wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb \
-        && apt-get install -y ./cloudflared-linux-amd64.deb \
-        && rm -f ./cloudflared-linux-amd64.deb; \
-    elif [ "$(uname -m)" = "aarch64" ]; then \
-        ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1 \
-        && wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 \
-        && mv -f ./cloudflared-linux-arm64 /usr/local/bin/cloudflared \
-        && chmod +x /usr/local/bin/cloudflared; \
+    if [ "$(uname -m)" = "x86_64" ]; \
+        then ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
+    elif [ "$(uname -m)" = "aarch64" ]; \
+        then ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1; \
     fi \
     && curl https://rclone.org/install.sh | bash \
+    && mkdir -p --mode=0755 /usr/share/keyrings \
+    && curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | tee /usr/share/keyrings/cloudflare-main.gpg \
+    && echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared bullseye main' | tee /etc/apt/sources.list.d/cloudflared.list \
+    && apt-get update -y \
+    && apt-get install -y cloudflared \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf \
