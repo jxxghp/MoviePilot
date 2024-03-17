@@ -1,5 +1,4 @@
 import json
-import os
 from hashlib import md5
 from typing import Any, Dict, Tuple, Optional
 
@@ -115,13 +114,13 @@ class CookieCloudHelper:
         return (md5_generator.hexdigest()[:16]).encode('utf-8')
 
     def _load_local_encrypt_data(self, uuid: str) -> Dict[str, Any]:
-        file_path = os.path.join(self._local_path, os.path.basename(uuid) + ".json")
+        file_path = self._local_path / f"{uuid}.json"
         # 检查文件是否存在
-        if not os.path.exists(file_path):
+        if not file_path.exists():
             return {}
 
         # 读取文件
         with open(file_path, encoding="utf-8", mode="r") as file:
             read_content = file.read()
-        data = json.loads(read_content)
+        data = json.loads(read_content.encode("utf-8"))
         return data

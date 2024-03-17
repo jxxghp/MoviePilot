@@ -15,7 +15,6 @@ from app.utils.common import decrypt
 
 
 class GzipRequest(Request):
-    _body: bytes = b""
 
     async def body(self) -> bytes:
         if not hasattr(self, "_body"):
@@ -122,7 +121,7 @@ def get_decrypted_cookie_data(uuid: str, password: str,
 async def get_cookie(
         uuid: Annotated[str, Path(min_length=5, pattern="^[a-zA-Z0-9]+$")]):
     """
-    下载加密数据
+    GET 下载加密数据
     """
     return load_encrypt_data(uuid)
 
@@ -131,5 +130,8 @@ async def get_cookie(
 async def post_cookie(
         uuid: Annotated[str, Path(min_length=5, pattern="^[a-zA-Z0-9]+$")],
         request: schemas.CookiePassword):
+    """
+    POST 下载加密数据
+    """
     data = load_encrypt_data(uuid)
     return get_decrypted_cookie_data(uuid, request.password, data["encrypted"])
