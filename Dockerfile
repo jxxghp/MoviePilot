@@ -34,18 +34,17 @@ RUN apt-get update -y \
         rsync \
         ffmpeg \
     && \
-    if [ "$(uname -m)" = "x86_64" ]; then \
-        ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1 \
-        && wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb \
-        && apt-get install -y ./cloudflared-linux-amd64.deb \
-        && rm -f ./cloudflared-linux-amd64.deb; \
-    elif [ "$(uname -m)" = "aarch64" ]; then \
-        ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1 \
-        && wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 \
-        && mv -f ./cloudflared-linux-arm64 /usr/local/bin/cloudflared \
-        && chmod +x /usr/local/bin/cloudflared; \
+    if [ "$(uname -m)" = "x86_64" ]; \
+        then ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
+    elif [ "$(uname -m)" = "aarch64" ]; \
+        then ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1; \
     fi \
     && curl https://rclone.org/install.sh | bash \
+    && mkdir -p --mode=0755 /usr/share/keyrings \
+    && curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | tee /usr/share/keyrings/cloudflare-main.gpg \
+    && echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared bullseye main' | tee /etc/apt/sources.list.d/cloudflared.list \
+    && apt-get update -y \
+    && apt-get install -y cloudflared \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf \
@@ -81,7 +80,6 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && echo "/app/" > /usr/local/lib/python${python_ver%.*}/site-packages/app.pth \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
-    && echo "nameserver 127.0.0.1" > /etc/resolv.conf \
     && locale-gen zh_CN.UTF-8 \
     && FRONTEND_VERSION=$(curl -sL "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name) \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
