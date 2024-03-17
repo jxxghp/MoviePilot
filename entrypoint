@@ -28,10 +28,6 @@ nginx
 if [ -S "/var/run/docker.sock" ]; then
     haproxy -f /app/haproxy.cfg
 fi
-# 启动cloudflared
-if [ -S "/usr/local/bin/cloudflared" ]; then
-    cloudflared proxy-dns &
-fi
 # 设置后端服务权限掩码
 umask "${UMASK}"
 # 启动后端服务

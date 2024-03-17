@@ -40,11 +40,6 @@ RUN apt-get update -y \
         then ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1; \
     fi \
     && curl https://rclone.org/install.sh | bash \
-    && mkdir -p --mode=0755 /usr/share/keyrings \
-    && curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | tee /usr/share/keyrings/cloudflare-main.gpg \
-    && echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared bullseye main' | tee /etc/apt/sources.list.d/cloudflared.list \
-    && apt-get update -y \
-    && apt-get install -y cloudflared \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf \
@@ -72,8 +67,7 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && cp -f /app/update /usr/local/bin/mp_update \
     && cp -f /app/entrypoint /entrypoint \
     && chmod +x /entrypoint /usr/local/bin/mp_update \
-    && mkdir -p ${HOME} ${HOME}/.cloudflared/ /var/lib/haproxy/server-state \
-    && cp -f /app/cloudflared.yml ${HOME}/.cloudflared/config.yml \
+    && mkdir -p ${HOME} /var/lib/haproxy/server-state \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
     && python_ver=$(python3 -V | awk '{print $2}') \
