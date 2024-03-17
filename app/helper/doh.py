@@ -37,11 +37,7 @@ _doh_resolvers = [
     "1.1.1.1",
     # https://support.quad9.net/hc/en-us
     "9.9.9.9",
-    "149.112.112.112",
-    # https://developers.google.com/speed/public-dns/docs/doh
-    "dns.google",
-    # https://adguard-dns.io/public-dns.html
-    "dns.adguard-dns.com",
+    "149.112.112.112"
 ]
 
 
