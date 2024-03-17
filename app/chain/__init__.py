@@ -136,6 +136,9 @@ class ChainBase(metaclass=ABCMeta):
             tmdbid = meta.tmdbid
         if not doubanid and hasattr(meta, "doubanid"):
             doubanid = meta.doubanid
+        # 有tmdbid时不使用doubanid
+        if tmdbid:
+            doubanid = None
         return self.run_module("recognize_media", meta=meta, mtype=mtype,
                                tmdbid=tmdbid, doubanid=doubanid, cache=cache)
 
