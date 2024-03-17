@@ -111,11 +111,11 @@ def _doh_query(resolver: str, host: str) -> Optional[str]:
         b64message = base64.b64encode(message).decode("utf-8").rstrip("=")
         url = f"https://{resolver}/dns-query?dns={b64message}"
         headers = {"Content-Type": "application/dns-message"}
-        logger.info("DoH请求: %s", url)
+        logger.debug("DoH请求: %s", url)
 
         request = urllib.request.Request(url, headers=headers, method="GET")
         with urllib.request.urlopen(request, timeout=_doh_timeout) as response:
-            logger.info("解析器(%s)响应: %s", resolver, response.status)
+            logger.debug("解析器(%s)响应: %s", resolver, response.status)
             if response.status != 200:
                 return None
             resp_body = response.read()
@@ -138,11 +138,11 @@ def doh_query_json(resolver: str, host: str) -> Optional[str]:
     """
     url = f"https://{resolver}/dns-query?name={host}&type=A"
     headers = {"Accept": "application/dns-json"}
-    logger.info("DoH请求: %s", url)
+    logger.debug("DoH请求: %s", url)
     try:
         request = urllib.request.Request(url, headers=headers, method="GET")
         with urllib.request.urlopen(request, timeout=_doh_timeout) as response:
-            logger.info("解析器(%s)响应: %s", resolver, response.status)
+            logger.debug("解析器(%s)响应: %s", resolver, response.status)
             if response.status != 200:
                 return None
             response_body = response.read().decode("utf-8")
