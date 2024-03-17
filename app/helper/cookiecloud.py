@@ -45,9 +45,12 @@ class CookieCloudHelper:
             req_url = "%s/get/%s" % (self._server, str(self._key).strip())
             ret = self._req.get_res(url=req_url)
             if ret and ret.status_code == 200:
-                result = ret.json()
-                if not result:
-                    return {}, f"未从{self._server}下载到cookie数据"
+                try:
+                    result = ret.json()
+                    if not result:
+                        return {}, f"未从{self._server}下载到cookie数据"
+                except Exception as err:
+                    return {}, f"从{self._server}下载cookie数据错误：{str(err)}"
             elif ret:
                 return None, f"远程同步CookieCloud失败，错误码：{ret.status_code}"
             else:
@@ -62,7 +65,7 @@ class CookieCloudHelper:
                 decrypted_data = decrypt(encrypted, crypt_key).decode('utf-8')
                 result = json.loads(decrypted_data)
             except Exception as e:
-                return {}, "cookie解密失败" + str(e)
+                return {}, "cookie解密失败：" + str(e)
 
         if not result:
             return {}, "cookie解密为空"
@@ -115,7 +118,7 @@ class CookieCloudHelper:
         file_path = os.path.join(self._local_path, os.path.basename(uuid) + ".json")
         # 检查文件是否存在
         if not os.path.exists(file_path):
-            return None
+            return {}
 
         # 读取文件
         with open(file_path, encoding="utf-8", mode="r") as file:
