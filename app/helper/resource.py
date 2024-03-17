@@ -57,10 +57,6 @@ class ResourceHelper(metaclass=Singleton):
             # 判断平台
             if platform and platform != SystemUtils.platform():
                 continue
-            # 判断本地是否存在
-            local_path = self._base_dir / target / rname
-            if not local_path.exists():
-                continue
             # 判断版本号
             if rtype == "auth":
                 # 站点认证资源

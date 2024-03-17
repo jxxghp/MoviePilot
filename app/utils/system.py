@@ -437,6 +437,8 @@ class SystemUtils:
         """
         执行Docker重启操作
         """
+        if not SystemUtils.is_docker():
+            return False, "非Docker环境，无法重启！"
         try:
             # 创建 Docker 客户端
             client = docker.DockerClient(base_url='tcp://127.0.0.1:38379')
