@@ -70,7 +70,7 @@ def _patched_getaddrinfo(host, *args, **kwargs):
     return _orig_getaddrinfo(host, *args, **kwargs)
 
 
-# monkey patch socket.getaddrinfo
+# 对 socket.getaddrinfo 进行补丁
 _orig_getaddrinfo = socket.getaddrinfo
 socket.getaddrinfo = _patched_getaddrinfo
 
