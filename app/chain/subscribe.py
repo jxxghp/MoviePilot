@@ -45,6 +45,7 @@ class SubscribeChain(ChainBase):
             mtype: MediaType = None,
             tmdbid: int = None,
             doubanid: str = None,
+            bangumiid: int = None,
             season: int = None,
             channel: MessageChannel = None,
             userid: str = None,
@@ -100,6 +101,7 @@ class SubscribeChain(ChainBase):
                     mediainfo = self.recognize_media(mtype=mediainfo.type,
                                                      tmdbid=mediainfo.tmdb_id,
                                                      doubanid=mediainfo.douban_id,
+                                                     bangumiid=mediainfo.bangumi_id,
                                                      cache=False)
                     if not mediainfo:
                         logger.error(f"媒体信息识别失败！")
@@ -124,6 +126,8 @@ class SubscribeChain(ChainBase):
         # 合并信息
         if doubanid:
             mediainfo.douban_id = doubanid
+        if bangumiid:
+            mediainfo.bangumi_id = bangumiid
         # 添加订阅
         sid, err_msg = self.subscribeoper.add(mediainfo, season=season, username=username, **kwargs)
         if not sid:

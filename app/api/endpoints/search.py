@@ -52,6 +52,20 @@ def search_by_id(mediaid: str,
                                                       mtype=mtype, area=area)
         else:
             torrents = SearchChain().search_by_id(doubanid=doubanid, mtype=mtype, area=area)
+    elif mediaid.startswith("bangumi:"):
+        bangumiid = int(mediaid.replace("bangumi:", ""))
+        if settings.RECOGNIZE_SOURCE == "themoviedb":
+            # 通过BangumiID识别TMDBID
+            tmdbinfo = MediaChain().get_tmdbinfo_by_bangumiid(bangumiid=bangumiid)
+            if tmdbinfo:
+                torrents = SearchChain().search_by_id(tmdbid=tmdbinfo.get("id"),
+                                                      mtype=mtype, area=area)
+        else:
+            # 通过BangumiID识别豆瓣ID
+            doubaninfo = MediaChain().get_doubaninfo_by_bangumiid(bangumiid=bangumiid)
+            if doubaninfo:
+                torrents = SearchChain().search_by_id(doubanid=doubaninfo.get("id"),
+                                                      mtype=mtype, area=area)
     else:
         return []
     return [torrent.to_dict() for torrent in torrents]

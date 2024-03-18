@@ -83,6 +83,8 @@ class MediaInfo(BaseModel):
     tvdb_id: Optional[str] = None
     # 豆瓣ID
     douban_id: Optional[str] = None
+    # Bangumi ID
+    bangumi_id: Optional[int] = None
     # 媒体原语种
     original_language: Optional[str] = None
     # 媒体原发行标题

@@ -69,8 +69,8 @@ class MetaBase(object):
     _subtitle_flag = False
     _subtitle_season_re = r"(?<![全共]\s*)[第\s]+([0-9一二三四五六七八九十S\-]+)\s*季(?!\s*[全共])"
     _subtitle_season_all_re = r"[全共]\s*([0-9一二三四五六七八九十]+)\s*季|([0-9一二三四五六七八九十]+)\s*季\s*全"
-    _subtitle_episode_re = r"(?<![全共]\s*)[第\s]+([0-9一二三四五六七八九十百零EP\-]+)\s*[集话話期](?!\s*[全共])"
-    _subtitle_episode_all_re = r"([0-9一二三四五六七八九十百零]+)\s*集\s*全|[全共]\s*([0-9一二三四五六七八九十百零]+)\s*[集话話期]"
+    _subtitle_episode_re = r"(?<![全共]\s*)[第\s]+([0-9一二三四五六七八九十百零EP\-]+)\s*[集话話期幕](?!\s*[全共])"
+    _subtitle_episode_all_re = r"([0-9一二三四五六七八九十百零]+)\s*集\s*全|[全共]\s*([0-9一二三四五六七八九十百零]+)\s*[集话話期幕]"
 
     def __init__(self, title: str, subtitle: str = None, isfile: bool = False):
         if not title:
@@ -110,7 +110,7 @@ class MetaBase(object):
         if not title_text:
             return
         title_text = f" {title_text} "
-        if re.search(r'[全第季集话話期]', title_text, re.IGNORECASE):
+        if re.search(r'[全第季集话話期幕]', title_text, re.IGNORECASE):
             # 第x季
             season_str = re.search(r'%s' % self._subtitle_season_re, title_text, re.IGNORECASE)
             if season_str:

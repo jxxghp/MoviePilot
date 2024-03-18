@@ -1,6 +1,6 @@
 import time
 
-from sqlalchemy import Column, Integer, String, Sequence
+from sqlalchemy import Column, Integer, String, Sequence, Float
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, Base
@@ -23,14 +23,15 @@ class Subscribe(Base):
     imdbid = Column(String)
     tvdbid = Column(Integer)
     doubanid = Column(String, index=True)
+    bangumiid = Column(Integer, index=True)
     # 季号
     season = Column(Integer)
     # 海报
     poster = Column(String)
     # 背景图
     backdrop = Column(String)
-    # 评分
-    vote = Column(Integer)
+    # 评分，float
+    vote = Column(Float)
     # 简介
     description = Column(String)
     # 过滤规则
@@ -114,6 +115,11 @@ class Subscribe(Base):
     @db_query
     def get_by_doubanid(db: Session, doubanid: str):
         return db.query(Subscribe).filter(Subscribe.doubanid == doubanid).first()
+
+    @staticmethod
+    @db_query
+    def get_by_bangumiid(db: Session, bangumiid: int):
+        return db.query(Subscribe).filter(Subscribe.bangumiid == bangumiid).first()
 
     @db_update
     def delete_by_tmdbid(self, db: Session, tmdbid: int, season: int):

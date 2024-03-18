@@ -1,6 +1,6 @@
 import json
 import time
-from typing import Optional
+from typing import Optional, Union
 
 from sqlalchemy.orm import Session
 
@@ -26,7 +26,7 @@ class MessageOper(DbOper):
             link: str = None,
             userid: str = None,
             action: int = 1,
-            note: dict = None,
+            note: Union[list, dict] = None,
             **kwargs):
         """
         新增媒体服务器数据

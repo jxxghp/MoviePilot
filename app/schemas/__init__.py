@@ -14,3 +14,5 @@ from .message import *
 from .tmdb import *
 from .transfer import *
 from .file import *
+from .bangumi import *
+from .douban import *

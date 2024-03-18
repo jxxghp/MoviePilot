@@ -119,6 +119,7 @@ class ChainBase(metaclass=ABCMeta):
                         mtype: MediaType = None,
                         tmdbid: int = None,
                         doubanid: str = None,
+                        bangumiid: int = None,
                         cache: bool = True) -> Optional[MediaInfo]:
         """
         识别媒体信息
@@ -126,6 +127,7 @@ class ChainBase(metaclass=ABCMeta):
         :param mtype:    识别的媒体类型，与tmdbid配套
         :param tmdbid:   tmdbid
         :param doubanid: 豆瓣ID
+        :param bangumiid: BangumiID
         :param cache:    是否使用缓存
         :return: 识别的媒体信息，包括剧集信息
         """
@@ -136,11 +138,12 @@ class ChainBase(metaclass=ABCMeta):
             tmdbid = meta.tmdbid
         if not doubanid and hasattr(meta, "doubanid"):
             doubanid = meta.doubanid
-        # 有tmdbid时不使用doubanid
+        # 有tmdbid时不使用其它ID
         if tmdbid:
             doubanid = None
+            bangumiid = None
         return self.run_module("recognize_media", meta=meta, mtype=mtype,
-                               tmdbid=tmdbid, doubanid=doubanid, cache=cache)
+                               tmdbid=tmdbid, doubanid=doubanid, bangumiid=bangumiid, cache=cache)
 
     def match_doubaninfo(self, name: str, imdbid: str = None,
                          mtype: MediaType = None, year: str = None, season: int = None) -> Optional[dict]:
@@ -216,6 +219,14 @@ class ChainBase(metaclass=ABCMeta):
         :return: TVDB信息
         """
         return self.run_module("tmdb_info", tmdbid=tmdbid, mtype=mtype)
+
+    def bangumi_info(self, bangumiid: int) -> Optional[dict]:
+        """
+        获取Bangumi信息
+        :param bangumiid: int
+        :return: Bangumi信息
+        """
+        return self.run_module("bangumi_info", bangumiid=bangumiid)
 
     def message_parser(self, body: Any, form: Any,
                        args: Any) -> Optional[CommingMessage]:

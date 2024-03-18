@@ -106,14 +106,17 @@ def media_info(mediaid: str, type_name: str,
     根据媒体ID查询themoviedb或豆瓣媒体信息，type_name: 电影/电视剧
     """
     mtype = MediaType(type_name)
-    tmdbid, doubanid = None, None
+    tmdbid, doubanid, bangumiid = None, None, None
     if mediaid.startswith("tmdb:"):
         tmdbid = int(mediaid[5:])
     elif mediaid.startswith("douban:"):
         doubanid = mediaid[7:]
-    if not tmdbid and not doubanid:
+    elif mediaid.startswith("bangumi:"):
+        bangumiid = int(mediaid[8:])
+    if not tmdbid and not doubanid and not bangumiid:
         return schemas.MediaInfo()
-    mediainfo = MediaChain().recognize_media(tmdbid=tmdbid, doubanid=doubanid, mtype=mtype)
+    # 识别
+    mediainfo = MediaChain().recognize_media(tmdbid=tmdbid, doubanid=doubanid, bangumiid=bangumiid, mtype=mtype)
     if mediainfo:
         MediaChain().obtain_images(mediainfo)
         return mediainfo.to_dict()

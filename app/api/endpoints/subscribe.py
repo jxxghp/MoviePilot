@@ -65,7 +65,7 @@ def create_subscribe(
     else:
         mtype = None
     # 豆瓣标理
-    if subscribe_in.doubanid:
+    if subscribe_in.doubanid or subscribe_in.bangumiid:
         meta = MetaInfo(subscribe_in.name)
         subscribe_in.name = meta.name
         subscribe_in.season = meta.begin_season
@@ -80,6 +80,7 @@ def create_subscribe(
                                         tmdbid=subscribe_in.tmdbid,
                                         season=subscribe_in.season,
                                         doubanid=subscribe_in.doubanid,
+                                        bangumiid=subscribe_in.bangumiid,
                                         username=current_user.name,
                                         best_version=subscribe_in.best_version,
                                         save_path=subscribe_in.save_path,
@@ -131,9 +132,10 @@ def subscribe_mediaid(
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    根据TMDBID或豆瓣ID查询订阅 tmdb:/douban:
+    根据 TMDBID/豆瓣ID/BangumiId 查询订阅 tmdb:/douban:
     """
     result = None
+    title_check = False
     if mediaid.startswith("tmdb:"):
         tmdbid = mediaid[5:]
         if not tmdbid or not str(tmdbid).isdigit():
@@ -144,14 +146,21 @@ def subscribe_mediaid(
         if not doubanid:
             return Subscribe()
         result = Subscribe.get_by_doubanid(db, doubanid)
-        # 豆瓣已订阅如果 id 搜索无结果使用标题搜索
-        # 会造成同名结果也会被返回
         if not result and title:
-            meta = MetaInfo(title)
-            if season:
-                meta.begin_season = season
-            result = Subscribe.get_by_title(db, title=meta.name, season=meta.begin_season)
-
+            title_check = True
+    elif mediaid.startswith("bangumi:"):
+        bangumiid = mediaid[8:]
+        if not bangumiid or not str(bangumiid).isdigit():
+            return Subscribe()
+        result = Subscribe.get_by_bangumiid(db, int(bangumiid))
+        if not result and title:
+            title_check = True
+    # 使用名称检查订阅
+    if title_check and title:
+        meta = MetaInfo(title)
+        if season:
+            meta.begin_season = season
+        result = Subscribe.get_by_title(db, title=meta.name, season=meta.begin_season)
     if result and result.sites:
         result.sites = json.loads(result.sites)
 

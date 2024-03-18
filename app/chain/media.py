@@ -229,6 +229,28 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     )
         return tmdbinfo
 
+    def get_tmdbinfo_by_bangumiid(self, bangumiid: int) -> Optional[dict]:
+        """
+        根据BangumiID获取TMDB信息
+        """
+        bangumiinfo = self.bangumi_info(bangumiid=bangumiid)
+        if bangumiinfo:
+            # 名称
+            name = bangumiinfo.get("name") or bangumiinfo.get("name_cn")
+            # 年份
+            release_date = bangumiinfo.get("date") or bangumiinfo.get("air_date")
+            if release_date:
+                year = release_date[:4]
+            else:
+                year = None
+            # 使用名称识别TMDB媒体信息
+            return self.match_tmdbinfo(
+                name=name,
+                year=year,
+                mtype=MediaType.TV
+            )
+        return None
+
     def get_doubaninfo_by_tmdbid(self, tmdbid: int,
                                  mtype: MediaType = None, season: int = None) -> Optional[dict]:
         """
@@ -259,5 +281,27 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 year=year,
                 mtype=mtype,
                 imdbid=imdbid
+            )
+        return None
+
+    def get_doubaninfo_by_bangumiid(self, bangumiid: int) -> Optional[dict]:
+        """
+        根据BangumiID获取豆瓣信息
+        """
+        bangumiinfo = self.bangumi_info(bangumiid=bangumiid)
+        if bangumiinfo:
+            # 名称
+            name = bangumiinfo.get("name") or bangumiinfo.get("name_cn")
+            # 年份
+            release_date = bangumiinfo.get("date") or bangumiinfo.get("air_date")
+            if release_date:
+                year = release_date[:4]
+            else:
+                year = None
+            # 使用名称识别豆瓣媒体信息
+            return self.match_doubaninfo(
+                name=name,
+                year=year,
+                mtype=MediaType.TV
             )
         return None
