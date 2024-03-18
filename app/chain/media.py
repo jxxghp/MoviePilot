@@ -235,8 +235,11 @@ class MediaChain(ChainBase, metaclass=Singleton):
         """
         bangumiinfo = self.bangumi_info(bangumiid=bangumiid)
         if bangumiinfo:
-            # 名称
-            name = bangumiinfo.get("name") or bangumiinfo.get("name_cn")
+            # 优先使用原标题匹配
+            if bangumiinfo.get("name"):
+                meta = MetaInfo(title=bangumiinfo.get("name"))
+            else:
+                meta = MetaInfo(title=bangumiinfo.get("name_cn"))
             # 年份
             release_date = bangumiinfo.get("date") or bangumiinfo.get("air_date")
             if release_date:
@@ -245,9 +248,10 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 year = None
             # 使用名称识别TMDB媒体信息
             return self.match_tmdbinfo(
-                name=name,
+                name=meta.name,
                 year=year,
-                mtype=MediaType.TV
+                mtype=MediaType.TV,
+                season=meta.begin_season
             )
         return None
 
@@ -290,8 +294,11 @@ class MediaChain(ChainBase, metaclass=Singleton):
         """
         bangumiinfo = self.bangumi_info(bangumiid=bangumiid)
         if bangumiinfo:
-            # 名称
-            name = bangumiinfo.get("name") or bangumiinfo.get("name_cn")
+            # 优先使用中文标题匹配
+            if bangumiinfo.get("name_cn"):
+                meta = MetaInfo(title=bangumiinfo.get("name_cn"))
+            else:
+                meta = MetaInfo(title=bangumiinfo.get("name"))
             # 年份
             release_date = bangumiinfo.get("date") or bangumiinfo.get("air_date")
             if release_date:
@@ -300,8 +307,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 year = None
             # 使用名称识别豆瓣媒体信息
             return self.match_doubaninfo(
-                name=name,
+                name=meta.name,
                 year=year,
-                mtype=MediaType.TV
+                mtype=MediaType.TV,
+                season=meta.begin_season
             )
         return None
