@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.download import DownloadChain
+from app.chain.media import MediaChain
 from app.core.context import MediaInfo, Context, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
@@ -14,7 +15,7 @@ router = APIRouter()
 
 
 @router.get("/", summary="正在下载", response_model=List[schemas.DownloadingTorrent])
-def read_downloading(
+def read(
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询正在下载的任务
@@ -23,11 +24,10 @@ def read_downloading(
 
 
 @router.post("/", summary="添加下载", response_model=schemas.Response)
-def add_downloading(
+def download(
         media_in: schemas.MediaInfo,
         torrent_in: schemas.TorrentInfo,
-        current_user: User = Depends(get_current_active_user),
-        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+        current_user: User = Depends(get_current_active_user)) -> Any:
     """
     添加下载任务
     """
@@ -51,8 +51,36 @@ def add_downloading(
     })
 
 
+@router.post("/add", summary="添加下载", response_model=schemas.Response)
+def add(
+        torrent_in: schemas.TorrentInfo,
+        current_user: User = Depends(get_current_active_user)) -> Any:
+    """
+    添加下载任
+    """
+    # 元数据
+    metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
+    # 媒体信息
+    mediainfo = MediaChain().recognize_media(meta=metainfo)
+    if not mediainfo:
+        return schemas.Response(success=False, message="无法识别媒体信息")
+    # 种子信息
+    torrentinfo = TorrentInfo()
+    torrentinfo.from_dict(torrent_in.dict())
+    # 上下文
+    context = Context(
+        meta_info=metainfo,
+        media_info=mediainfo,
+        torrent_info=torrentinfo
+    )
+    did = DownloadChain().download_single(context=context, userid=current_user.name, username=current_user.name)
+    return schemas.Response(success=True if did else False, data={
+        "download_id": did
+    })
+
+
 @router.get("/start/{hashString}", summary="开始任务", response_model=schemas.Response)
-def start_downloading(
+def start(
         hashString: str,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -63,7 +91,7 @@ def start_downloading(
 
 
 @router.get("/stop/{hashString}", summary="暂停任务", response_model=schemas.Response)
-def stop_downloading(
+def stop(
         hashString: str,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -74,7 +102,7 @@ def stop_downloading(
 
 
 @router.delete("/{hashString}", summary="删除下载任务", response_model=schemas.Response)
-def remove_downloading(
+def info(
         hashString: str,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
