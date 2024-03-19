@@ -12,6 +12,7 @@ import urllib
 import urllib.request
 from typing import Dict, Optional
 
+from app.core.config import settings
 from app.log import logger
 
 # 定义一个全局集合来存储注册的主机
@@ -71,8 +72,9 @@ def _patched_getaddrinfo(host, *args, **kwargs):
 
 
 # 对 socket.getaddrinfo 进行补丁
-_orig_getaddrinfo = socket.getaddrinfo
-socket.getaddrinfo = _patched_getaddrinfo
+if settings.DOH_ENABLE:
+    _orig_getaddrinfo = socket.getaddrinfo
+    socket.getaddrinfo = _patched_getaddrinfo
 
 
 def _doh_query(resolver: str, host: str) -> Optional[str]:

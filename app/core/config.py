@@ -234,6 +234,8 @@ class Settings(BaseSettings):
     AUTO_UPDATE_RESOURCE: bool = True
     # 元数据识别缓存过期时间（小时）
     META_CACHE_EXPIRE: int = 0
+    # 是否启用DOH解析域名
+    DOH_ENABLE: bool = True
 
     @validator("SUBSCRIBE_RSS_INTERVAL",
                "COOKIECLOUD_INTERVAL",
