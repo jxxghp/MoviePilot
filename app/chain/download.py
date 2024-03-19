@@ -20,6 +20,7 @@ from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, N
 from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
+from app.modules.themoviedb import CategoryHelper
 
 
 class DownloadChain(ChainBase):
@@ -32,6 +33,7 @@ class DownloadChain(ChainBase):
         self.torrent = TorrentHelper()
         self.downloadhis = DownloadHistoryOper()
         self.mediaserver = MediaServerOper()
+        self.category_helper = CategoryHelper()
 
     def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo,
                               channel: MessageChannel = None,
@@ -200,35 +202,38 @@ class DownloadChain(ChainBase):
             content = torrent_file
             # 获取种子文件的文件夹名和文件清单
             _folder_name, _file_list = self.torrent.get_torrent_info(torrent_file)
-
         # 下载目录
+
         if not save_path:
-            if settings.DOWNLOAD_CATEGORY and _media and _media.category:
-                # 开启下载二级目录
-                if _media.type == MediaType.MOVIE:
-                    # 电影
-                    download_dir = settings.SAVE_MOVIE_PATH / _media.category
-                else:
-                    if _media.genre_ids \
-                            and set(_media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
-                        # 动漫
-                        download_dir = settings.SAVE_ANIME_PATH / _media.category
+            if _media:
+                if settings.DOWNLOAD_CATEGORY:
+                    # 开启下载二级目录
+                    if _media.type == MediaType.MOVIE:
+                        category = self.category_helper.get_movie_category(_media.__dict__)
+                        # 电影
+                        download_dir = settings.SAVE_MOVIE_PATH / category
                     else:
-                        # 电视剧
-                        download_dir = settings.SAVE_TV_PATH / _media.category
-            elif _media:
-                # 未开启下载二级目录
-                if _media.type == MediaType.MOVIE:
-                    # 电影
-                    download_dir = settings.SAVE_MOVIE_PATH
+                        category = self.category_helper.get_tv_category(_media.__dict__)
+                        if _media.genre_ids \
+                                and set(_media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
+                            download_dir = settings.SAVE_ANIME_PATH / category
+                        else:
+                            # 电视剧
+                            download_dir = settings.SAVE_TV_PATH / category
+                    _media.set_category(category)
                 else:
-                    if _media.genre_ids \
-                            and set(_media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
-                        # 动漫
-                        download_dir = settings.SAVE_ANIME_PATH
+                    # 未开启下载二级目录
+                    if _media.type == MediaType.MOVIE:
+                        # 电影
+                        download_dir = settings.SAVE_MOVIE_PATH
                     else:
-                        # 电视剧
-                        download_dir = settings.SAVE_TV_PATH
+                        if _media.genre_ids \
+                                and set(_media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
+                            # 动漫
+                            download_dir = settings.SAVE_ANIME_PATH
+                        else:
+                            # 电视剧
+                            download_dir = settings.SAVE_TV_PATH
             else:
                 # 未识别
                 download_dir = settings.SAVE_PATH
@@ -855,3 +860,8 @@ class DownloadChain(ChainBase):
             return
         logger.warn(f"检测到下载源文件被删除，删除下载任务（不含文件）：{hash_str}")
         self.remove_torrents(hashs=[hash_str], delete_file=False)
+
+
+if __name__ == '__main__':
+    if set({}):
+        print("ok")

@@ -26,7 +26,7 @@ class CategoryHelper(metaclass=Singleton):
         初始化
         """
         # 二级分类策略关闭
-        if not settings.LIBRARY_CATEGORY:
+        if not settings.LIBRARY_CATEGORY and not settings.DOWNLOAD_CATEGORY:
             return
         try:
             if not self._category_path.exists():
