@@ -151,10 +151,6 @@ class TmdbScraper:
         """
         生成公共NFO
         """
-        # 添加时间
-        DomUtils.add_node(doc, root, "dateadded",
-                          time.strftime('%Y-%m-%d %H:%M:%S',
-                                        time.localtime(time.time())))
         # TMDB
         DomUtils.add_node(doc, root, "tmdbid", mediainfo.tmdb_id or "")
         uniqueid_tmdb = DomUtils.add_node(doc, root, "uniqueid", mediainfo.tmdb_id or "")
@@ -267,9 +263,6 @@ class TmdbScraper:
         logger.info(f"正在生成季NFO文件：{season_path.name}")
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "season")
-        # 添加时间
-        DomUtils.add_node(doc, root, "dateadded",
-                          time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
         # 简介
         xplot = DomUtils.add_node(doc, root, "plot")
         xplot.appendChild(doc.createCDATASection(seasoninfo.get("overview") or ""))
@@ -306,8 +299,6 @@ class TmdbScraper:
         logger.info(f"正在生成剧集NFO文件：{file_path.name}")
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "episodedetails")
-        # 添加时间
-        DomUtils.add_node(doc, root, "dateadded", time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
         # TMDBID
         uniqueid = DomUtils.add_node(doc, root, "uniqueid", str(episodeinfo.get("id")))
         uniqueid.setAttribute("type", "tmdb")
