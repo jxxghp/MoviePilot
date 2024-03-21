@@ -83,10 +83,6 @@ class DoubanScraper:
 
     @staticmethod
     def __gen_common_nfo(mediainfo: MediaInfo, doc, root):
-        # 添加时间
-        DomUtils.add_node(doc, root, "dateadded",
-                          time.strftime('%Y-%m-%d %H:%M:%S',
-                                        time.localtime(time.time())))
         # 简介
         xplot = DomUtils.add_node(doc, root, "plot")
         xplot.appendChild(doc.createCDATASection(mediainfo.overview or ""))
@@ -166,8 +162,6 @@ class DoubanScraper:
         logger.info(f"正在生成季NFO文件：{season_path.name}")
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "season")
-        # 添加时间
-        DomUtils.add_node(doc, root, "dateadded", time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
         # 简介
         xplot = DomUtils.add_node(doc, root, "plot")
         xplot.appendChild(doc.createCDATASection(mediainfo.overview or ""))
