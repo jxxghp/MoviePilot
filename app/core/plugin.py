@@ -119,13 +119,13 @@ class PluginManager(metaclass=Singleton):
         """
         if SystemUtils.is_frozen():
             return
-        logger.info("开始安装在线插件...")
+        logger.info("开始安装第三方插件...")
         # 已安装插件
         install_plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
         # 在线插件
         online_plugins = self.get_online_plugins()
         if not online_plugins:
-            logger.error("未获取到在线插件")
+            logger.error("未获取到第三方插件")
             return
         # 支持更新的插件自动更新
         for plugin in online_plugins:
@@ -140,7 +140,7 @@ class PluginManager(metaclass=Singleton):
                         f"插件 {plugin.get('plugin_name')} v{plugin.get('plugin_version')} 安装失败：{msg}")
                     continue
                 logger.info(f"插件 {plugin.get('plugin_name')} 安装成功，版本：{plugin.get('plugin_version')}")
-        logger.info("在线插件安装完成")
+        logger.info("第三方插件安装完成")
 
     def get_plugin_config(self, pid: str) -> dict:
         """
@@ -359,20 +359,19 @@ class PluginManager(metaclass=Singleton):
 
         if not settings.PLUGIN_MARKET:
             return []
-        logger.info(f"开始获取第三方插件...")
         # 返回值
         all_plugins = []
         # 已安装插件
         installed_apps = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
         # 使用多线程获取线上插件
-        executor = concurrent.futures.ThreadPoolExecutor()
-        futures = []
-        for m in settings.PLUGIN_MARKET.split(","):
-            futures.append(executor.submit(__get_plugin_info, m))
-        for future in concurrent.futures.as_completed(futures):
-            plugins = future.result()
-            if plugins:
-                all_plugins.extend(plugins)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for m in settings.PLUGIN_MARKET.split(","):
+                futures.append(executor.submit(__get_plugin_info, m))
+            for future in concurrent.futures.as_completed(futures):
+                plugins = future.result()
+                if plugins:
+                    all_plugins.extend(plugins)
         logger.info(f"共获取到 {len(all_plugins)} 个第三方插件")
         # 按插件ID去重
         return list({v["id"]: v for v in all_plugins}.values())
