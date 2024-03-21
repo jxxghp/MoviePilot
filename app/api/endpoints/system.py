@@ -191,6 +191,8 @@ def get_logging(token: str, length: int = 50, logfile: str = "moviepilot.log"):
             return Response(content="日志文件不存在！", media_type="text/plain")
         with open(log_path, 'r', encoding='utf-8') as file:
             text = file.read()
+        # 倒序输出
+        text = '\n'.join(text.split('\n')[::-1])
         return Response(content=text, media_type="text/plain")
     else:
         # 返回SSE流响应
