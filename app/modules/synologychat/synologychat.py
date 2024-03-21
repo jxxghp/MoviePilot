@@ -183,7 +183,7 @@ class SynologyChat:
         ret = self._req.get_res(url=req_url)
         if ret and ret.status_code == 200:
             users = ret.json().get("data", {}).get("users", []) or []
-            return [user.get("user_id") for user in users]
+            return [user.get("user_id") for user in users if user.get("deleted", True) is False]
         else:
             return []
 
