@@ -115,7 +115,7 @@ class MessageChain(ChainBase):
         # 用户ID
         userid = info.userid
         # 用户名
-        username = info.username
+        username = info.username or userid
         if not userid:
             logger.debug(f'未识别到用户ID：{body}{form}{args}')
             return
@@ -192,8 +192,8 @@ class MessageChain(ChainBase):
                     # 媒体库中已存在
                     self.post_message(
                         Notification(channel=channel,
-                                     title=f"{_current_media.title_year}"
-                                           f"{_current_meta.sea} 媒体库中已存在，如需重新下载请发送：搜索 XXX 或 下载 XXX",
+                                     title=f"【{_current_media.title_year}"
+                                           f"{_current_meta.sea} 媒体库中已存在，如需重新下载请发送：搜索 名称 或 下载 名称】",
                                      userid=userid))
                     return
                 elif exist_flag:
@@ -274,8 +274,8 @@ class MessageChain(ChainBase):
                     if exist_flag:
                         self.post_message(Notification(
                             channel=channel,
-                            title=f"{mediainfo.title_year}"
-                                  f"{_current_meta.sea} 媒体库中已存在，如需洗版请发送：洗版 XXX",
+                            title=f"【{mediainfo.title_year}"
+                                  f"{_current_meta.sea} 媒体库中已存在，如需洗版请发送：洗版 XXX】",
                             userid=userid))
                         return
                 else:

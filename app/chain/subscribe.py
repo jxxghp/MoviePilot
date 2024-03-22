@@ -143,8 +143,8 @@ class SubscribeChain(ChainBase):
                                                userid=userid))
         elif message:
             logger.info(f'{mediainfo.title_year} {metainfo.season} 添加订阅成功')
-            if username or userid:
-                text = f"评分：{mediainfo.vote_average}，来自用户：{username or userid}"
+            if username:
+                text = f"评分：{mediainfo.vote_average}，来自用户：{username}"
             else:
                 text = f"评分：{mediainfo.vote_average}"
             # 群发

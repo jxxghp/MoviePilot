@@ -45,7 +45,7 @@ def download(
         media_info=mediainfo,
         torrent_info=torrentinfo
     )
-    did = DownloadChain().download_single(context=context, userid=current_user.name, username=current_user.name)
+    did = DownloadChain().download_single(context=context, username=current_user.name)
     return schemas.Response(success=True if did else False, data={
         "download_id": did
     })
@@ -73,7 +73,7 @@ def add(
         media_info=mediainfo,
         torrent_info=torrentinfo
     )
-    did = DownloadChain().download_single(context=context, userid=current_user.name, username=current_user.name)
+    did = DownloadChain().download_single(context=context, username=current_user.name)
     return schemas.Response(success=True if did else False, data={
         "download_id": did
     })
