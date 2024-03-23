@@ -31,8 +31,13 @@ class MTorrentSpider:
     # 标签
     _labels = {
         "0": "",
+        "1": "DIY",
+        "2": "国配",
+        "3": "DIY 国配",
         "4": "中字",
-        "6": "国配",
+        "5": "DIY 中字",
+        "6": "国配 中字",
+        "7": "DIY 国配 中字"
     }
 
     def __init__(self, indexer: CommentedMap):
