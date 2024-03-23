@@ -45,7 +45,8 @@ class SiteChain(ChainBase):
         # 特殊站点登录验证
         self.special_site_test = {
             "zhuque.in": self.__zhuque_test,
-            # "m-team.io": self.__mteam_test,
+            "m-team.io": self.__mteam_test,
+            "m-team.cc": self.__mteam_test,
         }
 
     @staticmethod
