@@ -90,6 +90,11 @@ class MTorrentSpider:
                     category = MediaType.MOVIE.value
                 else:
                     category = MediaType.UNKNOWN.value
+                labels_value = self._labels.get(result.get('labels') or "0") or ""
+                if labels_value:
+                    labels = labels_value.split()
+                else:
+                    labels = []
                 torrent = {
                     'title': result.get('name'),
                     'description': result.get('smallDescr'),
@@ -103,8 +108,7 @@ class MTorrentSpider:
                     'uploadvolumefactor': self.__get_uploadvolumefactor(result.get('status', {}).get("discount")),
                     'page_url': self._pageurl % (self._domain, result.get('id')),
                     'imdbid': self.__find_imdbid(result.get('imdb')),
-                    'labels': [self._labels.get(result.get('labels'))] if result.get('labels') and result.get(
-                        'labels') != "0" else [],
+                    'labels': labels,
                     'category': category
                 }
                 torrents.append(torrent)
