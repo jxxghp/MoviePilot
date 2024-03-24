@@ -109,17 +109,27 @@ class DownloadChain(ChainBase):
                 # 解码参数
                 req_str = base64.b64decode(base64_str.encode('utf-8')).decode('utf-8')
                 req_params: Dict[str, dict] = json.loads(req_str)
+                # 是否使用cookie
+                if not req_params.get('cookie'):
+                    cookie = None
+                # 请求头
+                if req_params.get('header'):
+                    headers = req_params.get('header')
+                else:
+                    headers = None
                 if req_params.get('method') == 'get':
                     # GET请求
                     res = RequestUtils(
                         ua=ua,
-                        cookies=cookie
+                        cookies=cookie,
+                        headers=headers
                     ).get_res(url, params=req_params.get('params'))
                 else:
                     # POST请求
                     res = RequestUtils(
                         ua=ua,
-                        cookies=cookie
+                        cookies=cookie,
+                        headers=headers
                     ).post_res(url, params=req_params.get('params'))
                 if not res:
                     return None

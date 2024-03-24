@@ -6,6 +6,7 @@ from typing import Tuple, List
 from ruamel.yaml import CommentedMap
 
 from app.core.config import settings
+from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
@@ -13,6 +14,9 @@ from app.utils.string import StringUtils
 
 
 class MTorrentSpider:
+    """
+    mTorrent API，需要缓存ApiKey
+    """
     _indexerid = None
     _domain = None
     _name = ""
@@ -28,6 +32,9 @@ class MTorrentSpider:
     _movie_category = ['401', '419', '420', '421', '439', '405', '404']
     _tv_category = ['403', '402', '435', '438', '404', '405']
 
+    # API KEY
+    _apikey = None
+
     # 标签
     _labels = {
         "0": "",
@@ -41,6 +48,7 @@ class MTorrentSpider:
     }
 
     def __init__(self, indexer: CommentedMap):
+        self.systemconfig = SystemConfigOper()
         if indexer:
             self._indexerid = indexer.get('id')
             self._domain = indexer.get('domain')
@@ -51,10 +59,50 @@ class MTorrentSpider:
             self._cookie = indexer.get('cookie')
             self._ua = indexer.get('ua')
 
+    def __get_apikey(self) -> str:
+        """
+        获取ApiKey
+        """
+        domain_host = StringUtils.get_url_host(self._domain)
+        if not self.systemconfig.get(f"site.{domain_host}.apikey"):
+            try:
+                res = RequestUtils(
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": f"{self._ua}"
+                    },
+                    cookies=self._cookie,
+                    ua=self._ua,
+                    proxies=self._proxy,
+                    referer=f"{self._domain}usercp?tab=laboratory",
+                    timeout=30
+                ).post_res(url=f"{self._domain}api/apikey/getKeyList")
+                if res and res.status_code == 200:
+                    api_keys = res.json().get('data')
+                    if api_keys:
+                        logger.info(f"{self._name} 获取ApiKey成功")
+                        # 按lastModifiedDate倒序排序
+                        api_keys.sort(key=lambda x: x.get('lastModifiedDate'), reverse=True)
+                        self._apikey = api_keys[0].get('apiKey')
+                        self.systemconfig.set(f"site.{domain_host}.apikey", self._apikey)
+                    else:
+                        logger.warn(f"{self._name} 获取ApiKey失败，请先在`控制台`->`实验室`建立存取令牌")
+                else:
+                    logger.warn(f"{self._name} 获取ApiKey失败，请检查Cookie是否有效")
+            except Exception as e:
+                logger.error(f"{self._name} 获取ApiKey出错：{e}")
+        return self._apikey
+
     def search(self, keyword: str, mtype: MediaType = None, page: int = 0) -> Tuple[bool, List[dict]]:
         """
         搜索
         """
+        # 检查ApiKey
+        self.__get_apikey()
+
+        if not self._apikey:
+            return True, []
+
         if not mtype:
             categories = []
         elif mtype == MediaType.TV:
@@ -71,9 +119,9 @@ class MTorrentSpider:
         res = RequestUtils(
             headers={
                 "Content-Type": "application/json",
-                "User-Agent": f"{self._ua}"
+                "User-Agent": f"{self._ua}",
+                "x-api-key": self._apikey
             },
-            cookies=self._cookie,
             proxies=self._proxy,
             referer=f"{self._domain}browse",
             timeout=30
@@ -168,8 +216,15 @@ class MTorrentSpider:
         url = self._downloadurl % self._domain
         params = {
             'method': 'post',
+            'cookie': False,
             'params': {
                 'id': torrent_id
+            },
+            'header': {
+                'Content-Type': 'application/json',
+                'User-Agent': f'{self._ua}',
+                'Accept': 'application/json, text/plain, */*',
+                'x-api-key': self._apikey
             },
             'result': 'data'
         }

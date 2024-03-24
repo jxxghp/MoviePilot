@@ -12,6 +12,7 @@ from app.core.event import eventmanager, Event, EventManager
 from app.db.models.site import Site
 from app.db.site_oper import SiteOper
 from app.db.siteicon_oper import SiteIconOper
+from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.cookie import CookieHelper
@@ -41,6 +42,7 @@ class SiteChain(ChainBase):
         self.cookiehelper = CookieHelper()
         self.message = MessageHelper()
         self.cookiecloud = CookieCloudHelper()
+        self.systemconfig = SystemConfigOper()
 
         # 特殊站点登录验证
         self.special_site_test = {
@@ -237,9 +239,9 @@ class SiteChain(ChainBase):
                                   public=1 if indexer.get("public") else 0)
                 _add_count += 1
 
-            # 通知缓存站点图标
+            # 通知站点更新
             if indexer:
-                EventManager().send_event(EventType.CacheSiteIcon, {
+                EventManager().send_event(EventType.SiteUpdated, {
                     "domain": domain,
                 })
         # 处理完成
@@ -251,7 +253,7 @@ class SiteChain(ChainBase):
         logger.info(f"CookieCloud同步成功：{ret_msg}")
         return True, ret_msg
 
-    @eventmanager.register(EventType.CacheSiteIcon)
+    @eventmanager.register(EventType.SiteUpdated)
     def cache_site_icon(self, event: Event):
         """
         缓存站点图标
@@ -292,6 +294,27 @@ class SiteChain(ChainBase):
                 logger.info(f"缓存站点 {indexer.get('name')} 图标成功")
             else:
                 logger.warn(f"缓存站点 {indexer.get('name')} 图标失败")
+
+    @eventmanager.register(EventType.SiteUpdated)
+    def clear_site_data(self, event: Event):
+        """
+        清理站点数据
+        """
+        if not event:
+            return
+        event_data = event.event_data or {}
+        # 主域名
+        domain = event_data.get("domain")
+        if not domain:
+            return
+        # 获取主域名中间那段
+        domain_host = StringUtils.get_url_host(domain)
+        # 查询以"site.domain_host"开头的配置项，并清除
+        site_keys = self.systemconfig.all().keys()
+        for key in site_keys:
+            if key.startswith(f"site.{domain_host}"):
+                logger.info(f"清理站点配置：{key}")
+                self.systemconfig.delete(key)
 
     def test(self, url: str) -> Tuple[bool, str]:
         """

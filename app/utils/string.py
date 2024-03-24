@@ -283,6 +283,18 @@ class StringUtils:
         return netloc[0]
 
     @staticmethod
+    def get_url_host(url: str) -> str:
+        """
+        获取URL的一级域名
+        """
+        if not url:
+            return ""
+        _, netloc = StringUtils.get_url_netloc(url)
+        if not netloc:
+            return ""
+        return netloc.split(".")[-2]
+
+    @staticmethod
     def get_base_url(url: str) -> str:
         """
         获取URL根地址

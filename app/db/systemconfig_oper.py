@@ -56,6 +56,12 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             return self.__SYSTEMCONF
         return self.__SYSTEMCONF.get(key)
 
+    def all(self):
+        """
+        获取所有系统设置
+        """
+        return self.__SYSTEMCONF or {}
+
     def delete(self, key: Union[str, SystemConfigKey]):
         """
         删除系统设置

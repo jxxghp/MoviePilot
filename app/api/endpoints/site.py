@@ -57,8 +57,8 @@ def add_site(
     site_in.id = None
     site = Site(**site_in.dict())
     site.create(db)
-    # 通知缓存站点图标
-    EventManager().send_event(EventType.CacheSiteIcon, {
+    # 通知站点更新
+    EventManager().send_event(EventType.SiteUpdated, {
         "domain": domain
     })
     return schemas.Response(success=True)
@@ -81,8 +81,8 @@ def update_site(
     _scheme, _netloc = StringUtils.get_url_netloc(site_in.url)
     site_in.url = f"{_scheme}://{_netloc}/"
     site.update(db, site_in.dict())
-    # 通知缓存站点图标
-    EventManager().send_event(EventType.CacheSiteIcon, {
+    # 通知站点更新
+    EventManager().send_event(EventType.SiteUpdated, {
         "domain": site_in.domain
     })
     return schemas.Response(success=True)
