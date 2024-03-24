@@ -64,7 +64,8 @@ class MTorrentSpider:
         获取ApiKey
         """
         domain_host = StringUtils.get_url_host(self._domain)
-        if not self.systemconfig.get(f"site.{domain_host}.apikey"):
+        self._apikey = self.systemconfig.get(f"site.{domain_host}.apikey")
+        if not self._apikey:
             try:
                 res = RequestUtils(
                     headers={
