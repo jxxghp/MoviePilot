@@ -3,6 +3,7 @@ from typing import List, Optional, Tuple, Union
 
 from ruamel.yaml import CommentedMap
 
+from app.core.config import settings
 from app.core.context import TorrentInfo
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -57,6 +58,8 @@ class IndexerModule(_ModuleBase):
             :param _torrents: 种子列表
             :return: 去重后的种子列表
             """
+            if not settings.SEARCH_MULTIPLE_NAME:
+                return _torrents
             # 通过encosure去重
             return list({t.enclosure: t for t in _torrents}.values())
 
@@ -109,9 +112,14 @@ class IndexerModule(_ModuleBase):
                         page=page
                     )
                 if not result:
+                    continue
+                if settings.SEARCH_MULTIPLE_NAME:
+                    # 合并多个结果
+                    result_array.extend(result)
+                else:
+                    # 有结果就停止
+                    result_array = result
                     break
-                # 合并结果
-                result_array.extend(result)
             except Exception as err:
                 logger.error(f"{site.get('name')} 搜索出错：{str(err)}")
 

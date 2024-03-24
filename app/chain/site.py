@@ -49,6 +49,12 @@ class SiteChain(ChainBase):
             "m-team.cc": self.__mteam_test,
         }
 
+    def is_special_site(self, domain: str) -> bool:
+        """
+        判断是否特殊站点
+        """
+        return domain in self.special_site_test
+
     @staticmethod
     def __zhuque_test(site: Site) -> Tuple[bool, str]:
         """

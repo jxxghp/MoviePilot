@@ -236,6 +236,8 @@ class Settings(BaseSettings):
     META_CACHE_EXPIRE: int = 0
     # 是否启用DOH解析域名
     DOH_ENABLE: bool = True
+    # 搜索多个名称
+    SEARCH_MULTIPLE_NAME: bool = True
 
     @validator("SUBSCRIBE_RSS_INTERVAL",
                "COOKIECLOUD_INTERVAL",
