@@ -50,6 +50,16 @@ class IndexerModule(_ModuleBase):
         :param page:  页码
         :return: 资源列表
         """
+
+        def __remove_duplicate(_torrents: List[TorrentInfo]) -> List[TorrentInfo]:
+            """
+            去除重复的种子
+            :param _torrents: 种子列表
+            :return: 去重后的种子列表
+            """
+            # 通过encosure去重
+            return list({t.enclosure: t for t in _torrents}.values())
+
         # 确认搜索的名字
         if not keywords:
             # 浏览种子页
@@ -76,31 +86,32 @@ class IndexerModule(_ModuleBase):
 
             try:
                 if site.get('parser') == "TNodeSpider":
-                    error_flag, result_array = TNodeSpider(site).search(
+                    error_flag, result = TNodeSpider(site).search(
                         keyword=search_word,
                         page=page
                     )
                 elif site.get('parser') == "TorrentLeech":
-                    error_flag, result_array = TorrentLeech(site).search(
+                    error_flag, result = TorrentLeech(site).search(
                         keyword=search_word,
                         page=page
                     )
                 elif site.get('parser') == "mTorrent":
-                    error_flag, result_array = MTorrentSpider(site).search(
+                    error_flag, result = MTorrentSpider(site).search(
                         keyword=search_word,
                         mtype=mtype,
                         page=page
                     )
                 else:
-                    error_flag, result_array = self.__spider_search(
+                    error_flag, result = self.__spider_search(
                         search_word=search_word,
                         indexer=site,
                         mtype=mtype,
                         page=page
                     )
-                # 有结果后停止
-                if result_array:
+                if not result:
                     break
+                # 合并结果
+                result_array.extend(result)
             except Exception as err:
                 logger.error(f"{site.get('name')} 搜索出错：{str(err)}")
 
@@ -113,14 +124,16 @@ class IndexerModule(_ModuleBase):
             return []
         else:
             logger.info(f"{site.get('name')} 搜索完成，耗时 {seconds} 秒，返回数据：{len(result_array)}")
-            # 合并站点信息，以TorrentInfo返回
-            return [TorrentInfo(site=site.get("id"),
-                                site_name=site.get("name"),
-                                site_cookie=site.get("cookie"),
-                                site_ua=site.get("ua"),
-                                site_proxy=site.get("proxy"),
-                                site_order=site.get("pri"),
-                                **result) for result in result_array]
+            # TorrentInfo
+            torrents = [TorrentInfo(site=site.get("id"),
+                                    site_name=site.get("name"),
+                                    site_cookie=site.get("cookie"),
+                                    site_ua=site.get("ua"),
+                                    site_proxy=site.get("proxy"),
+                                    site_order=site.get("pri"),
+                                    **result) for result in result_array]
+            # 去重
+            return __remove_duplicate(torrents)
 
     @staticmethod
     def __spider_search(indexer: CommentedMap,
