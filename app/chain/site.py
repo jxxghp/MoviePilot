@@ -108,7 +108,17 @@ class SiteChain(ChainBase):
         if res and res.status_code == 200:
             user_info = res.json()
             if user_info and user_info.get("data"):
-                return True, "连接成功"
+                # 更新最后访问时间
+                res = RequestUtils(cookies=site.cookie,
+                                   ua=site.ua,
+                                   timeout=60,
+                                   proxies=settings.PROXY if site.proxy else None,
+                                   referer=f"{site.url}index"
+                                   ).post_res(url=urljoin(url, "api/member/updateLastBrowse"))
+                if res:
+                    return True, "连接成功"
+                else:
+                    return True, f"连接成功，但更新状态失败"
         return False, "Cookie已失效"
 
     @staticmethod
