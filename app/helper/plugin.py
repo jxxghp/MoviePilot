@@ -75,21 +75,21 @@ class PluginHelper(metaclass=Singleton):
             return res.json()
         return {}
 
+    def install_reg(self, pid: str) -> bool:
+        """
+        安装插件统计
+        """
+        if not pid:
+            return False
+        res = RequestUtils(timeout=5).get_res(self._install_reg % pid)
+        if res and res.status_code == 200:
+            return True
+        return False
+
     def install(self, pid: str, repo_url: str) -> Tuple[bool, str]:
         """
         安装插件
         """
-        def __install_reg() -> bool:
-            """
-            安装插件统计
-            """
-            if not pid:
-                return False
-            res = RequestUtils(timeout=5).get_res(self._install_reg % pid)
-            if res and res.status_code == 200:
-                return True
-            return False
-
         if SystemUtils.is_frozen():
             return False, "可执行文件模式下，只能安装本地插件"
 
@@ -180,6 +180,6 @@ class PluginHelper(metaclass=Singleton):
         if requirements_file.exists():
             SystemUtils.execute(f"pip install -r {requirements_file} > /dev/null 2>&1")
         # 安装成功后统计
-        __install_reg()
+        self.install_reg(pid)
 
         return True, ""
