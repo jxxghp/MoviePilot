@@ -111,6 +111,8 @@ class IndexerModule(_ModuleBase):
                         mtype=mtype,
                         page=page
                     )
+                if error_flag:
+                    break
                 if not result:
                     continue
                 if settings.SEARCH_MULTIPLE_NAME:
