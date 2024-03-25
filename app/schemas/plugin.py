@@ -38,3 +38,5 @@ class Plugin(BaseModel):
     is_local: Optional[bool] = False
     # 仓库地址
     repo_url: Optional[str] = None
+    # 安装次数
+    install_count: Optional[int] = 0

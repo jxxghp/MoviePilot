@@ -67,6 +67,14 @@ def installed(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return SystemConfigOper().get(SystemConfigKey.UserInstalledPlugins) or []
 
 
+@router.get("/statistic", summary="插件安装统计", response_model=dict)
+def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    插件安装统计
+    """
+    return PluginHelper().get_statistic()
+
+
 @router.get("/install/{plugin_id}", summary="安装插件", response_model=schemas.Response)
 def install(plugin_id: str,
             repo_url: str = "",
