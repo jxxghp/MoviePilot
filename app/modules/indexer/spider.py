@@ -95,7 +95,7 @@ class TorrentSpider:
         self.render = indexer.get('render')
         self.domain = indexer.get('domain')
         self.result_num = int(indexer.get('result_num') or 100)
-        self._timeout = int(indexer.get('timeout') or 30)
+        self._timeout = int(indexer.get('timeout') or 15)
         self.page = page
         if self.domain and not str(self.domain).endswith("/"):
             self.domain = self.domain + "/"

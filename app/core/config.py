@@ -237,7 +237,7 @@ class Settings(BaseSettings):
     # 是否启用DOH解析域名
     DOH_ENABLE: bool = True
     # 搜索多个名称
-    SEARCH_MULTIPLE_NAME: bool = True
+    SEARCH_MULTIPLE_NAME: bool = False
 
     @validator("SUBSCRIBE_RSS_INTERVAL",
                "COOKIECLOUD_INTERVAL",

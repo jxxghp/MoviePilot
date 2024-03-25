@@ -40,7 +40,7 @@ class TorrentLeech:
             },
             cookies=self._indexer.get('cookie'),
             proxies=self._proxy,
-            timeout=30
+            timeout=15
         ).get_res(url)
         torrents = []
         if res and res.status_code == 200:

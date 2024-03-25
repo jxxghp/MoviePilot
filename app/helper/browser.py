@@ -61,7 +61,7 @@ class PlaywrightHelper:
                         ua: str = None,
                         proxies: dict = None,
                         headless: bool = False,
-                        timeout: int = 30) -> str:
+                        timeout: int = 20) -> str:
         """
         获取网页源码
         :param url: 网页地址

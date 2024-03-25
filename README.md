@@ -132,7 +132,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 ---
 - **DOWNLOAD_SUBTITLE：** 下载站点字幕，`true`/`false`，默认`true`
 ---
-- **SEARCH_MULTIPLE_NAME：** 搜索时是否使用多个名称搜索，`true`/`false`，默认`true`，开启后会使用多个名称进行搜索，搜索结果会更全面，但会增加搜索时间；关闭时只要其中一个名称搜索到结果或全部名称搜索完毕即停止
+- **SEARCH_MULTIPLE_NAME：** 搜索时是否使用多个名称搜索，`true`/`false`，默认`false`，开启后会使用多个名称进行搜索，搜索结果会更全面，但会增加搜索时间；关闭时只要其中一个名称搜索到结果或全部名称搜索完毕即停止
 ---
 - **MOVIE_RENAME_FORMAT：** 电影重命名格式，基于jinjia2语法
 

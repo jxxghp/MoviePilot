@@ -77,7 +77,7 @@ class TNodeSpider:
             },
             cookies=self._cookie,
             proxies=self._proxy,
-            timeout=30
+            timeout=15
         ).post_res(url=self._searchurl, json=params)
         torrents = []
         if res and res.status_code == 200:

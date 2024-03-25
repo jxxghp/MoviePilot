@@ -76,7 +76,7 @@ class MTorrentSpider:
                     ua=self._ua,
                     proxies=self._proxy,
                     referer=f"{self._domain}usercp?tab=laboratory",
-                    timeout=30
+                    timeout=15
                 ).post_res(url=f"{self._domain}api/apikey/getKeyList")
                 if res and res.status_code == 200:
                     api_keys = res.json().get('data')
@@ -125,7 +125,7 @@ class MTorrentSpider:
             },
             proxies=self._proxy,
             referer=f"{self._domain}browse",
-            timeout=30
+            timeout=15
         ).post_res(url=self._searchurl, json=params)
         torrents = []
         if res and res.status_code == 200:
