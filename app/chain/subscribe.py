@@ -12,6 +12,7 @@ from app.chain.search import SearchChain
 from app.chain.torrents import TorrentsChain
 from app.core.config import settings
 from app.core.context import TorrentInfo, Context, MediaInfo
+from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.models.subscribe import Subscribe
@@ -21,7 +22,7 @@ from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo, Notification
-from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType
+from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType
 from app.utils.string import StringUtils
 
 
@@ -956,3 +957,33 @@ class SubscribeChain(ChainBase):
                     start_episode=start_episode
                 )
         return no_exists
+
+    @eventmanager.register(EventType.SiteDeleted)
+    def remove_site(self, event: Event):
+        """
+        从订阅中移除与站点相关的设置
+        """
+        if not event:
+            return
+        event_data = event.event_data or {}
+        site_id = event_data.get("site_id")
+        if not site_id:
+            return
+        # 从选中的rss站点中移除
+        selected_sites = SystemConfigOper().get(SystemConfigKey.RssSites) or []
+        if site_id in selected_sites:
+            selected_sites.remove(site_id)
+            SystemConfigOper().set(SystemConfigKey.RssSites, selected_sites)
+        # 查询所有订阅
+        subscribes = self.subscribeoper.list()
+        for subscribe in subscribes:
+            if not subscribe.sites:
+                continue
+            sites = json.loads(subscribe.sites) or []
+            if site_id not in sites:
+                continue
+            sites.remove(site_id)
+            sites = json.dumps(sites)
+            self.subscribeoper.update(subscribe.id, {
+                "sites": sites
+            })
