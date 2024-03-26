@@ -15,7 +15,8 @@ class BangumiApi(object):
         "calendar": "calendar",
         "detail": "v0/subjects/%s",
         "persons": "v0/subjects/%s/persons",
-        "subjects": "v0/subjects/%s/subjects"
+        "subjects": "v0/subjects/%s/subjects",
+        "characters": "v0/subjects/%s/characters"
     }
     _base_url = "https://api.bgm.tv/"
     _req = RequestUtils(session=requests.Session())
@@ -145,7 +146,17 @@ class BangumiApi(object):
         """
         获取番剧人物
         """
-        return self.__invoke(self._urls["persons"] % bid, _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+        ret_list = []
+        result = self.__invoke(self._urls["characters"] % bid, _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+        if result:
+            for item in result:
+                character_id = item.get("id")
+                actors = item.get("actors")
+                if character_id and actors and actors[0]:
+                    actor_info = actors[0]
+                    actor_info.update({'career': [item.get('name')]})
+                    ret_list.append(actor_info)
+        return ret_list
 
     def subjects(self, bid: int):
         """
