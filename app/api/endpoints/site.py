@@ -130,7 +130,7 @@ def reset(db: Session = Depends(get_db),
     # 插件站点删除
     EventManager().send_event(EventType.SiteDeleted,
                               {
-                                  "site_id": None
+                                  "site_id": "*"
                               })
     return schemas.Response(success=True, message="站点已重置！")
 

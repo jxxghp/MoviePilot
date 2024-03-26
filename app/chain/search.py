@@ -9,6 +9,7 @@ from typing import List, Optional
 from app.chain import ChainBase
 from app.core.context import Context
 from app.core.context import MediaInfo, TorrentInfo
+from app.core.event import eventmanager, Event
 from app.core.metainfo import MetaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.progress import ProgressHelper
@@ -16,7 +17,7 @@ from app.helper.sites import SitesHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
-from app.schemas.types import MediaType, ProgressKey, SystemConfigKey
+from app.schemas.types import MediaType, ProgressKey, SystemConfigKey, EventType
 from app.utils.string import StringUtils
 
 
@@ -384,3 +385,24 @@ class SearchChain(ChainBase):
             ),
             torrents
         ))
+
+    @eventmanager.register(EventType.SiteDeleted)
+    def remove_site(self, event: Event):
+        """
+        从搜索站点中移除与已删除站点相关的设置
+        """
+        if not event:
+            return
+        event_data = event.event_data or {}
+        site_id = event_data.get("site_id")
+        if not site_id:
+            return
+        if site_id == "*":
+            # 清空搜索站点
+            SystemConfigOper().set(SystemConfigKey.IndexerSites, [])
+            return
+        # 从选中的rss站点中移除
+        selected_sites = SystemConfigOper().get(SystemConfigKey.IndexerSites) or []
+        if site_id in selected_sites:
+            selected_sites.remove(site_id)
+            SystemConfigOper().set(SystemConfigKey.IndexerSites, selected_sites)

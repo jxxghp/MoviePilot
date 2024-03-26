@@ -969,21 +969,29 @@ class SubscribeChain(ChainBase):
         site_id = event_data.get("site_id")
         if not site_id:
             return
+        if site_id == "*":
+            # 站点被重置
+            SystemConfigOper().set(SystemConfigKey.RssSites, [])
+            for subscribe in self.subscribeoper.list():
+                if not subscribe.sites:
+                    continue
+                self.subscribeoper.update(subscribe.id, {
+                    "sites": ""
+                })
+            return
         # 从选中的rss站点中移除
         selected_sites = SystemConfigOper().get(SystemConfigKey.RssSites) or []
         if site_id in selected_sites:
             selected_sites.remove(site_id)
             SystemConfigOper().set(SystemConfigKey.RssSites, selected_sites)
         # 查询所有订阅
-        subscribes = self.subscribeoper.list()
-        for subscribe in subscribes:
+        for subscribe in self.subscribeoper.list():
             if not subscribe.sites:
                 continue
             sites = json.loads(subscribe.sites) or []
             if site_id not in sites:
                 continue
             sites.remove(site_id)
-            sites = json.dumps(sites)
             self.subscribeoper.update(subscribe.id, {
-                "sites": sites
+                "sites": json.dumps(sites)
             })
