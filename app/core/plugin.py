@@ -284,7 +284,7 @@ class PluginManager(metaclass=Singleton):
         """
         获取所有在线插件信息
         """
-        def __get_plugin_info(market: str) -> Optional[dict]:
+        def __get_plugin_info(market: str) -> Optional[List[dict]]:
             """
             获取插件信息
             """
@@ -355,6 +355,7 @@ class PluginManager(metaclass=Singleton):
                 conf.update({"is_local": False})
                 # 汇总
                 ret_plugins.append(conf)
+
             return ret_plugins
 
         if not settings.PLUGIN_MARKET:
@@ -372,9 +373,20 @@ class PluginManager(metaclass=Singleton):
                 plugins = future.result()
                 if plugins:
                     all_plugins.extend(plugins)
-        logger.info(f"共获取到 {len(all_plugins)} 个第三方插件")
-        # 按插件ID去重
-        return list({v["id"]: v for v in all_plugins}.values())
+        # 所有插件按repo在设置中的顺序排序
+        all_plugins.sort(
+            key=lambda x: settings.PLUGIN_MARKET.split(",").index(x.get("repo_url")) if x.get("repo_url") else 0
+        )
+        # 按插件ID和版本号去重，相同插件以前面的为准
+        result = []
+        _dup = []
+        for p in all_plugins:
+            key = f"{p.get('id')}v{p.get('plugin_version')}"
+            if key not in _dup:
+                _dup.append(key)
+                result.append(p)
+        logger.info(f"共获取到 {len(result)} 个第三方插件")
+        return result
 
     def get_local_plugins(self) -> List[dict]:
         """
