@@ -132,7 +132,9 @@ class PluginHelper(metaclass=Singleton):
             """
             file_api = f"https://api.github.com/repos/{user}/{repo}/contents/plugins/{_p.lower()}"
             r = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS, timeout=30).get_res(file_api)
-            if not r or r.status_code != 200:
+            if r is None:
+                return None, "连接仓库失败"
+            elif r.status_code != 200:
                 return None, f"连接仓库失败：{r.status_code} - {r.reason}"
             ret = r.json()
             if ret and ret[0].get("message") == "Not Found":
