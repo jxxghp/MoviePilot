@@ -61,7 +61,7 @@ class IndexerModule(_ModuleBase):
             if not settings.SEARCH_MULTIPLE_NAME:
                 return _torrents
             # 通过encosure去重
-            return list({t.enclosure: t for t in _torrents}.values())
+            return list({f"{t.title}_{t.description}": t for t in _torrents}.values())
 
         # 确认搜索的名字
         if not keywords:
