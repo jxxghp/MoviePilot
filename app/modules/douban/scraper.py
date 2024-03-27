@@ -1,4 +1,3 @@
-import time
 from pathlib import Path
 from typing import Union
 from xml.dom import minidom
@@ -30,6 +29,9 @@ class DoubanScraper:
         :param force_nfo: 强制生成NFO
         :param force_img: 强制生成图片
         """
+
+        if not mediainfo or not file_path:
+            return
 
         self._transfer_type = transfer_type
         self._force_nfo = force_nfo

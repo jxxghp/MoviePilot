@@ -1,4 +1,3 @@
-import time
 import traceback
 from pathlib import Path
 from typing import Union
@@ -36,6 +35,9 @@ class TmdbScraper:
         :param force_nfo: 是否强制生成NFO
         :param force_img: 是否强制生成图片
         """
+
+        if not mediainfo or not file_path:
+            return
 
         self._transfer_type = transfer_type
         self._force_nfo = force_nfo
