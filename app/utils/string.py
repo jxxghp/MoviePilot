@@ -600,6 +600,8 @@ class StringUtils:
             # 处理不希望包含多个冒号的情况（除了协议后的冒号）
             return None, None
         domain = ":".join(parts[:-1])
+        if domain.endswith("/"):
+            domain = domain[:-1]
         # 检查是否包含端口号
         try:
             port = int(parts[-1])
