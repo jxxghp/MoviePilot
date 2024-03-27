@@ -78,9 +78,12 @@ class ModuleManager(metaclass=Singleton):
         if not setting:
             return True
         switch, value = setting
-        if getattr(settings, switch) and value is True:
+        option = getattr(settings, switch)
+        if not option:
+            return False
+        if option and value is True:
             return True
-        if value in getattr(settings, switch):
+        if value in option:
             return True
         return False
 
