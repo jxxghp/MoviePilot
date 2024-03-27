@@ -174,7 +174,7 @@ def test_site(site_id: int,
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
-    status, message = SiteChain().test(site.domain)
+    status, message = SiteChain().test(url=site.domain)
     return schemas.Response(success=status, message=message)
 
 

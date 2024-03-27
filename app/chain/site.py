@@ -5,6 +5,7 @@ from typing import Union
 from urllib.parse import urljoin
 
 from lxml import etree
+from ruamel.yaml import CommentedMap
 
 from app.chain import ChainBase
 from app.core.config import settings
@@ -184,7 +185,7 @@ class SiteChain(ChainBase):
             site_info = self.siteoper.get_by_domain(domain)
             if site_info:
                 # 站点已存在，检查站点连通性
-                status, msg = self.test(domain)
+                status, msg = self.test(url=domain)
                 # 更新站点Cookie
                 if status:
                     logger.info(f"站点【{site_info.name}】连通性正常，不同步CookieCloud数据")
@@ -326,15 +327,20 @@ class SiteChain(ChainBase):
                 logger.info(f"清理站点配置：{key}")
                 self.systemconfig.delete(key)
 
-    def test(self, url: str) -> Tuple[bool, str]:
+    def test(self, url: str = None, site_info: CommentedMap = None) -> Tuple[bool, str]:
         """
         测试站点是否可用
         :param url: 站点域名
+        :param site_info: 站点信息
         :return: (是否可用, 错误信息)
         """
         # 检查域名是否可用
-        domain = StringUtils.get_url_domain(url)
-        site_info = self.siteoper.get_by_domain(domain)
+        if url:
+            domain = StringUtils.get_url_domain(url)
+            site_info = self.siteoper.get_by_domain(domain)
+        else:
+            domain = StringUtils.get_url_domain(site_info.get("url"))
+
         if not site_info:
             return False, f"站点【{url}】不存在"
 
