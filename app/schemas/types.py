@@ -76,6 +76,8 @@ class SystemConfigKey(Enum):
     DefaultSearchFilterRules = "DefaultSearchFilterRules"
     # 转移屏蔽词
     TransferExcludeWords = "TransferExcludeWords"
+    # 插件安装统计
+    PluginInstallReport = "PluginInstallReport"
 
 
 # 处理进度Key字典

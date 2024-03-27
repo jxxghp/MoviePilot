@@ -7,7 +7,9 @@ from typing import Dict, Tuple, Optional, List
 from cachetools import TTLCache, cached
 
 from app.core.config import settings
+from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
+from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.system import SystemUtils
@@ -22,7 +24,15 @@ class PluginHelper(metaclass=Singleton):
 
     _install_reg = "https://movie-pilot.org/plugin/install/%s"
 
+    _install_report = "https://movie-pilot.org/plugin/install"
+
     _install_statistic = "https://movie-pilot.org/plugin/statistic"
+
+    def __init__(self):
+        self.systemconfig = SystemConfigOper()
+        if not self.systemconfig.get(SystemConfigKey.PluginInstallReport):
+            if self.install_report():
+                self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
 
     @cached(cache=TTLCache(maxsize=100, ttl=1800))
     def get_plugins(self, repo_url: str) -> Dict[str, dict]:
@@ -85,6 +95,24 @@ class PluginHelper(metaclass=Singleton):
         if res and res.status_code == 200:
             return True
         return False
+
+    def install_report(self) -> bool:
+        """
+        上报存量插件安装统计
+        """
+        plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins)
+        if not plugins:
+            return False
+        res = RequestUtils(content_type="application/json",
+                           timeout=5).post(self._install_report,
+                                           json={
+                                               "plugins": [
+                                                   {
+                                                       "plugin_id": plugin,
+                                                   } for plugin in plugins
+                                               ]
+                                           })
+        return True if res else False
 
     def install(self, pid: str, repo_url: str) -> Tuple[bool, str]:
         """
