@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Form
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -15,13 +15,16 @@ from app.db import get_db
 from app.db.models.user import User
 from app.log import logger
 from app.utils.web import WebUtils
+from app.utils.otp import OtpUtils
 
 router = APIRouter()
 
 
 @router.post("/access-token", summary="获取token", response_model=schemas.Token)
 async def login_access_token(
-        db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()
+    db: Session = Depends(get_db),
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    otp_password: str = Form(None)
 ) -> Any:
     """
     获取认证Token
@@ -30,7 +33,8 @@ async def login_access_token(
     user = User.authenticate(
         db=db,
         name=form_data.username,
-        password=form_data.password
+        password=form_data.password,
+        otp_password=otp_password
     )
     if not user:
         # 请求协助认证
@@ -38,7 +42,7 @@ async def login_access_token(
         token = UserChain().user_authenticate(form_data.username, form_data.password)
         if not token:
             logger.warn(f"用户 {form_data.username} 登录失败！")
-            raise HTTPException(status_code=401, detail="用户名或密码不正确")
+            raise HTTPException(status_code=401, detail="用户名、密码、二次校验不正确")
         else:
             logger.info(f"用户 {form_data.username} 辅助认证成功，用户信息: {token}，以普通用户登录...")
             # 加入用户信息表

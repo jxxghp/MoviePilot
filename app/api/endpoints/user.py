@@ -10,6 +10,7 @@ from app.core.security import get_password_hash
 from app.db import get_db
 from app.db.models.user import User
 from app.db.userauth import get_current_active_superuser, get_current_active_user
+from app.utils.otp import OtpUtils
 
 router = APIRouter()
 
@@ -141,3 +142,34 @@ def read_user_by_id(
             detail="用户权限不足"
         )
     return user
+
+
+@router.post('/otp/generate', summary='生成otp验证uri', response_model=schemas.Response)
+def otp_generate(
+    current_user: User = Depends(get_current_active_user)
+) -> Any:
+    secret, uri = OtpUtils.generate_secret_key(current_user.name)
+    return schemas.Response(success=secret != "", data={'secret': secret, 'uri': uri})
+
+
+@router.post('/otp/judge', summary='判断otp验证是否通过', response_model=schemas.Response)
+def otp_judge(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+) -> Any:
+    uri = data.get("uri")
+    otp_password = data.get("otpPassword")
+    if not OtpUtils.is_legal(uri, otp_password):
+        return schemas.Response(success=False, message="验证码错误")
+    current_user.update_otp_by_name(db, current_user.name, True, OtpUtils.get_secret(uri))
+    return schemas.Response(success=True)
+
+
+@router.post('/otp/disable', summary='关闭当前用户的otp验证', response_model=schemas.Response)
+def otp_disable(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+) -> Any:
+    current_user.update_otp_by_name(db, current_user.name, False, "")
+    return schemas.Response(success=True)

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import verify_password
 from app.db import db_query, db_update, Base
-
+from app.utils.otp import OtpUtils
 
 class User(Base):
     """
@@ -23,15 +23,22 @@ class User(Base):
     is_superuser = Column(Boolean(), default=False)
     # 头像
     avatar = Column(String)
+    # 是否启用otp二次验证
+    is_otp = Column(Boolean(), default=False)
+    # otp秘钥
+    otp_secret = Column(String, default=None)
 
     @staticmethod
     @db_query
-    def authenticate(db: Session, name: str, password: str):
+    def authenticate(db: Session, name: str, password: str, otp_password: str):
         user = db.query(User).filter(User.name == name).first()
         if not user:
             return None
         if not verify_password(password, str(user.hashed_password)):
             return None
+        if user.is_otp:
+            if not otp_password or not OtpUtils.check(user.otp_secret, otp_password):
+                return None
         return user
 
     @staticmethod
@@ -45,3 +52,14 @@ class User(Base):
         if user:
             user.delete(db, user.id)
         return True
+
+    @db_update
+    def update_otp_by_name(self, db: Session, name: str, otp: bool, secret: str):
+        user = self.get_by_name(db, name)
+        if user:
+            user.update(db, {
+                'is_otp': otp,
+                'otp_secret': secret
+            })
+            return True
+        return False

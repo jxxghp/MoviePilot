@@ -15,6 +15,8 @@ class UserBase(BaseModel):
     is_superuser: bool = False
     # 头像
     avatar: Optional[str] = None
+    # 是否开启二次验证
+    is_otp: Optional[bool] = False
 
 
 # Properties to receive via API on creation
