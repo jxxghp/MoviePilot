@@ -1,4 +1,4 @@
-from typing import Optional, Union, Tuple, List
+from typing import Optional, Union, Tuple, List, Dict
 
 import transmission_rpc
 from transmission_rpc import Client, Torrent, File
@@ -18,7 +18,7 @@ class Transmission:
     trc: Optional[Client] = None
 
     # 参考transmission web，仅查询需要的参数，加速种子搜索
-    _trarg = ["id", "name", "status", "labels", "hashString", "totalSize", "percentDone", "addedDate", "trackerStats",
+    _trarg = ["id", "name", "status", "labels", "hashString", "totalSize", "percentDone", "addedDate", "trackerList", "trackerStats",
               "leftUntilDone", "rateDownload", "rateUpload", "recheckProgress", "rateDownload", "rateUpload",
               "peersGettingFromUs", "peersSendingToUs", "uploadRatio", "uploadedEver", "downloadedEver", "downloadDir",
               "error", "errorString", "doneDate", "queuePosition", "activityDate", "trackers"]
@@ -394,4 +394,17 @@ class Transmission:
             return True
         except Exception as err:
             logger.error(f"修改tracker出错：{str(err)}")
+            return False
+
+    def get_session(self) -> Dict[str, Union[int, bool, str]]:
+        """
+        获取Transmission当前的会话信息和配置设置
+        :return dict or False
+        """
+        if not self.trc:
+            return False
+        try:
+            return self.trc.get_session()
+        except Exception as err:
+            logger.error(f"获取session出错：{str(err)}")
             return False
