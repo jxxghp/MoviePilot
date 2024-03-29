@@ -152,11 +152,19 @@ class SystemUtils:
             if src_path.startswith("/MP/"):
                 src_path = src_path.replace("/MP/", "MP:/")
                 print(f"源路径 {src} 识别为云盘目录：{src_path}")  
+
+            dest_path = str(dest)
+            if dest_path.startswith("/MP/"):
+                dest_path = dest_path.replace("/MP/", "MP:/")
+                print(f"目标路径 {dest} 识别为云盘目录：{dest_path}") 
+            else:
+                dest_path = f'MP:{dest}'
+
             retcode = subprocess.run(
                 [
                     'rclone', 'moveto',
                     src_path,
-                    f'MP:{dest}'
+                    dest_path
                 ],
                 startupinfo=SystemUtils.__get_hidden_shell()
             ).returncode
@@ -174,12 +182,20 @@ class SystemUtils:
             src_path = str(src)
             if src_path.startswith("/MP/"):
                 src_path = src_path.replace("/MP/", "MP:/")
-                print(f"源路径 {src} 识别为云盘目录：{src_path}")        
+                print(f"源路径 {src} 识别为云盘目录：{src_path}")    
+
+            dest_path = str(dest)
+            if dest_path.startswith("/MP/"):
+                dest_path = dest_path.replace("/MP/", "MP:/")
+                print(f"目标路径 {dest} 识别为云盘目录：{dest_path}") 
+            else:
+                dest_path = f'MP:{dest}'
+
             retcode = subprocess.run(
                 [
                     'rclone', 'copyto',
                     src_path,
-                    f'MP:{dest}'
+                    dest_path
                 ],
                 startupinfo=SystemUtils.__get_hidden_shell()
             ).returncode

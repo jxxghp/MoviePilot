@@ -260,7 +260,7 @@ class TheMovieDbModule(_ModuleBase):
                                            transfer_type=transfer_type,
                                            force_nfo=force_nfo,
                                            force_img=force_img)
-        elif path.is_file():
+        elif path.is_file() or (transfer_type.startswith("rclone_") and not str(path).endswith("/")) :
             # 单个文件
             logger.info(f"开始刮削媒体库文件：{path} ...")
             self.scraper.gen_scraper_files(mediainfo=mediainfo,

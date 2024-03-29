@@ -364,7 +364,10 @@ class FileTransferModule(_ModuleBase):
                 new_file.unlink()
         logger.info(f"正在转移文件：{file_item} 到 {new_file}")
         # 创建父目录
-        new_file.parent.mkdir(parents=True, exist_ok=True)
+
+        if transfer_type not in ['rclone_copy', 'rclone_move']:
+            new_file.parent.mkdir(parents=True, exist_ok=True)
+            
         retcode = self.__transfer_command(file_item=file_item,
                                           target_file=new_file,
                                           transfer_type=transfer_type)
