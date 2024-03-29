@@ -148,10 +148,14 @@ class SystemUtils:
         Rclone移动
         """
         try:
+            src_path = str(src)
+            if src_path.startswith("/MP/"):
+                src_path = src_path.replace("/MP/", "MP:/")
+                print(f"源路径 {src} 识别为云盘目录：{src_path}")  
             retcode = subprocess.run(
                 [
                     'rclone', 'moveto',
-                    str(src),
+                    src_path,
                     f'MP:{dest}'
                 ],
                 startupinfo=SystemUtils.__get_hidden_shell()
@@ -167,10 +171,14 @@ class SystemUtils:
         Rclone复制
         """
         try:
+            src_path = str(src)
+            if src_path.startswith("/MP/"):
+                src_path = src_path.replace("/MP/", "MP:/")
+                print(f"源路径 {src} 识别为云盘目录：{src_path}")        
             retcode = subprocess.run(
                 [
                     'rclone', 'copyto',
-                    str(src),
+                    src_path,
                     f'MP:{dest}'
                 ],
                 startupinfo=SystemUtils.__get_hidden_shell()
