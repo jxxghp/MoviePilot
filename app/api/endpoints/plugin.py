@@ -14,16 +14,16 @@ router = APIRouter()
 
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
-def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "all") -> Any:
+def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "all") -> List[schemas.Plugin]:
     """
     查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
     """
     # 本地插件
     local_plugins = PluginManager().get_local_plugins()
     # 已安装插件
-    installed_plugins = [plugin for plugin in local_plugins if plugin.get("installed")]
+    installed_plugins = [plugin for plugin in local_plugins if plugin.installed]
     # 未安装的本地插件
-    not_installed_plugins = [plugin for plugin in local_plugins if not plugin.get("installed")]
+    not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
     if state == "installed":
         return installed_plugins
 
@@ -39,17 +39,17 @@ def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "a
     # 插件市场插件清单
     market_plugins = []
     # 已安装插件IDS
-    _installed_ids = [plugin["id"] for plugin in installed_plugins]
+    _installed_ids = [plugin.id for plugin in installed_plugins]
     # 未安装的线上插件或者有更新的插件
     for plugin in online_plugins:
-        if plugin["id"] not in _installed_ids:
+        if plugin.id not in _installed_ids:
             market_plugins.append(plugin)
-        elif plugin.get("has_update"):
+        elif plugin.has_update:
             market_plugins.append(plugin)
     # 未安装的本地插件，且不在线上插件中
-    _plugin_ids = [plugin["id"] for plugin in market_plugins]
+    _plugin_ids = [plugin.id for plugin in market_plugins]
     for plugin in not_installed_plugins:
-        if plugin["id"] not in _plugin_ids:
+        if plugin.id not in _plugin_ids:
             market_plugins.append(plugin)
     # 返回插件清单
     if state == "market":

@@ -326,7 +326,10 @@ class TorrentHelper(metaclass=Singleton):
             return True
 
         # 匹配内容
-        content = f"{torrent_info.title} {torrent_info.description} {' '.join(torrent_info.labels or [])}"
+        content = (f"{torrent_info.title} "
+                   f"{torrent_info.description} "
+                   f"{' '.join(torrent_info.labels or [])} "
+                   f"{torrent_info.volume_factor}")
         
         # 最少做种人数
         min_seeders = filter_rule.get("min_seeders")

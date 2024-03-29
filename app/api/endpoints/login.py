@@ -30,35 +30,33 @@ async def login_access_token(
     获取认证Token
     """
     # 检查数据库
-    user = User.authenticate(
+    success, user = User.authenticate(
         db=db,
         name=form_data.username,
         password=form_data.password,
         otp_password=otp_password
     )
-    if not user:
-        # 请求协助认证
-        logger.warn(f"登录用户 {form_data.username} 本地用户名或密码不匹配，尝试辅助认证 ...")
-        token = UserChain().user_authenticate(form_data.username, form_data.password)
-        if not token:
-            logger.warn(f"用户 {form_data.username} 登录失败！")
-            raise HTTPException(status_code=401, detail="用户名、密码、二次校验不正确")
-        else:
-            logger.info(f"用户 {form_data.username} 辅助认证成功，用户信息: {token}，以普通用户登录...")
-            # 加入用户信息表
-            user = User.get_by_name(db=db, name=form_data.username)
-            if not user:
-                logger.info(f"用户不存在，创建用户: {form_data.username}")
+    if not success:
+        # 认证不成功
+        if not user:
+            # 未找到用户，请求协助认证
+            logger.warn(f"登录用户 {form_data.username} 本地不存在，尝试辅助认证 ...")
+            token = UserChain().user_authenticate(form_data.username, form_data.password)
+            if not token:
+                logger.warn(f"用户 {form_data.username} 登录失败！")
+                raise HTTPException(status_code=401, detail="用户名、密码、二次校验码不正确")
+            else:
+                logger.info(f"用户 {form_data.username} 辅助认证成功，用户信息: {token}，以普通用户登录...")
+                # 加入用户信息表
+                logger.info(f"创建用户: {form_data.username}")
                 user = User(name=form_data.username, is_active=True,
                             is_superuser=False, hashed_password=get_password_hash(token))
                 user.create(db)
-            else:
-                # 辅助验证用户若未启用，则禁止登录
-                if not user.is_active:
-                    raise HTTPException(status_code=403, detail="用户未启用")
-                # 普通用户权限
-                user.is_superuser = False
-    elif not user.is_active:
+        else:
+            # 用户存在，但认证失败
+            logger.warn(f"用户 {user.name} 登录失败！")
+            raise HTTPException(status_code=401, detail="用户名、密码或二次校验码不正确")
+    elif user and not user.is_active:
         raise HTTPException(status_code=403, detail="用户未启用")
     logger.info(f"用户 {user.name} 登录成功！")
     return schemas.Token(

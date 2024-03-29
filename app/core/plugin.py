@@ -3,6 +3,7 @@ import concurrent.futures
 import traceback
 from typing import List, Any, Dict, Tuple, Optional
 
+from app import schemas
 from app.core.config import settings
 from app.core.event import eventmanager
 from app.db.systemconfig_oper import SystemConfigOper
@@ -130,16 +131,16 @@ class PluginManager(metaclass=Singleton):
         # 支持更新的插件自动更新
         for plugin in online_plugins:
             # 只处理已安装的插件
-            if plugin.get("id") in install_plugins and not self.is_plugin_exists(plugin.get("id")):
+            if plugin.id in install_plugins and not self.is_plugin_exists(plugin.id):
                 # 下载安装
-                state, msg = self.pluginhelper.install(pid=plugin.get("id"),
-                                                       repo_url=plugin.get("repo_url"))
+                state, msg = self.pluginhelper.install(pid=plugin.id,
+                                                       repo_url=plugin.repo_url)
                 # 安装失败
                 if not state:
                     logger.error(
-                        f"插件 {plugin.get('plugin_name')} v{plugin.get('plugin_version')} 安装失败：{msg}")
+                        f"插件 {plugin.plugin_name} v{plugin.plugin_version} 安装失败：{msg}")
                     continue
-                logger.info(f"插件 {plugin.get('plugin_name')} 安装成功，版本：{plugin.get('plugin_version')}")
+                logger.info(f"插件 {plugin.plugin_name} 安装成功，版本：{plugin.plugin_version}")
         logger.info("第三方插件安装完成")
 
     def get_plugin_config(self, pid: str) -> dict:
@@ -204,7 +205,10 @@ class PluginManager(metaclass=Singleton):
         for _, plugin in self._running_plugins.items():
             if hasattr(plugin, "get_command") \
                     and ObjectUtils.check_method(plugin.get_command):
-                ret_commands += plugin.get_command() or []
+                try:
+                    ret_commands += plugin.get_command() or []
+                except Exception as e:
+                    logger.error(f"获取插件命令出错：{str(e)}")
         return ret_commands
 
     def get_plugin_apis(self) -> List[Dict[str, Any]]:
@@ -222,10 +226,13 @@ class PluginManager(metaclass=Singleton):
         for pid, plugin in self._running_plugins.items():
             if hasattr(plugin, "get_api") \
                     and ObjectUtils.check_method(plugin.get_api):
-                apis = plugin.get_api() or []
-                for api in apis:
-                    api["path"] = f"/{pid}{api['path']}"
-                ret_apis.extend(apis)
+                try:
+                    apis = plugin.get_api() or []
+                    for api in apis:
+                        api["path"] = f"/{pid}{api['path']}"
+                    ret_apis.extend(apis)
+                except Exception as e:
+                    logger.error(f"获取插件 {pid} API出错：{str(e)}")
         return ret_apis
 
     def get_plugin_services(self) -> List[Dict[str, Any]]:
@@ -243,9 +250,12 @@ class PluginManager(metaclass=Singleton):
         for pid, plugin in self._running_plugins.items():
             if hasattr(plugin, "get_service") \
                     and ObjectUtils.check_method(plugin.get_service):
-                services = plugin.get_service()
-                if services:
-                    ret_services.extend(services)
+                try:
+                    services = plugin.get_service()
+                    if services:
+                        ret_services.extend(services)
+                except Exception as e:
+                    logger.error(f"获取插件 {pid} 服务出错：{str(e)}")
         return ret_services
 
     def get_plugin_attr(self, pid: str, attr: str) -> Any:
@@ -280,11 +290,11 @@ class PluginManager(metaclass=Singleton):
         """
         return list(self._running_plugins.keys())
 
-    def get_online_plugins(self) -> List[dict]:
+    def get_online_plugins(self) -> List[schemas.Plugin]:
         """
         获取所有在线插件信息
         """
-        def __get_plugin_info(market: str) -> Optional[List[dict]]:
+        def __get_plugin_info(market: str) -> Optional[List[schemas.Plugin]]:
             """
             获取插件信息
             """
@@ -293,27 +303,27 @@ class PluginManager(metaclass=Singleton):
                 logger.warn(f"获取插件库失败：{market}")
                 return
             ret_plugins = []
-            for pid, plugin in online_plugins.items():
+            for pid, plugin_info in online_plugins.items():
                 # 运行状插件
                 plugin_obj = self._running_plugins.get(pid)
                 # 非运行态插件
                 plugin_static = self._plugins.get(pid)
                 # 基本属性
-                conf = {}
+                plugin = schemas.Plugin()
                 # ID
-                conf.update({"id": pid})
+                plugin.id = pid
                 # 安装状态
                 if pid in installed_apps and plugin_static:
-                    conf.update({"installed": True})
+                    plugin.installed = True
                 else:
-                    conf.update({"installed": False})
+                    plugin.installed = False
                 # 是否有新版本
-                conf.update({"has_update": False})
+                plugin.has_update = False
                 if plugin_static:
                     installed_version = getattr(plugin_static, "plugin_version")
-                    if StringUtils.compare_version(installed_version, plugin.get("version")) < 0:
+                    if StringUtils.compare_version(installed_version, plugin_info.get("version")) < 0:
                         # 需要更新
-                        conf.update({"has_update": True})
+                        plugin.has_update = True
                 # 运行状态
                 if plugin_obj and hasattr(plugin_obj, "get_state"):
                     try:
@@ -321,40 +331,40 @@ class PluginManager(metaclass=Singleton):
                     except Exception as e:
                         logger.error(f"获取插件 {pid} 状态出错：{str(e)}")
                         state = False
-                    conf.update({"state": state})
+                    plugin.state = state
                 else:
-                    conf.update({"state": False})
+                    plugin.state = False
                 # 是否有详情页面
-                conf.update({"has_page": False})
+                plugin.has_page = False
                 if plugin_obj and hasattr(plugin_obj, "get_page"):
                     if ObjectUtils.check_method(plugin_obj.get_page):
-                        conf.update({"has_page": True})
+                        plugin.has_page = True
                 # 权限
-                if plugin.get("level"):
-                    conf.update({"auth_level": plugin.get("level")})
-                    if self.siteshelper.auth_level < plugin.get("level"):
+                if plugin_info.get("level"):
+                    plugin.auth_level = plugin_info.get("level")
+                    if self.siteshelper.auth_level < plugin.auth_level:
                         continue
                 # 名称
-                if plugin.get("name"):
-                    conf.update({"plugin_name": plugin.get("name")})
+                if plugin_info.get("name"):
+                    plugin.plugin_name = plugin_info.get("name")
                 # 描述
-                if plugin.get("description"):
-                    conf.update({"plugin_desc": plugin.get("description")})
+                if plugin_info.get("description"):
+                    plugin.plugin_desc = plugin_info.get("description")
                 # 版本
-                if plugin.get("version"):
-                    conf.update({"plugin_version": plugin.get("version")})
+                if plugin_info.get("version"):
+                    plugin.plugin_version = plugin_info.get("version")
                 # 图标
-                if plugin.get("icon"):
-                    conf.update({"plugin_icon": plugin.get("icon")})
+                if plugin_info.get("icon"):
+                    plugin.plugin_icon = plugin_info.get("icon")
                 # 作者
-                if plugin.get("author"):
-                    conf.update({"plugin_author": plugin.get("author")})
+                if plugin_info.get("author"):
+                    plugin.plugin_author = plugin_info.get("author")
                 # 仓库链接
-                conf.update({"repo_url": market})
+                plugin.repo_url = market
                 # 本地标志
-                conf.update({"is_local": False})
+                plugin.is_local = False
                 # 汇总
-                ret_plugins.append(conf)
+                ret_plugins.append(plugin)
 
             return ret_plugins
 
@@ -375,39 +385,39 @@ class PluginManager(metaclass=Singleton):
                     all_plugins.extend(plugins)
         # 所有插件按repo在设置中的顺序排序
         all_plugins.sort(
-            key=lambda x: settings.PLUGIN_MARKET.split(",").index(x.get("repo_url")) if x.get("repo_url") else 0
+            key=lambda x: settings.PLUGIN_MARKET.split(",").index(x.repo_url) if x.repo_url else 0
         )
         # 按插件ID和版本号去重，相同插件以前面的为准
         result = []
         _dup = []
         for p in all_plugins:
-            key = f"{p.get('id')}v{p.get('plugin_version')}"
+            key = f"{p.id}v{p.plugin_version}"
             if key not in _dup:
                 _dup.append(key)
                 result.append(p)
         logger.info(f"共获取到 {len(result)} 个第三方插件")
         return result
 
-    def get_local_plugins(self) -> List[dict]:
+    def get_local_plugins(self) -> List[schemas.Plugin]:
         """
         获取所有本地已下载的插件信息
         """
         # 返回值
-        all_confs = []
+        plugins = []
         # 已安装插件
         installed_apps = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
-        for pid, plugin in self._plugins.items():
+        for pid, plugin_class in self._plugins.items():
             # 运行状插件
             plugin_obj = self._running_plugins.get(pid)
             # 基本属性
-            conf = {}
+            plugin = schemas.Plugin()
             # ID
-            conf.update({"id": pid})
+            plugin.id = pid
             # 安装状态
             if pid in installed_apps:
-                conf.update({"installed": True})
+                plugin.installed = True
             else:
-                conf.update({"installed": False})
+                plugin.installed = False
             # 运行状态
             if plugin_obj and hasattr(plugin_obj, "get_state"):
                 try:
@@ -415,45 +425,45 @@ class PluginManager(metaclass=Singleton):
                 except Exception as e:
                     logger.error(f"获取插件 {pid} 状态出错：{str(e)}")
                     state = False
-                conf.update({"state": state})
+                plugin.state = state
             else:
-                conf.update({"state": False})
+                plugin.state = False
             # 是否有详情页面
-            if hasattr(plugin, "get_page"):
-                if ObjectUtils.check_method(plugin.get_page):
-                    conf.update({"has_page": True})
+            if hasattr(plugin_class, "get_page"):
+                if ObjectUtils.check_method(plugin_class.get_page):
+                    plugin.has_page = True
                 else:
-                    conf.update({"has_page": False})
+                    plugin.has_page = False
             # 权限
-            if hasattr(plugin, "auth_level"):
-                conf.update({"auth_level": plugin.auth_level})
+            if hasattr(plugin_class, "auth_level"):
+                plugin.auth_level = plugin_class.auth_level
                 if self.siteshelper.auth_level < plugin.auth_level:
                     continue
             # 名称
-            if hasattr(plugin, "plugin_name"):
-                conf.update({"plugin_name": plugin.plugin_name})
+            if hasattr(plugin_class, "plugin_name"):
+                plugin.plugin_name = plugin_class.plugin_name
             # 描述
-            if hasattr(plugin, "plugin_desc"):
-                conf.update({"plugin_desc": plugin.plugin_desc})
+            if hasattr(plugin_class, "plugin_desc"):
+                plugin.plugin_desc = plugin_class.plugin_desc
             # 版本
-            if hasattr(plugin, "plugin_version"):
-                conf.update({"plugin_version": plugin.plugin_version})
+            if hasattr(plugin_class, "plugin_version"):
+                plugin.plugin_version = plugin_class.plugin_version
             # 图标
-            if hasattr(plugin, "plugin_icon"):
-                conf.update({"plugin_icon": plugin.plugin_icon})
+            if hasattr(plugin_class, "plugin_icon"):
+                plugin.plugin_icon = plugin_class.plugin_icon
             # 作者
-            if hasattr(plugin, "plugin_author"):
-                conf.update({"plugin_author": plugin.plugin_author})
+            if hasattr(plugin_class, "plugin_author"):
+                plugin.plugin_author = plugin_class.plugin_author
             # 作者链接
-            if hasattr(plugin, "author_url"):
-                conf.update({"author_url": plugin.author_url})
+            if hasattr(plugin_class, "author_url"):
+                plugin.author_url = plugin_class.author_url
             # 是否需要更新
-            conf.update({"has_update": False})
+            plugin.has_update = False
             # 本地标志
-            conf.update({"is_local": True})
+            plugin.is_local = True
             # 汇总
-            all_confs.append(conf)
-        return all_confs
+            plugins.append(plugin)
+        return plugins
 
     @staticmethod
     def is_plugin_exists(pid: str) -> bool:
