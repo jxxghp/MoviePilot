@@ -12,7 +12,7 @@ from app.chain.search import SearchChain
 from app.chain.torrents import TorrentsChain
 from app.core.config import settings
 from app.core.context import TorrentInfo, Context, MediaInfo
-from app.core.event import eventmanager, Event
+from app.core.event import eventmanager, Event, EventManager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.models.subscribe import Subscribe
@@ -153,6 +153,12 @@ class SubscribeChain(ChainBase):
                                            title=f"{mediainfo.title_year} {metainfo.season} 已添加订阅",
                                            text=text,
                                            image=mediainfo.get_message_image()))
+            # 发送事件
+            EventManager().send_event(EventType.SubscribeAdded, {
+                "subscribe_id": sid,
+                "username": username,
+                "mediainfo": mediainfo.to_dict(),
+            })
         # 返回结果
         return sid, ""
 
@@ -361,6 +367,11 @@ class SubscribeChain(ChainBase):
             self.post_message(Notification(mtype=NotificationType.Subscribe,
                                            title=f'{mediainfo.title_year} {meta.season} 已洗版完成',
                                            image=mediainfo.get_message_image()))
+            # 发送事件
+            EventManager().send_event(EventType.SubscribeComplete, {
+                "subscribe_id": subscribe.id,
+                "mediainfo": mediainfo.to_dict(),
+            })
         else:
             # 正在洗版，更新资源优先级
             logger.info(f'{mediainfo.title_year} 正在洗版，更新资源优先级为 {priority}')
@@ -391,6 +402,11 @@ class SubscribeChain(ChainBase):
                 self.post_message(Notification(mtype=NotificationType.Subscribe,
                                                title=f'{mediainfo.title_year} {meta.season} 已完成订阅',
                                                image=mediainfo.get_message_image()))
+                # 发送事件
+                EventManager().send_event(EventType.SubscribeComplete, {
+                    "subscribe_id": subscribe.id,
+                    "mediainfo": mediainfo.to_dict(),
+                })
             elif downloads and meta.type == MediaType.TV:
                 # 电视剧更新已下载集数
                 self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
