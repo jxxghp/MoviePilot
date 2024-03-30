@@ -55,6 +55,8 @@ install_backend_and_download_resources() {
                         cp -a /plugins/* /app/app/plugins/
                         # 插件仓库
                         rsync -av --remove-source-files /tmp/Plugins/plugins/* /app/app/plugins/
+                        # 提前安装插件依赖
+                        find /app/app/plugins -name requirements.txt -exec pip install ${PIP_OPTIONS} -r {} \;
                         # 清理临时目录
                         rm -rf /tmp/*
                         echo "插件更新成功"
