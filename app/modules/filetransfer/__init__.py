@@ -726,7 +726,11 @@ class FileTransferModule(_ModuleBase):
                 try:
                     # 计算in_path和path的公共字符串长度
                     relative = StringUtils.find_common_prefix(str(in_path), str(path))
+                    if len(str(path)) == len(relative):
+                        # 目录完整匹配的，直接返回
+                        return path
                     if len(relative) > max_length:
+                        # 更新最大长度
                         max_length = len(relative)
                         target_path = path
                 except Exception as e:
