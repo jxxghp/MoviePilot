@@ -130,7 +130,18 @@ class SubscribeChain(ChainBase):
         if bangumiid:
             mediainfo.bangumi_id = bangumiid
         # 添加订阅
-        sid, err_msg = self.subscribeoper.add(mediainfo, season=season, username=username, **kwargs)
+        kwargs.update({
+            'quality': self.__get_default_subscribe_config(mtype, "quality"),
+            'resolution': self.__get_default_subscribe_config(mtype, "resolution"),
+            'effect': self.__get_default_subscribe_config(mtype, "effect"),
+            'include': self.__get_default_subscribe_config(mtype, "include"),
+            'exclude': self.__get_default_subscribe_config(mtype, "exclude"),
+            'best_version': self.__get_default_subscribe_config(mtype, "best_version"),
+            'search_imdbid': self.__get_default_subscribe_config(mtype, "search_imdbid"),
+            'sites': self.__get_default_subscribe_config(mtype, "sites") or None,
+            'save_path': self.__get_default_subscribe_config(mtype, "save_path"),
+        })
+        sid, err_msg = self.subscribeoper.add(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
@@ -589,7 +600,8 @@ class SubscribeChain(ChainBase):
                         if torrent_mediainfo.douban_id \
                                 and torrent_mediainfo.douban_id != mediainfo.douban_id:
                             continue
-                        logger.info(f'{mediainfo.title_year} 通过媒体信ID匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
+                        logger.info(
+                            f'{mediainfo.title_year} 通过媒体信ID匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
                     else:
                         # 按标题匹配
                         # 比对种子识别类型
@@ -637,7 +649,8 @@ class SubscribeChain(ChainBase):
                         if not title_match:
                             continue
                         # 标题匹配成功
-                        logger.info(f'{mediainfo.title_year} 通过名称匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
+                        logger.info(
+                            f'{mediainfo.title_year} 通过名称匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
 
                     # 优先级过滤规则
                     if subscribe.best_version:
@@ -1011,3 +1024,24 @@ class SubscribeChain(ChainBase):
             self.subscribeoper.update(subscribe.id, {
                 "sites": json.dumps(sites)
             })
+
+    @staticmethod
+    def __get_default_subscribe_config(mtype: MediaType, default_config_key: str):
+        """
+        获取默认订阅配置
+        """
+        default_subscribe_key = None
+        if mtype == MediaType.TV:
+            default_subscribe_key = "DefaultTvSubscribeConfig"
+        if mtype == MediaType.MOVIE:
+            default_subscribe_key = "DefaultMovieSubscribeConfig"
+
+        # 默认订阅规则
+        if hasattr(settings, default_subscribe_key):
+            value = getattr(settings, default_subscribe_key)
+        else:
+            value = SystemConfigOper().get(default_subscribe_key)
+
+        if not value:
+            return None
+        return value[default_config_key] or None
