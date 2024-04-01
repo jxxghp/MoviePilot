@@ -414,3 +414,23 @@ class Scheduler(metaclass=Singleton):
                 self._scheduler = None
         except Exception as e:
             logger.error(f"停止定时任务失败：：{str(e)} - {traceback.format_exc()}")
+
+    def remove_id_job(self, id: str) -> bool:
+        """
+        移除指定id定时任务
+        :param id: id
+        :return: True or False
+        """
+        if not self._scheduler:
+            return
+        with self._lock:
+            try:
+                self._scheduler.remove_job(id)
+                logger.info(f"移除定时任务 {id} 成功")
+                return True
+            except JobLookupError:
+                logger.info(f"未找到定时任务 {id}")
+                return False
+            except Exception as e:
+                logger.error(f"移除定时任务失败：{str(e)}")
+                return False
