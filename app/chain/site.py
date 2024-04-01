@@ -150,9 +150,13 @@ class SiteChain(ChainBase):
             logger.error(f"获取站点图标失败：{favicon_url}")
         return favicon_url, None
 
-    def sync_cookies(self, manual=False) -> Tuple[bool, str]:
+    def sync_cookies(self, manual=False, custom_cookie = None) -> Tuple[bool, str]:
         """
-        通过CookieCloud同步站点Cookie
+        通过CookieCloud或自定义cookies同步站点Cookie
+
+        :param manual: 是否存消息, defaults to False
+        :param custom_cookie: (自定义cookies, 错误信息), defaults to None
+        :return: (True or False, ret_msg)
         """
 
         def __indexer_domain(inx: dict, sub_domain: str) -> str:
@@ -166,12 +170,19 @@ class SiteChain(ChainBase):
                     return ext_d
             return sub_domain
 
-        logger.info("开始同步CookieCloud站点 ...")
-        cookies, msg = self.cookiecloud.download()
+        logger.info("开始同步站点 ...")
+        if custom_cookie == None:
+            logger.info('使用【CookieCloud】')
+            sync_cookie_name = 'CookieCloud'
+            cookies, msg = self.cookiecloud.download()
+        else:
+            logger.info('使用【custom_cookie】')
+            sync_cookie_name = 'custom_cookie'
+            cookies, msg = custom_cookie
         if not cookies:
-            logger.error(f"CookieCloud同步失败：{msg}")
+            logger.error(f"同步失败：{msg}")
             if manual:
-                self.message.put(f"CookieCloud同步失败： {msg}")
+                self.message.put(f"同步失败： {msg}")
             return False, msg
         # 保存Cookie或新增站点
         _update_count = 0
@@ -187,7 +198,7 @@ class SiteChain(ChainBase):
                 status, msg = self.test(domain)
                 # 更新站点Cookie
                 if status:
-                    logger.info(f"站点【{site_info.name}】连通性正常，不同步CookieCloud数据")
+                    logger.info(f"站点【{site_info.name}】连通性正常，不同步{sync_cookie_name}数据")
                     # 更新站点rss地址
                     if not site_info.public and not site_info.rss:
                         # 自动生成rss地址
@@ -259,8 +270,8 @@ class SiteChain(ChainBase):
         if _fail_count > 0:
             ret_msg += f"，{_fail_count}个站点添加失败，下次同步时将重试，也可以手动添加"
         if manual:
-            self.message.put(f"CookieCloud同步成功, {ret_msg}")
-        logger.info(f"CookieCloud同步成功：{ret_msg}")
+            self.message.put(f"{sync_cookie_name}同步成功, {ret_msg}")
+        logger.info(f"{sync_cookie_name}同步成功：{ret_msg}")
         return True, ret_msg
 
     @eventmanager.register(EventType.SiteUpdated)
