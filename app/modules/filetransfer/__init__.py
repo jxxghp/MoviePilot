@@ -663,7 +663,7 @@ class FileTransferModule(_ModuleBase):
             # 段/节
             "part": meta.part,
             # 剧集标题
-            "episode_title": episode_title,
+            "episode_title": __convert_invalid_characters(episode_title),
             # 文件后缀
             "fileExt": file_ext,
             # 自定义占位符
