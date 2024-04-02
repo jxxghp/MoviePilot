@@ -1044,4 +1044,4 @@ class SubscribeChain(ChainBase):
 
         if not value:
             return None
-        return value[default_config_key] or None
+        return value.get(default_config_key) or None
