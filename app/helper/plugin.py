@@ -34,7 +34,7 @@ class PluginHelper(metaclass=Singleton):
             if self.install_report():
                 self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
 
-    @cached(cache=TTLCache(maxsize=100, ttl=1800))
+    @cached(cache=TTLCache(maxsize=300, ttl=1800))
     def get_plugins(self, repo_url: str) -> Dict[str, dict]:
         """
         获取Github所有最新插件列表
