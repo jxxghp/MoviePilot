@@ -44,9 +44,10 @@ class PluginManager(metaclass=Singleton):
         # 启动插件
         self.start()
 
-    def start(self):
+    def start(self, pid: str = None):
         """
         启动加载插件
+        :param pid: 插件ID，为空加载所有插件
         """
         # 扫描插件目录
         plugins = ModuleHelper.load(
@@ -57,10 +58,10 @@ class PluginManager(metaclass=Singleton):
         installed_plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
         # 排序
         plugins.sort(key=lambda x: x.plugin_order if hasattr(x, "plugin_order") else 0)
-        self._running_plugins = {}
-        self._plugins = {}
         for plugin in plugins:
             plugin_id = plugin.__name__
+            if pid and plugin_id != pid:
+                continue
             try:
                 # 存储Class
                 self._plugins[plugin_id] = plugin
@@ -84,9 +85,11 @@ class PluginManager(metaclass=Singleton):
             except Exception as err:
                 logger.error(f"加载插件 {plugin_id} 出错：{str(err)} - {traceback.format_exc()}")
 
-    def reload_plugin(self, plugin_id: str, conf: dict):
+    def init_plugin(self, plugin_id: str, conf: dict):
         """
-        重新加载插件
+        初始化插件
+        :param plugin_id: 插件ID
+        :param conf: 插件配置
         """
         if not self._running_plugins.get(plugin_id):
             return
@@ -98,21 +101,57 @@ class PluginManager(metaclass=Singleton):
             # 设置事件状态为不可用
             eventmanager.disable_events_hander(plugin_id)
 
-    def stop(self):
+    def stop(self, pid: str = None):
         """
-        停止
+        停止插件服务
+        :param pid: 插件ID，为空停止所有插件
         """
-        # 停止所有插件
-        for plugin in self._running_plugins.values():
-            # 关闭数据库
-            if hasattr(plugin, "close"):
-                plugin.close()
-            # 关闭插件
-            if hasattr(plugin, "stop_service"):
-                plugin.stop_service()
+        # 停止插件
+        for plugin_id, plugin in self._running_plugins.items():
+            if pid and plugin_id != pid:
+                continue
+            self.__stop_plugin(plugin)
         # 清空对像
-        self._plugins = {}
-        self._running_plugins = {}
+        if pid:
+            # 清空指定插件
+            if pid in self._running_plugins:
+                self._running_plugins.pop(pid)
+            if pid in self._plugins:
+                self._plugins.pop(pid)
+        else:
+            # 清空
+            self._plugins = {}
+            self._running_plugins = {}
+
+    @staticmethod
+    def __stop_plugin(plugin: Any):
+        """
+        停止插件
+        :param plugin: 插件实例
+        """
+        # 关闭数据库
+        if hasattr(plugin, "close"):
+            plugin.close()
+        # 关闭插件
+        if hasattr(plugin, "stop_service"):
+            plugin.stop_service()
+
+    def remove_plugin(self, plugin_id: str):
+        """
+        从内存中移除一个插件
+        :param plugin_id: 插件ID
+        """
+        self.stop(plugin_id)
+
+    def reload_plugin(self, plugin_id: str):
+        """
+        将一个插件重新加载到内存
+        :param plugin_id: 插件ID
+        """
+        # 先移除
+        self.stop(plugin_id)
+        # 重新加载
+        self.start(plugin_id)
 
     def install_online_plugin(self):
         """
@@ -146,6 +185,7 @@ class PluginManager(metaclass=Singleton):
     def get_plugin_config(self, pid: str) -> dict:
         """
         获取插件配置
+        :param pid: 插件ID
         """
         if not self._plugins.get(pid):
             return {}
@@ -158,6 +198,8 @@ class PluginManager(metaclass=Singleton):
     def save_plugin_config(self, pid: str, conf: dict) -> bool:
         """
         保存插件配置
+        :param pid: 插件ID
+        :param conf: 配置
         """
         if not self._plugins.get(pid):
             return False
@@ -166,6 +208,7 @@ class PluginManager(metaclass=Singleton):
     def delete_plugin_config(self, pid: str) -> bool:
         """
         删除插件配置
+        :param pid: 插件ID
         """
         if not self._plugins.get(pid):
             return False
@@ -174,6 +217,7 @@ class PluginManager(metaclass=Singleton):
     def get_plugin_form(self, pid: str) -> Tuple[List[dict], Dict[str, Any]]:
         """
         获取插件表单
+        :param pid: 插件ID
         """
         if not self._running_plugins.get(pid):
             return [], {}
@@ -184,6 +228,7 @@ class PluginManager(metaclass=Singleton):
     def get_plugin_page(self, pid: str) -> List[dict]:
         """
         获取插件页面
+        :param pid: 插件ID
         """
         if not self._running_plugins.get(pid):
             return []
@@ -261,6 +306,8 @@ class PluginManager(metaclass=Singleton):
     def get_plugin_attr(self, pid: str, attr: str) -> Any:
         """
         获取插件属性
+        :param pid: 插件ID
+        :param attr: 属性名
         """
         if not self._running_plugins.get(pid):
             return None
@@ -271,6 +318,10 @@ class PluginManager(metaclass=Singleton):
     def run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
         """
         运行插件方法
+        :param pid: 插件ID
+        :param method: 方法名
+        :param args: 参数
+        :param kwargs: 关键字参数
         """
         if not self._running_plugins.get(pid):
             return None
@@ -294,6 +345,7 @@ class PluginManager(metaclass=Singleton):
         """
         获取所有在线插件信息
         """
+
         def __get_plugin_info(market: str) -> Optional[List[schemas.Plugin]]:
             """
             获取插件信息
@@ -468,7 +520,8 @@ class PluginManager(metaclass=Singleton):
     @staticmethod
     def is_plugin_exists(pid: str) -> bool:
         """
-        判断插件是否存在
+        判断插件是否在本地文件系统存在
+        :param pid: 插件ID
         """
         if not pid:
             return False

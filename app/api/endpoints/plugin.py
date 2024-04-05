@@ -99,8 +99,8 @@ def install(plugin_id: str,
         SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
         # 统计
         PluginHelper().install_reg(plugin_id)
-    # 重载插件管理器
-    PluginManager().init_config()
+    # 加载插件到内存
+    PluginManager().reload_plugin(plugin_id)
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
     return schemas.Response(success=True)
@@ -135,7 +135,7 @@ def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)
     # 删除配置
     PluginManager().delete_plugin_config(plugin_id)
     # 重新生效插件
-    PluginManager().reload_plugin(plugin_id, {})
+    PluginManager().init_plugin(plugin_id, {})
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
     return schemas.Response(success=True)
@@ -158,7 +158,7 @@ def set_plugin_config(plugin_id: str, conf: dict,
     # 保存配置
     PluginManager().save_plugin_config(plugin_id, conf)
     # 重新生效插件
-    PluginManager().reload_plugin(plugin_id, conf)
+    PluginManager().init_plugin(plugin_id, conf)
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
     return schemas.Response(success=True)
@@ -178,8 +178,8 @@ def uninstall_plugin(plugin_id: str,
             break
     # 保存
     SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
-    # 重载插件管理器
-    PluginManager().init_config()
+    # 移除插件
+    PluginManager().remove_plugin(plugin_id)
     # 移除插件服务
     Scheduler().remove_plugin_job(plugin_id)
     return schemas.Response(success=True)
