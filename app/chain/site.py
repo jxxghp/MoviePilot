@@ -64,8 +64,9 @@ class SiteChain(ChainBase):
         """
         # 获取token
         token = None
+        user_agent = site.ua or settings.USER_AGENT
         res = RequestUtils(
-            ua=site.ua,
+            ua=user_agent,
             cookies=site.cookie,
             proxies=settings.PROXY if site.proxy else None,
             timeout=15
@@ -81,7 +82,7 @@ class SiteChain(ChainBase):
             headers={
                 'X-CSRF-TOKEN': token,
                 "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": f"{site.ua}"
+                "User-Agent": f"{user_agent}"
             },
             cookies=site.cookie,
             proxies=settings.PROXY if site.proxy else None,
@@ -98,9 +99,10 @@ class SiteChain(ChainBase):
         """
         判断站点是否已经登陆：m-team
         """
+        user_agent = site.ua or settings.USER_AGENT
         url = f"{site.url}api/member/profile"
         res = RequestUtils(
-            ua=site.ua,
+            ua=user_agent,
             cookies=site.cookie,
             proxies=settings.PROXY if site.proxy else None,
             timeout=15
@@ -110,7 +112,7 @@ class SiteChain(ChainBase):
             if user_info and user_info.get("data"):
                 # 更新最后访问时间
                 res = RequestUtils(cookies=site.cookie,
-                                   ua=site.ua,
+                                   ua=user_agent,
                                    timeout=60,
                                    proxies=settings.PROXY if site.proxy else None,
                                    referer=f"{site.url}index"
@@ -194,7 +196,7 @@ class SiteChain(ChainBase):
                         rss_url, errmsg = self.rsshelper.get_rss_link(
                             url=site_info.url,
                             cookie=cookie,
-                            ua=settings.USER_AGENT,
+                            ua=site_info.ua or settings.USER_AGENT,
                             proxy=True if site_info.proxy else False
                         )
                         if rss_url:
@@ -347,7 +349,7 @@ class SiteChain(ChainBase):
             # 通用站点测试
             site_url = site_info.url
             site_cookie = site_info.cookie
-            ua = site_info.ua
+            ua = site_info.ua or settings.USER_AGENT
             render = site_info.render
             public = site_info.public
             proxies = settings.PROXY if site_info.proxy else None
