@@ -192,34 +192,47 @@ class SearchChain(ChainBase):
                                                      str(int(mediainfo.year) + 1)]:
                             logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
                             continue
+                # 识别的中英文名
+                meta_names = {
+                        StringUtils.clear_upper(torrent_meta.cn_name),
+                        StringUtils.clear_upper(torrent_meta.en_name)
+                    } - {""}
                 # 比对标题和原语种标题
-                meta_name = StringUtils.clear_upper(torrent_meta.name)
-                if meta_name in [
-                    StringUtils.clear_upper(mediainfo.title),
-                    StringUtils.clear_upper(mediainfo.original_title)
-                ]:
+                if meta_names.intersection(
+                        {
+                            StringUtils.clear_upper(mediainfo.title),
+                            StringUtils.clear_upper(mediainfo.original_title)
+                        }
+                ):
                     logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}')
                     _match_torrents.append(torrent)
                     continue
+                # 在标题中判断是否存在标题与原语种标题
+                if torrent.title:
+                    titles = re.split(r'[\s/【】.\[\]\-]+', torrent.title)
+                    if str(mediainfo.title) in titles \
+                            or str(mediainfo.original_title) in titles:
+                        logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}，'
+                                    f'标题：{torrent.title}')
+                        _match_torrents.append(torrent)
+                        continue
                 # 在副标题中判断是否存在标题与原语种标题
                 if torrent.description:
-                    subtitle = re.split(r'[\s/|]+', torrent.description)
-                    if (StringUtils.is_chinese(mediainfo.title)
-                        and str(mediainfo.title) in subtitle) \
-                            or (StringUtils.is_chinese(mediainfo.original_title)
-                                and str(mediainfo.original_title) in subtitle):
+                    subtitles = re.split(r'[\s/|]+', torrent.description)
+                    if str(mediainfo.title) in subtitles \
+                            or str(mediainfo.original_title) in subtitles:
                         logger.info(f'{mediainfo.title} 通过副标题匹配到资源：{torrent.site_name} - {torrent.title}，'
                                     f'副标题：{torrent.description}')
                         _match_torrents.append(torrent)
                         continue
                 # 比对别名和译名
-                for name in mediainfo.names:
-                    if StringUtils.clear_upper(name) == meta_name:
-                        logger.info(f'{mediainfo.title} 通过别名或译名匹配到资源：{torrent.site_name} - {torrent.title}')
-                        _match_torrents.append(torrent)
-                        break
-                else:
-                    logger.warn(f'{torrent.site_name} - {torrent.title} 标题不匹配')
+                if meta_names.intersection(set(mediainfo.names)):
+                    logger.info(f'{mediainfo.title} 通过别名或译名匹配到资源：{torrent.site_name} - {torrent.title}')
+                    _match_torrents.append(torrent)
+                    continue
+                # 未匹配
+                logger.warn(f'{torrent.site_name} - {torrent.title} 标题不匹配')
+            # 匹配完成
             logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
             self.progress.update(value=97,
                                  text=f'匹配完成，共匹配到 {len(_match_torrents)} 个资源',
