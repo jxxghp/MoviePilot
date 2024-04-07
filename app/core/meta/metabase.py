@@ -75,8 +75,8 @@ class MetaBase(object):
     def __init__(self, title: str, subtitle: str = None, isfile: bool = False):
         if not title:
             return
-        self.org_string = title
-        self.subtitle = subtitle
+        self.org_string = title.strip() if title else None
+        self.subtitle = subtitle.strip() if subtitle else None
         self.isfile = isfile
 
     @property
