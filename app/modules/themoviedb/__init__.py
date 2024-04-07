@@ -75,59 +75,69 @@ class TheMovieDbModule(_ModuleBase):
             return None
 
         if not meta:
+            # 未提供元数据时，直接使用tmdbid查询，不使用缓存
             cache_info = {}
         elif not meta.name:
             logger.warn("识别媒体信息时未提供元数据名称")
             return None
         else:
+            # 读取缓存
             if mtype:
                 meta.type = mtype
             if tmdbid:
                 meta.tmdbid = tmdbid
-            # 读取缓存
             cache_info = self.cache.get(meta)
+
+        # 识别匹配
         if not cache_info or not cache:
             # 缓存没有或者强制不使用缓存
             if tmdbid:
                 # 直接查询详情
                 info = self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
             elif meta:
-                if meta.begin_season:
-                    logger.info(f"正在识别 {meta.name} 第{meta.begin_season}季 ...")
-                else:
-                    logger.info(f"正在识别 {meta.name} ...")
-                if meta.type == MediaType.UNKNOWN and not meta.year:
-                    info = self.tmdb.match_multi(meta.name)
-                else:
-                    if meta.type == MediaType.TV:
-                        # 确定是电视
-                        info = self.tmdb.match(name=meta.name,
-                                               year=meta.year,
-                                               mtype=meta.type,
-                                               season_year=meta.year,
-                                               season_number=meta.begin_season)
-                        if not info:
-                            # 去掉年份再查一次
-                            info = self.tmdb.match(name=meta.name,
-                                                   mtype=meta.type)
+                info = {}
+                # 使用中英文名分别识别
+                names = {meta.cn_name, meta.en_name} - {None}
+                for name in names:
+                    if meta.begin_season:
+                        logger.info(f"正在识别 {name} 第{meta.begin_season}季 ...")
                     else:
-                        # 有年份先按电影查
-                        info = self.tmdb.match(name=meta.name,
-                                               year=meta.year,
-                                               mtype=MediaType.MOVIE)
-                        # 没有再按电视剧查
-                        if not info:
-                            info = self.tmdb.match(name=meta.name,
+                        logger.info(f"正在识别 {name} ...")
+                    if meta.type == MediaType.UNKNOWN and not meta.year:
+                        info = self.tmdb.match_multi(name)
+                    else:
+                        if meta.type == MediaType.TV:
+                            # 确定是电视
+                            info = self.tmdb.match(name=name,
                                                    year=meta.year,
-                                                   mtype=MediaType.TV)
-                        if not info:
-                            # 去掉年份和类型再查一次
-                            info = self.tmdb.match_multi(name=meta.name)
+                                                   mtype=meta.type,
+                                                   season_year=meta.year,
+                                                   season_number=meta.begin_season)
+                            if not info:
+                                # 去掉年份再查一次
+                                info = self.tmdb.match(name=name,
+                                                       mtype=meta.type)
+                        else:
+                            # 有年份先按电影查
+                            info = self.tmdb.match(name=name,
+                                                   year=meta.year,
+                                                   mtype=MediaType.MOVIE)
+                            # 没有再按电视剧查
+                            if not info:
+                                info = self.tmdb.match(name=name,
+                                                       year=meta.year,
+                                                       mtype=MediaType.TV)
+                            if not info:
+                                # 去掉年份和类型再查一次
+                                info = self.tmdb.match_multi(name=name)
 
-                if not info:
-                    # 从网站查询
-                    info = self.tmdb.match_web(name=meta.name,
-                                               mtype=meta.type)
+                    if not info:
+                        # 从网站查询
+                        info = self.tmdb.match_web(name=name,
+                                                   mtype=meta.type)
+                    if info:
+                        # 查到就退出
+                        break
                 # 补充全量信息
                 if info and not info.get("genres"):
                     info = self.tmdb.get_info(mtype=info.get("media_type"),
@@ -135,6 +145,7 @@ class TheMovieDbModule(_ModuleBase):
             else:
                 logger.error("识别媒体信息时未提供元数据或tmdbid")
                 return None
+
             # 保存到缓存
             if meta:
                 self.cache.update(meta, info)
