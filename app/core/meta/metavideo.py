@@ -144,7 +144,7 @@ class MetaVideo(MetaBase):
             if self.__is_pinyin(self.en_name):
                 # 英文名是拼音
                 cn_name = self.__get_title_from_description(self.subtitle)
-                if len(cn_name) == len(self.en_name.split()):
+                if cn_name and len(cn_name) == len(self.en_name.split()):
                     # 中文名和拼音单词数相同，认为是中文名
                     self.cn_name = cn_name
         # 制作组/字幕组
