@@ -356,7 +356,7 @@ class SiteChain(ChainBase):
                 return self.special_site_test[domain](site_info)
 
             # 通用站点测试
-            self.__test(site_info)
+            return self.__test(site_info)
         except Exception as e:
             return False, f"{str(e)}！"
 
