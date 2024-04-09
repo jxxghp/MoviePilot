@@ -151,7 +151,7 @@ class SearchChain(ChainBase):
         _count = 0
         if mediainfo:
             # 英文标题应该在别名/原标题中，不需要再匹配
-            logger.info(f"标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
+            logger.info(f"开始匹配结果 标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
             self.progress.update(value=0, text=f'开始匹配，总 {_total} 个资源 ...', key=ProgressKey.Search)
             for torrent in torrents:
                 _count += 1
@@ -235,7 +235,7 @@ class SearchChain(ChainBase):
                         _match_torrents.append(torrent)
                         continue
                 # 未匹配
-                logger.warn(f'{torrent.site_name} - {torrent.title} 标题不匹配')
+                logger.warn(f'{torrent.site_name} - {torrent.title} 标题不匹配，识别名称：{media_names}')
             # 匹配完成
             logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
             self.progress.update(value=97,
