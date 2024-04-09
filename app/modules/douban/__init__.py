@@ -86,8 +86,8 @@ class DoubanModule(_ModuleBase):
                 info = self.douban_info(doubanid=doubanid, mtype=mtype or meta.type)
             elif meta:
                 info = {}
-                # 使用中英文名分别识别
-                names = {meta.cn_name, meta.en_name} - {None}
+                # 使用中英文名分别识别，去重去空，但要保持顺序
+                names = list(dict.fromkeys([k for k in [meta.cn_name, meta.en_name] if k]))
                 for name in names:
                     if meta.begin_season:
                         logger.info(f"正在识别 {name} 第{meta.begin_season}季 ...")

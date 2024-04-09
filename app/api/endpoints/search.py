@@ -21,7 +21,7 @@ async def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return [torrent.to_dict() for torrent in torrents]
 
 
-@router.get("/media/{mediaid}", summary="精确搜索资源", response_model=List[schemas.Context])
+@router.get("/media/{mediaid}", summary="精确搜索资源", response_model=schemas.Response)
 def search_by_id(mediaid: str,
                  mtype: str = None,
                  area: str = "title",
@@ -40,6 +40,8 @@ def search_by_id(mediaid: str,
             if doubaninfo:
                 torrents = SearchChain().search_by_id(doubanid=doubaninfo.get("id"),
                                                       mtype=mtype, area=area)
+            else:
+                return schemas.Response(success=False, message="未识别到豆瓣媒体信息")
         else:
             torrents = SearchChain().search_by_id(tmdbid=tmdbid, mtype=mtype, area=area)
     elif mediaid.startswith("douban:"):
@@ -50,6 +52,8 @@ def search_by_id(mediaid: str,
             if tmdbinfo:
                 torrents = SearchChain().search_by_id(tmdbid=tmdbinfo.get("id"),
                                                       mtype=mtype, area=area)
+            else:
+                return schemas.Response(success=False, message="未识别到TMDB媒体信息")
         else:
             torrents = SearchChain().search_by_id(doubanid=doubanid, mtype=mtype, area=area)
     elif mediaid.startswith("bangumi:"):
@@ -60,15 +64,23 @@ def search_by_id(mediaid: str,
             if tmdbinfo:
                 torrents = SearchChain().search_by_id(tmdbid=tmdbinfo.get("id"),
                                                       mtype=mtype, area=area)
+            else:
+                return schemas.Response(success=False, message="未识别到TMDB媒体信息")
         else:
             # 通过BangumiID识别豆瓣ID
             doubaninfo = MediaChain().get_doubaninfo_by_bangumiid(bangumiid=bangumiid)
             if doubaninfo:
                 torrents = SearchChain().search_by_id(doubanid=doubaninfo.get("id"),
                                                       mtype=mtype, area=area)
+            else:
+                return schemas.Response(success=False, message="未识别到豆瓣媒体信息")
     else:
-        return []
-    return [torrent.to_dict() for torrent in torrents]
+        return schemas.Response(success=False, message="未知的媒体ID")
+
+    if not torrents:
+        return schemas.Response(success=False, message="未搜索到任何资源")
+    else:
+        return schemas.Response(success=True, data=[torrent.to_dict() for torrent in torrents])
 
 
 @router.get("/title", summary="模糊搜索资源", response_model=List[schemas.TorrentInfo])
