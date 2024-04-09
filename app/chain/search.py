@@ -262,14 +262,14 @@ class SearchChain(ChainBase):
                 logger.warn(f'{keyword or mediainfo.title} 没有符合优先级规则的资源')
                 return []
         # 使用过滤规则再次过滤
-        if filter_rule:
+        if _match_torrents:
             logger.info(f'开始过滤规则过滤，当前规则：{filter_rule} ...')
             _match_torrents = self.filter_torrents_by_rule(torrents=_match_torrents,
                                                            mediainfo=mediainfo,
                                                            filter_rule=filter_rule)
-            if not _match_torrents:
-                logger.warn(f'{keyword or mediainfo.title} 没有符合过滤规则的资源')
-                return []
+        if not _match_torrents:
+            logger.warn(f'{keyword or mediainfo.title} 没有符合过滤规则的资源')
+            return []
         # 去掉mediainfo中多余的数据
         mediainfo.clear()
         # 组装上下文
