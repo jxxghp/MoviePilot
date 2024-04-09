@@ -1,4 +1,3 @@
-import traceback
 from typing import List, Tuple
 
 import cn2an
@@ -65,7 +64,7 @@ class WordsMatcher(metaclass=Singleton):
                     appley_words.append(word)
 
             except Exception as err:
-                logger.error(f"自定义识别词 {word} 预处理标题失败：{str(err)}")
+                logger.warn(f"自定义识别词 {word} 预处理标题失败：{str(err)} - 标题：{title}")
 
         return title, appley_words
 
@@ -80,7 +79,7 @@ class WordsMatcher(metaclass=Singleton):
             else:
                 return re.sub(r'%s' % replaced, r'%s' % replace, title), "", True
         except Exception as err:
-            logger.warn(f"自定义识别词正则替换失败：{str(err)} - {traceback.format_exc()}")
+            logger.warn(f"自定义识别词正则替换失败：{str(err)} - 标题：{title}，被替换词：{replaced}，替换词：{replace}")
             return title, str(err), False
 
     @staticmethod
@@ -132,5 +131,5 @@ class WordsMatcher(metaclass=Singleton):
                 title = re.sub(episode_offset_re, r'%s' % episode_num[1], title)
             return title, "", True
         except Exception as err:
-            logger.warn(f"自定义识别词集数偏移失败：{str(err)} - 前定位词：{front}，后定位词：{back}，偏移量：{offset}")
+            logger.warn(f"自定义识别词集数偏移失败：{str(err)} - 标题：{title}，前定位词：{front}，后定位词：{back}，偏移量：{offset}")
             return title, str(err), False
