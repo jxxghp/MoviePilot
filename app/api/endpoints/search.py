@@ -25,13 +25,15 @@ async def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 def search_by_id(mediaid: str,
                  mtype: str = None,
                  area: str = "title",
-                 season: int = None,
+                 season: str = None,
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID/豆瓣ID精确搜索站点资源 tmdb:/douban:/bangumi:
     """
     if mtype:
         mtype = MediaType(mtype)
+    if season:
+        season = int(season)
     if mediaid.startswith("tmdb:"):
         tmdbid = int(mediaid.replace("tmdb:", ""))
         if settings.RECOGNIZE_SOURCE == "douban":
