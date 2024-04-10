@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Optional, List, Tuple, Union
 
+import cn2an
+
 from app import schemas
 from app.core.config import settings
 from app.core.context import MediaInfo
@@ -245,8 +247,18 @@ class TheMovieDbModule(_ModuleBase):
                 results = self.tmdb.search_movies(meta.name, meta.year)
             else:
                 results = self.tmdb.search_tvs(meta.name, meta.year)
-
-        return [MediaInfo(tmdb_info=info) for info in results]
+        # 将搜索词中的季写入标题中
+        if results:
+            medias = [MediaInfo(tmdb_info=info) for info in results]
+            if meta.begin_season:
+                # 小写数据转大写
+                season_str = cn2an.an2cn(meta.begin_season, "low")
+                for media in medias:
+                    if media.type == MediaType.TV:
+                        media.title = f"{media.title} 第{season_str}季"
+                        media.season = meta.begin_season
+            return medias
+        return []
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str,
                         force_nfo: bool = False, force_img: bool = False) -> None:

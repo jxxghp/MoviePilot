@@ -2,6 +2,8 @@ import re
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
+import cn2an
+
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
@@ -551,7 +553,14 @@ class DoubanModule(_ModuleBase):
             if item_obj.get("type_name") not in (MediaType.TV.value, MediaType.MOVIE.value):
                 continue
             ret_medias.append(MediaInfo(douban_info=item_obj.get("target")))
-
+        # 将搜索词中的季写入标题中
+        if ret_medias and meta.begin_season:
+            # 小写数据转大写
+            season_str = cn2an.an2cn(meta.begin_season, "low")
+            for media in ret_medias:
+                if media.type == MediaType.TV:
+                    media.title = f"{media.title} 第{season_str}季"
+                    media.season = meta.begin_season
         return ret_medias
 
     @retry(Exception, 5, 3, 3, logger=logger)
