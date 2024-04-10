@@ -131,15 +131,15 @@ class SubscribeChain(ChainBase):
             mediainfo.bangumi_id = bangumiid
         # 添加订阅
         kwargs.update({
-            'quality': self.__get_default_subscribe_config(mtype, "quality"),
-            'resolution': self.__get_default_subscribe_config(mtype, "resolution"),
-            'effect': self.__get_default_subscribe_config(mtype, "effect"),
-            'include': self.__get_default_subscribe_config(mtype, "include"),
-            'exclude': self.__get_default_subscribe_config(mtype, "exclude"),
-            'best_version': self.__get_default_subscribe_config(mtype, "best_version"),
-            'search_imdbid': self.__get_default_subscribe_config(mtype, "search_imdbid"),
-            'sites': self.__get_default_subscribe_config(mtype, "sites") or None,
-            'save_path': self.__get_default_subscribe_config(mtype, "save_path"),
+            'quality': self.__get_default_subscribe_config(mediainfo.type, "quality"),
+            'resolution': self.__get_default_subscribe_config(mediainfo.type, "resolution"),
+            'effect': self.__get_default_subscribe_config(mediainfo.type, "effect"),
+            'include': self.__get_default_subscribe_config(mediainfo.type, "include"),
+            'exclude': self.__get_default_subscribe_config(mediainfo.type, "exclude"),
+            'best_version': self.__get_default_subscribe_config(mediainfo.type, "best_version"),
+            'search_imdbid': self.__get_default_subscribe_config(mediainfo.type, "search_imdbid"),
+            'sites': self.__get_default_subscribe_config(mediainfo.type, "sites") or None,
+            'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path"),
         })
         sid, err_msg = self.subscribeoper.add(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
