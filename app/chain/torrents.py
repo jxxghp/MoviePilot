@@ -184,6 +184,8 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                     logger.info(f'处理资源：{torrent.title} ...')
                     # 识别
                     meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+                    if torrent.title != meta.org_string:
+                        logger.info(f'种子名称应用识别词后发生改变：{torrent.title} => {meta.org_string}')
                     # 使用站点种子分类，校正类型识别
                     if meta.type != MediaType.TV \
                             and torrent.category == MediaType.TV.value:
@@ -191,7 +193,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                     # 识别媒体信息
                     mediainfo: MediaInfo = self.mediachain.recognize_by_meta(meta)
                     if not mediainfo:
-                        logger.warn(f'未识别到媒体信息，标题：{torrent.title}')
+                        logger.warn(f'{torrent.title} 未识别到媒体信息')
                         # 存储空的媒体信息
                         mediainfo = MediaInfo()
                     # 清理多余数据
