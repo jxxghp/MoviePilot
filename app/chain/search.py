@@ -224,8 +224,8 @@ class SearchChain(ChainBase):
                             media_info=mediainfo,
                             torrent_info=torrent) for torrent in _match_torrents]
 
-        logger.info(f"过滤完成，剩余 {_total} 个资源")
-        self.progress.update(value=99, text=f'过滤完成，剩余 {_total} 个资源', key=ProgressKey.Search)
+        logger.info(f"过滤完成，剩余 {len(contexts)} 个资源")
+        self.progress.update(value=99, text=f'过滤完成，剩余 {len(contexts)} 个资源', key=ProgressKey.Search)
         # 排序
         self.progress.update(value=100,
                              text=f'正在对 {len(contexts)} 个资源进行排序，请稍候...',
