@@ -169,6 +169,8 @@ class SearchChain(ChainBase):
                     continue
                 # 识别
                 torrent_meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+                if torrent.title != torrent_meta.org_string:
+                    logger.info(f"种子名称应用识别词后发生改变：{torrent.title} => {torrent_meta.org_string}")
                 # 比对种子识别类型
                 if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
                     logger.warn(f'{torrent.site_name} - {torrent.title} 种子标题类型为 {torrent_meta.type.value}，'
@@ -218,7 +220,7 @@ class SearchChain(ChainBase):
                         continue
                 # 标题拆分
                 titles = [StringUtils.clear_upper(t) for t in re.split(r'[\s/【】.\[\]\-]+',
-                                                                       torrent.title) if t]
+                                                                       torrent_meta.org_string) if t]
                 # 在标题中判断是否存在标题、原语种标题、别名、译名
                 if meta_names.intersection(titles) or media_names.intersection(titles):
                     logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}，'
