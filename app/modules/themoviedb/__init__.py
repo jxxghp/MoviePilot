@@ -12,7 +12,7 @@ from app.modules import _ModuleBase
 from app.modules.themoviedb.category import CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
-from app.modules.themoviedb.tmdbapi import TmdbHelper
+from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.schemas.types import MediaType, MediaImageType
 from app.utils.http import RequestUtils
 from app.utils.system import SystemUtils
@@ -26,7 +26,7 @@ class TheMovieDbModule(_ModuleBase):
     # 元数据缓存
     cache: TmdbCache = None
     # TMDB
-    tmdb: TmdbHelper = None
+    tmdb: TmdbApi = None
     # 二级分类
     category: CategoryHelper = None
     # 刮削器
@@ -34,12 +34,13 @@ class TheMovieDbModule(_ModuleBase):
 
     def init_module(self) -> None:
         self.cache = TmdbCache()
-        self.tmdb = TmdbHelper()
+        self.tmdb = TmdbApi()
         self.category = CategoryHelper()
         self.scraper = TmdbScraper(self.tmdb)
 
     def stop(self):
         self.cache.save()
+        self.tmdb.close()
 
     def test(self) -> Tuple[bool, str]:
         """

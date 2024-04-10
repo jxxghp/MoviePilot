@@ -20,11 +20,11 @@ class BangumiModule(_ModuleBase):
         """
         测试模块连接性
         """
-        ret = RequestUtils().get_res("https://api.bgm.tv/")
-        if ret and ret.status_code == 200:
-            return True, ""
-        elif ret:
-            return False, f"无法连接Bangumi，错误码：{ret.status_code}"
+        with RequestUtils().get_res("https://api.bgm.tv/") as ret:
+            if ret and ret.status_code == 200:
+                return True, ""
+            elif ret:
+                return False, f"无法连接Bangumi，错误码：{ret.status_code}"
         return False, "Bangumi网络连接失败"
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:

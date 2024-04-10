@@ -41,32 +41,32 @@ class Slack:
         # 注册消息响应
         @slack_app.event("message")
         def slack_message(message):
-            local_res = requests.post(self._ds_url, json=message, timeout=10)
-            logger.debug("message: %s processed, response is: %s" % (message, local_res.text))
+            with requests.post(self._ds_url, json=message, timeout=10) as local_res:
+                logger.debug("message: %s processed, response is: %s" % (message, local_res.text))
 
         @slack_app.action(re.compile(r"actionId-\d+"))
         def slack_action(ack, body):
             ack()
-            local_res = requests.post(self._ds_url, json=body, timeout=60)
-            logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
+            with requests.post(self._ds_url, json=body, timeout=60) as local_res:
+                logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
 
         @slack_app.event("app_mention")
         def slack_mention(say, body):
             say(f"收到，请稍等... <@{body.get('event', {}).get('user')}>")
-            local_res = requests.post(self._ds_url, json=body, timeout=10)
-            logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
+            with requests.post(self._ds_url, json=body, timeout=10) as local_res:
+                logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
 
         @slack_app.shortcut(re.compile(r"/*"))
         def slack_shortcut(ack, body):
             ack()
-            local_res = requests.post(self._ds_url, json=body, timeout=10)
-            logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
+            with requests.post(self._ds_url, json=body, timeout=10) as local_res:
+                logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
 
         @slack_app.command(re.compile(r"/*"))
         def slack_command(ack, body):
             ack()
-            local_res = requests.post(self._ds_url, json=body, timeout=10)
-            logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
+            with requests.post(self._ds_url, json=body, timeout=10) as local_res:
+                logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
 
         # 启动服务
         try:

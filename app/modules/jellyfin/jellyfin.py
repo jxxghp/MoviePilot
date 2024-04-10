@@ -52,12 +52,12 @@ class Jellyfin:
             return []
         req_url = "%sLibrary/SelectableMediaFolders?api_key=%s" % (self._host, self._apikey)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                return res.json()
-            else:
-                logger.error(f"Library/SelectableMediaFolders 未获取到返回数据")
-                return []
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    return res.json()
+                else:
+                    logger.error(f"Library/SelectableMediaFolders 未获取到返回数据")
+                    return []
         except Exception as e:
             logger.error(f"连接Library/SelectableMediaFolders 出错：" + str(e))
             return []
@@ -70,29 +70,29 @@ class Jellyfin:
             return []
         req_url = "%sLibrary/VirtualFolders?api_key=%s" % (self._host, self._apikey)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                library_items = res.json()
-                librarys = []
-                for library_item in library_items:
-                    library_name = library_item.get('Name')
-                    pathInfos = library_item.get('LibraryOptions', {}).get('PathInfos')
-                    library_paths = []
-                    for path in pathInfos:
-                        if path.get('NetworkPath'):
-                            library_paths.append(path.get('NetworkPath'))
-                        else:
-                            library_paths.append(path.get('Path'))
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    library_items = res.json()
+                    librarys = []
+                    for library_item in library_items:
+                        library_name = library_item.get('Name')
+                        pathInfos = library_item.get('LibraryOptions', {}).get('PathInfos')
+                        library_paths = []
+                        for path in pathInfos:
+                            if path.get('NetworkPath'):
+                                library_paths.append(path.get('NetworkPath'))
+                            else:
+                                library_paths.append(path.get('Path'))
 
-                    if library_name and library_paths:
-                        librarys.append({
-                            'Name': library_name,
-                            'Path': library_paths
-                        })
-                return librarys
-            else:
-                logger.error(f"Library/VirtualFolders 未获取到返回数据")
-                return []
+                        if library_name and library_paths:
+                            librarys.append({
+                                'Name': library_name,
+                                'Path': library_paths
+                            })
+                    return librarys
+                else:
+                    logger.error(f"Library/VirtualFolders 未获取到返回数据")
+                    return []
         except Exception as e:
             logger.error(f"连接Library/VirtualFolders 出错：" + str(e))
             return []
@@ -109,12 +109,12 @@ class Jellyfin:
             user = self.user
         req_url = f"{self._host}Users/{user}/Views?api_key={self._apikey}"
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                return res.json().get("Items")
-            else:
-                logger.error(f"Users/Views 未获取到返回数据")
-                return []
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    return res.json().get("Items")
+                else:
+                    logger.error(f"Users/Views 未获取到返回数据")
+                    return []
         except Exception as e:
             logger.error(f"连接Users/Views 出错：" + str(e))
             return []
@@ -163,12 +163,12 @@ class Jellyfin:
             return 0
         req_url = "%sUsers?api_key=%s" % (self._host, self._apikey)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                return len(res.json())
-            else:
-                logger.error(f"Users 未获取到返回数据")
-                return 0
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    return len(res.json())
+                else:
+                    logger.error(f"Users 未获取到返回数据")
+                    return 0
         except Exception as e:
             logger.error(f"连接Users出错：" + str(e))
             return 0
@@ -181,20 +181,20 @@ class Jellyfin:
             return None
         req_url = "%sUsers?api_key=%s" % (self._host, self._apikey)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                users = res.json()
-                # 先查询是否有与当前用户名称匹配的
-                if user_name:
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    users = res.json()
+                    # 先查询是否有与当前用户名称匹配的
+                    if user_name:
+                        for user in users:
+                            if user.get("Name") == user_name:
+                                return user.get("Id")
+                    # 查询管理员
                     for user in users:
-                        if user.get("Name") == user_name:
+                        if user.get("Policy", {}).get("IsAdministrator"):
                             return user.get("Id")
-                # 查询管理员
-                for user in users:
-                    if user.get("Policy", {}).get("IsAdministrator"):
-                        return user.get("Id")
-            else:
-                logger.error(f"Users 未获取到返回数据")
+                else:
+                    logger.error(f"Users 未获取到返回数据")
         except Exception as e:
             logger.error(f"连接Users出错：" + str(e))
         return None
@@ -244,11 +244,11 @@ class Jellyfin:
             return None
         req_url = "%sSystem/Info?api_key=%s" % (self._host, self._apikey)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                return res.json().get("Id")
-            else:
-                logger.error(f"System/Info 未获取到返回数据")
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    return res.json().get("Id")
+                else:
+                    logger.error(f"System/Info 未获取到返回数据")
         except Exception as e:
             logger.error(f"连接System/Info出错：" + str(e))
         return None
@@ -262,17 +262,17 @@ class Jellyfin:
             return schemas.Statistic()
         req_url = "%sItems/Counts?api_key=%s" % (self._host, self._apikey)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                result = res.json()
-                return schemas.Statistic(
-                    movie_count=result.get("MovieCount") or 0,
-                    tv_count=result.get("SeriesCount") or 0,
-                    episode_count=result.get("EpisodeCount") or 0
-                )
-            else:
-                logger.error(f"Items/Counts 未获取到返回数据")
-                return schemas.Statistic()
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    result = res.json()
+                    return schemas.Statistic(
+                        movie_count=result.get("MovieCount") or 0,
+                        tv_count=result.get("SeriesCount") or 0,
+                        episode_count=result.get("EpisodeCount") or 0
+                    )
+                else:
+                    logger.error(f"Items/Counts 未获取到返回数据")
+                    return schemas.Statistic()
         except Exception as e:
             logger.error(f"连接Items/Counts出错：" + str(e))
         return schemas.Statistic()
@@ -287,14 +287,14 @@ class Jellyfin:
                    "api_key=%s&searchTerm=%s&IncludeItemTypes=Series&Limit=10&Recursive=true") % (
                       self._host, self.user, self._apikey, name)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                res_items = res.json().get("Items")
-                if res_items:
-                    for res_item in res_items:
-                        if res_item.get('Name') == name and (
-                                not year or str(res_item.get('ProductionYear')) == str(year)):
-                            return res_item.get('Id')
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    res_items = res.json().get("Items")
+                    if res_items:
+                        for res_item in res_items:
+                            if res_item.get('Name') == name and (
+                                    not year or str(res_item.get('ProductionYear')) == str(year)):
+                                return res_item.get('Id')
         except Exception as e:
             logger.error(f"连接Items出错：" + str(e))
             return None
@@ -317,36 +317,36 @@ class Jellyfin:
                    "api_key=%s&searchTerm=%s&IncludeItemTypes=Movie&Limit=10&Recursive=true") % (
                       self._host, self.user, self._apikey, title)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                res_items = res.json().get("Items")
-                if res_items:
-                    ret_movies = []
-                    for item in res_items:
-                        item_tmdbid = item.get("ProviderIds", {}).get("Tmdb")
-                        mediaserver_item = schemas.MediaServerItem(
-                            server="jellyfin",
-                            library=item.get("ParentId"),
-                            item_id=item.get("Id"),
-                            item_type=item.get("Type"),
-                            title=item.get("Name"),
-                            original_title=item.get("OriginalTitle"),
-                            year=item.get("ProductionYear"),
-                            tmdbid=int(item_tmdbid) if item_tmdbid else None,
-                            imdbid=item.get("ProviderIds", {}).get("Imdb"),
-                            tvdbid=item.get("ProviderIds", {}).get("Tvdb"),
-                            path=item.get("Path")
-                        )
-                        if tmdb_id and item_tmdbid:
-                            if str(item_tmdbid) != str(tmdb_id):
-                                continue
-                            else:
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    res_items = res.json().get("Items")
+                    if res_items:
+                        ret_movies = []
+                        for item in res_items:
+                            item_tmdbid = item.get("ProviderIds", {}).get("Tmdb")
+                            mediaserver_item = schemas.MediaServerItem(
+                                server="jellyfin",
+                                library=item.get("ParentId"),
+                                item_id=item.get("Id"),
+                                item_type=item.get("Type"),
+                                title=item.get("Name"),
+                                original_title=item.get("OriginalTitle"),
+                                year=item.get("ProductionYear"),
+                                tmdbid=int(item_tmdbid) if item_tmdbid else None,
+                                imdbid=item.get("ProviderIds", {}).get("Imdb"),
+                                tvdbid=item.get("ProviderIds", {}).get("Tvdb"),
+                                path=item.get("Path")
+                            )
+                            if tmdb_id and item_tmdbid:
+                                if str(item_tmdbid) != str(tmdb_id):
+                                    continue
+                                else:
+                                    ret_movies.append(mediaserver_item)
+                                    continue
+                            if mediaserver_item.title == title and (
+                                    not year or str(mediaserver_item.year) == str(year)):
                                 ret_movies.append(mediaserver_item)
-                                continue
-                        if mediaserver_item.title == title and (
-                                not year or str(mediaserver_item.year) == str(year)):
-                            ret_movies.append(mediaserver_item)
-                    return ret_movies
+                        return ret_movies
         except Exception as e:
             logger.error(f"连接Items出错：" + str(e))
             return None
@@ -387,25 +387,25 @@ class Jellyfin:
         try:
             req_url = "%sShows/%s/Episodes?season=%s&&userId=%s&isMissing=false&api_key=%s" % (
                 self._host, item_id, season, self.user, self._apikey)
-            res_json = RequestUtils().get_res(req_url)
-            if res_json:
-                tv_info = res_json.json()
-                res_items = tv_info.get("Items")
-                # 返回的季集信息
-                season_episodes = {}
-                for res_item in res_items:
-                    season_index = res_item.get("ParentIndexNumber")
-                    if not season_index:
-                        continue
-                    if season and season != season_index:
-                        continue
-                    episode_index = res_item.get("IndexNumber")
-                    if not episode_index:
-                        continue
-                    if not season_episodes.get(season_index):
-                        season_episodes[season_index] = []
-                    season_episodes[season_index].append(episode_index)
-                return item_id, season_episodes
+            with RequestUtils().get_res(req_url) as res_json:
+                if res_json:
+                    tv_info = res_json.json()
+                    res_items = tv_info.get("Items")
+                    # 返回的季集信息
+                    season_episodes = {}
+                    for res_item in res_items:
+                        season_index = res_item.get("ParentIndexNumber")
+                        if not season_index:
+                            continue
+                        if season and season != season_index:
+                            continue
+                        episode_index = res_item.get("IndexNumber")
+                        if not episode_index:
+                            continue
+                        if not season_episodes.get(season_index):
+                            season_episodes[season_index] = []
+                        season_episodes[season_index].append(episode_index)
+                    return item_id, season_episodes
         except Exception as e:
             logger.error(f"连接Shows/Id/Episodes出错：" + str(e))
             return None, None
@@ -458,13 +458,13 @@ class Jellyfin:
             _host = self._playhost
         req_url = "%sItems/%s/Images/%s" % (_host, item_id, image_type)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res and res.status_code != 404:
-                logger.info("影片图片链接:{}".format(res.url))
-                return res.url
-            else:
-                logger.error("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
-                return None
+            with RequestUtils().get_res(req_url) as res:
+                if res and res.status_code != 404:
+                    logger.info("影片图片链接:{}".format(res.url))
+                    return res.url
+                else:
+                    logger.error("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
+                    return None
         except Exception as e:
             logger.error(f"连接Items/Id/Images出错：" + str(e))
             return None
@@ -479,12 +479,12 @@ class Jellyfin:
         """
         req_url = "%sItems/%s/Ancestors?api_key=%s" % (self._host, item_id, self._apikey)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                return res.json()[index].get(key)
-            else:
-                logger.error(f"Items/Id/Ancestors 未获取到返回数据")
-                return None
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    return res.json()[index].get(key)
+                else:
+                    logger.error(f"Items/Id/Ancestors 未获取到返回数据")
+                    return None
         except Exception as e:
             logger.error(f"连接Items/Id/Ancestors出错：" + str(e))
             return None
@@ -497,11 +497,11 @@ class Jellyfin:
             return False
         req_url = "%sLibrary/Refresh?api_key=%s" % (self._host, self._apikey)
         try:
-            res = RequestUtils().post_res(req_url)
-            if res:
-                return True
-            else:
-                logger.info(f"刷新媒体库失败，无法连接Jellyfin！")
+            with RequestUtils().post_res(req_url) as res:
+                if res:
+                    return True
+                else:
+                    logger.info(f"刷新媒体库失败，无法连接Jellyfin！")
         except Exception as e:
             logger.error(f"连接Library/Refresh出错：" + str(e))
             return False
@@ -632,23 +632,23 @@ class Jellyfin:
         req_url = "%sUsers/%s/Items/%s?api_key=%s" % (
             self._host, self.user, itemid, self._apikey)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res and res.status_code == 200:
-                item = res.json()
-                tmdbid = item.get("ProviderIds", {}).get("Tmdb")
-                return schemas.MediaServerItem(
-                    server="jellyfin",
-                    library=item.get("ParentId"),
-                    item_id=item.get("Id"),
-                    item_type=item.get("Type"),
-                    title=item.get("Name"),
-                    original_title=item.get("OriginalTitle"),
-                    year=item.get("ProductionYear"),
-                    tmdbid=int(tmdbid) if tmdbid else None,
-                    imdbid=item.get("ProviderIds", {}).get("Imdb"),
-                    tvdbid=item.get("ProviderIds", {}).get("Tvdb"),
-                    path=item.get("Path")
-                )
+            with RequestUtils().get_res(req_url) as res:
+                if res and res.status_code == 200:
+                    item = res.json()
+                    tmdbid = item.get("ProviderIds", {}).get("Tmdb")
+                    return schemas.MediaServerItem(
+                        server="jellyfin",
+                        library=item.get("ParentId"),
+                        item_id=item.get("Id"),
+                        item_type=item.get("Type"),
+                        title=item.get("Name"),
+                        original_title=item.get("OriginalTitle"),
+                        year=item.get("ProductionYear"),
+                        tmdbid=int(tmdbid) if tmdbid else None,
+                        imdbid=item.get("ProviderIds", {}).get("Imdb"),
+                        tvdbid=item.get("ProviderIds", {}).get("Tvdb"),
+                        path=item.get("Path")
+                    )
         except Exception as e:
             logger.error(f"连接Users/Items出错：" + str(e))
         return None
@@ -663,17 +663,17 @@ class Jellyfin:
             yield None
         req_url = "%sUsers/%s/Items?parentId=%s&api_key=%s" % (self._host, self.user, parent, self._apikey)
         try:
-            res = RequestUtils().get_res(req_url)
-            if res and res.status_code == 200:
-                results = res.json().get("Items") or []
-                for result in results:
-                    if not result:
-                        continue
-                    if result.get("Type") in ["Movie", "Series"]:
-                        yield self.get_iteminfo(result.get("Id"))
-                    elif "Folder" in result.get("Type"):
-                        for item in self.get_items(result.get("Id")):
-                            yield item
+            with RequestUtils().get_res(req_url) as res:
+                if res and res.status_code == 200:
+                    results = res.json().get("Items") or []
+                    for result in results:
+                        if not result:
+                            continue
+                        if result.get("Type") in ["Movie", "Series"]:
+                            yield self.get_iteminfo(result.get("Id"))
+                        elif "Folder" in result.get("Type"):
+                            for item in self.get_items(result.get("Id")):
+                                yield item
         except Exception as e:
             logger.error(f"连接Users/Items出错：" + str(e))
         yield None
@@ -761,50 +761,50 @@ class Jellyfin:
         req_url = (f"{self._host}Users/{user}/Items/Resume?"
                    f"Limit=100&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear,Path")
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                result = res.json().get("Items") or []
-                ret_resume = []
-                # 用户媒体库文件夹列表（排除黑名单）
-                library_folders = self.get_user_library_folders()
-                for item in result:
-                    if len(ret_resume) == num:
-                        break
-                    if item.get("Type") not in ["Movie", "Episode"]:
-                        continue
-                    item_path = item.get("Path")
-                    if item_path and library_folders and not any(
-                            str(item_path).startswith(folder) for folder in library_folders):
-                        continue
-                    item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
-                    link = self.get_play_url(item.get("Id"))
-                    if item.get("BackdropImageTags"):
-                        image = self.__get_backdrop_url(item_id=item.get("Id"),
-                                                        image_tag=item.get("BackdropImageTags")[0])
-                    else:
-                        image = self.__get_local_image_by_id(item.get("Id"))
-                    # 小部分剧集无[xxx-S01E01-thumb.jpg]图片
-                    image_res = RequestUtils().get_res(image)
-                    if not image_res or image_res.status_code == 404:
-                        image = self.generate_image_link(item.get("Id"), "Backdrop", False)
-                    if item_type == MediaType.MOVIE.value:
-                        title = item.get("Name")
-                        subtitle = item.get("ProductionYear")
-                    else:
-                        title = f'{item.get("SeriesName")}'
-                        subtitle = f'S{item.get("ParentIndexNumber")}:{item.get("IndexNumber")} - {item.get("Name")}'
-                    ret_resume.append(schemas.MediaServerPlayItem(
-                        id=item.get("Id"),
-                        title=title,
-                        subtitle=subtitle,
-                        type=item_type,
-                        image=image,
-                        link=link,
-                        percent=item.get("UserData", {}).get("PlayedPercentage")
-                    ))
-                return ret_resume
-            else:
-                logger.error(f"Users/Items/Resume 未获取到返回数据")
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    result = res.json().get("Items") or []
+                    ret_resume = []
+                    # 用户媒体库文件夹列表（排除黑名单）
+                    library_folders = self.get_user_library_folders()
+                    for item in result:
+                        if len(ret_resume) == num:
+                            break
+                        if item.get("Type") not in ["Movie", "Episode"]:
+                            continue
+                        item_path = item.get("Path")
+                        if item_path and library_folders and not any(
+                                str(item_path).startswith(folder) for folder in library_folders):
+                            continue
+                        item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
+                        link = self.get_play_url(item.get("Id"))
+                        if item.get("BackdropImageTags"):
+                            image = self.__get_backdrop_url(item_id=item.get("Id"),
+                                                            image_tag=item.get("BackdropImageTags")[0])
+                        else:
+                            image = self.__get_local_image_by_id(item.get("Id"))
+                        # 小部分剧集无[xxx-S01E01-thumb.jpg]图片
+                        with RequestUtils().get_res(image) as image_res:
+                            if not image_res or image_res.status_code == 404:
+                                image = self.generate_image_link(item.get("Id"), "Backdrop", False)
+                            if item_type == MediaType.MOVIE.value:
+                                title = item.get("Name")
+                                subtitle = item.get("ProductionYear")
+                            else:
+                                title = f'{item.get("SeriesName")}'
+                                subtitle = f'S{item.get("ParentIndexNumber")}:{item.get("IndexNumber")} - {item.get("Name")}'
+                            ret_resume.append(schemas.MediaServerPlayItem(
+                                id=item.get("Id"),
+                                title=title,
+                                subtitle=subtitle,
+                                type=item_type,
+                                image=image,
+                                link=link,
+                                percent=item.get("UserData", {}).get("PlayedPercentage")
+                            ))
+                    return ret_resume
+                else:
+                    logger.error(f"Users/Items/Resume 未获取到返回数据")
         except Exception as e:
             logger.error(f"连接Users/Items/Resume出错：" + str(e))
         return []
@@ -822,35 +822,35 @@ class Jellyfin:
         req_url = (f"{self._host}Users/{user}/Items/Latest?"
                    f"Limit=100&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear,Path")
         try:
-            res = RequestUtils().get_res(req_url)
-            if res:
-                result = res.json() or []
-                ret_latest = []
-                # 用户媒体库文件夹列表（排除黑名单）
-                library_folders = self.get_user_library_folders()
-                for item in result:
-                    if len(ret_latest) == num:
-                        break
-                    if item.get("Type") not in ["Movie", "Series"]:
-                        continue
-                    item_path = item.get("Path")
-                    if item_path and library_folders and not any(
-                            str(item_path).startswith(folder) for folder in library_folders):
-                        continue
-                    item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
-                    link = self.get_play_url(item.get("Id"))
-                    image = self.__get_local_image_by_id(item_id=item.get("Id"))
-                    ret_latest.append(schemas.MediaServerPlayItem(
-                        id=item.get("Id"),
-                        title=item.get("Name"),
-                        subtitle=item.get("ProductionYear"),
-                        type=item_type,
-                        image=image,
-                        link=link
-                    ))
-                return ret_latest
-            else:
-                logger.error(f"Users/Items/Latest 未获取到返回数据")
+            with RequestUtils().get_res(req_url) as res:
+                if res:
+                    result = res.json() or []
+                    ret_latest = []
+                    # 用户媒体库文件夹列表（排除黑名单）
+                    library_folders = self.get_user_library_folders()
+                    for item in result:
+                        if len(ret_latest) == num:
+                            break
+                        if item.get("Type") not in ["Movie", "Series"]:
+                            continue
+                        item_path = item.get("Path")
+                        if item_path and library_folders and not any(
+                                str(item_path).startswith(folder) for folder in library_folders):
+                            continue
+                        item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
+                        link = self.get_play_url(item.get("Id"))
+                        image = self.__get_local_image_by_id(item_id=item.get("Id"))
+                        ret_latest.append(schemas.MediaServerPlayItem(
+                            id=item.get("Id"),
+                            title=item.get("Name"),
+                            subtitle=item.get("ProductionYear"),
+                            type=item_type,
+                            image=image,
+                            link=link
+                        ))
+                    return ret_latest
+                else:
+                    logger.error(f"Users/Items/Latest 未获取到返回数据")
         except Exception as e:
             logger.error(f"连接Users/Items/Latest出错：" + str(e))
         return []

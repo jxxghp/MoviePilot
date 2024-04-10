@@ -733,6 +733,10 @@ class Tvdb:
         }
         self.proxies = proxies
 
+    def close(self):
+        if self.session:
+            self.session.close()
+
     @staticmethod
     def _getTempDir():
         """Returns the [system temp dir]/tvdb_api-u501 (or
@@ -764,17 +768,17 @@ class Tvdb:
         if not self.__authorized:
             # only authorize of we haven't before and we
             # don't have the url in the cache
-            fake_session_for_key = requests.Session()
-            fake_session_for_key.headers['Accept-Language'] = language
             cache_key = None
-            try:
-                # in case the session class has no cache object, fail gracefully
-                cache_key = self.session.cache.create_key(
-                    fake_session_for_key.prepare_request(requests.Request('GET', url))
-                )
-            except Exception:
-                # FIXME: Can this just check for hasattr(self.session, "cache") instead?
-                pass
+            with requests.Session() as fake_session_for_key:
+                fake_session_for_key.headers['Accept-Language'] = language
+                try:
+                    # in case the session class has no cache object, fail gracefully
+                    cache_key = self.session.cache.create_key(
+                        fake_session_for_key.prepare_request(requests.Request('GET', url))
+                    )
+                except Exception:
+                    # FIXME: Can this just check for hasattr(self.session, "cache") instead?
+                    pass
 
             # fmt: off
             # No fmt because mangles noqa comment - https://github.com/psf/black/issues/195
