@@ -235,7 +235,7 @@ class SearchChain(ChainBase):
                         _match_torrents.append(torrent)
                         continue
                 # 未匹配
-                logger.warn(f'{torrent.site_name} - {torrent.title} 标题不匹配，识别名称：{media_names}')
+                logger.warn(f'{torrent.site_name} - {torrent.title} 标题不匹配，识别名称：{meta_names}')
             # 匹配完成
             logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
             self.progress.update(value=97,
