@@ -411,6 +411,9 @@ class PluginManager(metaclass=Singleton):
                 # 作者
                 if plugin_info.get("author"):
                     plugin.plugin_author = plugin_info.get("author")
+                # 更新历史
+                if plugin_info.get("history"):
+                    plugin.history = plugin_info.get("history")
                 # 仓库链接
                 plugin.repo_url = market
                 # 本地标志
