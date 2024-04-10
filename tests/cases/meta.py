@@ -1006,4 +1006,20 @@ meta_cases = [{
         "video_codec": "",
         "audio_codec": ""
     }
+}, {
+    "title": "Mai Xiang S01 2019 2160p WEB-DL H.265 DDP2.0-HHWEB",
+    "subtitle": "麦香 | 全36集 | 4K | 类型:剧情/爱情/家庭 | 主演:傅晶/章呈赫/王伟/沙景昌/何音",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "麦香",
+        "en_name": "Mai Xiang",
+        "year": "2019",
+        "part": "",
+        "season": "S01",
+        "episode": "",
+        "restype": "WEB-DL",
+        "pix": "2160p",
+        "video_codec": "H265",
+        "audio_codec": "DDP 2.0"
+    }
 }]
