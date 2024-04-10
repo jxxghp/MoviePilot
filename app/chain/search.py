@@ -172,12 +172,12 @@ class SearchChain(ChainBase):
                 # 比对种子识别类型
                 if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
                     logger.warn(f'{torrent.site_name} - {torrent.title} 种子标题类型为 {torrent_meta.type.value}，'
-                                f'需要是 {mediainfo.type.value}，不匹配')
+                                f'不匹配 {mediainfo.type.value}')
                     continue
                 # 比对种子在站点中的类型
                 if torrent.category == MediaType.TV.value and mediainfo.type != MediaType.TV:
                     logger.warn(f'{torrent.site_name} - {torrent.title} 种子在站点中归类为 {torrent.category}，'
-                                f'需要是 {mediainfo.type.value}，不匹配')
+                                f'不匹配 {mediainfo.type.value}')
                     continue
                 # 比对年份
                 if mediainfo.year:
@@ -185,14 +185,14 @@ class SearchChain(ChainBase):
                         # 剧集年份，每季的年份可能不同
                         if torrent_meta.year and torrent_meta.year not in [year for year in
                                                                            mediainfo.season_years.values()]:
-                            logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
+                            logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.season_years}')
                             continue
                     else:
                         # 电影年份，上下浮动1年
                         if torrent_meta.year not in [str(int(mediainfo.year) - 1),
                                                      mediainfo.year,
                                                      str(int(mediainfo.year) + 1)]:
-                            logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
+                            logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.year}')
                             continue
                 # 识别的中英文名
                 meta_names = {
