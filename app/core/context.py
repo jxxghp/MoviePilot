@@ -493,7 +493,8 @@ class MediaInfo:
                         self.release_date = match.group()
         # 海报
         if not self.poster_path:
-            self.poster_path = info.get("pic", {}).get("large")
+            if info.get("pic"):
+                self.poster_path = info.get("pic", {}).get("large")
             if not self.poster_path and info.get("cover_url"):
                 self.poster_path = info.get("cover_url")
             if not self.poster_path and info.get("cover"):
@@ -586,7 +587,8 @@ class MediaInfo:
                 self.year = self.release_date[:4] if self.release_date else None
         # 海报
         if not self.poster_path:
-            self.poster_path = info.get("images", {}).get("large")
+            if info.get("images"):
+                self.poster_path = info.get("images", {}).get("large")
         # 简介
         if not self.overview:
             self.overview = info.get("summary")
