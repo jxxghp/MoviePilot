@@ -124,13 +124,12 @@ class SiteChain(ChainBase):
                     return True, f"连接成功，但更新状态失败"
         return False, "Cookie已失效"
 
-    @staticmethod
-    def __ptlsp_test(site: Site) -> Tuple[bool, str]:
+    def __ptlsp_test(self, site: Site) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：ptlsp
         """
         site.url = f"{site.url}index.php"
-        return __test(site)
+        return self.__test(site)
 
     @staticmethod
     def __parse_favicon(url: str, cookie: str, ua: str) -> Tuple[str, Optional[str]]:
@@ -385,9 +384,9 @@ class SiteChain(ChainBase):
                 return False, f"仿真登录失败，Cookie已失效！"
         else:
             res = RequestUtils(cookies=site_cookie,
-                                ua=ua,
-                                proxies=proxies
-                                ).get_res(url=site_url)
+                               ua=ua,
+                               proxies=proxies
+                               ).get_res(url=site_url)
             # 判断登录状态
             if res and res.status_code in [200, 500, 403]:
                 if not public and not SiteUtils.is_logged_in(res.text):
