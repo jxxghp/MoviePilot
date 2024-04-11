@@ -460,7 +460,7 @@ class Jellyfin:
         try:
             with RequestUtils().get_res(req_url) as res:
                 if res and res.status_code != 404:
-                    logger.info("影片图片链接:{}".format(res.url))
+                    logger.info(f"影片图片链接:{res.url}")
                     return res.url
                 else:
                     logger.error("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
