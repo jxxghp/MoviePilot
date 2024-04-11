@@ -130,7 +130,7 @@ class SiteChain(ChainBase):
         判断站点是否已经登陆：ptlsp
         """
         site.url = f"{site.url}index.php"
-        return __test(site)
+        return SiteChain.__test(site)
 
     @staticmethod
     def __parse_favicon(url: str, cookie: str, ua: str) -> Tuple[str, Optional[str]]:
