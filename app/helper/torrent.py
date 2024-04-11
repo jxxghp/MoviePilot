@@ -467,14 +467,14 @@ class TorrentHelper(metaclass=Singleton):
         titles = [StringUtils.clear_upper(t) for t in re.split(r'[\s/【】.\[\]\-]+',
                                                                torrent_meta.org_string) if t]
         # 在标题中判断是否存在标题、原语种标题、别名、译名
-        if meta_names.intersection(titles) or media_names.intersection(titles):
+        if media_titles.intersection(titles) or media_names.intersection(titles):
             logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}')
             return True
         # 在副标题中判断是否存在标题、原语种标题、别名、译名
         if torrent.description:
             subtitles = {StringUtils.clear_upper(t) for t in re.split(r'[\s/|]+',
                                                                       torrent.description) if t}
-            if meta_names.intersection(subtitles) or media_names.intersection(subtitles):
+            if media_titles.intersection(subtitles) or media_names.intersection(subtitles):
                 logger.info(f'{mediainfo.title} 通过副标题匹配到资源：{torrent.site_name} - {torrent.title}，'
                             f'副标题：{torrent.description}')
                 return True
