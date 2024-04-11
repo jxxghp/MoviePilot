@@ -179,7 +179,7 @@ class Scheduler(metaclass=Singleton):
 
         if settings.SUBSCRIBE_MODE == "spider":
             # 站点首页种子定时刷新模式
-            triggers = TimerUtils.random_scheduler(num_executions=30)
+            triggers = TimerUtils.random_scheduler(num_executions=32)
             for trigger in triggers:
                 self._scheduler.add_job(
                     self.start,
