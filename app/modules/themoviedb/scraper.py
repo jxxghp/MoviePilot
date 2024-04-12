@@ -96,7 +96,7 @@ class TmdbScraper:
                             self.__save_image(url=attr_value,
                                               file_path=image_path)
                 # 查询季信息
-                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, meta.begin_season)
+                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, meta.begin_season or mediainfo.season)
                 if seasoninfo:
                     # 季目录NFO
                     if self._force_nfo or not file_path.with_name("season.nfo").exists():
