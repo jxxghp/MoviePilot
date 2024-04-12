@@ -278,8 +278,10 @@ class TransferChain(ChainBase):
 
                 # 获取集数据
                 if file_mediainfo.type == MediaType.TV:
-                    episodes_info = self.tmdbchain.tmdb_episodes(tmdbid=file_mediainfo.tmdb_id,
-                                                                 season=file_meta.begin_season or 1)
+                    episodes_info = self.tmdbchain.tmdb_episodes(
+                        tmdbid=file_mediainfo.tmdb_id,
+                        season=1 if file_meta.begin_season is None else file_meta.begin_season
+                    )
                 else:
                     episodes_info = None
 

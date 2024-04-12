@@ -425,15 +425,15 @@ class TheMovieDbModule(_ModuleBase):
         # 图片相对路径
         image_path = None
         image_prefix = image_prefix or "w500"
-        if not season and not episode:
+        if season is None and not episode:
             tmdbinfo = self.tmdb.get_info(mtype=mtype, tmdbid=int(mediaid))
             if tmdbinfo:
                 image_path = tmdbinfo.get(image_type.value)
-        elif season and episode:
+        elif season is not None and episode:
             episodeinfo = self.tmdb.get_tv_episode_detail(tmdbid=int(mediaid), season=season, episode=episode)
             if episodeinfo:
                 image_path = episodeinfo.get("still_path")
-        elif season:
+        elif season is not None:
             seasoninfo = self.tmdb.get_tv_season_detail(tmdbid=int(mediaid), season=season)
             if seasoninfo:
                 image_path = seasoninfo.get(image_type.value)
