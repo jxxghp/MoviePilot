@@ -1027,7 +1027,7 @@ class TmdbApi:
         if not self.episode:
             return {}
         try:
-            logger.info("正在查询TMDB集图片：%s，季：%s，集：%s ..." % (tmdbid, season, episode))
+            logger.info("正在查询TMDB集详情：%s，季：%s，集：%s ..." % (tmdbid, season, episode))
             tmdbinfo = self.episode.details(tv_id=tmdbid, season_num=season, episode_num=episode)
             return tmdbinfo or {}
         except Exception as e:
