@@ -602,11 +602,21 @@ class SubscribeChain(ChainBase):
                             f'{mediainfo.title_year} 通过媒体信ID匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
                     else:
                         # 没有torrent_mediainfo媒体信息，按标题匹配
-                        if not self.torrenthelper.match_torrent(mediainfo=mediainfo,
-                                                                torrent_meta=torrent_meta,
-                                                                torrent=torrent_info,
-                                                                logerror=False):
-                            continue
+                        manual_match = False
+                        # 比对词条指定的tmdbid
+                        if torrent_meta.tmdbid or torrent_meta.doubanid:
+                            if torrent_meta.tmdbid and torrent_meta.tmdbid != mediainfo.tmdb_id:
+                                continue
+                            if torrent_meta.doubanid and torrent_meta.doubanid != mediainfo.douban_id:
+                                continue
+                            manual_match = True
+                        if not manual_match:
+                            # 没有指定tmdbid，按标题匹配
+                            if not self.torrenthelper.match_torrent(mediainfo=mediainfo,
+                                                                    torrent_meta=torrent_meta,
+                                                                    torrent=torrent_info,
+                                                                    logerror=False):
+                                continue
                     # 优先级过滤规则
                     if subscribe.best_version:
                         priority_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)

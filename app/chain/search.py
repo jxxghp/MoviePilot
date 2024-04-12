@@ -177,12 +177,24 @@ class SearchChain(ChainBase):
                 torrent_meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
                 if torrent.title != torrent_meta.org_string:
                     logger.info(f"种子名称应用识别词后发生改变：{torrent.title} => {torrent_meta.org_string}")
+                # 比对词条指定的tmdbid
+                if torrent_meta.tmdbid or torrent_meta.doubanid:
+                    if torrent_meta.tmdbid and torrent_meta.tmdbid == mediainfo.tmdb_id:
+                        logger.info(f'{mediainfo.title} 通过词表指定TMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
+                        _match_torrents.append(torrent)
+                        continue
+                    if torrent_meta.doubanid and torrent_meta.doubanid == mediainfo.douban_id:
+                        logger.info(f'{mediainfo.title} 通过词表指定豆瓣ID匹配到资源：{torrent.site_name} - {torrent.title}')
+                        _match_torrents.append(torrent)
+                        continue
+
                 # 比对种子
                 if self.torrenthelper.match_torrent(mediainfo=mediainfo,
                                                     torrent_meta=torrent_meta,
                                                     torrent=torrent):
                     # 匹配成功
                     _match_torrents.append(torrent)
+                    continue
             # 匹配完成
             logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
             self.progress.update(value=97,
@@ -198,7 +210,7 @@ class SearchChain(ChainBase):
             # 取搜索优先级规则
             priority_rule = self.systemconfig.get(SystemConfigKey.SearchFilterRules)
         if priority_rule:
-            logger.info(f'开始优先级规则过滤，当前规则：{priority_rule} ...')
+            logger.info(f'开始优先级规则/剧集过滤，当前规则：{priority_rule} ...')
             result: List[TorrentInfo] = self.filter_torrents(rule_string=priority_rule,
                                                              torrent_list=_match_torrents,
                                                              season_episodes=season_episodes,
