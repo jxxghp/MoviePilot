@@ -32,6 +32,8 @@ class _PluginBase(metaclass=ABCMeta):
     plugin_name: str = ""
     # 插件描述
     plugin_desc: str = ""
+    # 插件顺序
+    plugin_order: int = 9999
 
     def __init__(self):
         # 插件数据

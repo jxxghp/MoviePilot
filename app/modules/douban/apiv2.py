@@ -210,7 +210,7 @@ class DoubanApi(metaclass=Singleton):
             },
             data={
                 "apikey": "0ab215a8b1977939201640fa14c66bab",
-            },
+            }
         )
         """
         req_url = self._api_url + url
@@ -481,6 +481,6 @@ class DoubanApi(metaclass=Singleton):
         """
         self.__invoke.cache_clear()
 
-    def __del__(self):
+    def close(self):
         if self._session:
             self._session.close()

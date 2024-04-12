@@ -326,8 +326,11 @@ class TorrentHelper(metaclass=Singleton):
             return True
 
         # 匹配内容
-        content = f"{torrent_info.title} {torrent_info.description} {' '.join(torrent_info.labels or [])}"
-        
+        content = (f"{torrent_info.title} "
+                   f"{torrent_info.description} "
+                   f"{' '.join(torrent_info.labels or [])} "
+                   f"{torrent_info.volume_factor}")
+
         # 最少做种人数
         min_seeders = filter_rule.get("min_seeders")
         if min_seeders and torrent_info.seeders < int(min_seeders):
@@ -399,3 +402,83 @@ class TorrentHelper(metaclass=Singleton):
                             f"{torrent_info.title} {StringUtils.str_filesize(torrent_info.size)} 不匹配大小规则 {size}")
                         return False
         return True
+
+    @staticmethod
+    def match_torrent(mediainfo: MediaInfo, torrent_meta: MetaInfo,
+                      torrent: TorrentInfo, logerror: bool = True) -> bool:
+        """
+        检查种子是否匹配媒体信息
+        :param mediainfo: 需要匹配的媒体信息
+        :param torrent_meta: 种子识别信息
+        :param torrent: 种子信息
+        :param logerror: 是否记录错误日志
+        """
+        # 要匹配的媒体标题、原标题
+        media_titles = {
+                           StringUtils.clear_upper(mediainfo.title),
+                           StringUtils.clear_upper(mediainfo.original_title)
+                       } - {""}
+        # 要匹配的媒体别名、译名
+        media_names = {StringUtils.clear_upper(name) for name in mediainfo.names if name}
+        # 识别的种子中英文名
+        meta_names = {
+                         StringUtils.clear_upper(torrent_meta.cn_name),
+                         StringUtils.clear_upper(torrent_meta.en_name)
+                     } - {""}
+        # 比对种子识别类型
+        if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
+            if logerror:
+                logger.warn(f'{torrent.site_name} - {torrent.title} 种子标题类型为 {torrent_meta.type.value}，'
+                            f'不匹配 {mediainfo.type.value}')
+            return False
+        # 比对种子在站点中的类型
+        if torrent.category == MediaType.TV.value and mediainfo.type != MediaType.TV:
+            if logerror:
+                logger.warn(f'{torrent.site_name} - {torrent.title} 种子在站点中归类为 {torrent.category}，'
+                            f'不匹配 {mediainfo.type.value}')
+            return False
+        # 比对年份
+        if mediainfo.year:
+            if mediainfo.type == MediaType.TV:
+                # 剧集年份，每季的年份可能不同
+                if torrent_meta.year and torrent_meta.year not in [year for year in
+                                                                   mediainfo.season_years.values()]:
+                    if logerror:
+                        logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.season_years}')
+                    return False
+            else:
+                # 电影年份，上下浮动1年
+                if torrent_meta.year not in [str(int(mediainfo.year) - 1),
+                                             mediainfo.year,
+                                             str(int(mediainfo.year) + 1)]:
+                    if logerror:
+                        logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.year}')
+                    return False
+        # 比对标题和原语种标题
+        if meta_names.intersection(media_titles):
+            logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}')
+            return True
+        # 比对别名和译名
+        if media_names:
+            if meta_names.intersection(media_names):
+                logger.info(f'{mediainfo.title} 通过别名或译名匹配到资源：{torrent.site_name} - {torrent.title}')
+                return True
+        # 标题拆分
+        titles = [StringUtils.clear_upper(t) for t in re.split(r'[\s/【】.\[\]\-]+',
+                                                               torrent_meta.org_string) if t]
+        # 在标题中判断是否存在标题、原语种标题、别名、译名
+        if media_titles.intersection(titles) or media_names.intersection(titles):
+            logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}')
+            return True
+        # 在副标题中判断是否存在标题、原语种标题、别名、译名
+        if torrent.description:
+            subtitles = {StringUtils.clear_upper(t) for t in re.split(r'[\s/|]+',
+                                                                      torrent.description) if t}
+            if media_titles.intersection(subtitles) or media_names.intersection(subtitles):
+                logger.info(f'{mediainfo.title} 通过副标题匹配到资源：{torrent.site_name} - {torrent.title}，'
+                            f'副标题：{torrent.description}')
+                return True
+        # 未匹配
+        if logerror:
+            logger.warn(f'{torrent.site_name} - {torrent.title} 标题不匹配，识别名称：{meta_names}')
+        return False

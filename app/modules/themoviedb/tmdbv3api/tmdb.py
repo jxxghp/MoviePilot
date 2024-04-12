@@ -222,6 +222,6 @@ class TMDb(object):
             return json.get(key)
         return json
 
-    def __del__(self):
+    def close(self):
         if self._session:
             self._session.close()

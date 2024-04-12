@@ -1,13 +1,16 @@
 import re
 from pathlib import Path
+from typing import Optional
+
+from Pinyin2Hanzi import is_pinyin
 
 from app.core.config import settings
 from app.core.meta.customization import CustomizationMatcher
 from app.core.meta.metabase import MetaBase
 from app.core.meta.releasegroup import ReleaseGroupsMatcher
+from app.schemas.types import MediaType
 from app.utils.string import StringUtils
 from app.utils.tokens import Tokens
-from app.schemas.types import MediaType
 
 
 class MetaVideo(MetaBase):
@@ -31,7 +34,7 @@ class MetaVideo(MetaBase):
     _source_re = r"^BLURAY$|^HDTV$|^UHDTV$|^HDDVD$|^WEBRIP$|^DVDRIP$|^BDRIP$|^BLU$|^WEB$|^BD$|^HDRip$"
     _effect_re = r"^REMUX$|^UHD$|^SDR$|^HDR\d*$|^DOLBY$|^DOVI$|^DV$|^3D$|^REPACK$"
     _resources_type_re = r"%s|%s" % (_source_re, _effect_re)
-    _name_no_begin_re = r"^\[.+?]"
+    _name_no_begin_re = r"^[\[【].+?[\]】]"
     _name_no_chinese_re = r".*版|.*字幕"
     _name_se_words = ['共', '第', '季', '集', '话', '話', '期']
     _name_movie_words = ['剧场版', '劇場版', '电影版', '電影版']
@@ -39,19 +42,25 @@ class MetaVideo(MetaBase):
                         r"|HBO$|\s+HBO|\d{1,2}th|\d{1,2}bit|NETFLIX|AMAZON|IMAX|^3D|\s+3D|^BBC\s+|\s+BBC|BBC$|DISNEY\+?|XXX|\s+DC$" \
                         r"|[第\s共]+[0-9一二三四五六七八九十\-\s]+季" \
                         r"|[第\s共]+[0-9一二三四五六七八九十百零\-\s]+[集话話]" \
-                        r"|连载|日剧|美剧|电视剧|动画片|动漫|欧美|西德|日韩|超高清|高清|蓝光|翡翠台|梦幻天堂·龙网|★?\d*月?新番" \
-                        r"|最终季|合集|[多中国英葡法俄日韩德意西印泰台港粤双文语简繁体特效内封官译外挂]+字幕|版本|出品|台版|港版|\w+字幕组" \
+                        r"|连载|日剧|美剧|电视剧|动画片|动漫|欧美|西德|日韩|超高清|高清|无水印|下载|蓝光|翡翠台|梦幻天堂·龙网|★?\d*月?新番" \
+                        r"|最终季|合集|[多中国英葡法俄日韩德意西印泰台港粤双文语简繁体特效内封官译外挂]+字幕|版本|出品|台版|港版|\w+字幕组|\w+字幕社" \
                         r"|未删减版|UNCUT$|UNRATE$|WITH EXTRAS$|RERIP$|SUBBED$|PROPER$|REPACK$|SEASON$|EPISODE$|Complete$|Extended$|Extended Version$" \
                         r"|S\d{2}\s*-\s*S\d{2}|S\d{2}|\s+S\d{1,2}|EP?\d{2,4}\s*-\s*EP?\d{2,4}|EP?\d{2,4}|\s+EP?\d{1,4}" \
                         r"|CD[\s.]*[1-9]|DVD[\s.]*[1-9]|DISK[\s.]*[1-9]|DISC[\s.]*[1-9]" \
                         r"|[248]K|\d{3,4}[PIX]+" \
-                        r"|CD[\s.]*[1-9]|DVD[\s.]*[1-9]|DISK[\s.]*[1-9]|DISC[\s.]*[1-9]"
+                        r"|CD[\s.]*[1-9]|DVD[\s.]*[1-9]|DISK[\s.]*[1-9]|DISC[\s.]*[1-9]|\s+GB"
     _resources_pix_re = r"^[SBUHD]*(\d{3,4}[PI]+)|\d{3,4}X(\d{3,4})"
     _resources_pix_re2 = r"(^[248]+K)"
     _video_encode_re = r"^[HX]26[45]$|^AVC$|^HEVC$|^VC\d?$|^MPEG\d?$|^Xvid$|^DivX$|^HDR\d*$"
     _audio_encode_re = r"^DTS\d?$|^DTSHD$|^DTSHDMA$|^Atmos$|^TrueHD\d?$|^AC3$|^\dAudios?$|^DDP\d?$|^DD\d?$|^LPCM\d?$|^AAC\d?$|^FLAC\d?$|^HD\d?$|^MA\d?$"
 
     def __init__(self, title: str, subtitle: str = None, isfile: bool = False):
+        """
+        初始化
+        :param title: 标题
+        :param subtitle: 副标题
+        :param isfile: 是否是文件名
+        """
         super().__init__(title, subtitle, isfile)
         if not title:
             return
@@ -130,12 +139,47 @@ class MetaVideo(MetaBase):
         # 处理part
         if self.part and self.part.upper() == "PART":
             self.part = None
+        # 没有中文标题时，偿试中描述中获取中文名
+        if not self.cn_name and self.en_name and self.subtitle:
+            if self.__is_pinyin(self.en_name):
+                # 英文名是拼音
+                cn_name = self.__get_title_from_description(self.subtitle)
+                if cn_name and len(cn_name) == len(self.en_name.split()):
+                    # 中文名和拼音单词数相同，认为是中文名
+                    self.cn_name = cn_name
         # 制作组/字幕组
         self.resource_team = ReleaseGroupsMatcher().match(title=original_title) or None
         # 自定义占位符
         self.customization = CustomizationMatcher().match(title=original_title) or None
 
+    @staticmethod
+    def __get_title_from_description(description: str) -> Optional[str]:
+        """
+        从描述中提取标题
+        """
+        if not description:
+            return None
+        titles = re.split(r'[\s/|]+', description)
+        if StringUtils.is_chinese(titles[0]):
+            return titles[0]
+        return None
+
+    @staticmethod
+    def __is_pinyin(name_str: str) -> bool:
+        """
+        判断是否拼音
+        """
+        if not name_str:
+            return False
+        for n in name_str.lower().split():
+            if not is_pinyin(n):
+                return False
+        return True
+
     def __fix_name(self, name: str):
+        """
+        去掉名字中不需要的干扰字符
+        """
         if not name:
             return name
         name = re.sub(r'%s' % self._name_nostring_re, '', name,
@@ -157,6 +201,9 @@ class MetaVideo(MetaBase):
         return name
 
     def __init_name(self, token: str):
+        """
+        识别名称
+        """
         if not token:
             return
         # 回收标题
@@ -250,6 +297,9 @@ class MetaVideo(MetaBase):
                 self._last_token_type = "enname"
 
     def __init_part(self, token: str):
+        """
+        识别Part
+        """
         if not self.name:
             return
         if not self.year \
@@ -273,6 +323,9 @@ class MetaVideo(MetaBase):
             # self._stop_name_flag = False
 
     def __init_year(self, token: str):
+        """
+        识别年份
+        """
         if not self.name:
             return
         if not token.isdigit():
@@ -295,6 +348,9 @@ class MetaVideo(MetaBase):
         self._stop_name_flag = True
 
     def __init_resource_pix(self, token: str):
+        """
+        识别分辨率
+        """
         if not self.name:
             return
         re_res = re.findall(r"%s" % self._resources_pix_re, token, re.IGNORECASE)
@@ -331,6 +387,9 @@ class MetaVideo(MetaBase):
                     self.resource_pix = re_res.group(1).lower()
 
     def __init_season(self, token: str):
+        """
+        识别季
+        """
         re_res = re.findall(r"%s" % self._season_re, token, re.IGNORECASE)
         if re_res:
             self._last_token_type = "season"
@@ -380,6 +439,9 @@ class MetaVideo(MetaBase):
             self.begin_season = 1
 
     def __init_episode(self, token: str):
+        """
+        识别集
+        """
         re_res = re.findall(r"%s" % self._episode_re, token, re.IGNORECASE)
         if re_res:
             self._last_token_type = "episode"
@@ -450,6 +512,9 @@ class MetaVideo(MetaBase):
             self._last_token_type = "EPISODE"
 
     def __init_resource_type(self, token):
+        """
+        识别资源类型
+        """
         if not self.name:
             return
         source_res = re.search(r"(%s)" % self._source_re, token, re.IGNORECASE)
@@ -488,6 +553,9 @@ class MetaVideo(MetaBase):
             self._last_token = effect.upper()
 
     def __init_video_encode(self, token: str):
+        """
+        识别视频编码
+        """
         if not self.name:
             return
         if not self.year \
@@ -528,6 +596,9 @@ class MetaVideo(MetaBase):
                 self.video_encode = f"{self.video_encode} 10bit"
 
     def __init_audio_encode(self, token: str):
+        """
+        识别音频编码
+        """
         if not self.name:
             return
         if not self.year \

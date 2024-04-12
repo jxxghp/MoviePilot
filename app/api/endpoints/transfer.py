@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.transfer import TransferChain
-from app.core.security import verify_token
+from app.core.security import verify_token, verify_uri_token
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
 from app.schemas import MediaType
@@ -104,4 +104,13 @@ def manual_transfer(path: str = None,
             errormsg = f"整理完成，{len(errormsg)} 个文件转移失败！"
         return schemas.Response(success=False, message=errormsg)
     # 成功
+    return schemas.Response(success=True)
+
+
+@router.get("/now", summary="立即执行下载器文件整理", response_model=schemas.Response)
+def now(_: str = Depends(verify_uri_token)) -> Any:
+    """
+    立即执行下载器文件整理 API_TOKEN认证（?token=xxx）
+    """
+    TransferChain().process()
     return schemas.Response(success=True)

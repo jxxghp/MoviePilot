@@ -2,6 +2,8 @@ import re
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
+import cn2an
+
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
@@ -28,17 +30,17 @@ class DoubanModule(_ModuleBase):
         self.cache = DoubanCache()
 
     def stop(self):
-        pass
+        self.doubanapi.close()
 
     def test(self) -> Tuple[bool, str]:
         """
         测试模块连接性
         """
-        ret = RequestUtils().get_res("https://movie.douban.com/")
-        if ret and ret.status_code == 200:
-            return True, ""
-        elif ret:
-            return False, f"无法连接豆瓣，错误码：{ret.status_code}"
+        with RequestUtils().get_res("https://movie.douban.com/") as ret:
+            if ret and ret.status_code == 200:
+                return True, ""
+            elif ret:
+                return False, f"无法连接豆瓣，错误码：{ret.status_code}"
         return False, "豆瓣网络连接失败"
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
@@ -65,44 +67,51 @@ class DoubanModule(_ModuleBase):
             return None
 
         if not meta:
+            # 未提供元数据时，直接查询豆瓣信息，不使用缓存
             cache_info = {}
         elif not meta.name:
             logger.error("识别媒体信息时未提供元数据名称")
             return None
         else:
+            # 读取缓存
             if mtype:
                 meta.type = mtype
             if doubanid:
                 meta.doubanid = doubanid
-            # 读取缓存
             cache_info = self.cache.get(meta)
+
+        # 识别豆瓣信息
         if not cache_info or not cache:
             # 缓存没有或者强制不使用缓存
             if doubanid:
                 # 直接查询详情
                 info = self.douban_info(doubanid=doubanid, mtype=mtype or meta.type)
             elif meta:
-                if meta.begin_season:
-                    logger.info(f"正在识别 {meta.name} 第{meta.begin_season}季 ...")
-                else:
-                    logger.info(f"正在识别 {meta.name} ...")
-                # 匹配豆瓣信息
-                match_info = self.match_doubaninfo(name=meta.name,
-                                                   mtype=mtype or meta.type,
-                                                   year=meta.year,
-                                                   season=meta.begin_season)
-                if match_info:
-                    # 匹配到豆瓣信息
-                    info = self.douban_info(
-                        doubanid=match_info.get("id"),
-                        mtype=mtype or meta.type
-                    )
-                else:
-                    logger.info(f"{meta.name if meta else doubanid} 未匹配到豆瓣媒体信息")
-                    return None
+                info = {}
+                # 使用中英文名分别识别，去重去空，但要保持顺序
+                names = list(dict.fromkeys([k for k in [meta.cn_name, meta.en_name] if k]))
+                for name in names:
+                    if meta.begin_season:
+                        logger.info(f"正在识别 {name} 第{meta.begin_season}季 ...")
+                    else:
+                        logger.info(f"正在识别 {name} ...")
+                    # 匹配豆瓣信息
+                    match_info = self.match_doubaninfo(name=name,
+                                                       mtype=mtype or meta.type,
+                                                       year=meta.year,
+                                                       season=meta.begin_season)
+                    if match_info:
+                        # 匹配到豆瓣信息
+                        info = self.douban_info(
+                            doubanid=match_info.get("id"),
+                            mtype=mtype or meta.type
+                        )
+                        if info:
+                            break
             else:
                 logger.error("识别媒体信息时未提供元数据或豆瓣ID")
                 return None
+
             # 保存到缓存
             if meta and cache:
                 self.cache.update(meta, info)
@@ -544,7 +553,14 @@ class DoubanModule(_ModuleBase):
             if item_obj.get("type_name") not in (MediaType.TV.value, MediaType.MOVIE.value):
                 continue
             ret_medias.append(MediaInfo(douban_info=item_obj.get("target")))
-
+        # 将搜索词中的季写入标题中
+        if ret_medias and meta.begin_season:
+            # 小写数据转大写
+            season_str = cn2an.an2cn(meta.begin_season, "low")
+            for media in ret_medias:
+                if media.type == MediaType.TV:
+                    media.title = f"{media.title} 第{season_str}季"
+                    media.season = meta.begin_season
         return ret_medias
 
     @retry(Exception, 5, 3, 3, logger=logger)

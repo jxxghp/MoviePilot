@@ -14,34 +14,38 @@ class TorrentStatus(Enum):
 
 # 可监听事件
 class EventType(Enum):
-    # 插件重载
+    # 插件需要重载
     PluginReload = "plugin.reload"
     # 插件动作
     PluginAction = "plugin.action"
     # 执行命令
     CommandExcute = "command.excute"
-    # 站点删除
+    # 站点已删除
     SiteDeleted = "site.deleted"
-    # Webhook消息
-    WebhookMessage = "webhook.message"
+    # 站点已更新
+    SiteUpdated = "site.updated"
     # 转移完成
     TransferComplete = "transfer.complete"
-    # 添加下载
+    # 下载已添加
     DownloadAdded = "download.added"
     # 删除历史记录
     HistoryDeleted = "history.deleted"
     # 删除下载源文件
     DownloadFileDeleted = "downloadfile.deleted"
-    # 用户外来消息
+    # 收到用户外来消息
     UserMessage = "user.message"
-    # 通知消息
+    # 收到Webhook消息
+    WebhookMessage = "webhook.message"
+    # 发送消息通知
     NoticeMessage = "notice.message"
     # 名称识别请求
     NameRecognize = "name.recognize"
     # 名称识别结果
     NameRecognizeResult = "name.recognize.result"
-    # 站点发生更新
-    SiteUpdated = "site.updated"
+    # 订阅已添加
+    SubscribeAdded = "subscribe.added"
+    # 订阅已完成
+    SubscribeComplete = "subscribe.complete"
 
 
 # 系统配置Key字典

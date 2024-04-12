@@ -2,7 +2,7 @@ meta_cases = [{
     "title": "The Long Season 2017 2160p WEB-DL H265 AAC-XXX",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "",
         "en_name": "The Long Season",
         "year": "2017",
@@ -35,7 +35,7 @@ meta_cases = [{
     "subtitle": "",
     "target": {
         "type": "电视剧",
-        "cn_name": "",
+        "cn_name": "欢迎来到实力至上主义的教室",
         "en_name": "Youkoso Jitsuryoku Shijou Shugi No Kyoushitsu E",
         "year": "",
         "part": "",
@@ -50,7 +50,7 @@ meta_cases = [{
     "title": "National.Parks.Adventure.AKA.America.Wild:.National.Parks.Adventure.3D.2016.1080p.Blu-ray.AVC.TrueHD.7.1",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "",
         "en_name": "National Parks Adventure",
         "year": "2016",
@@ -82,7 +82,7 @@ meta_cases = [{
     "title": "哆啦A梦：大雄的宇宙小战争 2021 (2022) - 1080p.mp4",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "哆啦A梦：大雄的宇宙小战争 2021",
         "en_name": "",
         "year": "2022",
@@ -98,7 +98,7 @@ meta_cases = [{
     "title": "新精武门1991 (1991).mkv",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "新精武门1991",
         "en_name": "",
         "year": "1991",
@@ -178,7 +178,7 @@ meta_cases = [{
     "title": "Thor Love and Thunder (2022) [1080p] [WEBRip] [5.1]",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "",
         "en_name": "Thor Love And Thunder",
         "year": "2022",
@@ -210,7 +210,7 @@ meta_cases = [{
     "title": "钢铁侠2 (2010) 1080p AC3.mp4",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "钢铁侠2",
         "en_name": "",
         "year": "2010",
@@ -226,7 +226,7 @@ meta_cases = [{
     "title": "Wonder Woman 1984 2020 BluRay 1080p Atmos TrueHD 7.1 X264-EPiC",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "",
         "en_name": "Wonder Woman 1984",
         "year": "2020",
@@ -338,7 +338,7 @@ meta_cases = [{
     "title": "Nande Koko ni Sensei ga!? 2019 Blu-ray Remux 1080p AVC LPCM-7³ ACG",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "",
         "en_name": "Nande Koko Ni Sensei Ga!?",
         "year": "2019",
@@ -547,7 +547,7 @@ meta_cases = [{
     "subtitle": "",
     "target": {
         "type": "电视剧",
-        "cn_name": "",
+        "cn_name": "金装的薇尔梅",
         "en_name": "Kinsou No Vermeil",
         "year": "",
         "part": "",
@@ -578,7 +578,7 @@ meta_cases = [{
     "title": "The Witch Part 2：The Other One 2022 1080p WEB-DL AAC5.1 H264-tG1R0",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "",
         "en_name": "The Witch Part 2：The Other One",
         "year": "2022",
@@ -642,7 +642,7 @@ meta_cases = [{
     "title": "教父3.The.Godfather.Part.III.1990.1080p.NF.WEBRip.H264.DDP5.1-PTerWEB.mkv",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "教父3",
         "en_name": "The Godfather Part Iii",
         "year": "1990",
@@ -658,7 +658,7 @@ meta_cases = [{
     "title": "A.Quiet.Place.Part.II.2020.1080p.UHD.BluRay.DD+7.1.DoVi.X265-PuTao",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "",
         "en_name": "A Quiet Place Part Ii",
         "year": "2020",
@@ -723,7 +723,7 @@ meta_cases = [{
     "subtitle": "",
     "target": {
         "type": "电视剧",
-        "cn_name": "",
+        "cn_name": "打工吧！魔王大人",
         "en_name": "Hataraku Maou-Sama!!",
         "year": "",
         "part": "",
@@ -738,7 +738,7 @@ meta_cases = [{
     "title": "The Witch Part 2 The Other One 2022 1080p WEB-DL AAC5.1 H.264-tG1R0",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "",
         "en_name": "The Witch Part 2 The Other One",
         "year": "2022",
@@ -754,7 +754,7 @@ meta_cases = [{
     "title": "The 355 2022 BluRay 1080p DTS-HD MA5.1 X265.10bit-BeiTai",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "",
         "en_name": "The 355",
         "year": "2022",
@@ -818,7 +818,7 @@ meta_cases = [{
     "title": "2022.8.2.Twelve.Monkeys.1995.GBR.4K.REMASTERED.BluRay.1080p.X264.DTS [3.4 GB]",
     "subtitle": "",
     "target": {
-        "type": "电影",
+        "type": "未知",
         "cn_name": "",
         "en_name": "Twelve Monkeys",
         "year": "1995",
@@ -941,5 +941,100 @@ meta_cases = [{
         "pix": "1080p",
         "video_codec": "X264",
         "audio_codec": "DD 5.1"
+    }
+}, {
+    "title": "[Hall_of_C] 诛仙 Zhu Xian (Jade Dynasty) - Episode 19",
+    "subtitle": "",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "诛仙",
+        "en_name": "Zhu Xian Jade Dynasty",
+        "year": "",
+        "part": "",
+        "season": "S01",
+        "episode": "E19",
+        "restype": "",
+        "pix": "",
+        "video_codec": "",
+        "audio_codec": ""
+    }
+}, {
+    "title": "I Woke Up a Vampire S02 2023 2160p NF WEB-DL DDP5.1 Atmos H 265-HHWEB",
+    "subtitle": "醒来变成吸血鬼 第二季 | 全8集 | 4K | 类型: 喜剧/家庭/奇幻 | 导演: TommyLynch | 主演: NikoCeci/ZebastinBorjeau/安娜·阿劳约/KaileenAngelicChang/KrisSiddiqi",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "I Woke Up A Vampire",
+        "year": "2023",
+        "part": "",
+        "season": "S02",
+        "episode": "",
+        "restype": "WEB-DL",
+        "pix": "2160p",
+        "video_codec": "H265",
+        "audio_codec": "DDP 5.1 Atmos"
+    }
+}, {
+    "title": "Shadows of the Void S01 2024 1080p WEB-DL H264 AAC-HHWEB",
+    "subtitle": "虚无边境 | 第01-02集 | 1080p | 类型: 动画 | 导演: 巴西 | 主演: 山新/周一菡/皇贞季/Kenz/李佳怡 [内嵌中字]",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "Shadows Of The Void",
+        "year": "2024",
+        "part": "",
+        "season": "S01",
+        "episode": "E01-E02",
+        "restype": "WEB-DL",
+        "pix": "1080p",
+        "video_codec": "H264",
+        "audio_codec": "AAC"
+    }
+}, {
+    "title": "【极影字幕社】★1月新番 Metallic Rouge/金属口红 第13话 GB 1080P MP4（字幕社招人内详）",
+    "subtitle": "",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "金属口红",
+        "en_name": "Metallic Rouge",
+        "year": "",
+        "part": "",
+        "season": "S01",
+        "episode": "E13",
+        "restype": "",
+        "pix": "1080p",
+        "video_codec": "",
+        "audio_codec": ""
+    }
+}, {
+    "title": "Mai Xiang S01 2019 2160p WEB-DL H.265 DDP2.0-HHWEB",
+    "subtitle": "麦香 | 全36集 | 4K | 类型:剧情/爱情/家庭 | 主演:傅晶/章呈赫/王伟/沙景昌/何音",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "麦香",
+        "en_name": "Mai Xiang",
+        "year": "2019",
+        "part": "",
+        "season": "S01",
+        "episode": "",
+        "restype": "WEB-DL",
+        "pix": "2160p",
+        "video_codec": "H265",
+        "audio_codec": "DDP 2.0"
+    }
+}, {
+    "path": "/volume1/电视剧/西部世界 第二季 (2016)/5.mkv",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "西部世界",
+        "en_name": "",
+        "year": "2016",
+        "part": "",
+        "season": "S02",
+        "episode": "E05",
+        "restype": "",
+        "pix": "",
+        "video_codec": "",
+        "audio_codec": ""
     }
 }]

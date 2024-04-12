@@ -71,18 +71,18 @@ class WeChat:
                 return None
             try:
                 token_url = self._token_url % (self._corpid, self._appsecret)
-                res = RequestUtils().get_res(token_url)
-                if res:
-                    ret_json = res.json()
-                    if ret_json.get('errcode') == 0:
-                        self._access_token = ret_json.get('access_token')
-                        self._expires_in = ret_json.get('expires_in')
-                        self._access_token_time = datetime.now()
-                elif res is not None:
-                    logger.error(f"获取微信access_token失败，错误码：{res.status_code}，错误原因：{res.reason}")
-                else:
-                    logger.error(f"获取微信access_token失败，未获取到返回信息")
-                    raise Exception("获取微信access_token失败，网络连接失败")
+                with RequestUtils().get_res(token_url) as res:
+                    if res:
+                        ret_json = res.json()
+                        if ret_json.get('errcode') == 0:
+                            self._access_token = ret_json.get('access_token')
+                            self._expires_in = ret_json.get('expires_in')
+                            self._access_token_time = datetime.now()
+                    elif res is not None:
+                        logger.error(f"获取微信access_token失败，错误码：{res.status_code}，错误原因：{res.reason}")
+                    else:
+                        logger.error(f"获取微信access_token失败，未获取到返回信息")
+                        raise Exception("获取微信access_token失败，网络连接失败")
             except Exception as e:
                 logger.error(f"获取微信access_token失败，错误信息：{str(e)}")
                 return None

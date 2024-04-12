@@ -17,7 +17,7 @@ class TheTvDbModule(_ModuleBase):
                                  proxies=settings.PROXY)
 
     def stop(self):
-        pass
+        self.tvdb.close()
 
     def test(self) -> Tuple[bool, str]:
         """

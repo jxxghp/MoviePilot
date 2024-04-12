@@ -49,6 +49,7 @@ class SiteChain(ChainBase):
             "zhuque.in": self.__zhuque_test,
             "m-team.io": self.__mteam_test,
             "m-team.cc": self.__mteam_test,
+            "ptlsp.com": self.__ptlsp_test,
         }
 
     def is_special_site(self, domain: str) -> bool:
@@ -64,8 +65,9 @@ class SiteChain(ChainBase):
         """
         # 获取token
         token = None
+        user_agent = site.ua or settings.USER_AGENT
         res = RequestUtils(
-            ua=site.ua,
+            ua=user_agent,
             cookies=site.cookie,
             proxies=settings.PROXY if site.proxy else None,
             timeout=15
@@ -81,7 +83,7 @@ class SiteChain(ChainBase):
             headers={
                 'X-CSRF-TOKEN': token,
                 "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": f"{site.ua}"
+                "User-Agent": f"{user_agent}"
             },
             cookies=site.cookie,
             proxies=settings.PROXY if site.proxy else None,
@@ -98,9 +100,10 @@ class SiteChain(ChainBase):
         """
         判断站点是否已经登陆：m-team
         """
+        user_agent = site.ua or settings.USER_AGENT
         url = f"{site.url}api/member/profile"
         res = RequestUtils(
-            ua=site.ua,
+            ua=user_agent,
             cookies=site.cookie,
             proxies=settings.PROXY if site.proxy else None,
             timeout=15
@@ -110,7 +113,7 @@ class SiteChain(ChainBase):
             if user_info and user_info.get("data"):
                 # 更新最后访问时间
                 res = RequestUtils(cookies=site.cookie,
-                                   ua=site.ua,
+                                   ua=user_agent,
                                    timeout=60,
                                    proxies=settings.PROXY if site.proxy else None,
                                    referer=f"{site.url}index"
@@ -120,6 +123,13 @@ class SiteChain(ChainBase):
                 else:
                     return True, f"连接成功，但更新状态失败"
         return False, "Cookie已失效"
+
+    def __ptlsp_test(self, site: Site) -> Tuple[bool, str]:
+        """
+        判断站点是否已经登陆：ptlsp
+        """
+        site.url = f"{site.url}index.php"
+        return self.__test(site)
 
     @staticmethod
     def __parse_favicon(url: str, cookie: str, ua: str) -> Tuple[str, Optional[str]]:
@@ -194,7 +204,7 @@ class SiteChain(ChainBase):
                         rss_url, errmsg = self.rsshelper.get_rss_link(
                             url=site_info.url,
                             cookie=cookie,
-                            ua=settings.USER_AGENT,
+                            ua=site_info.ua or settings.USER_AGENT,
                             proxy=True if site_info.proxy else False
                         )
                         if rss_url:
@@ -345,47 +355,54 @@ class SiteChain(ChainBase):
                 return self.special_site_test[domain](site_info)
 
             # 通用站点测试
-            site_url = site_info.url
-            site_cookie = site_info.cookie
-            ua = site_info.ua
-            render = site_info.render
-            public = site_info.public
-            proxies = settings.PROXY if site_info.proxy else None
-            proxy_server = settings.PROXY_SERVER if site_info.proxy else None
-
-            # 访问链接
-            if render:
-                page_source = PlaywrightHelper().get_page_source(url=site_url,
-                                                                 cookies=site_cookie,
-                                                                 ua=ua,
-                                                                 proxies=proxy_server)
-                if not public and not SiteUtils.is_logged_in(page_source):
-                    if under_challenge(page_source):
-                        return False, f"无法通过Cloudflare！"
-                    return False, f"仿真登录失败，Cookie已失效！"
-            else:
-                res = RequestUtils(cookies=site_cookie,
-                                   ua=ua,
-                                   proxies=proxies
-                                   ).get_res(url=site_url)
-                # 判断登录状态
-                if res and res.status_code in [200, 500, 403]:
-                    if not public and not SiteUtils.is_logged_in(res.text):
-                        if under_challenge(res.text):
-                            msg = "站点被Cloudflare防护，请打开站点浏览器仿真"
-                        elif res.status_code == 200:
-                            msg = "Cookie已失效"
-                        else:
-                            msg = f"状态码：{res.status_code}"
-                        return False, f"{msg}！"
-                    elif public and res.status_code != 200:
-                        return False, f"状态码：{res.status_code}！"
-                elif res is not None:
-                    return False, f"状态码：{res.status_code}！"
-                else:
-                    return False, f"无法打开网站！"
+            return self.__test(site_info)
         except Exception as e:
             return False, f"{str(e)}！"
+
+    @staticmethod
+    def __test(site_info: Site) -> Tuple[bool, str]:
+        """
+        通用站点测试
+        """
+        site_url = site_info.url
+        site_cookie = site_info.cookie
+        ua = site_info.ua or settings.USER_AGENT
+        render = site_info.render
+        public = site_info.public
+        proxies = settings.PROXY if site_info.proxy else None
+        proxy_server = settings.PROXY_SERVER if site_info.proxy else None
+
+        # 访问链接
+        if render:
+            page_source = PlaywrightHelper().get_page_source(url=site_url,
+                                                             cookies=site_cookie,
+                                                             ua=ua,
+                                                             proxies=proxy_server)
+            if not public and not SiteUtils.is_logged_in(page_source):
+                if under_challenge(page_source):
+                    return False, f"无法通过Cloudflare！"
+                return False, f"仿真登录失败，Cookie已失效！"
+        else:
+            res = RequestUtils(cookies=site_cookie,
+                               ua=ua,
+                               proxies=proxies
+                               ).get_res(url=site_url)
+            # 判断登录状态
+            if res and res.status_code in [200, 500, 403]:
+                if not public and not SiteUtils.is_logged_in(res.text):
+                    if under_challenge(res.text):
+                        msg = "站点被Cloudflare防护，请打开站点浏览器仿真"
+                    elif res.status_code == 200:
+                        msg = "Cookie已失效"
+                    else:
+                        msg = f"状态码：{res.status_code}"
+                    return False, f"{msg}！"
+                elif public and res.status_code != 200:
+                    return False, f"状态码：{res.status_code}！"
+            elif res is not None:
+                return False, f"状态码：{res.status_code}！"
+            else:
+                return False, f"无法打开网站！"
         return True, "连接成功"
 
     def remote_list(self, channel: MessageChannel, userid: Union[str, int] = None):

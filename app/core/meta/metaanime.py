@@ -16,7 +16,7 @@ class MetaAnime(MetaBase):
     识别动漫
     """
     _anime_no_words = ['CHS&CHT', 'MP4', 'GB MP4', 'WEB-DL']
-    _name_nostring_re = r"S\d{2}\s*-\s*S\d{2}|S\d{2}|\s+S\d{1,2}|EP?\d{2,4}\s*-\s*EP?\d{2,4}|EP?\d{2,4}|\s+EP?\d{1,4}"
+    _name_nostring_re = r"S\d{2}\s*-\s*S\d{2}|S\d{2}|\s+S\d{1,2}|EP?\d{2,4}\s*-\s*EP?\d{2,4}|EP?\d{2,4}|\s+EP?\d{1,4}|\s+GB"
 
     def __init__(self, title: str, subtitle: str = None, isfile: bool = False):
         super().__init__(title, subtitle, isfile)
@@ -32,8 +32,6 @@ class MetaAnime(MetaBase):
             if anitopy_info:
                 # 名称
                 name = anitopy_info.get("anime_title")
-                if name and name.find("/") != -1:
-                    name = name.split("/")[-1].strip()
                 if not name or name in self._anime_no_words or (len(name) < 5 and not StringUtils.is_chinese(name)):
                     anitopy_info = anitopy.parse("[ANIME]" + title)
                     if anitopy_info:
@@ -44,23 +42,41 @@ class MetaAnime(MetaBase):
                         name = name_match.group(1).strip()
                 # 拆份中英文名称
                 if name:
-                    lastword_type = ""
-                    for word in name.split():
-                        if not word:
-                            continue
-                        if word.endswith(']'):
-                            word = word[:-1]
-                        if word.isdigit():
-                            if lastword_type == "cn":
-                                self.cn_name = "%s %s" % (self.cn_name or "", word)
-                            elif lastword_type == "en":
-                                self.en_name = "%s %s" % (self.en_name or "", word)
-                        elif StringUtils.is_chinese(word):
-                            self.cn_name = "%s %s" % (self.cn_name or "", word)
-                            lastword_type = "cn"
+                    _split_flag = True
+                    # 按/拆分中英文
+                    if name.find("/") != -1:
+                        names = name.split("/")
+                        if StringUtils.is_chinese(names[0]):
+                            self.cn_name = names[0]
+                            if len(names) > 1:
+                                self.en_name = names[1]
+                            _split_flag = False
+                        elif StringUtils.is_chinese(names[-1]):
+                            self.cn_name = names[-1]
+                            if len(names) > 1:
+                                self.en_name = names[0]
+                            _split_flag = False
                         else:
-                            self.en_name = "%s %s" % (self.en_name or "", word)
-                            lastword_type = "en"
+                            name = names[-1]
+                    # 拆分中英文
+                    if _split_flag:
+                        lastword_type = ""
+                        for word in name.split():
+                            if not word:
+                                continue
+                            if word.endswith(']'):
+                                word = word[:-1]
+                            if word.isdigit():
+                                if lastword_type == "cn":
+                                    self.cn_name = "%s %s" % (self.cn_name or "", word)
+                                elif lastword_type == "en":
+                                    self.en_name = "%s %s" % (self.en_name or "", word)
+                            elif StringUtils.is_chinese(word):
+                                self.cn_name = "%s %s" % (self.cn_name or "", word)
+                                lastword_type = "cn"
+                            else:
+                                self.en_name = "%s %s" % (self.en_name or "", word)
+                                lastword_type = "en"
                 if self.cn_name:
                     _, self.cn_name, _, _, _, _ = StringUtils.get_keyword(self.cn_name)
                     if self.cn_name:

@@ -150,12 +150,15 @@ class DownloadChain(ChainBase):
             return None, "", []
         if torrent.enclosure.startswith("magnet:"):
             return torrent.enclosure, "", []
-
+        # Cookie
+        site_cookie = torrent.site_cookie
         if torrent.enclosure.startswith("["):
             # 需要解码获取下载地址
             torrent_url = __get_redict_url(url=torrent.enclosure,
                                            ua=torrent.site_ua,
-                                           cookie=torrent.site_cookie)
+                                           cookie=site_cookie)
+            # 涉及解析地址的不使用Cookie下载种子，否则MT会出错
+            site_cookie = None
         else:
             torrent_url = torrent.enclosure
         if not torrent_url:
@@ -164,7 +167,7 @@ class DownloadChain(ChainBase):
         # 下载种子文件
         torrent_file, content, download_folder, files, error_msg = self.torrent.download_torrent(
             url=torrent_url,
-            cookie=torrent.site_cookie,
+            cookie=site_cookie,
             ua=torrent.site_ua,
             proxy=torrent.site_proxy)
 

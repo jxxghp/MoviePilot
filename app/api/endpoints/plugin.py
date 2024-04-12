@@ -14,16 +14,16 @@ router = APIRouter()
 
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
-def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "all") -> Any:
+def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "all") -> List[schemas.Plugin]:
     """
     查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
     """
     # 本地插件
     local_plugins = PluginManager().get_local_plugins()
     # 已安装插件
-    installed_plugins = [plugin for plugin in local_plugins if plugin.get("installed")]
+    installed_plugins = [plugin for plugin in local_plugins if plugin.installed]
     # 未安装的本地插件
-    not_installed_plugins = [plugin for plugin in local_plugins if not plugin.get("installed")]
+    not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
     if state == "installed":
         return installed_plugins
 
@@ -39,17 +39,17 @@ def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "a
     # 插件市场插件清单
     market_plugins = []
     # 已安装插件IDS
-    _installed_ids = [plugin["id"] for plugin in installed_plugins]
+    _installed_ids = [plugin.id for plugin in installed_plugins]
     # 未安装的线上插件或者有更新的插件
     for plugin in online_plugins:
-        if plugin["id"] not in _installed_ids:
+        if plugin.id not in _installed_ids:
             market_plugins.append(plugin)
-        elif plugin.get("has_update"):
+        elif plugin.has_update:
             market_plugins.append(plugin)
     # 未安装的本地插件，且不在线上插件中
-    _plugin_ids = [plugin["id"] for plugin in market_plugins]
+    _plugin_ids = [plugin.id for plugin in market_plugins]
     for plugin in not_installed_plugins:
-        if plugin["id"] not in _plugin_ids:
+        if plugin.id not in _plugin_ids:
             market_plugins.append(plugin)
     # 返回插件清单
     if state == "market":
@@ -99,8 +99,8 @@ def install(plugin_id: str,
         SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
         # 统计
         PluginHelper().install_reg(plugin_id)
-    # 重载插件管理器
-    PluginManager().init_config()
+    # 加载插件到内存
+    PluginManager().reload_plugin(plugin_id)
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
     return schemas.Response(success=True)
@@ -135,7 +135,7 @@ def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)
     # 删除配置
     PluginManager().delete_plugin_config(plugin_id)
     # 重新生效插件
-    PluginManager().reload_plugin(plugin_id, {})
+    PluginManager().init_plugin(plugin_id, {})
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
     return schemas.Response(success=True)
@@ -158,7 +158,7 @@ def set_plugin_config(plugin_id: str, conf: dict,
     # 保存配置
     PluginManager().save_plugin_config(plugin_id, conf)
     # 重新生效插件
-    PluginManager().reload_plugin(plugin_id, conf)
+    PluginManager().init_plugin(plugin_id, conf)
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
     return schemas.Response(success=True)
@@ -178,8 +178,8 @@ def uninstall_plugin(plugin_id: str,
             break
     # 保存
     SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
-    # 重载插件管理器
-    PluginManager().init_config()
+    # 移除插件
+    PluginManager().remove_plugin(plugin_id)
     # 移除插件服务
     Scheduler().remove_plugin_job(plugin_id)
     return schemas.Response(success=True)

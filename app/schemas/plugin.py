@@ -40,3 +40,5 @@ class Plugin(BaseModel):
     repo_url: Optional[str] = None
     # 安装次数
     install_count: Optional[int] = 0
+    # 更新记录
+    history: Optional[dict] = {}

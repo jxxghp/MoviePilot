@@ -1,3 +1,4 @@
+import json
 import time
 from typing import Tuple, List
 
@@ -20,6 +21,9 @@ class SubscribeOper(DbOper):
                                      doubanid=mediainfo.douban_id,
                                      season=kwargs.get('season'))
         if not subscribe:
+            if kwargs.get("sites") and not isinstance(kwargs.get("sites"), str):
+                kwargs["sites"] = json.dumps(kwargs.get("sites"))
+
             subscribe = Subscribe(name=mediainfo.title,
                                   year=mediainfo.year,
                                   type=mediainfo.type.value,

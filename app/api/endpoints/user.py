@@ -17,8 +17,8 @@ router = APIRouter()
 
 @router.get("/", summary="所有用户", response_model=List[schemas.User])
 def read_users(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
     查询用户列表
@@ -29,10 +29,10 @@ def read_users(
 
 @router.post("/", summary="新增用户", response_model=schemas.Response)
 def create_user(
-    *,
-    db: Session = Depends(get_db),
-    user_in: schemas.UserCreate,
-    current_user: User = Depends(get_current_active_superuser),
+        *,
+        db: Session = Depends(get_db),
+        user_in: schemas.UserCreate,
+        current_user: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
     新增用户
@@ -51,10 +51,10 @@ def create_user(
 
 @router.put("/", summary="更新用户", response_model=schemas.Response)
 def update_user(
-    *,
-    db: Session = Depends(get_db),
-    user_in: schemas.UserCreate,
-    _: User = Depends(get_current_active_superuser),
+        *,
+        db: Session = Depends(get_db),
+        user_in: schemas.UserCreate,
+        _: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
     更新用户
@@ -64,7 +64,8 @@ def update_user(
         # 正则表达式匹配密码包含字母、数字、特殊字符中的至少两项
         pattern = r'^(?![a-zA-Z]+$)(?!\d+$)(?![^\da-zA-Z\s]+$).{6,50}$'
         if not re.match(pattern, user_info.get("password")):
-            return schemas.Response(success=False, message="密码需要同时包含字母、数字、特殊字符中的至少两项，且长度大于6位")
+            return schemas.Response(success=False,
+                                    message="密码需要同时包含字母、数字、特殊字符中的至少两项，且长度大于6位")
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
     user = User.get_by_name(db, name=user_info["name"])
@@ -76,7 +77,7 @@ def update_user(
 
 @router.get("/current", summary="当前登录用户信息", response_model=schemas.User)
 def read_current_user(
-    current_user: User = Depends(get_current_active_user)
+        current_user: User = Depends(get_current_active_user)
 ) -> Any:
     """
     当前登录用户信息
@@ -102,12 +103,51 @@ async def upload_avatar(user_id: int, db: Session = Depends(get_db),
     return schemas.Response(success=True, message=file.filename)
 
 
+@router.post('/otp/generate', summary='生成otp验证uri', response_model=schemas.Response)
+def otp_generate(
+        current_user: User = Depends(get_current_active_user)
+) -> Any:
+    secret, uri = OtpUtils.generate_secret_key(current_user.name)
+    return schemas.Response(success=secret != "", data={'secret': secret, 'uri': uri})
+
+
+@router.post('/otp/judge', summary='判断otp验证是否通过', response_model=schemas.Response)
+def otp_judge(
+        data: dict,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+) -> Any:
+    uri = data.get("uri")
+    otp_password = data.get("otpPassword")
+    if not OtpUtils.is_legal(uri, otp_password):
+        return schemas.Response(success=False, message="验证码错误")
+    current_user.update_otp_by_name(db, current_user.name, True, OtpUtils.get_secret(uri))
+    return schemas.Response(success=True)
+
+
+@router.post('/otp/disable', summary='关闭当前用户的otp验证', response_model=schemas.Response)
+def otp_disable(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+) -> Any:
+    current_user.update_otp_by_name(db, current_user.name, False, "")
+    return schemas.Response(success=True)
+
+
+@router.get('/otp/{userid}', summary='判断当前用户是否开启otp验证', response_model=schemas.Response)
+def otp_enable(userid: str, db: Session = Depends(get_db)) -> Any:
+    user: User = User.get_by_name(db, userid)
+    if not user:
+        return schemas.Response(success=False, message="用户不存在")
+    return schemas.Response(success=user.is_otp)
+
+
 @router.delete("/{user_name}", summary="删除用户", response_model=schemas.Response)
 def delete_user(
-    *,
-    db: Session = Depends(get_db),
-    user_name: str,
-    current_user: User = Depends(get_current_active_superuser),
+        *,
+        db: Session = Depends(get_db),
+        user_name: str,
+        current_user: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
     删除用户
@@ -121,9 +161,9 @@ def delete_user(
 
 @router.get("/{user_id}", summary="用户详情", response_model=schemas.User)
 def read_user_by_id(
-    user_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+        user_id: int,
+        current_user: User = Depends(get_current_active_user),
+        db: Session = Depends(get_db),
 ) -> Any:
     """
     查询用户详情
@@ -142,34 +182,3 @@ def read_user_by_id(
             detail="用户权限不足"
         )
     return user
-
-
-@router.post('/otp/generate', summary='生成otp验证uri', response_model=schemas.Response)
-def otp_generate(
-    current_user: User = Depends(get_current_active_user)
-) -> Any:
-    secret, uri = OtpUtils.generate_secret_key(current_user.name)
-    return schemas.Response(success=secret != "", data={'secret': secret, 'uri': uri})
-
-
-@router.post('/otp/judge', summary='判断otp验证是否通过', response_model=schemas.Response)
-def otp_judge(
-    data: dict,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-) -> Any:
-    uri = data.get("uri")
-    otp_password = data.get("otpPassword")
-    if not OtpUtils.is_legal(uri, otp_password):
-        return schemas.Response(success=False, message="验证码错误")
-    current_user.update_otp_by_name(db, current_user.name, True, OtpUtils.get_secret(uri))
-    return schemas.Response(success=True)
-
-
-@router.post('/otp/disable', summary='关闭当前用户的otp验证', response_model=schemas.Response)
-def otp_disable(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-) -> Any:
-    current_user.update_otp_by_name(db, current_user.name, False, "")
-    return schemas.Response(success=True)

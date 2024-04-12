@@ -66,7 +66,7 @@ class Settings(BaseSettings):
                           '.rmvb', '.avi', '.mov', '.mpeg',
                           '.mpg', '.wmv', '.3gp', '.asf',
                           '.m4v', '.flv', '.m2ts', '.strm',
-                          '.tp']
+                          '.tp', '.f4v']
     # 支持的字幕文件后缀格式
     RMT_SUBEXT: list = ['.srt', '.ass', '.ssa', '.sup']
     # 下载器临时文件后缀

@@ -73,7 +73,7 @@ class MediaInfo(BaseModel):
     year: Optional[str] = None
     # 标题（年份）
     title_year: Optional[str] = None
-    # 季
+    # 当前指定季，如有
     season: Optional[int] = None
     # TMDB ID
     tmdb_id: Optional[int] = None

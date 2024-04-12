@@ -61,7 +61,7 @@ def MetaInfoPath(path: Path) -> MetaBase:
     :param path: 路径
     """
     # 文件元数据，不包含后缀
-    file_meta = MetaInfo(title=path.stem)
+    file_meta = MetaInfo(title=path.name)
     # 上级目录元数据
     dir_meta = MetaInfo(title=path.parent.name)
     # 合并元数据

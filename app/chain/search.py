@@ -1,5 +1,4 @@
 import pickle
-import re
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -18,7 +17,6 @@ from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo
 from app.schemas.types import MediaType, ProgressKey, SystemConfigKey, EventType
-from app.utils.string import StringUtils
 
 
 class SearchChain(ChainBase):
@@ -34,19 +32,27 @@ class SearchChain(ChainBase):
         self.torrenthelper = TorrentHelper()
 
     def search_by_id(self, tmdbid: int = None, doubanid: str = None,
-                     mtype: MediaType = None, area: str = "title") -> List[Context]:
+                     mtype: MediaType = None, area: str = "title", season: int = None) -> List[Context]:
         """
         根据TMDBID/豆瓣ID搜索资源，精确匹配，但不不过滤本地存在的资源
         :param tmdbid: TMDB ID
         :param doubanid: 豆瓣 ID
         :param mtype: 媒体，电影 or 电视剧
         :param area: 搜索范围，title or imdbid
+        :param season: 季数
         """
         mediainfo = self.recognize_media(tmdbid=tmdbid, doubanid=doubanid, mtype=mtype)
         if not mediainfo:
             logger.error(f'{tmdbid} 媒体信息识别失败！')
             return []
-        results = self.process(mediainfo=mediainfo, area=area)
+        no_exists = None
+        if season:
+            no_exists = {
+                tmdbid or doubanid: {
+                    season: NotExistMediaInfo(episodes=[])
+                }
+            }
+        results = self.process(mediainfo=mediainfo, area=area, no_exists=no_exists)
         # 保存眲结果
         bytes_results = pickle.dumps(results)
         self.systemconfig.set(SystemConfigKey.SearchResults, bytes_results)
@@ -151,13 +157,15 @@ class SearchChain(ChainBase):
         _count = 0
         if mediainfo:
             # 英文标题应该在别名/原标题中，不需要再匹配
-            logger.info(f"标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
+            logger.info(f"开始匹配结果 标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
             self.progress.update(value=0, text=f'开始匹配，总 {_total} 个资源 ...', key=ProgressKey.Search)
             for torrent in torrents:
                 _count += 1
                 self.progress.update(value=(_count / _total) * 96,
                                      text=f'正在匹配 {torrent.site_name}，已完成 {_count} / {_total} ...',
                                      key=ProgressKey.Search)
+                if not torrent.title:
+                    continue
                 # 比对IMDBID
                 if torrent.imdbid \
                         and mediainfo.imdb_id \
@@ -167,59 +175,27 @@ class SearchChain(ChainBase):
                     continue
                 # 识别
                 torrent_meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
-                # 比对种子识别类型
-                if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
-                    logger.warn(f'{torrent.site_name} - {torrent.title} 种子标题类型为 {torrent_meta.type.value}，'
-                                f'需要是 {mediainfo.type.value}，不匹配')
-                    continue
-                # 比对种子在站点中的类型
-                if torrent.category == MediaType.TV.value and mediainfo.type != MediaType.TV:
-                    logger.warn(f'{torrent.site_name} - {torrent.title} 种子在站点中归类为 {torrent.category}，'
-                                f'需要是 {mediainfo.type.value}，不匹配')
-                    continue
-                # 比对年份
-                if mediainfo.year:
-                    if mediainfo.type == MediaType.TV:
-                        # 剧集年份，每季的年份可能不同
-                        if torrent_meta.year and torrent_meta.year not in [year for year in
-                                                                           mediainfo.season_years.values()]:
-                            logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
-                            continue
-                    else:
-                        # 电影年份，上下浮动1年
-                        if torrent_meta.year not in [str(int(mediainfo.year) - 1),
-                                                     mediainfo.year,
-                                                     str(int(mediainfo.year) + 1)]:
-                            logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配')
-                            continue
-                # 比对标题和原语种标题
-                meta_name = StringUtils.clear_upper(torrent_meta.name)
-                if meta_name in [
-                    StringUtils.clear_upper(mediainfo.title),
-                    StringUtils.clear_upper(mediainfo.original_title)
-                ]:
-                    logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}')
-                    _match_torrents.append(torrent)
-                    continue
-                # 在副标题中判断是否存在标题与原语种标题
-                if torrent.description:
-                    subtitle = re.split(r'[\s/|]+', torrent.description)
-                    if (StringUtils.is_chinese(mediainfo.title)
-                        and str(mediainfo.title) in subtitle) \
-                            or (StringUtils.is_chinese(mediainfo.original_title)
-                                and str(mediainfo.original_title) in subtitle):
-                        logger.info(f'{mediainfo.title} 通过副标题匹配到资源：{torrent.site_name} - {torrent.title}，'
-                                    f'副标题：{torrent.description}')
+                if torrent.title != torrent_meta.org_string:
+                    logger.info(f"种子名称应用识别词后发生改变：{torrent.title} => {torrent_meta.org_string}")
+                # 比对词条指定的tmdbid
+                if torrent_meta.tmdbid or torrent_meta.doubanid:
+                    if torrent_meta.tmdbid and torrent_meta.tmdbid == mediainfo.tmdb_id:
+                        logger.info(f'{mediainfo.title} 通过词表指定TMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
                         _match_torrents.append(torrent)
                         continue
-                # 比对别名和译名
-                for name in mediainfo.names:
-                    if StringUtils.clear_upper(name) == meta_name:
-                        logger.info(f'{mediainfo.title} 通过别名或译名匹配到资源：{torrent.site_name} - {torrent.title}')
+                    if torrent_meta.doubanid and torrent_meta.doubanid == mediainfo.douban_id:
+                        logger.info(f'{mediainfo.title} 通过词表指定豆瓣ID匹配到资源：{torrent.site_name} - {torrent.title}')
                         _match_torrents.append(torrent)
-                        break
-                else:
-                    logger.warn(f'{torrent.site_name} - {torrent.title} 标题不匹配')
+                        continue
+
+                # 比对种子
+                if self.torrenthelper.match_torrent(mediainfo=mediainfo,
+                                                    torrent_meta=torrent_meta,
+                                                    torrent=torrent):
+                    # 匹配成功
+                    _match_torrents.append(torrent)
+                    continue
+            # 匹配完成
             logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
             self.progress.update(value=97,
                                  text=f'匹配完成，共匹配到 {len(_match_torrents)} 个资源',
@@ -234,7 +210,7 @@ class SearchChain(ChainBase):
             # 取搜索优先级规则
             priority_rule = self.systemconfig.get(SystemConfigKey.SearchFilterRules)
         if priority_rule:
-            logger.info(f'开始优先级规则过滤，当前规则：{priority_rule} ...')
+            logger.info(f'开始优先级规则/剧集过滤，当前规则：{priority_rule} ...')
             result: List[TorrentInfo] = self.filter_torrents(rule_string=priority_rule,
                                                              torrent_list=_match_torrents,
                                                              season_episodes=season_episodes,
@@ -245,14 +221,14 @@ class SearchChain(ChainBase):
                 logger.warn(f'{keyword or mediainfo.title} 没有符合优先级规则的资源')
                 return []
         # 使用过滤规则再次过滤
-        if filter_rule:
+        if _match_torrents:
             logger.info(f'开始过滤规则过滤，当前规则：{filter_rule} ...')
             _match_torrents = self.filter_torrents_by_rule(torrents=_match_torrents,
                                                            mediainfo=mediainfo,
                                                            filter_rule=filter_rule)
-            if not _match_torrents:
-                logger.warn(f'{keyword or mediainfo.title} 没有符合过滤规则的资源')
-                return []
+        if not _match_torrents:
+            logger.warn(f'{keyword or mediainfo.title} 没有符合过滤规则的资源')
+            return []
         # 去掉mediainfo中多余的数据
         mediainfo.clear()
         # 组装上下文
@@ -260,8 +236,8 @@ class SearchChain(ChainBase):
                             media_info=mediainfo,
                             torrent_info=torrent) for torrent in _match_torrents]
 
-        logger.info(f"过滤完成，剩余 {_total} 个资源")
-        self.progress.update(value=99, text=f'过滤完成，剩余 {_total} 个资源', key=ProgressKey.Search)
+        logger.info(f"过滤完成，剩余 {len(contexts)} 个资源")
+        self.progress.update(value=99, text=f'过滤完成，剩余 {len(contexts)} 个资源', key=ProgressKey.Search)
         # 排序
         self.progress.update(value=100,
                              text=f'正在对 {len(contexts)} 个资源进行排序，请稍候...',

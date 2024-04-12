@@ -163,12 +163,12 @@ class FilterModule(_ModuleBase):
         # 返回种子列表
         ret_torrents = []
         for torrent in torrent_list:
-            # 能命中优先级的才返回
-            if not self.__get_order(torrent, rule_string):
-                continue
             # 季集数过滤
             if season_episodes \
                     and not self.__match_season_episodes(torrent, season_episodes):
+                continue
+            # 能命中优先级的才返回
+            if not self.__get_order(torrent, rule_string):
                 continue
             ret_torrents.append(torrent)
 
@@ -191,7 +191,7 @@ class FilterModule(_ModuleBase):
         torrent_episodes = meta.episode_list
         if not set(torrent_seasons).issubset(set(seasons)):
             # 种子季不在过滤季中
-            logger.info(f"种子 {torrent.site_name} - {torrent.title} 不是需要的季")
+            logger.info(f"种子 {torrent.site_name} - {torrent.title} 包含季 {torrent_seasons} 不是需要的季 {seasons}")
             return False
         if not torrent_episodes:
             # 整季按匹配处理
