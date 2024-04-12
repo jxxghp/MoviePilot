@@ -1022,4 +1022,19 @@ meta_cases = [{
         "video_codec": "H265",
         "audio_codec": "DDP 2.0"
     }
+}, {
+    "path": "/volume1/电视剧/西部世界 第二季 (2016)/5.mkv",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "西部世界",
+        "en_name": "",
+        "year": "2016",
+        "part": "",
+        "season": "S02",
+        "episode": "E05",
+        "restype": "",
+        "pix": "",
+        "video_codec": "",
+        "audio_codec": ""
+    }
 }]
