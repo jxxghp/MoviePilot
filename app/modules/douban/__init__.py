@@ -629,7 +629,7 @@ class DoubanModule(_ModuleBase):
         return infos.get("subject_collection_items")
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str,
-                        force_nfo: bool = False, force_img: bool = False) -> None:
+                        metainfo: MetaInfo = None, force_nfo: bool = False, force_img: bool = False) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径

@@ -14,6 +14,7 @@ from app.core.context import Context
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.event import EventManager
 from app.core.meta import MetaBase
+from app.core.metainfo import MetaInfo
 from app.core.module import ModuleManager
 from app.db.message_oper import MessageOper
 from app.helper.message import MessageHelper
@@ -477,7 +478,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("post_torrents_message", message=message, torrents=torrents)
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str,
-                        force_nfo: bool = False, force_img: bool = False) -> None:
+                        metainfo: MetaInfo = None, force_nfo: bool = False, force_img: bool = False) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径
@@ -488,7 +489,7 @@ class ChainBase(metaclass=ABCMeta):
         :return: 成功或失败
         """
         self.run_module("scrape_metadata", path=path, mediainfo=mediainfo,
-                        transfer_type=transfer_type, force_nfo=force_nfo, force_img=force_img)
+                        metainfo=metainfo, transfer_type=transfer_type, force_nfo=force_nfo, force_img=force_img)
 
     def register_commands(self, commands: Dict[str, dict]) -> None:
         """
