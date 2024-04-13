@@ -42,10 +42,12 @@ def add_site(
     """
     if not site_in.url:
         return schemas.Response(success=False, message="站点地址不能为空")
+    if SitesHelper().auth_level < 2:
+        return schemas.Response(success=False, message="用户未通过认证，无法使用站点功能！")
     domain = StringUtils.get_url_domain(site_in.url)
     site_info = SitesHelper().get_indexer(domain)
     if not site_info:
-        return schemas.Response(success=False, message="该站点不支持或用户未通过认证")
+        return schemas.Response(success=False, message="该站点不支持，请检查站点域名是否正确")
     if Site.get_by_domain(db, domain):
         return schemas.Response(success=False, message=f"{domain} 站点己存在")
     # 保存站点信息

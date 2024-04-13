@@ -1,5 +1,4 @@
 import abc
-import threading
 
 
 class Singleton(abc.ABCMeta, type):
