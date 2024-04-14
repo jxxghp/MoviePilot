@@ -7,7 +7,6 @@ from app import schemas
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
-from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.themoviedb.category import CategoryHelper
@@ -263,11 +262,12 @@ class TheMovieDbModule(_ModuleBase):
         return []
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str,
-                        metainfo: MetaInfo = None, force_nfo: bool = False, force_img: bool = False) -> None:
+                        metainfo: MetaBase = None, force_nfo: bool = False, force_img: bool = False) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径
         :param mediainfo:  识别的媒体信息
+        :param metainfo: 源文件的识别元数据
         :param transfer_type:  转移类型
         :param force_nfo:  强制刮削nfo
         :param force_img:  强制刮削图片
@@ -304,7 +304,6 @@ class TheMovieDbModule(_ModuleBase):
                 self.scraper.gen_scraper_files(mediainfo=mediainfo,
                                                file_path=file,
                                                transfer_type=transfer_type,
-                                               metainfo=metainfo,
                                                force_nfo=force_nfo,
                                                force_img=force_img)
         logger.info(f"{path} 刮削完成")

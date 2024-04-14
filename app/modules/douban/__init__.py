@@ -7,7 +7,7 @@ import cn2an
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
-from app.core.metainfo import MetaInfo
+from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.douban.apiv2 import DoubanApi
@@ -629,50 +629,80 @@ class DoubanModule(_ModuleBase):
         return infos.get("subject_collection_items")
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str,
-                        metainfo: MetaInfo = None, force_nfo: bool = False, force_img: bool = False) -> None:
+                        metainfo: MetaBase = None, force_nfo: bool = False, force_img: bool = False) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径
         :param mediainfo:  识别的媒体信息
         :param transfer_type: 传输类型
+        :param metainfo: 源文件的识别元数据
         :param force_nfo: 是否强制刮削nfo
         :param force_img: 是否强制刮削图片
         :return: 成功或失败
         """
+
+        def __get_mediainfo(_meta: MetaBase, _mediainfo: MediaInfo) -> Optional[MediaInfo]:
+            """
+            获取豆瓣媒体信息
+            """
+            if not _meta.name:
+                return None
+            # 查询豆瓣详情
+            if not _mediainfo.douban_id:
+                # 根据TMDB名称查询豆瓣数据
+                _doubaninfo = self.match_doubaninfo(name=_mediainfo.title,
+                                                    imdbid=_mediainfo.imdb_id,
+                                                    mtype=_mediainfo.type,
+                                                    year=_mediainfo.year)
+                if not _doubaninfo:
+                    logger.warn(f"未找到 {_mediainfo.title} 的豆瓣信息")
+                    return None
+                _doubaninfo = self.douban_info(doubanid=_doubaninfo.get("id"), mtype=_mediainfo.type)
+            else:
+                _doubaninfo = self.douban_info(doubanid=_mediainfo.douban_id,
+                                               mtype=_mediainfo.type)
+            if not _doubaninfo:
+                logger(f"未获取到 {_mediainfo.douban_id} 的豆瓣媒体信息，无法刮削！")
+                return None
+            # 豆瓣媒体信息
+            _doubanmedia = MediaInfo(douban_info=_doubaninfo)
+            # 补充图片
+            self.obtain_images(_doubanmedia)
+            return _doubanmedia
+
         if settings.SCRAP_SOURCE != "douban":
             return None
         if SystemUtils.is_bluray_dir(path):
             # 蓝光原盘
             logger.info(f"开始刮削蓝光原盘：{path} ...")
-            meta = MetaInfo(path.stem)
-            if not meta.name:
-                return
-            # 查询豆瓣详情
-            if not mediainfo.douban_id:
-                # 根据名称查询豆瓣数据
-                doubaninfo = self.match_doubaninfo(name=mediainfo.title,
-                                                   imdbid=mediainfo.imdb_id,
-                                                   mtype=mediainfo.type,
-                                                   year=mediainfo.year)
-                if not doubaninfo:
-                    logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
-                    return
-                doubaninfo = self.douban_info(doubanid=doubaninfo.get("id"), mtype=mediainfo.type)
-            else:
-                doubaninfo = self.douban_info(doubanid=mediainfo.douban_id,
-                                              mtype=mediainfo.type)
-            if not doubaninfo:
-                logger(f"未获取到 {mediainfo.douban_id} 的豆瓣媒体信息，无法刮削！")
-                return
-            # 豆瓣媒体信息
-            mediainfo = MediaInfo(douban_info=doubaninfo)
-            # 补充图片
-            self.obtain_images(mediainfo)
+            # 优先使用传入metainfo
+            meta = metainfo or MetaInfo(path.name)
             # 刮削路径
             scrape_path = path / path.name
+            # 媒体信息
+            doubanmedia = __get_mediainfo(_meta=meta, _mediainfo=mediainfo)
+            if not doubanmedia:
+                return
+            # 刮削
             self.scraper.gen_scraper_files(meta=meta,
-                                           mediainfo=mediainfo,
+                                           mediainfo=doubanmedia,
                                            file_path=scrape_path,
+                                           transfer_type=transfer_type,
+                                           force_nfo=force_nfo,
+                                           force_img=force_img)
+        elif path.is_file():
+            # 刮削单个文件
+            logger.info(f"开始刮削媒体库文件：{path} ...")
+            # 优先使用传入metainfo
+            meta = metainfo or MetaInfoPath(path)
+            # 媒体信息
+            doubanmedia = __get_mediainfo(_meta=meta, _mediainfo=mediainfo)
+            if not doubanmedia:
+                return
+            # 刮削
+            self.scraper.gen_scraper_files(meta=meta,
+                                           mediainfo=doubanmedia,
+                                           file_path=path,
                                            transfer_type=transfer_type,
                                            force_nfo=force_nfo,
                                            force_img=force_img)
@@ -683,34 +713,14 @@ class DoubanModule(_ModuleBase):
                     continue
                 logger.info(f"开始刮削媒体库文件：{file} ...")
                 try:
-                    meta = MetaInfo(file.stem)
-                    if not meta.name:
-                        continue
-                    if not mediainfo.douban_id:
-                        # 根据名称查询豆瓣数据
-                        doubaninfo = self.match_doubaninfo(name=mediainfo.title,
-                                                           imdbid=mediainfo.imdb_id,
-                                                           mtype=mediainfo.type,
-                                                           year=mediainfo.year,
-                                                           season=meta.begin_season)
-                        if not doubaninfo:
-                            logger.warn(f"未找到 {mediainfo.title} 的豆瓣信息")
-                            break
-                        # 查询豆瓣详情
-                        doubaninfo = self.douban_info(doubanid=doubaninfo.get("id"), mtype=mediainfo.type)
-                    else:
-                        doubaninfo = self.douban_info(doubanid=mediainfo.douban_id,
-                                                      mtype=mediainfo.type)
-                    if not doubaninfo:
-                        logger(f"未获取到 {mediainfo.douban_id} 的豆瓣媒体信息，无法刮削！")
-                        continue
+                    meta = MetaInfoPath(file)
                     # 豆瓣媒体信息
-                    mediainfo = MediaInfo(douban_info=doubaninfo)
-                    # 补充图片
-                    self.obtain_images(mediainfo)
+                    doubanmedia = __get_mediainfo(_meta=meta, _mediainfo=mediainfo)
+                    if not doubanmedia:
+                        return
                     # 刮削
                     self.scraper.gen_scraper_files(meta=meta,
-                                                   mediainfo=mediainfo,
+                                                   mediainfo=doubanmedia,
                                                    file_path=file,
                                                    transfer_type=transfer_type,
                                                    force_nfo=force_nfo,

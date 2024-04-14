@@ -7,6 +7,7 @@ from requests import RequestException
 
 from app.core.config import settings
 from app.core.context import MediaInfo
+from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.schemas.types import MediaType
@@ -26,10 +27,11 @@ class TmdbScraper:
         self.tmdb = tmdb
 
     def gen_scraper_files(self, mediainfo: MediaInfo, file_path: Path, transfer_type: str,
-                          metainfo: MetaInfo = None, force_nfo: bool = False, force_img: bool = False):
+                          metainfo: MetaBase = None, force_nfo: bool = False, force_img: bool = False):
         """
         生成刮削文件，包括NFO和图片，传入路径为文件路径
         :param mediainfo: 媒体信息
+        :param metainfo: 源文件的识别元数据
         :param file_path: 文件路径或者目录路径
         :param transfer_type: 传输类型
         :param force_nfo: 是否强制生成NFO
@@ -76,7 +78,9 @@ class TmdbScraper:
             # 电视剧，路径为每一季的文件名 名称/Season xx/名称 SxxExx.xxx
             else:
                 # 如果有上游传入的元信息则使用，否则使用文件名识别
-                meta = metainfo or MetaInfo(file_path.stem)
+                meta = metainfo or MetaInfo(file_path.name)
+                if meta.begin_season is None:
+                    meta.begin_season = mediainfo.season if mediainfo.season is not None else 1
                 # 根目录不存在时才处理
                 if self._force_nfo or not file_path.parent.with_name("tvshow.nfo").exists():
                     # 根目录描述文件
@@ -96,7 +100,7 @@ class TmdbScraper:
                             self.__save_image(url=attr_value,
                                               file_path=image_path)
                 # 查询季信息
-                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, meta.begin_season or mediainfo.season)
+                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, meta.begin_season)
                 if seasoninfo:
                     # 季目录NFO
                     if self._force_nfo or not file_path.with_name("season.nfo").exists():
