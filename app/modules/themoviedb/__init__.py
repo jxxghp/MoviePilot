@@ -7,6 +7,7 @@ from app import schemas
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
+from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.themoviedb.category import CategoryHelper
@@ -262,7 +263,7 @@ class TheMovieDbModule(_ModuleBase):
         return []
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str,
-                        force_nfo: bool = False, force_img: bool = False) -> None:
+                        metainfo: MetaInfo = None, force_nfo: bool = False, force_img: bool = False) -> None:
         """
         刮削元数据
         :param path: 媒体文件路径
@@ -282,6 +283,7 @@ class TheMovieDbModule(_ModuleBase):
             self.scraper.gen_scraper_files(mediainfo=mediainfo,
                                            file_path=scrape_path,
                                            transfer_type=transfer_type,
+                                           metainfo=metainfo,
                                            force_nfo=force_nfo,
                                            force_img=force_img)
         elif path.is_file():
@@ -290,6 +292,7 @@ class TheMovieDbModule(_ModuleBase):
             self.scraper.gen_scraper_files(mediainfo=mediainfo,
                                            file_path=path,
                                            transfer_type=transfer_type,
+                                           metainfo=metainfo,
                                            force_nfo=force_nfo,
                                            force_img=force_img)
         else:
@@ -301,6 +304,7 @@ class TheMovieDbModule(_ModuleBase):
                 self.scraper.gen_scraper_files(mediainfo=mediainfo,
                                                file_path=file,
                                                transfer_type=transfer_type,
+                                               metainfo=metainfo,
                                                force_nfo=force_nfo,
                                                force_img=force_img)
         logger.info(f"{path} 刮削完成")
