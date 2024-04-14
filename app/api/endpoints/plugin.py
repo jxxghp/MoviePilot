@@ -97,8 +97,6 @@ def install(plugin_id: str,
         install_plugins.append(plugin_id)
         # 保存设置
         SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
-        # 统计
-        PluginHelper().install_reg(plugin_id)
     # 加载插件到内存
     PluginManager().reload_plugin(plugin_id)
     # 注册插件服务

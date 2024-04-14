@@ -35,8 +35,6 @@ class PluginManager(metaclass=Singleton):
         self.siteshelper = SitesHelper()
         self.pluginhelper = PluginHelper()
         self.systemconfig = SystemConfigOper()
-        self.install_online_plugin()
-        self.init_config()
 
     def init_config(self):
         # 停止已有插件
