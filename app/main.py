@@ -195,8 +195,10 @@ def start_module():
     ResourceHelper()
     # 加载模块
     ModuleManager()
+    # 安装在线插件
+    PluginManager().install_online_plugin()
     # 加载插件
-    PluginManager()
+    PluginManager().start()
     # 启动定时服务
     Scheduler()
     # 启动事件消费
