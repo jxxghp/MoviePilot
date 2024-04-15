@@ -83,6 +83,13 @@ class Scheduler(metaclass=Singleton):
                     "state": "R"
                 }
             },
+            "new_subscribe_search": {
+                "func": SubscribeChain().search,
+                "running": False,
+                "kwargs": {
+                    "state": "N"
+                }
+            },
             "subscribe_refresh": {
                 "func": SubscribeChain().refresh,
                 "running": False,
@@ -144,10 +151,11 @@ class Scheduler(metaclass=Singleton):
         self._scheduler.add_job(
             self.start,
             "interval",
+            id="new_subscribe_search",
+            name="新增订阅搜索",
             minutes=5,
             kwargs={
-                'job_id': 'subscribe_search',
-                'state': 'N'
+                'job_id': 'new_subscribe_search'
             }
         )
 
@@ -169,11 +177,10 @@ class Scheduler(metaclass=Singleton):
                 self.start,
                 "interval",
                 id="subscribe_search",
-                name="订阅搜索",
+                name="订阅搜索补全",
                 hours=24,
                 kwargs={
-                    'job_id': 'subscribe_search',
-                    'state': 'R'
+                    'job_id': 'subscribe_search'
                 }
             )
 
