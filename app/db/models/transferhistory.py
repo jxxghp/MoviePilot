@@ -1,6 +1,6 @@
 import time
 
-from sqlalchemy import Column, Integer, String, Sequence, Boolean, func
+from sqlalchemy import Column, Integer, String, Sequence, Boolean, func, or_
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, Base
@@ -50,26 +50,33 @@ class TransferHistory(Base):
     @db_query
     def list_by_title(db: Session, title: str, page: int = 1, count: int = 30, status: bool = None):
         if status is not None:
-            result = db.query(TransferHistory).filter(TransferHistory.title.like(f'%{title}%'),
-                                                      TransferHistory.status == status).order_by(
-                TransferHistory.date.desc()).offset((page - 1) * count).limit(
-                count).all()
+            result = db.query(TransferHistory).filter(
+                TransferHistory.status == status
+            ).order_by(
+                TransferHistory.date.desc()
+            ).offset((page - 1) * count).limit(count).all()
         else:
-            result = db.query(TransferHistory).filter(TransferHistory.title.like(f'%{title}%')).order_by(
-                TransferHistory.date.desc()).offset((page - 1) * count).limit(
-                count).all()
+            result = db.query(TransferHistory).filter(or_(
+                TransferHistory.src.like(f'%{title}%'),
+                TransferHistory.dest.like(f'%{title}%'),
+            )).order_by(
+                TransferHistory.date.desc()
+            ).offset((page - 1) * count).limit(count).all()
         return list(result)
 
     @staticmethod
     @db_query
     def list_by_page(db: Session, page: int = 1, count: int = 30, status: bool = None):
         if status is not None:
-            result = db.query(TransferHistory).filter(TransferHistory.status == status).order_by(
-                TransferHistory.date.desc()).offset((page - 1) * count).limit(
-                count).all()
+            result = db.query(TransferHistory).filter(
+                TransferHistory.status == status
+            ).order_by(
+                TransferHistory.date.desc()
+            ).offset((page - 1) * count).limit(count).all()
         else:
-            result = db.query(TransferHistory).order_by(TransferHistory.date.desc()).offset((page - 1) * count).limit(
-                count).all()
+            result = db.query(TransferHistory).order_by(
+                TransferHistory.date.desc()
+            ).offset((page - 1) * count).limit(count).all()
         return list(result)
 
     @staticmethod
@@ -113,10 +120,12 @@ class TransferHistory(Base):
     @db_query
     def count_by_title(db: Session, title: str, status: bool = None):
         if status is not None:
-            return db.query(func.count(TransferHistory.id)).filter(TransferHistory.title.like(f'%{title}%'),
-                                                                   TransferHistory.status == status).first()[0]
+            return db.query(func.count(TransferHistory.id)).filter(TransferHistory.status == status).first()[0]
         else:
-            return db.query(func.count(TransferHistory.id)).filter(TransferHistory.title.like(f'%{title}%')).first()[0]
+            return db.query(func.count(TransferHistory.id)).filter(or_(
+                TransferHistory.src.like(f'%{title}%'),
+                TransferHistory.dest.like(f'%{title}%')
+            )).first()[0]
 
     @staticmethod
     @db_query
