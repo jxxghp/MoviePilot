@@ -627,7 +627,7 @@ class FileTransferModule(_ModuleBase):
             # 原语种标题
             "original_title": __convert_invalid_characters(mediainfo.original_title),
             # 原文件名
-            "original_name": f"{meta.org_string}{file_ext}",
+            "original_name": meta.org_string,
             # 识别名称（优先使用中文）
             "name": meta.name,
             # 识别的英文名称（可能为空）
