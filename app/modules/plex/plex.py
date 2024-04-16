@@ -142,7 +142,11 @@ class Plex:
             return schemas.Statistic()
         sections = self._plex.library.sections()
         MovieCount = SeriesCount = EpisodeCount = 0
+        # 媒体库白名单
+        allow_library = [lib.id for lib in self.get_librarys()]
         for sec in sections:
+            if str(sec.key) not in allow_library:
+                continue
             if sec.type == "movie":
                 MovieCount += sec.totalSize
             if sec.type == "show":
@@ -610,7 +614,7 @@ class Plex:
         """
         if not self._plex:
             return []
-        # 过滤黑名单
+        # 媒体库白名单
         allow_library = ",".join([lib.id for lib in self.get_librarys()])
         query = {'contentDirectoryID': allow_library}
         path = '/hubs/continueWatching/items' + utils.joinArgs(query)
