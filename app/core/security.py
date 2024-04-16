@@ -61,6 +61,14 @@ def verify_token(token: str = Depends(reusable_oauth2)) -> schemas.TokenPayload:
         )
 
 
+def get_user_id(token: str = Depends(reusable_oauth2)) -> int:
+    """
+    从token中获取用户ID
+    """
+    token_payload = verify_token(token)
+    return token_payload.sub
+
+
 def get_token(token: str = None) -> str:
     """
     从请求URL中获取token
