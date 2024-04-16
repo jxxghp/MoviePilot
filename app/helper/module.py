@@ -36,7 +36,7 @@ class ModuleHelper:
                     if isinstance(obj, type) and filter_func(name, obj):
                         submodules.append(obj)
             except Exception as err:
-                logger.error(f'加载模块 {package_name} 失败：{str(err)} - {traceback.format_exc()}')
+                logger.debug(f'加载模块 {package_name} 失败：{str(err)} - {traceback.format_exc()}')
 
         return submodules
 
