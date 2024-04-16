@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Tuple, Generator, Any
 from urllib.parse import quote_plus
 
-from plexapi import media
+from plexapi import media, utils
 from plexapi.server import PlexServer
 
 from app import schemas
@@ -142,7 +142,11 @@ class Plex:
             return schemas.Statistic()
         sections = self._plex.library.sections()
         MovieCount = SeriesCount = EpisodeCount = 0
+        # 媒体库白名单
+        allow_library = [lib.id for lib in self.get_librarys()]
         for sec in sections:
+            if str(sec.key) not in allow_library:
+                continue
             if sec.type == "movie":
                 MovieCount += sec.totalSize
             if sec.type == "show":
@@ -610,7 +614,11 @@ class Plex:
         """
         if not self._plex:
             return []
-        items = self._plex.fetchItems('/hubs/continueWatching/items', container_start=0, container_size=num)
+        # 媒体库白名单
+        allow_library = ",".join([lib.id for lib in self.get_librarys()])
+        query = {'contentDirectoryID': allow_library}
+        path = '/hubs/continueWatching/items' + utils.joinArgs(query)
+        items = self._plex.fetchItems(path, container_start=0, container_size=num)
         ret_resume = []
         for item in items:
             item_type = MediaType.MOVIE.value if item.TYPE == "movie" else MediaType.TV.value
