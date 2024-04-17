@@ -7,7 +7,7 @@ from app.schemas import SysConfig
 
 class SysConfig(Base):
     """
-    用户表
+    配置表
     """
     # ID
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)

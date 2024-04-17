@@ -11,7 +11,7 @@ from app.core.config import settings
 # 数据库引擎
 Engine = create_engine(f"sqlite:///{settings.CONFIG_PATH}/user.db",
                        pool_pre_ping=True,
-                       echo=True,
+                       echo=False,
                        poolclass=QueuePool,
                        pool_size=1024,
                        pool_recycle=3600,

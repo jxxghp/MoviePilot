@@ -26,10 +26,6 @@ class SysConfigBase(BaseModel):
     latest: Optional[bool] = True
 
 
-class SysConfigInDBBase(SysConfigBase):
+class SysConfig(SysConfigBase):
     id: Optional[int] = None
     uid: Optional[int] = None
-
-
-class SysConfig(SysConfigInDBBase):
-    uid: int

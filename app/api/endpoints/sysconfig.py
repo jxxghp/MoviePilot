@@ -17,7 +17,7 @@ def get_dashboard_config(db: Session = Depends(get_db), user_id: int = Depends(g
     """
     user_config = SysConfig.get_by_uid(db, user_id)
     if user_config:
-        return user_config
+        return schemas.SysConfigBase(**user_config.__dict__)
     else:
         SysConfig(uid=user_id).create()
     return schemas.SysConfigBase()
