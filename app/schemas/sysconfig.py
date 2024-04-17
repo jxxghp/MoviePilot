@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 
-class ConfigBase(BaseModel):
+class SysConfigBase(BaseModel):
     # 媒体统计
     mediaStatistic: Optional[bool] = True
     # 后台任务
@@ -26,10 +26,10 @@ class ConfigBase(BaseModel):
     latest: Optional[bool] = True
 
 
-class ConfigInDBBase(ConfigBase):
+class SysConfigInDBBase(SysConfigBase):
     id: Optional[int] = None
     uid: Optional[int] = None
 
 
-class Config(ConfigInDBBase):
+class SysConfig(SysConfigInDBBase):
     uid: int

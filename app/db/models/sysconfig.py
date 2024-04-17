@@ -1,10 +1,10 @@
 from sqlalchemy import Boolean, Column, Integer, Sequence
 from sqlalchemy.orm import Session
 from app.db import db_query, db_update, Base
-from app.schemas import Config
+from app.schemas import SysConfig
 
 
-class Config(Base):
+class SysConfig(Base):
     """
     用户表
     """
@@ -36,7 +36,7 @@ class Config(Base):
     @staticmethod
     @db_query
     def get_by_uid(db: Session, uid: int):
-        return db.query(Config).filter(Config.uid == uid).first()
+        return db.query(SysConfig).filter(SysConfig.uid == uid).first()
 
     @db_update
     def update_by_uid(self, db: Session, uid: int, **kwargs):
@@ -45,7 +45,7 @@ class Config(Base):
             for key, value in kwargs.items():
                 setattr(config, key, value)
         else:
-            config = Config(uid=uid, **kwargs)
+            config = SysConfig(uid=uid, **kwargs)
             db.add(config)
 
     @db_update

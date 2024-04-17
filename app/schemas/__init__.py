@@ -16,4 +16,4 @@ from .transfer import *
 from .file import *
 from .bangumi import *
 from .douban import *
-from .config import *
+from .sysconfig import *
