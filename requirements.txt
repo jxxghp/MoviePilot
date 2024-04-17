@@ -57,5 +57,3 @@ fast-bencode~=1.1.3
 pystray~=0.19.5
 pyotp~=2.9.0
 Pinyin2Hanzi~=0.1.1
-roman~=4.1
-pypushdeer~=0.0.3
