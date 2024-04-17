@@ -1,5 +1,6 @@
 import base64
 import re
+from datetime import datetime
 from typing import Tuple, Optional
 from typing import Union
 from urllib.parse import urljoin
@@ -13,6 +14,7 @@ from app.db.models.site import Site
 from app.db.site_oper import SiteOper
 from app.db.siteicon_oper import SiteIconOper
 from app.db.systemconfig_oper import SystemConfigOper
+from app.db.sytestatistic_oper import SiteStatisticOper
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.cookie import CookieHelper
@@ -43,6 +45,7 @@ class SiteChain(ChainBase):
         self.message = MessageHelper()
         self.cookiecloud = CookieCloudHelper()
         self.systemconfig = SystemConfigOper()
+        self.sitestatistic = SiteStatisticOper()
 
         # 特殊站点登录验证
         self.special_site_test = {
@@ -350,12 +353,21 @@ class SiteChain(ChainBase):
 
         # 模拟登录
         try:
+            # 开始记时
+            start_time = datetime.now()
             # 特殊站点测试
             if self.special_site_test.get(domain):
-                return self.special_site_test[domain](site_info)
-
-            # 通用站点测试
-            return self.__test(site_info)
+                state, message = self.special_site_test[domain](site_info)
+            else:
+                # 通用站点测试
+                state, message = self.__test(site_info)
+            # 统计
+            seconds = (datetime.now() - start_time).seconds
+            if state:
+                self.sitestatistic.success(domain=domain, seconds=seconds)
+            else:
+                self.sitestatistic.fail(domain)
+            return state, message
         except Exception as e:
             return False, f"{str(e)}！"
 

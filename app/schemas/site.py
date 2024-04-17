@@ -41,3 +41,23 @@ class Site(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class SiteStatistic(BaseModel):
+    # 站点ID
+    domain: Optional[int]
+    # 成功次数
+    success: Optional[int] = 0
+    # 失败次数
+    fail: Optional[int] = 0
+    # 平均响应时间
+    seconds: Optional[int] = 0
+    # 最后状态
+    lst_state: Optional[int] = 0
+    # 最后修改时间
+    lst_mod_date: Optional[str]
+    # 备注
+    note: Optional[str] = None
+
+    class Config:
+        orm_mode = True

@@ -225,7 +225,7 @@ class RssHelper:
     }
 
     @staticmethod
-    def parse(url, proxy: bool = False, timeout: int = 30) -> Union[List[dict], None]:
+    def parse(url, proxy: bool = False, timeout: int = 15) -> Union[List[dict], None]:
         """
         解析RSS订阅URL，获取RSS中的种子信息
         :param url: RSS地址

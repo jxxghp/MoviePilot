@@ -5,6 +5,7 @@ from ruamel.yaml import CommentedMap
 
 from app.core.config import settings
 from app.core.context import TorrentInfo
+from app.db.sytestatistic_oper import SiteStatisticOper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.modules import _ModuleBase
@@ -70,10 +71,12 @@ class IndexerModule(_ModuleBase):
 
         # 开始索引
         result_array = []
+
         # 开始计时
         start_time = datetime.now()
 
         # 搜索多个关键字
+        error_flag = False
         for search_word in keywords:
             # 可能为关键字或ttxxxx
             if search_word \
@@ -126,7 +129,14 @@ class IndexerModule(_ModuleBase):
                 logger.error(f"{site.get('name')} 搜索出错：{str(err)}")
 
         # 索引花费的时间
-        seconds = round((datetime.now() - start_time).seconds, 1)
+        seconds = (datetime.now() - start_time).seconds
+
+        # 统计索引情况
+        domain = StringUtils.get_url_domain(site.get("domain"))
+        if error_flag:
+            SiteStatisticOper().fail(domain)
+        else:
+            SiteStatisticOper().success(domain=domain, seconds=seconds)
 
         # 返回结果
         if not result_array or len(result_array) == 0:
