@@ -1,5 +1,6 @@
 from sqlalchemy import Boolean, Column, Integer, Sequence
 from sqlalchemy.orm import Session
+
 from app.db import db_query, db_update, Base
 from app.schemas import SysConfig
 
