@@ -130,7 +130,7 @@ class PluginHelper(metaclass=Singleton):
             """
             获取插件的文件列表
             """
-            file_api = f"https://api.github.com/repos/{user}/{repo}/contents/plugins/{_p.lower()}"
+            file_api = f"https://api.github.com/repos/{user}/{repo}/contents/plugins/{_p}"
             r = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS, timeout=30).get_res(file_api)
             if r is None:
                 return None, "连接仓库失败"
