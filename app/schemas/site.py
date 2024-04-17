@@ -45,7 +45,7 @@ class Site(BaseModel):
 
 class SiteStatistic(BaseModel):
     # 站点ID
-    domain: Optional[int]
+    domain: Optional[str]
     # 成功次数
     success: Optional[int] = 0
     # 失败次数
