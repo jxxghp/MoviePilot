@@ -16,6 +16,7 @@ from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.models.subscribe import Subscribe
 from app.db.subscribe_oper import SubscribeOper
+from app.db.subscribehistory_oper import SubscribeHistoryOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
@@ -34,6 +35,7 @@ class SubscribeChain(ChainBase):
         self.downloadchain = DownloadChain()
         self.searchchain = SearchChain()
         self.subscribeoper = SubscribeOper()
+        self.subscribehistoryoper = SubscribeHistoryOper()
         self.torrentschain = TorrentsChain()
         self.mediachain = MediaChain()
         self.message = MessageHelper()
@@ -371,6 +373,9 @@ class SubscribeChain(ChainBase):
         priority = max([item.torrent_info.pri_order for item in downloads])
         if priority == 100:
             logger.info(f'{mediainfo.title_year} 洗版完成，删除订阅')
+            # 新增订阅历史
+            self.subscribehistoryoper.add(**subscribe.to_dict())
+            # 删除订阅
             self.subscribeoper.delete(subscribe.id)
             # 发送通知
             self.post_message(Notification(mtype=NotificationType.Subscribe,
@@ -406,6 +411,9 @@ class SubscribeChain(ChainBase):
                     or force):
                 # 全部下载完成
                 logger.info(f'{mediainfo.title_year} 完成订阅')
+                # 新增订阅历史
+                self.subscribehistoryoper.add(**subscribe.to_dict())
+                # 删除订阅
                 self.subscribeoper.delete(subscribe.id)
                 # 发送通知
                 self.post_message(Notification(mtype=NotificationType.Subscribe,

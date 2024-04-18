@@ -11,6 +11,7 @@ from app.core.metainfo import MetaInfo
 from app.core.security import verify_token, verify_uri_token
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
+from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.user import User
 from app.db.userauth import get_current_active_user
 from app.scheduler import Scheduler
@@ -197,9 +198,11 @@ def search_subscribes(
     background_tasks.add_task(
         Scheduler().start,
         job_id="subscribe_search",
-        sid=None,
-        state='R',
-        manual=True
+        **{
+            "sid": None,
+            "state": 'R',
+            "manual": True
+        }
     )
     return schemas.Response(success=True)
 
@@ -215,27 +218,13 @@ def search_subscribe(
     background_tasks.add_task(
         Scheduler().start,
         job_id="subscribe_search",
-        sid=subscribe_id,
-        state=None,
-        manual=True
+        **{
+            "sid": subscribe_id,
+            "state": None,
+            "manual": True
+        }
     )
     return schemas.Response(success=True)
-
-
-@router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
-def read_subscribe(
-        subscribe_id: int,
-        db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    根据订阅编号查询订阅信息
-    """
-    if not subscribe_id:
-        return Subscribe()
-    subscribe = Subscribe.get(db, subscribe_id)
-    if subscribe and subscribe.sites:
-        subscribe.sites = json.loads(subscribe.sites)
-    return subscribe
 
 
 @router.delete("/media/{mediaid}", summary="删除订阅", response_model=schemas.Response)
@@ -259,19 +248,6 @@ def delete_subscribe_by_mediaid(
             return schemas.Response(success=False)
         Subscribe().delete_by_doubanid(db, doubanid)
 
-    return schemas.Response(success=True)
-
-
-@router.delete("/{subscribe_id}", summary="删除订阅", response_model=schemas.Response)
-def delete_subscribe(
-        subscribe_id: int,
-        db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)
-) -> Any:
-    """
-    删除订阅信息
-    """
-    Subscribe.delete(db, subscribe_id)
     return schemas.Response(success=True)
 
 
@@ -325,4 +301,59 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
                                       season=season,
                                       username=user_name)
 
+    return schemas.Response(success=True)
+
+
+@router.get("/history/{mtype}", summary="查询订阅历史", response_model=List[schemas.Subscribe])
+def read_subscribe(
+        mtype: str,
+        page: int = 1,
+        count: int = 30,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询电影/电视剧订阅历史
+    """
+    return SubscribeHistory.list_by_type(db, mtype=mtype, page=page, count=count)
+
+
+@router.delete("/history/{history_id}", summary="删除订阅历史", response_model=schemas.Response)
+def delete_subscribe(
+        history_id: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)
+) -> Any:
+    """
+    删除订阅历史
+    """
+    SubscribeHistory.delete(db, history_id)
+    return schemas.Response(success=True)
+
+
+@router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
+def read_subscribe(
+        subscribe_id: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据订阅编号查询订阅信息
+    """
+    if not subscribe_id:
+        return Subscribe()
+    subscribe = Subscribe.get(db, subscribe_id)
+    if subscribe and subscribe.sites:
+        subscribe.sites = json.loads(subscribe.sites)
+    return subscribe
+
+
+@router.delete("/{subscribe_id}", summary="删除订阅", response_model=schemas.Response)
+def delete_subscribe(
+        subscribe_id: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)
+) -> Any:
+    """
+    删除订阅信息
+    """
+    Subscribe.delete(db, subscribe_id)
     return schemas.Response(success=True)
