@@ -62,6 +62,8 @@ class Subscribe(BaseModel):
     save_path: Optional[str] = None
     # 是否使用 imdbid 搜索
     search_imdbid: Optional[int] = 0
+    # 时间
+    date: Optional[str] = None
 
     class Config:
         orm_mode = True

@@ -314,7 +314,11 @@ def read_subscribe(
     """
     查询电影/电视剧订阅历史
     """
-    return SubscribeHistory.list_by_type(db, mtype=mtype, page=page, count=count)
+    historys = SubscribeHistory.list_by_type(db, mtype=mtype, page=page, count=count)
+    for history in historys:
+        if history and history.sites:
+            history.sites = json.loads(history.sites)
+    return historys
 
 
 @router.delete("/history/{history_id}", summary="删除订阅历史", response_model=schemas.Response)
