@@ -58,6 +58,7 @@ def add_site(
     site_in.url = f"{_scheme}://{_netloc}/"
     site_in.name = site_info.get("name")
     site_in.id = None
+    site_in.public = 1 if site_info.get("public") else 0
     site = Site(**site_in.dict())
     site.create(db)
     # 通知站点更新
