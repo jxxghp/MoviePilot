@@ -291,7 +291,7 @@ class MetaBase(object):
             return self.season
         else:
             return ""
-    
+
     @property
     def season_seq(self) -> str:
         """
@@ -334,7 +334,7 @@ class MetaBase(object):
                          str(self.end_episode).rjust(2, "0"))
         else:
             return ""
-    
+
     @property
     def episode_list(self) -> List[int]:
         """
@@ -532,7 +532,7 @@ class MetaBase(object):
             self.end_episode = end
         if self.begin_episode and self.end_episode:
             self.total_episode = (self.end_episode - self.begin_episode) + 1
-            
+
     def merge(self, meta: Self):
         """
         全并Meta信息
@@ -551,11 +551,11 @@ class MetaBase(object):
         # 季
         if (self.type == MediaType.TV
                 and not self.begin_season):
-            if not self.begin_season and meta.begin_season:
+            if self.begin_season is None and meta.begin_season is not None:
                 self.begin_season = meta.begin_season
-            if not self.end_season and meta.end_season:
+            if self.end_season is None and meta.end_season is not None:
                 self.end_season = meta.end_season
-            if not self.total_season and meta.total_season:
+            if self.total_season is None and meta.total_season is not None:
                 self.total_season = meta.total_season
         # 开始集
         if (self.type == MediaType.TV
