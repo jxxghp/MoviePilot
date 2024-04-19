@@ -13,7 +13,7 @@ from app.utils.http import RequestUtils
 router = APIRouter()
 
 
-@router.get("/img/{imgurl:path}", summary="豆瓣图片代理")
+@router.get("/img", summary="豆瓣图片代理")
 def douban_img(imgurl: str) -> Any:
     """
     豆瓣图片代理

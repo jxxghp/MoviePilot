@@ -18,10 +18,12 @@ class SiteStatisticOper(DbOper):
         sta = SiteStatistic.get_by_domain(self._db, domain)
         if sta:
             avg_seconds, note = None, {}
-            if seconds:
+            if seconds is not None:
                 note: dict = json.loads(sta.note or "{}")
-                note[lst_date] = seconds
+                note[lst_date] = seconds or 1
                 avg_times = len(note.keys())
+                if avg_times > 10:
+                    note = dict(sorted(note.items(), key=lambda x: x[0], reverse=True)[:10])
                 avg_seconds = sum([v for v in note.values()]) // avg_times
             sta.update(self._db, {
                 "success": sta.success + 1,
@@ -32,15 +34,15 @@ class SiteStatisticOper(DbOper):
             })
         else:
             note = {}
-            if seconds:
+            if seconds is not None:
                 note = {
-                    lst_date: seconds
+                    lst_date: seconds or 1
                 }
             SiteStatistic(
                 domain=domain,
                 success=1,
                 fail=0,
-                seconds=seconds,
+                seconds=seconds or 1,
                 lst_state=0,
                 lst_mod_date=lst_date,
                 note=json.dumps(note)
