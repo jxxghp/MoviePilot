@@ -26,7 +26,7 @@ from version import APP_VERSION
 router = APIRouter()
 
 
-@router.get("/img/{proxy}/{imgurl:path}", summary="图片代理")
+@router.get("/img/{proxy}", summary="图片代理")
 def get_img(imgurl: str, proxy: bool = False) -> Any:
     """
     通过图片代理（使用代理服务器）
