@@ -15,7 +15,6 @@ from app.db import get_db
 from app.db.models.user import User
 from app.log import logger
 from app.utils.web import WebUtils
-from app.utils.otp import OtpUtils
 
 router = APIRouter()
 

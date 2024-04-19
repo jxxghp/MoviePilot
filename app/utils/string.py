@@ -13,6 +13,12 @@ import dateutil.parser
 from app.schemas.types import MediaType
 
 
+_special_domains = [
+    'u2.dmhy.org',
+    'pt.ecust.pp.ua',
+]
+
+
 class StringUtils:
 
     @staticmethod
@@ -257,8 +263,9 @@ class StringUtils:
         """
         if not url:
             return ""
-        if 'u2.dmhy.org' in url:
-            return 'u2.dmhy.org'
+        for domain in _special_domains:
+            if domain in url:
+                return domain
         _, netloc = StringUtils.get_url_netloc(url)
         if netloc:
             locs = netloc.split(".")
