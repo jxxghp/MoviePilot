@@ -6,6 +6,8 @@ from qbittorrentapi import TorrentDictionary, TorrentFilesList
 from qbittorrentapi.client import Client
 from qbittorrentapi.transfer import TransferInfoDictionary
 
+from torrentool.torrent import Torrent
+
 from app.core.config import settings
 from app.log import logger
 from app.utils.string import StringUtils
@@ -267,6 +269,23 @@ class Qbittorrent:
                                             cookie=cookie,
                                             category=category,
                                             **kwargs)
+            return True if qbc_ret and str(qbc_ret).find("Ok") != -1 else False
+            def __get_torrent_info() -> Tuple[str, int]:
+                torrentinfo = Torrent.from_string(content)
+                return torrentinfo.name, torrentinfo.total_size
+
+            torrent_name, torrent_size = __get_torrent_info()
+            # 查询所有下载器的种子
+            torrents, error = self.get_torrents()
+            for torrent in torrents:
+                # 名称与大小相等则认为是同一个种子
+                if torrent.get("name") == torrent_name and torrent.get("total_size") == torrent_size:
+                    torrent_hash = torrent.get("hash")
+                    torrent_tags = [str(tag).strip() for tag in torrent.get("tags").split(',')]
+                    # 给种子打上标签
+                    if settings.TORRENT_TAG and settings.TORRENT_TAG not in torrent_tags:
+                        logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
+                        self.set_torrents_tag(ids=torrent_hash, tags=[settings.TORRENT_TAG])
             return True if qbc_ret and str(qbc_ret).find("Ok") != -1 else False
         except Exception as err:
             logger.error(f"添加种子出错：{str(err)}")
