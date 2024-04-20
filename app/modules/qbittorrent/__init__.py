@@ -126,6 +126,11 @@ class QbittorrentModule(_ModuleBase):
                         return torrent_hash, f"下载任务已存在"
             return None, f"添加种子任务失败：{content}"
         else:
+            # 对于部分qt版本add_torrent会成功，但是标签打不上
+            # 测试发现上述“下载任务已存在”这部分的处理中可以成功打上标签
+            # 导致这里根据tags去获取就会获取不到就会报错
+            # 对add_torrent方法加了一个补丁
+            # 用的是上面“下载任务已经存在”加上标签的逻辑
             # 获取种子Hash
             torrent_hash = self.qbittorrent.get_torrent_id_by_tag(tags=tag)
             if not torrent_hash:
