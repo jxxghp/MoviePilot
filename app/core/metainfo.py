@@ -25,6 +25,8 @@ def MetaInfo(title: str, subtitle: str = None) -> MetaBase:
     # 判断是否处理文件
     if title and Path(title).suffix.lower() in settings.RMT_MEDIAEXT:
         isfile = True
+        # 去掉后缀
+        title = Path(title).stem
     else:
         isfile = False
     # 识别
