@@ -137,6 +137,25 @@ class Subscribe(Base):
 
     @staticmethod
     @db_query
+    def list_by_username(db: Session, username: str, state: str = None, mtype: str = None):
+        if mtype:
+            if state:
+                result = db.query(Subscribe).filter(Subscribe.state == state,
+                                                    Subscribe.username == username,
+                                                    Subscribe.type == mtype).all()
+            else:
+                result = db.query(Subscribe).filter(Subscribe.username == username,
+                                                    Subscribe.type == mtype).all()
+        else:
+            if state:
+                result = db.query(Subscribe).filter(Subscribe.state == state,
+                                                    Subscribe.username == username).all()
+            else:
+                result = db.query(Subscribe).filter(Subscribe.username == username).all()
+        return list(result)
+
+    @staticmethod
+    @db_query
     def list_by_type(db: Session, mtype: str, days: int):
         result = db.query(Subscribe) \
             .filter(Subscribe.type == mtype,
