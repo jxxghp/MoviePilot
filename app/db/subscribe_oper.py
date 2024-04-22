@@ -89,7 +89,7 @@ class SubscribeOper(DbOper):
         subscribe.update(self._db, payload)
         return subscribe
 
-    def get_by_tmdbid(self, tmdbid: int, season: int = None) -> List[Subscribe]:
+    def list_by_tmdbid(self, tmdbid: int, season: int = None) -> List[Subscribe]:
         """
         获取指定tmdb_id的订阅
         """
