@@ -95,6 +95,12 @@ class SubscribeOper(DbOper):
         """
         return Subscribe.get_by_tmdbid(self._db, tmdbid=tmdbid, season=season)
 
+    def list_by_username(self, username: str, state: str = None, mtype: str = None) -> List[Subscribe]:
+        """
+        获取指定用户的订阅
+        """
+        return Subscribe.list_by_username(self._db, username=username, state=state, mtype=mtype)
+
     def list_by_type(self, mtype: str, days: int = 7) -> Subscribe:
         """
         获取指定类型的订阅
