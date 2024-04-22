@@ -743,7 +743,7 @@ class StringUtils:
         try:
             time_obj = datetime.datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
         except ValueError:
-            return ''
+            return time_str
         now = datetime.datetime.now()
         diff = time_obj - now
         diff_seconds = diff.seconds
