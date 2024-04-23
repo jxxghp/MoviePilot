@@ -156,7 +156,8 @@ class PluginHelper(metaclass=Singleton):
                     if not res:
                         return False, f"文件 {item.get('name')} 下载失败！"
                     elif res.status_code != 200:
-                        return False, f"下载文件 {item.get('name')} 失败：{res.status_code} - {res.reason}"
+                        return False, f"下载文件 {item.get('name')} 失败：{res.status_code} - " \
+                                      f"{'超出速率限制，请配置GITHUB_TOKEN环境变量或稍后重试' if res.status_code == 403 else res.reason}"
                     # 创建插件文件夹
                     file_path = Path(settings.ROOT_PATH) / "app" / item.get("path")
                     if not file_path.parent.exists():
