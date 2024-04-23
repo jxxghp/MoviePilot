@@ -50,7 +50,7 @@ class PluginManager(metaclass=Singleton):
         # 扫描插件目录
         plugins = ModuleHelper.load(
             "app.plugins",
-            filter_func=lambda _, obj: hasattr(obj, 'init_plugin')
+            filter_func=lambda _, obj: hasattr(obj, 'init_plugin') and hasattr(obj, "plugin_name")
         )
         # 已安装插件
         installed_plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
