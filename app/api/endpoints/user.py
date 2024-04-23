@@ -143,6 +143,28 @@ def otp_enable(userid: str, db: Session = Depends(get_db)) -> Any:
     return schemas.Response(success=user.is_otp)
 
 
+@router.get("/config/{key}", summary="查询用户配置", response_model=schemas.Response)
+def get_config(key: str,
+               current_user: User = Depends(get_current_active_user)):
+    """
+    查询用户配置
+    """
+    value = UserConfigOper().get(username=current_user.name, key=key)
+    return schemas.Response(success=True, data={
+        "value": value
+    })
+
+
+@router.post("/config/{key}", summary="更新用户配置", response_model=schemas.Response)
+def set_config(key: str, value: Union[list, dict, bool, int, str] = None,
+               current_user: User = Depends(get_current_active_user)):
+    """
+    更新用户配置
+    """
+    UserConfigOper().set(username=current_user.name, key=key, value=value)
+    return schemas.Response(success=True)
+
+
 @router.delete("/{user_name}", summary="删除用户", response_model=schemas.Response)
 def delete_user(
         *,
@@ -183,25 +205,3 @@ def read_user_by_id(
             detail="用户权限不足"
         )
     return user
-
-
-@router.get("/config/{key}", summary="查询用户配置", response_model=schemas.Response)
-def get_config(key: str,
-               current_user: User = Depends(get_current_active_user)):
-    """
-    查询用户配置
-    """
-    value = UserConfigOper().get(username=current_user.name, key=key)
-    return schemas.Response(success=True, data={
-        "value": value
-    })
-
-
-@router.post("/config/{key}", summary="更新用户配置", response_model=schemas.Response)
-def set_config(key: str, value: Union[list, dict, bool, int, str] = None,
-               current_user: User = Depends(get_current_active_user)):
-    """
-    更新用户配置
-    """
-    UserConfigOper().set(username=current_user.name, key=key, value=value)
-    return schemas.Response(success=True)
