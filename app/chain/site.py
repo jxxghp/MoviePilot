@@ -14,7 +14,7 @@ from app.db.models.site import Site
 from app.db.site_oper import SiteOper
 from app.db.siteicon_oper import SiteIconOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.sytestatistic_oper import SiteStatisticOper
+from app.db.sitestatistic_oper import SiteStatisticOper
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.cookie import CookieHelper

@@ -5,7 +5,7 @@ from ruamel.yaml import CommentedMap
 
 from app.core.config import settings
 from app.core.context import TorrentInfo
-from app.db.sytestatistic_oper import SiteStatisticOper
+from app.db.sitestatistic_oper import SiteStatisticOper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.modules import _ModuleBase
