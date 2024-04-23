@@ -10,7 +10,7 @@ from app.utils.singleton import Singleton
 
 class UserConfigOper(DbOper, metaclass=Singleton):
     # 配置缓存
-    __USERCONF: Dict[int, Dict[str, Any]] = {}
+    __USERCONF: Dict[str, Dict[str, Any]] = {}
 
     def __init__(self):
         """
@@ -18,85 +18,79 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         """
         super().__init__()
         for item in UserConfig.list(self._db):
-            if ObjectUtils.is_obj(item.value):
-                self.__set_config_cache(user_id=item.user_id, key=item.key, value=json.loads(item.value))
-            else:
-                self.__set_config_cache(user_id=item.user_id, key=item.key, value=item.value)
+            value = json.loads(item.value) if ObjectUtils.is_obj(item.value) else item.value
+            self.__set_config_cache(username=item.username, key=item.key, value=value)
 
-    def set(self, user_id: int, key: Union[str, UserConfigKey], value: Any):
+    def set(self, username: str, key: Union[str, UserConfigKey], value: Any):
         """
         设置用户配置
         """
         if isinstance(key, UserConfigKey):
             key = key.value
         # 更新内存
-        self.__set_config_cache(user_id=user_id, key=key, value=value)
+        self.__set_config_cache(username=username, key=key, value=value)
         # 写入数据库
         if ObjectUtils.is_obj(value):
             value = json.dumps(value)
         elif value is None:
             value = ''
-        conf = UserConfig.get_by_key(self._db, user_id, key)
+        conf = UserConfig.get_by_key(db=self._db, username=username, key=key)
         if conf:
             if value:
                 conf.update(self._db, {"value": value})
             else:
                 conf.delete(self._db, conf.id)
         else:
-            conf = UserConfig(user_id=user_id, key=key, value=value)
+            conf = UserConfig(username=username, key=key, value=value)
             conf.create(self._db)
 
-    def get(self, user_id: int, key: Union[str, UserConfigKey] = None) -> Any:
+    def get(self, username: str, key: Union[str, UserConfigKey] = None) -> Any:
         """
         获取用户配置
         """
-        if not user_id:
+        if not username:
             return self.__USERCONF
         if isinstance(key, UserConfigKey):
             key = key.value
         if not key:
-            return self.__get_config_caches(user_id=user_id)
-        return self.__get_config_cache(user_id=user_id, key=key)
+            return self.__get_config_caches(username=username)
+        return self.__get_config_cache(username=username, key=key)
 
     def __del__(self):
         if self._db:
             self._db.close()
 
-    def __set_config_cache(self, user_id: int, key: str, value: Any):
+    def __set_config_cache(self, username: str, key: str, value: Any):
         """
         设置配置缓存
         """
-        if not user_id or not key:
+        if not username or not key:
             return
         cache = self.__USERCONF
         if not cache:
             cache = {}
-        user_cache = cache.get(user_id)
+        user_cache = cache.get(username)
         if not user_cache:
             user_cache = {}
-            cache[user_id] = user_cache
+            cache[username] = user_cache
         user_cache[key] = value
         self.__USERCONF = cache
-    
-    def __get_config_caches(self, user_id: int) -> Dict[str, Any]:
-        """
-        获取配置缓存
-        """
-        if not user_id:
-            return None
-        if not self.__USERCONF:
-            return None
-        return self.__USERCONF.get(user_id)
 
-    def __get_config_cache(self, user_id: int, key: str) -> Any:
+    def __get_config_caches(self, username: str) -> Dict[str, Any]:
         """
         获取配置缓存
         """
-        if not user_id or not key:
+        if not username or not self.__USERCONF:
             return None
-        if not self.__USERCONF:
+        return self.__USERCONF.get(username)
+
+    def __get_config_cache(self, username: str, key: str) -> Any:
+        """
+        获取配置缓存
+        """
+        if not username or not key or not self.__USERCONF:
             return None
-        user_cache = self.__USERCONF.get(user_id)
+        user_cache = self.__get_config_caches(username)
         if not user_cache:
             return None
         return user_cache.get(key)

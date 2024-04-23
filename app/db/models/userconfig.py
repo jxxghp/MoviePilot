@@ -9,30 +9,30 @@ class UserConfig(Base):
     用户配置表
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
-    # 用户ID
-    user_id = Column(Integer, index=True)
+    # 用户名
+    username = Column(String, index=True)
     # 配置键
     key = Column(String)
     # 值
     value = Column(String, nullable=True)
 
     __table_args__ = (
-        # 用户ID和配置键联合唯一
-        UniqueConstraint('user_id', 'key'),
-        Index('ix_userconfig_userid_key', 'user_id', 'key'),
+        # 用户名和配置键联合唯一
+        UniqueConstraint('username', 'key'),
+        Index('ix_userconfig_username_key', 'username', 'key'),
     )
 
     @staticmethod
     @db_query
-    def get_by_key(db: Session, user_id: int, key: str):
+    def get_by_key(db: Session, username: str, key: str):
         return db.query(UserConfig) \
-                 .filter(UserConfig.user_id == user_id) \
+                 .filter(UserConfig.username == username) \
                  .filter(UserConfig.key == key) \
                  .first()
 
     @db_update
-    def delete_by_key(self, db: Session, user_id: int, key: str):
-        userconfig = self.get_by_key(db, user_id, key)
+    def delete_by_key(self, db: Session, username: str, key: str):
+        userconfig = self.get_by_key(db=db, username=username, key=key)
         if userconfig:
-            userconfig.delete(db, userconfig.id)
+            userconfig.delete(db=db, rid=userconfig.id)
         return True
