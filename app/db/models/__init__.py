@@ -7,3 +7,4 @@ from .subscribe import Subscribe
 from .systemconfig import SystemConfig
 from .transferhistory import TransferHistory
 from .user import User
+from .userconfig import UserConfig

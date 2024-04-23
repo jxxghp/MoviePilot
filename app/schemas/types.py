@@ -124,3 +124,9 @@ class MessageChannel(Enum):
     SynologyChat = "SynologyChat"
     VoceChat = "VoceChat"
     Web = "Web"
+
+
+# 用户配置Key字典
+class UserConfigKey(Enum):
+    # 监控面板
+    Dashboard = "Dashboard"
