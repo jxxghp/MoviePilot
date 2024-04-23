@@ -135,7 +135,8 @@ class PluginHelper(metaclass=Singleton):
             if r is None:
                 return None, "连接仓库失败"
             elif r.status_code != 200:
-                return None, f"连接仓库失败：{r.status_code} - {r.reason}"
+                return None, f"连接仓库失败：{r.status_code} - " \
+                             f"{'超出速率限制，请配置GITHUB_TOKEN环境变量或稍后重试' if r.status_code == 403 else r.reason}"
             ret = r.json()
             if ret and ret[0].get("message") == "Not Found":
                 return None, "插件在仓库中不存在"
@@ -155,7 +156,8 @@ class PluginHelper(metaclass=Singleton):
                     if not res:
                         return False, f"文件 {item.get('name')} 下载失败！"
                     elif res.status_code != 200:
-                        return False, f"下载文件 {item.get('name')} 失败：{res.status_code} - {res.reason}"
+                        return False, f"下载文件 {item.get('name')} 失败：{res.status_code} - " \
+                                      f"{'超出速率限制，请配置GITHUB_TOKEN环境变量或稍后重试' if res.status_code == 403 else res.reason}"
                     # 创建插件文件夹
                     file_path = Path(settings.ROOT_PATH) / "app" / item.get("path")
                     if not file_path.parent.exists():
