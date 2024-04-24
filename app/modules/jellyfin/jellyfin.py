@@ -138,10 +138,10 @@ class Jellyfin:
                 case _:
                     continue
             image = self.__get_local_image_by_id(library.get("Id"))
-            link = f"{self._playhost or self._host}web/index.html#" \
+            link = f"{self._playhost or self._host}web/index.html#!" \
                    f"/movies.html?topParentId={library.get('Id')}" \
                 if library_type == MediaType.MOVIE.value \
-                else f"{self._playhost or self._host}web/index.html#" \
+                else f"{self._playhost or self._host}web/index.html#!" \
                      f"/tv.html?topParentId={library.get('Id')}"
             libraries.append(
                 schemas.MediaServerLibrary(
