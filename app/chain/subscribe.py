@@ -372,20 +372,8 @@ class SubscribeChain(ChainBase):
         # 当前下载资源的优先级
         priority = max([item.torrent_info.pri_order for item in downloads])
         if priority == 100:
-            logger.info(f'{mediainfo.title_year} 洗版完成，删除订阅')
-            # 新增订阅历史
-            self.subscribehistoryoper.add(**subscribe.to_dict())
-            # 删除订阅
-            self.subscribeoper.delete(subscribe.id)
-            # 发送通知
-            self.post_message(Notification(mtype=NotificationType.Subscribe,
-                                           title=f'{mediainfo.title_year} {meta.season} 已洗版完成',
-                                           image=mediainfo.get_message_image()))
-            # 发送事件
-            EventManager().send_event(EventType.SubscribeComplete, {
-                "subscribe_id": subscribe.id,
-                "mediainfo": mediainfo.to_dict(),
-            })
+            # 洗版完成
+            self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo, bestversion=True)
         else:
             # 正在洗版，更新资源优先级
             logger.info(f'{mediainfo.title_year} 正在洗版，更新资源优先级为 {priority}')
@@ -409,21 +397,8 @@ class SubscribeChain(ChainBase):
             if ((no_lefts and meta.type == MediaType.TV)
                     or (downloads and meta.type == MediaType.MOVIE)
                     or force):
-                # 全部下载完成
-                logger.info(f'{mediainfo.title_year} 完成订阅')
-                # 新增订阅历史
-                self.subscribehistoryoper.add(**subscribe.to_dict())
-                # 删除订阅
-                self.subscribeoper.delete(subscribe.id)
-                # 发送通知
-                self.post_message(Notification(mtype=NotificationType.Subscribe,
-                                               title=f'{mediainfo.title_year} {meta.season} 已完成订阅',
-                                               image=mediainfo.get_message_image()))
-                # 发送事件
-                EventManager().send_event(EventType.SubscribeComplete, {
-                    "subscribe_id": subscribe.id,
-                    "mediainfo": mediainfo.to_dict(),
-                })
+                # 完成订阅
+                self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
             elif downloads and meta.type == MediaType.TV:
                 # 电视剧更新已下载集数
                 self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
@@ -849,6 +824,31 @@ class SubscribeChain(ChainBase):
                         self.subscribeoper.update(subscribe.id, {
                             "lack_episode": lack_episode
                         })
+
+    def __finish_subscribe(self, subscribe: Subscribe, mediainfo: MediaInfo,
+                           meta: MetaBase, bestversion: bool = False):
+        """
+        完成订阅
+        """
+        # 完成订阅
+        msgstr = "订阅"
+        if bestversion:
+            msgstr = "洗版"
+        logger.info(f'{mediainfo.title_year} 完成{msgstr}')
+        # 新增订阅历史
+        self.subscribehistoryoper.add(**subscribe.to_dict())
+        # 删除订阅
+        self.subscribeoper.delete(subscribe.id)
+        # 发送通知
+        self.post_message(Notification(mtype=NotificationType.Subscribe,
+                                       title=f'{mediainfo.title_year} {meta.season} 已完成{msgstr}',
+                                       image=mediainfo.get_message_image()))
+        # 发送事件
+        EventManager().send_event(EventType.SubscribeComplete, {
+            "subscribe_id": subscribe.id,
+            "subscribe_info": subscribe.to_dict(),
+            "mediainfo": mediainfo.to_dict(),
+        })
 
     def remote_list(self, channel: MessageChannel, userid: Union[str, int] = None):
         """
