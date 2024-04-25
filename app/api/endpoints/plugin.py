@@ -133,7 +133,10 @@ def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)
     # 删除配置
     PluginManager().delete_plugin_config(plugin_id)
     # 重新生效插件
-    PluginManager().init_plugin(plugin_id, {})
+    PluginManager().init_plugin(plugin_id, {
+        "enabled": False,
+        "enable": False
+    })
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
     return schemas.Response(success=True)
