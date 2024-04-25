@@ -51,12 +51,11 @@ def get_env_setting(_: schemas.TokenPayload = Depends(verify_token)):
     info = settings.dict(
         exclude={"SECRET_KEY", "SUPERUSER_PASSWORD"}
     )
-    frontend_version = SystemChain().get_frontend_version()
     info.update({
         "VERSION": APP_VERSION,
         "AUTH_VERSION": SitesHelper().auth_version,
         "INDEXER_VERSION": SitesHelper().indexer_version,
-        "FRONTEND_VERSION": frontend_version
+        "FRONTEND_VERSION": SystemChain().get_frontend_version()
     })
     return schemas.Response(success=True,
                             data=info)
