@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from app import schemas
 from app.chain.search import SearchChain
+from app.chain.system import SystemChain
 from app.core.config import settings
 from app.core.module import ModuleManager
 from app.core.security import verify_token
@@ -50,10 +51,12 @@ def get_env_setting(_: schemas.TokenPayload = Depends(verify_token)):
     info = settings.dict(
         exclude={"SECRET_KEY", "SUPERUSER_PASSWORD"}
     )
+    frontend_version = SystemChain().get_frontend_version()
     info.update({
         "VERSION": APP_VERSION,
         "AUTH_VERSION": SitesHelper().auth_version,
         "INDEXER_VERSION": SitesHelper().indexer_version,
+        "FRONTEND_VERSION": frontend_version
     })
     return schemas.Response(success=True,
                             data=info)

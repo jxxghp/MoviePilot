@@ -1,5 +1,6 @@
 import json
 import re
+from pathlib import Path
 from typing import Union
 
 from app.chain import ChainBase
@@ -117,3 +118,20 @@ class SystemChain(ChainBase, metaclass=Singleton):
                     return None
             except Exception as err:
                 logger.error(f"加载版本文件 {version_file} 出错：{str(err)}")
+
+    @staticmethod
+    def get_frontend_version():
+        """
+        获取前端版本
+        """
+        version_file = Path(settings.FRONTEND_PATH) / "version.txt"
+        if version_file.exists():
+            try:
+                with open(version_file, 'r') as f:
+                    version = str(f).strip()
+                return version
+            except Exception as err:
+                logger.error(f"加载版本文件 {version_file} 出错：{str(err)}")
+        else:
+            logger.warn("未找到前端版本文件，请正确设置 FRONTEND_PATH")
+            return None

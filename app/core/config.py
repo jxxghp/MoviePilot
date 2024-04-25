@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     PROJECT_NAME = "MoviePilot"
     # API路径
     API_V1_STR: str = "/api/v1"
+    # 前端资源路径
+    FRONTEND_PATH: str = "/public"
     # 密钥
     SECRET_KEY: str = secrets.token_urlsafe(32)
     # 允许的域名
