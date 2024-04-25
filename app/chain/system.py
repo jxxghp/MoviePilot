@@ -128,7 +128,7 @@ class SystemChain(ChainBase, metaclass=Singleton):
         if version_file.exists():
             try:
                 with open(version_file, 'r') as f:
-                    version = str(f).strip()
+                    version = str(f.read()).strip()
                 return version
             except Exception as err:
                 logger.error(f"加载版本文件 {version_file} 出错：{str(err)}")
