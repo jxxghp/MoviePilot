@@ -1233,9 +1233,13 @@ class TmdbApi:
             return []
         try:
             logger.info(f"正在获取人物参演作品：{person_id}...")
-            info = self.person.movie_credits(person_id=person_id) or {}
-            cast = info.get('cast') or []
+            movies = self.person.movie_credits(person_id=person_id) or {}
+            tvs = self.person.tv_credits(person_id=person_id) or {}
+            cast = (movies.get('cast') or []) + (tvs.get('cast') or [])
             if cast:
+                # 按年份降序排列
+                cast = sorted(cast, key=lambda x: x.get('release_date') or x.get('first_air_date') or '1900-01-01',
+                              reverse=True)
                 return cast[(page - 1) * count: page * count]
             return []
         except Exception as e:
