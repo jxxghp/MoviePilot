@@ -136,3 +136,16 @@ class Person(TMDb):
             params="page=%s" % page,
             key="results"
         )
+
+    def search(self, query, page=1):
+        """
+        Search for people.
+        :param query: str
+        :param page: int
+        :return:
+        """
+        return self._request_obj(
+            self._urls["search_people"],
+            params="query=%s&page=%s" % (query, page),
+            key="results"
+        )

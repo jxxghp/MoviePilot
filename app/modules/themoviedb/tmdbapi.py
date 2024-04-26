@@ -95,6 +95,20 @@ class TmdbApi:
                 ret_infos.append(tv)
         return ret_infos
 
+    def search_persons(self, name: str) -> List[dict]:
+        """
+        查询模糊匹配的所有人物TMDB信息
+        """
+        if not name:
+            return []
+        ret_infos = []
+        persons = self.person.search(query=name) or []
+        for person in persons:
+            if name in person.get("name"):
+                person['media_type'] = MediaType.PERSON
+                ret_infos.append(person)
+        return ret_infos
+
     @staticmethod
     def __compare_names(file_name: str, tmdb_names: list) -> bool:
         """

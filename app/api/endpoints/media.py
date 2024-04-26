@@ -63,15 +63,16 @@ def recognize_file2(path: str,
     return recognize_file(path)
 
 
-@router.get("/search", summary="搜索媒体信息", response_model=List[schemas.MediaInfo])
+@router.get("/search", summary="搜索媒体/人物信息", response_model=List[schemas.MediaInfo])
 def search_by_title(title: str,
+                    type: str = "media",
                     page: int = 1,
                     count: int = 8,
                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    模糊搜索媒体信息列表
+    模糊搜索媒体/人物信息列表 media：媒体信息，person：人物信息
     """
-    _, medias = MediaChain().search(title=title)
+    _, medias = MediaChain().search(title=title, stype=type)
     if medias:
         return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
     return []

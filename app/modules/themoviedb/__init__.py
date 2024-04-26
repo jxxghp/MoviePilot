@@ -13,6 +13,7 @@ from app.modules.themoviedb.category import CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.modules.themoviedb.tmdbapi import TmdbApi
+from app.schemas import TmdbPerson
 from app.schemas.types import MediaType, MediaImageType
 from app.utils.http import RequestUtils
 from app.utils.system import SystemUtils
@@ -259,6 +260,19 @@ class TheMovieDbModule(_ModuleBase):
                         media.title = f"{media.title} 第{season_str}季"
                         media.season = meta.begin_season
             return medias
+        return []
+
+    def search_persons(self, name: str) -> Optional[List[TmdbPerson]]:
+        """
+        搜索人物信息
+        """
+        if settings.RECOGNIZE_SOURCE != "themoviedb":
+            return None
+        if not name:
+            return []
+        results = self.tmdb.search_persons(name)
+        if results:
+            return [TmdbPerson(**person) for person in results]
         return []
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str,

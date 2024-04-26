@@ -2,7 +2,7 @@ import copy
 import time
 from pathlib import Path
 from threading import Lock
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Union
 
 from app.chain import ChainBase
 from app.core.context import Context, MediaInfo
@@ -10,6 +10,7 @@ from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.log import logger
+from app.schemas import TmdbPerson, DoubanPerson
 from app.schemas.types import EventType, MediaType
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
@@ -156,36 +157,48 @@ class MediaChain(ChainBase, metaclass=Singleton):
         # 返回上下文
         return Context(meta_info=file_meta, media_info=mediainfo)
 
-    def search(self, title: str) -> Tuple[MetaBase, List[MediaInfo]]:
+    def search(self, title: str,
+               stype: str = "media") -> Tuple[Optional[MetaBase], List[Union[MediaInfo, TmdbPerson, DoubanPerson]]]:
         """
-        搜索媒体信息
+        搜索媒体/人物信息
         :param title: 搜索内容
+        :param stype: 搜索类型 media：媒体信息，person：人物信息
         :return: 识别元数据，媒体信息列表
         """
-        # 提取要素
-        mtype, key_word, season_num, episode_num, year, content = StringUtils.get_keyword(title)
-        # 识别
-        meta = MetaInfo(content)
-        if not meta.name:
-            meta.cn_name = content
-        # 合并信息
-        if mtype:
-            meta.type = mtype
-        if season_num:
-            meta.begin_season = season_num
-        if episode_num:
-            meta.begin_episode = episode_num
-        if year:
-            meta.year = year
-        # 开始搜索
-        logger.info(f"开始搜索媒体信息：{meta.name}")
-        medias: Optional[List[MediaInfo]] = self.search_medias(meta=meta)
-        if not medias:
-            logger.warn(f"{meta.name} 没有找到对应的媒体信息！")
-            return meta, []
-        logger.info(f"{content} 搜索到 {len(medias)} 条相关媒体信息")
-        # 识别的元数据，媒体信息列表
-        return meta, medias
+        if stype == "media":
+            # 提取要素
+            mtype, key_word, season_num, episode_num, year, content = StringUtils.get_keyword(title)
+            # 识别
+            meta = MetaInfo(content)
+            if not meta.name:
+                meta.cn_name = content
+            # 合并信息
+            if mtype:
+                meta.type = mtype
+            if season_num:
+                meta.begin_season = season_num
+            if episode_num:
+                meta.begin_episode = episode_num
+            if year:
+                meta.year = year
+            # 开始搜索
+            logger.info(f"开始搜索媒体信息：{meta.name}")
+            medias: Optional[List[MediaInfo]] = self.search_medias(meta=meta)
+            if not medias:
+                logger.warn(f"{meta.name} 没有找到对应的媒体信息！")
+                return meta, []
+            logger.info(f"{content} 搜索到 {len(medias)} 条相关媒体信息")
+            # 识别的元数据，媒体信息列表
+            return meta, medias
+        else:
+            # 搜索人物信息
+            logger.info(f"开始搜索人物信息：{title}")
+            persons: Optional[List[Union[TmdbPerson, DoubanPerson]]] = self.search_persons(name=title)
+            if not persons:
+                logger.warn(f"{title} 没有找到对应的人物信息！")
+                return None, []
+            logger.info(f"{title} 搜索到 {len(persons)} 条相关人物信息")
+            return None, persons
 
     def get_tmdbinfo_by_doubanid(self, doubanid: str, mtype: MediaType = None) -> Optional[dict]:
         """

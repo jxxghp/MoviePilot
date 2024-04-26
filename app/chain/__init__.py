@@ -19,7 +19,7 @@ from app.db.message_oper import MessageOper
 from app.helper.message import MessageHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
-    WebhookEventInfo, TmdbEpisode
+    WebhookEventInfo, TmdbEpisode, TmdbPerson, DoubanPerson
 from app.schemas.types import TorrentStatus, MediaType, MediaImageType, EventType
 from app.utils.object import ObjectUtils
 
@@ -259,6 +259,13 @@ class ChainBase(metaclass=ABCMeta):
         :reutrn: 媒体信息列表
         """
         return self.run_module("search_medias", meta=meta)
+
+    def search_persons(self, name: str) -> Optional[List[TmdbPerson, DoubanPerson]]:
+        """
+        搜索人物信息
+        :param name:  人物名称
+        """
+        return self.run_module("search_persons", name=name)
 
     def search_torrents(self, site: CommentedMap,
                         keywords: List[str],

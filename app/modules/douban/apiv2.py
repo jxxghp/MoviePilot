@@ -137,6 +137,9 @@ class DoubanApi(metaclass=Singleton):
         # doulist
         "doulist": "/doulist/",
         "doulist_items": "/doulist/%s/items",
+
+        # personlist
+        "person_search": "/person/search",
     }
 
     _user_agents = [
@@ -272,6 +275,14 @@ class DoubanApi(metaclass=Singleton):
         小组搜索
         """
         return self.__invoke(self._urls["group_search"], q=keyword,
+                             start=start, count=count, _ts=ts)
+
+    def person_search(self, keyword: str, start: int = 0, count: int = 20,
+                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        """
+        人物搜索
+        """
+        return self.__invoke(self._urls["person_search"], q=keyword,
                              start=start, count=count, _ts=ts)
 
     def movie_showing(self, start: int = 0, count: int = 20,
