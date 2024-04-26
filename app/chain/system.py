@@ -45,9 +45,9 @@ class SystemChain(ChainBase, metaclass=Singleton):
         """
         查看当前版本、远程版本
         """
-        server_release_version = self.__get_release_version()
+        server_release_version = self.__get_server_release_version()
         front_release_version = self.__get_front_release_version()
-        server_local_version = self.get_local_version()
+        server_local_version = self.get_server_local_version()
         front_local_version = self.get_frontend_version()
         if server_release_version == server_local_version:
             title = f"当前后端版本：{server_local_version}，已是最新版本\n"
@@ -77,9 +77,9 @@ class SystemChain(ChainBase, metaclass=Singleton):
             userid = restart_channel.get('userid')
 
             # 版本号
-            server_release_version = self.__get_release_version()
+            server_release_version = self.__get_server_release_version()
             front_release_version = self.__get_front_release_version()
-            server_local_version = self.get_local_version()
+            server_local_version = self.get_server_local_version()
             front_local_version = self.get_frontend_version()
             if server_release_version == server_local_version:
                 title = f"当前后端版本：{server_local_version}\n"
@@ -95,7 +95,7 @@ class SystemChain(ChainBase, metaclass=Singleton):
             self.remove_cache(self._restart_file)
 
     @staticmethod
-    def __get_release_version():
+    def __get_server_release_version():
         """
         获取后端最新版本
         """
@@ -123,7 +123,7 @@ class SystemChain(ChainBase, metaclass=Singleton):
             return None
 
     @staticmethod
-    def get_local_version():
+    def get_server_local_version():
         """
         查看当前版本
         """
