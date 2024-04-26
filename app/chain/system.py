@@ -103,8 +103,8 @@ class SystemChain(ChainBase, metaclass=Singleton):
             "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest")
         if version_res:
             ver_json = version_res.json()
-            version_res = f"{ver_json['tag_name']}"
-            return version_res
+            version = f"{ver_json['tag_name']}"
+            return version
         else:
             return None
 
@@ -117,8 +117,8 @@ class SystemChain(ChainBase, metaclass=Singleton):
             "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest")
         if version_res:
             ver_json = version_res.json()
-            version_res = f"{ver_json['tag_name']}"
-            return version_res
+            version = f"{ver_json['tag_name']}"
+            return version
         else:
             return None
 
