@@ -19,7 +19,9 @@ from app.chain.torrents import TorrentsChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.plugin import PluginManager
+from app.helper.sites import SitesHelper
 from app.log import logger
+from app.schemas import Notification, NotificationType
 from app.utils.singleton import Singleton
 from app.utils.timer import TimerUtils
 
@@ -46,6 +48,8 @@ class Scheduler(metaclass=Singleton):
     _lock = threading.Lock()
     # 各服务的运行状态
     _jobs = {}
+    # 用户认证失败次数
+    _auth_count = 0
 
     def __init__(self):
         self.init()
@@ -61,6 +65,34 @@ class Scheduler(metaclass=Singleton):
             """
             TorrentsChain().clear_cache()
             SchedulerChain().clear_cache()
+
+        def user_auth():
+            """
+            用户认证检查
+            """
+            if SitesHelper().auth_level >= 2:
+                return
+            # 最大重试次数
+            __max_try__ = 30
+            if self._auth_count > __max_try__:
+                return
+            logger.info("用户未认证，正在偿试重新认证...")
+            status, msg = SitesHelper().check_user()
+            if status:
+                self._auth_count = 0
+                logger.info(f"{msg} 用户认证成功")
+                SchedulerChain().post_message(
+                    Notification(
+                        mtype=NotificationType.Manual,
+                        title="MoviePilot用户认证成功",
+                        text=f"使用站点：{msg}"
+                    )
+                )
+            else:
+                self._auth_count += 1
+                logger.error(f"用户认证失败：{msg}，共失败 {self._auth_count} 次")
+                if self._auth_count >= __max_try__:
+                    logger.error("用户认证失败次数过多，将不再偿试认证！")
 
         # 各服务的运行状态
         self._jobs = {
@@ -254,6 +286,13 @@ class Scheduler(metaclass=Singleton):
             kwargs={
                 'job_id': 'clear_cache'
             }
+        )
+
+        # 定时检查用户认证，每隔10分钟
+        self._scheduler.add_job(
+            user_auth,
+            "interval",
+            minutes=10
         )
 
         # 注册插件公共服务
