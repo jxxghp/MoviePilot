@@ -17,6 +17,9 @@ class SubscribeHistoryOper(DbOper):
         kwargs = {k: v for k, v in kwargs.items() if hasattr(SubscribeHistory, k)}
         # 更新完成订阅时间
         kwargs.update({"date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())})
+        # 去掉主键
+        if "id" in kwargs:
+            kwargs.pop("id")
         subscribe = SubscribeHistory(**kwargs)
         subscribe.create(self._db)
 
