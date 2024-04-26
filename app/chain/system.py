@@ -45,7 +45,8 @@ class SystemChain(ChainBase, metaclass=Singleton):
         """
         查看当前版本、远程版本
         """
-        server_release_version, front_release_version = self.__get_release_version()
+        server_release_version = self.__get_release_version()
+        front_release_version = self.__get_front_release_version()
         server_local_version = self.get_local_version()
         front_local_version = self.get_frontend_version()
         if server_release_version == server_local_version:
@@ -76,7 +77,8 @@ class SystemChain(ChainBase, metaclass=Singleton):
             userid = restart_channel.get('userid')
 
             # 版本号
-            server_release_version, front_release_version = self.__get_release_version()
+            server_release_version = self.__get_release_version()
+            front_release_version = self.__get_front_release_version()
             server_local_version = self.get_local_version()
             front_local_version = self.get_frontend_version()
             if server_release_version == server_local_version:
@@ -95,23 +97,30 @@ class SystemChain(ChainBase, metaclass=Singleton):
     @staticmethod
     def __get_release_version():
         """
-        获取最新版本
+        获取后端最新版本
         """
-        server_version = None
-        server_version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
+        version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
             "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest")
-        if server_version_res:
-            ver_json = server_version_res.json()
-            server_version = f"{ver_json['tag_name']}"
+        if version_res:
+            ver_json = version_res.json()
+            version_res = f"{ver_json['tag_name']}"
+            return version_res
+        else:
+            return None
 
-        front_version = None
-        front_version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
-            "https://raw.githubusercontent.com/jxxghp/MoviePilot-Frontend/main/package.json")
-        if front_version_res:
-            ver_json = front_version_res.json()
-            front_version = f"v{ver_json['version']}"
-
-        return server_version, front_version
+    @staticmethod
+    def __get_front_release_version():
+        """
+        获取前端最新版本
+        """
+        version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
+            "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest")
+        if version_res:
+            ver_json = version_res.json()
+            version_res = f"{ver_json['tag_name']}"
+            return version_res
+        else:
+            return None
 
     @staticmethod
     def get_local_version():
