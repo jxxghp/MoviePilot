@@ -177,3 +177,10 @@ class TransferHistoryOper(DbOper):
                 errmsg="未识别到媒体信息"
             )
         return his
+
+    def list_by_date(self, date: str) -> List[TransferHistory]:
+        """
+        查询某时间之后的转移历史
+        :param date: 日期
+        """
+        return TransferHistory.list_by_date(self._db, date)

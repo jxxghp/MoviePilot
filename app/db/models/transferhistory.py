@@ -212,3 +212,11 @@ class TransferHistory(Base):
                 "download_hash": download_hash
             }
         )
+
+    @staticmethod
+    @db_query
+    def list_by_date(db: Session, date: str):
+        """
+        查询某时间之后的转移历史
+        """
+        return db.query(TransferHistory).filter(TransferHistory.date > date).order_by(TransferHistory.id.desc()).all()
