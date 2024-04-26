@@ -45,13 +45,18 @@ class SystemChain(ChainBase, metaclass=Singleton):
         """
         查看当前版本、远程版本
         """
-        release_version = self.__get_release_version()
-        local_version = self.get_local_version()
-        if release_version == local_version:
-            title = f"当前版本：{local_version}，已是最新版本"
+        server_release_version = self.__get_server_release_version()
+        front_release_version = self.__get_front_release_version()
+        server_local_version = self.get_server_local_version()
+        front_local_version = self.get_frontend_version()
+        if server_release_version == server_local_version:
+            title = f"当前后端版本：{server_local_version}，已是最新版本\n"
         else:
-            title = f"当前版本：{local_version}，远程版本：{release_version}"
-
+            title = f"当前后端版本：{server_local_version}，远程版本：{server_release_version}\n"
+        if front_release_version == front_local_version:
+            title += f"当前前端版本：{front_local_version}，已是最新版本"
+        else:
+            title += f"当前前端版本：{front_local_version}，远程版本：{front_release_version}"
         self.post_message(Notification(channel=channel,
                                        title=title, userid=userid))
 
@@ -72,21 +77,27 @@ class SystemChain(ChainBase, metaclass=Singleton):
             userid = restart_channel.get('userid')
 
             # 版本号
-            release_version = self.__get_release_version()
-            local_version = self.get_local_version()
-            if release_version == local_version:
-                title = f"当前版本：{local_version}"
+            server_release_version = self.__get_server_release_version()
+            front_release_version = self.__get_front_release_version()
+            server_local_version = self.get_server_local_version()
+            front_local_version = self.get_frontend_version()
+            if server_release_version == server_local_version:
+                title = f"当前后端版本：{server_local_version}\n"
             else:
-                title = f"当前版本：{local_version}，远程版本：{release_version}"
+                title = f"当前后端版本：{server_local_version}，远程版本：{server_release_version}\n"
+            if front_release_version == front_local_version:
+                title += f"当前前端版本：{front_local_version}"
+            else:
+                title += f"当前前端版本：{front_local_version}，远程版本：{front_release_version}"
             self.post_message(Notification(channel=channel,
-                                           title=f"系统已重启完成！{title}",
+                                           title=f"系统已重启完成！\n{title}",
                                            userid=userid))
             self.remove_cache(self._restart_file)
 
     @staticmethod
-    def __get_release_version():
+    def __get_server_release_version():
         """
-        获取最新版本
+        获取后端最新版本
         """
         version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
             "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest")
@@ -98,7 +109,21 @@ class SystemChain(ChainBase, metaclass=Singleton):
             return None
 
     @staticmethod
-    def get_local_version():
+    def __get_front_release_version():
+        """
+        获取前端最新版本
+        """
+        version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
+            "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest")
+        if version_res:
+            ver_json = version_res.json()
+            version = f"{ver_json['tag_name']}"
+            return version
+        else:
+            return None
+
+    @staticmethod
+    def get_server_local_version():
         """
         查看当前版本
         """
