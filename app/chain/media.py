@@ -10,7 +10,7 @@ from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.log import logger
-from app.schemas import TmdbPerson, DoubanPerson
+from app.schemas import TmdbPerson
 from app.schemas.types import EventType, MediaType
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
@@ -158,7 +158,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         return Context(meta_info=file_meta, media_info=mediainfo)
 
     def search(self, title: str,
-               stype: str = "media") -> Tuple[Optional[MetaBase], List[Union[MediaInfo, TmdbPerson, DoubanPerson]]]:
+               stype: str = "media") -> Tuple[Optional[MetaBase], List[Union[MediaInfo, TmdbPerson]]]:
         """
         搜索媒体/人物信息
         :param title: 搜索内容
@@ -193,7 +193,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         else:
             # 搜索人物信息
             logger.info(f"开始搜索人物信息：{title}")
-            persons: Optional[List[Union[TmdbPerson, DoubanPerson]]] = self.search_persons(name=title)
+            persons = self.search_persons(name=title)
             if not persons:
                 logger.warn(f"{title} 没有找到对应的人物信息！")
                 return None, []

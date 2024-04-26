@@ -13,7 +13,6 @@ from app.modules import _ModuleBase
 from app.modules.douban.apiv2 import DoubanApi
 from app.modules.douban.douban_cache import DoubanCache
 from app.modules.douban.scraper import DoubanScraper
-from app.schemas import DoubanPerson
 from app.schemas.types import MediaType
 from app.utils.common import retry
 from app.utils.http import RequestUtils
@@ -563,19 +562,6 @@ class DoubanModule(_ModuleBase):
                     media.title = f"{media.title} 第{season_str}季"
                     media.season = meta.begin_season
         return ret_medias
-
-    def search_persons(self, name: str) -> Optional[List[DoubanPerson]]:
-        """
-        搜索人物信息
-        """
-        if settings.RECOGNIZE_SOURCE != "douban":
-            return None
-        if not name:
-            return []
-        result = self.doubanapi.person_search(name)
-        if not result:
-            return []
-        return [DoubanPerson(**item) for item in result.get("items")]
 
     @retry(Exception, 5, 3, 3, logger=logger)
     def match_doubaninfo(self, name: str, imdbid: str = None,
