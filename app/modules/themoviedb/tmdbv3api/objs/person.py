@@ -14,7 +14,6 @@ class Person(TMDb):
         "translations": "/person/%s/translations",
         "latest": "/person/latest",
         "popular": "/person/popular",
-        "search_people": "/search/person",
     }
 
     def details(self, person_id, append_to_response="videos,images"):
@@ -134,18 +133,5 @@ class Person(TMDb):
         return self._request_obj(
             self._urls["popular"],
             params="page=%s" % page,
-            key="results"
-        )
-
-    def search(self, query, page=1):
-        """
-        Search for people.
-        :param query: str
-        :param page: int
-        :return:
-        """
-        return self._request_obj(
-            self._urls["search_people"],
-            params="query=%s&page=%s" % (query, page),
             key="results"
         )

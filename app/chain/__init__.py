@@ -260,7 +260,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("search_medias", meta=meta)
 
-    def search_persons(self, name: str) -> Optional[List[TmdbPerson, DoubanPerson]]:
+    def search_persons(self, name: str) -> Optional[List[Union[TmdbPerson, DoubanPerson]]]:
         """
         搜索人物信息
         :param name:  人物名称

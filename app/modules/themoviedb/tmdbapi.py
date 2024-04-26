@@ -101,13 +101,7 @@ class TmdbApi:
         """
         if not name:
             return []
-        ret_infos = []
-        persons = self.person.search(query=name) or []
-        for person in persons:
-            if name in person.get("name"):
-                person['media_type'] = MediaType.PERSON
-                ret_infos.append(person)
-        return ret_infos
+        return self.search.people(term=name) or []
 
     @staticmethod
     def __compare_names(file_name: str, tmdb_names: list) -> bool:
