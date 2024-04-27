@@ -127,6 +127,6 @@ class TmdbChain(ChainBase, metaclass=Singleton):
             # 随机一个电影
             while True:
                 info = random.choice(infos)
-                if info and info.get("backdrop_path"):
-                    return f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.get('backdrop_path')}"
+                if info and info.backdrop_path:
+                    return f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.backdrop_path}"
         return None
