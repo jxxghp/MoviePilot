@@ -506,7 +506,8 @@ class MediaInfo:
             if info.get("pic"):
                 self.poster_path = info.get("pic", {}).get("large")
             if not self.poster_path and info.get("cover_url"):
-                self.poster_path = info.get("cover_url")
+                # imageView2/0/q/80/w/9999/h/120/format/webp ->  imageView2/1/w/500/h/750/format/webp
+                self.poster_path = re.sub(r'imageView2/\d/q/\d+/w/\d+/h/\d+/format/webp', 'imageView2/1/w/500/h/750/format/webp', info.get("cover_url"))
             if not self.poster_path and info.get("cover"):
                 if info.get("cover").get("url"):
                     self.poster_path = info.get("cover").get("url")
