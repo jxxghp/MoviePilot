@@ -5,7 +5,6 @@ from cachetools import cached, TTLCache
 
 from app import schemas
 from app.chain import ChainBase
-from app.core.config import settings
 from app.core.context import MediaInfo
 from app.schemas import MediaType
 from app.utils.singleton import Singleton
@@ -26,8 +25,6 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         :param page:  页码
         :return: 媒体信息列表
         """
-        if settings.RECOGNIZE_SOURCE != "themoviedb":
-            return None
         return self.run_module("tmdb_discover", mtype=mtype,
                                sort_by=sort_by, with_genres=with_genres,
                                with_original_language=with_original_language,
@@ -39,8 +36,6 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         :param page: 第几页
         :return: TMDB信息列表
         """
-        if settings.RECOGNIZE_SOURCE != "themoviedb":
-            return None
         return self.run_module("tmdb_trending", page=page)
 
     def tmdb_seasons(self, tmdbid: int) -> List[schemas.TmdbSeason]:
