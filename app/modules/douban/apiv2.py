@@ -138,6 +138,10 @@ class DoubanApi(metaclass=Singleton):
         # doulist
         "doulist": "/doulist/",
         "doulist_items": "/doulist/%s/items",
+
+        # person
+        "person_detail": "/elessar/subject/",
+        "person_work": "/elessar/work_collections/%s/works",
     }
 
     _user_agents = [
@@ -192,8 +196,8 @@ class DoubanApi(metaclass=Singleton):
             '_sig': self.__sign(url=req_url, ts=ts)
         })
         with RequestUtils(
-            ua=choice(self._user_agents),
-            session=self._session
+                ua=choice(self._user_agents),
+                session=self._session
         ).get_res(url=req_url, params=params) as resp:
             if resp is not None and resp.status_code == 400 and "rate_limit" in resp.text:
                 return resp.json()
@@ -276,7 +280,7 @@ class DoubanApi(metaclass=Singleton):
                              start=start, count=count, _ts=ts)
 
     def person_search(self, keyword: str, start: int = 0, count: int = 20,
-                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         人物搜索
         """
@@ -482,6 +486,29 @@ class DoubanApi(metaclass=Singleton):
         :param ts: 时间戳
         """
         return self.__invoke(self._urls["tv_photos"] % subject_id,
+                             start=start, count=count, _ts=ts)
+
+    def person_detail(self, subject_id):
+        """
+        用户详情
+        :param subject_id: 人物 id
+        :return:
+        """
+        return self.__invoke(self._urls["person_detail"] + subject_id)
+
+    def person_work(self, subject_id, start=0, count=20, sort_by="time", collection_title="影视",
+                    ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        """
+        用户作品集
+        :param subject_id: work_collection id
+        :param start: 开始页
+        :param count: 数量
+        :param sort_by: collection or time or vote
+        :param collection_title: 影视 or 图书 or 音乐
+        :param ts: 时间戳
+        :return:
+        """
+        return self.__invoke(self._urls["person_work"] % subject_id, sortby=sort_by, collection_title=collection_title,
                              start=start, count=count, _ts=ts)
 
     def clear_cache(self):
