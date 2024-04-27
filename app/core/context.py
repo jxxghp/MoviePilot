@@ -133,6 +133,8 @@ class TorrentInfo:
 
 @dataclass
 class MediaInfo:
+    # 来源：themoviedb、douban、bangumi
+    source: str = None
     # 类型 电影、电视剧
     type: MediaType = None
     # 媒体标题
@@ -355,6 +357,8 @@ class MediaInfo:
 
         if not info:
             return
+        # 来源
+        self.source = "themoviedb"
         # 本体
         self.tmdb_info = info
         # 类型
@@ -440,6 +444,8 @@ class MediaInfo:
         """
         if not info:
             return
+        # 来源
+        self.source = "douban"
         # 本体
         self.douban_info = info
         # 豆瓣ID
@@ -448,6 +454,8 @@ class MediaInfo:
         if not self.type:
             if isinstance(info.get('media_type'), MediaType):
                 self.type = info.get('media_type')
+            elif info.get("subtype"):
+                self.type = MediaType.MOVIE if info.get("subtype") == "movie" else MediaType.TV
             elif info.get("type"):
                 self.type = MediaType.MOVIE if info.get("type") == "movie" else MediaType.TV
             elif info.get("type_name"):
@@ -464,6 +472,8 @@ class MediaInfo:
         # 年份
         if not self.year:
             self.year = info.get("year")[:4] if info.get("year") else None
+            if not self.year and info.get("extra"):
+                self.year = info.get("extra").get("year")
         # 识别标题中的季
         meta = MetaInfo(info.get("title"))
         # 季
@@ -498,10 +508,18 @@ class MediaInfo:
             if not self.poster_path and info.get("cover_url"):
                 self.poster_path = info.get("cover_url")
             if not self.poster_path and info.get("cover"):
-                self.poster_path = info.get("cover").get("url")
+                if info.get("cover").get("url"):
+                    self.poster_path = info.get("cover").get("url")
+                else:
+                    self.poster_path = info.get("cover").get("large", {}).get("url")
         # 简介
         if not self.overview:
             self.overview = info.get("intro") or info.get("card_subtitle") or ""
+            if not self.overview:
+                if info.get("extra", {}).get("info"):
+                    extra_info = info.get("extra").get("info")
+                    if extra_info:
+                        self.overview = "，".join(["：".join(item) for item in extra_info])
         # 从简介中提取年份
         if self.overview and not self.year:
             match = re.search(r'\d{4}', self.overview)
@@ -553,6 +571,8 @@ class MediaInfo:
         """
         if not info:
             return
+        # 来源
+        self.source = "bangumi"
         # 本体
         self.bangumi_info = info
         # 豆瓣ID
@@ -589,6 +609,8 @@ class MediaInfo:
         if not self.poster_path:
             if info.get("images"):
                 self.poster_path = info.get("images", {}).get("large")
+            if not self.poster_path and info.get("image"):
+                self.poster_path = info.get("image")
         # 简介
         if not self.overview:
             self.overview = info.get("summary")

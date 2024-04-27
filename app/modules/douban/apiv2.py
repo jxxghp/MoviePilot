@@ -488,15 +488,16 @@ class DoubanApi(metaclass=Singleton):
         return self.__invoke(self._urls["tv_photos"] % subject_id,
                              start=start, count=count, _ts=ts)
 
-    def person_detail(self, subject_id):
+    def person_detail(self, subject_id: int):
         """
         用户详情
         :param subject_id: 人物 id
         :return:
         """
-        return self.__invoke(self._urls["person_detail"] + subject_id)
+        return self.__invoke(self._urls["person_detail"] + str(subject_id))
 
-    def person_work(self, subject_id, start=0, count=20, sort_by="time", collection_title="影视",
+    def person_work(self, subject_id: int, start: int = 0, count: int = 20, sort_by: str = "time",
+                    collection_title: str = "影视",
                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         用户作品集

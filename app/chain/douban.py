@@ -11,6 +11,21 @@ class DoubanChain(ChainBase, metaclass=Singleton):
     豆瓣处理链，单例运行
     """
 
+    def person_detail(self, person_id: int) -> dict:
+        """
+        根据人物ID查询豆瓣人物详情
+        :param person_id:  人物ID
+        """
+        return self.run_module("douban_person_detail", person_id=person_id)
+
+    def person_credits(self, person_id: int, page: int = 1) -> List[dict]:
+        """
+        根据人物ID查询人物参演作品
+        :param person_id:  人物ID
+        :param page:  页码
+        """
+        return self.run_module("douban_person_credits", person_id=person_id, page=page)
+
     def movie_top250(self, page: int = 1, count: int = 30) -> Optional[List[dict]]:
         """
         获取豆瓣电影TOP250

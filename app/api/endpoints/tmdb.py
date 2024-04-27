@@ -63,7 +63,7 @@ def tmdb_recommend(tmdbid: int,
         return [MediaInfo(tmdb_info=tmdbinfo).to_dict() for tmdbinfo in tmdbinfos]
 
 
-@router.get("/credits/{tmdbid}/{type_name}", summary="演员阵容", response_model=List[schemas.TmdbPerson])
+@router.get("/credits/{tmdbid}/{type_name}", summary="演员阵容", response_model=List[schemas.MediaPerson])
 def tmdb_credits(tmdbid: int,
                  type_name: str,
                  page: int = 1,
@@ -81,10 +81,10 @@ def tmdb_credits(tmdbid: int,
     if not tmdbinfos:
         return []
     else:
-        return [schemas.TmdbPerson(**tmdbinfo) for tmdbinfo in tmdbinfos]
+        return [schemas.MediaPerson(source='themoviedb', **tmdbinfo) for tmdbinfo in tmdbinfos]
 
 
-@router.get("/person/{person_id}", summary="人物详情", response_model=schemas.TmdbPerson)
+@router.get("/person/{person_id}", summary="人物详情", response_model=schemas.MediaPerson)
 def tmdb_person(person_id: int,
                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -92,9 +92,9 @@ def tmdb_person(person_id: int,
     """
     tmdbinfo = TmdbChain().person_detail(person_id=person_id)
     if not tmdbinfo:
-        return schemas.TmdbPerson()
+        return schemas.MediaPerson(source='themoviedb')
     else:
-        return schemas.TmdbPerson(**tmdbinfo)
+        return schemas.MediaPerson(source='themoviedb', **tmdbinfo)
 
 
 @router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])

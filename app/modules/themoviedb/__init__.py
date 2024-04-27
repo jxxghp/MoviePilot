@@ -13,7 +13,7 @@ from app.modules.themoviedb.category import CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.modules.themoviedb.tmdbapi import TmdbApi
-from app.schemas import TmdbPerson
+from app.schemas import MediaPerson
 from app.schemas.types import MediaType, MediaImageType
 from app.utils.http import RequestUtils
 from app.utils.system import SystemUtils
@@ -227,10 +227,6 @@ class TheMovieDbModule(_ModuleBase):
         :param meta:  识别的元数据
         :reutrn: 媒体信息列表
         """
-        # 未启用时返回None
-        if settings.RECOGNIZE_SOURCE != "themoviedb":
-            return None
-
         if not meta.name:
             return []
         if meta.type == MediaType.UNKNOWN and not meta.year:
@@ -262,17 +258,15 @@ class TheMovieDbModule(_ModuleBase):
             return medias
         return []
 
-    def search_persons(self, name: str) -> Optional[List[TmdbPerson]]:
+    def search_persons(self, name: str) -> Optional[List[MediaPerson]]:
         """
         搜索人物信息
         """
-        if settings.RECOGNIZE_SOURCE != "themoviedb":
-            return None
         if not name:
             return []
         results = self.tmdb.search_persons(name)
         if results:
-            return [TmdbPerson(**person) for person in results]
+            return [MediaPerson(source='themoviedb', **person) for person in results]
         return []
 
     def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str,

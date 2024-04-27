@@ -61,25 +61,6 @@ def exists(title: str = None,
         ret_info = {
             "id": exist.item_id
         }
-    """
-    else:
-        # 服务器是否存在
-        mediainfo = MediaInfo()
-        mediainfo.from_dict({
-            "title": meta.name,
-            "year": year or meta.year,
-            "type": mtype or meta.type,
-            "tmdb_id": tmdbid,
-            "season": season
-        })
-        exist: schemas.ExistMediaInfo = MediaServerChain().media_exists(
-            mediainfo=mediainfo
-        )
-        if exist:
-            ret_info = {
-                "id": exist.itemid
-            }
-    """
     return schemas.Response(success=True if exist else False, data={
         "item": ret_info
     })

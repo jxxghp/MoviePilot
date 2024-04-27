@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
 
 from pydantic import BaseModel
 
@@ -63,6 +63,8 @@ class MediaInfo(BaseModel):
     """
     识别媒体信息
     """
+    # 来源：themoviedb、douban、bangumi
+    source: Optional[str] = None
     # 类型 电影、电视剧
     type: Optional[str] = None
     # 媒体标题
@@ -228,3 +230,39 @@ class Context(BaseModel):
     media_info: Optional[MediaInfo] = None
     # 种子信息
     torrent_info: Optional[TorrentInfo] = None
+
+
+class MediaPerson(BaseModel):
+    """
+    媒体人物信息
+    """
+    # 来源：themoviedb、douban、bangumi
+    source: Optional[str] = None
+    # 公共
+    id: Optional[int] = None
+    type: Optional[Union[str, int]] = 1
+    name: Optional[str] = None
+    character: Optional[str] = None
+    images: Optional[dict] = {}
+    # themoviedb
+    profile_path: Optional[str] = None
+    gender: Optional[Union[str, int]] = None
+    original_name: Optional[str] = None
+    credit_id: Optional[str] = None
+    also_known_as: Optional[list] = []
+    birthday: Optional[str] = None
+    deathday: Optional[str] = None
+    imdb_id: Optional[str] = None
+    known_for_department: Optional[str] = None
+    place_of_birth: Optional[str] = None
+    popularity: Optional[float] = None
+    biography: Optional[str] = None
+    # douban
+    roles: Optional[list] = []
+    title: Optional[str] = None
+    url: Optional[str] = None
+    avatar: Optional[Union[str, dict]] = None
+    latin_name: Optional[str] = None
+    # bangumi
+    career: Optional[list] = []
+    relation: Optional[str] = None

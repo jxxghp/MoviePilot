@@ -13,6 +13,7 @@ from app.modules import _ModuleBase
 from app.modules.douban.apiv2 import DoubanApi
 from app.modules.douban.douban_cache import DoubanCache
 from app.modules.douban.scraper import DoubanScraper
+from app.schemas import MediaPerson
 from app.schemas.types import MediaType
 from app.utils.common import retry
 from app.utils.http import RequestUtils
@@ -536,10 +537,6 @@ class DoubanModule(_ModuleBase):
         :param meta:  识别的元数据
         :reutrn: 媒体信息
         """
-        # 未启用豆瓣搜索时返回None
-        if settings.RECOGNIZE_SOURCE != "douban":
-            return None
-
         if not meta.name:
             return []
         result = self.doubanapi.search(meta.name)
@@ -562,6 +559,23 @@ class DoubanModule(_ModuleBase):
                     media.title = f"{media.title} 第{season_str}季"
                     media.season = meta.begin_season
         return ret_medias
+
+    def search_persons(self, name: str) -> Optional[List[MediaPerson]]:
+        """
+        搜索人物信息
+        """
+        if not name:
+            return []
+        result = self.doubanapi.person_search(keyword=name)
+        if result and result.get('items'):
+            return [MediaPerson(source='douban', **{
+                'id': item.get('target_id'),
+                'name': item.get('target', {}).get('title'),
+                'url': item.get('target', {}).get('url'),
+                'images': item.get('target', {}).get('cover', {}),
+                'avatar': item.get('target', {}).get('cover_img', {}).get('url'),
+            }) for item in result.get('items')]
+        return []
 
     @retry(Exception, 5, 3, 3, logger=logger)
     def match_doubaninfo(self, name: str, imdbid: str = None,
@@ -804,11 +818,39 @@ class DoubanModule(_ModuleBase):
         根据豆瓣ID查询推荐电影
         :param doubanid:  豆瓣ID
         """
-        return self.doubanapi.movie_recommendations(subject_id=doubanid) or []
+        return self.doubanapi.movie_recommendations(subject_id=doubanid)
 
     def douban_tv_recommend(self, doubanid: str) -> List[dict]:
         """
         根据豆瓣ID查询推荐电视剧
         :param doubanid:  豆瓣ID
         """
-        return self.doubanapi.tv_recommendations(subject_id=doubanid) or []
+        return self.doubanapi.tv_recommendations(subject_id=doubanid)
+
+    def douban_person_detail(self, person_id: int) -> dict:
+        """
+        获取人物详细信息
+        :param person_id:  豆瓣人物ID
+        """
+        return self.doubanapi.person_detail(person_id)
+
+    def douban_person_credits(self, person_id: int, page: int = 1) -> List[dict]:
+        """
+        根据TMDBID查询人物参演作品
+        :param person_id:  人物ID
+        :param page:  页码
+        """
+        # 获取人物参演作品集
+        personinfo = self.doubanapi.person_detail(person_id)
+        if not personinfo:
+            return []
+        collection_id = None
+        for module in personinfo.get("modules"):
+            if module.get("type") == "work_collections":
+                collection_id = module.get("payload", {}).get("id")
+        # 查询作品集内容
+        if collection_id:
+            collections = self.doubanapi.person_work(subject_id=collection_id, start=(page - 1) * 20, count=20)
+            if collections:
+                return collections.get("works")
+        return []

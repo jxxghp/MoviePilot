@@ -79,7 +79,7 @@ class BangumiModule(_ModuleBase):
         :param page:  页码
         :param count:  数量
         """
-        persons = self.bangumiapi.persons(bangumiid) or []
+        persons = self.bangumiapi.credits(bangumiid)
         if persons:
             return persons[(page - 1) * count: page * count]
         else:
@@ -90,4 +90,19 @@ class BangumiModule(_ModuleBase):
         根据BangumiID查询推荐电影
         :param bangumiid:  BangumiID
         """
-        return self.bangumiapi.subjects(bangumiid) or []
+        return self.bangumiapi.subjects(bangumiid)
+
+    def bangumi_person_detail(self, person_id: int) -> dict:
+        """
+        获取人物详细信息
+        :param person_id:  豆瓣人物ID
+        """
+        return self.bangumiapi.person_detail(person_id)
+
+    def bangumi_person_credits(self, person_id: int, page: int = 1) -> List[dict]:
+        """
+        根据TMDBID查询人物参演作品
+        :param person_id:  人物ID
+        :param page:  页码
+        """
+        return self.bangumiapi.person_credits(person_id=person_id, page=page)

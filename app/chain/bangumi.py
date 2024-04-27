@@ -40,3 +40,18 @@ class BangumiChain(ChainBase, metaclass=Singleton):
         :param bangumiid:  BangumiID
         """
         return self.run_module("bangumi_recommend", bangumiid=bangumiid)
+
+    def person_detail(self, person_id: int) -> dict:
+        """
+        根据人物ID查询Bangumi人物详情
+        :param person_id:  人物ID
+        """
+        return self.run_module("bangumi_person_detail", person_id=person_id)
+
+    def person_credits(self, person_id: int, page: int = 1) -> List[dict]:
+        """
+        根据人物ID查询人物参演作品
+        :param person_id:  人物ID
+        :param page:  页码
+        """
+        return self.run_module("bangumi_person_credits", person_id=person_id, page=page)
