@@ -2,7 +2,6 @@ from typing import Optional, List
 
 from app import schemas
 from app.chain import ChainBase
-from app.core.config import settings
 from app.core.context import MediaInfo
 from app.schemas import MediaType
 from app.utils.singleton import Singleton
@@ -78,16 +77,12 @@ class DoubanChain(ChainBase, metaclass=Singleton):
         """
         获取热门电影
         """
-        if settings.RECOGNIZE_SOURCE != "douban":
-            return None
         return self.run_module("movie_hot", page=page, count=count)
 
     def tv_hot(self, page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:
         """
         获取热门剧集
         """
-        if settings.RECOGNIZE_SOURCE != "douban":
-            return None
         return self.run_module("tv_hot", page=page, count=count)
 
     def movie_credits(self, doubanid: str) -> Optional[List[schemas.MediaPerson]]:
