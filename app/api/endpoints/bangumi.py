@@ -17,11 +17,10 @@ def calendar(page: int = 1,
     """
     浏览Bangumi每日放送
     """
-    infos = BangumiChain().calendar(page=page, count=count)
-    if not infos:
-        return []
-    medias = [MediaInfo(bangumi_info=info) for info in infos]
-    return [media.to_dict() for media in medias]
+    medias = BangumiChain().calendar()
+    if medias:
+        return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
+    return []
 
 
 @router.get("/credits/{bangumiid}", summary="查询Bangumi演职员表", response_model=List[schemas.MediaPerson])
@@ -32,23 +31,24 @@ def bangumi_credits(bangumiid: int,
     """
     查询Bangumi演职员表
     """
-    persons = BangumiChain().bangumi_credits(bangumiid, page=page, count=count)
-    if not persons:
-        return []
-    return [schemas.MediaPerson(source='bangumi', **person) for person in persons]
+    persons = BangumiChain().bangumi_credits(bangumiid)
+    if persons:
+        return persons[(page - 1) * count: page * count]
+    return []
 
 
 @router.get("/recommend/{bangumiid}", summary="查询Bangumi推荐", response_model=List[schemas.MediaInfo])
 def bangumi_recommend(bangumiid: int,
+                      page: int = 1,
+                      count: int = 20,
                       _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询Bangumi推荐
     """
-    infos = BangumiChain().bangumi_recommend(bangumiid)
-    if not infos:
-        return []
-    medias = [MediaInfo(bangumi_info=info) for info in infos]
-    return [media.to_dict() for media in medias]
+    medias = BangumiChain().bangumi_recommend(bangumiid)
+    if medias:
+        return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
+    return []
 
 
 @router.get("/person/{person_id}", summary="人物详情", response_model=schemas.MediaPerson)
@@ -57,18 +57,7 @@ def bangumi_person(person_id: int,
     """
     根据人物ID查询人物详情
     """
-    personinfo = BangumiChain().person_detail(person_id=person_id)
-    if not personinfo:
-        return schemas.MediaPerson(source='bangumi')
-    else:
-        return schemas.MediaPerson(source='bangumi', **{
-            "id": personinfo.get("id"),
-            "name": personinfo.get("name"),
-            "images": personinfo.get("images"),
-            "biography": personinfo.get("summary"),
-            "birthday": personinfo.get("birth_day"),
-            "gender": personinfo.get("gender")
-        })
+    return BangumiChain().person_detail(person_id=person_id)
 
 
 @router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])
@@ -78,11 +67,10 @@ def bangumi_person_credits(person_id: int,
     """
     根据人物ID查询人物参演作品
     """
-    infos = BangumiChain().person_credits(person_id=person_id, page=page)
-    if not infos:
-        return []
-    else:
-        return [MediaInfo(bangumi_info=info).to_dict() for info in infos]
+    medias = BangumiChain().person_credits(person_id=person_id)
+    if medias:
+        return [media.to_dict() for media in medias[(page - 1) * 20: page * 20]]
+    return []
 
 
 @router.get("/{bangumiid}", summary="查询Bangumi详情", response_model=schemas.MediaInfo)

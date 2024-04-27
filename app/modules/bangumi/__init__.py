@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple, Union
 
+from app import schemas
 from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
@@ -64,45 +65,58 @@ class BangumiModule(_ModuleBase):
         logger.info(f"开始获取Bangumi信息：{bangumiid} ...")
         return self.bangumiapi.detail(bangumiid)
 
-    def bangumi_calendar(self, page: int = 1, count: int = 30) -> Optional[List[dict]]:
+    def bangumi_calendar(self) -> Optional[List[MediaInfo]]:
         """
         获取Bangumi每日放送
-        :param page:  页码
-        :param count:  每页数量
         """
-        return self.bangumiapi.calendar(page, count)
+        infos = self.bangumiapi.calendar()
+        if infos:
+            return [MediaInfo(bangumi_info=info) for info in infos]
+        return []
 
-    def bangumi_credits(self, bangumiid: int, page: int = 1, count: int = 20) -> List[dict]:
+    def bangumi_credits(self, bangumiid: int) -> List[schemas.MediaPerson]:
         """
         根据TMDBID查询电影演职员表
         :param bangumiid:  BangumiID
-        :param page:  页码
-        :param count:  数量
         """
         persons = self.bangumiapi.credits(bangumiid)
         if persons:
-            return persons[(page - 1) * count: page * count]
-        else:
-            return []
+            return [schemas.MediaPerson(source='bangumi', **person) for person in persons]
+        return []
 
-    def bangumi_recommend(self, bangumiid: int) -> List[dict]:
+    def bangumi_recommend(self, bangumiid: int) -> List[MediaInfo]:
         """
         根据BangumiID查询推荐电影
         :param bangumiid:  BangumiID
         """
-        return self.bangumiapi.subjects(bangumiid)
+        subjects = self.bangumiapi.subjects(bangumiid)
+        if subjects:
+            return [MediaInfo(bangumi_info=subject) for subject in subjects]
+        return []
 
-    def bangumi_person_detail(self, person_id: int) -> dict:
+    def bangumi_person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:
         """
         获取人物详细信息
         :param person_id:  豆瓣人物ID
         """
-        return self.bangumiapi.person_detail(person_id)
+        personinfo = self.bangumiapi.person_detail(person_id)
+        if personinfo:
+            return schemas.MediaPerson(source='bangumi', **{
+                "id": personinfo.get("id"),
+                "name": personinfo.get("name"),
+                "images": personinfo.get("images"),
+                "biography": personinfo.get("summary"),
+                "birthday": personinfo.get("birth_day"),
+                "gender": personinfo.get("gender")
+            })
+        return None
 
-    def bangumi_person_credits(self, person_id: int, page: int = 1) -> List[dict]:
+    def bangumi_person_credits(self, person_id: int) -> List[MediaInfo]:
         """
         根据TMDBID查询人物参演作品
         :param person_id:  人物ID
-        :param page:  页码
         """
-        return self.bangumiapi.person_credits(person_id=person_id, page=page)
+        credits_info = self.bangumiapi.person_credits(person_id=person_id)
+        if credits_info:
+            return [MediaInfo(bangumi_info=credit) for credit in credits_info]
+        return []

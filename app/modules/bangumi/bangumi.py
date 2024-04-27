@@ -40,7 +40,7 @@ class BangumiApi(object):
             print(e)
             return None
 
-    def calendar(self, page: int = 1, count: int = 30):
+    def calendar(self):
         """
         获取每日放送，返回items
         """
@@ -136,7 +136,7 @@ class BangumiApi(object):
         if result:
             for item in result:
                 ret_list.extend(item.get("items") or [])
-        return ret_list[(page - 1) * count: page * count]
+        return ret_list
 
     def detail(self, bid: int):
         """
@@ -172,7 +172,7 @@ class BangumiApi(object):
         """
         return self.__invoke(self._urls["person_detail"] % person_id, _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
 
-    def person_credits(self, person_id: int, page: int = 1):
+    def person_credits(self, person_id: int):
         """
         获取人物参演作品
         """
@@ -181,4 +181,4 @@ class BangumiApi(object):
         if result:
             for item in result:
                 ret_list.append(item)
-        return ret_list[(page - 1) * 20: page * 20]
+        return ret_list
