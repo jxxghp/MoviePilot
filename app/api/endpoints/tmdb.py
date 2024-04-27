@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.tmdb import TmdbChain
-from app.core.context import MediaInfo
 from app.core.security import verify_token
 from app.schemas.types import MediaType
 
@@ -17,10 +16,9 @@ def tmdb_seasons(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -
     根据TMDBID查询themoviedb所有季信息
     """
     seasons_info = TmdbChain().tmdb_seasons(tmdbid=tmdbid)
-    if not seasons_info:
-        return []
-    else:
+    if seasons_info:
         return seasons_info
+    return []
 
 
 @router.get("/similar/{tmdbid}/{type_name}", summary="类似电影/电视剧", response_model=List[schemas.MediaInfo])
@@ -32,15 +30,14 @@ def tmdb_similar(tmdbid: int,
     """
     mediatype = MediaType(type_name)
     if mediatype == MediaType.MOVIE:
-        tmdbinfos = TmdbChain().movie_similar(tmdbid=tmdbid)
+        medias = TmdbChain().movie_similar(tmdbid=tmdbid)
     elif mediatype == MediaType.TV:
-        tmdbinfos = TmdbChain().tv_similar(tmdbid=tmdbid)
+        medias = TmdbChain().tv_similar(tmdbid=tmdbid)
     else:
         return []
-    if not tmdbinfos:
-        return []
-    else:
-        return [MediaInfo(tmdb_info=tmdbinfo).to_dict() for tmdbinfo in tmdbinfos]
+    if medias:
+        return [media.to_dict() for media in medias]
+    return []
 
 
 @router.get("/recommend/{tmdbid}/{type_name}", summary="推荐电影/电视剧", response_model=List[schemas.MediaInfo])
@@ -52,15 +49,14 @@ def tmdb_recommend(tmdbid: int,
     """
     mediatype = MediaType(type_name)
     if mediatype == MediaType.MOVIE:
-        tmdbinfos = TmdbChain().movie_recommend(tmdbid=tmdbid)
+        medias = TmdbChain().movie_recommend(tmdbid=tmdbid)
     elif mediatype == MediaType.TV:
-        tmdbinfos = TmdbChain().tv_recommend(tmdbid=tmdbid)
+        medias = TmdbChain().tv_recommend(tmdbid=tmdbid)
     else:
         return []
-    if not tmdbinfos:
-        return []
-    else:
-        return [MediaInfo(tmdb_info=tmdbinfo).to_dict() for tmdbinfo in tmdbinfos]
+    if medias:
+        return [media.to_dict() for media in medias]
+    return []
 
 
 @router.get("/credits/{tmdbid}/{type_name}", summary="演员阵容", response_model=List[schemas.MediaPerson])
@@ -73,15 +69,12 @@ def tmdb_credits(tmdbid: int,
     """
     mediatype = MediaType(type_name)
     if mediatype == MediaType.MOVIE:
-        tmdbinfos = TmdbChain().movie_credits(tmdbid=tmdbid, page=page)
+        persons = TmdbChain().movie_credits(tmdbid=tmdbid, page=page)
     elif mediatype == MediaType.TV:
-        tmdbinfos = TmdbChain().tv_credits(tmdbid=tmdbid, page=page)
+        persons = TmdbChain().tv_credits(tmdbid=tmdbid, page=page)
     else:
         return []
-    if not tmdbinfos:
-        return []
-    else:
-        return [schemas.MediaPerson(source='themoviedb', **tmdbinfo) for tmdbinfo in tmdbinfos]
+    return persons or []
 
 
 @router.get("/person/{person_id}", summary="人物详情", response_model=schemas.MediaPerson)
@@ -90,11 +83,7 @@ def tmdb_person(person_id: int,
     """
     根据人物ID查询人物详情
     """
-    tmdbinfo = TmdbChain().person_detail(person_id=person_id)
-    if not tmdbinfo:
-        return schemas.MediaPerson(source='themoviedb')
-    else:
-        return schemas.MediaPerson(source='themoviedb', **tmdbinfo)
+    return TmdbChain().person_detail(person_id=person_id)
 
 
 @router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])
@@ -104,11 +93,10 @@ def tmdb_person_credits(person_id: int,
     """
     根据人物ID查询人物参演作品
     """
-    tmdbinfo = TmdbChain().person_credits(person_id=person_id, page=page)
-    if not tmdbinfo:
-        return []
-    else:
-        return [MediaInfo(tmdb_info=tmdbinfo).to_dict() for tmdbinfo in tmdbinfo]
+    medias = TmdbChain().person_credits(person_id=person_id, page=page)
+    if medias:
+        return [media.to_dict() for media in medias]
+    return []
 
 
 @router.get("/movies", summary="TMDB电影", response_model=List[schemas.MediaInfo])
@@ -127,7 +115,7 @@ def tmdb_movies(sort_by: str = "popularity.desc",
                                        page=page)
     if not movies:
         return []
-    return [MediaInfo(tmdb_info=movie).to_dict() for movie in movies]
+    return [movie.to_dict() for movie in movies]
 
 
 @router.get("/tvs", summary="TMDB剧集", response_model=List[schemas.MediaInfo])
@@ -146,7 +134,7 @@ def tmdb_tvs(sort_by: str = "popularity.desc",
                                     page=page)
     if not tvs:
         return []
-    return [MediaInfo(tmdb_info=tv).to_dict() for tv in tvs]
+    return [tv.to_dict() for tv in tvs]
 
 
 @router.get("/trending", summary="TMDB流行趋势", response_model=List[schemas.MediaInfo])
@@ -158,7 +146,7 @@ def tmdb_trending(page: int = 1,
     infos = TmdbChain().tmdb_trending(page=page)
     if not infos:
         return []
-    return [MediaInfo(tmdb_info=info).to_dict() for info in infos]
+    return [info.to_dict() for info in infos]
 
 
 @router.get("/{tmdbid}/{season}", summary="TMDB季所有集", response_model=List[schemas.TmdbEpisode])
@@ -167,8 +155,4 @@ def tmdb_season_episodes(tmdbid: int, season: int,
     """
     根据TMDBID查询某季的所有信信息
     """
-    episodes_info = TmdbChain().tmdb_episodes(tmdbid=tmdbid, season=season)
-    if not episodes_info:
-        return []
-    else:
-        return episodes_info
+    return TmdbChain().tmdb_episodes(tmdbid=tmdbid, season=season)

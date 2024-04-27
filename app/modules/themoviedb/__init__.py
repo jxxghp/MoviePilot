@@ -317,7 +317,7 @@ class TheMovieDbModule(_ModuleBase):
         logger.info(f"{path} 刮削完成")
 
     def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,
-                      page: int = 1) -> Optional[List[dict]]:
+                      page: int = 1) -> Optional[List[MediaInfo]]:
         """
         :param mtype:  媒体类型
         :param sort_by:  排序方式
@@ -327,25 +327,31 @@ class TheMovieDbModule(_ModuleBase):
         :return: 媒体信息列表
         """
         if mtype == MediaType.MOVIE:
-            return self.tmdb.discover_movies(sort_by=sort_by,
-                                             with_genres=with_genres,
-                                             with_original_language=with_original_language,
-                                             page=page)
+            infos = self.tmdb.discover_movies(sort_by=sort_by,
+                                              with_genres=with_genres,
+                                              with_original_language=with_original_language,
+                                              page=page)
         elif mtype == MediaType.TV:
-            return self.tmdb.discover_tvs(sort_by=sort_by,
-                                          with_genres=with_genres,
-                                          with_original_language=with_original_language,
-                                          page=page)
+            infos = self.tmdb.discover_tvs(sort_by=sort_by,
+                                           with_genres=with_genres,
+                                           with_original_language=with_original_language,
+                                           page=page)
         else:
-            return None
+            return []
+        if infos:
+            return [MediaInfo(tmdb_info=info) for info in infos]
+        return []
 
-    def tmdb_trending(self, page: int = 1) -> List[dict]:
+    def tmdb_trending(self, page: int = 1) -> List[MediaInfo]:
         """
         TMDB流行趋势
         :param page: 第几页
         :return: TMDB信息列表
         """
-        return self.tmdb.trending.all_week(page=page)
+        trending = self.tmdb.trending.all_week(page=page)
+        if trending:
+            return [MediaInfo(tmdb_info=info) for info in trending]
+        return []
 
     def tmdb_seasons(self, tmdbid: int) -> List[schemas.TmdbSeason]:
         """
@@ -453,64 +459,88 @@ class TheMovieDbModule(_ModuleBase):
             return f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/{image_prefix}{image_path}"
         return None
 
-    def tmdb_movie_similar(self, tmdbid: int) -> List[dict]:
+    def tmdb_movie_similar(self, tmdbid: int) -> List[MediaInfo]:
         """
         根据TMDBID查询类似电影
         :param tmdbid:  TMDBID
         """
-        return self.tmdb.get_movie_similar(tmdbid=tmdbid)
+        similar = self.tmdb.get_movie_similar(tmdbid=tmdbid)
+        if similar:
+            return [MediaInfo(tmdb_info=info) for info in similar]
+        return []
 
-    def tmdb_tv_similar(self, tmdbid: int) -> List[dict]:
+    def tmdb_tv_similar(self, tmdbid: int) -> List[MediaInfo]:
         """
         根据TMDBID查询类似电视剧
         :param tmdbid:  TMDBID
         """
-        return self.tmdb.get_tv_similar(tmdbid=tmdbid)
+        similar = self.tmdb.get_tv_similar(tmdbid=tmdbid)
+        if similar:
+            return [MediaInfo(tmdb_info=info) for info in similar]
+        return []
 
-    def tmdb_movie_recommend(self, tmdbid: int) -> List[dict]:
+    def tmdb_movie_recommend(self, tmdbid: int) -> List[MediaInfo]:
         """
         根据TMDBID查询推荐电影
         :param tmdbid:  TMDBID
         """
-        return self.tmdb.get_movie_recommend(tmdbid=tmdbid)
+        recommend = self.tmdb.get_movie_recommend(tmdbid=tmdbid)
+        if recommend:
+            return [MediaInfo(tmdb_info=info) for info in recommend]
+        return []
 
-    def tmdb_tv_recommend(self, tmdbid: int) -> List[dict]:
+    def tmdb_tv_recommend(self, tmdbid: int) -> List[MediaInfo]:
         """
         根据TMDBID查询推荐电视剧
         :param tmdbid:  TMDBID
         """
-        return self.tmdb.get_tv_recommend(tmdbid=tmdbid)
+        recommend = self.tmdb.get_tv_recommend(tmdbid=tmdbid)
+        if recommend:
+            return [MediaInfo(tmdb_info=info) for info in recommend]
+        return []
 
-    def tmdb_movie_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
+    def tmdb_movie_credits(self, tmdbid: int, page: int = 1) -> List[schemas.MediaPerson]:
         """
         根据TMDBID查询电影演职员表
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return self.tmdb.get_movie_credits(tmdbid=tmdbid, page=page)
+        credit_infos = self.tmdb.get_movie_credits(tmdbid=tmdbid, page=page)
+        if credit_infos:
+            return [schemas.MediaPerson(source="themoviedb", **info) for info in credit_infos]
+        return []
 
-    def tmdb_tv_credits(self, tmdbid: int, page: int = 1) -> List[dict]:
+    def tmdb_tv_credits(self, tmdbid: int, page: int = 1) -> List[schemas.MediaPerson]:
         """
         根据TMDBID查询电视剧演职员表
         :param tmdbid:  TMDBID
         :param page:  页码
         """
-        return self.tmdb.get_tv_credits(tmdbid=tmdbid, page=page)
+        credit_infos = self.tmdb.get_tv_credits(tmdbid=tmdbid, page=page)
+        if credit_infos:
+            return [schemas.MediaPerson(source="themoviedb", **info) for info in credit_infos]
+        return []
 
-    def tmdb_person_detail(self, person_id: int) -> dict:
+    def tmdb_person_detail(self, person_id: int) -> schemas.MediaPerson:
         """
         根据TMDBID查询人物详情
         :param person_id:  人物ID
         """
-        return self.tmdb.get_person_detail(person_id=person_id)
+        detail = self.tmdb.get_person_detail(person_id=person_id)
+        if detail:
+            return schemas.MediaPerson(source="themoviedb", **detail)
+        return schemas.MediaPerson
 
-    def tmdb_person_credits(self, person_id: int, page: int = 1) -> List[dict]:
+    def tmdb_person_credits(self, person_id: int, page: int = 1) -> List[MediaInfo]:
         """
         根据TMDBID查询人物参演作品
         :param person_id:  人物ID
         :param page:  页码
         """
-        return self.tmdb.get_person_credits(person_id=person_id, page=page)
+        infos = self.tmdb.get_person_credits(person_id=person_id, page=page)
+        if infos:
+            return [MediaInfo(tmdb_info=tmdbinfo) for tmdbinfo in infos]
+        return []
 
     def clear_cache(self):
         """
