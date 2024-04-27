@@ -574,7 +574,7 @@ class DoubanModule(_ModuleBase):
                 'url': item.get('target', {}).get('url'),
                 'images': item.get('target', {}).get('cover', {}),
                 'avatar': item.get('target', {}).get('cover_img', {}).get('url'),
-            }) for item in result.get('items')]
+            }) for item in result.get('items') if name in item.get('target', {}).get('title')]
         return []
 
     @retry(Exception, 5, 3, 3, logger=logger)

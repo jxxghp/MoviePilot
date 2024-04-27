@@ -181,7 +181,7 @@ class DoubanApi(metaclass=Singleton):
         """
         req_url = self._base_url + url
 
-        params = {'apiKey': self._api_key}
+        params: dict = {'apiKey': self._api_key}
         if kwargs:
             params.update(kwargs)
 
