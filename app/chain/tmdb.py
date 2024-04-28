@@ -5,6 +5,7 @@ from cachetools import cached, TTLCache
 
 from app import schemas
 from app.chain import ChainBase
+from app.core.config import settings
 from app.core.context import MediaInfo
 from app.schemas import MediaType
 from app.utils.singleton import Singleton
