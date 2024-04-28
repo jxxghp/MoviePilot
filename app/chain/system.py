@@ -95,28 +95,36 @@ class SystemChain(ChainBase, metaclass=Singleton):
         """
         获取后端最新版本
         """
-        with RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
-                "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest") as version_res:
-            if version_res:
-                ver_json = version_res.json()
-                version = f"{ver_json['tag_name']}"
-                return version
-            else:
-                return None
+        try:
+            with RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
+                    "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest") as version_res:
+                if version_res:
+                    ver_json = version_res.json()
+                    version = f"{ver_json['tag_name']}"
+                    return version
+                else:
+                    return None
+        except Exception as err:
+            logger.error(f"获取后端最新版本失败：{str(err)}")
+            return None
 
     @staticmethod
     def __get_front_release_version():
         """
         获取前端最新版本
         """
-        with RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
-                "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest") as version_res:
-            if version_res:
-                ver_json = version_res.json()
-                version = f"{ver_json['tag_name']}"
-                return version
-            else:
-                return None
+        try:
+            with RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
+                    "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest") as version_res:
+                if version_res:
+                    ver_json = version_res.json()
+                    version = f"{ver_json['tag_name']}"
+                    return version
+                else:
+                    return None
+        except Exception as err:
+            logger.error(f"获取前端最新版本失败：{str(err)}")
+            return None
 
     @staticmethod
     def get_server_local_version():
