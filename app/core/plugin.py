@@ -406,6 +406,9 @@ class PluginManager(metaclass=Singleton):
                 # 图标
                 if plugin_info.get("icon"):
                     plugin.plugin_icon = plugin_info.get("icon")
+                # 标签
+                if plugin_info.get("labels"):
+                    plugin.plugin_label = plugin_info.get("labels")
                 # 作者
                 if plugin_info.get("author"):
                     plugin.plugin_author = plugin_info.get("author")

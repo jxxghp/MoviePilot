@@ -16,6 +16,8 @@ class Plugin(BaseModel):
     plugin_icon: Optional[str] = None
     # 插件版本
     plugin_version: Optional[str] = None
+    # 插件标签
+    plugin_label: Optional[str] = None
     # 插件作者
     plugin_author: Optional[str] = None
     # 作者主页
