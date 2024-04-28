@@ -12,6 +12,7 @@ class BangumiApi(object):
     """
 
     _urls = {
+        "search": "search/subjects/%s?type=2",
         "calendar": "calendar",
         "detail": "v0/subjects/%s",
         "credits": "v0/subjects/%s/persons",
@@ -39,6 +40,15 @@ class BangumiApi(object):
         except Exception as e:
             print(e)
             return None
+
+    def search(self, name):
+        """
+        搜索媒体信息
+        """
+        result = self.__invoke("search/subject/%s" % name)
+        if result:
+            return result.get("list")
+        return []
 
     def calendar(self):
         """

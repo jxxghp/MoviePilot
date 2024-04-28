@@ -544,6 +544,8 @@ class DoubanModule(_ModuleBase):
         :param meta:  识别的元数据
         :reutrn: 媒体信息
         """
+        if settings.SEARCH_SOURCE and "douban" not in settings.SEARCH_SOURCE:
+            return None
         if not meta.name:
             return []
         result = self.doubanapi.search(meta.name)

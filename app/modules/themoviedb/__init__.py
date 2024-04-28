@@ -227,6 +227,8 @@ class TheMovieDbModule(_ModuleBase):
         :param meta:  识别的元数据
         :reutrn: 媒体信息列表
         """
+        if settings.SEARCH_SOURCE and "themoviedb" not in settings.SEARCH_SOURCE:
+            return None
         if not meta.name:
             return []
         if meta.type == MediaType.UNKNOWN and not meta.year:

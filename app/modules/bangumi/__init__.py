@@ -1,7 +1,9 @@
 from typing import List, Optional, Tuple, Union
 
 from app import schemas
+from app.core.config import settings
 from app.core.context import MediaInfo
+from app.core.meta import MetaBase
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.bangumi.bangumi import BangumiApi
@@ -53,6 +55,21 @@ class BangumiModule(_ModuleBase):
             logger.info(f"{bangumiid} 未匹配到Bangumi媒体信息")
 
         return None
+
+    def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+        """
+        搜索媒体信息
+        :param meta:  识别的元数据
+        :reutrn: 媒体信息
+        """
+        if settings.SEARCH_SOURCE and "bangumi" not in settings.SEARCH_SOURCE:
+            return None
+        if not meta.name:
+            return []
+        infos = self.bangumiapi.search(meta.name)
+        if infos:
+            return [MediaInfo(bangumi_info=info) for info in infos]
+        return []
 
     def bangumi_info(self, bangumiid: int) -> Optional[dict]:
         """
