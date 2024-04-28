@@ -322,6 +322,21 @@ class TorrentHelper(metaclass=Singleton):
                 logger.error(f"解析大小范围失败：{str(e)} - {traceback.format_exc()}")
             return 0, 0
 
+        def __get_pubminutes(pubdate: str) -> float:
+            """
+            将字符串转换为时间，并计算与当前时间差）（分钟）
+            """
+            try:
+                if not pubdate:
+                    return 0
+                pubdate = pubdate.replace("T", " ").replace("Z", "")
+                pubdate = datetime.datetime.strptime(pubdate, "%Y-%m-%d %H:%M:%S")
+                now = datetime.datetime.now()
+                return (now - pubdate).total_seconds() // 60
+            except Exception as e:
+                print(str(e))
+                return 0
+
         if not filter_rule:
             return True
 
@@ -334,8 +349,17 @@ class TorrentHelper(metaclass=Singleton):
         # 最少做种人数
         min_seeders = filter_rule.get("min_seeders")
         if min_seeders and torrent_info.seeders < int(min_seeders):
-            logger.info(f"{torrent_info.title} 做种人数不足 {min_seeders}")
-            return False
+            # 最少做种人数生效发布时间（分钟）（在设置发布时间之外的最少做种人数生效）
+            min_seeders_time = filter_rule.get("min_seeders_time") or 0
+            if min_seeders_time:
+                # 发布时间与当前时间差（分钟）
+                pubdate_minutes = __get_pubminutes(min_seeders_time)
+                if pubdate_minutes > min_seeders_time:
+                    logger.info(f"{torrent_info.title} 发布时间大于 {min_seeders_time} 分钟，做种人数不足 {min_seeders}")
+                    return False
+            else:
+                logger.info(f"{torrent_info.title} 做种人数不足 {min_seeders}")
+                return False
 
         # 包含
         include = filter_rule.get("include")
