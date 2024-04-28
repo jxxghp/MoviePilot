@@ -341,13 +341,13 @@ class TorrentHelper(metaclass=Singleton):
         include = filter_rule.get("include")
         if include:
             if not re.search(r"%s" % include, content, re.I):
-                logger.info(f"{torrent_info.title} 不匹配包含规则 {include}")
+                logger.info(f"{content} 不匹配包含规则 {include}")
                 return False
         # 排除
         exclude = filter_rule.get("exclude")
         if exclude:
             if re.search(r"%s" % exclude, content, re.I):
-                logger.info(f"{torrent_info.title} 匹配排除规则 {exclude}")
+                logger.info(f"{content} 匹配排除规则 {exclude}")
                 return False
         # 质量
         quality = filter_rule.get("quality")
