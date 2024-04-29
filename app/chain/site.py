@@ -129,7 +129,7 @@ class SiteChain(ChainBase):
                     return True, "连接成功"
                 else:
                     return True, f"连接成功，但更新状态失败"
-        return False, "Cookie已失效"
+        return False, "鉴权已过期或无效"
 
     def __ptlsp_test(self, site: Site) -> Tuple[bool, str]:
         """
