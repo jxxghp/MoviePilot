@@ -582,7 +582,8 @@ class DoubanModule(_ModuleBase):
                 'name': item.get('target', {}).get('title'),
                 'url': item.get('target', {}).get('url'),
                 'images': item.get('target', {}).get('cover', {}),
-                'avatar': item.get('target', {}).get('cover_img', {}).get('url'),
+                'avatar': (item.get('target', {}).get('cover_img', {}).get('url')
+                           or '').replace("/l/public/", "/s/public/"),
             }) for item in result.get('items') if name in item.get('target', {}).get('title')]
         return []
 
@@ -853,10 +854,13 @@ class DoubanModule(_ModuleBase):
             infos = detail.get("extra", {}).get("info")
             if infos:
                 also_known_as = ["：".join(info) for info in infos]
+            image = detail.get("cover_img", {}).get("url")
+            if image:
+                image = image.replace("/l/public/", "/s/public/")
             return schemas.MediaPerson(source='douban', **{
                 "id": detail.get("id"),
                 "name": detail.get("title"),
-                "avatar": detail.get("cover_img", {}).get("url"),
+                "avatar": image,
                 "biography": detail.get("extra", {}).get("short_info"),
                 "also_known_as": also_known_as,
             })
