@@ -513,12 +513,17 @@ class PluginManager(metaclass=Singleton):
             # 作者链接
             if hasattr(plugin_class, "author_url"):
                 plugin.author_url = plugin_class.author_url
+            # 加载顺序
+            if hasattr(plugin_class, "plugin_order"):
+                plugin.plugin_order = plugin_class.plugin_order
             # 是否需要更新
             plugin.has_update = False
             # 本地标志
             plugin.is_local = True
             # 汇总
             plugins.append(plugin)
+        # 根据加载排序重新排序
+        plugins.sort(key=lambda x: x.plugin_order if hasattr(x, "plugin_order") else 0)
         return plugins
 
     @staticmethod
