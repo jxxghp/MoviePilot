@@ -20,6 +20,10 @@ class Site(BaseModel):
     cookie: Optional[str] = None
     # User-Agent
     ua: Optional[str] = None
+    # ApiKey
+    apikey: Optional[str] = None
+    # Token
+    token: Optional[str] = None
     # 是否使用代理
     proxy: Optional[int] = 0
     # 过滤规则

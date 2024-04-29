@@ -25,6 +25,10 @@ class Site(Base):
     cookie = Column(String)
     # User-Agent
     ua = Column(String)
+    # ApiKey
+    apikey = Column(String)
+    # Token
+    token = Column(String)
     # 是否使用代理 0-否，1-是
     proxy = Column(Integer)
     # 过滤规则
