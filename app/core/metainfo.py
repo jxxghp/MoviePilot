@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Tuple
 
@@ -6,6 +7,7 @@ import regex as re
 from app.core.config import settings
 from app.core.meta import MetaAnime, MetaVideo, MetaBase
 from app.core.meta.words import WordsMatcher
+from app.log import logger
 from app.schemas.types import MediaType
 
 
@@ -37,9 +39,12 @@ def MetaInfo(title: str, subtitle: str = None) -> MetaBase:
     meta.apply_words = apply_words or []
     # 修正媒体信息
     if metainfo.get('tmdbid'):
-        meta.tmdbid = metainfo['tmdbid']
+        try:
+            meta.tmdbid = int(metainfo['tmdbid'])
+        except ValueError as _:
+            logger.warn("tmdbid 必须是数字")
     if metainfo.get('doubanid'):
-        meta.tmdbid = metainfo['doubanid']
+        meta.doubanid = metainfo['doubanid']
     if metainfo.get('type'):
         meta.type = metainfo['type']
     if metainfo.get('begin_season'):
