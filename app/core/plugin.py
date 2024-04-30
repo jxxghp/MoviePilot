@@ -353,6 +353,7 @@ class PluginManager(metaclass=Singleton):
                 logger.warn(f"获取插件库失败：{market}")
                 return
             ret_plugins = []
+            add_time = len(online_plugins)
             for pid, plugin_info in online_plugins.items():
                 # 运行状插件
                 plugin_obj = self._running_plugins.get(pid)
@@ -419,8 +420,11 @@ class PluginManager(metaclass=Singleton):
                 plugin.repo_url = market
                 # 本地标志
                 plugin.is_local = False
+                # 添加顺序
+                plugin.add_time = add_time
                 # 汇总
                 ret_plugins.append(plugin)
+                add_time -= 1
 
             return ret_plugins
 

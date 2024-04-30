@@ -44,3 +44,5 @@ class Plugin(BaseModel):
     install_count: Optional[int] = 0
     # 更新记录
     history: Optional[dict] = {}
+    # 添加时间，值越小表示越靠后发布
+    add_time: Optional[int] = 0
