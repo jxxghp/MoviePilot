@@ -456,10 +456,14 @@ class MediaInfo:
                 self.type = info.get('media_type')
             elif info.get("subtype"):
                 self.type = MediaType.MOVIE if info.get("subtype") == "movie" else MediaType.TV
-            elif info.get("type"):
-                self.type = MediaType.MOVIE if info.get("type") == "movie" else MediaType.TV
+            elif info.get("target_type"):
+                self.type = MediaType.MOVIE if info.get("target_type") == "movie" else MediaType.TV
             elif info.get("type_name"):
                 self.type = MediaType(info.get("type_name"))
+            elif info.get("uri"):
+                self.type = MediaType.MOVIE if "/movie/" in info.get("uri") else MediaType.TV
+            elif info.get("type") and info.get("type") in ["movie", "tv"]:
+                self.type = MediaType.MOVIE if info.get("type") == "movie" else MediaType.TV
         # 标题
         if not self.title:
             self.title = info.get("title")
