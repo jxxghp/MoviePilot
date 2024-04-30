@@ -616,9 +616,8 @@ class Plex:
             return []
         # 媒体库白名单
         allow_library = ",".join([lib.id for lib in self.get_librarys()])
-        query = {'contentDirectoryID': allow_library}
-        path = '/hubs/continueWatching/items' + utils.joinArgs(query)
-        items = self._plex.fetchItems(path, container_start=0, container_size=num)
+        params = {'contentDirectoryID': allow_library}
+        items = self._plex.fetchItems("/hubs/continueWatching/items", container_start=0, container_size=num, params=params)
         ret_resume = []
         for item in items:
             item_type = MediaType.MOVIE.value if item.TYPE == "movie" else MediaType.TV.value
