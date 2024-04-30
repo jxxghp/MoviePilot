@@ -57,7 +57,7 @@ class MetaVideo(MetaBase):
     def __init__(self, title: str, subtitle: str = None, isfile: bool = False):
         """
         初始化
-        :param title: 标题
+        :param title: 标题，文件为去掉了后缀
         :param subtitle: 副标题
         :param isfile: 是否是文件名
         """
@@ -68,11 +68,10 @@ class MetaVideo(MetaBase):
         self._source = ""
         self._effect = []
         # 判断是否纯数字命名
-        title_path = Path(title)
-        if title_path.suffix.lower() in settings.RMT_MEDIAEXT \
-                and title_path.stem.isdigit() \
-                and len(title_path.stem) < 5:
-            self.begin_episode = int(title_path.stem)
+        if isfile \
+                and title.isdigit() \
+                and len(title) < 5:
+            self.begin_episode = int(title)
             self.type = MediaType.TV
             return
         # 去掉名称中第1个[]的内容
