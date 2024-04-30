@@ -78,12 +78,13 @@ class TheMovieDbModule(_ModuleBase):
                 and settings.RECOGNIZE_SOURCE != "themoviedb":
             return None
 
-        if not meta:
+        if not meta and not tmdbid:
+            logger.warn("识别媒体信息时未提供元数据名称和 tmdbid")
+            return None
+
+        if not meta or not meta.name:
             # 未提供元数据时，直接使用tmdbid查询，不使用缓存
             cache_info = {}
-        elif not meta.name:
-            logger.warn("识别媒体信息时未提供元数据名称")
-            return None
         else:
             # 读取缓存
             if mtype:
