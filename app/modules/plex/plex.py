@@ -616,9 +616,8 @@ class Plex:
             return []
         # 媒体库白名单
         allow_library = ",".join([lib.id for lib in self.get_librarys()])
-        query = {'contentDirectoryID': allow_library}
-        path = '/hubs/continueWatching/items' + utils.joinArgs(query)
-        items = self._plex.fetchItems(path, container_start=0, container_size=num)
+        params = {'contentDirectoryID': allow_library}
+        items = self._plex.fetchItems("/hubs/continueWatching/items", container_start=0, container_size=num, params=params)
         ret_resume = []
         for item in items:
             item_type = MediaType.MOVIE.value if item.TYPE == "movie" else MediaType.TV.value
@@ -647,20 +646,61 @@ class Plex:
         """
         if not self._plex:
             return None
-        items = self._plex.fetchItems('/library/recentlyAdded', container_start=0, container_size=num)
+        # 请求参数（除黑名单）
+        allow_library = ",".join([lib.id for lib in self.get_librarys()])
+        params = {
+            "contentDirectoryID": allow_library,
+            "count": num,
+            "excludeContinueWatching": 1
+        }
         ret_resume = []
-        for item in items:
-            item_type = MediaType.MOVIE.value if item.TYPE == "movie" else MediaType.TV.value
-            link = self.get_play_url(item.key)
-            title = item.title if item_type == MediaType.MOVIE.value else \
-                "%s 第%s季" % (item.parentTitle, item.index)
-            image = item.posterUrl
-            ret_resume.append(schemas.MediaServerPlayItem(
-                id=item.key,
-                title=title,
-                subtitle=item.year,
-                type=item_type,
-                image=image,
-                link=link
-            ))
+        sub_result = []
+        offset = 0
+        while True:
+            if len(ret_resume) >= num:
+                break
+            # 获取所有资料库
+            hubs = self._plex.fetchItems(
+                '/hubs/promoted',
+                container_start=offset,
+                container_size=num,
+                maxresults=num,
+                params=params
+            )
+            if len(hubs) == 0:
+                break
+
+            # 合并排序
+            for hub in hubs:
+                for item in hub.items:
+                    sub_result.append(item)
+            sub_result.sort(key=lambda x: x.addedAt, reverse=True)
+
+            for item in sub_result:
+                if len(ret_resume) >= num:
+                    break
+                item_type = ""
+                title = ""
+                if item.TYPE == "movie":
+                    item_type = MediaType.MOVIE.value
+                    title = item.title
+                elif item.TYPE == "season":
+                    item_type = MediaType.TV.value
+                    title = "%s 第%s季" % (item.parentTitle, item.index)
+                elif item.TYPE == "episode":
+                    item_type = MediaType.TV.value
+                    title = "%s 第%s季 第%s集" % (item.grandparentTitle, item.parentIndex, item.index)
+                link = self.get_play_url(item.key).rstrip('/children')
+                image = item.posterUrl
+                ret_resume.append(schemas.MediaServerPlayItem(
+                    id=item.key,
+                    title=title,
+                    subtitle=item.year,
+                    type=item_type,
+                    image=image,
+                    link=link
+                ))
+
+            offset += num
+
         return ret_resume[:num]

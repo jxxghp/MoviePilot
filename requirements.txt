@@ -24,7 +24,7 @@ cryptography~=41.0.1
 pytz~=2023.3
 pycryptodome~=3.18.0
 qbittorrent-api==2023.5.48
-plexapi~=4.14.0
+plexapi~=4.15.12
 transmission-rpc~=4.3.0
 Jinja2~=3.1.2
 pyparsing~=3.0.9
