@@ -353,8 +353,8 @@ class TorrentHelper(metaclass=Singleton):
             min_seeders_time = filter_rule.get("min_seeders_time") or 0
             if min_seeders_time:
                 # 发布时间与当前时间差（分钟）
-                pubdate_minutes = __get_pubminutes(min_seeders_time)
-                if pubdate_minutes > min_seeders_time:
+                pubdate_minutes = __get_pubminutes(torrent_info.pubdate)
+                if pubdate_minutes > int(min_seeders_time):
                     logger.info(f"{torrent_info.title} 发布时间大于 {min_seeders_time} 分钟，做种人数不足 {min_seeders}")
                     return False
             else:
