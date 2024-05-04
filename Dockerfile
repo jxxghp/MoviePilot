@@ -41,6 +41,10 @@ RUN apt-get update -y \
         then ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1; \
     fi \
     && curl https://rclone.org/install.sh | bash \
+    && echo "deb http://deb.debian.org/debian bookworm main" >> /etc/apt/sources.list \
+    && apt-get update -y \
+    && apt-get install -y --only-upgrade ca-certificates \
+    && sed -i '/deb http:\/\/deb\.debian\.org\/debian bookworm main/d' /etc/apt/sources.list \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf \
