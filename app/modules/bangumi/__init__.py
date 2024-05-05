@@ -68,7 +68,9 @@ class BangumiModule(_ModuleBase):
             return []
         infos = self.bangumiapi.search(meta.name)
         if infos:
-            return [MediaInfo(bangumi_info=info) for info in infos]
+            return [MediaInfo(bangumi_info=info) for info in infos
+                    if meta.name.lower() in str(info.get("name")).lower()
+                    or meta.name.lower() in str(info.get("name_cn")).lower()]
         return []
 
     def bangumi_info(self, bangumiid: int) -> Optional[dict]:

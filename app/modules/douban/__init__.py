@@ -558,6 +558,8 @@ class DoubanModule(_ModuleBase):
                 continue
             if item_obj.get("type_name") not in (MediaType.TV.value, MediaType.MOVIE.value):
                 continue
+            if meta.name not in item_obj.get("target", {}).get("title"):
+                continue
             ret_medias.append(MediaInfo(douban_info=item_obj.get("target")))
         # 将搜索词中的季写入标题中
         if ret_medias and meta.begin_season:
