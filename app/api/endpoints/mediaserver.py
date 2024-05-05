@@ -1,13 +1,13 @@
-from typing import Any, List
+from typing import Any, List, Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.download import DownloadChain
-from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
 from app.core.config import settings
+from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.db import get_db
@@ -37,14 +37,14 @@ def play_item(itemid: str) -> schemas.Response:
     })
 
 
-@router.get("/exists", summary="本地是否存在", response_model=schemas.Response)
-def exists(title: str = None,
-           year: int = None,
-           mtype: str = None,
-           tmdbid: int = None,
-           season: int = None,
-           db: Session = Depends(get_db),
-           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.get("/exists", summary="查询本地是否存在（数据库）", response_model=schemas.Response)
+def exists_local(title: str = None,
+                 year: int = None,
+                 mtype: str = None,
+                 tmdbid: int = None,
+                 season: int = None,
+                 db: Session = Depends(get_db),
+                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     判断本地是否存在
     """
@@ -66,11 +66,30 @@ def exists(title: str = None,
     })
 
 
-@router.post("/notexists", summary="查询缺失媒体信息", response_model=List[schemas.NotExistMediaInfo])
+@router.post("/exists_remote", summary="查询已存在的剧集信息（媒体服务器）", response_model=Dict[int, list])
+def exists(media_in: schemas.MediaInfo,
+           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据媒体信息查询媒体库已存在的剧集信息
+    """
+    # 转化为媒体信息对象
+    mediainfo = MediaInfo()
+    mediainfo.from_dict(media_in.dict())
+    existsinfo: schemas.ExistMediaInfo = MediaServerChain().media_exists(mediainfo=mediainfo)
+    if not existsinfo:
+        return []
+    if media_in.season:
+        return {
+            media_in.season: existsinfo.seasons.get(media_in.season) or []
+        }
+    return existsinfo.seasons
+
+
+@router.post("/notexists", summary="查询媒体库缺失信息（媒体服务器）", response_model=List[schemas.NotExistMediaInfo])
 def not_exists(media_in: schemas.MediaInfo,
                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    查询缺失媒体信息
+    根据媒体信息查询缺失电影/剧集
     """
     # 媒体信息
     meta = MetaInfo(title=media_in.title)
@@ -82,18 +101,13 @@ def not_exists(media_in: schemas.MediaInfo,
         meta.type = MediaType.TV
     if media_in.year:
         meta.year = media_in.year
-    if media_in.tmdb_id or media_in.douban_id:
-        mediainfo = MediaChain().recognize_media(meta=meta, mtype=mtype,
-                                                 tmdbid=media_in.tmdb_id, doubanid=media_in.douban_id)
-    else:
-        mediainfo = MediaChain().recognize_by_meta(metainfo=meta)
-    # 查询缺失信息
-    if not mediainfo:
-        raise HTTPException(status_code=404, detail="媒体信息不存在")
-    mediakey = mediainfo.tmdb_id or mediainfo.douban_id
+    # 转化为媒体信息对象
+    mediainfo = MediaInfo()
+    mediainfo.from_dict(media_in.dict())
     exist_flag, no_exists = DownloadChain().get_no_exists_info(meta=meta, mediainfo=mediainfo)
+    mediakey = mediainfo.tmdb_id or mediainfo.douban_id
     if mediainfo.type == MediaType.MOVIE:
-        # 电影已存在时返回空列表，存在时返回空对像列表
+        # 电影已存在时返回空列表，不存在时返回空对像列表
         return [] if exist_flag else [NotExistMediaInfo()]
     elif no_exists and no_exists.get(mediakey):
         # 电视剧返回缺失的剧集
