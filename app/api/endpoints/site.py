@@ -10,10 +10,12 @@ from app.chain.torrents import TorrentsChain
 from app.core.event import EventManager
 from app.core.security import verify_token
 from app.db import get_db
+from app.db.models import User
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.systemconfig_oper import SystemConfigOper
+from app.db.userauth import get_current_active_superuser
 from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType
@@ -96,7 +98,7 @@ def update_site(
 def delete_site(
         site_id: int,
         db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)
+        _: User = Depends(get_current_active_superuser)
 ) -> Any:
     """
     删除站点
@@ -122,7 +124,7 @@ def cookie_cloud_sync(background_tasks: BackgroundTasks,
 
 @router.get("/reset", summary="重置站点", response_model=schemas.Response)
 def reset(db: Session = Depends(get_db),
-          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+          _: User = Depends(get_current_active_superuser)) -> Any:
     """
     清空所有站点数据并重新同步CookieCloud站点信息
     """

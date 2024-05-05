@@ -14,7 +14,9 @@ from app.chain.system import SystemChain
 from app.core.config import settings
 from app.core.module import ModuleManager
 from app.core.security import verify_token
+from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
+from app.db.userauth import get_current_active_superuser
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.sites import SitesHelper
@@ -44,7 +46,7 @@ def get_img(imgurl: str, proxy: bool = False) -> Any:
 
 
 @router.get("/env", summary="查询系统环境变量", response_model=schemas.Response)
-def get_env_setting(_: schemas.TokenPayload = Depends(verify_token)):
+def get_env_setting(_: User = Depends(get_current_active_superuser)):
     """
     查询系统环境变量，包括当前版本号
     """
@@ -63,7 +65,7 @@ def get_env_setting(_: schemas.TokenPayload = Depends(verify_token)):
 
 @router.post("/env", summary="更新系统环境变量", response_model=schemas.Response)
 def set_env_setting(env: dict,
-                    _: schemas.TokenPayload = Depends(verify_token)):
+                    _: User = Depends(get_current_active_superuser)):
     """
     更新系统环境变量
     """
@@ -106,7 +108,7 @@ def get_progress(process_type: str, token: str):
 
 @router.get("/setting/{key}", summary="查询系统设置", response_model=schemas.Response)
 def get_setting(key: str,
-                _: schemas.TokenPayload = Depends(verify_token)):
+                _: User = Depends(get_current_active_superuser)):
     """
     查询系统设置
     """
@@ -121,7 +123,7 @@ def get_setting(key: str,
 
 @router.post("/setting/{key}", summary="更新系统设置", response_model=schemas.Response)
 def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
-                _: schemas.TokenPayload = Depends(verify_token)):
+                _: User = Depends(get_current_active_superuser)):
     """
     更新系统设置
     """
@@ -294,7 +296,7 @@ def moduletest(moduleid: str, _: schemas.TokenPayload = Depends(verify_token)):
 
 
 @router.get("/restart", summary="重启系统", response_model=schemas.Response)
-def restart_system(_: schemas.TokenPayload = Depends(verify_token)):
+def restart_system(_: User = Depends(get_current_active_superuser)):
     """
     重启系统
     """
@@ -306,7 +308,7 @@ def restart_system(_: schemas.TokenPayload = Depends(verify_token)):
 
 
 @router.get("/reload", summary="重新加载模块", response_model=schemas.Response)
-def reload_module(_: schemas.TokenPayload = Depends(verify_token)):
+def reload_module(_: User = Depends(get_current_active_superuser)):
     """
     重新加载模块
     """
@@ -317,7 +319,7 @@ def reload_module(_: schemas.TokenPayload = Depends(verify_token)):
 
 @router.get("/runscheduler", summary="运行服务", response_model=schemas.Response)
 def execute_command(jobid: str,
-                    _: schemas.TokenPayload = Depends(verify_token)):
+                    _: User = Depends(get_current_active_superuser)):
     """
     执行命令
     """

@@ -9,8 +9,10 @@ from app.chain.transfer import TransferChain
 from app.core.event import eventmanager
 from app.core.security import verify_token
 from app.db import get_db
+from app.db.models import User
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
+from app.db.userauth import get_current_active_superuser
 from app.schemas.types import EventType
 
 router = APIRouter()
@@ -102,4 +104,14 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
         )
     # 删除记录
     TransferHistory.delete(db, history_in.id)
+    return schemas.Response(success=True)
+
+
+@router.get("/empty/transfer", summary="清空转移历史记录", response_model=schemas.Response)
+def delete_transfer_history(db: Session = Depends(get_db),
+                            _: User = Depends(get_current_active_superuser)) -> Any:
+    """
+    清空转移历史记录
+    """
+    TransferHistory.truncate(db)
     return schemas.Response(success=True)
