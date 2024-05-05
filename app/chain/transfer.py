@@ -555,6 +555,7 @@ class TransferChain(ChainBase):
     def manual_transfer(self, in_path: Path,
                         target: Path = None,
                         tmdbid: int = None,
+                        doubanid: str = None,
                         mtype: MediaType = None,
                         season: int = None,
                         transfer_type: str = None,
@@ -566,6 +567,7 @@ class TransferChain(ChainBase):
         :param in_path: 源文件路径
         :param target: 目标路径
         :param tmdbid: TMDB ID
+        :param doubanid: 豆瓣ID
         :param mtype: 媒体类型
         :param season: 季度
         :param transfer_type: 转移类型
@@ -575,12 +577,12 @@ class TransferChain(ChainBase):
         """
         logger.info(f"手动转移：{in_path} ...")
 
-        if tmdbid:
+        if tmdbid or doubanid:
             # 有输入TMDBID时单个识别
             # 识别媒体信息
-            mediainfo: MediaInfo = self.mediachain.recognize_media(tmdbid=tmdbid, mtype=mtype)
+            mediainfo: MediaInfo = self.mediachain.recognize_media(tmdbid=tmdbid, doubanid=doubanid, mtype=mtype)
             if not mediainfo:
-                return False, f"媒体信息识别失败，tmdbid: {tmdbid}, type: {mtype.value}"
+                return False, f"媒体信息识别失败，tmdbid：{tmdbid}，doubanid：{doubanid}，type: {mtype.value}"
             # 开始进度
             self.progress.start(ProgressKey.FileTransfer)
             self.progress.update(value=0,

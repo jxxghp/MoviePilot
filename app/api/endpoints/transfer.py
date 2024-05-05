@@ -19,6 +19,7 @@ def manual_transfer(path: str = None,
                     logid: int = None,
                     target: str = None,
                     tmdbid: int = None,
+                    doubanid: str = None,
                     type_name: str = None,
                     season: int = None,
                     transfer_type: str = None,
@@ -36,6 +37,7 @@ def manual_transfer(path: str = None,
     :param target: 目标路径
     :param type_name: 媒体类型、电影/电视剧
     :param tmdbid: tmdbid
+    :param doubanid: 豆瓣ID
     :param season: 剧集季号
     :param transfer_type: 转移类型，move/copy 等
     :param episode_format: 剧集识别格式
@@ -91,6 +93,7 @@ def manual_transfer(path: str = None,
         in_path=in_path,
         target=target,
         tmdbid=tmdbid,
+        doubanid=doubanid,
         mtype=mtype,
         season=season,
         transfer_type=transfer_type,
