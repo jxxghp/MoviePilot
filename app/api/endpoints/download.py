@@ -23,13 +23,13 @@ def read(
     return DownloadChain().downloading()
 
 
-@router.post("/", summary="添加下载", response_model=schemas.Response)
+@router.post("/", summary="添加下载（含媒体信息）", response_model=schemas.Response)
 def download(
         media_in: schemas.MediaInfo,
         torrent_in: schemas.TorrentInfo,
         current_user: User = Depends(get_current_active_user)) -> Any:
     """
-    添加下载任务
+    添加下载任务（含媒体信息）
     """
     # 元数据
     metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
@@ -51,12 +51,12 @@ def download(
     })
 
 
-@router.post("/add", summary="添加下载", response_model=schemas.Response)
+@router.post("/add", summary="添加下载（不含媒体信息）", response_model=schemas.Response)
 def add(
         torrent_in: schemas.TorrentInfo,
         current_user: User = Depends(get_current_active_user)) -> Any:
     """
-    添加下载任
+    添加下载任务（不含媒体信息）
     """
     # 元数据
     metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
