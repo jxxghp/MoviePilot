@@ -352,6 +352,7 @@ def popular_subscribes(
         for sub in subscribes:
             media = MediaInfo()
             media.type = MediaType(sub.get("type"))
+            media.tmdb_id = sub.get("tmdbid")
             # 处理标题
             title = sub.get("name")
             season = sub.get("season")
@@ -361,7 +362,6 @@ def popular_subscribes(
                 title = f"{title} 第{season_str}季"
             media.title = title
             media.year = sub.get("year")
-            media.tmdb_id = sub.get("tmdbid")
             media.douban_id = sub.get("doubanid")
             media.bangumi_id = sub.get("bangumiid")
             media.tvdb_id = sub.get("tvdbid")
