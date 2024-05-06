@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Tuple, Generator, Any
 from urllib.parse import quote_plus
 
-from plexapi import media, utils
+from plexapi import media
 from plexapi.server import PlexServer
 
 from app import schemas
@@ -679,19 +679,20 @@ class Plex:
             for item in sub_result:
                 if len(ret_resume) >= num:
                     break
-                item_type = ""
-                title = ""
+                item_type, title, image = "", "", ""
                 if item.TYPE == "movie":
                     item_type = MediaType.MOVIE.value
                     title = item.title
+                    image = item.posterUrl
                 elif item.TYPE == "season":
                     item_type = MediaType.TV.value
                     title = "%s 第%s季" % (item.parentTitle, item.index)
+                    image = item.posterUrl
                 elif item.TYPE == "episode":
                     item_type = MediaType.TV.value
                     title = "%s 第%s季 第%s集" % (item.grandparentTitle, item.parentIndex, item.index)
-                link = self.get_play_url(item.key).rstrip('/children')
-                image = item.posterUrl
+                    image = self._host + item.parentThumb.lstrip('/') + f"?X-Plex-Token={self._token}"
+                link = self.get_play_url(item.key)
                 ret_resume.append(schemas.MediaServerPlayItem(
                     id=item.key,
                     title=title,
