@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
+from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token, verify_uri_token
 from app.db import get_db
@@ -14,6 +15,7 @@ from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.user import User
 from app.db.userauth import get_current_active_user
+from app.helper.subscribe import SubscribeHelper
 from app.scheduler import Scheduler
 from app.schemas.types import MediaType
 
@@ -332,6 +334,38 @@ def delete_subscribe(
     """
     SubscribeHistory.delete(db, history_id)
     return schemas.Response(success=True)
+
+
+@router.get("/popular", summary="热门订阅（基于用户共享数据）", response_model=List[schemas.MediaInfo])
+def popular_subscribes(
+        stype: str,
+        page: int = 1,
+        count: int = 30,
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询热门订阅
+    """
+    subscribes = SubscribeHelper().get_statistic(stype=stype, page=page, count=count)
+    if subscribes:
+        ret_medias = []
+        for sub in subscribes:
+            media = MediaInfo()
+            media.type = MediaType(sub.get("type"))
+            media.title = sub.get("name")
+            media.year = sub.get("year")
+            media.tmdb_id = sub.get("tmdbid")
+            media.douban_id = sub.get("doubanid")
+            media.bangumi_id = sub.get("bangumiid")
+            media.tvdb_id = sub.get("tvdbid")
+            media.imdb_id = sub.get("imdbid")
+            media.season = sub.get("season")
+            media.overview = sub.get("description")
+            media.vote_average = sub.get("vote")
+            media.poster_path = sub.get("poster")
+            media.backdrop_path = sub.get("backdrop")
+            ret_medias.append(media)
+        return [media.to_dict() for media in ret_medias]
+    return []
 
 
 @router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)

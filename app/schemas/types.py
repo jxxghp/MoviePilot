@@ -82,6 +82,8 @@ class SystemConfigKey(Enum):
     TransferExcludeWords = "TransferExcludeWords"
     # 插件安装统计
     PluginInstallReport = "PluginInstallReport"
+    # 订阅统计
+    SubscribeReport = "SubscribeReport"
 
 
 # 处理进度Key字典

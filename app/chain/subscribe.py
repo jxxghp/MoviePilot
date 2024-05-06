@@ -19,6 +19,7 @@ from app.db.subscribe_oper import SubscribeOper
 from app.db.subscribehistory_oper import SubscribeHistoryOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
+from app.helper.subscribe import SubscribeHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import NotExistMediaInfo, Notification
@@ -36,6 +37,7 @@ class SubscribeChain(ChainBase):
         self.searchchain = SearchChain()
         self.subscribeoper = SubscribeOper()
         self.subscribehistoryoper = SubscribeHistoryOper()
+        self.subscribehelper = SubscribeHelper()
         self.torrentschain = TorrentsChain()
         self.mediachain = MediaChain()
         self.message = MessageHelper()
@@ -122,6 +124,9 @@ class SubscribeChain(ChainBase):
                 kwargs.update({
                     'lack_episode': kwargs.get('total_episode')
                 })
+        else:
+            # 避免season为0的问题
+            season = None
         # 更新媒体图片
         self.obtain_images(mediainfo=mediainfo)
         # 合并信息
@@ -153,6 +158,7 @@ class SubscribeChain(ChainBase):
                                                text=f"{err_msg}",
                                                image=mediainfo.get_message_image(),
                                                userid=userid))
+            return None, err_msg
         elif message:
             logger.info(f'{mediainfo.title_year} {metainfo.season} 添加订阅成功')
             if username:
@@ -164,12 +170,28 @@ class SubscribeChain(ChainBase):
                                            title=f"{mediainfo.title_year} {metainfo.season} 已添加订阅",
                                            text=text,
                                            image=mediainfo.get_message_image()))
-            # 发送事件
-            EventManager().send_event(EventType.SubscribeAdded, {
-                "subscribe_id": sid,
-                "username": username,
-                "mediainfo": mediainfo.to_dict(),
-            })
+        # 发送事件
+        EventManager().send_event(EventType.SubscribeAdded, {
+            "subscribe_id": sid,
+            "username": username,
+            "mediainfo": mediainfo.to_dict(),
+        })
+        # 统计订阅
+        self.subscribehelper.sub_reg_async({
+            "name": title,
+            "year": year,
+            "type": metainfo.type.value,
+            "tmdbid": mediainfo.tmdb_id,
+            "imdbid": mediainfo.imdb_id,
+            "tvdbid": mediainfo.tvdb_id,
+            "doubanid": mediainfo.douban_id,
+            "bangumiid": mediainfo.bangumi_id,
+            "season": metainfo.begin_season,
+            "poster": mediainfo.get_poster_image(),
+            "backdrop": mediainfo.get_backdrop_image(),
+            "vote": mediainfo.vote_average,
+            "description": mediainfo.overview
+        })
         # 返回结果
         return sid, ""
 
