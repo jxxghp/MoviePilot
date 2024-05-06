@@ -3,6 +3,7 @@ from typing import List
 
 from cachetools import TTLCache, cached
 
+from app.core.config import settings
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.schemas.types import SystemConfigKey
@@ -23,9 +24,10 @@ class SubscribeHelper(metaclass=Singleton):
 
     def __init__(self):
         self.systemconfig = SystemConfigOper()
-        if not self.systemconfig.get(SystemConfigKey.SubscribeReport):
-            if self.sub_report():
-                self.systemconfig.set(SystemConfigKey.SubscribeReport, "1")
+        if settings.SUBSCRIBE_STATISTIC_SHARE:
+            if not self.systemconfig.get(SystemConfigKey.SubscribeReport):
+                if self.sub_report():
+                    self.systemconfig.set(SystemConfigKey.SubscribeReport, "1")
 
     @cached(cache=TTLCache(maxsize=10, ttl=1800))
     def get_statistic(self, stype: str, page: int = 1, count: int = 30) -> List[dict]:
@@ -45,6 +47,8 @@ class SubscribeHelper(metaclass=Singleton):
         """
         新增订阅统计
         """
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return False
         res = RequestUtils(timeout=5, headers={
             "Content-Type": "application/json"
         }).post_res(self._sub_reg, json=sub)
@@ -64,6 +68,8 @@ class SubscribeHelper(metaclass=Singleton):
         """
         上报存量订阅统计
         """
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return False
         subscribes = SubscribeOper().list()
         if not subscribes:
             return True

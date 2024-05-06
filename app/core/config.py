@@ -242,6 +242,10 @@ class Settings(BaseSettings):
     DOH_ENABLE: bool = True
     # 搜索多个名称
     SEARCH_MULTIPLE_NAME: bool = False
+    # 订阅数据共享
+    SUBSCRIBE_STATISTIC_SHARE: bool = True
+    # 插件安装数据共享
+    PLUGIN_STATISTIC_SHARE: bool = True
 
     @validator("SUBSCRIBE_RSS_INTERVAL",
                "COOKIECLOUD_INTERVAL",

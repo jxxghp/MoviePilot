@@ -30,9 +30,10 @@ class PluginHelper(metaclass=Singleton):
 
     def __init__(self):
         self.systemconfig = SystemConfigOper()
-        if not self.systemconfig.get(SystemConfigKey.PluginInstallReport):
-            if self.install_report():
-                self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
+        if settings.PLUGIN_STATISTIC_SHARE:
+            if not self.systemconfig.get(SystemConfigKey.PluginInstallReport):
+                if self.install_report():
+                    self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
 
     @cached(cache=TTLCache(maxsize=1000, ttl=1800))
     def get_plugins(self, repo_url: str) -> Dict[str, dict]:
@@ -89,6 +90,8 @@ class PluginHelper(metaclass=Singleton):
         """
         安装插件统计
         """
+        if not settings.PLUGIN_STATISTIC_SHARE:
+            return False
         if not pid:
             return False
         res = RequestUtils(timeout=5).get_res(self._install_reg % pid)
@@ -100,6 +103,8 @@ class PluginHelper(metaclass=Singleton):
         """
         上报存量插件安装统计
         """
+        if not settings.PLUGIN_STATISTIC_SHARE:
+            return False
         plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins)
         if not plugins:
             return False
