@@ -81,6 +81,8 @@ class PluginHelper(metaclass=Singleton):
         """
         获取插件安装统计
         """
+        if not settings.PLUGIN_STATISTIC_SHARE:
+            return {}
         res = RequestUtils(timeout=10).get_res(self._install_statistic)
         if res and res.status_code == 200:
             return res.json()

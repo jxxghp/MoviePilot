@@ -1,6 +1,7 @@
 import json
 from typing import List, Any
 
+import cn2an
 from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 
@@ -351,7 +352,14 @@ def popular_subscribes(
         for sub in subscribes:
             media = MediaInfo()
             media.type = MediaType(sub.get("type"))
-            media.title = sub.get("name")
+            # 处理标题
+            title = sub.get("name")
+            season = sub.get("season")
+            if season and int(season) > 1:
+                # 小写数据转大写
+                season_str = cn2an.an2cn(season, "low")
+                title = f"{title} 第{season_str}季"
+            media.title = title
             media.year = sub.get("year")
             media.tmdb_id = sub.get("tmdbid")
             media.douban_id = sub.get("doubanid")

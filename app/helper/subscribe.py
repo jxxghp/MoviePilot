@@ -29,11 +29,13 @@ class SubscribeHelper(metaclass=Singleton):
                 if self.sub_report():
                     self.systemconfig.set(SystemConfigKey.SubscribeReport, "1")
 
-    @cached(cache=TTLCache(maxsize=10, ttl=1800))
+    @cached(cache=TTLCache(maxsize=20, ttl=1800))
     def get_statistic(self, stype: str, page: int = 1, count: int = 30) -> List[dict]:
         """
         获取订阅统计数据
         """
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return []
         res = RequestUtils(timeout=15).get_res(self._sub_statistic, params={
             "stype": stype,
             "page": page,
