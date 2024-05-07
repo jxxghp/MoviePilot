@@ -691,7 +691,8 @@ class Plex:
                 elif item.TYPE == "episode":
                     item_type = MediaType.TV.value
                     title = "%s 第%s季 第%s集" % (item.grandparentTitle, item.parentIndex, item.index)
-                    image = self._host + item.parentThumb.lstrip('/') + f"?X-Plex-Token={self._token}"
+                    thumb = (item.parentThumb or item.grandparentThumb or '').lstrip('/')
+                    image = (self._host + thumb + f"?X-Plex-Token={self._token}")
                 link = self.get_play_url(item.key)
                 ret_resume.append(schemas.MediaServerPlayItem(
                     id=item.key,
