@@ -342,6 +342,7 @@ def popular_subscribes(
         stype: str,
         page: int = 1,
         count: int = 30,
+        min_sub: int = None,
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询热门订阅
@@ -350,6 +351,10 @@ def popular_subscribes(
     if subscribes:
         ret_medias = []
         for sub in subscribes:
+            # 订阅人数
+            count = sub.get("count")
+            if min_sub and count < min_sub:
+                continue
             media = MediaInfo()
             media.type = MediaType(sub.get("type"))
             media.tmdb_id = sub.get("tmdbid")
@@ -371,6 +376,7 @@ def popular_subscribes(
             media.vote_average = sub.get("vote")
             media.poster_path = sub.get("poster")
             media.backdrop_path = sub.get("backdrop")
+            media.popularity = count
             ret_medias.append(media)
         return [media.to_dict() for media in ret_medias]
     return []
