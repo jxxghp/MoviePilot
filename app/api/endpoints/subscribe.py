@@ -407,5 +407,12 @@ def delete_subscribe(
     """
     删除订阅信息
     """
-    Subscribe.delete(db, subscribe_id)
+    subscribe = Subscribe.get(db, subscribe_id)
+    if subscribe:
+        subscribe.delete(db, subscribe_id)
+    # 统计订阅
+    SubscribeHelper().sub_done_async({
+        "tmdbid": subscribe.tmdbid,
+        "doubanid": subscribe.doubanid
+    })
     return schemas.Response(success=True)

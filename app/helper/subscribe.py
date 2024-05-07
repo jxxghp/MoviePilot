@@ -18,6 +18,8 @@ class SubscribeHelper(metaclass=Singleton):
 
     _sub_reg = "https://movie-pilot.org/subscribe/add"
 
+    _sub_done = "https://movie-pilot.org/subscribe/done"
+
     _sub_report = "https://movie-pilot.org/subscribe/report"
 
     _sub_statistic = "https://movie-pilot.org/subscribe/statistic"
@@ -58,12 +60,33 @@ class SubscribeHelper(metaclass=Singleton):
             return True
         return False
 
+    def sub_done(self, sub: dict) -> bool:
+        """
+        完成订阅统计
+        """
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return False
+        res = RequestUtils(timeout=5, headers={
+            "Content-Type": "application/json"
+        }).post_res(self._sub_done, json=sub)
+        if res and res.status_code == 200:
+            return True
+        return False
+
     def sub_reg_async(self, sub: dict) -> bool:
         """
         异步新增订阅统计
         """
         # 开新线程处理
         Thread(target=self.sub_reg, args=(sub,)).start()
+        return True
+
+    def sub_done_async(self, sub: dict) -> bool:
+        """
+        异步完成订阅统计
+        """
+        # 开新线程处理
+        Thread(target=self.sub_done, args=(sub,)).start()
         return True
 
     def sub_report(self) -> bool:

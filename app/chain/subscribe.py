@@ -871,6 +871,11 @@ class SubscribeChain(ChainBase):
             "subscribe_info": subscribe.to_dict(),
             "mediainfo": mediainfo.to_dict(),
         })
+        # 统计订阅
+        self.subscribehelper.sub_done_async({
+            "tmdbid": mediainfo.tmdb_id,
+            "doubanid": mediainfo.douban_id
+        })
 
     def remote_list(self, channel: MessageChannel, userid: Union[str, int] = None):
         """
@@ -920,6 +925,11 @@ class SubscribeChain(ChainBase):
                 return
             # 删除订阅
             self.subscribeoper.delete(subscribe_id)
+            # 统计订阅
+            self.subscribehelper.sub_done_async({
+                "tmdbid": subscribe.tmdbid,
+                "doubanid": subscribe.doubanid
+            })
         # 重新发送消息
         self.remote_list(channel, userid)
 
