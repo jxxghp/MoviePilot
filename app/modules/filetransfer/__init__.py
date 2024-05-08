@@ -818,8 +818,6 @@ class FileTransferModule(_ModuleBase):
         删除目录下的所有版本文件
         :param path: 目录路径
         """
-        if not path.exists():
-            return False
         # 识别文件中的季集信息
         meta = MetaInfoPath(path)
         season = meta.season
@@ -832,7 +830,7 @@ class FileTransferModule(_ModuleBase):
             return False
         # 删除文件
         for media_file in media_files:
-            if media_file == path:
+            if str(media_file) == str(path):
                 continue
             # 识别文件中的季集信息
             filemeta = MetaInfoPath(media_file)
