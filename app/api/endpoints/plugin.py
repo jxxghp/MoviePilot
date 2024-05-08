@@ -125,6 +125,22 @@ def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token))
     return PluginManager().get_plugin_page(plugin_id)
 
 
+@router.get("/dashboards", summary="获取有仪表板的插件清单")
+def dashboard_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+    """
+    获取所有插件仪表板
+    """
+    return PluginManager().get_dashboard_plugins()
+
+
+@router.get("/dashboard/{plugin_id}", summary="获取插件仪表板配置")
+def plugin_dashboard(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> schemas.PluginDashboard:
+    """
+    根据插件ID获取插件仪表板
+    """
+    return PluginManager().get_plugin_dashboard(plugin_id)
+
+
 @router.get("/reset/{plugin_id}", summary="重置插件配置", response_model=schemas.Response)
 def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """

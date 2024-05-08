@@ -217,10 +217,11 @@ class PluginManager(metaclass=Singleton):
         获取插件表单
         :param pid: 插件ID
         """
-        if not self._running_plugins.get(pid):
+        plugin = self._running_plugins.get(pid)
+        if not plugin:
             return [], {}
-        if hasattr(self._running_plugins[pid], "get_form"):
-            return self._running_plugins[pid].get_form() or ([], {})
+        if hasattr(plugin, "get_form"):
+            return plugin.get_form() or ([], {})
         return [], {}
 
     def get_plugin_page(self, pid: str) -> List[dict]:
@@ -228,11 +229,33 @@ class PluginManager(metaclass=Singleton):
         获取插件页面
         :param pid: 插件ID
         """
-        if not self._running_plugins.get(pid):
+        plugin = self._running_plugins.get(pid)
+        if not plugin:
             return []
-        if hasattr(self._running_plugins[pid], "get_page"):
-            return self._running_plugins[pid].get_page() or []
+        if hasattr(plugin, "get_page"):
+            return plugin.get_page() or []
         return []
+
+    def get_plugin_dashboard(self, pid: str) -> Optional[schemas.PluginDashboard]:
+        """
+        获取插件仪表盘
+        :param pid: 插件ID
+        """
+        plugin = self._running_plugins.get(pid)
+        if not plugin:
+            return None
+        if hasattr(plugin, "get_dashboard"):
+            dashboard: Tuple = plugin.get_dashboard()
+            if dashboard:
+                cols, attrs, elements = dashboard
+                return schemas.PluginDashboard(
+                        id=pid,
+                        name=plugin.plugin_name,
+                        cols=cols or {},
+                        elements=elements,
+                        attrs=attrs or {}
+                    )
+        return None
 
     def get_plugin_commands(self) -> List[Dict[str, Any]]:
         """
@@ -301,17 +324,35 @@ class PluginManager(metaclass=Singleton):
                     logger.error(f"获取插件 {pid} 服务出错：{str(e)}")
         return ret_services
 
+    def get_dashboard_plugins(self) -> List[dict]:
+        """
+        获取有仪表盘的插件列表
+        """
+        dashboards = []
+        for pid, plugin in self._running_plugins.items():
+            if hasattr(plugin, "get_dashboard") \
+                    and ObjectUtils.check_method(plugin.get_dashboard):
+                try:
+                    dashboards.append({
+                        "id": pid,
+                        "name": plugin.plugin_name
+                    })
+                except Exception as e:
+                    logger.error(f"获取有仪表盘的插件出错：{str(e)}")
+        return dashboards
+
     def get_plugin_attr(self, pid: str, attr: str) -> Any:
         """
         获取插件属性
         :param pid: 插件ID
         :param attr: 属性名
         """
-        if not self._running_plugins.get(pid):
+        plugin = self._running_plugins.get(pid)
+        if not plugin:
             return None
-        if not hasattr(self._running_plugins[pid], attr):
+        if not hasattr(plugin, attr):
             return None
-        return getattr(self._running_plugins[pid], attr)
+        return getattr(plugin, attr)
 
     def run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
         """
@@ -321,11 +362,12 @@ class PluginManager(metaclass=Singleton):
         :param args: 参数
         :param kwargs: 关键字参数
         """
-        if not self._running_plugins.get(pid):
+        plugin = self._running_plugins.get(pid)
+        if not plugin:
             return None
-        if not hasattr(self._running_plugins[pid], method):
+        if not hasattr(plugin, method):
             return None
-        return getattr(self._running_plugins[pid], method)(*args, **kwargs)
+        return getattr(plugin, method)(*args, **kwargs)
 
     def get_plugin_ids(self) -> List[str]:
         """

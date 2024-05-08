@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel
 
@@ -46,3 +46,18 @@ class Plugin(BaseModel):
     history: Optional[dict] = {}
     # 添加时间，值越小表示越靠后发布
     add_time: Optional[int] = 0
+
+
+class PluginDashboard(Plugin):
+    """
+    插件仪表盘
+    """
+    id: Optional[str] = None
+    # 名称
+    name: Optional[str] = None
+    # 全局配置
+    attrs: Optional[dict] = {}
+    # col列数
+    cols: Optional[dict] = {}
+    # 页面元素
+    elements: Optional[List[dict]] = []

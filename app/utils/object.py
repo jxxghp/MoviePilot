@@ -35,7 +35,21 @@ class ObjectUtils:
         """
         检查函数是否已实现
         """
-        return func.__code__.co_code not in [b'd\x01S\x00', b'\x97\x00d\x00S\x00']
+        source = inspect.getsource(func)
+        in_comment = False
+        for line in source.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith('"""') or line.startswith("'''"):
+                in_comment = not in_comment
+                continue
+            if not in_comment and not (line.startswith('#')
+                                       or line == "pass"
+                                       or line.startswith('@')
+                                       or line.startswith('def ')):
+                return True
+        return False
 
     @staticmethod
     def check_signature(func: FunctionType, *args) -> bool:

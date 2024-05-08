@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Any, List, Dict, Tuple
+from typing import Any, List, Dict, Tuple, Optional
 
 from app.chain import ChainBase
 from app.core.config import settings
@@ -55,6 +55,13 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    @abstractmethod
+    def get_state(self) -> bool:
+        """
+        获取插件运行状态
+        """
+        pass
+
     @staticmethod
     @abstractmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -84,19 +91,6 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
-    def get_service(self) -> List[Dict[str, Any]]:
-        """
-        注册插件公共服务
-        [{
-            "id": "服务ID",
-            "name": "服务名称",
-            "trigger": "触发器：cron/interval/date/CronTrigger.from_crontab()",
-            "func": self.xxx,
-            "kwargs": {} # 定时器参数
-        }]
-        """
-        pass
-
     @abstractmethod
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """
@@ -113,10 +107,31 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
-    @abstractmethod
-    def get_state(self) -> bool:
+    def get_service(self) -> List[Dict[str, Any]]:
         """
-        获取插件运行状态
+        注册插件公共服务
+        [{
+            "id": "服务ID",
+            "name": "服务名称",
+            "trigger": "触发器：cron/interval/date/CronTrigger.from_crontab()",
+            "func": self.xxx,
+            "kwargs": {} # 定时器参数
+        }]
+        """
+        pass
+
+    def get_dashboard(self) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
+        """
+        获取插件仪表盘页面，需要返回：1、仪表板col配置字典；2、全局配置（自动刷新等）；3、仪表板页面元素配置json（含数据）
+        1、col配置参考：
+        {
+            "cols": 12, "md": 6
+        }
+        2、全局配置参考：
+        {
+            "refresh": 10 // 自动刷新时间，单位秒
+        }
+        3、页面配置使用Vuetify组件拼装，参考：https://vuetifyjs.com/
         """
         pass
 
