@@ -82,7 +82,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 - **❗AUTH_SITE：** 认证站点（认证通过后才能使用站点相关功能），支持配置多个认证站点，使用`,`分隔，如：`iyuu,hhclub`，会依次执行认证操作，直到有一个站点认证成功。  
 
     配置`AUTH_SITE`后，需要根据下表配置对应站点的认证参数。
-    认证资源`v1.2.4+`支持：`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`ptba` /`icc2022`/`ptlsp`/`xingtan`/`ptvicomo`/`agsvpt`/`hdkyl`/`qingwa`
+    认证资源`v1.2.8+`支持：`iyuu`/`hhclub`/`audiences`/`hddolby`/`zmpt`/`freefarm`/`hdfans`/`wintersakura`/`leaves`/`ptba` /`icc2022`/`ptlsp`/`xingtan`/`ptvicomo`/`agsvpt`/`hdkyl`/`qingwa`/`discfan`
   
     |      站点      |                          参数                           |
     |:------------:|:-----------------------------------------------------:|
@@ -103,6 +103,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
     |    agsvpt    |       `AGSVPT_UID`：用户ID<br/>`AGSVPT_PASSKEY`：密钥       |
     |    hdkyl     |        `HDKYL_UID`：用户ID<br/>`HDKYL_PASSKEY`：密钥        |
     |   qingwa    |      `QINGWA_UID`：用户ID<br/>`QINGWA_PASSKEY`：密钥      |
+    |   discfan    |      `DISCFAN_UID`：用户ID<br/>`DISCFAN_PASSKEY`：密钥      |
 
 
 ### 2. **环境变量 / 配置文件**
