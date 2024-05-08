@@ -27,7 +27,7 @@ class MetaVideo(MetaBase):
     _source = ""
     _effect = []
     # 正则式区
-    _season_re = r"S(\d{2})|^S(\d{1,2})$|S(\d{1,2})E"
+    _season_re = r"S(\d{3})|^S(\d{1,3})$|S(\d{1,3})E"
     _episode_re = r"EP?(\d{2,4})$|^EP?(\d{1,4})$|^S\d{1,2}EP?(\d{1,4})$|S\d{2}EP?(\d{2,4})"
     _part_re = r"(^PART[0-9ABI]{0,2}$|^CD[0-9]{0,2}$|^DVD[0-9]{0,2}$|^DISK[0-9]{0,2}$|^DISC[0-9]{0,2}$)"
     _roman_numerals = r"^(?=[MDCLXVI])M*(C[MD]|D?C{0,3})(X[CL]|L?X{0,3})(I[XV]|V?I{0,3})$"
