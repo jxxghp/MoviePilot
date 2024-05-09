@@ -330,11 +330,11 @@ class PluginManager(metaclass=Singleton):
         """
         dashboards = []
         for pid, plugin in self._running_plugins.items():
-            if not plugin.get_state():
-                continue
             if hasattr(plugin, "get_dashboard") \
                     and ObjectUtils.check_method(plugin.get_dashboard):
                 try:
+                    if not plugin.get_state():
+                        continue
                     dashboards.append({
                         "id": pid,
                         "name": plugin.plugin_name
