@@ -16,3 +16,4 @@ config/sites/**
 *.pyc
 *.log
 .vscode
+venv

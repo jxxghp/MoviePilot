@@ -497,7 +497,7 @@ class TorrentHelper(metaclass=Singleton):
                 return True
         # 在副标题中判断是否存在标题、原语种标题、别名、译名
         if torrent.description:
-            subtitles = {StringUtils.clear_upper(t) for t in re.split(r'[\s/|]+',
+            subtitles = {StringUtils.clear_upper(t) for t in re.split(r'[\s/【】|]+',
                                                                       torrent.description) if t}
             if media_titles.intersection(subtitles) or media_names.intersection(subtitles):
                 logger.info(f'{mediainfo.title} 通过副标题匹配到资源：{torrent.site_name} - {torrent.title}，'
