@@ -176,7 +176,7 @@ class TmdbApi:
             return None
         # TMDB搜索
         info = {}
-        if mtype == MediaType.MOVIE:
+        if mtype != MediaType.TV:
             year_range = [year]
             if year:
                 year_range.append(str(int(year) + 1))
