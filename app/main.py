@@ -168,6 +168,7 @@ def shutdown_server():
     ModuleManager().stop()
     # 停止插件
     PluginManager().stop()
+    PluginManager().stop_monitor()
     # 停止事件消费
     Command().stop()
     # 停止虚拟显示

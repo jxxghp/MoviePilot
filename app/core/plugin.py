@@ -3,6 +3,9 @@ import concurrent.futures
 import traceback
 from typing import List, Any, Dict, Tuple, Optional
 
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+
 from app import schemas
 from app.core.config import settings
 from app.core.event import eventmanager
@@ -18,6 +21,31 @@ from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
 
+class PluginMonitorHandler(FileSystemEventHandler):
+
+    def on_modified(self, event):
+        """
+        插件文件修改后重载
+        """
+        if event.is_directory:
+            return
+        # 读取插件根目录下的__init__.py文件，读取class XXXX(_PluginBase)的类名
+        try:
+            plugin_dir = event.src_path.split("plugins/")[1].split("/")[0]
+            init_file = settings.ROOT_PATH / "app" / "plugins" / plugin_dir / "__init__.py"
+            with open(init_file, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            pid = None
+            for line in lines:
+                if line.startswith("class") and "(_PluginBase)" in line:
+                    pid = line.split("class ")[1].split("(_PluginBase)")[0]
+            if pid:
+                logger.info(f"插件 {pid} 文件修改，重新加载...")
+                PluginManager().reload_plugin(pid)
+        except Exception as e:
+            logger.error(f"插件文件修改后重载出错：{str(e)}")
+
+
 class PluginManager(metaclass=Singleton):
     """
     插件管理器
@@ -30,11 +58,16 @@ class PluginManager(metaclass=Singleton):
     _running_plugins: dict = {}
     # 配置Key
     _config_key: str = "plugin.%s"
+    # 监听器
+    _observer: Observer = None
 
     def __init__(self):
         self.siteshelper = SitesHelper()
         self.pluginhelper = PluginHelper()
         self.systemconfig = SystemConfigOper()
+        # 开发者模式监测插件修改
+        if settings.DEV:
+            self.__start_monitor()
 
     def init_config(self):
         # 停止已有插件
@@ -48,8 +81,11 @@ class PluginManager(metaclass=Singleton):
         :param pid: 插件ID，为空加载所有插件
         """
         # 扫描插件目录
+        plugin_package = "app.plugins"
+        if pid:
+            plugin_package = f"{plugin_package}.{pid.lower()}"
         plugins = ModuleHelper.load(
-            "app.plugins",
+            plugin_package,
             filter_func=lambda _, obj: hasattr(obj, 'init_plugin') and hasattr(obj, "plugin_name")
         )
         # 已安装插件
@@ -120,6 +156,25 @@ class PluginManager(metaclass=Singleton):
             # 清空
             self._plugins = {}
             self._running_plugins = {}
+
+    def __start_monitor(self):
+        """
+        开发者模式下监测插件文件修改
+        """
+        logger.info("开发者模式下开始监测插件文件修改...")
+        self._observer = Observer()
+        self._observer.schedule(PluginMonitorHandler(), str(settings.ROOT_PATH / "app" / "plugins"), recursive=True)
+        self._observer.start()
+
+    def stop_monitor(self):
+        """
+        停止监测插件修改
+        """
+        # 停止监测
+        if self._observer:
+            logger.info("正在停止监测插件文件修改...")
+            self._observer.stop()
+            self._observer.join()
 
     @staticmethod
     def __stop_plugin(plugin: Any):
@@ -249,12 +304,12 @@ class PluginManager(metaclass=Singleton):
             if dashboard:
                 cols, attrs, elements = dashboard
                 return schemas.PluginDashboard(
-                        id=pid,
-                        name=plugin.plugin_name,
-                        cols=cols or {},
-                        elements=elements,
-                        attrs=attrs or {}
-                    )
+                    id=pid,
+                    name=plugin.plugin_name,
+                    cols=cols or {},
+                    elements=elements,
+                    attrs=attrs or {}
+                )
         return None
 
     def get_plugin_commands(self) -> List[Dict[str, Any]]:
