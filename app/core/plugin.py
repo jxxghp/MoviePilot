@@ -1,5 +1,6 @@
 import concurrent
 import concurrent.futures
+import time
 import traceback
 from typing import List, Any, Dict, Tuple, Optional
 
@@ -23,12 +24,19 @@ from app.utils.system import SystemUtils
 
 class PluginMonitorHandler(FileSystemEventHandler):
 
+    __last_modified = 0
+    __timeout = 1
+
     def on_modified(self, event):
         """
         插件文件修改后重载
         """
         if event.is_directory:
             return
+        current_time = time.time()
+        if current_time - self.__last_modified < self.__timeout:
+            return
+        self.__last_modified = current_time
         # 读取插件根目录下的__init__.py文件，读取class XXXX(_PluginBase)的类名
         try:
             plugin_dir = event.src_path.split("plugins/")[1].split("/")[0]
@@ -162,8 +170,9 @@ class PluginManager(metaclass=Singleton):
         开发者模式下监测插件文件修改
         """
         logger.info("开发者模式下开始监测插件文件修改...")
+        monitor_handler = PluginMonitorHandler()
         self._observer = Observer()
-        self._observer.schedule(PluginMonitorHandler(), str(settings.ROOT_PATH / "app" / "plugins"), recursive=True)
+        self._observer.schedule(monitor_handler, str(settings.ROOT_PATH / "app" / "plugins"), recursive=True)
         self._observer.start()
 
     def stop_monitor(self):
