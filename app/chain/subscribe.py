@@ -141,7 +141,7 @@ class SubscribeChain(ChainBase):
             'effect': self.__get_default_subscribe_config(mediainfo.type, "effect"),
             'include': self.__get_default_subscribe_config(mediainfo.type, "include"),
             'exclude': self.__get_default_subscribe_config(mediainfo.type, "exclude"),
-            'best_version': self.__get_default_subscribe_config(mediainfo.type, "best_version"),
+            'best_version': self.__get_default_subscribe_config(mediainfo.type, "best_version") if kwargs.get("best_version") is None else kwargs.get("best_version"),
             'search_imdbid': self.__get_default_subscribe_config(mediainfo.type, "search_imdbid"),
             'sites': self.__get_default_subscribe_config(mediainfo.type, "sites") or None,
             'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path"),
