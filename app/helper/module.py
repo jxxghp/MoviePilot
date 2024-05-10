@@ -13,9 +13,9 @@ class ModuleHelper:
     """
 
     @classmethod
-    def load(cls, package_path, filter_func=lambda name, obj: True):
+    def load(cls, package_path: str, filter_func=lambda name, obj: True):
         """
-        导入子模块
+        导入模块
         :param package_path: 父包名
         :param filter_func: 子模块过滤函数，入参为模块名和模块对象，返回True则导入，否则不导入
         :return:
@@ -41,7 +41,7 @@ class ModuleHelper:
         return submodules
 
     @classmethod
-    def load_with_pre_filter(cls, package_path, filter_func=lambda name, obj: True):
+    def load_with_pre_filter(cls, package_path: str, filter_func=lambda name, obj: True):
         """
         导入子模块
         :param package_path: 父包名

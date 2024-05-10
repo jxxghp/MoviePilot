@@ -3,7 +3,6 @@ import concurrent.futures
 import os
 import time
 import traceback
-from pathlib import Path
 from typing import List, Any, Dict, Tuple, Optional
 
 from watchdog.events import FileSystemEventHandler
@@ -43,7 +42,7 @@ class PluginMonitorHandler(FileSystemEventHandler):
         try:
             # 使用os.path和pathlib处理跨平台的路径问题
             plugin_dir = event.src_path.split("plugins" + os.sep)[1].split(os.sep)[0]
-            init_file = Path(settings.ROOT_PATH) / "app" / "plugins" / plugin_dir / "__init__.py"
+            init_file = settings.ROOT_PATH / "app" / "plugins" / plugin_dir / "__init__.py"
             with open(init_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
             pid = None
@@ -91,18 +90,27 @@ class PluginManager(metaclass=Singleton):
         启动加载插件
         :param pid: 插件ID，为空加载所有插件
         """
+
+        def check_module(module: Any):
+            """
+            检查模块
+            """
+            if not hasattr(module, 'init_plugin') or not hasattr(module, "plugin_name"):
+                return False
+            return True
+
         # 扫描插件目录
-        plugin_package = "app.plugins"
         if pid:
+            # 加载指定插件
             plugins = ModuleHelper.load_with_pre_filter(
                 "app.plugins",
-                filter_func=lambda name, obj:
-                hasattr(obj, 'init_plugin') and hasattr(obj, "plugin_name") and name == pid
+                filter_func=lambda name, obj: check_module(obj) and name == pid
             )
         else:
+            # 加载所有插件
             plugins = ModuleHelper.load(
                 "app.plugins",
-                filter_func=lambda _, obj: hasattr(obj, 'init_plugin') and hasattr(obj, "plugin_name")
+                filter_func=lambda _, obj: check_module(obj)
             )
         # 已安装插件
         installed_plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
