@@ -14,22 +14,34 @@ class MessageHelper(metaclass=Singleton):
         self.sys_queue = queue.Queue()
         self.user_queue = queue.Queue()
 
-    def put(self, message: Any, role: str = "sys", note: Union[list, dict] = None):
+    def put(self, message: Any, role: str = "system", note: Union[list, dict] = None):
         """
         存消息
         :param message: 消息
-        :param role: 消息通道 sys/user
+        :param role: 消息通道 systm：系统消息，plugin：插件消息，user：用户消息
         :param note: 附件json
         """
-        if role == "sys":
-            self.sys_queue.put(message)
+        if role in ["system", "plugin"]:
+            # 系统通知，默认
+            self.sys_queue.put(json.dumps({
+                "type": role,
+                "title": message,
+                "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                "text": note
+            }))
         else:
             if isinstance(message, str):
-                self.user_queue.put(message)
+                # 非系统的文本通知
+                self.user_queue.put(json.dumps({
+                    "title": message,
+                    "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                    "note": note
+                }))
             elif hasattr(message, "to_dict"):
+                # 非系统的复杂结构通知，如媒体信息/种子列表等。
                 content = message.to_dict()
                 content['date'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-                content['note'] = json.dumps(note) if note else None
+                content['note'] = note
                 self.user_queue.put(json.dumps(content))
 
     def get(self, role: str = "sys") -> Optional[str]:
