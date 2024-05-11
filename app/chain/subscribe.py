@@ -378,9 +378,9 @@ class SubscribeChain(ChainBase):
         # 手动触发时发送系统消息
         if manual:
             if sid:
-                self.message.put(f'订阅 {subscribes[0].name} 搜索完成！')
+                self.message.put(f'{subscribes[0].name} 搜索完成！', title="订阅搜索", role="system")
             else:
-                self.message.put('所有订阅搜索完成！')
+                self.message.put('所有订阅搜索完成！', title="订阅搜索", role="system")
 
     def update_subscribe_priority(self, subscribe: Subscribe, meta: MetaInfo,
                                   mediainfo: MediaInfo, downloads: List[Context]):

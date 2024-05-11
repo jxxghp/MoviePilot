@@ -149,7 +149,7 @@ def check_auth():
     """
     if SitesHelper().auth_level < 2:
         err_msg = "用户认证失败，站点相关功能将无法使用！"
-        MessageHelper().put(f"注意：{err_msg}")
+        MessageHelper().put(f"注意：{err_msg}", title="用户认证", role="system")
         CommandChian().post_message(
             Notification(
                 mtype=NotificationType.Manual,
