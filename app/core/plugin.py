@@ -1,6 +1,7 @@
 import concurrent
 import concurrent.futures
 import os
+import threading
 import time
 import traceback
 from typing import List, Any, Dict, Tuple, Optional
@@ -25,8 +26,14 @@ from app.utils.system import SystemUtils
 
 class PluginMonitorHandler(FileSystemEventHandler):
 
+    # 计时器
+    __reload_timer = None
+    # 防抖时间间隔
+    __debounce_interval = 0.5
+    # 最近一次修改时间
     __last_modified = 0
-    __timeout = 1
+    # 修改间隔
+    __timeout = 2
 
     def on_modified(self, event):
         """
@@ -50,8 +57,22 @@ class PluginMonitorHandler(FileSystemEventHandler):
                 if line.startswith("class") and "(_PluginBase)" in line:
                     pid = line.split("class ")[1].split("(_PluginBase)")[0]
             if pid:
-                logger.info(f"插件 {pid} 文件修改，重新加载...")
-                PluginManager().reload_plugin(pid)
+                # 防抖处理，通过计时器延迟加载
+                if self.__reload_timer:
+                    self.__reload_timer.cancel()
+                self.__reload_timer = threading.Timer(self.__debounce_interval, self.__reload_plugin, [pid])
+                self.__reload_timer.start()
+        except Exception as e:
+            logger.error(f"插件文件修改后重载出错：{str(e)}")
+
+    @staticmethod
+    def __reload_plugin(pid):
+        """
+        重新加载插件
+        """
+        try:
+            logger.info(f"插件 {pid} 文件修改，重新加载...")
+            PluginManager().reload_plugin(pid)
         except Exception as e:
             logger.error(f"插件文件修改后重载出错：{str(e)}")
 
