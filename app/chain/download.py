@@ -224,7 +224,7 @@ class DownloadChain(ChainBase):
         if not save_path:
             if settings.DOWNLOAD_CATEGORY and _media and _media.category:
                 # 开启下载二级目录
-                if _media.type == MediaType.MOVIE:
+                if _media.type != MediaType.TV:
                     # 电影
                     download_dir = settings.SAVE_MOVIE_PATH / _media.category
                 else:
@@ -237,7 +237,7 @@ class DownloadChain(ChainBase):
                         download_dir = settings.SAVE_TV_PATH / _media.category
             elif _media:
                 # 未开启下载二级目录
-                if _media.type == MediaType.MOVIE:
+                if _media.type != MediaType.TV:
                     # 电影
                     download_dir = settings.SAVE_MOVIE_PATH
                 else:
