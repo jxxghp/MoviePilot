@@ -10,6 +10,7 @@ from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.system import SystemChain
 from app.chain.transfer import TransferChain
+from app.core.config import settings
 from app.core.event import Event as ManagerEvent
 from app.core.event import eventmanager, EventManager
 from app.core.plugin import PluginManager
@@ -165,7 +166,8 @@ class Command(metaclass=Singleton):
                 }
             )
         # 广播注册命令菜单
-        self.chain.register_commands(commands=self.get_commands())
+        if not settings.DEV:
+            self.chain.register_commands(commands=self.get_commands())
         # 消息处理线程
         self._thread = Thread(target=self.__run)
         # 启动事件处理线程
