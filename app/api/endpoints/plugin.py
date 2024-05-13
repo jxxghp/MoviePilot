@@ -13,6 +13,29 @@ from app.schemas.types import SystemConfigKey
 router = APIRouter()
 
 
+def register_plugin_api(plugin_id: str = None):
+    """
+    注册插件API（先删除后新增）
+    """
+    for api in PluginManager().get_plugin_apis(plugin_id):
+        for r in router.routes:
+            if r.path == api.get("path"):
+                router.routes.remove(r)
+                break
+        router.add_api_route(**api)
+
+
+def remove_plugin_api(plugin_id: str):
+    """
+    移除插件API
+    """
+    for api in PluginManager().get_plugin_apis(plugin_id):
+        for r in router.routes:
+            if r.path == api.get("path"):
+                router.routes.remove(r)
+                break
+
+
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
 def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "all") -> List[schemas.Plugin]:
     """
@@ -101,6 +124,8 @@ def install(plugin_id: str,
     PluginManager().reload_plugin(plugin_id)
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
+    # 注册插件API
+    register_plugin_api(plugin_id)
     return schemas.Response(success=True)
 
 
@@ -155,6 +180,8 @@ def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)
     })
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
+    # 注册插件API
+    register_plugin_api(plugin_id)
     return schemas.Response(success=True)
 
 
@@ -178,6 +205,8 @@ def set_plugin_config(plugin_id: str, conf: dict,
     PluginManager().init_plugin(plugin_id, conf)
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
+    # 注册插件API
+    register_plugin_api(plugin_id)
     return schemas.Response(success=True)
 
 
@@ -199,9 +228,10 @@ def uninstall_plugin(plugin_id: str,
     PluginManager().remove_plugin(plugin_id)
     # 移除插件服务
     Scheduler().remove_plugin_job(plugin_id)
+    # 移除插件API
+    remove_plugin_api(plugin_id)
     return schemas.Response(success=True)
 
 
-# 注册插件API
-for api in PluginManager().get_plugin_apis():
-    router.add_api_route(**api)
+# 注册全部插件API
+register_plugin_api()

@@ -378,7 +378,7 @@ class PluginManager(metaclass=Singleton):
                     logger.error(f"获取插件命令出错：{str(e)}")
         return ret_commands
 
-    def get_plugin_apis(self) -> List[Dict[str, Any]]:
+    def get_plugin_apis(self, plugin_id: str = None) -> List[Dict[str, Any]]:
         """
         获取插件API
         [{
@@ -391,6 +391,8 @@ class PluginManager(metaclass=Singleton):
         """
         ret_apis = []
         for pid, plugin in self._running_plugins.items():
+            if plugin_id and pid != plugin_id:
+                continue
             if hasattr(plugin, "get_api") \
                     and ObjectUtils.check_method(plugin.get_api):
                 try:
