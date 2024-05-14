@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     # 是否开发模式
     DEV: bool = False
+    # 是否开启插件热加载
+    PLUGIN_AUTO_RELOAD: bool = False
     # 配置文件目录
     CONFIG_DIR: Optional[str] = None
     # 超级管理员
