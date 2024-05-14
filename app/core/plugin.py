@@ -97,7 +97,7 @@ class PluginManager(metaclass=Singleton):
         self.pluginhelper = PluginHelper()
         self.systemconfig = SystemConfigOper()
         # 开发者模式监测插件修改
-        if settings.DEV:
+        if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
             self.__start_monitor()
 
     def init_config(self):
