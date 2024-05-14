@@ -277,7 +277,7 @@ class SiteChain(ChainBase):
             ret_msg += f"，{_fail_count}个站点添加失败，下次同步时将重试，也可以手动添加"
         if manual:
             self.message.put(ret_msg, title="CookieCloud同步成功", role="system")
-        logger.info(f"CookieCloud同步成功：{ret_msg}", role="system")
+        logger.info(f"CookieCloud同步成功：{ret_msg}")
         return True, ret_msg
 
     @eventmanager.register(EventType.SiteUpdated)
