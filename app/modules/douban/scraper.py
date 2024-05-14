@@ -193,15 +193,15 @@ class DoubanScraper:
                 url = url.replace("/format/webp", "/format/jpg")
                 file_path.with_suffix(".jpg")
             logger.info(f"正在下载{file_path.stem}图片：{url} ...")
-            with RequestUtils().get_res(url=url) as r:
-                if r:
-                    if self._transfer_type in ['rclone_move', 'rclone_copy']:
-                        self.__save_remove_file(file_path, r.content)
-                    else:
-                        file_path.write_bytes(r.content)
-                    logger.info(f"图片已保存：{file_path}")
+            r = RequestUtils().get_res(url=url)
+            if r:
+                if self._transfer_type in ['rclone_move', 'rclone_copy']:
+                    self.__save_remove_file(file_path, r.content)
                 else:
-                    logger.info(f"{file_path.stem}图片下载失败，请检查网络连通性")
+                    file_path.write_bytes(r.content)
+                logger.info(f"图片已保存：{file_path}")
+            else:
+                logger.info(f"{file_path.stem}图片下载失败，请检查网络连通性")
         except Exception as err:
             logger.error(f"{file_path.stem}图片下载失败：{str(err)}")
 

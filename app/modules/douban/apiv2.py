@@ -195,13 +195,13 @@ class DoubanApi(metaclass=Singleton):
             '_ts': ts,
             '_sig': self.__sign(url=req_url, ts=ts)
         })
-        with RequestUtils(
-                ua=choice(self._user_agents),
-                session=self._session
-        ).get_res(url=req_url, params=params) as resp:
-            if resp is not None and resp.status_code == 400 and "rate_limit" in resp.text:
-                return resp.json()
-            return resp.json() if resp else {}
+        resp = RequestUtils(
+            ua=choice(self._user_agents),
+            session=self._session
+        ).get_res(url=req_url, params=params)
+        if resp is not None and resp.status_code == 400 and "rate_limit" in resp.text:
+            return resp.json()
+        return resp.json() if resp else {}
 
     @lru_cache(maxsize=settings.CACHE_CONF.get('douban'))
     def __post(self, url: str, **kwargs) -> dict:
