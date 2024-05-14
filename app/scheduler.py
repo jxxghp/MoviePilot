@@ -325,6 +325,9 @@ class Scheduler(metaclass=Singleton):
             job["func"](*args, **kwargs)
         except Exception as e:
             logger.error(f"定时任务 {job_id} 执行失败：{str(e)} - {traceback.format_exc()}")
+            SchedulerChain().messagehelper.put(title=f"定时任务 {job_id} 执行失败",
+                                               message=str(e),
+                                               role="system")
         # 运行结束
         with self._lock:
             try:
@@ -375,6 +378,9 @@ class Scheduler(metaclass=Singleton):
                     logger.info(f"注册插件{plugin_name}服务：{service['name']} - {service['trigger']}")
                 except Exception as e:
                     logger.error(f"注册插件{plugin_name}服务失败：{str(e)} - {service}")
+                    SchedulerChain().messagehelper.put(title=f"插件 {plugin_name} 服务注册失败",
+                                                       message=str(e),
+                                                       role="system")
 
     def remove_plugin_job(self, pid: str):
         """
@@ -396,6 +402,9 @@ class Scheduler(metaclass=Singleton):
                         logger.info(f"移除插件服务({plugin_name})：{service.get('name')}")
                 except Exception as e:
                     logger.error(f"移除插件服务失败：{str(e)} - {job_id}: {service}")
+                    SchedulerChain().messagehelper.put(title=f"插件 {plugin_name} 服务移除失败",
+                                                       message=str(e),
+                                                       role="system")
 
     def list(self) -> List[schemas.ScheduleInfo]:
         """
