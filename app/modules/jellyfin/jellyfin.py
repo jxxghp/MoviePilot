@@ -589,6 +589,8 @@ class Jellyfin:
         eventItem.item_id = message.get('ItemId')
         eventItem.tmdb_id = message.get('Provider_tmdb')
         eventItem.overview = message.get('Overview')
+        eventItem.item_favorite = message.get('Favorite')
+        eventItem.save_reason = message.get('SaveReason')
         eventItem.device_name = message.get('DeviceName')
         eventItem.user_name = message.get('NotificationUsername')
         eventItem.client = message.get('ClientName')
