@@ -1,3 +1,4 @@
+import traceback
 from typing import Generator, Optional, Tuple
 
 from app.core.config import settings
@@ -43,8 +44,8 @@ class ModuleManager(metaclass=Singleton):
                     _module.init_module()
                     self._running_modules[module_id] = _module
                     logger.info(f"Moudle Loaded：{module_id}")
-            except:
-                logger.error(f"Load Moudle Error：{module_id}", exc_info=True)
+            except Exception as err:
+                logger.error(f"Load Moudle Error：{module_id}，{str(err)} - {traceback.format_exc()}", exc_info=True)
 
     def stop(self):
         """
@@ -55,8 +56,8 @@ class ModuleManager(metaclass=Singleton):
                 try:
                     module.stop()
                     logger.info(f"Moudle Stoped：{module_id}")
-                except:
-                    logger.error(f"Stop Moudle Error：{module_id}", exc_info=True)
+                except Exception as err:
+                    logger.error(f"Stop Moudle Error：{module_id}，{str(err)} - {traceback.format_exc()}", exc_info=True)
 
     def reload(self):
         """
