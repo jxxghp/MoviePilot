@@ -192,8 +192,12 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 ### 4. **插件扩展**
 
-- **PLUGIN_MARKET：** 插件市场仓库地址，仅支持Github仓库`main`分支，多个地址使用`,`分隔，默认为官方插件仓库：`https://github.com/jxxghp/MoviePilot-Plugins` ，通过查看[MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)项目的fork，或者查看频道置顶了解更多第三方插件仓库。
-
+- **PLUGIN_MARKET：** 插件市场仓库地址，仅支持Github仓库`main`分支，多个地址使用`,`分隔，通过查看[MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)项目的fork，或者查看频道置顶了解更多第三方插件仓库。 
+  默认已内置以下插件库：
+  1. https://github.com/jxxghp/MoviePilot-Plugins
+  2. https://github.com/thsrite/MoviePilot-Plugins
+  3. https://github.com/honue/MoviePilot-Plugins
+  4. https://github.com/InfinityPacer/MoviePilot-Plugins
 
 ## 使用
 
