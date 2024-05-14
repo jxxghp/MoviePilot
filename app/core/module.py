@@ -34,22 +34,29 @@ class ModuleManager(metaclass=Singleton):
         for module in modules:
             module_id = module.__name__
             self._modules[module_id] = module
-            # 生成实例
-            _module = module()
-            # 初始化模块
-            if self.check_setting(_module.init_setting()):
-                # 通过模板开关控制加载
-                _module.init_module()
-                self._running_modules[module_id] = _module
-                logger.info(f"Moudle Loaded：{module_id}")
+            try:
+                # 生成实例
+                _module = module()
+                # 初始化模块
+                if self.check_setting(_module.init_setting()):
+                    # 通过模板开关控制加载
+                    _module.init_module()
+                    self._running_modules[module_id] = _module
+                    logger.info(f"Moudle Loaded：{module_id}")
+            except:
+                logger.error(f"Load Moudle Error：{module_id}", exc_info=True)
 
     def stop(self):
         """
         停止所有模块
         """
-        for _, module in self._running_modules.items():
+        for module_id, module in self._running_modules.items():
             if hasattr(module, "stop"):
-                module.stop()
+                try:
+                    module.stop()
+                    logger.info(f"Moudle Stoped：{module_id}")
+                except:
+                    logger.error(f"Stop Moudle Error：{module_id}", exc_info=True)
 
     def reload(self):
         """
