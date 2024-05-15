@@ -192,7 +192,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 
 ### 4. **插件扩展**
 
-- **PLUGIN_MARKET：** 插件市场仓库地址，仅支持Github仓库`main`分支，多个地址使用`,`分隔，通过查看[MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)项目的fork，或者查看频道置顶了解更多第三方插件仓库。 
+- **PLUGIN_MARKET：** 插件市场仓库地址，仅支持Github仓库`main`分支，多个地址使用`,`分隔，通过查看[MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)项目的fork，或者查看频道置顶了解更多第三方插件仓库，目前已有 `130+` 插件。 
   默认已内置以下插件库：
   1. https://github.com/jxxghp/MoviePilot-Plugins
   2. https://github.com/thsrite/MoviePilot-Plugins
@@ -265,9 +265,15 @@ sudo sysctl -p
 
 ![image](https://github.com/jxxghp/MoviePilot/assets/51039935/f2654b09-26f3-464f-a0af-1de3f97832ee)
 
-![image](https://github.com/jxxghp/MoviePilot/assets/51039935/fcb87529-56dd-43df-8337-6e34b8582819)
+![mp1](https://github.com/jxxghp/MoviePilot/assets/51039935/123a39cd-11b6-4bd3-b3a3-e3e1103416b9)
 
-![image](https://github.com/jxxghp/MoviePilot/assets/51039935/bfa77c71-510a-46a6-9c1e-cf98cb101e3a)
+![mp2](https://github.com/jxxghp/MoviePilot/assets/51039935/230de330-8162-4314-a897-0bce9b1e5d00)
 
-![image](https://github.com/jxxghp/MoviePilot/assets/51039935/51cafd09-e38c-47f9-ae62-1e83ab8bf89b)
+![mp3](https://github.com/jxxghp/MoviePilot/assets/51039935/de678f45-bbe4-4bdc-aefc-cc5ae774a726)
+
+![mp4](https://github.com/jxxghp/MoviePilot/assets/51039935/8bc6a0a5-7c57-464f-ae63-d6241310dc43)
+
+
+
+
 
