@@ -131,10 +131,11 @@ class _PluginBase(metaclass=ABCMeta):
         {
             "refresh": 10, // 自动刷新时间，单位秒
             "border": True, // 是否显示边框，默认True，为False时取消组件边框和边距，由插件自行控制
+            "subtitle": "子标题", // 组件子标题，缺省时不展示子标题
         }
         3、页面配置使用Vuetify组件拼装，参考：https://vuetifyjs.com/
 
-        输入参数中：user_agent：浏览器UA
+        kwargs参数可获取的值：1、user_agent：浏览器UA
         """
         pass
 

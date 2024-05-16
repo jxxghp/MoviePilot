@@ -228,7 +228,7 @@ class DoubanApi(metaclass=Singleton):
             ua=settings.USER_AGENT,
             session=self._session,
         ).post_res(url=req_url, data=params)
-        if resp.status_code == 400 and "rate_limit" in resp.text:
+        if resp is not None and resp.status_code == 400 and "rate_limit" in resp.text:
             return resp.json()
         return resp.json() if resp else {}
 
