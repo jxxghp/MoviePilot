@@ -81,7 +81,7 @@ class DownloadChain(ChainBase):
             mtype=NotificationType.Download,
             userid=userid,
             title=f"{mediainfo.title_year} "
-                  f"{'%s %s' % (meta.season, download_episodes) or meta.season_episode} 开始下载",
+                  f"{'%s %s' % (meta.season, download_episodes) if download_episodes else meta.season_episode} 开始下载",
             text=msg_text,
             image=mediainfo.get_message_image()))
 
