@@ -1,6 +1,6 @@
-from typing import Any, List
+from typing import Any, List, Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 
 from app import schemas
 from app.core.plugin import PluginManager
@@ -159,11 +159,12 @@ def dashboard_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> List[d
 
 
 @router.get("/dashboard/{plugin_id}", summary="获取插件仪表板配置")
-def plugin_dashboard(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> schemas.PluginDashboard:
+def plugin_dashboard(plugin_id: str, user_agent: Annotated[str | None, Header()] = None,
+                     _: schemas.TokenPayload = Depends(verify_token)) -> schemas.PluginDashboard:
     """
     根据插件ID获取插件仪表板
     """
-    return PluginManager().get_plugin_dashboard(plugin_id)
+    return PluginManager().get_plugin_dashboard(plugin_id, user_agent=user_agent)
 
 
 @router.get("/reset/{plugin_id}", summary="重置插件配置", response_model=schemas.Response)

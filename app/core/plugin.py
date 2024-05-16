@@ -1,10 +1,11 @@
 import concurrent
 import concurrent.futures
+import inspect
 import os
 import threading
 import time
 import traceback
-from typing import List, Any, Dict, Tuple, Optional
+from typing import List, Any, Dict, Tuple, Optional, Callable
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -337,16 +338,27 @@ class PluginManager(metaclass=Singleton):
             return plugin.get_page() or []
         return []
 
-    def get_plugin_dashboard(self, pid: str) -> Optional[schemas.PluginDashboard]:
+    def get_plugin_dashboard(self, pid: str, **kwargs) -> Optional[schemas.PluginDashboard]:
         """
         获取插件仪表盘
         :param pid: 插件ID
         """
+        def __get_params_count(func: Callable):
+            """
+            获取函数的参数信息
+            """
+            signature = inspect.signature(func)
+            return len(signature.parameters)
+
         plugin = self._running_plugins.get(pid)
         if not plugin:
             return None
         if hasattr(plugin, "get_dashboard"):
-            dashboard: Tuple = plugin.get_dashboard()
+            # 检查方法的参数个数
+            if __get_params_count(plugin.get_dashboard) > 0:
+                dashboard: Tuple = plugin.get_dashboard(**kwargs)
+            else:
+                dashboard: Tuple = plugin.get_dashboard()
             if dashboard:
                 cols, attrs, elements = dashboard
                 return schemas.PluginDashboard(

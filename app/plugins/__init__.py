@@ -120,7 +120,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
-    def get_dashboard(self) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
+    def get_dashboard(self, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
         """
         获取插件仪表盘页面，需要返回：1、仪表板col配置字典；2、全局配置（自动刷新等）；3、仪表板页面元素配置json（含数据）
         1、col配置参考：
@@ -133,6 +133,8 @@ class _PluginBase(metaclass=ABCMeta):
             "border": True, // 是否显示边框，默认True，为False时取消组件边框和边距，由插件自行控制
         }
         3、页面配置使用Vuetify组件拼装，参考：https://vuetifyjs.com/
+
+        输入参数中：user_agent：浏览器UA
         """
         pass
 
