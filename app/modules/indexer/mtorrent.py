@@ -27,6 +27,7 @@ class MTorrentSpider:
     _searchurl = "%sapi/torrent/search"
     _downloadurl = "%sapi/torrent/genDlToken"
     _pageurl = "%sdetail/%s"
+    _timeout = 15
 
     # 电影分类
     _movie_category = ['401', '419', '420', '421', '439', '405', '404']
@@ -62,6 +63,7 @@ class MTorrentSpider:
             self._ua = indexer.get('ua')
             self._apikey = indexer.get('apikey')
             self._token = indexer.get('token')
+            self._timeout = indexer.get('timeout') or 15
 
     def search(self, keyword: str, mtype: MediaType = None, page: int = 0) -> Tuple[bool, List[dict]]:
         """
@@ -92,7 +94,7 @@ class MTorrentSpider:
             },
             proxies=self._proxy,
             referer=f"{self._domain}browse",
-            timeout=15
+            timeout=self._timeout
         ).post_res(url=self._searchurl, json=params)
         torrents = []
         if res and res.status_code == 200:

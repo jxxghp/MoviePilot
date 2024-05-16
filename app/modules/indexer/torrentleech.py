@@ -17,11 +17,13 @@ class TorrentLeech:
     _browseurl = "%storrents/browse/list/page/2%s"
     _downloadurl = "%sdownload/%s/%s"
     _pageurl = "%storrent/%s"
+    _timeout = 15
 
     def __init__(self, indexer: CommentedMap):
         self._indexer = indexer
         if indexer.get('proxy'):
             self._proxy = settings.PROXY
+            self._timeout = indexer.get('timeout') or 15
 
     def search(self, keyword: str, page: int = 0) -> Tuple[bool, List[dict]]:
 
@@ -40,7 +42,7 @@ class TorrentLeech:
             },
             cookies=self._indexer.get('cookie'),
             proxies=self._proxy,
-            timeout=15
+            timeout=self._timeout
         ).get_res(url)
         torrents = []
         if res and res.status_code == 200:

@@ -18,6 +18,7 @@ class TNodeSpider:
     _ua = None
     _token = None
     _size = 100
+    _timeout = 15
     _searchurl = "%sapi/torrent/advancedSearch"
     _downloadurl = "%sapi/torrent/download/%s"
     _pageurl = "%storrent/info/%s"
@@ -32,6 +33,7 @@ class TNodeSpider:
                 self._proxy = settings.PROXY
             self._cookie = indexer.get('cookie')
             self._ua = indexer.get('ua')
+            self._timeout = indexer.get('timeout') or 15
         self.init_config()
 
     def init_config(self):
@@ -43,7 +45,7 @@ class TNodeSpider:
         res = RequestUtils(ua=self._ua,
                            cookies=self._cookie,
                            proxies=self._proxy,
-                           timeout=15).get_res(url=self._domain)
+                           timeout=self._timeout).get_res(url=self._domain)
         if res and res.status_code == 200:
             csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
             if csrf_token:
@@ -77,7 +79,7 @@ class TNodeSpider:
             },
             cookies=self._cookie,
             proxies=self._proxy,
-            timeout=15
+            timeout=self._timeout
         ).post_res(url=self._searchurl, json=params)
         torrents = []
         if res and res.status_code == 200:

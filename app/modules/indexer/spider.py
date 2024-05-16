@@ -63,8 +63,8 @@ class TorrentSpider:
     torrents_info: dict = {}
     # 种子列表
     torrents_info_array: list = []
-    # 搜索超时, 默认: 30秒
-    _timeout = 30
+    # 搜索超时, 默认: 15秒
+    _timeout = 15
 
     def __init__(self,
                  indexer: CommentedMap,

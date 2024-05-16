@@ -73,7 +73,7 @@ class SiteChain(ChainBase):
             ua=user_agent,
             cookies=site.cookie,
             proxies=settings.PROXY if site.proxy else None,
-            timeout=15
+            timeout=site.timeout or 15
         ).get_res(url=site.url)
         if res and res.status_code == 200:
             csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
@@ -90,7 +90,7 @@ class SiteChain(ChainBase):
             },
             cookies=site.cookie,
             proxies=settings.PROXY if site.proxy else None,
-            timeout=15
+            timeout=site.timeout or 15
         ).get_res(url=f"{site.url}api/user/getInfo")
         if user_res and user_res.status_code == 200:
             user_info = user_res.json()
@@ -114,14 +114,14 @@ class SiteChain(ChainBase):
         res = RequestUtils(
             headers=headers,
             proxies=settings.PROXY if site.proxy else None,
-            timeout=15
+            timeout=site.timeout or 15
         ).post_res(url=url)
         if res and res.status_code == 200:
             user_info = res.json()
             if user_info and user_info.get("data"):
                 # 更新最后访问时间
                 res = RequestUtils(headers=headers,
-                                   timeout=60,
+                                   timeout=site.timeout or 15,
                                    proxies=settings.PROXY if site.proxy else None,
                                    referer=f"{site.url}index"
                                    ).post_res(url=urljoin(url, "api/member/updateLastBrowse"))
@@ -148,7 +148,7 @@ class SiteChain(ChainBase):
         :return:
         """
         favicon_url = urljoin(url, "favicon.ico")
-        res = RequestUtils(cookies=cookie, timeout=60, ua=ua).get_res(url=url)
+        res = RequestUtils(cookies=cookie, timeout=30, ua=ua).get_res(url=url)
         if res:
             html_text = res.text
         else:
@@ -160,7 +160,7 @@ class SiteChain(ChainBase):
             if fav_link:
                 favicon_url = urljoin(url, fav_link[0])
 
-        res = RequestUtils(cookies=cookie, timeout=20, ua=ua).get_res(url=favicon_url)
+        res = RequestUtils(cookies=cookie, timeout=15, ua=ua).get_res(url=favicon_url)
         if res:
             return favicon_url, base64.b64encode(res.content).decode()
         else:
