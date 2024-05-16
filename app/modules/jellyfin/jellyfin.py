@@ -613,6 +613,8 @@ class Jellyfin:
             eventItem.item_name = "%s %s" % (
                 message.get('Name'), "(" + str(message.get('Year')) + ")")
 
+        eventItem.percentage = message.get('PlaybackPositionTicks') / message.get('RunTimeTicks') * 100
+
         # 获取消息图片
         if eventItem.item_id:
             # 根据返回的item_id去调用媒体服务器获取
