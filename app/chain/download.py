@@ -34,7 +34,8 @@ class DownloadChain(ChainBase):
         self.mediaserver = MediaServerOper()
 
     def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo,
-                              channel: MessageChannel = None, userid: str = None, username: str = None):
+                              channel: MessageChannel = None, userid: str = None, username: str = None,
+                              download_episodes: str = None):
         """
         发送添加下载的消息
         :param meta: 元数据
@@ -80,7 +81,7 @@ class DownloadChain(ChainBase):
             mtype=NotificationType.Download,
             userid=userid,
             title=f"{mediainfo.title_year} "
-                  f"{meta.season_episode} 开始下载",
+                  f"{'%s %s' % (meta.season, download_episodes) if download_episodes else meta.season_episode} 开始下载",
             text=msg_text,
             image=mediainfo.get_message_image()))
 
@@ -207,6 +208,9 @@ class DownloadChain(ChainBase):
         _torrent = context.torrent_info
         _media = context.media_info
         _meta = context.meta_info
+
+        # 实际下载的集数
+        download_episodes = StringUtils.format_ep(list(episodes)) if episodes else None
         _folder_name = ""
         if not torrent_file:
             # 下载种子文件，得到的可能是文件也可能是磁力链
@@ -284,7 +288,7 @@ class DownloadChain(ChainBase):
                 tvdbid=_media.tvdb_id,
                 doubanid=_media.douban_id,
                 seasons=_meta.season,
-                episodes=_meta.episode,
+                episodes=download_episodes or _meta.episode,
                 image=_media.get_backdrop_image(),
                 download_hash=_hash,
                 torrent_name=_torrent.title,
@@ -321,7 +325,8 @@ class DownloadChain(ChainBase):
                 self.downloadhis.add_files(files_to_add)
 
             # 发送消息（群发，不带channel和userid）
-            self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent, username=username)
+            self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent,
+                                       username=username, download_episodes=download_episodes)
             # 下载成功后处理
             self.download_added(context=context, download_dir=download_dir, torrent_path=torrent_file)
             # 广播事件
