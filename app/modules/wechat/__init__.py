@@ -17,6 +17,10 @@ class WechatModule(_ModuleBase):
     def init_module(self) -> None:
         self.wechat = WeChat()
 
+    @staticmethod
+    def get_name() -> str:
+        return "微信"
+
     def stop(self):
         pass
 

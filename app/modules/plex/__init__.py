@@ -14,6 +14,10 @@ class PlexModule(_ModuleBase):
     def init_module(self) -> None:
         self.plex = Plex()
 
+    @staticmethod
+    def get_name() -> str:
+        return "Plex"
+
     def stop(self):
         pass
 

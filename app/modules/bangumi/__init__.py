@@ -33,6 +33,10 @@ class BangumiModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
+    @staticmethod
+    def get_name() -> str:
+        return "Bangumi"
+
     def recognize_media(self, bangumiid: int = None,
                         **kwargs) -> Optional[MediaInfo]:
         """

@@ -28,6 +28,10 @@ class SubtitleModule(_ModuleBase):
     def init_module(self) -> None:
         pass
 
+    @staticmethod
+    def get_name() -> str:
+        return "站点字幕"
+
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 

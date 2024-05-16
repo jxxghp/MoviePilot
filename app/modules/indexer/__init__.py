@@ -25,6 +25,10 @@ class IndexerModule(_ModuleBase):
     def init_module(self) -> None:
         pass
 
+    @staticmethod
+    def get_name() -> str:
+        return "站点索引"
+
     def stop(self):
         pass
 

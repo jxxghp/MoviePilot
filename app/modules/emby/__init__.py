@@ -14,6 +14,10 @@ class EmbyModule(_ModuleBase):
     def init_module(self) -> None:
         self.emby = Emby()
 
+    @staticmethod
+    def get_name() -> str:
+        return "Emby"
+
     def stop(self):
         pass
 

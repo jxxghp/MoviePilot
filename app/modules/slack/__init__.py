@@ -16,6 +16,10 @@ class SlackModule(_ModuleBase):
     def init_module(self) -> None:
         self.slack = Slack()
 
+    @staticmethod
+    def get_name() -> str:
+        return "Slack"
+
     def stop(self):
         self.slack.stop()
 

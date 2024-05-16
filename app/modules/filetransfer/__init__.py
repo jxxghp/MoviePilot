@@ -24,6 +24,10 @@ class FileTransferModule(_ModuleBase):
     def init_module(self) -> None:
         pass
 
+    @staticmethod
+    def get_name() -> str:
+        return "文件整理"
+
     def stop(self):
         pass
 

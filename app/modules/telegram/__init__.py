@@ -15,6 +15,10 @@ class TelegramModule(_ModuleBase):
     def init_module(self) -> None:
         self.telegram = Telegram()
 
+    @staticmethod
+    def get_name() -> str:
+        return "Telegram"
+
     def stop(self):
         self.telegram.stop()
 

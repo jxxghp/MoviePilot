@@ -13,6 +13,10 @@ class SynologyChatModule(_ModuleBase):
     def init_module(self) -> None:
         self.synologychat = SynologyChat()
 
+    @staticmethod
+    def get_name() -> str:
+        return "Synology Chat"
+
     def stop(self):
         pass
 

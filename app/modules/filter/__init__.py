@@ -136,6 +136,10 @@ class FilterModule(_ModuleBase):
     def init_module(self) -> None:
         self.parser = RuleParser()
 
+    @staticmethod
+    def get_name() -> str:
+        return "过滤器"
+
     def stop(self):
         pass
 

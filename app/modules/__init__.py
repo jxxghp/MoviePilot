@@ -27,6 +27,14 @@ class _ModuleBase(metaclass=ABCMeta):
         """
         pass
 
+    @staticmethod
+    @abstractmethod
+    def get_name() -> str:
+        """
+        获取模块名称
+        """
+        pass
+
     @abstractmethod
     def stop(self) -> None:
         """

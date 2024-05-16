@@ -39,6 +39,10 @@ class TheMovieDbModule(_ModuleBase):
         self.category = CategoryHelper()
         self.scraper = TmdbScraper(self.tmdb)
 
+    @staticmethod
+    def get_name() -> str:
+        return "TheMovieDb"
+
     def stop(self):
         self.cache.save()
         self.tmdb.close()

@@ -331,6 +331,10 @@ class FanartModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         return "FANART_API_KEY", True
 
+    @staticmethod
+    def get_name() -> str:
+        return "Fanart"
+
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """
         获取图片

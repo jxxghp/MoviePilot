@@ -15,6 +15,10 @@ class VoceChatModule(_ModuleBase):
     def init_module(self) -> None:
         self.vocechat = VoceChat()
 
+    @staticmethod
+    def get_name() -> str:
+        return "VoceChat"
+
     def stop(self):
         pass
 

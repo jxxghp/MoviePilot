@@ -95,7 +95,7 @@ class ModuleManager(metaclass=Singleton):
             return True
         return False
 
-    def get_modules(self, method: str) -> Generator:
+    def get_running_modules(self, method: str) -> Generator:
         """
         获取实现了同一方法的模块列表
         """
@@ -105,3 +105,9 @@ class ModuleManager(metaclass=Singleton):
             if hasattr(module, method) \
                     and ObjectUtils.check_method(getattr(module, method)):
                 yield module
+
+    def get_modules(self) -> dict:
+        """
+        获取模块列表
+        """
+        return self._modules

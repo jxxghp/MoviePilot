@@ -23,6 +23,10 @@ class TransmissionModule(_ModuleBase):
     def init_module(self) -> None:
         self.transmission = Transmission()
 
+    @staticmethod
+    def get_name() -> str:
+        return "Transmission"
+
     def stop(self):
         pass
 

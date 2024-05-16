@@ -92,7 +92,7 @@ class ChainBase(metaclass=ABCMeta):
 
         logger.debug(f"请求模块执行：{method} ...")
         result = None
-        modules = self.modulemanager.get_modules(method)
+        modules = self.modulemanager.get_running_modules(method)
         for module in modules:
             try:
                 func = getattr(module, method)

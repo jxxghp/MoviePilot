@@ -280,9 +280,12 @@ def modulelist(_: schemas.TokenPayload = Depends(verify_token)):
     """
     查询已加载的模块ID列表
     """
-    module_ids = [module.__name__ for module in ModuleManager().get_modules("test")]
+    modules = [{
+        "id": k,
+        "name": v.get_name(),
+    } for k, v in ModuleManager().get_modules().items()]
     return schemas.Response(success=True, data={
-        "ids": module_ids
+        "modules": modules
     })
 
 

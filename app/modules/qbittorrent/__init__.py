@@ -23,6 +23,10 @@ class QbittorrentModule(_ModuleBase):
     def init_module(self) -> None:
         self.qbittorrent = Qbittorrent()
 
+    @staticmethod
+    def get_name() -> str:
+        return "Qbittorrent"
+
     def stop(self):
         pass
 

@@ -16,6 +16,10 @@ class TheTvDbModule(_ModuleBase):
                                  select_first=True,
                                  proxies=settings.PROXY)
 
+    @staticmethod
+    def get_name() -> str:
+        return "TheTvDb"
+
     def stop(self):
         self.tvdb.close()
 

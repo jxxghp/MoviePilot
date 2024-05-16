@@ -48,6 +48,10 @@ class DoubanModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
+    @staticmethod
+    def get_name() -> str:
+        return "豆瓣"
+
     def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
                         doubanid: str = None,
