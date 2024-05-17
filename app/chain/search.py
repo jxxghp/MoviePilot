@@ -102,12 +102,23 @@ class SearchChain(ChainBase):
         :param filter_rule: 过滤规则，为空是使用默认过滤规则
         :param area: 搜索范围，title or imdbid
         """
+
+        def __do_filter(torrent_list: List[TorrentInfo]) -> List[TorrentInfo]:
+            """
+            执行优先级过滤
+            """
+            return self.filter_torrents(rule_string=priority_rule,
+                                        torrent_list=torrent_list,
+                                        season_episodes=season_episodes,
+                                        mediainfo=mediainfo) or []
+
         # 豆瓣标题处理
         if not mediainfo.tmdb_id:
             meta = MetaInfo(title=mediainfo.title)
             mediainfo.title = meta.name
             mediainfo.season = meta.begin_season
         logger.info(f'开始搜索资源，关键词：{keyword or mediainfo.title} ...')
+
         # 补充媒体信息
         if not mediainfo.names:
             mediainfo: MediaInfo = self.recognize_media(mtype=mediainfo.type,
@@ -116,6 +127,7 @@ class SearchChain(ChainBase):
             if not mediainfo:
                 logger.error(f'媒体信息识别失败！')
                 return []
+
         # 缺失的季集
         mediakey = mediainfo.tmdb_id or mediainfo.douban_id
         if no_exists and no_exists.get(mediakey):
@@ -127,6 +139,7 @@ class SearchChain(ChainBase):
             season_episodes = {mediainfo.season: []}
         else:
             season_episodes = None
+
         # 搜索关键词
         if keyword:
             keywords = [keyword]
@@ -147,9 +160,11 @@ class SearchChain(ChainBase):
         if not torrents:
             logger.warn(f'{keyword or mediainfo.title} 未搜索到资源')
             return []
+
         # 开始新进度
         self.progress.start(ProgressKey.Search)
-        # 匹配的资源
+
+        # 开始匹配
         _match_torrents = []
         # 总数
         _total = len(torrents)
@@ -180,11 +195,13 @@ class SearchChain(ChainBase):
                 # 比对词条指定的tmdbid
                 if torrent_meta.tmdbid or torrent_meta.doubanid:
                     if torrent_meta.tmdbid and torrent_meta.tmdbid == mediainfo.tmdb_id:
-                        logger.info(f'{mediainfo.title} 通过词表指定TMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
+                        logger.info(
+                            f'{mediainfo.title} 通过词表指定TMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
                         _match_torrents.append(torrent)
                         continue
                     if torrent_meta.doubanid and torrent_meta.doubanid == mediainfo.douban_id:
-                        logger.info(f'{mediainfo.title} 通过词表指定豆瓣ID匹配到资源：{torrent.site_name} - {torrent.title}')
+                        logger.info(
+                            f'{mediainfo.title} 通过词表指定豆瓣ID匹配到资源：{torrent.site_name} - {torrent.title}')
                         _match_torrents.append(torrent)
                         continue
 
@@ -202,25 +219,12 @@ class SearchChain(ChainBase):
                                  key=ProgressKey.Search)
         else:
             _match_torrents = torrents
+
         # 开始过滤
         self.progress.update(value=98, text=f'开始过滤，总 {len(_match_torrents)} 个资源，请稍候...',
                              key=ProgressKey.Search)
-        # 过滤种子
-        if priority_rule is None:
-            # 取搜索优先级规则
-            priority_rule = self.systemconfig.get(SystemConfigKey.SearchFilterRules)
-        if priority_rule:
-            logger.info(f'开始优先级规则/剧集过滤，当前规则：{priority_rule} ...')
-            result: List[TorrentInfo] = self.filter_torrents(rule_string=priority_rule,
-                                                             torrent_list=_match_torrents,
-                                                             season_episodes=season_episodes,
-                                                             mediainfo=mediainfo)
-            if result is not None:
-                _match_torrents = result
-            if not _match_torrents:
-                logger.warn(f'{keyword or mediainfo.title} 没有符合优先级规则的资源')
-                return []
-        # 使用过滤规则再次过滤
+
+        # 开始过滤规则过滤
         if _match_torrents:
             logger.info(f'开始过滤规则过滤，当前规则：{filter_rule} ...')
             _match_torrents = self.filter_torrents_by_rule(torrents=_match_torrents,
@@ -229,22 +233,58 @@ class SearchChain(ChainBase):
         if not _match_torrents:
             logger.warn(f'{keyword or mediainfo.title} 没有符合过滤规则的资源')
             return []
+        logger.info(f"过滤规则过滤完成，剩余 {len(_match_torrents)} 个资源")
+
+        # 开始优先级规则/剧集过滤
+        if priority_rule is None:
+            # 取搜索优先级规则
+            priority_rule = self.systemconfig.get(SystemConfigKey.SearchFilterRules)
+        if priority_rule:
+            # 使用多线程进行优先级过滤，1个站点一个线程
+            logger.info(f'开始优先级规则/剧集过滤，当前规则：{priority_rule} ...')
+            # 站点列表
+            filter_sites = set([t.site_name for t in _match_torrents])
+            # 多线程
+            executor = ThreadPoolExecutor(max_workers=len(filter_sites))
+            all_task = []
+            for site in filter_sites:
+                task = executor.submit(__do_filter,
+                                       torrent_list=[t for t in _match_torrents if t.site_name == site])
+                all_task.append(task)
+            # 汇总结果
+            results = []
+            for future in as_completed(all_task):
+                result = future.result()
+                if result:
+                    results.extend(result)
+            _match_torrents = results
+            if not _match_torrents:
+                logger.warn(f'{keyword or mediainfo.title} 没有符合优先级规则的资源')
+                return []
+            logger.info(f"优先级规则/剧集过滤完成，剩余 {len(_match_torrents)} 个资源")
+
         # 去掉mediainfo中多余的数据
         mediainfo.clear()
+
         # 组装上下文
         contexts = [Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
                             media_info=mediainfo,
                             torrent_info=torrent) for torrent in _match_torrents]
 
-        logger.info(f"过滤完成，剩余 {len(contexts)} 个资源")
         self.progress.update(value=99, text=f'过滤完成，剩余 {len(contexts)} 个资源', key=ProgressKey.Search)
+
         # 排序
-        self.progress.update(value=100,
+        self.progress.update(value=99,
                              text=f'正在对 {len(contexts)} 个资源进行排序，请稍候...',
                              key=ProgressKey.Search)
         contexts = self.torrenthelper.sort_torrents(contexts)
+
         # 结束进度
+        self.progress.update(value=100,
+                             text=f'搜索完成，共 {len(contexts)} 个资源',
+                             key=ProgressKey.Search)
         self.progress.end(ProgressKey.Search)
+
         # 返回
         return contexts
 
