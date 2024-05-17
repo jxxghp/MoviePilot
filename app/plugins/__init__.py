@@ -131,7 +131,8 @@ class _PluginBase(metaclass=ABCMeta):
         {
             "refresh": 10, // 自动刷新时间，单位秒
             "border": True, // 是否显示边框，默认True，为False时取消组件边框和边距，由插件自行控制
-            "subtitle": "子标题", // 组件子标题，缺省时不展示子标题
+            "title": "组件标题", // 组件标题，如有将显示该标题，否则显示组件名称
+            "subtitle": "组件子标题", // 组件子标题，缺省时不展示子标题
         }
         3、页面配置使用Vuetify组件拼装，参考：https://vuetifyjs.com/
 
