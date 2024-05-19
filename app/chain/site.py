@@ -52,7 +52,8 @@ class SiteChain(ChainBase):
             "zhuque.in": self.__zhuque_test,
             "m-team.io": self.__mteam_test,
             "m-team.cc": self.__mteam_test,
-            "ptlsp.com": self.__ptlsp_test,
+            "ptlsp.com": self.__indexphp_test,
+            "1ptba.com": self.__indexphp_test,
         }
 
     def is_special_site(self, domain: str) -> bool:
@@ -131,9 +132,9 @@ class SiteChain(ChainBase):
                     return True, f"连接成功，但更新状态失败"
         return False, "鉴权已过期或无效"
 
-    def __ptlsp_test(self, site: Site) -> Tuple[bool, str]:
+    def __indexphp_test(self, site: Site) -> Tuple[bool, str]:
         """
-        判断站点是否已经登陆：ptlsp
+        判断站点是否已经登陆：ptlsp/1ptba
         """
         site.url = f"{site.url}index.php"
         return self.__test(site)
