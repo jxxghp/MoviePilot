@@ -201,10 +201,15 @@ class Command(metaclass=Singleton):
                             # 检查全局变量中是否存在
                             if class_name not in globals():
                                 # 导入模块，除了插件和Command本身，只有chain能响应事件
-                                module = importlib.import_module(
-                                    f"app.chain.{class_name[:-5].lower()}"
-                                )
-                                class_obj = getattr(module, class_name)()
+                                try:
+                                    module = importlib.import_module(
+                                        f"app.chain.{class_name[:-5].lower()}"
+                                    )
+                                    class_obj = getattr(module, class_name)()
+                                except Exception as e:
+                                    logger.error(f"事件处理出错：{str(e)} - {traceback.format_exc()}")
+                                    continue
+
                             else:
                                 # 通过类名创建类实例
                                 class_obj = globals()[class_name]()
