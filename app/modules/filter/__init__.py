@@ -195,7 +195,7 @@ class FilterModule(_ModuleBase):
         torrent_episodes = meta.episode_list
         if not set(torrent_seasons).issubset(set(seasons)):
             # 种子季不在过滤季中
-            logger.info(f"种子 {torrent.site_name} - {torrent.title} 包含季 {torrent_seasons} 不是需要的季 {seasons}")
+            logger.info(f"种子 {torrent.site_name} - {torrent.title} 包含季 {torrent_seasons} 不是需要的季 {list(seasons)}")
             return False
         if not torrent_episodes:
             # 整季按匹配处理

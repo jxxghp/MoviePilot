@@ -98,7 +98,6 @@ class LoggerManager:
 
         # 终端日志
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.DEBUG)
         console_formatter = CustomFormatter(f"%(leveltext)s%(message)s")
         console_handler.setFormatter(console_formatter)
         _logger.addHandler(console_handler)
