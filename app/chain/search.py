@@ -283,6 +283,7 @@ class SearchChain(ChainBase):
         self.progress.update(value=100,
                              text=f'搜索完成，共 {len(contexts)} 个资源',
                              key=ProgressKey.Search)
+        logger.info(f'搜索完成，共 {len(contexts)} 个资源')
         self.progress.end(ProgressKey.Search)
 
         # 返回
