@@ -54,6 +54,7 @@ class SiteChain(ChainBase):
             "m-team.cc": self.__mteam_test,
             "ptlsp.com": self.__indexphp_test,
             "1ptba.com": self.__indexphp_test,
+            "star-space.net": self.__indexphp_test,
         }
 
     def is_special_site(self, domain: str) -> bool:
