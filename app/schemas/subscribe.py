@@ -53,7 +53,7 @@ class Subscribe(BaseModel):
     # 订阅用户
     username: Optional[str] = None
     # 订阅站点
-    sites: Optional[List[int]] = None
+    sites: Optional[List[int]] = []
     # 是否洗版
     best_version: Optional[int] = 0
     # 当前优先级

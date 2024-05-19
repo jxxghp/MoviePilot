@@ -42,7 +42,9 @@ def read_subscribes(
     subscribes = Subscribe.list(db)
     for subscribe in subscribes:
         if subscribe.sites:
-            subscribe.sites = json.loads(subscribe.sites)
+            subscribe.sites = json.loads(str(subscribe.sites))
+        else:
+            subscribe.sites = []
     return subscribes
 
 
