@@ -44,6 +44,7 @@ class DownloadChain(ChainBase):
         :param channel: 通知渠道
         :param userid: 用户ID，指定时精确发送对应用户
         :param username: 通知显示的下载用户信息
+        :param download_episodes: 下载的集数
         """
         msg_text = ""
         if username:
