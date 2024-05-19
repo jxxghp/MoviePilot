@@ -378,26 +378,34 @@ class Plex:
 
     @staticmethod
     def __get_ids(guids: List[Any]) -> dict:
+        def parse_tmdb_id(value: str) -> (bool, int):
+            """尝试将TMDB ID字符串转换为整数。如果成功，返回(True, int)，失败则返回(False, None)。"""
+            try:
+                int_value = int(value)
+                return True, int_value
+            except ValueError:
+                return False, None
+
         guid_mapping = {
             "imdb://": "imdb_id",
             "tmdb://": "tmdb_id",
             "tvdb://": "tvdb_id"
         }
-        ids = {}
-        for prefix, varname in guid_mapping.items():
-            ids[varname] = None
+        ids = {varname: None for varname in guid_mapping.values()}
         for guid in guids:
+            guid_id = guid['id'] if isinstance(guid, dict) else guid.id
             for prefix, varname in guid_mapping.items():
-                if isinstance(guid, dict):
-                    if guid['id'].startswith(prefix):
-                        # 找到匹配的ID
-                        ids[varname] = guid['id'][len(prefix):]
-                        break
-                else:
-                    if guid.id.startswith(prefix):
-                        # 找到匹配的ID
-                        ids[varname] = guid.id[len(prefix):]
-                        break
+                if guid_id.startswith(prefix):
+                    clean_id = guid_id[len(prefix):]
+                    if varname == "tmdb_id":
+                        # tmdb_id为int，Plex可能存在脏数据，特别处理tmdb_id
+                        success, parsed_id = parse_tmdb_id(clean_id)
+                        if success:
+                            ids[varname] = parsed_id
+                    else:
+                        ids[varname] = clean_id
+                    break
+
         return ids
 
     def get_items(self, parent: str) -> Generator:
@@ -412,25 +420,29 @@ class Plex:
             section = self._plex.library.sectionByID(int(parent))
             if section:
                 for item in section.all():
-                    if not item:
+                    try:
+                        if not item:
+                            continue
+                        ids = self.__get_ids(item.guids)
+                        path = None
+                        if item.locations:
+                            path = item.locations[0]
+                        yield schemas.MediaServerItem(
+                            server="plex",
+                            library=item.librarySectionID,
+                            item_id=item.key,
+                            item_type=item.type,
+                            title=item.title,
+                            original_title=item.originalTitle,
+                            year=item.year,
+                            tmdbid=ids['tmdb_id'],
+                            imdbid=ids['imdb_id'],
+                            tvdbid=ids['tvdb_id'],
+                            path=path,
+                        )
+                    except Exception as e:
+                        logger.error(f"处理媒体项目时出错：{str(e)}, 跳过此项目。")
                         continue
-                    ids = self.__get_ids(item.guids)
-                    path = None
-                    if item.locations:
-                        path = item.locations[0]
-                    yield schemas.MediaServerItem(
-                        server="plex",
-                        library=item.librarySectionID,
-                        item_id=item.key,
-                        item_type=item.type,
-                        title=item.title,
-                        original_title=item.originalTitle,
-                        year=item.year,
-                        tmdbid=ids['tmdb_id'],
-                        imdbid=ids['imdb_id'],
-                        tvdbid=ids['tvdb_id'],
-                        path=path,
-                    )
         except Exception as err:
             logger.error(f"获取媒体库列表出错：{str(err)}")
         yield None
