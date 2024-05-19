@@ -236,16 +236,19 @@ class Plex:
         if item_id:
             videos = self._plex.fetchItem(item_id)
         else:
+            # 兼容年份为空的场景
+            kwargs = {"year": year} if year else {}
             # 根据标题和年份模糊搜索，该结果不够准确
             videos = self._plex.library.search(title=title,
-                                               year=year,
-                                               libtype="show")
+                                               libtype="show",
+                                               **kwargs)
             if (not videos
                     and original_title
                     and str(original_title) != str(title)):
                 videos = self._plex.library.search(title=original_title,
-                                                   year=year,
-                                                   libtype="show")
+                                                   libtype="show",
+                                                   **kwargs)
+
         if not videos:
             return None, {}
         if isinstance(videos, list):
