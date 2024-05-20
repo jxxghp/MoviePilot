@@ -42,7 +42,10 @@ def read_subscribes(
     subscribes = Subscribe.list(db)
     for subscribe in subscribes:
         if subscribe.sites:
-            subscribe.sites = json.loads(str(subscribe.sites))
+            try:
+                subscribe.sites = json.loads(str(subscribe.sites))
+            except json.JSONDecodeError:
+                subscribe.sites = []
         else:
             subscribe.sites = []
     return subscribes
@@ -168,7 +171,10 @@ def subscribe_mediaid(
             meta.begin_season = season
         result = Subscribe.get_by_title(db, title=meta.name, season=meta.begin_season)
     if result and result.sites:
-        result.sites = json.loads(result.sites)
+        try:
+            result.sites = json.loads(result.sites)
+        except json.JSONDecodeError:
+            result.sites = []
 
     return result if result else Subscribe()
 
@@ -322,7 +328,10 @@ def read_subscribe(
     historys = SubscribeHistory.list_by_type(db, mtype=mtype, page=page, count=count)
     for history in historys:
         if history and history.sites:
-            history.sites = json.loads(history.sites)
+            try:
+                history.sites = json.loads(history.sites)
+            except json.JSONDecodeError:
+                history.sites = []
     return historys
 
 
@@ -396,7 +405,10 @@ def read_subscribe(
         return Subscribe()
     subscribe = Subscribe.get(db, subscribe_id)
     if subscribe and subscribe.sites:
-        subscribe.sites = json.loads(subscribe.sites)
+        try:
+            subscribe.sites = json.loads(subscribe.sites)
+        except json.JSONDecodeError:
+            subscribe.sites = []
     return subscribe
 
 
