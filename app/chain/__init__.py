@@ -95,6 +95,11 @@ class ChainBase(metaclass=ABCMeta):
         modules = self.modulemanager.get_running_modules(method)
         for module in modules:
             try:
+                module_name = module.get_name()
+            except Exception as err:
+                logger.error(f"获取模块名称出错：{str(err)}")
+                module_name = module.__class__.__name__
+            try:
                 func = getattr(module, method)
                 if is_result_empty(result):
                     # 返回None，第一次执行或者需继续执行下一模块
@@ -112,8 +117,8 @@ class ChainBase(metaclass=ABCMeta):
                     break
             except Exception as err:
                 logger.error(
-                    f"运行模块 {method} 出错：{module.__class__.__name__} - {str(err)}\n{traceback.format_exc()}")
-                self.messagehelper.put(title=f"{module.__class__.__name__} 模块执行出错",
+                    f"运行模块 {module.__class__.__name__}.{method} 出错：{str(err)}\n{traceback.format_exc()}")
+                self.messagehelper.put(title=f"{module_name}发生了错误",
                                        message=str(err),
                                        role="system")
         return result
