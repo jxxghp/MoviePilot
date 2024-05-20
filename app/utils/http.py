@@ -58,6 +58,7 @@ class RequestUtils:
                                           verify=False,
                                           headers=self._headers,
                                           proxies=self._proxies,
+                                          cookies=self._cookies,
                                           timeout=self._timeout,
                                           json=json,
                                           stream=False)
@@ -67,6 +68,7 @@ class RequestUtils:
                                      verify=False,
                                      headers=self._headers,
                                      proxies=self._proxies,
+                                     cookies=self._cookies,
                                      timeout=self._timeout,
                                      json=json,
                                      stream=False)
@@ -80,6 +82,7 @@ class RequestUtils:
                                       verify=False,
                                       headers=self._headers,
                                       proxies=self._proxies,
+                                      cookies=self._cookies,
                                       timeout=self._timeout,
                                       params=params)
             else:
@@ -87,6 +90,7 @@ class RequestUtils:
                                  verify=False,
                                  headers=self._headers,
                                  proxies=self._proxies,
+                                 cookies=self._cookies,
                                  timeout=self._timeout,
                                  params=params)
             return str(r.content, 'utf-8')

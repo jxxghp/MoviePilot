@@ -15,7 +15,7 @@ from app.utils.string import StringUtils
 
 class MTorrentSpider:
     """
-    mTorrent API，需要缓存ApiKey
+    mTorrent API
     """
     _indexerid = None
     _domain = None

@@ -13,6 +13,7 @@ from app.modules.indexer.mtorrent import MTorrentSpider
 from app.modules.indexer.spider import TorrentSpider
 from app.modules.indexer.tnode import TNodeSpider
 from app.modules.indexer.torrentleech import TorrentLeech
+from app.modules.indexer.yema import YemaSpider
 from app.schemas.types import MediaType
 from app.utils.string import StringUtils
 
@@ -107,6 +108,12 @@ class IndexerModule(_ModuleBase):
                     )
                 elif site.get('parser') == "mTorrent":
                     error_flag, result = MTorrentSpider(site).search(
+                        keyword=search_word,
+                        mtype=mtype,
+                        page=page
+                    )
+                elif site.get('parser') == "Yema":
+                    error_flag, result = YemaSpider(site).search(
                         keyword=search_word,
                         mtype=mtype,
                         page=page

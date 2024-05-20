@@ -55,6 +55,7 @@ class SiteChain(ChainBase):
             "ptlsp.com": self.__indexphp_test,
             "1ptba.com": self.__indexphp_test,
             "star-space.net": self.__indexphp_test,
+            "yemapt.org": self.__yema_test,
         }
 
     def is_special_site(self, domain: str) -> bool:
@@ -132,6 +133,30 @@ class SiteChain(ChainBase):
                 else:
                     return True, f"连接成功，但更新状态失败"
         return False, "鉴权已过期或无效"
+
+    @staticmethod
+    def __yema_test(site: Site) -> Tuple[bool, str]:
+        """
+        判断站点是否已经登陆：yemapt
+        """
+        user_agent = site.ua or settings.USER_AGENT
+        url = f"{site.url}api/consumer/fetchSelfDetail"
+        headers = {
+            "User-Agent": user_agent,
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/plain, */*",
+        }
+        res = RequestUtils(
+            headers=headers,
+            cookies=site.cookie,
+            proxies=settings.PROXY if site.proxy else None,
+            timeout=site.timeout or 15
+        ).get_res(url=url)
+        if res and res.status_code == 200:
+            user_info = res.json()
+            if user_info and user_info.get("success"):
+                return True, "连接成功"
+        return False, "Cookie已过期"
 
     def __indexphp_test(self, site: Site) -> Tuple[bool, str]:
         """
