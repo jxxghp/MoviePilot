@@ -613,7 +613,10 @@ class Jellyfin:
             eventItem.item_name = "%s %s" % (
                 message.get('Name'), "(" + str(message.get('Year')) + ")")
 
-        eventItem.percentage = message.get('PlaybackPositionTicks') / message.get('RunTimeTicks') * 100
+        playback_position_ticks = message.get('PlaybackPositionTicks')
+        runtime_ticks = message.get('RunTimeTicks')
+        if playback_position_ticks is not None and runtime_ticks is not None:
+            eventItem.percentage = playback_position_ticks / runtime_ticks * 100
 
         # 获取消息图片
         if eventItem.item_id:
