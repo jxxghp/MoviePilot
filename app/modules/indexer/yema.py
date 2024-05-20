@@ -98,7 +98,7 @@ class YemaSpider:
                     'peers': result.get('leechNum'),
                     'grabs': result.get('completedNum'),
                     'downloadvolumefactor': self.__get_downloadvolumefactor(result.get('downloadPromotion')),
-                    'uploadvolumefactor': 1.0,
+                    'uploadvolumefactor': self.__get_uploadvolumefactor(result.get('uploadPromotion')),
                     'freedate': StringUtils.unify_datetime_str(result.get('downloadPromotionEndTime')),
                     'page_url': self._pageurl % (self._domain, result.get('id')),
                     'labels': [],
@@ -119,7 +119,23 @@ class YemaSpider:
         获取下载系数
         """
         discount_dict = {
-            "free": 0
+            "free": 0,
+            "half": 0.5,
+            "none": 1
+        }
+        if discount:
+            return discount_dict.get(discount, 1)
+        return 1
+
+    @staticmethod
+    def __get_uploadvolumefactor(discount: str) -> float:
+        """
+        获取上传系数
+        """
+        discount_dict = {
+            "none": 1,
+            "one_half": 1.5,
+            "double_upload": 2
         }
         if discount:
             return discount_dict.get(discount, 1)
