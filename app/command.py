@@ -187,9 +187,9 @@ class Command(metaclass=Singleton):
             if event:
                 logger.info(f"处理事件：{event.event_type} - {handlers}")
                 for handler in handlers:
+                    names = handler.__qualname__.split(".")
+                    [class_name, method_name] = names
                     try:
-                        names = handler.__qualname__.split(".")
-                        [class_name, method_name] = names
                         if class_name in self.pluginmanager.get_plugin_ids():
                             # 插件事件
                             self.threader.submit(
@@ -222,7 +222,7 @@ class Command(metaclass=Singleton):
                     except Exception as e:
                         logger.error(f"事件处理出错：{str(e)} - {traceback.format_exc()}")
                         self.messagehelper.put(title=f"{event.event_type} 事件处理出错",
-                                               message=str(e),
+                                               message=f"{class_name}.{method_name}：{str(e)}",
                                                role="system")
 
     def __run_command(self, command: Dict[str, any],

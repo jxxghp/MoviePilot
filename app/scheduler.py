@@ -75,6 +75,9 @@ class Scheduler(metaclass=Singleton):
             # 最大重试次数
             __max_try__ = 30
             if self._auth_count > __max_try__:
+                SchedulerChain().messagehelper.put(title=f"用户认证失败",
+                                                   message="用户认证失败次数过多，将不再偿试认证！",
+                                                   role="system")
                 return
             logger.info("用户未认证，正在偿试重新认证...")
             status, msg = SitesHelper().check_user()
@@ -97,18 +100,22 @@ class Scheduler(metaclass=Singleton):
         # 各服务的运行状态
         self._jobs = {
             "cookiecloud": {
+                "name": "同步CookieCloud站点",
                 "func": SiteChain().sync_cookies,
                 "running": False,
             },
             "mediaserver_sync": {
+                "name": "同步媒体服务器",
                 "func": MediaServerChain().sync,
                 "running": False,
             },
             "subscribe_tmdb": {
+                "name": "订阅元数据更新",
                 "func": SubscribeChain().check,
                 "running": False,
             },
             "subscribe_search": {
+                "name": "订阅搜索补全",
                 "func": SubscribeChain().search,
                 "running": False,
                 "kwargs": {
@@ -116,6 +123,7 @@ class Scheduler(metaclass=Singleton):
                 }
             },
             "new_subscribe_search": {
+                "name": "新增订阅搜索",
                 "func": SubscribeChain().search,
                 "running": False,
                 "kwargs": {
@@ -123,15 +131,33 @@ class Scheduler(metaclass=Singleton):
                 }
             },
             "subscribe_refresh": {
+                "name": "订阅刷新",
                 "func": SubscribeChain().refresh,
                 "running": False,
             },
             "transfer": {
+                "name": "下载文件整理",
                 "func": TransferChain().process,
                 "running": False,
             },
             "clear_cache": {
+                "name": "缓存清理",
                 "func": clear_cache,
+                "running": False,
+            },
+            "user_auth": {
+                "name": "用户认证检查",
+                "func": user_auth,
+                "running": False,
+            },
+            "scheduler_job": {
+                "name": "公共定时服务",
+                "func": SchedulerChain().scheduler_job,
+                "running": False,
+            },
+            "random_wallpager": {
+                "name": "壁纸缓存",
+                "func": TmdbChain().get_random_wallpager,
                 "running": False,
             }
         }
@@ -263,17 +289,27 @@ class Scheduler(metaclass=Singleton):
 
         # 后台刷新TMDB壁纸
         self._scheduler.add_job(
-            TmdbChain().get_random_wallpager,
+            self.start,
             "interval",
+            id="random_wallpager",
+            name="壁纸缓存",
             minutes=30,
-            next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=3)
+            next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+            kwargs={
+                'job_id': 'random_wallpager'
+            }
         )
 
         # 公共定时服务
         self._scheduler.add_job(
-            SchedulerChain().scheduler_job,
+            self.start,
             "interval",
-            minutes=10
+            id="scheduler_job",
+            name="公共定时服务",
+            minutes=10,
+            kwargs={
+                'job_id': 'scheduler_job'
+            }
         )
 
         # 缓存清理服务，每隔24小时
@@ -290,9 +326,14 @@ class Scheduler(metaclass=Singleton):
 
         # 定时检查用户认证，每隔10分钟
         self._scheduler.add_job(
-            user_auth,
+            self.start,
             "interval",
-            minutes=10
+            id="user_auth",
+            name="用户认证检查",
+            minutes=10,
+            kwargs={
+                'job_id': 'user_auth'
+            }
         )
 
         # 注册插件公共服务
@@ -314,8 +355,9 @@ class Scheduler(metaclass=Singleton):
             job = self._jobs.get(job_id)
             if not job:
                 return
+            job_name = job.get("name")
             if job.get("running"):
-                logger.warning(f"定时任务 {job_id} 正在运行 ...")
+                logger.warning(f"定时任务 {job_id} - {job_name} 正在运行 ...")
                 return
             self._jobs[job_id]["running"] = True
         # 开始运行
@@ -324,8 +366,8 @@ class Scheduler(metaclass=Singleton):
                 kwargs = job.get("kwargs") or {}
             job["func"](*args, **kwargs)
         except Exception as e:
-            logger.error(f"定时任务 {job_id} 执行失败：{str(e)} - {traceback.format_exc()}")
-            SchedulerChain().messagehelper.put(title=f"定时任务 {job_id} 执行失败",
+            logger.error(f"定时任务 {job_name} 执行失败：{str(e)} - {traceback.format_exc()}")
+            SchedulerChain().messagehelper.put(title=f"{job_name} 执行失败",
                                                message=str(e),
                                                role="system")
         # 运行结束
