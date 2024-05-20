@@ -1,7 +1,9 @@
 import multiprocessing
 import os
+import signal
 import sys
 import threading
+from types import FrameType
 
 import uvicorn as uvicorn
 from PIL import Image
@@ -16,7 +18,7 @@ if SystemUtils.is_frozen():
     sys.stdout = open(os.devnull, 'w')
     sys.stderr = open(os.devnull, 'w')
 
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.core.module import ModuleManager
 from app.core.plugin import PluginManager
 from app.db.init import init_db, update_db, init_super_user
@@ -159,6 +161,22 @@ def check_auth():
         )
 
 
+def singal_handle():
+    """
+    监听停止信号
+    """
+    def stop_event(signum: int, _: FrameType):
+        """
+        SIGTERM信号处理
+        """
+        print(f"接收到停止信号：{signum}，正在停止系统...")
+        global_vars.stop_system()
+
+    # 设置信号处理程序
+    signal.signal(signal.SIGTERM, stop_event)
+    signal.signal(signal.SIGINT, stop_event)
+
+
 @App.on_event("shutdown")
 def shutdown_server():
     """
@@ -210,6 +228,8 @@ def start_module():
     start_frontend()
     # 检查认证状态
     check_auth()
+    # 监听停止信号
+    singal_handle()
 
 
 if __name__ == '__main__':

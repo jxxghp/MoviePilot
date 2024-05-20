@@ -279,9 +279,11 @@ class Command(metaclass=Singleton):
         """
         停止事件处理线程
         """
+        logger.info("正在停止事件处理...")
         self._event.set()
         try:
             self._thread.join()
+            logger.info("事件处理停止完成")
         except Exception as e:
             logger.error(f"停止事件处理线程出错：{str(e)} - {traceback.format_exc()}")
 

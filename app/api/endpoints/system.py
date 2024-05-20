@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from app import schemas
 from app.chain.search import SearchChain
 from app.chain.system import SystemChain
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.core.module import ModuleManager
 from app.core.security import verify_token
 from app.db.models import User
@@ -99,6 +99,8 @@ def get_progress(process_type: str, token: str):
 
     def event_generator():
         while True:
+            if global_vars.is_system_stopped():
+                break
             detail = progress.get(process_type)
             yield 'data: %s\n\n' % json.dumps(detail)
             time.sleep(0.2)
@@ -156,6 +158,8 @@ def get_message(token: str, role: str = "sys"):
 
     def event_generator():
         while True:
+            if global_vars.is_system_stopped():
+                break
             detail = message.get(role)
             yield 'data: %s\n\n' % (detail or '')
             time.sleep(3)
@@ -184,6 +188,8 @@ def get_logging(token: str, length: int = 50, logfile: str = "moviepilot.log"):
             for line in f.readlines()[-max(length, 50):]:
                 yield 'data: %s\n\n' % line
         while True:
+            if global_vars.is_system_stopped():
+                break
             for t in tailer.follow(open(log_path, 'r', encoding='utf-8')):
                 yield 'data: %s\n\n' % (t or '')
             time.sleep(1)
@@ -305,6 +311,8 @@ def restart_system(_: User = Depends(get_current_active_superuser)):
     """
     if not SystemUtils.can_restart():
         return schemas.Response(success=False, message="当前运行环境不支持重启操作！")
+    # 标识停止事件
+    global_vars.stop_system()
     # 执行重启
     ret, msg = SystemUtils.restart()
     return schemas.Response(success=ret, message=msg)

@@ -1,5 +1,6 @@
 import secrets
 import sys
+import threading
 from pathlib import Path
 from typing import List, Optional
 
@@ -9,6 +10,9 @@ from app.utils.system import SystemUtils
 
 
 class Settings(BaseSettings):
+    """
+    系统配置类
+    """
     # 项目名称
     PROJECT_NAME = "MoviePilot"
     # API路径
@@ -425,7 +429,31 @@ class Settings(BaseSettings):
         case_sensitive = True
 
 
+class GlobalVar(object):
+    """
+    全局标识
+    """
+    # 系统停止事件
+    STOP_EVENT: threading.Event = threading.Event()
+
+    def stop_system(self):
+        """
+        停止系统
+        """
+        self.STOP_EVENT.set()
+
+    def is_system_stopped(self):
+        """
+        是否停止
+        """
+        return self.STOP_EVENT.is_set()
+
+
+# 实例化配置
 settings = Settings(
     _env_file=Settings().CONFIG_PATH / "app.env",
     _env_file_encoding="utf-8"
 )
+
+# 全局标识
+global_vars = GlobalVar()

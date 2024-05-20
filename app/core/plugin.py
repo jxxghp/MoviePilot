@@ -187,6 +187,7 @@ class PluginManager(metaclass=Singleton):
         :param pid: 插件ID，为空停止所有插件
         """
         # 停止插件
+        logger.info("正在停止所有插件...")
         for plugin_id, plugin in self._running_plugins.items():
             if pid and plugin_id != pid:
                 continue
@@ -202,6 +203,7 @@ class PluginManager(metaclass=Singleton):
             # 清空
             self._plugins = {}
             self._running_plugins = {}
+        logger.info("插件停止完成")
 
     def __start_monitor(self):
         """
@@ -219,9 +221,10 @@ class PluginManager(metaclass=Singleton):
         """
         # 停止监测
         if self._observer:
-            logger.info("正在停止监测插件文件修改...")
+            logger.info("正在停止插件文件修改监测...")
             self._observer.stop()
             self._observer.join()
+            logger.info("插件文件修改监测停止完成")
 
     @staticmethod
     def __stop_plugin(plugin: Any):

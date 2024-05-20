@@ -504,10 +504,12 @@ class Scheduler(metaclass=Singleton):
         """
         try:
             if self._scheduler:
+                logger.info("正在停止定时任务...")
                 self._event.set()
                 self._scheduler.remove_all_jobs()
                 if self._scheduler.running:
                     self._scheduler.shutdown()
                 self._scheduler = None
+                logger.info("定时任务停止完成")
         except Exception as e:
             logger.error(f"停止定时任务失败：：{str(e)} - {traceback.format_exc()}")
