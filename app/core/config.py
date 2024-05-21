@@ -252,6 +252,8 @@ class Settings(BaseSettings):
     SUBSCRIBE_STATISTIC_SHARE: bool = True
     # 插件安装数据共享
     PLUGIN_STATISTIC_SHARE: bool = True
+    # 服务器地址，对应 https://github.com/jxxghp/MoviePilot-Server 项目
+    MP_SERVER_HOST: str = "https://movie-pilot.org"
 
     @validator("SUBSCRIBE_RSS_INTERVAL",
                "COOKIECLOUD_INTERVAL",

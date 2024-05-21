@@ -22,11 +22,11 @@ class PluginHelper(metaclass=Singleton):
 
     _base_url = "https://raw.githubusercontent.com/%s/%s/main/"
 
-    _install_reg = "https://movie-pilot.org/plugin/install/%s"
+    _install_reg = f"{settings.MP_SERVER_HOST}/plugin/install/%s"
 
-    _install_report = "https://movie-pilot.org/plugin/install"
+    _install_report = f"{settings.MP_SERVER_HOST}/plugin/install"
 
-    _install_statistic = "https://movie-pilot.org/plugin/statistic"
+    _install_statistic = f"{settings.MP_SERVER_HOST}/plugin/statistic"
 
     def __init__(self):
         self.systemconfig = SystemConfigOper()

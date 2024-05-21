@@ -16,13 +16,13 @@ class SubscribeHelper(metaclass=Singleton):
     订阅数据统计
     """
 
-    _sub_reg = "https://movie-pilot.org/subscribe/add"
+    _sub_reg = f"{settings.MP_SERVER_HOST}/subscribe/add"
 
-    _sub_done = "https://movie-pilot.org/subscribe/done"
+    _sub_done = f"{settings.MP_SERVER_HOST}/subscribe/done"
 
-    _sub_report = "https://movie-pilot.org/subscribe/report"
+    _sub_report = f"{settings.MP_SERVER_HOST}/subscribe/report"
 
-    _sub_statistic = "https://movie-pilot.org/subscribe/statistic"
+    _sub_statistic = f"{settings.MP_SERVER_HOST}/subscribe/statistic"
 
     def __init__(self):
         self.systemconfig = SystemConfigOper()
