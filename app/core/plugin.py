@@ -187,7 +187,10 @@ class PluginManager(metaclass=Singleton):
         :param pid: 插件ID，为空停止所有插件
         """
         # 停止插件
-        logger.info("正在停止所有插件...")
+        if pid:
+            logger.info(f"正在停止插件 {pid}...")
+        else:
+            logger.info("正在停止所有插件...")
         for plugin_id, plugin in self._running_plugins.items():
             if pid and plugin_id != pid:
                 continue
