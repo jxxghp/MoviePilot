@@ -133,7 +133,7 @@ class SearchChain(ChainBase):
         if no_exists and no_exists.get(mediakey):
             # 过滤剧集
             season_episodes = {sea: info.episodes
-                               for sea, info in no_exists[mediainfo.tmdb_id].items()}
+                               for sea, info in no_exists[mediakey].items()}
         elif mediainfo.season:
             # 豆瓣只搜索当前季
             season_episodes = {mediainfo.season: []}
