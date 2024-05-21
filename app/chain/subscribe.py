@@ -602,7 +602,7 @@ class SubscribeChain(ChainBase):
                     if not torrent_mediainfo or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
                         logger.info(f'{torrent_info.site_name} - {torrent_info.title} 订阅缓存为未识别状态，偿试重新识别...')
                         # 重新识别（不使用缓存）
-                        torrent_mediainfo = self.recognize_media(meta=meta, cache=False)
+                        torrent_mediainfo = self.recognize_media(meta=torrent_meta, cache=False)
                         if not torrent_mediainfo:
                             logger.warn(f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，偿试通过标题匹配...')
                             if self.torrenthelper.match_torrent(mediainfo=mediainfo,
