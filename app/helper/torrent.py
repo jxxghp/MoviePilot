@@ -464,17 +464,17 @@ class TorrentHelper(metaclass=Singleton):
         # 比对年份
         if mediainfo.year:
             if mediainfo.type == MediaType.TV:
-                # 剧集年份，每季的年份可能不同
+                # 剧集年份，每季的年份可能不同，没年份时不比较年份（很多剧集种子不带年份）
                 if torrent_meta.year and torrent_meta.year not in [year for year in
                                                                    mediainfo.season_years.values()]:
                     if logerror:
                         logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.season_years}')
                     return False
             else:
-                # 电影年份，上下浮动1年
-                if torrent_meta.year not in [str(int(mediainfo.year) - 1),
-                                             mediainfo.year,
-                                             str(int(mediainfo.year) + 1)]:
+                # 电影年份，上下浮动1年，没年份时不通过
+                if not torrent_meta.year or torrent_meta.year not in [str(int(mediainfo.year) - 1),
+                                                                      mediainfo.year,
+                                                                      str(int(mediainfo.year) + 1)]:
                     if logerror:
                         logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.year}')
                     return False
@@ -489,16 +489,20 @@ class TorrentHelper(metaclass=Singleton):
                 return True
         # 标题拆分
         if torrent_meta.org_string:
-            titles = [StringUtils.clear_upper(t) for t in re.split(r'[\s/【】.\[\]\-]+',
-                                                                   torrent_meta.org_string) if t]
+            # 只拆分出标题中的非英文单词进行匹配，英文单词容易误匹配（带空格的多个单词组合除外）
+            titles = [StringUtils.clear_upper(t) for t in re.split(
+                r'[\s/【】.\[\]\-]+',
+                torrent_meta.org_string
+            ) if not StringUtils.is_english_word(t)]
             # 在标题中判断是否存在标题、原语种标题
             if media_titles.intersection(titles):
                 logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}')
                 return True
-        # 在副标题中判断是否存在标题、原语种标题、别名、译名
+        # 在副标题中（非英文单词）判断是否存在标题、原语种标题、别名、译名
         if torrent.description:
-            subtitles = {StringUtils.clear_upper(t) for t in re.split(r'[\s/【】|]+',
-                                                                      torrent.description) if t}
+            subtitles = {StringUtils.clear_upper(t) for t in re.split(
+                r'[\s/【】|]+',
+                torrent.description) if not StringUtils.is_english_word(t)}
             if media_titles.intersection(subtitles) or media_names.intersection(subtitles):
                 logger.info(f'{mediainfo.title} 通过副标题匹配到资源：{torrent.site_name} - {torrent.title}，'
                             f'副标题：{torrent.description}')

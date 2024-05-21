@@ -138,6 +138,13 @@ class StringUtils:
         return True
 
     @staticmethod
+    def is_english_word(word: str) -> bool:
+        """
+        判断是否为英文单词，有空格时返回False
+        """
+        return word.isalpha()
+
+    @staticmethod
     def str_int(text: str) -> int:
         """
         web字符串转int
