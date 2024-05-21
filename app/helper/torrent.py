@@ -437,6 +437,16 @@ class TorrentHelper(metaclass=Singleton):
         :param torrent: 种子信息
         :param logerror: 是否记录错误日志
         """
+        # 比对词条指定的tmdbid
+        if torrent_meta.tmdbid or torrent_meta.doubanid:
+            if torrent_meta.tmdbid and torrent_meta.tmdbid == mediainfo.tmdb_id:
+                logger.info(
+                    f'{mediainfo.title} 通过词表指定TMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
+                return True
+            if torrent_meta.doubanid and torrent_meta.doubanid == mediainfo.douban_id:
+                logger.info(
+                    f'{mediainfo.title} 通过词表指定豆瓣ID匹配到资源：{torrent.site_name} - {torrent.title}')
+                return True
         # 要匹配的媒体标题、原标题
         media_titles = {
                            StringUtils.clear_upper(mediainfo.title),

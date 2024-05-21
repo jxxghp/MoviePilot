@@ -597,9 +597,27 @@ class SubscribeChain(ChainBase):
                     torrent_meta = context.meta_info
                     torrent_mediainfo = context.media_info
                     torrent_info = context.torrent_info
-                    # 如果识别了媒体信息，则比对TMDBID和类型
-                    if torrent_mediainfo.tmdb_id or torrent_mediainfo.douban_id:
-                        # 直接比对媒体信息
+
+                    # 先判断是否有没识别的种子
+                    if not torrent_mediainfo or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
+                        logger.info(f'{torrent_info.site_name} - {torrent_info.title} 订阅缓存为未识别状态，偿试重新识别...')
+                        # 重新识别（不使用缓存）
+                        torrent_mediainfo = self.recognize_media(meta=meta, cache=False)
+                        if not torrent_mediainfo:
+                            logger.warn(f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，偿试通过标题匹配...')
+                            if self.torrenthelper.match_torrent(mediainfo=mediainfo,
+                                                                torrent_meta=torrent_meta,
+                                                                torrent=torrent_info):
+                                # 匹配成功
+                                logger.info(f'{mediainfo.title_year} 通过标题匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
+                                # 更新缓存
+                                torrent_mediainfo = mediainfo
+                                context.media_info = mediainfo
+                            else:
+                                continue
+
+                    # 直接比对媒体信息
+                    if torrent_mediainfo and (torrent_mediainfo.tmdb_id or torrent_mediainfo.douban_id):
                         if torrent_mediainfo.type != mediainfo.type:
                             continue
                         if torrent_mediainfo.tmdb_id \
@@ -610,23 +628,7 @@ class SubscribeChain(ChainBase):
                             continue
                         logger.info(
                             f'{mediainfo.title_year} 通过媒体信ID匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
-                    else:
-                        # 没有torrent_mediainfo媒体信息，按标题匹配
-                        manual_match = False
-                        # 比对词条指定的tmdbid
-                        if torrent_meta.tmdbid or torrent_meta.doubanid:
-                            if torrent_meta.tmdbid and torrent_meta.tmdbid != mediainfo.tmdb_id:
-                                continue
-                            if torrent_meta.doubanid and torrent_meta.doubanid != mediainfo.douban_id:
-                                continue
-                            manual_match = True
-                        if not manual_match:
-                            # 没有指定tmdbid，按标题匹配
-                            if not self.torrenthelper.match_torrent(mediainfo=mediainfo,
-                                                                    torrent_meta=torrent_meta,
-                                                                    torrent=torrent_info,
-                                                                    logerror=False):
-                                continue
+
                     # 优先级过滤规则
                     if subscribe.best_version:
                         priority_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
