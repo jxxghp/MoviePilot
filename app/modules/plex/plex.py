@@ -708,6 +708,10 @@ class Plex:
                     title = "%s 第%s季 第%s集" % (item.grandparentTitle, item.parentIndex, item.index)
                     thumb = (item.parentThumb or item.grandparentThumb or '').lstrip('/')
                     image = (self._host + thumb + f"?X-Plex-Token={self._token}")
+                elif item.TYPE == "show":
+                    item_type = MediaType.TV.value
+                    title = "%s 共%s季" % (item.title, item.seasonCount)
+                    image = item.posterUrl
                 link = self.get_play_url(item.key)
                 ret_resume.append(schemas.MediaServerPlayItem(
                     id=item.key,
@@ -717,7 +721,5 @@ class Plex:
                     image=image,
                     link=link
                 ))
-
             offset += num
-
         return ret_resume[:num]
