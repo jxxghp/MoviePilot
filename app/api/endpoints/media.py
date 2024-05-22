@@ -119,6 +119,14 @@ def scrape(path: str,
     return schemas.Response(success=True, message="刮削完成")
 
 
+@router.get("/category", summary="查询自动分类配置", response_model=dict)
+def category(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询自动分类配置
+    """
+    return MediaChain().media_category() or {}
+
+
 @router.get("/{mediaid}", summary="查询媒体详情", response_model=schemas.MediaInfo)
 def media_info(mediaid: str, type_name: str,
                _: schemas.TokenPayload = Depends(verify_token)) -> Any:

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, List, Tuple, Union
+from typing import Optional, List, Tuple, Union, Dict
 
 import cn2an
 
@@ -224,6 +224,17 @@ class TheMovieDbModule(_ModuleBase):
         :return: TVDB信息
         """
         return self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
+
+    def media_category(self) -> Optional[Dict[str, list]]:
+        """
+        获取媒体分类
+        :return: 获取二级分类配置字典项，需包括电影、电视剧、动漫
+        """
+        return {
+            "电影": list(self.category.movie_categorys),
+            "电视剧": list(self.category.tv_categorys),
+            "动漫": list(self.category.anime_categorys)
+        }
 
     def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
         """

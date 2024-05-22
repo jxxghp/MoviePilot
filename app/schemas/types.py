@@ -84,6 +84,12 @@ class SystemConfigKey(Enum):
     PluginInstallReport = "PluginInstallReport"
     # 订阅统计
     SubscribeReport = "SubscribeReport"
+    # 用户自定义CSS
+    UserCustomCSS = "UserCustomCSS"
+    # 下载目录定义
+    DownloadDirectories = "DownloadDirectories"
+    # 媒体库目录定义
+    LibraryDirectories = "LibraryDirectories"
 
 
 # 处理进度Key字典
