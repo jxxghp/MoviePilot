@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.chain.media import MediaChain
 from app.chain.subscribe import SubscribeChain
-from app.core.config import settings
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_uri_apikey
 from app.db import get_db
@@ -121,7 +120,7 @@ def arr_rootfolder(_: str = Depends(verify_uri_apikey)) -> Any:
     return [
         {
             "id": 1,
-            "path": "/" if not settings.LIBRARY_PATHS else str(settings.LIBRARY_PATHS[0]),
+            "path": "/",
             "accessible": True,
             "freeSpace": 0,
             "unmappedFolders": []

@@ -34,7 +34,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         # 识别媒体信息
         mediainfo: MediaInfo = self.recognize_media(meta=metainfo)
         if not mediainfo:
-            # 偿试使用辅助识别，如果有注册响应事件的话
+            # 尝试使用辅助识别，如果有注册响应事件的话
             if eventmanager.check(EventType.NameRecognize):
                 logger.info(f'请求辅助识别，标题：{title} ...')
                 mediainfo = self.recognize_help(title=title, org_meta=metainfo)
@@ -143,7 +143,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         # 识别媒体信息
         mediainfo = self.recognize_media(meta=file_meta)
         if not mediainfo:
-            # 偿试使用辅助识别，如果有注册响应事件的话
+            # 尝试使用辅助识别，如果有注册响应事件的话
             if eventmanager.check(EventType.NameRecognize):
                 logger.info(f'请求辅助识别，标题：{file_path.name} ...')
                 mediainfo = self.recognize_help(title=path, org_meta=file_meta)

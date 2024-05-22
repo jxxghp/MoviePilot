@@ -14,6 +14,8 @@ from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.mediaserver_oper import MediaServerOper
+from app.helper.directory import DirectoryHelper
+from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification
@@ -32,6 +34,8 @@ class DownloadChain(ChainBase):
         self.torrent = TorrentHelper()
         self.downloadhis = DownloadHistoryOper()
         self.mediaserver = MediaServerOper()
+        self.directoryhelper = DirectoryHelper()
+        self.messagehelper = MessageHelper()
 
     def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo,
                               channel: MessageChannel = None, userid: str = None, username: str = None,
@@ -227,35 +231,23 @@ class DownloadChain(ChainBase):
 
         # 下载目录
         if not save_path:
-            if settings.DOWNLOAD_CATEGORY and _media and _media.category:
+            # 获取下载目录
+            dir_info = self.directoryhelper.get_download_dir(_media)
+            if not dir_info or not dir_info.path:
+                logger.error(f"未找到下载目录：{_media.type.value} {_media.title_year}")
+                self.messagehelper.put(f"{_media.type.value} {_media.title_year} 未找到下载目录！",
+                                       title="下载失败", role="system")
+                return None
+
+            if (dir_info.category or dir_info.auto_category) and _media and _media.category:
                 # 开启下载二级目录
-                if _media.type != MediaType.TV:
-                    # 电影
-                    download_dir = settings.SAVE_MOVIE_PATH / _media.category
-                else:
-                    if _media.genre_ids \
-                            and set(_media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
-                        # 动漫
-                        download_dir = settings.SAVE_ANIME_PATH / _media.category
-                    else:
-                        # 电视剧
-                        download_dir = settings.SAVE_TV_PATH / _media.category
+                download_dir = Path(dir_info.path) / _media.category
             elif _media:
                 # 未开启下载二级目录
-                if _media.type != MediaType.TV:
-                    # 电影
-                    download_dir = settings.SAVE_MOVIE_PATH
-                else:
-                    if _media.genre_ids \
-                            and set(_media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
-                        # 动漫
-                        download_dir = settings.SAVE_ANIME_PATH
-                    else:
-                        # 电视剧
-                        download_dir = settings.SAVE_TV_PATH
+                download_dir = Path(dir_info.path)
             else:
                 # 未识别
-                download_dir = settings.SAVE_PATH
+                download_dir = Path(dir_info.path)
         else:
             # 自定义下载目录
             download_dir = Path(save_path)

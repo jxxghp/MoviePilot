@@ -76,10 +76,10 @@ class Scheduler(metaclass=Singleton):
             __max_try__ = 30
             if self._auth_count > __max_try__:
                 SchedulerChain().messagehelper.put(title=f"用户认证失败",
-                                                   message="用户认证失败次数过多，将不再偿试认证！",
+                                                   message="用户认证失败次数过多，将不再尝试认证！",
                                                    role="system")
                 return
-            logger.info("用户未认证，正在偿试重新认证...")
+            logger.info("用户未认证，正在尝试重新认证...")
             status, msg = SitesHelper().check_user()
             if status:
                 self._auth_count = 0
@@ -95,7 +95,7 @@ class Scheduler(metaclass=Singleton):
                 self._auth_count += 1
                 logger.error(f"用户认证失败：{msg}，共失败 {self._auth_count} 次")
                 if self._auth_count >= __max_try__:
-                    logger.error("用户认证失败次数过多，将不再偿试认证！")
+                    logger.error("用户认证失败次数过多，将不再尝试认证！")
 
         # 各服务的运行状态
         self._jobs = {

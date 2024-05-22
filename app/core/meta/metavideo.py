@@ -1,5 +1,4 @@
 import re
-from pathlib import Path
 from typing import Optional
 
 from Pinyin2Hanzi import is_pinyin
@@ -138,7 +137,7 @@ class MetaVideo(MetaBase):
         # 处理part
         if self.part and self.part.upper() == "PART":
             self.part = None
-        # 没有中文标题时，偿试中描述中获取中文名
+        # 没有中文标题时，尝试中描述中获取中文名
         if not self.cn_name and self.en_name and self.subtitle:
             if self.__is_pinyin(self.en_name):
                 # 英文名是拼音

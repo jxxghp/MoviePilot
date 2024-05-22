@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends
@@ -5,10 +6,10 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.dashboard import DashboardChain
-from app.core.config import settings
 from app.core.security import verify_token, verify_uri_token
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
+from app.helper.directory import DirectoryHelper
 from app.scheduler import Scheduler
 from app.utils.system import SystemUtils
 
@@ -47,7 +48,8 @@ def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询存储空间信息
     """
-    total_storage, free_storage = SystemUtils.space_usage(settings.LIBRARY_PATHS)
+    library_dirs = DirectoryHelper().get_library_dirs()
+    total_storage, free_storage = SystemUtils.space_usage([Path(d.path) for d in library_dirs if d.path])
     return schemas.Storage(
         total_storage=total_storage,
         used_storage=total_storage - free_storage
@@ -75,6 +77,10 @@ def downloader(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询下载器信息
     """
+    # 下载目录空间
+    download_dirs = DirectoryHelper().get_download_dirs()
+    _, free_space = SystemUtils.space_usage([Path(d.path) for d in download_dirs if d.path])
+    # 下载器信息
     downloader_info = schemas.DownloaderInfo()
     transfer_infos = DashboardChain().downloader_info()
     if transfer_infos:
@@ -83,7 +89,7 @@ def downloader(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
             downloader_info.upload_speed += transfer_info.upload_speed
             downloader_info.download_size += transfer_info.download_size
             downloader_info.upload_size += transfer_info.upload_size
-        downloader_info.free_space = SystemUtils.free_space(settings.SAVE_PATH)
+        downloader_info.free_space = free_space
     return downloader_info
 
 

@@ -59,6 +59,8 @@ class TransferInfo(BaseModel):
     fail_list: Optional[list] = []
     # 错误信息
     message: Optional[str] = None
+    # 是否需要刮削
+    need_scrape: Optional[bool] = False
 
     def to_dict(self):
         """

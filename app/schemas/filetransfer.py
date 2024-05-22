@@ -18,7 +18,7 @@ class MediaDirectory(BaseModel):
     # 媒体类别 动画电影/国产剧
     category: Optional[str] = None
     # 刮削媒体信息
-    scrape: Optional[bool] = True
+    scrape: Optional[bool] = False
     # 自动二级分类，未指定类别时自动分类
     auto_category: Optional[bool] = False
     # 优先级

@@ -357,7 +357,7 @@ class TransferChain(ChainBase):
                     transferinfo=transferinfo
                 )
                 # 刮削单个文件
-                if settings.SCRAP_METADATA:
+                if transferinfo.need_scrape:
                     self.scrape_metadata(path=transferinfo.target_path,
                                          mediainfo=file_mediainfo,
                                          transfer_type=transfer_type,
