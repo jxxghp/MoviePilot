@@ -411,9 +411,6 @@ class FileTransferModule(_ModuleBase):
         if not target_dir.media_type and target_dir.auto_category:
             # 一级自动分类
             download_dir = Path(target_dir.path) / mediainfo.type.value
-        elif target_dir.media_type:
-            # 一级自定义分类
-            download_dir = Path(target_dir.path) / target_dir.media_type
         else:
             download_dir = Path(target_dir.path)
 
