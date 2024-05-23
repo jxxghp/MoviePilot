@@ -12,11 +12,11 @@ class RuleParser:
         # 原子
         atom: Combine = Combine(Word(alphas, alphanums) | Word(nums) + Word(alphas, alphanums))
         # 逻辑非操作符
-        operator_not: Literal = Literal('!').setParseAction(lambda: 'not')
+        operator_not: Literal = Literal('!').setParseAction(lambda t: 'not')
         # 逻辑或操作符
-        operator_or: Literal = Literal('|').setParseAction(lambda: 'or')
+        operator_or: Literal = Literal('|').setParseAction(lambda t: 'or')
         # 逻辑与操作符
-        operator_and: Literal = Literal('&').setParseAction(lambda: 'and')
+        operator_and: Literal = Literal('&').setParseAction(lambda t: 'and')
         # 定义表达式的语法规则
         expr <<= operator_not + expr | operator_or | operator_and | atom | ('(' + expr + ')')
 
