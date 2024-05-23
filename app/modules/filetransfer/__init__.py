@@ -82,7 +82,8 @@ class FileTransferModule(_ModuleBase):
 
     def transfer(self, path: Path, meta: MetaBase, mediainfo: MediaInfo,
                  transfer_type: str, target: Path = None,
-                 episodes_info: List[TmdbEpisode] = None) -> TransferInfo:
+                 episodes_info: List[TmdbEpisode] = None,
+                 scrape: bool = None) -> TransferInfo:
         """
         文件转移
         :param path:  文件路径
@@ -91,6 +92,7 @@ class FileTransferModule(_ModuleBase):
         :param transfer_type:  转移方式
         :param target:  目标路径
         :param episodes_info: 当前季的全部集信息
+        :param scrape: 是否刮削元数据
         :return: {path, target_path, message}
         """
         # 获取目标路径
@@ -103,7 +105,10 @@ class FileTransferModule(_ModuleBase):
                                     path=path,
                                     message="未找到有效的媒体库目录")
             # 拼装媒体库一、二级子目录
-            need_scrape = dir_info.scrape
+            if scrape is None:
+                need_scrape = dir_info.scrape
+            else:
+                need_scrape = scrape
             target = self.__get_dest_dir(mediainfo=mediainfo, target_dir=dir_info)
         else:
             # 指定了目的目录

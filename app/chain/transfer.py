@@ -86,7 +86,8 @@ class TransferChain(ChainBase):
                     mediainfo: MediaInfo = None, download_hash: str = None,
                     target: Path = None, transfer_type: str = None,
                     season: int = None, epformat: EpisodeFormat = None,
-                    min_filesize: int = 0, force: bool = False) -> Tuple[bool, str]:
+                    min_filesize: int = 0, scrape: bool = None,
+                    force: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的转移操作
         :param path: 待转移目录或文件
@@ -98,6 +99,7 @@ class TransferChain(ChainBase):
         :param season: 季
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
+        :param scrape: 是否刮削元数据
         :param force: 是否强制转移
         返回：成功标识，错误信息
         """
@@ -300,7 +302,8 @@ class TransferChain(ChainBase):
                                                            path=file_path,
                                                            transfer_type=transfer_type,
                                                            target=target,
-                                                           episodes_info=episodes_info)
+                                                           episodes_info=episodes_info,
+                                                           scrape=scrape)
                 if not transferinfo:
                     logger.error("文件转移模块运行失败")
                     return False, "文件转移模块运行失败"
@@ -561,6 +564,7 @@ class TransferChain(ChainBase):
                         transfer_type: str = None,
                         epformat: EpisodeFormat = None,
                         min_filesize: int = 0,
+                        scrape: bool = None,
                         force: bool = False) -> Tuple[bool, Union[str, list]]:
         """
         手动转移，支持复杂条件，带进度显示
@@ -573,6 +577,7 @@ class TransferChain(ChainBase):
         :param transfer_type: 转移类型
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
+        :param scrape: 是否刮削元数据
         :param force: 是否强制转移
         """
         logger.info(f"手动转移：{in_path} ...")
@@ -597,6 +602,7 @@ class TransferChain(ChainBase):
                 season=season,
                 epformat=epformat,
                 min_filesize=min_filesize,
+                scrape=scrape,
                 force=force
             )
             if not state:

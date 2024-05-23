@@ -28,6 +28,7 @@ def manual_transfer(path: str = None,
                     episode_part: str = None,
                     episode_offset: int = 0,
                     min_filesize: int = 0,
+                    scrape: bool = None,
                     db: Session = Depends(get_db),
                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -45,6 +46,7 @@ def manual_transfer(path: str = None,
     :param episode_part: 剧集识别分集信息
     :param episode_offset: 剧集识别偏移量
     :param min_filesize: 最小文件大小(MB)
+    :param scrape: 是否刮削元数据
     :param db: 数据库
     :param _: Token校验
     """
@@ -99,6 +101,7 @@ def manual_transfer(path: str = None,
         transfer_type=transfer_type,
         epformat=epformat,
         min_filesize=min_filesize,
+        scrape=scrape,
         force=force
     )
     # 失败

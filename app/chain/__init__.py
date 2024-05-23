@@ -358,7 +358,8 @@ class ChainBase(metaclass=ABCMeta):
 
     def transfer(self, path: Path, meta: MetaBase, mediainfo: MediaInfo,
                  transfer_type: str, target: Path = None,
-                 episodes_info: List[TmdbEpisode] = None) -> Optional[TransferInfo]:
+                 episodes_info: List[TmdbEpisode] = None,
+                 scrape: bool = None) -> Optional[TransferInfo]:
         """
         文件转移
         :param path:  文件路径
@@ -367,10 +368,12 @@ class ChainBase(metaclass=ABCMeta):
         :param transfer_type:  转移模式
         :param target:  转移目标路径
         :param episodes_info: 当前季的全部集信息
+        :param scrape: 是否刮削元数据
         :return: {path, target_path, message}
         """
         return self.run_module("transfer", path=path, meta=meta, mediainfo=mediainfo,
-                               transfer_type=transfer_type, target=target, episodes_info=episodes_info)
+                               transfer_type=transfer_type, target=target, episodes_info=episodes_info,
+                               scrape=scrape)
 
     def transfer_completed(self, hashs: Union[str, list], path: Path = None,
                            downloader: str = settings.DEFAULT_DOWNLOADER) -> None:
