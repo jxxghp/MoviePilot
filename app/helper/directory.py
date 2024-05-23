@@ -90,4 +90,3 @@ class DirectoryHelper:
                 return library_dir
 
         return None
-
