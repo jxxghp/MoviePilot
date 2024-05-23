@@ -472,7 +472,7 @@ class DoubanModule(_ModuleBase):
         else:
             infos = self.doubanapi.tv_recommend(start=(page - 1) * count, count=count,
                                                 sort=sort, tags=tags)
-        if infos:
+        if infos and infos.get("items"):
             medias = [MediaInfo(douban_info=info) for info in infos.get("items")]
             return [media for media in medias if media.poster_path
                     and "movie_large.jpg" not in media.poster_path
@@ -488,7 +488,7 @@ class DoubanModule(_ModuleBase):
         """
         infos = self.doubanapi.movie_showing(start=(page - 1) * count,
                                              count=count)
-        if infos:
+        if infos and infos.get("subject_collection_items"):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
@@ -508,7 +508,7 @@ class DoubanModule(_ModuleBase):
         """
         infos = self.doubanapi.tv_global_best_weekly(start=(page - 1) * count,
                                                      count=count)
-        if infos:
+        if infos and infos.get("subject_collection_items"):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
@@ -518,7 +518,7 @@ class DoubanModule(_ModuleBase):
         """
         infos = self.doubanapi.tv_animation(start=(page - 1) * count,
                                             count=count)
-        if infos:
+        if infos and infos.get("subject_collection_items"):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
@@ -528,7 +528,7 @@ class DoubanModule(_ModuleBase):
         """
         infos = self.doubanapi.movie_hot_gaia(start=(page - 1) * count,
                                               count=count)
-        if infos:
+        if infos and infos.get("subject_collection_items"):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
@@ -538,7 +538,7 @@ class DoubanModule(_ModuleBase):
         """
         infos = self.doubanapi.tv_hot(start=(page - 1) * count,
                                       count=count)
-        if infos:
+        if infos and infos.get("subject_collection_items"):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
@@ -553,7 +553,7 @@ class DoubanModule(_ModuleBase):
         if not meta.name:
             return []
         result = self.doubanapi.search(meta.name)
-        if not result:
+        if not result or not result.get("items"):
             return []
         # 返回数据
         ret_medias = []
@@ -618,7 +618,7 @@ class DoubanModule(_ModuleBase):
         # 搜索
         logger.info(f"开始使用名称 {name} 匹配豆瓣信息 ...")
         result = self.doubanapi.search(f"{name} {year or ''}".strip())
-        if not result:
+        if not result or not result.get("items"):
             logger.warn(f"未找到 {name} 的豆瓣信息")
             return {}
         # 触发rate limit
@@ -654,7 +654,7 @@ class DoubanModule(_ModuleBase):
         """
         infos = self.doubanapi.movie_top250(start=(page - 1) * count,
                                             count=count)
-        if infos:
+        if infos and infos.get("subject_collection_items"):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
