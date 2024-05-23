@@ -243,9 +243,6 @@ class DownloadChain(ChainBase):
             if not dir_info.media_type and dir_info.auto_category:
                 # 一级自动分类
                 download_dir = Path(dir_info.path) / _media.type.value
-            elif dir_info.media_type:
-                # 一级自定义分类
-                download_dir = Path(dir_info.path) / dir_info.media_type
             else:
                 # 一级不分类
                 download_dir = Path(dir_info.path)
