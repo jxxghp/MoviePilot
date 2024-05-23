@@ -408,10 +408,20 @@ class FileTransferModule(_ModuleBase):
         :target_dir: 媒体库根目录
         :typename_dir: 是否加上类型目录
         """
-        if target_dir.auto_category or target_dir.category:
-            return Path(target_dir.path) / mediainfo.category
+        if not target_dir.media_type and target_dir.auto_category:
+            # 一级自动分类
+            download_dir = Path(target_dir.path) / mediainfo.type.value
+        elif target_dir.media_type:
+            # 一级自定义分类
+            download_dir = Path(target_dir.path) / target_dir.media_type
         else:
-            return Path(target_dir.path)
+            download_dir = Path(target_dir.path)
+
+        if (target_dir.category or target_dir.auto_category) and mediainfo.category:
+            # 二级自动分类
+            download_dir = download_dir / mediainfo.category
+
+        return download_dir
 
     def transfer_media(self,
                        in_path: Path,

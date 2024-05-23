@@ -239,15 +239,21 @@ class DownloadChain(ChainBase):
                                        title="下载失败", role="system")
                 return None
 
-            if (dir_info.category or dir_info.auto_category) and _media and _media.category:
-                # 开启下载二级目录
-                download_dir = Path(dir_info.path) / _media.category
-            elif _media:
-                # 未开启下载二级目录
-                download_dir = Path(dir_info.path)
+            # 一级目录
+            if not dir_info.media_type and dir_info.auto_category:
+                # 一级自动分类
+                download_dir = Path(dir_info.path) / _media.type.value
+            elif dir_info.media_type:
+                # 一级自定义分类
+                download_dir = Path(dir_info.path) / dir_info.media_type
             else:
-                # 未识别
+                # 一级不分类
                 download_dir = Path(dir_info.path)
+
+            # 二级目录
+            if (dir_info.category or dir_info.auto_category) and _media and _media.category:
+                # 二级目录自动分类
+                download_dir = download_dir / _media.category
         else:
             # 自定义下载目录
             download_dir = Path(save_path)
