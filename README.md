@@ -48,7 +48,7 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 - Windows
 
   1. 独立执行文件版本：下载 [MoviePilot.exe](https://github.com/jxxghp/MoviePilot/releases)，双击运行后自动生成配置文件目录，访问：http://localhost:3000
-  2. 安装包版本：[Windows-MoviePilot](https://github.com/developer-wlj/Windows-MoviePilot)
+  2. 安装包版本【推荐】：[Windows-MoviePilot](https://github.com/developer-wlj/Windows-MoviePilot)
 
 - 群晖套件
 
