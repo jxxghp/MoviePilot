@@ -94,24 +94,6 @@ def update_site(
     return schemas.Response(success=True)
 
 
-@router.delete("/{site_id}", summary="删除站点", response_model=schemas.Response)
-def delete_site(
-        site_id: int,
-        db: Session = Depends(get_db),
-        _: User = Depends(get_current_active_superuser)
-) -> Any:
-    """
-    删除站点
-    """
-    Site.delete(db, site_id)
-    # 插件站点删除
-    EventManager().send_event(EventType.SiteDeleted,
-                              {
-                                  "site_id": site_id
-                              })
-    return schemas.Response(success=True)
-
-
 @router.get("/cookiecloud", summary="CookieCloud同步", response_model=schemas.Response)
 def cookie_cloud_sync(background_tasks: BackgroundTasks,
                       _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -139,6 +121,21 @@ def reset(db: Session = Depends(get_db),
                                   "site_id": "*"
                               })
     return schemas.Response(success=True, message="站点已重置！")
+
+
+@router.post("/priorities", summary="批量更新站点优先级", response_model=schemas.Response)
+def update_sites_priority(
+        priorities: List[dict],
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    批量更新站点优先级
+    """
+    for priority in priorities:
+        site = Site.get(db, priority.get("id"))
+        if site:
+            site.update(db, {"pri": priority.get("pri")})
+    return schemas.Response(success=True)
 
 
 @router.get("/cookie/{site_id}", summary="更新站点Cookie&UA", response_model=schemas.Response)
@@ -293,3 +290,21 @@ def read_site(
             detail=f"站点 {site_id} 不存在",
         )
     return site
+
+
+@router.delete("/{site_id}", summary="删除站点", response_model=schemas.Response)
+def delete_site(
+        site_id: int,
+        db: Session = Depends(get_db),
+        _: User = Depends(get_current_active_superuser)
+) -> Any:
+    """
+    删除站点
+    """
+    Site.delete(db, site_id)
+    # 插件站点删除
+    EventManager().send_event(EventType.SiteDeleted,
+                              {
+                                  "site_id": site_id
+                              })
+    return schemas.Response(success=True)
