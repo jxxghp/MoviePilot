@@ -248,8 +248,8 @@ class DownloadChain(ChainBase):
                 download_dir = Path(dir_info.path)
 
             # 二级目录
-            if (dir_info.category or dir_info.auto_category) and _media and _media.category:
-                # 二级目录自动分类
+            if not dir_info.category and dir_info.auto_category and _media and _media.category:
+                # 二级自动分类
                 download_dir = download_dir / _media.category
         else:
             # 自定义下载目录
