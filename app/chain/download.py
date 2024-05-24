@@ -959,16 +959,14 @@ class DownloadChain(ChainBase):
 
                         # 删除源种子
                         logger.info(f"删除源下载器下载任务：{settings.DEFAULT_DOWNLOADER} - {torrent_hash}")
-                        self.remove_torrents(delete_file=True,
-                                             hashs=torrent_hash,
+                        self.remove_torrents(hashs=torrent_hash,
                                              downloader=settings.DEFAULT_DOWNLOADER)
                         handle_torrent_hashs.append(torrent_hash)
 
                     # 删除转种后任务
                     logger.info(f"删除转种后下载任务：{download} - {download_id}")
                     # 删除转种后下载任务
-                    self.remove_torrents(delete_file=True,
-                                         hashs=download_id,
+                    self.remove_torrents(hashs=download_id,
                                          downloader=download)
                     handle_torrent_hashs.append(download_id)
                 else:
@@ -992,8 +990,7 @@ class DownloadChain(ChainBase):
                 if delete_flag:
                     # 删除源种子
                     logger.info(f"删除源下载器下载任务：{download} - {download_id}")
-                    self.remove_torrents(delete_file=True,
-                                         hashs=download_id,
+                    self.remove_torrents(hashs=download_id,
                                          downloader=download)
                 else:
                     # 暂停源种子
@@ -1002,8 +999,7 @@ class DownloadChain(ChainBase):
                 handle_torrent_hashs.append(download_id)
 
             # 处理辅种
-            handle_torrent_hashs = self.__del_seed(download=download,
-                                                   download_id=download_id,
+            handle_torrent_hashs = self.__del_seed(download_id=download_id,
                                                    delete_flag=delete_flag,
                                                    handle_torrent_hashs=handle_torrent_hashs)
             # 处理合集
@@ -1049,8 +1045,7 @@ class DownloadChain(ChainBase):
 
                             # 删除合集种子
                             if delete_flag:
-                                self.remove_torrents(delete_file=True,
-                                                     hashs=download_file.download_hash,
+                                self.remove_torrents(hashs=download_file.download_hash,
                                                      downloader=download_file.downloader)
                                 logger.info(f"删除合集种子 {download_file.downloader} {download_file.download_hash}")
                             else:
@@ -1062,8 +1057,7 @@ class DownloadChain(ChainBase):
                             handle_torrent_hashs.append(download_file.download_hash)
 
                             # 处理合集辅种
-                            handle_torrent_hashs = self.__del_seed(download=download_file.downloader,
-                                                                   download_id=download_file.download_hash,
+                            handle_torrent_hashs = self.__del_seed(download_id=download_file.download_hash,
                                                                    delete_flag=delete_flag,
                                                                    handle_torrent_hashs=handle_torrent_hashs)
         except Exception as e:
@@ -1072,7 +1066,7 @@ class DownloadChain(ChainBase):
 
         return handle_torrent_hashs
 
-    def __del_seed(self, download, download_id, delete_flag, handle_torrent_hashs):
+    def __del_seed(self, download_id, delete_flag, handle_torrent_hashs):
         """
         删除辅种
         """
@@ -1099,18 +1093,16 @@ class DownloadChain(ChainBase):
                     # 删除辅种
                     if delete_flag:
                         logger.info(f"删除辅种：{downloader} - {torrent}")
-                        self.remove_torrents(delete_file=True,
-                                             hashs=torrent,
-                                             downloader=download)
+                        self.remove_torrents(hashs=torrent,
+                                             downloader=downloader)
                     # 暂停辅种
                     else:
                         self.stop_torrents(hashs=torrent,
-                                           downloader=download)
+                                           downloader=downloader)
                         logger.info(f"辅种：{downloader} - {torrent} 暂停")
 
                     # 处理辅种的辅种
-                    handle_torrent_hashs = self.__del_seed(download=downloader,
-                                                           download_id=torrent,
+                    handle_torrent_hashs = self.__del_seed(download_id=torrent,
                                                            delete_flag=delete_flag,
                                                            handle_torrent_hashs=handle_torrent_hashs)
 
