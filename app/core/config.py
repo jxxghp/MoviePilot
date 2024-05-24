@@ -185,6 +185,8 @@ class Settings(BaseSettings):
     PLEX_TOKEN: Optional[str] = None
     # 转移方式 link/copy/move/softlink
     TRANSFER_TYPE: str = "copy"
+    # 是否同盘优先
+    TRANSFER_SAME_DISK: bool = True
     # CookieCloud是否启动本地服务
     COOKIECLOUD_ENABLE_LOCAL: Optional[bool] = False
     # CookieCloud服务器地址

@@ -72,9 +72,9 @@ class FileTransferModule(_ModuleBase):
                 for d_path in download_paths:
                     download_path = Path(d_path.path)
                     if l_path.media_type == d_path.media_type and l_path.category == d_path.category:
-                        if library_path.stat().st_dev != download_path.stat().st_dev:
+                        if not SystemUtils.is_same_disk(library_path, download_path):
                             return False, f"媒体库目录 {library_path} " \
-                                          f"与下载目录 {download_path} 不在同一设备，将无法硬链接"
+                                          f"与下载目录 {download_path} 不在同一磁盘/存储空间/映射路径，将无法硬链接"
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
@@ -98,8 +98,8 @@ class FileTransferModule(_ModuleBase):
         # 获取目标路径
         if not target:
             # 未指定目的目录，选择一个媒体库
-            dir_info = DirectoryHelper().get_library_dir(mediainfo)
-            if not dir_info or not dir_info.path:
+            dir_info = DirectoryHelper().get_library_dir(mediainfo, in_path=path)
+            if not dir_info:
                 logger.error(f"{mediainfo.type.value} {mediainfo.title_year} 未找到有效的媒体库目录，无法转移文件，源路径：{path}")
                 return TransferInfo(success=False,
                                     path=path,

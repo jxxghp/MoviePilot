@@ -233,7 +233,7 @@ class DownloadChain(ChainBase):
         if not save_path:
             # 获取下载目录
             dir_info = self.directoryhelper.get_download_dir(_media)
-            if not dir_info or not dir_info.path:
+            if not dir_info:
                 logger.error(f"未找到下载目录：{_media.type.value} {_media.title_year}")
                 self.messagehelper.put(f"{_media.type.value} {_media.title_year} 未找到下载目录！",
                                        title="下载失败", role="system")

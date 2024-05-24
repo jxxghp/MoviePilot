@@ -465,3 +465,14 @@ class SystemUtils:
         except Exception as err:
             print(str(err))
             return False, f"重启时发生错误：{str(err)}"
+
+    @staticmethod
+    def is_same_disk(src: Path, dest: Path) -> bool:
+        """
+        判断两个路径是否在同一磁盘
+        """
+        if not src.exists() or not dest.exists():
+            return False
+        if os.name == "nt":
+            return src.drive == dest.drive
+        return os.stat(src).st_dev == os.stat(dest).st_dev
