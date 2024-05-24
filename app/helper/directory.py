@@ -40,23 +40,22 @@ class DirectoryHelper:
         根据媒体信息获取下载目录
         :param media: 媒体信息
         """
+        # 处理类型
+        if media and media.genre_ids \
+                and set(media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
+            media_type = "动漫"
+        elif media:
+            media_type = media.type.value
+        else:
+            media_type = MediaType.UNKNOWN.value
         media_dirs = self.get_download_dirs()
         # 按照配置顺序查找（保存后的数据已经排序）
         for media_dir in media_dirs:
             if not media_dir.path:
                 continue
-            # 没有媒体信息时，返回第一个类型为全部的目录
-            if (not media or media.type == MediaType.UNKNOWN) and not media_dir.media_type:
-                return media_dir
             # 目录类型为全部的，符合条件
             if not media_dir.media_type:
                 return media_dir
-            # 处理类型
-            if media.genre_ids \
-                    and set(media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
-                media_type = "动漫"
-            else:
-                media_type = media.type.value
             # 目录类型相等，目录类别为全部，符合条件
             if media_dir.media_type == media_type and not media_dir.category:
                 return media_dir
@@ -72,24 +71,24 @@ class DirectoryHelper:
         :param media: 媒体信息
         :param in_path: 源目录
         """
+        # 处理类型
+        if media and media.genre_ids \
+                and set(media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
+            media_type = "动漫"
+        elif media:
+            media_type = media.type.value
+        else:
+            media_type = MediaType.UNKNOWN.value
+        # 匹配的目录
         matched_dirs = []
         library_dirs = self.get_library_dirs()
         # 按照配置顺序查找（保存后的数据已经排序）
         for library_dir in library_dirs:
             if not library_dir.path:
                 continue
-            # 没有媒体信息时，返回第一个类型为全部的目录
-            if (not media or media.type == MediaType.UNKNOWN) and not library_dir.media_type:
-                matched_dirs.append(library_dir)
             # 目录类型为全部的，符合条件
             if not library_dir.media_type:
                 matched_dirs.append(library_dir)
-            # 处理类型
-            if media.genre_ids \
-                    and set(media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
-                media_type = "动漫"
-            else:
-                media_type = media.type.value
             # 目录类型相等，目录类别为全部，符合条件
             if library_dir.media_type == media_type and not library_dir.category:
                 matched_dirs.append(library_dir)
