@@ -99,7 +99,8 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
             EventType.DownloadFileDeleted,
             {
                 "src": history.src,
-                "hash": history.download_hash
+                "hash": history.download_hash,
+                "deletesrc": deletesrc
             }
         )
     # 删除记录

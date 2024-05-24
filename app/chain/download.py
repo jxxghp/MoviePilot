@@ -14,6 +14,7 @@ from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.mediaserver_oper import MediaServerOper
+from app.db.plugindata_oper import PluginDataOper
 from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
@@ -36,6 +37,7 @@ class DownloadChain(ChainBase):
         self.mediaserver = MediaServerOper()
         self.directoryhelper = DirectoryHelper()
         self.messagehelper = MessageHelper()
+        self.plugindata = PluginDataOper()
 
     def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo,
                               channel: MessageChannel = None, userid: str = None, username: str = None,
@@ -891,7 +893,234 @@ class DownloadChain(ChainBase):
         if not event:
             return
         hash_str = event.event_data.get("hash")
-        if not hash_str:
+        src = event.event_data.get("src")
+        deletesrc = event.event_data.get("deletesrc")
+        if not hash_str or not src or deletesrc is None:
             return
-        logger.warn(f"检测到下载源文件被删除，删除下载任务（不含文件）：{hash_str}")
-        self.remove_torrents(hashs=[hash_str], delete_file=False)
+
+        # 处理转种、辅种、合集
+        self.handle_torrent(src=src,
+                            torrent_hash=hash_str,
+                            deletesrc=deletesrc)
+
+    def handle_torrent(self, src: str, torrent_hash: str, deletesrc: bool = True, mtype: str = None):
+        """
+        判断种子是否局部删除
+        局部删除则暂停种子
+        全部删除则删除种子
+        """
+        download_id = torrent_hash
+        download = settings.DEFAULT_DOWNLOADER
+        history_key = "%s-%s" % (download, torrent_hash)
+        plugin_id = "TorrentTransfer"
+        transfer_history = self.plugindata.get_data(key=history_key,
+                                                    plugin_id=plugin_id)
+        logger.info(f"查询到 {history_key} 转种历史 {transfer_history}")
+
+        handle_torrent_hashs = []
+        try:
+            # 删除本次种子记录
+            self.downloadhis.delete_file_by_fullpath(fullpath=src)
+
+            # 根据种子hash查询所有下载器文件记录
+            download_files = self.downloadhis.get_files_by_hash(download_hash=torrent_hash)
+            if not download_files:
+                logger.error(
+                    f"未查询到种子任务 {torrent_hash} 存在文件记录，未执行下载器文件同步或该种子已被删除")
+                return False, False, 0
+
+            # 查询未删除数
+            no_del_cnt = 0
+            for download_file in download_files:
+                if download_file and download_file.state and int(download_file.state) == 1:
+                    no_del_cnt += 1
+
+            if no_del_cnt > 0:
+                logger.info(
+                    f"查询种子任务 {torrent_hash} 存在 {no_del_cnt} 个未删除文件，执行暂停种子操作")
+                delete_flag = False
+            else:
+                logger.info(
+                    f"查询种子任务 {torrent_hash} 文件已全部删除，执行删除种子操作")
+                delete_flag = True
+
+            # 如果有转种记录，则删除转种后的下载任务
+            if transfer_history and isinstance(transfer_history, dict):
+                download = transfer_history['to_download']
+                download_id = transfer_history['to_download_id']
+                delete_source = transfer_history['delete_source']
+
+                # 删除种子
+                if delete_flag:
+                    # 删除转种记录
+                    self.plugindata.del_data(key=history_key, plugin_id=plugin_id)
+
+                    # 转种后未删除源种时，同步删除源种
+                    if not delete_source:
+                        logger.info(f"{history_key} 转种时未删除源下载任务，开始删除源下载任务…")
+
+                        # 删除源种子
+                        logger.info(f"删除源下载器下载任务：{settings.DEFAULT_DOWNLOADER} - {torrent_hash}")
+                        self.remove_torrents(delete_file=deletesrc,
+                                             hashs=torrent_hash,
+                                             downloader=settings.DEFAULT_DOWNLOADER)
+                        handle_torrent_hashs.append(torrent_hash)
+
+                    # 删除转种后任务
+                    logger.info(f"删除转种后下载任务：{download} - {download_id}")
+                    # 删除转种后下载任务
+                    self.remove_torrents(delete_file=deletesrc,
+                                         hashs=download_id,
+                                         downloader=download)
+                    handle_torrent_hashs.append(download_id)
+                else:
+                    # 暂停种子
+                    # 转种后未删除源种时，同步暂停源种
+                    if not delete_source:
+                        logger.info(f"{history_key} 转种时未删除源下载任务，开始暂停源下载任务…")
+
+                        # 暂停源种子
+                        logger.info(f"暂停源下载器下载任务：{settings.DEFAULT_DOWNLOADER} - {torrent_hash}")
+                        self.stop_torrents(hashs=torrent_hash,
+                                           downloader=settings.DEFAULT_DOWNLOADER)
+                        handle_torrent_hashs.append(torrent_hash)
+
+                    logger.info(f"暂停转种后下载任务：{download} - {download_id}")
+                    # 删除转种后下载任务
+                    self.stop_torrents(hashs=download_id, downloader=download)
+                    handle_torrent_hashs.append(download_id)
+            else:
+                # 未转种de情况
+                if delete_flag:
+                    # 删除源种子
+                    logger.info(f"删除源下载器下载任务：{download} - {download_id}")
+                    self.remove_torrents(delete_file=deletesrc,
+                                         hashs=download_id,
+                                         downloader=download)
+                else:
+                    # 暂停源种子
+                    logger.info(f"暂停源下载器下载任务：{download} - {download_id}")
+                    self.stop_torrents(hashs=download_id, downloader=download)
+                handle_torrent_hashs.append(download_id)
+
+            # 处理辅种
+            handle_torrent_hashs = self.__del_seed(download=download,
+                                                   download_id=download_id,
+                                                   delete_flag=delete_flag,
+                                                   handle_torrent_hashs=handle_torrent_hashs,
+                                                   deletesrc=deletesrc)
+            # 处理合集
+            if mtype and str(mtype) == "电视剧":
+                handle_torrent_hashs = self.__del_collection(src=src,
+                                                             delete_flag=delete_flag,
+                                                             torrent_hash=torrent_hash,
+                                                             download_files=download_files,
+                                                             handle_torrent_hashs=handle_torrent_hashs,
+                                                             deletesrc=deletesrc)
+            return delete_flag, True, handle_torrent_hashs
+        except Exception as e:
+            logger.error(f"删种失败： {str(e)}")
+            return False, False, 0
+
+    def __del_collection(self, src: str, delete_flag: bool, torrent_hash: str, download_files: list,
+                         handle_torrent_hashs: list, deletesrc: bool = True):
+        """
+        处理合集
+        """
+        try:
+            src_download_files = self.downloadhis.get_files_by_fullpath(fullpath=src)
+            if src_download_files:
+                for download_file in src_download_files:
+                    # src查询记录 判断download_hash是否不一致
+                    if download_file and download_file.download_hash and str(download_file.download_hash) != str(
+                            torrent_hash):
+                        # 查询新download_hash对应files数量
+                        hash_download_files = self.downloadhis.get_files_by_hash(
+                            download_hash=download_file.download_hash)
+                        # 新download_hash对应files数量 > 删种download_hash对应files数量 = 合集种子
+                        if hash_download_files \
+                                and len(hash_download_files) > len(download_files) \
+                                and hash_download_files[0].id > download_files[-1].id:
+                            # 查询未删除数
+                            no_del_cnt = 0
+                            for hash_download_file in hash_download_files:
+                                if hash_download_file and hash_download_file.state and int(
+                                        hash_download_file.state) == 1:
+                                    no_del_cnt += 1
+                            if no_del_cnt > 0:
+                                logger.info(f"合集种子 {download_file.download_hash} 文件未完全删除，执行暂停种子操作")
+                                delete_flag = False
+
+                            # 删除合集种子
+                            if delete_flag:
+                                self.remove_torrents(delete_file=deletesrc,
+                                                     hashs=download_file.download_hash,
+                                                     downloader=download_file.downloader)
+                                logger.info(f"删除合集种子 {download_file.downloader} {download_file.download_hash}")
+                            else:
+                                # 暂停合集种子
+                                self.stop_torrents(hashs=download_file.download_hash,
+                                                   downloader=download_file.downloader)
+                                logger.info(f"暂停合集种子 {download_file.downloader} {download_file.download_hash}")
+                            # 已处理种子+1
+                            handle_torrent_hashs.append(download_file.download_hash)
+
+                            # 处理合集辅种
+                            handle_torrent_hashs = self.__del_seed(download=download_file.downloader,
+                                                                   download_id=download_file.download_hash,
+                                                                   delete_flag=delete_flag,
+                                                                   handle_torrent_hashs=handle_torrent_hashs,
+                                                                   deletesrc=deletesrc)
+        except Exception as e:
+            logger.error(f"处理 {torrent_hash} 合集失败")
+            print(str(e))
+
+        return handle_torrent_hashs
+
+    def __del_seed(self, download, download_id, delete_flag, handle_torrent_hashs, deletesrc: bool = True):
+        """
+        删除辅种
+        """
+        # 查询是否有辅种记录
+        history_key = download_id
+        plugin_id = "IYUUAutoSeed"
+        seed_history = self.plugindata.get_data(key=history_key,
+                                                plugin_id=plugin_id) or []
+        logger.info(f"查询到 {history_key} 辅种历史 {seed_history}")
+
+        # 有辅种记录则处理辅种
+        if seed_history and isinstance(seed_history, list):
+            for history in seed_history:
+                downloader = history.get("downloader")
+                torrents = history.get("torrents")
+                if not downloader or not torrents:
+                    return
+                if not isinstance(torrents, list):
+                    torrents = [torrents]
+
+                # 删除辅种历史
+                for torrent in torrents:
+                    handle_torrent_hashs.append(torrent)
+                    # 删除辅种
+                    if delete_flag:
+                        logger.info(f"删除辅种：{downloader} - {torrent}")
+                        self.remove_torrents(delete_file=deletesrc,
+                                             hashs=torrent,
+                                             downloader=download)
+                    # 暂停辅种
+                    else:
+                        self.stop_torrents(hashs=torrent,
+                                           downloader=download)
+                        logger.info(f"辅种：{downloader} - {torrent} 暂停")
+
+                    # 处理辅种的辅种
+                    handle_torrent_hashs = self.__del_seed(download=downloader,
+                                                           download_id=torrent,
+                                                           delete_flag=delete_flag,
+                                                           handle_torrent_hashs=handle_torrent_hashs)
+
+            # 删除辅种历史
+            if delete_flag:
+                self.plugindata.del_data(key=history_key,
+                                         plugin_id=plugin_id)
+        return handle_torrent_hashs
