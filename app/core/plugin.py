@@ -344,10 +344,11 @@ class PluginManager(metaclass=Singleton):
             return plugin.get_page() or []
         return []
 
-    def get_plugin_dashboard(self, pid: str, **kwargs) -> Optional[schemas.PluginDashboard]:
+    def get_plugin_dashboard(self, pid: str, key: str, **kwargs) -> Optional[schemas.PluginDashboard]:
         """
         获取插件仪表盘
         :param pid: 插件ID
+        :param key: 仪表盘key
         """
         def __get_params_count(func: Callable):
             """
@@ -361,7 +362,10 @@ class PluginManager(metaclass=Singleton):
             return None
         if hasattr(plugin, "get_dashboard"):
             # 检查方法的参数个数
-            if __get_params_count(plugin.get_dashboard) > 0:
+            params_count = __get_params_count(plugin.get_dashboard)
+            if params_count > 1:
+                dashboard: Tuple = plugin.get_dashboard(key=key, **kwargs)
+            elif params_count > 0:
                 dashboard: Tuple = plugin.get_dashboard(**kwargs)
             else:
                 dashboard: Tuple = plugin.get_dashboard()
@@ -370,6 +374,7 @@ class PluginManager(metaclass=Singleton):
                 return schemas.PluginDashboard(
                     id=pid,
                     name=plugin.plugin_name,
+                    key=key or "",
                     cols=cols or {},
                     elements=elements,
                     attrs=attrs or {}
@@ -445,24 +450,35 @@ class PluginManager(metaclass=Singleton):
                     logger.error(f"获取插件 {pid} 服务出错：{str(e)}")
         return ret_services
 
-    def get_dashboard_plugins(self) -> List[dict]:
+    def get_plugin_dashboard_meta(self):
         """
-        获取有仪表盘的插件列表
+        获取所有插件仪表盘元信息
         """
-        dashboards = []
-        for pid, plugin in self._running_plugins.items():
-            if hasattr(plugin, "get_dashboard") \
-                    and ObjectUtils.check_method(plugin.get_dashboard):
-                try:
-                    if not plugin.get_state():
-                        continue
-                    dashboards.append({
-                        "id": pid,
-                        "name": plugin.plugin_name
+        dashboard_meta = []
+        for plugin_id, plugin in self._running_plugins.items():
+            if not hasattr(plugin, "get_dashboard") or not ObjectUtils.check_method(plugin.get_dashboard):
+                continue
+            try:
+                if not plugin.get_state():
+                    continue
+                # 如果是多仪表盘实现
+                if hasattr(plugin, "get_dashboard_meta") and ObjectUtils.check_method(plugin.get_dashboard_meta):
+                    meta = plugin.get_dashboard_meta()
+                    if meta:
+                        dashboard_meta.extend([{
+                            "id": plugin_id,
+                            "name": m.get("name"),
+                            "key": m.get("key"),
+                        } for m in meta if m])
+                else:
+                    dashboard_meta.append({
+                        "id": plugin_id,
+                        "name": plugin.plugin_name,
+                        "key": "",
                     })
-                except Exception as e:
-                    logger.error(f"获取有仪表盘的插件出错：{str(e)}")
-        return dashboards
+            except Exception as e:
+                logger.error(f"获取插件[{plugin_id}]仪表盘元数据出错：{str(e)}")
+        return dashboard_meta
 
     def get_plugin_attr(self, pid: str, attr: str) -> Any:
         """

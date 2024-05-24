@@ -55,6 +55,8 @@ class PluginDashboard(Plugin):
     id: Optional[str] = None
     # 名称
     name: Optional[str] = None
+    # 仪表板key
+    key: Optional[str] = None
     # 全局配置
     attrs: Optional[dict] = {}
     # col列数
