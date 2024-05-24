@@ -150,12 +150,12 @@ def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token))
     return PluginManager().get_plugin_page(plugin_id)
 
 
-@router.get("/dashboards", summary="获取有仪表板的插件清单")
-def dashboard_plugins(_: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+@router.get("/dashboard/meta", summary="获取所有插件仪表板元信息")
+def plugin_dashboard_meta(_: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
     """
-    获取所有插件仪表板
+    获取所有插件仪表板元信息
     """
-    return PluginManager().get_dashboard_plugins()
+    return PluginManager().get_plugin_dashboard_meta()
 
 
 @router.get("/dashboard/{plugin_id}", summary="获取插件仪表板配置")
@@ -164,7 +164,16 @@ def plugin_dashboard(plugin_id: str, user_agent: Annotated[str | None, Header()]
     """
     根据插件ID获取插件仪表板
     """
-    return PluginManager().get_plugin_dashboard(plugin_id, user_agent=user_agent)
+    return PluginManager().get_plugin_dashboard(plugin_id, key=None, user_agent=user_agent)
+
+
+@router.get("/dashboard/{plugin_id}/{key}", summary="获取插件仪表板配置")
+def plugin_dashboard(plugin_id: str, key: str, user_agent: Annotated[str | None, Header()] = None,
+                     _: schemas.TokenPayload = Depends(verify_token)) -> schemas.PluginDashboard:
+    """
+    根据插件ID获取插件仪表板
+    """
+    return PluginManager().get_plugin_dashboard(plugin_id, key=key, user_agent=user_agent)
 
 
 @router.get("/reset/{plugin_id}", summary="重置插件配置", response_model=schemas.Response)
