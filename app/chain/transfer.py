@@ -16,6 +16,7 @@ from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.transferhistory_oper import TransferHistoryOper
+from app.helper.directory import DirectoryHelper
 from app.helper.format import FormatParser
 from app.helper.progress import ProgressHelper
 from app.log import logger
@@ -41,6 +42,7 @@ class TransferChain(ChainBase):
         self.mediachain = MediaChain()
         self.tmdbchain = TmdbChain()
         self.systemconfig = SystemConfigOper()
+        self.directoryhelper = DirectoryHelper()
 
     def process(self) -> bool:
         """
@@ -625,8 +627,7 @@ class TransferChain(ChainBase):
             mtype=NotificationType.Organize,
             title=msg_title, text=msg_str, image=mediainfo.get_message_image()))
 
-    @staticmethod
-    def delete_files(path: Path) -> Tuple[bool, str]:
+    def delete_files(self, path: Path) -> Tuple[bool, str]:
         """
         删除转移后的文件以及空目录
         :param path: 文件路径
@@ -657,16 +658,12 @@ class TransferChain(ChainBase):
         # 判断当前媒体父路径下是否有媒体文件，如有则无需遍历父级
         if not SystemUtils.exits_files(path.parent, settings.RMT_MEDIAEXT):
             # 媒体库二级分类根路径
-            library_root_names = [
-                settings.LIBRARY_MOVIE_NAME or '电影',
-                settings.LIBRARY_TV_NAME or '电视剧',
-                settings.LIBRARY_ANIME_NAME or '动漫',
-            ]
-
+            library_roots = self.directoryhelper.get_library_dirs()
+            library_root_names = [Path(library_root.path).name for library_root in library_roots if library_root.path]
             # 判断父目录是否为空, 为空则删除
             for parent_path in path.parents:
                 # 遍历父目录到媒体库二级分类根路径
-                if str(parent_path.name) in library_root_names:
+                if parent_path.name in library_root_names:
                     break
                 if str(parent_path.parent) != str(path.root):
                     # 父目录非根目录，才删除父目录

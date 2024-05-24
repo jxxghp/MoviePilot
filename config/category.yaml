@@ -23,9 +23,16 @@ movie:
 # 配置电视剧的分类策略
 tv:
   # 分类名同时也是目录名
-  动漫:
+  国漫:
     # 匹配 genre_ids 内容类型，16是动漫
     genre_ids: '16'
+    # 匹配 origin_country 国家，CN是中国大陆，TW是中国台湾，HK是中国香港
+    origin_country: 'CN,TW,HK'
+  日番:
+    # 匹配 genre_ids 内容类型，16是动漫
+    genre_ids: '16'
+    # 匹配 origin_country 国家，JP是日本
+    origin_country: 'JP'
   纪录片:
      # 匹配 genre_ids 内容类型，99是纪录片
     genre_ids: '99'
@@ -45,16 +52,6 @@ tv:
     # 匹配 origin_country 国家，主要亚洲国家列表
     origin_country: 'JP,KP,KR,TH,IN,SG'
   # 未匹配以上分类，则命名为未分类
-  未分类:
-
-# 配置动漫的分类策略
-anime:
-  国漫:
-    # 匹配 origin_country 国家，CN是中国大陆，TW是中国台湾，HK是中国香港
-    origin_country: 'CN,TW,HK'
-  日番:
-    # 匹配 origin_country 国家，JP是日本
-    origin_country: 'JP'
   未分类:
 
 ## genre_ids 内容类型 字典，注意部分中英文是不一样的

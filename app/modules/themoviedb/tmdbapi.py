@@ -530,7 +530,7 @@ class TmdbApi:
                  tmdbid: int) -> dict:
         """
         给定TMDB号，查询一条媒体信息
-        :param mtype: 类型：电影、电视剧、动漫，为空时都查（此时用不上年份）
+        :param mtype: 类型：电影、电视剧，为空时都查（此时用不上年份）
         :param tmdbid: TMDB的ID，有tmdbid时优先使用tmdbid，否则使用年份和标题
         """
 

@@ -41,10 +41,7 @@ class DirectoryHelper:
         :param media: 媒体信息
         """
         # 处理类型
-        if media and media.genre_ids \
-                and set(media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
-            media_type = "动漫"
-        elif media:
+        if media:
             media_type = media.type.value
         else:
             media_type = MediaType.UNKNOWN.value
@@ -72,10 +69,7 @@ class DirectoryHelper:
         :param in_path: 源目录
         """
         # 处理类型
-        if media and media.genre_ids \
-                and set(media.genre_ids).intersection(set(settings.ANIME_GENREIDS)):
-            media_type = "动漫"
-        elif media:
+        if media:
             media_type = media.type.value
         else:
             media_type = MediaType.UNKNOWN.value
