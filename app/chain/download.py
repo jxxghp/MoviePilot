@@ -894,14 +894,13 @@ class DownloadChain(ChainBase):
             return
         hash_str = event.event_data.get("hash")
         src = event.event_data.get("src")
-        deletesrc = event.event_data.get("deletesrc")
-        if not hash_str or not src or deletesrc is None:
+        if not hash_str or not src:
             return
 
         # 处理转种、辅种、合集
         self.handle_torrent(src=src,
                             torrent_hash=hash_str,
-                            deletesrc=deletesrc)
+                            deletesrc=True)
 
     def handle_torrent(self, src: str, torrent_hash: str, deletesrc: bool = True, mtype: str = None):
         """
