@@ -1,4 +1,5 @@
 from ..tmdb import TMDb
+from cachetools import cached, TTLCache
 
 try:
     from urllib import urlencode
@@ -12,14 +13,16 @@ class Discover(TMDb):
         "tv": "/discover/tv"
     }
 
+    @cached(cache=TTLCache(maxsize=1, ttl=43200))
     def discover_movies(self, params):
         """
         Discover movies by different types of data like average rating, number of votes, genres and certifications.
         :param params: dict
         :return:
         """
-        return self._request_obj(self._urls["movies"], urlencode(params), key="results")
+        return self._request_obj(self._urls["movies"], urlencode(params), key="results", call_cached=False)
 
+    @cached(cache=TTLCache(maxsize=1, ttl=43200))
     def discover_tv_shows(self, params):
         """
         Discover TV shows by different types of data like average rating, number of votes, genres,
@@ -27,4 +30,4 @@ class Discover(TMDb):
         :param params: dict
         :return:
         """
-        return self._request_obj(self._urls["tv"], urlencode(params), key="results")
+        return self._request_obj(self._urls["tv"], urlencode(params), key="results", call_cached=False)

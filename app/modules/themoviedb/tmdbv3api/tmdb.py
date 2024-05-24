@@ -141,7 +141,7 @@ class TMDb(object):
     def cached_request(self, method, url, data, json,
                        _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
-        缓存请求，时间默认1天，None不缓存
+        缓存请求
         """
         return self.request(method, url, data, json)
 
