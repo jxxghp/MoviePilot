@@ -70,6 +70,12 @@ class Site(Base):
         return list(result)
 
     @staticmethod
+    @db_query
+    def get_domains_by_ids(db: Session, ids: list):
+        result = db.query(Site.domain).filter(Site.id.in_(ids)).all()
+        return [r[0] for r in result]
+
+    @staticmethod
     @db_update
     def reset(db: Session):
         db.query(Site).delete()

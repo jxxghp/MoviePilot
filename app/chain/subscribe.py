@@ -16,6 +16,7 @@ from app.core.event import eventmanager, Event, EventManager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.models.subscribe import Subscribe
+from app.db.site_oper import SiteOper
 from app.db.subscribe_oper import SubscribeOper
 from app.db.subscribehistory_oper import SubscribeHistoryOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -44,6 +45,7 @@ class SubscribeChain(ChainBase):
         self.message = MessageHelper()
         self.systemconfig = SystemConfigOper()
         self.torrenthelper = TorrentHelper()
+        self.siteoper = SiteOper()
 
     def add(self, title: str, year: str,
             mtype: MediaType = None,
@@ -525,6 +527,15 @@ class SubscribeChain(ChainBase):
             meta.year = subscribe.year
             meta.begin_season = subscribe.season or None
             meta.type = MediaType(subscribe.type)
+            # 订阅的站点域名列表
+            domains = []
+            if subscribe.sites:
+                try:
+                    siteids = json.loads(subscribe.sites)
+                    if siteids:
+                        domains = self.siteoper.get_domains_by_ids(siteids)
+                except JSONDecodeError:
+                    pass
             # 识别媒体信息
             mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
                                                         tmdbid=subscribe.tmdbid,
@@ -593,7 +604,9 @@ class SubscribeChain(ChainBase):
             # 遍历缓存种子
             _match_context = []
             for domain, contexts in torrents.items():
-                logger.info(f'开始匹配站点：{domain}，共缓存了 {len(contexts)} 个种子...')
+                if domains and domain not in domains:
+                    continue
+                logger.debug(f'开始匹配站点：{domain}，共缓存了 {len(contexts)} 个种子...')
                 for context in contexts:
                     # 检查是否匹配
                     torrent_meta = context.meta_info

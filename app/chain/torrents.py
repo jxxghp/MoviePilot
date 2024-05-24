@@ -153,12 +153,15 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
 
         # 所有站点索引
         indexers = self.siteshelper.get_indexers()
+        # 需要刷新的站点domain
+        domains = []
         # 遍历站点缓存资源
         for indexer in indexers:
             # 未开启的站点不刷新
             if sites and indexer.get("id") not in sites:
                 continue
             domain = StringUtils.get_url_domain(indexer.get("domain"))
+            domains.append(domain)
             if stype == "spider":
                 # 刷新首页种子
                 torrents: List[TorrentInfo] = self.browse(domain=domain)
@@ -219,7 +222,9 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         else:
             self.save_cache(torrents_cache, self._rss_file)
 
-        # 返回
+        # 去除不在站点范围内的缓存种子
+        if sites and torrents_cache:
+            torrents_cache = {k: v for k, v in torrents_cache.items() if k in domains}
         return torrents_cache
 
     def __renew_rss_url(self, domain: str, site: dict):
