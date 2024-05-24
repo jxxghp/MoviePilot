@@ -646,6 +646,8 @@ class SubscribeChain(ChainBase):
                             continue
                         logger.info(
                             f'{mediainfo.title_year} 通过媒体信ID匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
+                    else:
+                        continue
 
                     # 优先级过滤规则
                     if subscribe.best_version:
