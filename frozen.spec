@@ -88,6 +88,7 @@ exe = EXE(
     collect_pkg_data('cf_clearance'),
     collect_pkg_data('zhconv'),
     collect_pkg_data('cn2an'),
+    collect_pkg_data('Pinyin2Hanzi'),
     collect_pkg_data('database', include_py_files=True),
     collect_pkg_data('app.helper'),
     [],
