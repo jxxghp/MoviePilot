@@ -428,14 +428,12 @@ class TorrentHelper(metaclass=Singleton):
         return True
 
     @staticmethod
-    def match_torrent(mediainfo: MediaInfo, torrent_meta: MetaInfo,
-                      torrent: TorrentInfo, logerror: bool = True) -> bool:
+    def match_torrent(mediainfo: MediaInfo, torrent_meta: MetaInfo, torrent: TorrentInfo) -> bool:
         """
         检查种子是否匹配媒体信息
         :param mediainfo: 需要匹配的媒体信息
         :param torrent_meta: 种子识别信息
         :param torrent: 种子信息
-        :param logerror: 是否记录错误日志
         """
         # 比对词条指定的tmdbid
         if torrent_meta.tmdbid or torrent_meta.doubanid:
@@ -461,15 +459,13 @@ class TorrentHelper(metaclass=Singleton):
                      } - {""}
         # 比对种子识别类型
         if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
-            if logerror:
-                logger.warn(f'{torrent.site_name} - {torrent.title} 种子标题类型为 {torrent_meta.type.value}，'
-                            f'不匹配 {mediainfo.type.value}')
+            logger.debug(f'{torrent.site_name} - {torrent.title} 种子标题类型为 {torrent_meta.type.value}，'
+                         f'不匹配 {mediainfo.type.value}')
             return False
         # 比对种子在站点中的类型
         if torrent.category == MediaType.TV.value and mediainfo.type != MediaType.TV:
-            if logerror:
-                logger.warn(f'{torrent.site_name} - {torrent.title} 种子在站点中归类为 {torrent.category}，'
-                            f'不匹配 {mediainfo.type.value}')
+            logger.debug(f'{torrent.site_name} - {torrent.title} 种子在站点中归类为 {torrent.category}，'
+                         f'不匹配 {mediainfo.type.value}')
             return False
         # 比对年份
         if mediainfo.year:
@@ -477,16 +473,14 @@ class TorrentHelper(metaclass=Singleton):
                 # 剧集年份，每季的年份可能不同，没年份时不比较年份（很多剧集种子不带年份）
                 if torrent_meta.year and torrent_meta.year not in [year for year in
                                                                    mediainfo.season_years.values()]:
-                    if logerror:
-                        logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.season_years}')
+                    logger.debug(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.season_years}')
                     return False
             else:
                 # 电影年份，上下浮动1年，没年份时不通过
                 if not torrent_meta.year or torrent_meta.year not in [str(int(mediainfo.year) - 1),
                                                                       mediainfo.year,
                                                                       str(int(mediainfo.year) + 1)]:
-                    if logerror:
-                        logger.warn(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.year}')
+                    logger.debug(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.year}')
                     return False
         # 比对标题和原语种标题
         if meta_names.intersection(media_titles):
@@ -518,6 +512,5 @@ class TorrentHelper(metaclass=Singleton):
                             f'副标题：{torrent.description}')
                 return True
         # 未匹配
-        if logerror:
-            logger.warn(f'{torrent.site_name} - {torrent.title} 标题不匹配，识别名称：{meta_names}')
+        logger.debug(f'{torrent.site_name} - {torrent.title} 标题不匹配，识别名称：{meta_names}')
         return False

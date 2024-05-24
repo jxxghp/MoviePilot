@@ -173,7 +173,7 @@ class FilterModule(_ModuleBase):
                 continue
             # 能命中优先级的才返回
             if not self.__get_order(torrent, rule_string):
-                logger.info(f"种子 {torrent.site_name} - {torrent.title} {torrent.description} 不匹配优先级规则")
+                logger.debug(f"种子 {torrent.site_name} - {torrent.title} {torrent.description} 不匹配优先级规则")
                 continue
             ret_torrents.append(torrent)
 
@@ -196,7 +196,7 @@ class FilterModule(_ModuleBase):
         torrent_episodes = meta.episode_list
         if not set(torrent_seasons).issubset(set(seasons)):
             # 种子季不在过滤季中
-            logger.info(f"种子 {torrent.site_name} - {torrent.title} 包含季 {torrent_seasons} 不是需要的季 {list(seasons)}")
+            logger.debug(f"种子 {torrent.site_name} - {torrent.title} 包含季 {torrent_seasons} 不是需要的季 {list(seasons)}")
             return False
         if not torrent_episodes:
             # 整季按匹配处理
@@ -206,7 +206,7 @@ class FilterModule(_ModuleBase):
             if need_episodes \
                     and not set(torrent_episodes).intersection(set(need_episodes)):
                 # 单季集没有交集的不要
-                logger.info(f"种子 {torrent.site_name} - {torrent.title} "
+                logger.debug(f"种子 {torrent.site_name} - {torrent.title} "
                             f"集 {torrent_episodes} 没有需要的集：{need_episodes}")
                 return False
         return True
@@ -228,7 +228,7 @@ class FilterModule(_ModuleBase):
             if self.__match_group(torrent, parsed_group.as_list()[0]):
                 # 出现匹配时中断
                 matched = True
-                logger.info(f"种子 {torrent.site_name} - {torrent.title} 优先级为 {100 - res_order + 1}")
+                logger.debug(f"种子 {torrent.site_name} - {torrent.title} 优先级为 {100 - res_order + 1}")
                 torrent.pri_order = res_order
                 break
             # 优先级降低，继续匹配

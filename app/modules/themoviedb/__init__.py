@@ -546,7 +546,7 @@ class TheMovieDbModule(_ModuleBase):
         detail = self.tmdb.get_person_detail(person_id=person_id)
         if detail:
             return schemas.MediaPerson(source="themoviedb", **detail)
-        return schemas.MediaPerson
+        return schemas.MediaPerson()
 
     def tmdb_person_credits(self, person_id: int, page: int = 1) -> List[MediaInfo]:
         """

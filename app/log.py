@@ -136,6 +136,7 @@ class LoggerManager:
         if not _logger:
             _logger = self.__setup_logger(logfile)
             self._loggers[logfile] = _logger
+        # 调用logger的方法打印日志
         if hasattr(_logger, method):
             method = getattr(_logger, method)
             method(f"{caller_name} - {msg}", *args, **kwargs)

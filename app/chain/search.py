@@ -227,24 +227,8 @@ class SearchChain(ChainBase):
             # 取搜索优先级规则
             priority_rule = self.systemconfig.get(SystemConfigKey.SearchFilterRules)
         if priority_rule:
-            # 使用多线程进行优先级过滤，1个站点一个线程
             logger.info(f'开始优先级规则/剧集过滤，当前规则：{priority_rule} ...')
-            # 站点列表
-            filter_sites = set([t.site_name for t in _match_torrents])
-            # 多线程
-            executor = ThreadPoolExecutor(max_workers=len(filter_sites))
-            all_task = []
-            for site in filter_sites:
-                task = executor.submit(__do_filter,
-                                       torrent_list=[t for t in _match_torrents if t.site_name == site])
-                all_task.append(task)
-            # 汇总结果
-            results = []
-            for future in as_completed(all_task):
-                result = future.result()
-                if result:
-                    results.extend(result)
-            _match_torrents = results
+            _match_torrents = __do_filter(_match_torrents)
             if not _match_torrents:
                 logger.warn(f'{keyword or mediainfo.title} 没有符合优先级规则的资源')
                 return []
