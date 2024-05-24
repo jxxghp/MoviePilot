@@ -173,6 +173,7 @@ class FilterModule(_ModuleBase):
                 continue
             # 能命中优先级的才返回
             if not self.__get_order(torrent, rule_string):
+                logger.info(f"种子 {torrent.site_name} - {torrent.title} {torrent.description} 不匹配优先级规则")
                 continue
             ret_torrents.append(torrent)
 
