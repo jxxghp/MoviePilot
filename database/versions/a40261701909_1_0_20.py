@@ -51,16 +51,6 @@ def upgrade() -> None:
             "auto_category": True if _settings.DOWNLOAD_CATEGORY else False,
             "priority": 2
         })
-    if _settings.DOWNLOAD_ANIME_PATH:
-        download_dirs.append({
-            "type": "download",
-            "name": "动漫目录",
-            "path": _settings.DOWNLOAD_ANIME_PATH,
-            "media_type": "动漫",
-            "category": "",
-            "auto_category": True if _settings.DOWNLOAD_CATEGORY else False,
-            "priority": 3
-        })
     if _settings.DOWNLOAD_PATH:
         download_dirs.append({
             "type": "download",
@@ -105,17 +95,6 @@ def upgrade() -> None:
                     "auto_category": True if _settings.LIBRARY_CATEGORY else False,
                     "scrape": True if _settings.SCRAP_METADATA else False,
                     "priority": 2
-                })
-            if _settings.LIBRARY_ANIME_NAME:
-                library_dirs.append({
-                    "type": "library",
-                    "name": "动漫目录",
-                    "path": str(Path(library_path) / _settings.LIBRARY_ANIME_NAME),
-                    "media_type": "动漫",
-                    "category": "",
-                    "auto_category": True if _settings.LIBRARY_CATEGORY else False,
-                    "scrape": True if _settings.SCRAP_METADATA else False,
-                    "priority": 3
                 })
             library_dirs.append({
                 "type": "library",
