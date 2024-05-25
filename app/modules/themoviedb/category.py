@@ -24,9 +24,6 @@ class CategoryHelper(metaclass=Singleton):
         """
         初始化
         """
-        # 二级分类策略关闭
-        if not settings.LIBRARY_CATEGORY:
-            return
         try:
             if not self._category_path.exists():
                 shutil.copy(settings.INNER_CONFIG_PATH / "category.yaml", self._category_path)
