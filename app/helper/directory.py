@@ -35,10 +35,11 @@ class DirectoryHelper:
             return []
         return [schemas.MediaDirectory(**d) for d in dir_conf]
 
-    def get_download_dir(self, media: MediaInfo = None) -> Optional[schemas.MediaDirectory]:
+    def get_download_dir(self, media: MediaInfo = None, to_path: Path = None) -> Optional[schemas.MediaDirectory]:
         """
         根据媒体信息获取下载目录
         :param media: 媒体信息
+        :param to_path: 目标目录
         """
         # 处理类型
         if media:
@@ -49,6 +50,9 @@ class DirectoryHelper:
         # 按照配置顺序查找（保存后的数据已经排序）
         for media_dir in media_dirs:
             if not media_dir.path:
+                continue
+            # 有目标目录，但目标目录与当前目录不相等时不要
+            if to_path and Path(media_dir.path) != to_path:
                 continue
             # 目录类型为全部的，符合条件
             if not media_dir.media_type:
@@ -62,11 +66,13 @@ class DirectoryHelper:
 
         return None
 
-    def get_library_dir(self, media: MediaInfo = None, in_path: Path = None) -> Optional[schemas.MediaDirectory]:
+    def get_library_dir(self, media: MediaInfo = None, in_path: Path = None,
+                        to_path: Path = None) -> Optional[schemas.MediaDirectory]:
         """
         根据媒体信息获取媒体库目录，需判断是否同盘优先
         :param media: 媒体信息
         :param in_path: 源目录
+        :param to_path: 目标目录
         """
         # 处理类型
         if media:
@@ -79,6 +85,9 @@ class DirectoryHelper:
         # 按照配置顺序查找（保存后的数据已经排序）
         for library_dir in library_dirs:
             if not library_dir.path:
+                continue
+            # 有目标目录，但目标目录与当前目录不相等时不要
+            if to_path and Path(library_dir.path) != to_path:
                 continue
             # 目录类型为全部的，符合条件
             if not library_dir.media_type:
