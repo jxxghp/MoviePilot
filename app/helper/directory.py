@@ -112,14 +112,6 @@ class DirectoryHelper:
 
         # 有源路径，且开启同盘/同目录优先时
         if in_path and settings.TRANSFER_SAME_DISK:
-            # 优先同盘
-            for matched_dir in matched_dirs:
-                matched_path = Path(matched_dir.path)
-                if not matched_path.exists():
-                    matched_path.mkdir(parents=True, exist_ok=True)
-                if SystemUtils.is_same_disk(matched_path, in_path):
-                    return matched_dir
-
             # 优先同根路径
             max_length = 0
             target_dir = None
@@ -139,5 +131,14 @@ class DirectoryHelper:
                     continue
             if target_dir:
                 return target_dir
+
+            # 优先同盘
+            for matched_dir in matched_dirs:
+                matched_path = Path(matched_dir.path)
+                if not matched_path.exists():
+                    matched_path.mkdir(parents=True, exist_ok=True)
+                if SystemUtils.is_same_disk(matched_path, in_path):
+                    return matched_dir
+
         # 返回最优先的匹配
         return matched_dirs[0]
