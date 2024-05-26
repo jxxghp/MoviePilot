@@ -472,11 +472,17 @@ class DownloadChain(ChainBase):
                         continue
                     # 种子的季清单
                     torrent_season = meta.season_list
+                    # 没有季的默认为第1季
+                    if not torrent_season:
+                        torrent_season = [1]
                     # 种子有集的不要
                     if meta.episode_list:
                         continue
                     # 匹配TMDBID
                     if need_mid == media.tmdb_id or need_mid == media.douban_id:
+                        # 不重复添加
+                        if context in downloaded_list:
+                            continue
                         # 种子季是需要季或者子集
                         if set(torrent_season).issubset(set(need_season)):
                             if len(torrent_season) == 1:
@@ -529,6 +535,7 @@ class DownloadChain(ChainBase):
                                 need_season = __update_seasons(_mid=need_mid,
                                                                _need=need_season,
                                                                _current=torrent_season)
+                                logger.info(f"{need_mid} 剩余需要季：{need_season}")
                                 if not need_season:
                                     # 全部下载完成
                                     break
@@ -596,6 +603,7 @@ class DownloadChain(ChainBase):
                                                                       _need=need_episodes,
                                                                       _sea=need_season,
                                                                       _current=torrent_episodes)
+                                    logger.info(f"季 {need_season} 剩余需要集：{need_episodes}")
 
         # 仍然缺失的剧集，从整季中选择需要的集数文件下载，仅支持QB和TR
         logger.info(f"开始电视剧多集拆包匹配：{no_exists}")
@@ -686,6 +694,7 @@ class DownloadChain(ChainBase):
                                                               _need=need_episodes,
                                                               _sea=need_season,
                                                               _current=selected_episodes)
+                            logger.info(f"季 {need_season} 剩余需要集：{need_episodes}")
 
         # 返回下载的资源，剩下没下完的
         logger.info(f"成功下载种子数：{len(downloaded_list)}，剩余未下载的剧集：{no_exists}")
