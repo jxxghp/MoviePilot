@@ -57,24 +57,27 @@ class FileTransferModule(_ModuleBase):
             if not download_path.exists():
                 return False, f"下载目录 {d_path.name} 对应路径 {path} 不存在"
         # 检查媒体库目录
-        libaray_dirs = directoryhelper.get_library_dirs()
-        if not libaray_dirs:
+        libaray_paths = directoryhelper.get_library_dirs()
+        if not libaray_paths:
             return False, "媒体库目录未设置"
-        # 比较媒体库目录的设备ID
-        for l_path in libaray_dirs:
+        for l_path in libaray_paths:
             path = l_path.path
             if not path:
                 return False, f"媒体库目录 {l_path.name} 对应路径未设置"
             library_path = Path(path)
             if not library_path.exists():
                 return False, f"媒体库目录{l_path.name} 对应的路径 {path} 不存在"
-            if settings.DOWNLOADER_MONITOR and settings.TRANSFER_TYPE == "link":
-                for d_path in download_paths:
-                    download_path = Path(d_path.path)
-                    if l_path.media_type == d_path.media_type and l_path.category == d_path.category:
-                        if not SystemUtils.is_same_disk(library_path, download_path):
-                            return False, f"媒体库目录 {library_path} " \
-                                          f"与下载目录 {download_path} 不在同一磁盘/存储空间/映射路径，将无法硬链接"
+        # 检查硬链接条件
+        if settings.DOWNLOADER_MONITOR and settings.TRANSFER_TYPE == "link":
+            for d_path in download_paths:
+                link_ok = False
+                for l_path in libaray_paths:
+                    if SystemUtils.is_same_disk(Path(d_path.path), Path(l_path.path)):
+                        link_ok = True
+                        break
+                if not link_ok:
+                    return False, f"媒体库目录中未找到" \
+                                  f"与下载目录 {d_path} 在同一磁盘/存储空间/映射路径的目录，将无法硬链接"
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
