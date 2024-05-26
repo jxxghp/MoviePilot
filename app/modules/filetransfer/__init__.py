@@ -120,7 +120,7 @@ class FileTransferModule(_ModuleBase):
             target = self.__get_dest_dir(mediainfo=mediainfo, target_dir=dir_info)
         elif target:
             # 自定义目标路径
-            need_scrape = False
+            need_scrape = scrape or False
         else:
             # 未找到有效的媒体库目录
             logger.error(
