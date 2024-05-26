@@ -5,7 +5,9 @@ from app import schemas
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.db.systemconfig_oper import SystemConfigOper
+from app.log import logger
 from app.schemas.types import SystemConfigKey, MediaType
+from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
 
@@ -79,6 +81,7 @@ class DirectoryHelper:
             media_type = media.type.value
         else:
             media_type = MediaType.UNKNOWN.value
+
         # 匹配的目录
         matched_dirs = []
         library_dirs = self.get_library_dirs()
@@ -103,8 +106,13 @@ class DirectoryHelper:
         if not matched_dirs:
             return None
 
-        # 优先同盘
+        # 只匹配到一项
+        if len(matched_dirs) == 1:
+            return matched_dirs[0]
+
+        # 有源路径，且开启同盘/同目录优先时
         if in_path and settings.TRANSFER_SAME_DISK:
+            # 优先同盘
             for matched_dir in matched_dirs:
                 matched_path = Path(matched_dir.path)
                 if not matched_path.exists():
@@ -112,4 +120,24 @@ class DirectoryHelper:
                 if SystemUtils.is_same_disk(matched_path, in_path):
                     return matched_dir
 
+            # 优先同根路径
+            max_length = 0
+            target_dir = None
+            for matched_dir in matched_dirs:
+                try:
+                    # 计算in_path和path的公共字符串长度
+                    relative = StringUtils.find_common_prefix(str(in_path), matched_dir.path)
+                    if len(str(matched_dir.path)) == len(relative):
+                        # 目录完整匹配的，直接返回
+                        return matched_dir
+                    if len(relative) > max_length:
+                        # 更新最大长度
+                        max_length = len(relative)
+                        target_dir = matched_dir
+                except Exception as e:
+                    logger.debug(f"计算目标路径时出错：{str(e)}")
+                    continue
+            if target_dir:
+                return target_dir
+        # 返回最优先的匹配
         return matched_dirs[0]
