@@ -98,6 +98,12 @@ jobs:
           New-Item -Path "nginx/temp/__keep__.txt" -ItemType File -Force
           New-Item -Path "nginx/logs" -ItemType Directory -Force
           New-Item -Path "nginx/logs/__keep__.txt" -ItemType File -Force
+          # 下载插件 jxxghp
+          Invoke-WebRequest -Uri "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" -OutFile "MoviePilot-Plugins-main.zip"
+          Expand-Archive -Path "MoviePilot-Plugins-main.zip" -DestinationPath "MoviePilot-Plugins-main"
+          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "MoviePilot-Plugins-main.zip"
+          Remove-Item -Path "MoviePilot-Plugins-main" -Recurse -Force
           # 下载插件 thsrite
           Invoke-WebRequest -Uri "https://github.com/thsrite/MoviePilot-Plugins/archive/refs/heads/main.zip" -OutFile "MoviePilot-Plugins-main.zip"
           Expand-Archive -Path "MoviePilot-Plugins-main.zip" -DestinationPath "MoviePilot-Plugins-main"
@@ -112,12 +118,6 @@ jobs:
           Remove-Item -Path "MoviePilot-Plugins-main" -Recurse -Force
           # 下载插件 InfinityPacer
           Invoke-WebRequest -Uri "https://github.com/InfinityPacer/MoviePilot-Plugins/archive/refs/heads/main.zip" -OutFile "MoviePilot-Plugins-main.zip"
-          Expand-Archive -Path "MoviePilot-Plugins-main.zip" -DestinationPath "MoviePilot-Plugins-main"
-          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/" -Force -ErrorAction SilentlyContinue
-          Remove-Item -Path "MoviePilot-Plugins-main.zip"
-          Remove-Item -Path "MoviePilot-Plugins-main" -Recurse -Force
-          # 下载插件 jxxghp
-          Invoke-WebRequest -Uri "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" -OutFile "MoviePilot-Plugins-main.zip"
           Expand-Archive -Path "MoviePilot-Plugins-main.zip" -DestinationPath "MoviePilot-Plugins-main"
           Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/" -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "MoviePilot-Plugins-main.zip"
