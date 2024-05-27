@@ -134,6 +134,11 @@ def read_switchs(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     else:
         for switch in switchs:
             return_list.append(NotificationSwitch(**switch))
+        for noti in NotificationType:
+            if not any([x.mtype == noti.value for x in return_list]):
+                return_list.append(NotificationSwitch(mtype=noti.value, wechat=True,
+                                                      telegram=True, slack=True,
+                                                      synologychat=True, vocechat=True))
     return return_list
 
 
