@@ -120,6 +120,8 @@ class NotificationType(Enum):
     MediaServer = "媒体服务器通知"
     # 处理失败需要人工干预
     Manual = "手动处理通知"
+    # 插件消息
+    Plugin = "插件消息"
 
 
 class MessageChannel(Enum):
