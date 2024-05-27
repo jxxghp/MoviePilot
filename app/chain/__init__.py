@@ -375,7 +375,7 @@ class ChainBase(metaclass=ABCMeta):
                                transfer_type=transfer_type, target=target, episodes_info=episodes_info,
                                scrape=scrape)
 
-    def transfer_completed(self, hashs: Union[str, list], path: Path = None,
+    def transfer_completed(self, hashs: str, path: Path = None,
                            downloader: str = settings.DEFAULT_DOWNLOADER) -> None:
         """
         转移完成后的处理

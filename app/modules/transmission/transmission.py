@@ -2,7 +2,7 @@ from typing import Optional, Union, Tuple, List, Dict
 
 import transmission_rpc
 from transmission_rpc import Client, Torrent, File
-from transmission_rpc.session import SessionStats
+from transmission_rpc.session import SessionStats, Session
 
 from app.core.config import settings
 from app.log import logger
@@ -130,20 +130,37 @@ class Transmission:
             logger.error(f"获取正在下载的种子列表出错：{str(err)}")
             return None
 
-    def set_torrent_tag(self, ids: str, tags: list) -> bool:
+    def set_torrent_tag(self, ids: str, tags: list, org_tags: list = None) -> bool:
         """
-        设置种子标签
+        设置种子标签，注意TR默认会覆盖原有标签，如需追加需传入原有标签
         """
         if not self.trc:
             return False
         if not ids or not tags:
             return False
         try:
-            self.trc.change_torrent(labels=tags, ids=ids)
+            self.trc.change_torrent(labels=list(set((org_tags or []) + tags)), ids=ids)
             return True
         except Exception as err:
             logger.error(f"设置种子标签出错：{str(err)}")
             return False
+
+    def get_torrent_tags(self, ids: str) -> List[str]:
+        """
+        获取所有种子标签
+        """
+        if not self.trc:
+            return []
+        try:
+            torrent = self.trc.get_torrents(ids=ids, arguments=self._trarg)
+            if torrent:
+                labels = [str(tag).strip()
+                          for tag in torrent.labels] if hasattr(torrent, "labels") else []
+                return labels
+        except Exception as err:
+            logger.error(f"获取种子标签出错：{str(err)}")
+            return []
+        return []
 
     def add_torrent(self, content: Union[str, bytes],
                     is_paused: bool = False,
@@ -397,15 +414,15 @@ class Transmission:
             logger.error(f"修改tracker出错：{str(err)}")
             return False
 
-    def get_session(self) -> Dict[str, Union[int, bool, str]]:
+    def get_session(self) -> Optional[Session]:
         """
         获取Transmission当前的会话信息和配置设置
-        :return dict or False
+        :return dict
         """
         if not self.trc:
-            return False
+            return None
         try:
             return self.trc.get_session()
         except Exception as err:
             logger.error(f"获取session出错：{str(err)}")
-            return False
+            return None

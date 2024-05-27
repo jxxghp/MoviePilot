@@ -242,7 +242,7 @@ class QbittorrentModule(_ModuleBase):
             return None
         return ret_torrents
 
-    def transfer_completed(self, hashs: Union[str, list], path: Path = None,
+    def transfer_completed(self, hashs: str, path: Path = None,
                            downloader: str = settings.DEFAULT_DOWNLOADER) -> None:
         """
         转移完成后的处理
