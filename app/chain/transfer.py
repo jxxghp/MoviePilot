@@ -358,10 +358,12 @@ class TransferChain(ChainBase):
                 temp_transfer_type = transfer_type
                 if transfer_type == "link":
                     if not SystemUtils.is_same_disk(file_path, transferinfo.target_path):
-                        logger.warn(f"{file_path} 与 {transferinfo.target_path} 不在同一磁盘/存储空间/映射目录，未能硬链接，请检查存储空间占用和整理耗时，确认是否为复制")
-                        self.messagehelper.put(f"{file_path} 与 {transferinfo.target_path} 不在同一磁盘/存储空间/映射目录，疑似硬链接失败，请检查是否为复制",
-                                               title="硬链接失败",
-                                               role="system")
+                        logger.warn(
+                            f"{file_path} 与 {transferinfo.target_path} 不在同一磁盘/存储空间/映射目录，未能硬链接，请检查存储空间占用和整理耗时，确认是否为复制")
+                        self.messagehelper.put(
+                            f"{file_path} 与 {transferinfo.target_path} 不在同一磁盘/存储空间/映射目录，疑似硬链接失败，请检查是否为复制",
+                            title="硬链接失败",
+                            role="system")
                         temp_transfer_type = "copy"
 
                 # 新增转移成功历史记录
@@ -669,22 +671,31 @@ class TransferChain(ChainBase):
 
         # 判断当前媒体父路径下是否有媒体文件，如有则无需遍历父级
         if not SystemUtils.exits_files(path.parent, settings.RMT_MEDIAEXT):
-            # 媒体库二级分类根路径
+            # 所有媒体库根目录的名称
             library_roots = self.directoryhelper.get_library_dirs()
             library_root_names = [Path(library_root.path).name for library_root in library_roots if library_root.path]
+            # 所有二级分类的名称
+            category_names = []
+            category_conf = self.media_category()
+            if category_conf:
+                category_names += list(category_conf.keys())
+                for cats in category_conf.values():
+                    category_names += cats
             # 判断父目录是否为空, 为空则删除
             for parent_path in path.parents:
                 # 遍历父目录到媒体库二级分类根路径
                 if parent_path.name in library_root_names:
                     break
+                if parent_path.name in category_names:
+                    continue
                 if str(parent_path.parent) != str(path.root):
                     # 父目录非根目录，才删除父目录
                     if not SystemUtils.exits_files(parent_path, settings.RMT_MEDIAEXT):
                         # 当前路径下没有媒体文件则删除
                         try:
                             shutil.rmtree(parent_path)
+                            logger.warn(f"目录 {parent_path} 已删除")
                         except Exception as e:
                             logger.error(f"删除目录 {parent_path} 失败：{str(e)}")
                             return False, f"删除目录 {parent_path} 失败：{str(e)}"
-                        logger.warn(f"目录 {parent_path} 已删除")
         return True, ""
