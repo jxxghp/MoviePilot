@@ -48,23 +48,27 @@ class DirectoryHelper:
             media_type = media.type.value
         else:
             media_type = MediaType.UNKNOWN.value
-        media_dirs = self.get_download_dirs()
+        download_dirs = self.get_download_dirs()
         # 按照配置顺序查找（保存后的数据已经排序）
-        for media_dir in media_dirs:
-            if not media_dir.path:
+        for download_dir in download_dirs:
+            if not download_dir.path:
                 continue
+            download_path = Path(download_dir.path)
             # 有目标目录，但目标目录与当前目录不相等时不要
-            if to_path and Path(media_dir.path) != to_path:
+            if to_path and download_path != to_path:
                 continue
+            # 不存在目录则创建
+            if not download_path.exists():
+                download_path.mkdir(parents=True, exist_ok=True)
             # 目录类型为全部的，符合条件
-            if not media_dir.media_type:
-                return media_dir
+            if not download_dir.media_type:
+                return download_dir
             # 目录类型相等，目录类别为全部，符合条件
-            if media_dir.media_type == media_type and not media_dir.category:
-                return media_dir
+            if download_dir.media_type == media_type and not download_dir.category:
+                return download_dir
             # 目录类型相等，目录类别相等，符合条件
-            if media_dir.media_type == media_type and media_dir.category == media.category:
-                return media_dir
+            if download_dir.media_type == media_type and download_dir.category == media.category:
+                return download_dir
 
         return None
 
@@ -106,6 +110,12 @@ class DirectoryHelper:
         if not matched_dirs:
             return None
 
+        # 没有目录则创建
+        for matched_dir in matched_dirs:
+            matched_path = Path(matched_dir.path)
+            if not matched_path.exists():
+                matched_path.mkdir(parents=True, exist_ok=True)
+
         # 只匹配到一项
         if len(matched_dirs) == 1:
             return matched_dirs[0]
@@ -135,8 +145,6 @@ class DirectoryHelper:
             # 优先同盘
             for matched_dir in matched_dirs:
                 matched_path = Path(matched_dir.path)
-                if not matched_path.exists():
-                    matched_path.mkdir(parents=True, exist_ok=True)
                 if SystemUtils.is_same_disk(matched_path, in_path):
                     return matched_dir
 
