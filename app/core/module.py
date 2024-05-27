@@ -1,5 +1,5 @@
 import traceback
-from typing import Generator, Optional, Tuple
+from typing import Generator, Optional, Tuple, Any
 
 from app.core.config import settings
 from app.helper.module import ModuleHelper
@@ -97,6 +97,16 @@ class ModuleManager(metaclass=Singleton):
             return True
         return False
 
+    def get_running_module(self, module_id: str) -> Any:
+        """
+        根据模块id获取模块运行实例
+        """
+        if not module_id:
+            return None
+        if not self._running_modules:
+            return None
+        return self._running_modules.get(module_id)
+
     def get_running_modules(self, method: str) -> Generator:
         """
         获取实现了同一方法的模块列表
@@ -107,6 +117,16 @@ class ModuleManager(metaclass=Singleton):
             if hasattr(module, method) \
                     and ObjectUtils.check_method(getattr(module, method)):
                 yield module
+
+    def get_module(self, module_id: str) -> Any:
+        """
+        根据模块id获取模块
+        """
+        if not module_id:
+            return None
+        if not self._modules:
+            return None
+        return self._modules.get(module_id)
 
     def get_modules(self) -> dict:
         """
