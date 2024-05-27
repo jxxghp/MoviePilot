@@ -101,25 +101,25 @@ jobs:
           # 下载插件 thsrite
           Invoke-WebRequest -Uri "https://github.com/thsrite/MoviePilot-Plugins/archive/refs/heads/main.zip" -OutFile "MoviePilot-Plugins-main.zip"
           Expand-Archive -Path "MoviePilot-Plugins-main.zip" -DestinationPath "MoviePilot-Plugins-main"
-          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/" -Force
+          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/" -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "MoviePilot-Plugins-main.zip"
           Remove-Item -Path "MoviePilot-Plugins-main" -Recurse -Force
           # 下载插件 honue
           Invoke-WebRequest -Uri "https://github.com/honue/MoviePilot-Plugins/archive/refs/heads/main.zip" -OutFile "MoviePilot-Plugins-main.zip"
           Expand-Archive -Path "MoviePilot-Plugins-main.zip" -DestinationPath "MoviePilot-Plugins-main"
-          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/" -Force
+          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/" -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "MoviePilot-Plugins-main.zip"
           Remove-Item -Path "MoviePilot-Plugins-main" -Recurse -Force
           # 下载插件 InfinityPacer
           Invoke-WebRequest -Uri "https://github.com/InfinityPacer/MoviePilot-Plugins/archive/refs/heads/main.zip" -OutFile "MoviePilot-Plugins-main.zip"
           Expand-Archive -Path "MoviePilot-Plugins-main.zip" -DestinationPath "MoviePilot-Plugins-main"
-          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/" -Force
+          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/" -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "MoviePilot-Plugins-main.zip"
           Remove-Item -Path "MoviePilot-Plugins-main" -Recurse -Force
           # 下载插件 jxxghp
           Invoke-WebRequest -Uri "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" -OutFile "MoviePilot-Plugins-main.zip"
           Expand-Archive -Path "MoviePilot-Plugins-main.zip" -DestinationPath "MoviePilot-Plugins-main"
-          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/" -Force
+          Move-Item -Path "MoviePilot-Plugins-main/MoviePilot-Plugins-main/plugins/*" -Destination "app/plugins/" -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "MoviePilot-Plugins-main.zip"
           Remove-Item -Path "MoviePilot-Plugins-main" -Recurse -Force
           # 下载资源
@@ -159,6 +159,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install wheel pyinstaller
           pip install -r requirements.txt
+          find app/plugins -name requirements.txt -exec pip install -r {} \;
 
       - name: Prepare Frontend
         run: |
