@@ -317,7 +317,7 @@ class Plex:
             # 否则一个一个刷新
             for path, lib_key in result_dict.items():
                 logger.info(f"刷新媒体库：{lib_key} - {path}")
-                self._plex.query(f'/library/sections/{lib_key}/refresh?path={quote_plus(path)}')
+                self._plex.query(f'/library/sections/{lib_key}/refresh?path={quote_plus(str(Path(path).parent))}')
 
     @staticmethod
     def __find_librarie(path: Path, libraries: List[Any]) -> Tuple[str, str]:
