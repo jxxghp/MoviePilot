@@ -126,7 +126,7 @@ class CategoryHelper(metaclass=Singleton):
                         info_values = [str(info_value).upper()]
 
                 if value.find(",") != -1:
-                    values = [str(val).upper() for val in value.split(",")]
+                    values = [str(val).upper() for val in value.split(",") if val]
                 else:
                     values = [str(value).upper()]
 

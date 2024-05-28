@@ -27,7 +27,10 @@ def play_item(itemid: str) -> schemas.Response:
         return schemas.Response(success=False, msg="参数错误")
     if not settings.MEDIASERVER:
         return schemas.Response(success=False, msg="未配置媒体服务器")
-    mediaserver = settings.MEDIASERVER.split(",")[0]
+    # 查找一个不为空的值
+    mediaserver = next((server for server in settings.MEDIASERVER.split(",") if server), None)
+    if not mediaserver:
+        return schemas.Response(success=False, msg="未配置媒体服务器")
     play_url = MediaServerChain().get_play_url(server=mediaserver, item_id=itemid)
     # 重定向到play_url
     if not play_url:

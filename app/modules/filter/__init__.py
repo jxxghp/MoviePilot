@@ -338,7 +338,7 @@ class FilterModule(_ModuleBase):
                     info_values = [str(info_value).upper()]
             # 过滤值转化为数组
             if value.find(",") != -1:
-                values = [str(val).upper() for val in value.split(",")]
+                values = [str(val).upper() for val in value.split(",") if val]
             else:
                 values = [str(value).upper()]
             # 没有交集为不匹配

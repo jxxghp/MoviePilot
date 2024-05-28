@@ -80,6 +80,8 @@ class MediaServerChain(ChainBase):
             self.dboper.empty()
             # 遍历媒体服务器
             for mediaserver in mediaservers:
+                if not mediaserver:
+                    continue
                 logger.info(f"开始同步媒体库 {mediaserver} 的数据 ...")
                 for library in self.librarys(mediaserver):
                     # 同步黑名单 跳过

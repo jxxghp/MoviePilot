@@ -359,7 +359,7 @@ class Settings(BaseSettings):
         """
         if not self.DOWNLOADER:
             return None
-        return self.DOWNLOADER.split(",")[0]
+        return next((d for d in settings.DOWNLOADER.split(",") if d), None)
 
     @property
     def DOWNLOADERS(self):
@@ -368,7 +368,7 @@ class Settings(BaseSettings):
         """
         if not self.DOWNLOADER:
             return []
-        return self.DOWNLOADER.split(",")
+        return [d for d in settings.DOWNLOADER.split(",") if d]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

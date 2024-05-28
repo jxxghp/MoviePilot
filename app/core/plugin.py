@@ -619,6 +619,8 @@ class PluginManager(metaclass=Singleton):
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
             for m in settings.PLUGIN_MARKET.split(","):
+                if not m:
+                    continue
                 futures.append(executor.submit(__get_plugin_info, m))
             for future in concurrent.futures.as_completed(futures):
                 plugins = future.result()
