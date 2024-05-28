@@ -144,7 +144,7 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
 
 
 @router.get("/message", summary="实时消息")
-def get_message(token: str, role: str = "sys"):
+def get_message(token: str, role: str = "system"):
     """
     实时获取系统消息，返回格式为SSE
     """

@@ -52,12 +52,12 @@ class MessageHelper(metaclass=Singleton):
                 content['note'] = note
                 self.user_queue.put(json.dumps(content))
 
-    def get(self, role: str = "sys") -> Optional[str]:
+    def get(self, role: str = "system") -> Optional[str]:
         """
         取消息
-        :param role: 消息通道 sys/user
+        :param role: 消息通道 systm：系统消息，plugin：插件消息，user：用户消息
         """
-        if role == "sys":
+        if role == "system":
             if not self.sys_queue.empty():
                 return self.sys_queue.get(block=False)
         else:
