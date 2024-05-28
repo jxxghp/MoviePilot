@@ -67,7 +67,10 @@ class TransferChain(ChainBase):
                 downloadhis: DownloadHistory = self.downloadhis.get_by_hash(torrent.hash)
                 if downloadhis:
                     # 类型
-                    mtype = MediaType(downloadhis.type)
+                    try:
+                        mtype = MediaType(downloadhis.type)
+                    except ValueError:
+                        mtype = MediaType.TV
                     # 按TMDBID识别
                     mediainfo = self.recognize_media(mtype=mtype,
                                                      tmdbid=downloadhis.tmdbid,
