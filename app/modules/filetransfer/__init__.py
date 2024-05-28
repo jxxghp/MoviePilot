@@ -77,7 +77,7 @@ class FileTransferModule(_ModuleBase):
                         break
                 if not link_ok:
                     return False, f"媒体库目录中未找到" \
-                                  f"与下载目录 {d_path} 在同一磁盘/存储空间/映射路径的目录，将无法硬链接"
+                                  f"与下载目录 {d_path.path} 在同一磁盘/存储空间/映射路径的目录，将无法硬链接"
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
