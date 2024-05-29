@@ -207,16 +207,17 @@ MoviePilot需要配套下载器和媒体服务器配合使用。
 - 通过CookieCloud同步快速添加站点，不需要使用的站点可在WEB管理界面中禁用或删除，无法同步的站点也可手动新增。
 - 需要通过环境变量设置用户认证信息且认证成功后才能使用站点相关功能，未认证通过时站点相关的插件也会无法显示。
 ### 3. **文件整理**
-- 默认通过监控下载器实现下载完成后自动整理入库并刮削媒体信息，需要后台打开`下载器监控`开关，且仅会处理通过MoviePilot添加下载的任务。
+- 默认通过监控下载器实现下载完成后自动整理入库并刮削媒体信息，需要后台打开`下载器监控`开关，并在设定中维护好下载目录和媒体库目录，且仅会处理通过MoviePilot添加下载的任务（含`MOVIEPILOT`标签）。
 - 下载器监控默认轮循间隔为5分钟，如果是使用qbittorrent，可在 `QB设置`->`下载完成时运行外部程序` 处填入：`curl "http://localhost:3000/api/v1/transfer/now?token=moviepilot" `，实现无需等待轮循下载完成后立即整理入库（地址、端口和token按实际调整，curl也可更换为wget）。
-- 使用`目录监控`等插件实现更灵活的自动整理。
+- 使用`目录监控`等插件实现更灵活的自动整理（使用MoviePilot整理其它途径下载的资源时使用）。
 ### 4. **通知交互**
 - 支持通过`微信`/`Telegram`/`Slack`/`SynologyChat`/`VoceChat`等渠道远程管理和订阅下载，其中 微信/Telegram 将会自动添加操作菜单（微信菜单条数有限制，部分菜单不显示）。
 - `微信`回调地址、`SynologyChat`传入地址地址相对路径均为：`/api/v1/message/`；`VoceChat`的Webhook地址相对路径为：`/api/v1/message/?token=moviepilot`，其中moviepilot为设置的`API_TOKEN`。
+- 插件市场中有其它渠道的通知插件（仅支持单向通知），可安装使用。
 ### 5. **订阅与搜索**
 - 通过MoviePilot管理后台搜索和订阅。
 - 将MoviePilot做为`Radarr`或`Sonarr`服务器添加到`Overseerr`或`Jellyseerr`，可使用`Overseerr/Jellyseerr`浏览和添加订阅。
-- 安装`豆瓣榜单订阅`、`猫眼订阅`等插件，实现自动订阅豆瓣榜单、猫眼榜单等。
+- 安装`豆瓣榜单订阅`、`猫眼订阅`、`热门订阅`等插件，实现自动订阅各类榜单。
 ### 6. **其他**
 - 通过设置媒体服务器Webhook指向MoviePilot（相对路径为`/api/v1/webhook?token=moviepilot`，其中`moviepilot`为设置的`API_TOKEN`），可实现通过MoviePilot发送播放通知，以及配合各类插件实现播放限速等功能。
 - 映射宿主机`docker.sock`文件到容器`/var/run/docker.sock`，可支持应用内建重启操作。实例：`-v /var/run/docker.sock:/var/run/docker.sock:ro`。
