@@ -128,13 +128,14 @@ class DirectoryHelper:
             for matched_dir in matched_dirs:
                 try:
                     # 计算in_path和path的公共字符串长度
-                    relative = StringUtils.find_common_prefix(str(in_path), matched_dir.path)
-                    if len(str(matched_dir.path)) == len(relative):
-                        # 目录完整匹配的，直接返回
+                    relative_len = len(StringUtils.find_common_prefix(str(in_path), matched_dir.path))
+                    if len(str(matched_dir.path)) == relative_len \
+                            and relative_len >= max_length:
+                        # 目录完整匹配且是最长的，直接返回
                         return matched_dir
-                    if len(relative) > max_length:
+                    if relative_len > max_length:
                         # 更新最大长度
-                        max_length = len(relative)
+                        max_length = relative_len
                         target_dir = matched_dir
                 except Exception as e:
                     logger.debug(f"计算目标路径时出错：{str(e)}")
