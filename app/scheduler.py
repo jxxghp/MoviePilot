@@ -18,10 +18,12 @@ from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
+from app.core.event import EventManager
 from app.core.plugin import PluginManager
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType
+from app.schemas.types import EventType
 from app.utils.singleton import Singleton
 from app.utils.timer import TimerUtils
 
@@ -370,6 +372,16 @@ class Scheduler(metaclass=Singleton):
             SchedulerChain().messagehelper.put(title=f"{job_name} 执行失败",
                                                message=str(e),
                                                role="system")
+            EventManager().send_event(
+                EventType.SystemError,
+                {
+                    "type": "scheduler",
+                    "scheduler_id": job_id,
+                    "scheduler_name": job_name,
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
+                }
+            )
         # 运行结束
         with self._lock:
             try:

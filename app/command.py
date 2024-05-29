@@ -224,6 +224,16 @@ class Command(metaclass=Singleton):
                         self.messagehelper.put(title=f"{event.event_type} 事件处理出错",
                                                message=f"{class_name}.{method_name}：{str(e)}",
                                                role="system")
+                        self.eventmanager.send_event(
+                            EventType.SystemError,
+                            {
+                                "type": "event",
+                                "event_type": event.event_type,
+                                "event_handle": f"{class_name}.{method_name}",
+                                "error": str(e),
+                                "traceback": traceback.format_exc()
+                            }
+                        )
 
     def __run_command(self, command: Dict[str, any],
                       data_str: str = "",

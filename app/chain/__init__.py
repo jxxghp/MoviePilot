@@ -121,6 +121,16 @@ class ChainBase(metaclass=ABCMeta):
                 self.messagehelper.put(title=f"{module_name}发生了错误",
                                        message=str(err),
                                        role="system")
+                self.eventmanager.send_event(
+                    EventType.SystemError,
+                    {
+                        "type": "module",
+                        "module_name": module_name,
+                        "module_method": method,
+                        "error": str(err),
+                        "traceback": traceback.format_exc()
+                    }
+                )
         return result
 
     def recognize_media(self, meta: MetaBase = None,

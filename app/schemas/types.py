@@ -46,6 +46,8 @@ class EventType(Enum):
     SubscribeAdded = "subscribe.added"
     # 订阅已完成
     SubscribeComplete = "subscribe.complete"
+    # 系统错误
+    SystemError = "system.error"
 
 
 # 系统配置Key字典
