@@ -243,7 +243,11 @@ class SubscribeChain(ChainBase):
             meta = MetaInfo(subscribe.name)
             meta.year = subscribe.year
             meta.begin_season = subscribe.season or None
-            meta.type = MediaType(subscribe.type)
+            try:
+                meta.type = MediaType(subscribe.type)
+            except ValueError:
+                logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
+                continue
             # 识别媒体信息
             mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
                                                         tmdbid=subscribe.tmdbid,
@@ -526,7 +530,11 @@ class SubscribeChain(ChainBase):
             meta = MetaInfo(subscribe.name)
             meta.year = subscribe.year
             meta.begin_season = subscribe.season or None
-            meta.type = MediaType(subscribe.type)
+            try:
+                meta.type = MediaType(subscribe.type)
+            except ValueError:
+                logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
+                continue
             # 订阅的站点域名列表
             domains = []
             if subscribe.sites:
@@ -762,7 +770,11 @@ class SubscribeChain(ChainBase):
             meta = MetaInfo(subscribe.name)
             meta.year = subscribe.year
             meta.begin_season = subscribe.season or None
-            meta.type = MediaType(subscribe.type)
+            try:
+                meta.type = MediaType(subscribe.type)
+            except ValueError:
+                logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
+                continue
             # 识别媒体信息
             mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
                                                         tmdbid=subscribe.tmdbid,
