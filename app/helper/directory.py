@@ -129,8 +129,9 @@ class DirectoryHelper:
             for matched_dir in matched_dirs:
                 try:
                     # 计算in_path和path的公共字符串长度
-                    relative_len = len(StringUtils.find_common_prefix(str(in_path), str(Path(matched_dir.path))))
-                    if len(str(matched_dir.path)) == relative_len \
+                    matched_path_str = str(Path(matched_dir.path))
+                    relative_len = len(StringUtils.find_common_prefix(str(in_path), matched_path_str))
+                    if len(matched_path_str) == relative_len \
                             and relative_len >= max_length:
                         # 目录完整匹配且是最长的，直接返回
                         return matched_dir
