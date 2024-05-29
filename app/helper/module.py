@@ -83,10 +83,10 @@ class ModuleHelper:
                               not name.startswith('_') and isinstance(obj, type)]
                 # 确定是否需要重新加载
                 if any(filter_func(name, obj) for name, obj in candidates):
-                    submodules.extend(reload_module_objects(module))
                     # 如果子模块是包，重新加载其子模块
                     if is_pkg:
                         reload_sub_modules(module, full_package_name)
+                    submodules.extend(reload_module_objects(module))
             except Exception as err:
                 logger.debug(f'加载模块 {package_name} 失败：{str(err)} - {traceback.format_exc()}')
 
