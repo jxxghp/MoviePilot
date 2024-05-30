@@ -6,6 +6,8 @@
 
 发布频道：https://t.me/moviepilot_channel
 
+Wiki：https://movie-pilot.org/wiki
+
 ## 主要特性
 - 前后端分离，基于FastApi + Vue3，前端项目地址：[MoviePilot-Frontend](https://github.com/jxxghp/MoviePilot-Frontend)，API：http://localhost:3001/docs
 - 聚焦核心需求，简化功能和设置，部分设置项可直接使用默认值。
