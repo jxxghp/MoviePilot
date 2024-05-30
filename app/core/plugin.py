@@ -634,7 +634,7 @@ class PluginManager(metaclass=Singleton):
         # 相同ID的插件保留版本号最大版本
         max_versions = {}
         for p in all_plugins:
-            if p.id not in max_versions or p.plugin_version > max_versions[p.id]:
+            if p.id not in max_versions or StringUtils.compare_version(p.plugin_version, max_versions[p.id]) > 0:
                 max_versions[p.id] = p.plugin_version
         result = [p for p in all_plugins if
                   p.plugin_version == max_versions[p.id]]
