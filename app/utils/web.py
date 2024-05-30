@@ -1,4 +1,3 @@
-from typing import Optional
 
 from app.utils.http import RequestUtils
 
@@ -73,7 +72,7 @@ class WebUtils:
             return ""
 
     @staticmethod
-    def get_bing_wallpaper() -> Optional[str]:
+    def get_bing_wallpaper() -> str | None:
         """
         获取Bing每日壁纸
         """

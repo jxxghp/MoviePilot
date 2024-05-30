@@ -2,7 +2,7 @@ import inspect
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 import click
 
@@ -36,7 +36,7 @@ class LoggerManager:
     日志管理
     """
     # 管理所有的Logger
-    _loggers: Dict[str, Any] = {}
+    _loggers: dict[str, Any] = {}
     # 默认日志文件
     _default_log_file = "moviepilot.log"
 
@@ -98,7 +98,7 @@ class LoggerManager:
 
         # 终端日志
         console_handler = logging.StreamHandler()
-        console_formatter = CustomFormatter(f"%(leveltext)s%(message)s")
+        console_formatter = CustomFormatter("%(leveltext)s%(message)s")
         console_handler.setFormatter(console_formatter)
         _logger.addHandler(console_handler)
 
@@ -108,7 +108,7 @@ class LoggerManager:
                                            maxBytes=5 * 1024 * 1024,
                                            backupCount=3,
                                            encoding='utf-8')
-        file_formater = CustomFormatter(f"【%(levelname)s】%(asctime)s - %(message)s")
+        file_formater = CustomFormatter("【%(levelname)s】%(asctime)s - %(message)s")
         file_handler.setFormatter(file_formater)
         _logger.addHandler(file_handler)
 

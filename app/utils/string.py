@@ -3,7 +3,8 @@ import datetime
 import hashlib
 import random
 import re
-from typing import Union, Tuple, Optional, Any, List, Generator
+from collections.abc import Generator
+from typing import Any
 from urllib import parse
 
 import cn2an
@@ -11,7 +12,6 @@ import dateparser
 import dateutil.parser
 
 from app.schemas.types import MediaType
-
 
 _special_domains = [
     'u2.dmhy.org',
@@ -22,7 +22,7 @@ _special_domains = [
 class StringUtils:
 
     @staticmethod
-    def num_filesize(text: Union[str, int, float]) -> int:
+    def num_filesize(text: str | int | float) -> int:
         """
         将文件大小文本转化为字节
         """
@@ -51,7 +51,7 @@ class StringUtils:
         return round(size)
 
     @staticmethod
-    def str_timelong(time_sec: Union[str, int, float]) -> str:
+    def str_timelong(time_sec: str | int | float) -> str:
         """
         将数字转换为时间描述
         """
@@ -70,7 +70,7 @@ class StringUtils:
         return str(round(time_sec / (b + 1))) + u
 
     @staticmethod
-    def str_secends(time_sec: Union[str, int, float]) -> str:
+    def str_secends(time_sec: str | int | float) -> str:
         """
         将秒转为时分秒字符串
         """
@@ -87,7 +87,7 @@ class StringUtils:
         return time
 
     @staticmethod
-    def is_chinese(word: Union[str, list]) -> bool:
+    def is_chinese(word: str | list) -> bool:
         """
         判断是否含有中文
         """
@@ -180,8 +180,8 @@ class StringUtils:
         return 0.0
 
     @staticmethod
-    def clear(text: Union[list, str], replace_word: str = "",
-              allow_space: bool = False) -> Union[list, str]:
+    def clear(text: list | str, replace_word: str = "",
+              allow_space: bool = False) -> list | str:
         """
         忽略特殊字符
         """
@@ -211,7 +211,7 @@ class StringUtils:
         return StringUtils.clear(text).upper().strip()
 
     @staticmethod
-    def str_filesize(size: Union[str, float, int], pre: int = 2) -> str:
+    def str_filesize(size: str | float | int, pre: int = 2) -> str:
         """
         将字节计算为文件大小描述（带单位的格式化后返回）
         """
@@ -252,7 +252,7 @@ class StringUtils:
         return False
 
     @staticmethod
-    def get_url_netloc(url: str) -> Tuple[str, str]:
+    def get_url_netloc(url: str) -> tuple[str, str]:
         """
         获取URL的协议和域名部分
         """
@@ -319,7 +319,7 @@ class StringUtils:
         return f"{scheme}://{netloc}"
 
     @staticmethod
-    def clear_file_name(name: str) -> Optional[str]:
+    def clear_file_name(name: str) -> str | None:
         if not name:
             return None
         return re.sub(r"[*?\\/\"<>~|]", "", name, flags=re.IGNORECASE).replace(":", "：")
@@ -337,7 +337,7 @@ class StringUtils:
         return random_str
 
     @staticmethod
-    def get_time(date: Any) -> Optional[datetime.datetime]:
+    def get_time(date: Any) -> datetime.datetime | None:
         try:
             return dateutil.parser.parse(date)
         except dateutil.parser.ParserError:
@@ -411,7 +411,7 @@ class StringUtils:
         return '; '.join(['='.join(item) for item in cj.items()])
 
     @staticmethod
-    def get_idlist(content: str, dicts: List[dict]):
+    def get_idlist(content: str, dicts: list[dict]):
         """
         从字符串中提取id列表
         :param content: 字符串
@@ -539,7 +539,7 @@ class StringUtils:
 
     @staticmethod
     def get_keyword(content: str) \
-            -> Tuple[Optional[MediaType], Optional[str], Optional[int], Optional[int], Optional[str], Optional[str]]:
+            -> tuple[MediaType | None, str | None, int | None, int | None, str | None, str | None]:
         """
         从搜索关键字中拆分中年份、季、集、类型
         """
@@ -601,7 +601,7 @@ class StringUtils:
         return reparse
 
     @staticmethod
-    def get_domain_address(address: str, prefix: bool = True) -> Tuple[Optional[str], Optional[int]]:
+    def get_domain_address(address: str, prefix: bool = True) -> tuple[str | None, int | None]:
         """
         从地址中获取域名和端口号
         """
@@ -625,7 +625,7 @@ class StringUtils:
         return domain, port
 
     @staticmethod
-    def str_series(array: List[int]) -> str:
+    def str_series(array: list[int]) -> str:
         """
         将季集列表转化为字符串简写
         """
@@ -657,7 +657,7 @@ class StringUtils:
         return ",".join(result)
 
     @staticmethod
-    def format_ep(nums: List[int]) -> str:
+    def format_ep(nums: list[int]) -> str:
         """
         将剧集列表格式化为连续区间
         """

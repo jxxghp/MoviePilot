@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 import logging
 import os
@@ -10,12 +9,13 @@ import requests
 import requests.exceptions
 
 from app.utils.http import RequestUtils
+
 from .exceptions import TMDbException
 
 logger = logging.getLogger(__name__)
 
 
-class TMDb(object):
+class TMDb:
     TMDB_API_KEY = "TMDB_API_KEY"
     TMDB_LANGUAGE = "TMDB_LANGUAGE"
     TMDB_SESSION_ID = "TMDB_SESSION_ID"

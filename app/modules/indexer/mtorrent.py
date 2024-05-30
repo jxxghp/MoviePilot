@@ -1,7 +1,6 @@
 import base64
 import json
 import re
-from typing import Tuple, List
 
 from ruamel.yaml import CommentedMap
 
@@ -65,7 +64,7 @@ class MTorrentSpider:
             self._token = indexer.get('token')
             self._timeout = indexer.get('timeout') or 15
 
-    def search(self, keyword: str, mtype: MediaType = None, page: int = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, mtype: MediaType = None, page: int = 0) -> tuple[bool, list[dict]]:
         """
         搜索
         """

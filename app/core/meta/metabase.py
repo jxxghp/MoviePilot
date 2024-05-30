@@ -1,17 +1,17 @@
 import traceback
-from dataclasses import dataclass, asdict
-from typing import Union, Optional, List, Self
+from dataclasses import asdict, dataclass
+from typing import Self
 
 import cn2an
 import regex as re
 
 from app.log import logger
-from app.utils.string import StringUtils
 from app.schemas.types import MediaType
+from app.utils.string import StringUtils
 
 
 @dataclass
-class MetaBase(object):
+class MetaBase:
     """
     媒体信息基类
     """
@@ -20,47 +20,47 @@ class MetaBase(object):
     # 原标题字符串（未经过识别词处理）
     title: str = ""
     # 识别用字符串（经过识别词处理后）
-    org_string: Optional[str] = None
+    org_string: str | None = None
     # 副标题
-    subtitle: Optional[str] = None
+    subtitle: str | None = None
     # 类型 电影、电视剧
     type: MediaType = MediaType.UNKNOWN
     # 识别的中文名
-    cn_name: Optional[str] = None
+    cn_name: str | None = None
     # 识别的英文名
-    en_name: Optional[str] = None
+    en_name: str | None = None
     # 年份
-    year: Optional[str] = None
+    year: str | None = None
     # 总季数
     total_season: int = 0
     # 识别的开始季 数字
-    begin_season: Optional[int] = None
+    begin_season: int | None = None
     # 识别的结束季 数字
-    end_season: Optional[int] = None
+    end_season: int | None = None
     # 总集数
     total_episode: int = 0
     # 识别的开始集
-    begin_episode: Optional[int] = None
+    begin_episode: int | None = None
     # 识别的结束集
-    end_episode: Optional[int] = None
+    end_episode: int | None = None
     # Partx Cd Dvd Disk Disc
-    part: Optional[str] = None
+    part: str | None = None
     # 识别的资源类型
-    resource_type: Optional[str] = None
+    resource_type: str | None = None
     # 识别的效果
-    resource_effect: Optional[str] = None
+    resource_effect: str | None = None
     # 识别的分辨率
-    resource_pix: Optional[str] = None
+    resource_pix: str | None = None
     # 识别的制作组/字幕组
-    resource_team: Optional[str] = None
+    resource_team: str | None = None
     # 识别的自定义占位符
-    customization: Optional[str] = None
+    customization: str | None = None
     # 视频编码
-    video_encode: Optional[str] = None
+    video_encode: str | None = None
     # 音频编码
-    audio_encode: Optional[str] = None
+    audio_encode: str | None = None
     # 应用的识别词信息
-    apply_words: Optional[List[str]] = None
+    apply_words: list[str] | None = None
     # 附加信息
     tmdbid: int = None
     doubanid: str = None
@@ -306,7 +306,7 @@ class MetaBase(object):
                 return ""
 
     @property
-    def season_list(self) -> List[int]:
+    def season_list(self) -> list[int]:
         """
         返回季的数组
         """
@@ -336,7 +336,7 @@ class MetaBase(object):
             return ""
 
     @property
-    def episode_list(self) -> List[int]:
+    def episode_list(self) -> list[int]:
         """
         返回集的数组
         """
@@ -448,7 +448,7 @@ class MetaBase(object):
         """
         return self.audio_encode or ""
 
-    def is_in_season(self, season: Union[list, int, str]) -> bool:
+    def is_in_season(self, season: list | int | str) -> bool:
         """
         是否包含季
         """
@@ -471,7 +471,7 @@ class MetaBase(object):
                 else:
                     return int(season) == 1
 
-    def is_in_episode(self, episode: Union[list, int, str]) -> bool:
+    def is_in_episode(self, episode: list | int | str) -> bool:
         """
         是否包含集
         """
@@ -487,7 +487,7 @@ class MetaBase(object):
             else:
                 return int(episode) == self.begin_episode
 
-    def set_season(self, sea: Union[list, int, str]):
+    def set_season(self, sea: list | int | str):
         """
         更新季
         """
@@ -504,7 +504,7 @@ class MetaBase(object):
             self.begin_season = int(sea)
             self.end_season = None
 
-    def set_episode(self, ep: Union[list, int, str]):
+    def set_episode(self, ep: list | int | str):
         """
         更新集
         """

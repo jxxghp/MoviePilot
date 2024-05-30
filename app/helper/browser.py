@@ -1,7 +1,9 @@
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
 
-from playwright.sync_api import sync_playwright, Page
 from cf_clearance import sync_cf_retry, sync_stealth
+from playwright.sync_api import Page, sync_playwright
+
 from app.log import logger
 
 

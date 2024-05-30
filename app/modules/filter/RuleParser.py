@@ -1,6 +1,6 @@
 import threading
 
-from pyparsing import Forward, Literal, Word, alphas, infixNotation, opAssoc, alphanums, Combine, nums, ParseResults
+from pyparsing import Combine, Forward, Literal, ParseResults, Word, alphanums, alphas, infixNotation, nums, opAssoc
 
 
 class RuleParser:

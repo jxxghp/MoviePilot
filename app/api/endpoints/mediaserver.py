@@ -1,4 +1,4 @@
-from typing import Any, List, Dict
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -69,7 +69,7 @@ def exists_local(title: str = None,
     })
 
 
-@router.post("/exists_remote", summary="查询已存在的剧集信息（媒体服务器）", response_model=Dict[int, list])
+@router.post("/exists_remote", summary="查询已存在的剧集信息（媒体服务器）", response_model=dict[int, list])
 def exists(media_in: schemas.MediaInfo,
            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -88,7 +88,7 @@ def exists(media_in: schemas.MediaInfo,
     return existsinfo.seasons
 
 
-@router.post("/notexists", summary="查询媒体库缺失信息（媒体服务器）", response_model=List[schemas.NotExistMediaInfo])
+@router.post("/notexists", summary="查询媒体库缺失信息（媒体服务器）", response_model=list[schemas.NotExistMediaInfo])
 def not_exists(media_in: schemas.MediaInfo,
                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -118,7 +118,7 @@ def not_exists(media_in: schemas.MediaInfo,
     return []
 
 
-@router.get("/latest", summary="最新入库条目", response_model=List[schemas.MediaServerPlayItem])
+@router.get("/latest", summary="最新入库条目", response_model=list[schemas.MediaServerPlayItem])
 def latest(count: int = 18,
            userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -127,7 +127,7 @@ def latest(count: int = 18,
     return MediaServerChain().latest(count=count, username=userinfo.username) or []
 
 
-@router.get("/playing", summary="正在播放条目", response_model=List[schemas.MediaServerPlayItem])
+@router.get("/playing", summary="正在播放条目", response_model=list[schemas.MediaServerPlayItem])
 def playing(count: int = 12,
             userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -136,7 +136,7 @@ def playing(count: int = 12,
     return MediaServerChain().playing(count=count, username=userinfo.username) or []
 
 
-@router.get("/library", summary="媒体库列表", response_model=List[schemas.MediaServerLibrary])
+@router.get("/library", summary="媒体库列表", response_model=list[schemas.MediaServerLibrary])
 def library(userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器媒体库列表

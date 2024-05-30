@@ -7,9 +7,8 @@ Create Date: 2024-03-17 09:04:51.785716
 """
 import contextlib
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = '5813aaa7cb3a'
@@ -25,7 +24,7 @@ def upgrade() -> None:
             batch_op.add_column(sa.Column('note', sa.String, nullable=True))
     try:
         op.create_index('ix_message_reg_time', 'message', ['reg_time'], unique=False)
-    except Exception as err:
+    except Exception:
         pass
     # ### end Alembic commands ###
 

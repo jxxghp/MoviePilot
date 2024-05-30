@@ -1,17 +1,17 @@
 import json
 import time
 from datetime import datetime
-from typing import Union, Any
+from typing import Any
 
 import tailer
 from dotenv import set_key
-from fastapi import APIRouter, HTTPException, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 
 from app import schemas
 from app.chain.search import SearchChain
 from app.chain.system import SystemChain
-from app.core.config import settings, global_vars
+from app.core.config import global_vars, settings
 from app.core.module import ModuleManager
 from app.core.security import verify_token
 from app.db.models import User
@@ -124,7 +124,7 @@ def get_setting(key: str,
 
 
 @router.post("/setting/{key}", summary="更新系统设置", response_model=schemas.Response)
-def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
+def set_setting(key: str, value: list | dict | bool | int | str = None,
                 _: User = Depends(get_current_active_superuser)):
     """
     更新系统设置
@@ -184,13 +184,13 @@ def get_logging(token: str, length: int = 50, logfile: str = "moviepilot.log"):
 
     def log_generator():
         # 读取文件末尾50行，不使用tailer模块
-        with open(log_path, 'r', encoding='utf-8') as f:
+        with open(log_path, encoding='utf-8') as f:
             for line in f.readlines()[-max(length, 50):]:
                 yield 'data: %s\n\n' % line
         while True:
             if global_vars.is_system_stopped():
                 break
-            for t in tailer.follow(open(log_path, 'r', encoding='utf-8')):
+            for t in tailer.follow(open(log_path, encoding='utf-8')):
                 yield 'data: %s\n\n' % (t or '')
             time.sleep(1)
 
@@ -199,7 +199,7 @@ def get_logging(token: str, length: int = 50, logfile: str = "moviepilot.log"):
         # 返回全部日志作为文本响应
         if not log_path.exists():
             return Response(content="日志文件不存在！", media_type="text/plain")
-        with open(log_path, 'r', encoding='utf-8') as file:
+        with open(log_path, encoding='utf-8') as file:
             text = file.read()
         # 倒序输出
         text = '\n'.join(text.split('\n')[::-1])
@@ -215,7 +215,7 @@ def latest_version(_: schemas.TokenPayload = Depends(verify_token)):
     查询Github所有Release版本
     """
     version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
-        f"https://api.github.com/repos/jxxghp/MoviePilot/releases")
+        "https://api.github.com/repos/jxxghp/MoviePilot/releases")
     if version_res:
         ver_json = version_res.json()
         if ver_json:

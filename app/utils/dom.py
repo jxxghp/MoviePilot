@@ -1,10 +1,9 @@
-from typing import Union
 
 
 class DomUtils:
 
     @staticmethod
-    def tag_value(tag_item, tag_name: str, attname: str = "", default: Union[str, int] = None):
+    def tag_value(tag_item, tag_name: str, attname: str = "", default: str | int = None):
         """
         解析XML标签值
         """

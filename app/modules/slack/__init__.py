@@ -1,13 +1,13 @@
 import json
 import re
-from typing import Optional, Union, List, Tuple, Any
+from typing import Any, List, Optional, Tuple, Union
 
-from app.core.context import MediaInfo, Context
 from app.core.config import settings
+from app.core.context import Context, MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase, checkMessage
 from app.modules.slack.slack import Slack
-from app.schemas import MessageChannel, CommingMessage, Notification
+from app.schemas import CommingMessage, MessageChannel, Notification
 
 
 class SlackModule(_ModuleBase):
@@ -23,7 +23,7 @@ class SlackModule(_ModuleBase):
     def stop(self):
         self.slack.stop()
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -32,12 +32,12 @@ class SlackModule(_ModuleBase):
             return True, ""
         return False, "Slack未就续，请检查参数设置和网络连接"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, str | bool]:
         return "MESSAGER", "slack"
 
     @staticmethod
     def message_parser(body: Any, form: Any,
-                       args: Any) -> Optional[CommingMessage]:
+                       args: Any) -> CommingMessage | None:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
@@ -205,7 +205,7 @@ class SlackModule(_ModuleBase):
                             image=message.image, userid=message.userid)
 
     @checkMessage(MessageChannel.Slack)
-    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
+    def post_medias_message(self, message: Notification, medias: list[MediaInfo]) -> bool | None:
         """
         发送媒体信息选择列表
         :param message: 消息体
@@ -215,7 +215,7 @@ class SlackModule(_ModuleBase):
         return self.slack.send_meidas_msg(title=message.title, medias=medias, userid=message.userid)
 
     @checkMessage(MessageChannel.Slack)
-    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
+    def post_torrents_message(self, message: Notification, torrents: list[Context]) -> bool | None:
         """
         发送种子信息选择列表
         :param message: 消息体

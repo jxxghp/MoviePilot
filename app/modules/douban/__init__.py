@@ -34,7 +34,7 @@ class DoubanModule(_ModuleBase):
     def stop(self):
         self.doubanapi.close()
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -45,7 +45,7 @@ class DoubanModule(_ModuleBase):
             return False, f"无法连接豆瓣，错误码：{ret.status_code}"
         return False, "豆瓣网络连接失败"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, str | bool]:
         pass
 
     @staticmethod
@@ -56,7 +56,7 @@ class DoubanModule(_ModuleBase):
                         mtype: MediaType = None,
                         doubanid: str = None,
                         cache: bool = True,
-                        **kwargs) -> Optional[MediaInfo]:
+                        **kwargs) -> MediaInfo | None:
         """
         识别媒体信息
         :param meta:     识别的元数据
@@ -147,7 +147,7 @@ class DoubanModule(_ModuleBase):
 
         return None
 
-    def douban_info(self, doubanid: str, mtype: MediaType = None) -> Optional[dict]:
+    def douban_info(self, doubanid: str, mtype: MediaType = None) -> dict | None:
         """
         获取豆瓣信息
         :param doubanid: 豆瓣ID
@@ -455,7 +455,7 @@ class DoubanModule(_ModuleBase):
             return __douban_movie() or __douban_tv()
 
     def douban_discover(self, mtype: MediaType, sort: str, tags: str,
-                        page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:
+                        page: int = 1, count: int = 30) -> list[MediaInfo] | None:
         """
         发现豆瓣电影、剧集
         :param mtype:  媒体类型
@@ -482,7 +482,7 @@ class DoubanModule(_ModuleBase):
                     and "tv_large.jpg" not in media.poster_path]
         return []
 
-    def movie_showing(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+    def movie_showing(self, page: int = 1, count: int = 30) -> list[MediaInfo]:
         """
         获取正在上映的电影
         """
@@ -492,7 +492,7 @@ class DoubanModule(_ModuleBase):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
-    def tv_weekly_chinese(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+    def tv_weekly_chinese(self, page: int = 1, count: int = 30) -> list[MediaInfo]:
         """
         获取豆瓣本周口碑国产剧
         """
@@ -502,7 +502,7 @@ class DoubanModule(_ModuleBase):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
-    def tv_weekly_global(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+    def tv_weekly_global(self, page: int = 1, count: int = 30) -> list[MediaInfo]:
         """
         获取豆瓣本周口碑外国剧
         """
@@ -512,7 +512,7 @@ class DoubanModule(_ModuleBase):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
-    def tv_animation(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+    def tv_animation(self, page: int = 1, count: int = 30) -> list[MediaInfo]:
         """
         获取豆瓣动画剧
         """
@@ -522,7 +522,7 @@ class DoubanModule(_ModuleBase):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
-    def movie_hot(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+    def movie_hot(self, page: int = 1, count: int = 30) -> list[MediaInfo]:
         """
         获取豆瓣热门电影
         """
@@ -532,7 +532,7 @@ class DoubanModule(_ModuleBase):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
-    def tv_hot(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+    def tv_hot(self, page: int = 1, count: int = 30) -> list[MediaInfo]:
         """
         获取豆瓣热门剧集
         """
@@ -542,7 +542,7 @@ class DoubanModule(_ModuleBase):
             return [MediaInfo(douban_info=info) for info in infos.get("subject_collection_items")]
         return []
 
-    def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+    def search_medias(self, meta: MetaBase) -> list[MediaInfo] | None:
         """
         搜索媒体信息
         :param meta:  识别的元数据
@@ -575,7 +575,7 @@ class DoubanModule(_ModuleBase):
                     media.season = meta.begin_season
         return ret_medias
 
-    def search_persons(self, name: str) -> Optional[List[MediaPerson]]:
+    def search_persons(self, name: str) -> list[MediaPerson] | None:
         """
         搜索人物信息
         """
@@ -648,7 +648,7 @@ class DoubanModule(_ModuleBase):
                 return item
         return {}
 
-    def movie_top250(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
+    def movie_top250(self, page: int = 1, count: int = 30) -> list[MediaInfo]:
         """
         获取豆瓣电影TOP250
         """
@@ -671,7 +671,7 @@ class DoubanModule(_ModuleBase):
         :return: 成功或失败
         """
 
-        def __get_mediainfo(_meta: MetaBase, _mediainfo: MediaInfo) -> Optional[MediaInfo]:
+        def __get_mediainfo(_meta: MetaBase, _mediainfo: MediaInfo) -> MediaInfo | None:
             """
             获取豆瓣媒体信息
             """
@@ -759,7 +759,7 @@ class DoubanModule(_ModuleBase):
                     logger.error(f"刮削文件 {file} 失败，原因：{str(e)}")
         logger.info(f"{path} 刮削完成")
 
-    def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
+    def obtain_images(self, mediainfo: MediaInfo) -> MediaInfo | None:
         """
         补充抓取媒体信息图片
         :param mediainfo:  识别的媒体信息
@@ -797,7 +797,7 @@ class DoubanModule(_ModuleBase):
         self.cache.clear()
         logger.info("豆瓣缓存清除完成")
 
-    def douban_movie_credits(self, doubanid: str) -> List[schemas.MediaPerson]:
+    def douban_movie_credits(self, doubanid: str) -> list[schemas.MediaPerson]:
         """
         根据TMDBID查询电影演职员表
         :param doubanid:  豆瓣ID
@@ -813,7 +813,7 @@ class DoubanModule(_ModuleBase):
             return [schemas.MediaPerson(source='douban', **doubaninfo) for doubaninfo in ret_list]
         return []
 
-    def douban_tv_credits(self, doubanid: str) -> List[schemas.MediaPerson]:
+    def douban_tv_credits(self, doubanid: str) -> list[schemas.MediaPerson]:
         """
         根据TMDBID查询电视剧演职员表
         :param doubanid:  豆瓣ID
@@ -829,7 +829,7 @@ class DoubanModule(_ModuleBase):
             return [schemas.MediaPerson(source='douban', **doubaninfo) for doubaninfo in ret_list]
         return []
 
-    def douban_movie_recommend(self, doubanid: str) -> List[MediaInfo]:
+    def douban_movie_recommend(self, doubanid: str) -> list[MediaInfo]:
         """
         根据豆瓣ID查询推荐电影
         :param doubanid:  豆瓣ID
@@ -839,7 +839,7 @@ class DoubanModule(_ModuleBase):
             return [MediaInfo(douban_info=info) for info in recommend]
         return []
 
-    def douban_tv_recommend(self, doubanid: str) -> List[MediaInfo]:
+    def douban_tv_recommend(self, doubanid: str) -> list[MediaInfo]:
         """
         根据豆瓣ID查询推荐电视剧
         :param doubanid:  豆瓣ID
@@ -872,7 +872,7 @@ class DoubanModule(_ModuleBase):
             })
         return schemas.MediaPerson(source='douban')
 
-    def douban_person_credits(self, person_id: int, page: int = 1) -> List[MediaInfo]:
+    def douban_person_credits(self, person_id: int, page: int = 1) -> list[MediaInfo]:
         """
         根据TMDBID查询人物参演作品
         :param person_id:  人物ID

@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Integer, String, Sequence, UniqueConstraint, Index
+from sqlalchemy import Column, Index, Integer, Sequence, String, UniqueConstraint
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base
+from app.db import Base, db_query, db_update
 
 
 class UserConfig(Base):

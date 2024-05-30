@@ -1,4 +1,3 @@
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -7,45 +6,45 @@ class DownloadHistory(BaseModel):
     # ID
     id: int
     # 保存路程
-    path: Optional[str] = None
+    path: str | None = None
     # 类型：电影、电视剧
-    type: Optional[str] = None
+    type: str | None = None
     # 标题
-    title: Optional[str] = None
+    title: str | None = None
     # 年份
-    year: Optional[str] = None
+    year: str | None = None
     # TMDBID
-    tmdbid: Optional[int] = None
+    tmdbid: int | None = None
     # IMDBID
-    imdbid: Optional[str] = None
+    imdbid: str | None = None
     # TVDBID
-    tvdbid: Optional[int] = None
+    tvdbid: int | None = None
     # 豆瓣ID
-    doubanid: Optional[str] = None
+    doubanid: str | None = None
     # 季Sxx
-    seasons: Optional[str] = None
+    seasons: str | None = None
     # 集Exx
-    episodes: Optional[str] = None
+    episodes: str | None = None
     # 海报
-    image: Optional[str] = None
+    image: str | None = None
     # 下载器Hash
-    download_hash: Optional[str] = None
+    download_hash: str | None = None
     # 种子名称
-    torrent_name: Optional[str] = None
+    torrent_name: str | None = None
     # 种子描述
-    torrent_description: Optional[str] = None
+    torrent_description: str | None = None
     # 站点
-    torrent_site: Optional[str] = None
+    torrent_site: str | None = None
     # 下载用户
-    userid: Optional[str] = None
+    userid: str | None = None
     # 下载用户名
-    username: Optional[str] = None
+    username: str | None = None
     # 下载渠道
-    channel: Optional[str] = None
+    channel: str | None = None
     # 创建时间
-    date: Optional[str] = None
+    date: str | None = None
     # 备注
-    note: Optional[str] = None
+    note: str | None = None
 
     class Config:
         orm_mode = True
@@ -55,41 +54,41 @@ class TransferHistory(BaseModel):
     # ID
     id: int
     # 源目录
-    src: Optional[str] = None
+    src: str | None = None
     # 目的目录
-    dest: Optional[str] = None
+    dest: str | None = None
     # 转移模式
-    mode: Optional[str] = None
+    mode: str | None = None
     # 类型：电影、电视剧
-    type: Optional[str] = None
+    type: str | None = None
     # 二级分类
-    category: Optional[str] = None
+    category: str | None = None
     # 标题
-    title: Optional[str] = None
+    title: str | None = None
     # 年份
-    year: Optional[str] = None
+    year: str | None = None
     # TMDBID
-    tmdbid: Optional[int] = None
+    tmdbid: int | None = None
     # IMDBID
-    imdbid: Optional[str] = None
+    imdbid: str | None = None
     # TVDBID
-    tvdbid: Optional[int] = None
+    tvdbid: int | None = None
     # 豆瓣ID
-    doubanid: Optional[str] = None
+    doubanid: str | None = None
     # 季Sxx
-    seasons: Optional[str] = None
+    seasons: str | None = None
     # 集Exx
-    episodes: Optional[str] = None
+    episodes: str | None = None
     # 海报
-    image: Optional[str] = None
+    image: str | None = None
     # 下载器Hash
-    download_hash: Optional[str] = None
+    download_hash: str | None = None
     # 状态 1-成功，0-失败
     status: bool = True
     # 失败原因
-    errmsg: Optional[str] = None
+    errmsg: str | None = None
     # 日期
-    date: Optional[str] = None
+    date: str | None = None
 
     class Config:
         orm_mode = True

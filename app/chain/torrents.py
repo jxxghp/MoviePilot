@@ -1,13 +1,12 @@
 import re
 import traceback
-from typing import Dict, List, Union
 
-from cachetools import cached, TTLCache
+from cachetools import TTLCache, cached
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.core.config import settings
-from app.core.context import TorrentInfo, Context, MediaInfo
+from app.core.context import Context, MediaInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -16,7 +15,7 @@ from app.helper.sites import SitesHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import Notification
-from app.schemas.types import SystemConfigKey, MessageChannel, NotificationType, MediaType
+from app.schemas.types import MediaType, MessageChannel, NotificationType, SystemConfigKey
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
@@ -38,17 +37,17 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         self.mediachain = MediaChain()
         self.torrenthelper = TorrentHelper()
 
-    def remote_refresh(self, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_refresh(self, channel: MessageChannel, userid: str | int = None):
         """
         远程刷新订阅，发送消息
         """
         self.post_message(Notification(channel=channel,
-                                       title=f"开始刷新种子 ...", userid=userid))
+                                       title="开始刷新种子 ...", userid=userid))
         self.refresh()
         self.post_message(Notification(channel=channel,
-                                       title=f"种子刷新完成！", userid=userid))
+                                       title="种子刷新完成！", userid=userid))
 
-    def get_torrents(self, stype: str = None) -> Dict[str, List[Context]]:
+    def get_torrents(self, stype: str = None) -> dict[str, list[Context]]:
         """
         获取当前缓存的种子
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
@@ -67,13 +66,13 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         """
         清理种子缓存数据
         """
-        logger.info(f'开始清理种子缓存数据 ...')
+        logger.info('开始清理种子缓存数据 ...')
         self.remove_cache(self._spider_file)
         self.remove_cache(self._rss_file)
-        logger.info(f'种子缓存数据清理完成')
+        logger.info('种子缓存数据清理完成')
 
     @cached(cache=TTLCache(maxsize=128, ttl=595))
-    def browse(self, domain: str) -> List[TorrentInfo]:
+    def browse(self, domain: str) -> list[TorrentInfo]:
         """
         浏览站点首页内容，返回种子清单，TTL缓存10分钟
         :param domain: 站点域名
@@ -86,7 +85,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         return self.refresh_torrents(site=site)
 
     @cached(cache=TTLCache(maxsize=128, ttl=295))
-    def rss(self, domain: str) -> List[TorrentInfo]:
+    def rss(self, domain: str) -> list[TorrentInfo]:
         """
         获取站点RSS内容，返回种子清单，TTL缓存5分钟
         :param domain: 站点域名
@@ -108,7 +107,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
             logger.error(f'站点 {domain} 未获取到RSS数据！')
             return []
         # 组装种子
-        ret_torrents: List[TorrentInfo] = []
+        ret_torrents: list[TorrentInfo] = []
         for item in rss_items:
             if not item.get("title"):
                 continue
@@ -129,7 +128,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
 
         return ret_torrents
 
-    def refresh(self, stype: str = None, sites: List[int] = None) -> Dict[str, List[Context]]:
+    def refresh(self, stype: str = None, sites: list[int] = None) -> dict[str, list[Context]]:
         """
         刷新站点最新资源，识别并缓存起来
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
@@ -164,10 +163,10 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
             domains.append(domain)
             if stype == "spider":
                 # 刷新首页种子
-                torrents: List[TorrentInfo] = self.browse(domain=domain)
+                torrents: list[TorrentInfo] = self.browse(domain=domain)
             else:
                 # 刷新RSS种子
-                torrents: List[TorrentInfo] = self.rss(domain=domain)
+                torrents: list[TorrentInfo] = self.rss(domain=domain)
             # 按pubdate降序排列
             torrents.sort(key=lambda x: x.pubdate or '', reverse=True)
             # 取前N条

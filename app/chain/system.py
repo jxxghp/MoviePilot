@@ -1,12 +1,11 @@
 import json
 import re
 from pathlib import Path
-from typing import Union
 
 from app.chain import ChainBase
 from app.core.config import settings
 from app.log import logger
-from app.schemas import Notification, MessageChannel
+from app.schemas import MessageChannel, Notification
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.system import SystemUtils
@@ -19,15 +18,15 @@ class SystemChain(ChainBase, metaclass=Singleton):
 
     _restart_file = "__system_restart__"
 
-    def remote_clear_cache(self, channel: MessageChannel, userid: Union[int, str]):
+    def remote_clear_cache(self, channel: MessageChannel, userid: int | str):
         """
         清理系统缓存
         """
         self.clear_cache()
         self.post_message(Notification(channel=channel,
-                                       title=f"缓存清理完成！", userid=userid))
+                                       title="缓存清理完成！", userid=userid))
 
-    def restart(self, channel: MessageChannel, userid: Union[int, str]):
+    def restart(self, channel: MessageChannel, userid: int | str):
         """
         重启系统
         """
@@ -59,7 +58,7 @@ class SystemChain(ChainBase, metaclass=Singleton):
             title += f"当前前端版本：{front_local_version}，远程版本：{front_release_version}"
         return title
 
-    def version(self, channel: MessageChannel, userid: Union[int, str]):
+    def version(self, channel: MessageChannel, userid: int | str):
         """
         查看当前版本、远程版本
         """
@@ -156,7 +155,7 @@ class SystemChain(ChainBase, metaclass=Singleton):
         version_file = Path(settings.FRONTEND_PATH) / "version.txt"
         if version_file.exists():
             try:
-                with open(version_file, 'r') as f:
+                with open(version_file) as f:
                     version = str(f.read()).strip()
                 return version
             except Exception as err:

@@ -1,13 +1,11 @@
-import os
 from pathlib import Path
-from typing import List, Optional
 
 from app import schemas
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
-from app.schemas.types import SystemConfigKey, MediaType
+from app.schemas.types import MediaType, SystemConfigKey
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
@@ -20,25 +18,25 @@ class DirectoryHelper:
     def __init__(self):
         self.systemconfig = SystemConfigOper()
 
-    def get_download_dirs(self) -> List[schemas.MediaDirectory]:
+    def get_download_dirs(self) -> list[schemas.MediaDirectory]:
         """
         获取下载目录
         """
-        dir_conf: List[dict] = self.systemconfig.get(SystemConfigKey.DownloadDirectories)
+        dir_conf: list[dict] = self.systemconfig.get(SystemConfigKey.DownloadDirectories)
         if not dir_conf:
             return []
         return [schemas.MediaDirectory(**d) for d in dir_conf]
 
-    def get_library_dirs(self) -> List[schemas.MediaDirectory]:
+    def get_library_dirs(self) -> list[schemas.MediaDirectory]:
         """
         获取媒体库目录
         """
-        dir_conf: List[dict] = self.systemconfig.get(SystemConfigKey.LibraryDirectories)
+        dir_conf: list[dict] = self.systemconfig.get(SystemConfigKey.LibraryDirectories)
         if not dir_conf:
             return []
         return [schemas.MediaDirectory(**d) for d in dir_conf]
 
-    def get_download_dir(self, media: MediaInfo = None, to_path: Path = None) -> Optional[schemas.MediaDirectory]:
+    def get_download_dir(self, media: MediaInfo = None, to_path: Path = None) -> schemas.MediaDirectory | None:
         """
         根据媒体信息获取下载目录
         :param media: 媒体信息
@@ -74,7 +72,7 @@ class DirectoryHelper:
         return None
 
     def get_library_dir(self, media: MediaInfo = None, in_path: Path = None,
-                        to_path: Path = None) -> Optional[schemas.MediaDirectory]:
+                        to_path: Path = None) -> schemas.MediaDirectory | None:
         """
         根据媒体信息获取媒体库目录，需判断是否同盘优先
         :param media: 媒体信息

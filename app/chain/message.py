@@ -1,7 +1,7 @@
 import copy
 import json
 import re
-from typing import Any, Optional, Dict, Union
+from typing import Any
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
@@ -9,23 +9,23 @@ from app.chain.media import MediaChain
 from app.chain.search import SearchChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
-from app.core.context import MediaInfo, Context
+from app.core.context import Context, MediaInfo
 from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.db.message_oper import MessageOper
 from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import Notification, NotExistMediaInfo, CommingMessage
-from app.schemas.types import EventType, MessageChannel, MediaType
+from app.schemas import CommingMessage, NotExistMediaInfo, Notification
+from app.schemas.types import EventType, MediaType, MessageChannel
 from app.utils.string import StringUtils
 
 # 当前页面
 _current_page: int = 0
 # 当前元数据
-_current_meta: Optional[MetaBase] = None
+_current_meta: MetaBase | None = None
 # 当前媒体信息
-_current_media: Optional[MediaInfo] = None
+_current_media: MediaInfo | None = None
 
 
 class MessageChain(ChainBase):
@@ -51,7 +51,7 @@ class MessageChain(ChainBase):
     def __get_noexits_info(
             self,
             _meta: MetaBase,
-            _mediainfo: MediaInfo) -> Dict[Union[int, str], Dict[int, NotExistMediaInfo]]:
+            _mediainfo: MediaInfo) -> dict[int | str, dict[int, NotExistMediaInfo]]:
         """
         获取缺失的媒体信息
         """
@@ -127,14 +127,14 @@ class MessageChain(ChainBase):
         # 处理消息
         self.handle_message(channel=channel, userid=userid, username=username, text=text)
 
-    def handle_message(self, channel: MessageChannel, userid: Union[str, int], username: str, text: str) -> None:
+    def handle_message(self, channel: MessageChannel, userid: str | int, username: str, text: str) -> None:
         """
         识别消息内容，执行操作
         """
         # 申明全局变量
         global _current_page, _current_meta, _current_media
         # 加载缓存
-        user_cache: Dict[str, dict] = self.load_cache(self._cache_file) or {}
+        user_cache: dict[str, dict] = self.load_cache(self._cache_file) or {}
         # 处理消息
         logger.info(f'收到用户消息内容，用户：{userid}，内容：{text}')
         # 保存消息
@@ -447,8 +447,8 @@ class MessageChain(ChainBase):
         self.save_cache(user_cache, self._cache_file)
 
     def __auto_download(self, channel: MessageChannel, cache_list: list[Context],
-                        userid: Union[str, int], username: str,
-                        no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]] = None):
+                        userid: str | int, username: str,
+                        no_exists: dict[int | str, dict[int, NotExistMediaInfo]] | None = None):
         """
         自动择优下载
         """

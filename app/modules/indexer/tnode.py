@@ -1,5 +1,4 @@
 import re
-from typing import Tuple, List
 
 from ruamel.yaml import CommentedMap
 
@@ -51,7 +50,7 @@ class TNodeSpider:
             if csrf_token:
                 self._token = csrf_token.group(1)
 
-    def search(self, keyword: str, page: int = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, page: int = 0) -> tuple[bool, list[dict]]:
         if not self._token:
             logger.warn(f"{self._name} 未获取到token，无法搜索")
             return True, []

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Any, Union
+from typing import Any
 
 from fastapi import APIRouter, Depends
 
@@ -63,7 +63,7 @@ def recognize_file2(path: str,
     return recognize_file(path)
 
 
-@router.get("/search", summary="搜索媒体/人物信息", response_model=List[dict])
+@router.get("/search", summary="搜索媒体/人物信息", response_model=list[dict])
 def search(title: str,
            type: str = "media",
            page: int = 1,
@@ -72,7 +72,7 @@ def search(title: str,
     """
     模糊搜索媒体/人物信息列表 media：媒体信息，person：人物信息
     """
-    def __get_source(obj: Union[dict, schemas.MediaPerson]):
+    def __get_source(obj: dict | schemas.MediaPerson):
         """
         获取对象属性
         """

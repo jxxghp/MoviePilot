@@ -1,8 +1,7 @@
-from typing import Optional, Union
 
 from pydantic import BaseModel
 
-from app.schemas.types import NotificationType, MessageChannel
+from app.schemas.types import MessageChannel, NotificationType
 
 
 class CommingMessage(BaseModel):
@@ -10,17 +9,17 @@ class CommingMessage(BaseModel):
     外来消息
     """
     # 用户ID
-    userid: Optional[Union[str, int]] = None
+    userid: str | int | None = None
     # 用户名称
-    username: Optional[str] = None
+    username: str | None = None
     # 消息渠道
-    channel: Optional[MessageChannel] = None
+    channel: MessageChannel | None = None
     # 消息体
-    text: Optional[str] = None
+    text: str | None = None
     # 时间
-    date: Optional[str] = None
+    date: str | None = None
     # 消息方向
-    action: Optional[int] = 0
+    action: int | None = 0
 
     def to_dict(self):
         """
@@ -38,23 +37,23 @@ class Notification(BaseModel):
     消息
     """
     # 消息渠道
-    channel: Optional[MessageChannel] = None
+    channel: MessageChannel | None = None
     # 消息类型
-    mtype: Optional[NotificationType] = None
+    mtype: NotificationType | None = None
     # 标题
-    title: Optional[str] = None
+    title: str | None = None
     # 文本内容
-    text: Optional[str] = None
+    text: str | None = None
     # 图片
-    image: Optional[str] = None
+    image: str | None = None
     # 链接
-    link: Optional[str] = None
+    link: str | None = None
     # 用户ID
-    userid: Optional[Union[str, int]] = None
+    userid: str | int | None = None
     # 时间
-    date: Optional[str] = None
+    date: str | None = None
     # 消息方向
-    action: Optional[int] = 1
+    action: int | None = 1
 
     def to_dict(self):
         """
@@ -73,14 +72,14 @@ class NotificationSwitch(BaseModel):
     消息开关
     """
     # 消息类型
-    mtype: Optional[str] = None
+    mtype: str | None = None
     # 微信开关
-    wechat: Optional[bool] = False
+    wechat: bool | None = False
     # TG开关
-    telegram: Optional[bool] = False
+    telegram: bool | None = False
     # Slack开关
-    slack: Optional[bool] = False
+    slack: bool | None = False
     # SynologyChat开关
-    synologychat: Optional[bool] = False
+    synologychat: bool | None = False
     # VoceChat开关
-    vocechat: Optional[bool] = False
+    vocechat: bool | None = False

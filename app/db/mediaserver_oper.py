@@ -1,5 +1,4 @@
 import json
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -25,13 +24,13 @@ class MediaServerOper(DbOper):
             return True
         return False
 
-    def empty(self, server: Optional[str] = None):
+    def empty(self, server: str | None = None):
         """
         清空媒体服务器数据
         """
         MediaServerItem.empty(self._db, server)
 
-    def exists(self, **kwargs) -> Optional[MediaServerItem]:
+    def exists(self, **kwargs) -> MediaServerItem | None:
         """
         判断媒体服务器数据是否存在
         """
@@ -57,7 +56,7 @@ class MediaServerOper(DbOper):
                 return None
         return item
 
-    def get_item_id(self, **kwargs) -> Optional[str]:
+    def get_item_id(self, **kwargs) -> str | None:
         """
         获取媒体服务器数据ID
         """

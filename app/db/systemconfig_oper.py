@@ -1,5 +1,5 @@
 import json
-from typing import Any, Union
+from typing import Any
 
 from app.db import DbOper
 from app.db.models.systemconfig import SystemConfig
@@ -23,7 +23,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             else:
                 self.__SYSTEMCONF[item.key] = item.value
 
-    def set(self, key: Union[str, SystemConfigKey], value: Any):
+    def set(self, key: str | SystemConfigKey, value: Any):
         """
         设置系统设置
         """
@@ -46,7 +46,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             conf = SystemConfig(key=key, value=value)
             conf.create(self._db)
 
-    def get(self, key: Union[str, SystemConfigKey] = None) -> Any:
+    def get(self, key: str | SystemConfigKey = None) -> Any:
         """
         获取系统设置
         """
@@ -62,7 +62,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         """
         return self.__SYSTEMCONF or {}
 
-    def delete(self, key: Union[str, SystemConfigKey]):
+    def delete(self, key: str | SystemConfigKey):
         """
         删除系统设置
         """

@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends
 
@@ -12,7 +12,7 @@ from app.schemas.types import MediaType
 router = APIRouter()
 
 
-@router.get("/last", summary="查询搜索结果", response_model=List[schemas.Context])
+@router.get("/last", summary="查询搜索结果", response_model=list[schemas.Context])
 async def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询搜索结果
@@ -85,7 +85,7 @@ def search_by_id(mediaid: str,
         return schemas.Response(success=True, data=[torrent.to_dict() for torrent in torrents])
 
 
-@router.get("/title", summary="模糊搜索资源", response_model=List[schemas.TorrentInfo])
+@router.get("/title", summary="模糊搜索资源", response_model=list[schemas.TorrentInfo])
 async def search_by_title(keyword: str = None,
                           page: int = 0,
                           site: int = None,

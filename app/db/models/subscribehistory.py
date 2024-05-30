@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Integer, String, Sequence, Float
+from sqlalchemy import Column, Float, Integer, Sequence, String
 from sqlalchemy.orm import Session
 
-from app.db import db_query, Base
+from app.db import Base, db_query
 
 
 class SubscribeHistory(Base):

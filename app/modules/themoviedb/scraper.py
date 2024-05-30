@@ -1,6 +1,5 @@
 import traceback
 from pathlib import Path
-from typing import Union
 from xml.dom import minidom
 
 from requests import RequestException
@@ -382,7 +381,7 @@ class TmdbScraper:
             file_path.write_bytes(xml_str)
         logger.info(f"NFO文件已保存：{file_path}")
 
-    def __save_remove_file(self, out_file: Path, content: Union[str, bytes]):
+    def __save_remove_file(self, out_file: Path, content: str | bytes):
         """
         保存文件到远端
         """

@@ -5,18 +5,18 @@ import json
 import os
 import traceback
 from datetime import datetime, timedelta
-from typing import Any, Union, Optional, Annotated
+from typing import Annotated, Any
+
 import jwt
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
-from fastapi import HTTPException, status, Depends, Header
+from cryptography.fernet import Fernet
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
 
 from app import schemas
 from app.core.config import settings
-from cryptography.fernet import Fernet
-
 from app.log import logger
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -29,7 +29,7 @@ reusable_oauth2 = OAuth2PasswordBearer(
 
 
 def create_access_token(
-        userid: Union[str, Any], username: str, super_user: bool = False,
+        userid: str | Any, username: str, super_user: bool = False,
         expires_delta: timedelta = None
 ) -> str:
     if expires_delta:
@@ -107,7 +107,7 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def decrypt(data: bytes, key: bytes) -> Optional[bytes]:
+def decrypt(data: bytes, key: bytes) -> bytes | None:
     """
     解密二进制数据
     """

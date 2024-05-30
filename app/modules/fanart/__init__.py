@@ -5,8 +5,8 @@ from typing import Optional, Tuple, Union
 from app.core.context import MediaInfo, settings
 from app.log import logger
 from app.modules import _ModuleBase
-from app.utils.http import RequestUtils
 from app.schemas.types import MediaType
+from app.utils.http import RequestUtils
 
 
 class FanartModule(_ModuleBase):
@@ -317,7 +317,7 @@ class FanartModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -328,14 +328,14 @@ class FanartModule(_ModuleBase):
             return False, f"无法连接fanart，错误码：{ret.status_code}"
         return False, "fanart网络连接失败"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, str | bool]:
         return "FANART_API_KEY", True
 
     @staticmethod
     def get_name() -> str:
         return "Fanart"
 
-    def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
+    def obtain_images(self, mediainfo: MediaInfo) -> MediaInfo | None:
         """
         获取图片
         :param mediainfo:  识别的媒体信息
@@ -391,7 +391,7 @@ class FanartModule(_ModuleBase):
 
     @classmethod
     @lru_cache(maxsize=settings.CACHE_CONF.get('fanart'))
-    def __request_fanart(cls, media_type: MediaType, queryid: Union[str, int]) -> Optional[dict]:
+    def __request_fanart(cls, media_type: MediaType, queryid: str | int) -> dict | None:
         if media_type == MediaType.MOVIE:
             image_url = cls._movie_url % queryid
         else:

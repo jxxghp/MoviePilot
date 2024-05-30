@@ -1,5 +1,4 @@
 import re
-from typing import Optional
 
 from Pinyin2Hanzi import is_pinyin
 
@@ -151,7 +150,7 @@ class MetaVideo(MetaBase):
         self.customization = CustomizationMatcher().match(title=original_title) or None
 
     @staticmethod
-    def __get_title_from_description(description: str) -> Optional[str]:
+    def __get_title_from_description(description: str) -> str | None:
         """
         从描述中提取标题
         """
@@ -490,14 +489,7 @@ class MetaVideo(MetaBase):
                     and 1 < len(token) < 4 \
                     and self._last_token_type != "year" \
                     and self._last_token_type != "videoencode" \
-                    and token != self._unknown_name_str:
-                self.begin_episode = int(token)
-                self.total_episode = 1
-                self._last_token_type = "episode"
-                self._continue_flag = False
-                self._stop_name_flag = True
-                self.type = MediaType.TV
-            elif self._last_token_type == "EPISODE" \
+                    and token != self._unknown_name_str or self._last_token_type == "EPISODE" \
                     and self.begin_episode is None \
                     and len(token) < 5:
                 self.begin_episode = int(token)
@@ -580,9 +572,7 @@ class MetaVideo(MetaBase):
             self._last_token = token.upper() if token.upper() == "H" else token.lower()
         elif token in ["264", "265"] \
                 and self._last_token_type == "videoencode" \
-                and self._last_token in ['H', 'X']:
-            self.video_encode = "%s%s" % (self._last_token, token)
-        elif token.isdigit() \
+                and self._last_token in ['H', 'X'] or token.isdigit() \
                 and self._last_token_type == "videoencode" \
                 and self._last_token in ['VC', 'MPEG']:
             self.video_encode = "%s%s" % (self._last_token, token)

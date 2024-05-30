@@ -5,9 +5,8 @@ Revises: 14f1813ae8e3
 Create Date: 2023-08-12 17:55:06.509548
 
 """
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = 'ec5fb51fc300'
@@ -23,7 +22,7 @@ def upgrade() -> None:
             batch_op.add_column(sa.Column('files', sa.String, nullable=True))
         with op.batch_alter_table("rss") as batch_op:
             batch_op.add_column(sa.Column('filter', sa.Integer, nullable=True))
-    except Exception as e:
+    except Exception:
         pass
     # ### end Alembic commands ###
 

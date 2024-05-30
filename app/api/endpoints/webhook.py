@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Request, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from app import schemas
 from app.chain.webhook import WebhookChain

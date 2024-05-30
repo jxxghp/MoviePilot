@@ -1,10 +1,9 @@
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Sequence
+from sqlalchemy import Column, Integer, Sequence, String
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base
+from app.db import Base, db_query, db_update
 
 
 class MediaServerItem(Base):
@@ -48,7 +47,7 @@ class MediaServerItem(Base):
 
     @staticmethod
     @db_update
-    def empty(db: Session, server: Optional[str] = None):
+    def empty(db: Session, server: str | None = None):
         if server is None:
             db.query(MediaServerItem).delete()
         else:

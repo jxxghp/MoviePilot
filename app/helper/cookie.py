@@ -1,5 +1,4 @@
 import base64
-from typing import Tuple, Optional
 
 from lxml import etree
 from playwright.sync_api import Page
@@ -74,7 +73,7 @@ class CookieHelper:
                            username: str,
                            password: str,
                            two_step_code: str = None,
-                           proxies: dict = None) -> Tuple[Optional[str], Optional[str], str]:
+                           proxies: dict = None) -> tuple[str | None, str | None, str]:
         """
         获取站点cookie和ua
         :param url: 站点地址
@@ -85,7 +84,7 @@ class CookieHelper:
         :return: cookie、ua、message
         """
 
-        def __page_handler(page: Page) -> Tuple[Optional[str], Optional[str], str]:
+        def __page_handler(page: Page) -> tuple[str | None, str | None, str]:
             """
             页面处理
             :return: Cookie和UA

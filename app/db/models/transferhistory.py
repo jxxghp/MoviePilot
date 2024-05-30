@@ -1,9 +1,9 @@
 import time
 
-from sqlalchemy import Column, Integer, String, Sequence, Boolean, func, or_
+from sqlalchemy import Boolean, Column, Integer, Sequence, String, func, or_
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base
+from app.db import Base, db_query, db_update
 
 
 class TransferHistory(Base):

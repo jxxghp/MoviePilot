@@ -4,12 +4,11 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple, Set, Dict, Union
 
 from app.chain import ChainBase
 from app.core.config import settings
-from app.core.context import MediaInfo, TorrentInfo, Context
-from app.core.event import eventmanager, Event
+from app.core.context import Context, MediaInfo, TorrentInfo
+from app.core.event import Event, eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
@@ -18,8 +17,8 @@ from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification
-from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType
+from app.schemas import DownloadingTorrent, ExistMediaInfo, NotExistMediaInfo, Notification
+from app.schemas.types import EventType, MediaType, MessageChannel, NotificationType, TorrentStatus
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
@@ -92,14 +91,14 @@ class DownloadChain(ChainBase):
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: MessageChannel = None,
-                         userid: Union[str, int] = None
-                         ) -> Tuple[Optional[Union[Path, str]], str, list]:
+                         userid: str | int = None
+                         ) -> tuple[Path | str | None, str, list]:
         """
         下载种子文件，如果是磁力链，会返回磁力链接本身
         :return: 种子路径，种子目录名，种子文件清单
         """
 
-        def __get_redict_url(url: str, ua: str = None, cookie: str = None) -> Optional[str]:
+        def __get_redict_url(url: str, ua: str = None, cookie: str = None) -> str | None:
             """
             获取下载链接， url格式：[base64]url
             """
@@ -114,7 +113,7 @@ class DownloadChain(ChainBase):
                     return url
                 # 解码参数
                 req_str = base64.b64decode(base64_str.encode('utf-8')).decode('utf-8')
-                req_params: Dict[str, dict] = json.loads(req_str)
+                req_params: dict[str, dict] = json.loads(req_str)
                 # 是否使用cookie
                 if not req_params.get('cookie'):
                     cookie = None
@@ -195,11 +194,11 @@ class DownloadChain(ChainBase):
         return torrent_file, download_folder, files
 
     def download_single(self, context: Context, torrent_file: Path = None,
-                        episodes: Set[int] = None,
+                        episodes: set[int] = None,
                         channel: MessageChannel = None,
                         save_path: str = None,
-                        userid: Union[str, int] = None,
-                        username: str = None) -> Optional[str]:
+                        userid: str | int = None,
+                        username: str = None) -> str | None:
         """
         下载及发送通知
         :param context: 资源上下文
@@ -261,7 +260,7 @@ class DownloadChain(ChainBase):
             return None
 
         # 添加下载
-        result: Optional[tuple] = self.download(content=content,
+        result: tuple | None = self.download(content=content,
                                                 cookie=_torrent.site_cookie,
                                                 episodes=episodes,
                                                 download_dir=download_dir,
@@ -354,13 +353,13 @@ class DownloadChain(ChainBase):
         return _hash
 
     def batch_download(self,
-                       contexts: List[Context],
-                       no_exists: Dict[Union[int, str], Dict[int, NotExistMediaInfo]] = None,
+                       contexts: list[Context],
+                       no_exists: dict[int | str, dict[int, NotExistMediaInfo]] = None,
                        save_path: str = None,
                        channel: MessageChannel = None,
                        userid: str = None,
                        username: str = None
-                       ) -> Tuple[List[Context], Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
+                       ) -> tuple[list[Context], dict[int | str, dict[int, NotExistMediaInfo]]]:
         """
         根据缺失数据，自动种子列表中组合择优下载
         :param contexts:  资源上下文列表
@@ -372,9 +371,9 @@ class DownloadChain(ChainBase):
         :return: 已经下载的资源列表、剩余未下载到的剧集 no_exists[tmdb_id/douban_id] = {season: NotExistMediaInfo}
         """
         # 已下载的项目
-        downloaded_list: List[Context] = []
+        downloaded_list: list[Context] = []
 
-        def __update_seasons(_mid: Union[int, str], _need: list, _current: list) -> list:
+        def __update_seasons(_mid: int | str, _need: list, _current: list) -> list:
             """
             更新need_tvs季数，返回剩余季数
             :param _mid: TMDBID
@@ -394,7 +393,7 @@ class DownloadChain(ChainBase):
                         break
             return need
 
-        def __update_episodes(_mid: Union[int, str], _sea: int, _need: list, _current: set) -> list:
+        def __update_episodes(_mid: int | str, _sea: int, _need: list, _current: set) -> list:
             """
             更新need_tvs集数，返回剩余集数
             :param _mid: TMDBID
@@ -418,7 +417,7 @@ class DownloadChain(ChainBase):
                     no_exists.pop(_mid)
             return need
 
-        def __get_season_episodes(_mid: Union[int, str], season: int) -> int:
+        def __get_season_episodes(_mid: int | str, season: int) -> int:
             """
             获取需要的季的集数
             """
@@ -446,7 +445,7 @@ class DownloadChain(ChainBase):
         logger.info(f"开始匹配电视剧整季：{no_exists}")
         if no_exists:
             # 先把整季缺失的拿出来，看是否刚好有所有季都满足的种子 {tmdbid: [seasons]}
-            need_seasons: Dict[int, list] = {}
+            need_seasons: dict[int, list] = {}
             for need_mid, need_tv in no_exists.items():
                 for tv in need_tv.values():
                     if not tv:
@@ -702,9 +701,9 @@ class DownloadChain(ChainBase):
 
     def get_no_exists_info(self, meta: MetaBase,
                            mediainfo: MediaInfo,
-                           no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
-                           totals: Dict[int, int] = None
-                           ) -> Tuple[bool, Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
+                           no_exists: dict[int, dict[int, NotExistMediaInfo]] = None,
+                           totals: dict[int, int] = None
+                           ) -> tuple[bool, dict[int | str, dict[int, NotExistMediaInfo]]]:
         """
         检查媒体库，查询是否存在，对于剧集同时返回不存在的季集信息
         :param meta: 元数据
@@ -753,7 +752,7 @@ class DownloadChain(ChainBase):
             itemid = self.mediaserver.get_item_id(mtype=mediainfo.type.value,
                                                   title=mediainfo.title,
                                                   tmdbid=mediainfo.tmdb_id)
-            exists_movies: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
+            exists_movies: ExistMediaInfo | None = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if exists_movies:
                 logger.info(f"媒体库中已存在电影：{mediainfo.title_year}")
                 return True, {}
@@ -765,7 +764,7 @@ class DownloadChain(ChainBase):
                                                             tmdbid=mediainfo.tmdb_id,
                                                             doubanid=mediainfo.douban_id)
                 if not mediainfo:
-                    logger.error(f"媒体信息识别失败！")
+                    logger.error("媒体信息识别失败！")
                     return False, {}
                 if not mediainfo.seasons:
                     logger.error(f"媒体信息中没有季集信息：{mediainfo.title_year}")
@@ -776,7 +775,7 @@ class DownloadChain(ChainBase):
                                                   tmdbid=mediainfo.tmdb_id,
                                                   season=mediainfo.season)
             # 媒体库已存在的剧集
-            exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
+            exists_tvs: ExistMediaInfo | None = self.media_exists(mediainfo=mediainfo, itemid=itemid)
             if not exists_tvs:
                 # 所有季集均缺失
                 for season, episodes in mediainfo.seasons.items():
@@ -830,7 +829,7 @@ class DownloadChain(ChainBase):
             # 全部存在
             return True, no_exists
 
-    def remote_downloading(self, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_downloading(self, channel: MessageChannel, userid: str | int = None):
         """
         查询正在下载的任务，并发送消息
         """
@@ -855,7 +854,7 @@ class DownloadChain(ChainBase):
             channel=channel, mtype=NotificationType.Download,
             title=title, text="\n".join(messages), userid=userid))
 
-    def downloading(self) -> List[DownloadingTorrent]:
+    def downloading(self) -> list[DownloadingTorrent]:
         """
         查询正在下载的任务
         """

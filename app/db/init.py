@@ -6,7 +6,7 @@ from alembic.config import Config
 
 from app.core.config import settings
 from app.core.security import get_password_hash
-from app.db import Engine, SessionFactory, Base
+from app.db import Base, Engine, SessionFactory
 from app.db.models import *
 from app.log import logger
 

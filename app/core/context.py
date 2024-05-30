@@ -1,6 +1,6 @@
 import re
-from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any, Tuple
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
 from app.core.config import settings
 from app.core.meta import MetaBase
@@ -178,9 +178,9 @@ class MediaInfo:
     # 所有别名和译名
     names: list = field(default_factory=list)
     # 各季的剧集清单信息
-    seasons: Dict[int, list] = field(default_factory=dict)
+    seasons: dict[int, list] = field(default_factory=dict)
     # 各季详情
-    season_info: List[dict] = field(default_factory=list)
+    season_info: list[dict] = field(default_factory=list)
     # 各季的年份
     season_years: dict = field(default_factory=dict)
     # 二级分类
@@ -192,9 +192,9 @@ class MediaInfo:
     # Bangumi INFO
     bangumi_info: dict = field(default_factory=dict)
     # 导演
-    directors: List[dict] = field(default_factory=list)
+    directors: list[dict] = field(default_factory=list)
     # 演员
-    actors: List[dict] = field(default_factory=list)
+    actors: list[dict] = field(default_factory=list)
     # 是否成人内容
     adult: bool = False
     # 创建人
@@ -202,7 +202,7 @@ class MediaInfo:
     # 集时长
     episode_run_time: list = field(default_factory=list)
     # 风格
-    genres: List[dict] = field(default_factory=list)
+    genres: list[dict] = field(default_factory=list)
     # 首播日期
     first_air_date: str = None
     # 首页
@@ -301,7 +301,7 @@ class MediaInfo:
         初始化媒信息
         """
 
-        def __directors_actors(tmdbinfo: dict) -> Tuple[List[dict], List[dict]]:
+        def __directors_actors(tmdbinfo: dict) -> tuple[list[dict], list[dict]]:
             """
             查询导演和演员
             :param tmdbinfo: TMDB元数据

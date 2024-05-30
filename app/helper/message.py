@@ -1,7 +1,7 @@
 import json
 import queue
 import time
-from typing import Optional, Any, Union
+from typing import Any
 
 from app.utils.singleton import Singleton
 
@@ -15,7 +15,7 @@ class MessageHelper(metaclass=Singleton):
         self.sys_queue = queue.Queue()
         self.user_queue = queue.Queue()
 
-    def put(self, message: Any, role: str = "plugin", title: str = None, note: Union[list, dict] = None):
+    def put(self, message: Any, role: str = "plugin", title: str = None, note: list | dict = None):
         """
         存消息
         :param message: 消息
@@ -52,7 +52,7 @@ class MessageHelper(metaclass=Singleton):
                 content['note'] = note
                 self.user_queue.put(json.dumps(content))
 
-    def get(self, role: str = "system") -> Optional[str]:
+    def get(self, role: str = "system") -> str | None:
         """
         取消息
         :param role: 消息通道 systm：系统消息，plugin：插件消息，user：用户消息

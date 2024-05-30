@@ -1,6 +1,6 @@
+import builtins
 import json
 import time
-from typing import Tuple, List
 
 from app.core.context import MediaInfo
 from app.db import DbOper
@@ -12,7 +12,7 @@ class SubscribeOper(DbOper):
     订阅管理
     """
 
-    def add(self, mediainfo: MediaInfo, **kwargs) -> Tuple[int, str]:
+    def add(self, mediainfo: MediaInfo, **kwargs) -> tuple[int, str]:
         """
         新增订阅
         """
@@ -67,7 +67,7 @@ class SubscribeOper(DbOper):
         """
         return Subscribe.get(self._db, rid=sid)
 
-    def list(self, state: str = None) -> List[Subscribe]:
+    def list(self, state: str = None) -> list[Subscribe]:
         """
         获取订阅列表
         """
@@ -89,13 +89,13 @@ class SubscribeOper(DbOper):
         subscribe.update(self._db, payload)
         return subscribe
 
-    def list_by_tmdbid(self, tmdbid: int, season: int = None) -> List[Subscribe]:
+    def list_by_tmdbid(self, tmdbid: int, season: int = None) -> builtins.list[Subscribe]:
         """
         获取指定tmdb_id的订阅
         """
         return Subscribe.get_by_tmdbid(self._db, tmdbid=tmdbid, season=season)
 
-    def list_by_username(self, username: str, state: str = None, mtype: str = None) -> List[Subscribe]:
+    def list_by_username(self, username: str, state: str = None, mtype: str = None) -> builtins.list[Subscribe]:
         """
         获取指定用户的订阅
         """

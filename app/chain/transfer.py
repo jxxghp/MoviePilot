@@ -2,7 +2,6 @@ import re
 import shutil
 import threading
 from pathlib import Path
-from typing import List, Optional, Tuple, Union, Dict
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
@@ -21,9 +20,16 @@ from app.helper.format import FormatParser
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.log import logger
-from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat
-from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
-    SystemConfigKey
+from app.schemas import EpisodeFormat, Notification, TransferInfo, TransferTorrent
+from app.schemas.types import (
+    EventType,
+    MediaType,
+    MessageChannel,
+    NotificationType,
+    ProgressKey,
+    SystemConfigKey,
+    TorrentStatus,
+)
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
@@ -55,7 +61,7 @@ class TransferChain(ChainBase):
         with lock:
             logger.info("开始执行下载器文件转移 ...")
             # 从下载器获取种子列表
-            torrents: Optional[List[TransferTorrent]] = self.list_torrents(status=TorrentStatus.TRANSFER)
+            torrents: list[TransferTorrent] | None = self.list_torrents(status=TorrentStatus.TRANSFER)
             if not torrents:
                 logger.info("没有获取到已完成的下载任务")
                 return False
@@ -94,7 +100,7 @@ class TransferChain(ChainBase):
                     target: Path = None, transfer_type: str = None,
                     season: int = None, epformat: EpisodeFormat = None,
                     min_filesize: int = 0, scrape: bool = None,
-                    force: bool = False) -> Tuple[bool, str]:
+                    force: bool = False) -> tuple[bool, str]:
         """
         执行一个复杂目录的转移操作
         :param path: 待转移目录或文件
@@ -136,7 +142,7 @@ class TransferChain(ChainBase):
             transfer_files = [f for f in transfer_files if formaterHandler.match(f.name)]
 
         # 汇总错误信息
-        err_msgs: List[str] = []
+        err_msgs: list[str] = []
         # 总文件数
         total_num = len(transfer_files)
         # 已处理数量
@@ -155,13 +161,13 @@ class TransferChain(ChainBase):
         # 处理所有待转移目录或文件，默认一个转移路径或文件只有一个媒体信息
         for trans_path in trans_paths:
             # 汇总季集清单
-            season_episodes: Dict[Tuple, List[int]] = {}
+            season_episodes: dict[tuple, list[int]] = {}
             # 汇总元数据
-            metas: Dict[Tuple, MetaBase] = {}
+            metas: dict[tuple, MetaBase] = {}
             # 汇总媒体信息
-            medias: Dict[Tuple, MediaInfo] = {}
+            medias: dict[tuple, MediaInfo] = {}
             # 汇总转移信息
-            transfers: Dict[Tuple, TransferInfo] = {}
+            transfers: dict[tuple, TransferInfo] = {}
 
             # 如果是目录且不是⼀蓝光原盘，获取所有文件并转移
             if (not trans_path.is_file()
@@ -452,10 +458,7 @@ class TransferChain(ChainBase):
         # 先检查当前目录的下级目录，以支持合集的情况
         for sub_dir in SystemUtils.list_sub_directory(directory):
             # 如果是蓝光原盘
-            if SystemUtils.is_bluray_dir(sub_dir):
-                trans_paths.append(sub_dir)
-            # 没有媒体文件的目录跳过
-            elif SystemUtils.list_files(sub_dir, extensions=settings.RMT_MEDIAEXT):
+            if SystemUtils.is_bluray_dir(sub_dir) or SystemUtils.list_files(sub_dir, extensions=settings.RMT_MEDIAEXT):
                 trans_paths.append(sub_dir)
 
         if not trans_paths:
@@ -468,7 +471,7 @@ class TransferChain(ChainBase):
             )
         return trans_paths
 
-    def remote_transfer(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_transfer(self, arg_str: str, channel: MessageChannel, userid: str | int = None):
         """
         远程重新转移，参数 历史记录ID TMDBID|类型
         """
@@ -510,7 +513,7 @@ class TransferChain(ChainBase):
             return
 
     def re_transfer(self, logid: int, mtype: MediaType = None,
-                    mediaid: str = None) -> Tuple[bool, str]:
+                    mediaid: str = None) -> tuple[bool, str]:
         """
         根据历史记录，重新识别转移，只支持简单条件
         :param logid: 历史记录ID
@@ -564,7 +567,7 @@ class TransferChain(ChainBase):
                         epformat: EpisodeFormat = None,
                         min_filesize: int = 0,
                         scrape: bool = None,
-                        force: bool = False) -> Tuple[bool, Union[str, list]]:
+                        force: bool = False) -> tuple[bool, str | list]:
         """
         手动转移，支持复杂条件，带进度显示
         :param in_path: 源文件路径
@@ -644,7 +647,7 @@ class TransferChain(ChainBase):
             mtype=NotificationType.Organize,
             title=msg_title, text=msg_str, image=mediainfo.get_message_image()))
 
-    def delete_files(self, path: Path) -> Tuple[bool, str]:
+    def delete_files(self, path: Path) -> tuple[bool, str]:
         """
         删除转移后的文件以及空目录
         :param path: 文件路径

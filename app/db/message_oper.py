@@ -1,6 +1,5 @@
 import json
 import time
-from typing import Optional, Union
 
 from sqlalchemy.orm import Session
 
@@ -26,7 +25,7 @@ class MessageOper(DbOper):
             link: str = None,
             userid: str = None,
             action: int = 1,
-            note: Union[list, dict] = None,
+            note: list | dict = None,
             **kwargs):
         """
         新增媒体服务器数据
@@ -54,7 +53,7 @@ class MessageOper(DbOper):
         })
         Message(**kwargs).create(self._db)
 
-    def list_by_page(self, page: int = 1, count: int = 30) -> Optional[str]:
+    def list_by_page(self, page: int = 1, count: int = 30) -> str | None:
         """
         获取媒体服务器数据ID
         """

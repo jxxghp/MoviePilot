@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -8,31 +7,31 @@ class TransferTorrent(BaseModel):
     """
     待转移任务信息
     """
-    title: Optional[str] = None
-    path: Optional[Path] = None
-    hash: Optional[str] = None
-    tags: Optional[str] = None
-    userid: Optional[str] = None
+    title: str | None = None
+    path: Path | None = None
+    hash: str | None = None
+    tags: str | None = None
+    userid: str | None = None
 
 
 class DownloadingTorrent(BaseModel):
     """
     下载中任务信息
     """
-    hash: Optional[str] = None
-    title: Optional[str] = None
-    name: Optional[str] = None
-    year: Optional[str] = None
-    season_episode: Optional[str] = None
-    size: Optional[float] = 0
-    progress: Optional[float] = 0
-    state: Optional[str] = 'downloading'
-    upspeed: Optional[str] = None
-    dlspeed: Optional[str] = None
-    media: Optional[dict] = {}
-    userid: Optional[str] = None
-    username: Optional[str] = None
-    left_time: Optional[str] = None
+    hash: str | None = None
+    title: str | None = None
+    name: str | None = None
+    year: str | None = None
+    season_episode: str | None = None
+    size: float | None = 0
+    progress: float | None = 0
+    state: str | None = 'downloading'
+    upspeed: str | None = None
+    dlspeed: str | None = None
+    media: dict | None = {}
+    userid: str | None = None
+    username: str | None = None
+    left_time: str | None = None
 
 
 class TransferInfo(BaseModel):
@@ -42,25 +41,25 @@ class TransferInfo(BaseModel):
     # 是否成功标志
     success: bool = True
     # 转移⼁路径
-    path: Optional[Path] = None
+    path: Path | None = None
     # 转移后路径
-    target_path: Optional[Path] = None
+    target_path: Path | None = None
     # 是否蓝光原盘
-    is_bluray: Optional[bool] = False
+    is_bluray: bool | None = False
     # 处理文件数
-    file_count: Optional[int] = 0
+    file_count: int | None = 0
     # 处理文件清单
-    file_list: Optional[list] = []
+    file_list: list | None = []
     # 目标文件清单
-    file_list_new: Optional[list] = []
+    file_list_new: list | None = []
     # 总文件大小
-    total_size: Optional[float] = 0
+    total_size: float | None = 0
     # 失败清单
-    fail_list: Optional[list] = []
+    fail_list: list | None = []
     # 错误信息
-    message: Optional[str] = None
+    message: str | None = None
     # 是否需要刮削
-    need_scrape: Optional[bool] = False
+    need_scrape: bool | None = False
 
     def to_dict(self):
         """
@@ -76,7 +75,7 @@ class EpisodeFormat(BaseModel):
     """
     剧集自定义识别格式
     """
-    format: Optional[str] = None
-    detail: Optional[str] = None
-    part: Optional[str] = None
-    offset: Optional[int] = None
+    format: str | None = None
+    detail: str | None = None
+    part: str | None = None
+    offset: int | None = None

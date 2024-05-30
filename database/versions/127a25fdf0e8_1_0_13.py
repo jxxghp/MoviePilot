@@ -7,9 +7,9 @@ Create Date: 2024-02-24 03:11:32.005540
 """
 
 import contextlib
-from alembic import op
-import sqlalchemy as sa
 
+import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = '127a25fdf0e8'

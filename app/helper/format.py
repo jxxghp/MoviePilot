@@ -1,10 +1,9 @@
 import re
-from typing import Tuple, Optional
 
 import parse
 
 
-class FormatParser(object):
+class FormatParser:
     _key = ""
     _split_chars = r"\.|\s+|\(|\)|\[|]|-|\+|【|】|/|～|;|&|\||#|_|「|」|~"
 
@@ -69,7 +68,7 @@ class FormatParser(object):
             return True
         return False
 
-    def split_episode(self, file_name: str) -> Tuple[Optional[int], Optional[int], Optional[str]]:
+    def split_episode(self, file_name: str) -> tuple[int | None, int | None, str | None]:
         """
         拆分集数，返回开始集数，结束集数，Part信息
         """
@@ -87,7 +86,7 @@ class FormatParser(object):
         return s + self.__offset if s is not None else None, \
             e + self.__offset if e is not None else None, self.part
 
-    def __handle_single(self, file: str) -> Tuple[Optional[int], Optional[int]]:
+    def __handle_single(self, file: str) -> tuple[int | None, int | None]:
         """
         处理单集，返回单集的开始和结束集数
         """

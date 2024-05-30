@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from typing import Set, Tuple, Optional, Union, List
+from typing import List, Optional, Set, Tuple, Union
 
 from torrentool.torrent import Torrent
 from transmission_rpc import File
@@ -11,7 +11,7 @@ from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.transmission.transmission import Transmission
-from app.schemas import TransferTorrent, DownloadingTorrent
+from app.schemas import DownloadingTorrent, TransferTorrent
 from app.schemas.types import TorrentStatus
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -30,7 +30,7 @@ class TransmissionModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -40,7 +40,7 @@ class TransmissionModule(_ModuleBase):
             return False, "无法获取Transmission状态，请检查参数配置"
         return True, ""
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, str | bool]:
         return "DOWNLOADER", "transmission"
 
     def scheduler_job(self) -> None:
@@ -51,9 +51,9 @@ class TransmissionModule(_ModuleBase):
         if self.transmission.is_inactive():
             self.transmission.reconnect()
 
-    def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
-                 episodes: Set[int] = None, category: str = None,
-                 downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[Tuple[Optional[str], str]]:
+    def download(self, content: Path | str, download_dir: Path, cookie: str,
+                 episodes: set[int] = None, category: str = None,
+                 downloader: str = settings.DEFAULT_DOWNLOADER) -> tuple[str | None, str] | None:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接
@@ -65,7 +65,7 @@ class TransmissionModule(_ModuleBase):
         :return: 种子Hash
         """
 
-        def __get_torrent_info() -> Tuple[str, int]:
+        def __get_torrent_info() -> tuple[str, int]:
             """
             获取种子名称
             """
@@ -107,7 +107,7 @@ class TransmissionModule(_ModuleBase):
             # 读取种子的名称
             torrent_name, torrent_size = __get_torrent_info()
             if not torrent_name:
-                return None, f"添加种子任务失败：无法读取种子文件"
+                return None, "添加种子任务失败：无法读取种子文件"
             # 查询所有下载器的种子
             torrents, error = self.transmission.get_torrents()
             if error:
@@ -130,7 +130,7 @@ class TransmissionModule(_ModuleBase):
                             if settings.TORRENT_TAG and settings.TORRENT_TAG not in labels:
                                 labels.append(settings.TORRENT_TAG)
                                 self.transmission.set_torrent_tag(ids=torrent_hash, tags=labels)
-                        return torrent_hash, f"下载任务已存在"
+                        return torrent_hash, "下载任务已存在"
             return None, f"添加种子任务失败：{content}"
         else:
             torrent_hash = torrent.hashString
@@ -164,9 +164,9 @@ class TransmissionModule(_ModuleBase):
                 return torrent_hash, "添加下载任务成功"
 
     def list_torrents(self, status: TorrentStatus = None,
-                      hashs: Union[list, str] = None,
+                      hashs: list | str = None,
                       downloader: str = settings.DEFAULT_DOWNLOADER
-                      ) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
+                      ) -> list[TransferTorrent | DownloadingTorrent] | None:
         """
         获取下载器种子列表
         :param status:  种子状态
@@ -260,8 +260,8 @@ class TransmissionModule(_ModuleBase):
                     logger.warn(f"删除残留文件夹：{path}")
                     shutil.rmtree(path, ignore_errors=True)
 
-    def remove_torrents(self, hashs: Union[str, list], delete_file: bool = True,
-                        downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[bool]:
+    def remove_torrents(self, hashs: str | list, delete_file: bool = True,
+                        downloader: str = settings.DEFAULT_DOWNLOADER) -> bool | None:
         """
         删除下载器种子
         :param hashs:  种子Hash
@@ -273,8 +273,8 @@ class TransmissionModule(_ModuleBase):
             return None
         return self.transmission.delete_torrents(delete_file=delete_file, ids=hashs)
 
-    def start_torrents(self, hashs: Union[list, str],
-                       downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[bool]:
+    def start_torrents(self, hashs: list | str,
+                       downloader: str = settings.DEFAULT_DOWNLOADER) -> bool | None:
         """
         开始下载
         :param hashs:  种子Hash
@@ -285,8 +285,8 @@ class TransmissionModule(_ModuleBase):
             return None
         return self.transmission.start_torrents(ids=hashs)
 
-    def stop_torrents(self, hashs: Union[list, str],
-                      downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[bool]:
+    def stop_torrents(self, hashs: list | str,
+                      downloader: str = settings.DEFAULT_DOWNLOADER) -> bool | None:
         """
         停止下载
         :param hashs:  种子Hash
@@ -297,7 +297,7 @@ class TransmissionModule(_ModuleBase):
             return None
         return self.transmission.start_torrents(ids=hashs)
 
-    def torrent_files(self, tid: str, downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[List[File]]:
+    def torrent_files(self, tid: str, downloader: str = settings.DEFAULT_DOWNLOADER) -> list[File] | None:
         """
         获取种子文件列表
         """

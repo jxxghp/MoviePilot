@@ -1,10 +1,10 @@
-from typing import Optional, Union, List, Tuple, Any
+from typing import Any, List, Optional, Tuple, Union
 
-from app.core.context import MediaInfo, Context
+from app.core.context import Context, MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase, checkMessage
 from app.modules.synologychat.synologychat import SynologyChat
-from app.schemas import MessageChannel, CommingMessage, Notification
+from app.schemas import CommingMessage, MessageChannel, Notification
 
 
 class SynologyChatModule(_ModuleBase):
@@ -20,7 +20,7 @@ class SynologyChatModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -29,11 +29,11 @@ class SynologyChatModule(_ModuleBase):
             return True, ""
         return False, "SynologyChat未就续，请检查参数设置、网络连接以及机器人是否可见"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, str | bool]:
         return "MESSAGER", "synologychat"
 
     def message_parser(self, body: Any, form: Any,
-                       args: Any) -> Optional[CommingMessage]:
+                       args: Any) -> CommingMessage | None:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
@@ -77,7 +77,7 @@ class SynologyChatModule(_ModuleBase):
                                    image=message.image, userid=message.userid)
 
     @checkMessage(MessageChannel.SynologyChat)
-    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
+    def post_medias_message(self, message: Notification, medias: list[MediaInfo]) -> bool | None:
         """
         发送媒体信息选择列表
         :param message: 消息体
@@ -88,7 +88,7 @@ class SynologyChatModule(_ModuleBase):
                                                  userid=message.userid)
 
     @checkMessage(MessageChannel.SynologyChat)
-    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
+    def post_torrents_message(self, message: Notification, torrents: list[Context]) -> bool | None:
         """
         发送种子信息选择列表
         :param message: 消息体

@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional, Dict, Union, List
 
 from pydantic import BaseModel
 
@@ -11,13 +10,13 @@ class ExistMediaInfo(BaseModel):
     媒体服务器存在媒体信息
     """
     # 类型 电影、电视剧
-    type: Optional[MediaType]
+    type: MediaType | None
     # 季
-    seasons: Optional[Dict[int, list]] = {}
+    seasons: dict[int, list] | None = {}
     # 媒体服务器
-    server: Optional[str] = None
+    server: str | None = None
     # 媒体ID
-    itemid: Optional[Union[str, int]] = None
+    itemid: str | int | None = None
 
 
 class NotExistMediaInfo(BaseModel):
@@ -25,13 +24,13 @@ class NotExistMediaInfo(BaseModel):
     媒体服务器不存在媒体信息
     """
     # 季
-    season: Optional[int] = None
+    season: int | None = None
     # 剧集列表
-    episodes: Optional[list] = []
+    episodes: list | None = []
     # 总集数
-    total_episode: Optional[int] = 0
+    total_episode: int | None = 0
     # 开始集
-    start_episode: Optional[int] = 0
+    start_episode: int | None = 0
 
 
 class RefreshMediaItem(BaseModel):
@@ -39,15 +38,15 @@ class RefreshMediaItem(BaseModel):
     媒体库刷新信息
     """
     # 标题
-    title: Optional[str] = None
+    title: str | None = None
     # 年份
-    year: Optional[str] = None
+    year: str | None = None
     # 类型
-    type: Optional[MediaType] = None
+    type: MediaType | None = None
     # 类别
-    category: Optional[str] = None
+    category: str | None = None
     # 目录
-    target_path: Optional[Path] = None
+    target_path: Path | None = None
 
 
 class MediaServerLibrary(BaseModel):
@@ -55,21 +54,21 @@ class MediaServerLibrary(BaseModel):
     媒体服务器媒体库信息
     """
     # 服务器
-    server: Optional[str] = None
+    server: str | None = None
     # ID
-    id: Optional[Union[str, int]] = None
+    id: str | int | None = None
     # 名称
-    name: Optional[str] = None
+    name: str | None = None
     # 路径
-    path: Optional[Union[str, list]] = None
+    path: str | list | None = None
     # 类型
-    type: Optional[str] = None
+    type: str | None = None
     # 封面图
-    image: Optional[str] = None
+    image: str | None = None
     # 封面图列表
-    image_list: Optional[List[str]] = None
+    image_list: list[str] | None = None
     # 跳转链接
-    link: Optional[str] = None
+    link: str | None = None
 
 
 class MediaServerItem(BaseModel):
@@ -77,35 +76,35 @@ class MediaServerItem(BaseModel):
     媒体服务器媒体信息
     """
     # ID
-    id: Optional[Union[str, int]] = None
+    id: str | int | None = None
     # 服务器
-    server: Optional[str] = None
+    server: str | None = None
     # 媒体库ID
-    library: Optional[Union[str, int]] = None
+    library: str | int | None = None
     # ID
-    item_id: Optional[str] = None
+    item_id: str | None = None
     # 类型
-    item_type: Optional[str] = None
+    item_type: str | None = None
     # 标题
-    title: Optional[str] = None
+    title: str | None = None
     # 原标题
-    original_title: Optional[str] = None
+    original_title: str | None = None
     # 年份
-    year: Optional[str] = None
+    year: str | None = None
     # TMDBID
-    tmdbid: Optional[int] = None
+    tmdbid: int | None = None
     # IMDBID
-    imdbid: Optional[str] = None
+    imdbid: str | None = None
     # TVDBID
-    tvdbid: Optional[str] = None
+    tvdbid: str | None = None
     # 路径
-    path: Optional[str] = None
+    path: str | None = None
     # 季集
-    seasoninfo: Optional[Dict[int, list]] = None
+    seasoninfo: dict[int, list] | None = None
     # 备注
-    note: Optional[str] = None
+    note: str | None = None
     # 同步时间
-    lst_mod_date: Optional[str] = None
+    lst_mod_date: str | None = None
 
     class Config:
         orm_mode = True
@@ -115,44 +114,44 @@ class MediaServerSeasonInfo(BaseModel):
     """
     媒体服务器媒体剧集信息
     """
-    season: Optional[int] = None
-    episodes: Optional[List[int]] = []
+    season: int | None = None
+    episodes: list[int] | None = []
 
 
 class WebhookEventInfo(BaseModel):
     """
     Webhook事件信息
     """
-    event: Optional[str] = None
-    channel: Optional[str] = None
-    item_type: Optional[str] = None
-    item_name: Optional[str] = None
-    item_id: Optional[str] = None
-    item_path: Optional[str] = None
-    season_id: Optional[str] = None
-    episode_id: Optional[str] = None
-    tmdb_id: Optional[str] = None
-    overview: Optional[str] = None
-    percentage: Optional[float] = None
-    ip: Optional[str] = None
-    device_name: Optional[str] = None
-    client: Optional[str] = None
-    user_name: Optional[str] = None
-    image_url: Optional[str] = None
-    item_favorite: Optional[bool] = None
-    save_reason: Optional[str] = None
-    item_isvirtual: Optional[bool] = None
-    media_type: Optional[str] = None
+    event: str | None = None
+    channel: str | None = None
+    item_type: str | None = None
+    item_name: str | None = None
+    item_id: str | None = None
+    item_path: str | None = None
+    season_id: str | None = None
+    episode_id: str | None = None
+    tmdb_id: str | None = None
+    overview: str | None = None
+    percentage: float | None = None
+    ip: str | None = None
+    device_name: str | None = None
+    client: str | None = None
+    user_name: str | None = None
+    image_url: str | None = None
+    item_favorite: bool | None = None
+    save_reason: str | None = None
+    item_isvirtual: bool | None = None
+    media_type: str | None = None
 
 
 class MediaServerPlayItem(BaseModel):
     """
     媒体服务器可播放项目信息
     """
-    id: Optional[Union[str, int]] = None
-    title: Optional[str] = None
-    subtitle: Optional[str] = None
-    type: Optional[str] = None
-    image: Optional[str] = None
-    link: Optional[str] = None
-    percent: Optional[float] = None
+    id: str | int | None = None
+    title: str | None = None
+    subtitle: str | None = None
+    type: str | None = None
+    image: str | None = None
+    link: str | None = None
+    percent: float | None = None

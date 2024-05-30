@@ -1,4 +1,5 @@
-from typing import Optional, Tuple, Union, Any, List, Generator
+from collections.abc import Generator
+from typing import Any, List, Optional, Tuple, Union
 
 from app import schemas
 from app.core.context import MediaInfo
@@ -21,7 +22,7 @@ class EmbyModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -31,7 +32,7 @@ class EmbyModule(_ModuleBase):
             return False, "无法连接Emby，请检查参数配置"
         return True, ""
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, str | bool]:
         return "MEDIASERVER", "emby"
 
     def scheduler_job(self) -> None:
@@ -42,7 +43,7 @@ class EmbyModule(_ModuleBase):
         if self.emby.is_inactive():
             self.emby.reconnect()
 
-    def user_authenticate(self, name: str, password: str) -> Optional[str]:
+    def user_authenticate(self, name: str, password: str) -> str | None:
         """
         使用Emby用户辅助完成用户认证
         :param name: 用户名
@@ -52,7 +53,7 @@ class EmbyModule(_ModuleBase):
         # Emby认证
         return self.emby.authenticate(name, password)
 
-    def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
+    def webhook_parser(self, body: Any, form: Any, args: Any) -> schemas.WebhookEventInfo | None:
         """
         解析Webhook报文体
         :param body:  请求体
@@ -62,7 +63,7 @@ class EmbyModule(_ModuleBase):
         """
         return self.emby.get_webhook_message(form, args)
 
-    def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[schemas.ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> schemas.ExistMediaInfo | None:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
@@ -109,7 +110,7 @@ class EmbyModule(_ModuleBase):
                     itemid=itemid
                 )
 
-    def media_statistic(self) -> List[schemas.Statistic]:
+    def media_statistic(self) -> list[schemas.Statistic]:
         """
         媒体数量统计
         """
@@ -117,7 +118,7 @@ class EmbyModule(_ModuleBase):
         media_statistic.user_count = self.emby.get_user_count()
         return [media_statistic]
 
-    def mediaserver_librarys(self, server: str = None, username: str = None) -> Optional[List[schemas.MediaServerLibrary]]:
+    def mediaserver_librarys(self, server: str = None, username: str = None) -> list[schemas.MediaServerLibrary] | None:
         """
         媒体库列表
         """
@@ -125,7 +126,7 @@ class EmbyModule(_ModuleBase):
             return None
         return self.emby.get_librarys(username)
 
-    def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator]:
+    def mediaserver_items(self, server: str, library_id: str) -> Generator | None:
         """
         媒体库项目列表
         """
@@ -133,7 +134,7 @@ class EmbyModule(_ModuleBase):
             return None
         return self.emby.get_items(library_id)
 
-    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[schemas.MediaServerItem]:
+    def mediaserver_iteminfo(self, server: str, item_id: str) -> schemas.MediaServerItem | None:
         """
         媒体库项目详情
         """
@@ -142,7 +143,7 @@ class EmbyModule(_ModuleBase):
         return self.emby.get_iteminfo(item_id)
 
     def mediaserver_tv_episodes(self, server: str,
-                                item_id: Union[str, int]) -> Optional[List[schemas.MediaServerSeasonInfo]]:
+                                item_id: str | int) -> list[schemas.MediaServerSeasonInfo] | None:
         """
         获取剧集信息
         """
@@ -157,7 +158,7 @@ class EmbyModule(_ModuleBase):
         ) for season, episodes in seasoninfo.items()]
 
     def mediaserver_playing(self, count: int = 20,
-                            server: str = None, username: str = None) -> List[schemas.MediaServerPlayItem]:
+                            server: str = None, username: str = None) -> list[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
@@ -165,7 +166,7 @@ class EmbyModule(_ModuleBase):
             return []
         return self.emby.get_resume(num=count, username=username)
 
-    def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
+    def mediaserver_play_url(self, server: str, item_id: str | int) -> str | None:
         """
         获取媒体库播放地址
         """
@@ -174,7 +175,7 @@ class EmbyModule(_ModuleBase):
         return self.emby.get_play_url(item_id)
 
     def mediaserver_latest(self, count: int = 20,
-                           server: str = None, username: str = None) -> List[schemas.MediaServerPlayItem]:
+                           server: str = None, username: str = None) -> list[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """

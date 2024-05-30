@@ -2,11 +2,10 @@ import copy
 import time
 from pathlib import Path
 from threading import Lock
-from typing import Optional, List, Tuple
 
 from app.chain import ChainBase
 from app.core.context import Context, MediaInfo
-from app.core.event import eventmanager, Event
+from app.core.event import Event, eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.log import logger
@@ -22,11 +21,11 @@ class MediaChain(ChainBase, metaclass=Singleton):
     媒体信息处理链，单例运行
     """
     # 临时识别标题
-    recognize_title: Optional[str] = None
+    recognize_title: str | None = None
     # 临时识别结果 {title, name, year, season, episode}
-    recognize_temp: Optional[dict] = None
+    recognize_temp: dict | None = None
 
-    def recognize_by_meta(self, metainfo: MetaBase) -> Optional[MediaInfo]:
+    def recognize_by_meta(self, metainfo: MetaBase) -> MediaInfo | None:
         """
         根据主副标题识别媒体信息
         """
@@ -48,7 +47,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         # 返回上下文
         return mediainfo
 
-    def recognize_help(self, title: str, org_meta: MetaBase) -> Optional[MediaInfo]:
+    def recognize_help(self, title: str, org_meta: MetaBase) -> MediaInfo | None:
         """
         请求辅助识别，返回媒体信息
         :param title: 标题
@@ -80,9 +79,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
             meta_dict = copy.deepcopy(self.recognize_temp)
         logger.info(f'获取到辅助识别结果：{meta_dict}')
         if meta_dict.get("name") == org_meta.name and meta_dict.get("year") == org_meta.year:
-            logger.info(f'辅助识别结果与原始识别结果一致')
+            logger.info('辅助识别结果与原始识别结果一致')
         else:
-            logger.info(f'辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...')
+            logger.info('辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...')
             org_meta.name = meta_dict.get("name")
             org_meta.year = meta_dict.get("year")
             org_meta.begin_season = meta_dict.get("season")
@@ -132,7 +131,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 "episode": episode_number
             }
 
-    def recognize_by_path(self, path: str) -> Optional[Context]:
+    def recognize_by_path(self, path: str) -> Context | None:
         """
         根据文件路径识别媒体信息
         """
@@ -156,7 +155,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         # 返回上下文
         return Context(meta_info=file_meta, media_info=mediainfo)
 
-    def search(self, title: str) -> Tuple[Optional[MetaBase], List[MediaInfo]]:
+    def search(self, title: str) -> tuple[MetaBase | None, list[MediaInfo]]:
         """
         搜索媒体/人物信息
         :param title: 搜索内容
@@ -179,7 +178,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             meta.year = year
         # 开始搜索
         logger.info(f"开始搜索媒体信息：{meta.name}")
-        medias: Optional[List[MediaInfo]] = self.search_medias(meta=meta)
+        medias: list[MediaInfo] | None = self.search_medias(meta=meta)
         if not medias:
             logger.warn(f"{meta.name} 没有找到对应的媒体信息！")
             return meta, []
@@ -187,7 +186,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         # 识别的元数据，媒体信息列表
         return meta, medias
 
-    def get_tmdbinfo_by_doubanid(self, doubanid: str, mtype: MediaType = None) -> Optional[dict]:
+    def get_tmdbinfo_by_doubanid(self, doubanid: str, mtype: MediaType = None) -> dict | None:
         """
         根据豆瓣ID获取TMDB信息
         """
@@ -223,7 +222,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     break
         return tmdbinfo
 
-    def get_tmdbinfo_by_bangumiid(self, bangumiid: int) -> Optional[dict]:
+    def get_tmdbinfo_by_bangumiid(self, bangumiid: int) -> dict | None:
         """
         根据BangumiID获取TMDB信息
         """
@@ -256,7 +255,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         return None
 
     def get_doubaninfo_by_tmdbid(self, tmdbid: int,
-                                 mtype: MediaType = None, season: int = None) -> Optional[dict]:
+                                 mtype: MediaType = None, season: int = None) -> dict | None:
         """
         根据TMDBID获取豆瓣信息
         """
@@ -288,7 +287,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             )
         return None
 
-    def get_doubaninfo_by_bangumiid(self, bangumiid: int) -> Optional[dict]:
+    def get_doubaninfo_by_bangumiid(self, bangumiid: int) -> dict | None:
         """
         根据BangumiID获取豆瓣信息
         """

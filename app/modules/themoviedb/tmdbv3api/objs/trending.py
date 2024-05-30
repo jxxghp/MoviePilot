@@ -1,4 +1,4 @@
-from cachetools import cached, TTLCache
+from cachetools import TTLCache, cached
 
 from ..tmdb import TMDb
 

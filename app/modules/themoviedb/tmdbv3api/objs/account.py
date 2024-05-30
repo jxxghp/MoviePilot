@@ -1,7 +1,7 @@
 import os
 
-from ..tmdb import TMDb
 from ..exceptions import TMDbException
+from ..tmdb import TMDb
 
 
 class Account(TMDb):

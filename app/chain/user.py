@@ -1,11 +1,10 @@
-from typing import Optional
 
 from app.chain import ChainBase
 
 
 class UserChain(ChainBase):
 
-    def user_authenticate(self, name, password) -> Optional[str]:
+    def user_authenticate(self, name, password) -> str | None:
         """
         辅助完成用户认证
         :param name: 用户名

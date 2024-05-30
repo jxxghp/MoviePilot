@@ -6,10 +6,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Union, Tuple
 
 import docker
 import psutil
+
 from app import schemas
 
 
@@ -86,7 +86,7 @@ class SystemUtils:
             return "Linux"
 
     @staticmethod
-    def copy(src: Path, dest: Path) -> Tuple[int, str]:
+    def copy(src: Path, dest: Path) -> tuple[int, str]:
         """
         复制
         """
@@ -98,7 +98,7 @@ class SystemUtils:
             return -1, str(err)
 
     @staticmethod
-    def move(src: Path, dest: Path) -> Tuple[int, str]:
+    def move(src: Path, dest: Path) -> tuple[int, str]:
         """
         移动
         """
@@ -113,7 +113,7 @@ class SystemUtils:
             return -1, str(err)
 
     @staticmethod
-    def link(src: Path, dest: Path) -> Tuple[int, str]:
+    def link(src: Path, dest: Path) -> tuple[int, str]:
         """
         硬链接
         """
@@ -131,7 +131,7 @@ class SystemUtils:
             return -1, str(err)
 
     @staticmethod
-    def softlink(src: Path, dest: Path) -> Tuple[int, str]:
+    def softlink(src: Path, dest: Path) -> tuple[int, str]:
         """
         软链接
         """
@@ -191,7 +191,7 @@ class SystemUtils:
             return None
 
     @staticmethod
-    def list_files(directory: Path, extensions: list, min_filesize: int = 0) -> List[Path]:
+    def list_files(directory: Path, extensions: list, min_filesize: int = 0) -> list[Path]:
         """
         获取目录下所有指定扩展名的文件（包括子目录）
         """
@@ -251,7 +251,7 @@ class SystemUtils:
         return False
 
     @staticmethod
-    def list_sub_files(directory: Path, extensions: list) -> List[Path]:
+    def list_sub_files(directory: Path, extensions: list) -> list[Path]:
         """
         列出当前目录下的所有指定扩展名的文件(不包括子目录)
         """
@@ -272,7 +272,7 @@ class SystemUtils:
         return files
 
     @staticmethod
-    def list_sub_directory(directory: Path) -> List[Path]:
+    def list_sub_directory(directory: Path) -> list[Path]:
         """
         列出当前目录下的所有子目录（不递归）
         """
@@ -314,7 +314,7 @@ class SystemUtils:
         return total_size
 
     @staticmethod
-    def space_usage(dir_list: Union[Path, List[Path]]) -> Tuple[float, float]:
+    def space_usage(dir_list: Path | list[Path]) -> tuple[float, float]:
         """
         计算多个目录的总可用空间/剩余空间（单位：Byte），并去除重复磁盘
         """
@@ -364,7 +364,7 @@ class SystemUtils:
         return psutil.disk_usage(str(path)).total
 
     @staticmethod
-    def processes() -> List[schemas.ProcessInfo]:
+    def processes() -> list[schemas.ProcessInfo]:
         """
         获取所有进程
         """
@@ -419,7 +419,7 @@ class SystemUtils:
         return psutil.cpu_percent()
 
     @staticmethod
-    def memory_usage() -> List[int]:
+    def memory_usage() -> list[int]:
         """
         获取内存使用量和使用率
         """
@@ -433,7 +433,7 @@ class SystemUtils:
         return Path("/var/run/docker.sock").exists()
 
     @staticmethod
-    def restart() -> Tuple[bool, str]:
+    def restart() -> tuple[bool, str]:
         """
         执行Docker重启操作
         """
@@ -444,7 +444,7 @@ class SystemUtils:
             client = docker.DockerClient(base_url='tcp://127.0.0.1:38379')
             # 获取当前容器的 ID
             container_id = None
-            with open('/proc/self/mountinfo', 'r') as f:
+            with open('/proc/self/mountinfo') as f:
                 data = f.read()
                 index_resolv_conf = data.find("resolv.conf")
                 if index_resolv_conf != -1:

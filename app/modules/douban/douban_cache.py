@@ -4,14 +4,13 @@ import time
 import traceback
 from pathlib import Path
 from threading import RLock
-from typing import Optional
 
 from app.core.config import settings
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.log import logger
-from app.utils.singleton import Singleton
 from app.schemas.types import MediaType
+from app.utils.singleton import Singleton
 
 lock = RLock()
 
@@ -216,7 +215,7 @@ class DoubanCache(metaclass=Singleton):
                 ret |= self._random_sample(new_meta_data)
         return ret
 
-    def get_title(self, key: str) -> Optional[str]:
+    def get_title(self, key: str) -> str | None:
         """
         获取缓存的标题
         """

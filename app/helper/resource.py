@@ -16,7 +16,7 @@ class ResourceHelper(metaclass=Singleton):
     """
     # 资源包的git仓库地址
     _repo = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/package.json"
-    _files_api = f"https://api.github.com/repos/jxxghp/MoviePilot-Resources/contents/resources"
+    _files_api = "https://api.github.com/repos/jxxghp/MoviePilot-Resources/contents/resources"
     _base_dir: Path = settings.ROOT_PATH
 
     def __init__(self):

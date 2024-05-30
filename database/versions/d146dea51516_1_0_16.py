@@ -7,9 +7,8 @@ Create Date: 2024-03-18 18:13:38.099531
 """
 import contextlib
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = 'd146dea51516'
@@ -25,7 +24,7 @@ def upgrade() -> None:
             batch_op.add_column(sa.Column('bangumiid', sa.Integer, nullable=True))
     try:
         op.create_index('ix_subscribe_bangumiid', 'subscribe', ['bangumiid'], unique=False)
-    except Exception as err:
+    except Exception:
         pass
     # ### end Alembic commands ###
 

@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from starlette.responses import FileResponse, Response
@@ -16,7 +16,7 @@ router = APIRouter()
 IMAGE_TYPES = [".jpg", ".png", ".gif", ".bmp", ".jpeg", ".webp"]
 
 
-@router.get("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])
+@router.get("/list", summary="所有目录和文件", response_model=list[schemas.FileItem])
 def list_path(path: str,
               sort: str = 'time',
               _: schemas.TokenPayload = Depends(verify_token)) -> Any:

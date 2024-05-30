@@ -1,9 +1,9 @@
+import builtins
 import copy
 import datetime
 import re
 import traceback
-from typing import List
-from urllib.parse import quote, urlencode, urlparse, parse_qs
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 import chardet
 from jinja2 import Template
@@ -112,7 +112,7 @@ class TorrentSpider:
             self.referer = referer
         self.torrents_info_array = []
 
-    def get_torrents(self) -> List[dict]:
+    def get_torrents(self) -> builtins.list[dict]:
         """
         开始请求
         """
@@ -126,13 +126,7 @@ class TorrentSpider:
             torrentspath = paths[0].get('path', '')
         else:
             for path in paths:
-                if path.get("type") == "all" and not self.mtype:
-                    torrentspath = path.get('path')
-                    break
-                elif path.get("type") == "movie" and self.mtype == MediaType.MOVIE:
-                    torrentspath = path.get('path')
-                    break
-                elif path.get("type") == "tv" and self.mtype == MediaType.TV:
+                if path.get("type") == "all" and not self.mtype or path.get("type") == "movie" and self.mtype == MediaType.MOVIE or path.get("type") == "tv" and self.mtype == MediaType.TV:
                     torrentspath = path.get('path')
                     break
 
@@ -731,7 +725,7 @@ class TorrentSpider:
             items = items[0]
         return items
 
-    def parse(self, html_text: str) -> List[dict]:
+    def parse(self, html_text: str) -> builtins.list[dict]:
         """
         解析整个页面
         """

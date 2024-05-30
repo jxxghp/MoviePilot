@@ -1,6 +1,5 @@
 import traceback
 from functools import lru_cache
-from typing import Optional, List
 from urllib.parse import quote
 
 import zhconv
@@ -11,7 +10,8 @@ from app.log import logger
 from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
-from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending, Person
+
+from .tmdbv3api import TV, Discover, Episode, Movie, Person, Search, Season, TMDb, Trending
 from .tmdbv3api.exceptions import TMDbException
 
 
@@ -47,7 +47,7 @@ class TmdbApi:
         self.trending = Trending()
         self.person = Person()
 
-    def search_multiis(self, title: str) -> List[dict]:
+    def search_multiis(self, title: str) -> list[dict]:
         """
         同时查询模糊匹配的电影、电视剧TMDB信息
         """
@@ -61,7 +61,7 @@ class TmdbApi:
                 ret_infos.append(multi)
         return ret_infos
 
-    def search_movies(self, title: str, year: str) -> List[dict]:
+    def search_movies(self, title: str, year: str) -> list[dict]:
         """
         查询模糊匹配的所有电影TMDB信息
         """
@@ -78,7 +78,7 @@ class TmdbApi:
                 ret_infos.append(movie)
         return ret_infos
 
-    def search_tvs(self, title: str, year: str) -> List[dict]:
+    def search_tvs(self, title: str, year: str) -> list[dict]:
         """
         查询模糊匹配的所有电视剧TMDB信息
         """
@@ -95,7 +95,7 @@ class TmdbApi:
                 ret_infos.append(tv)
         return ret_infos
 
-    def search_persons(self, name: str) -> List[dict]:
+    def search_persons(self, name: str) -> list[dict]:
         """
         查询模糊匹配的所有人物TMDB信息
         """
@@ -123,7 +123,7 @@ class TmdbApi:
         return False
 
     @staticmethod
-    def __get_names(tmdb_info: dict) -> List[str]:
+    def __get_names(tmdb_info: dict) -> list[str]:
         """
         搜索tmdb中所有的标题和译名，用于名称匹配
         :param tmdb_info: TMDB信息
@@ -160,7 +160,7 @@ class TmdbApi:
               mtype: MediaType,
               year: str = None,
               season_year: str = None,
-              season_number: int = None) -> Optional[dict]:
+              season_number: int = None) -> dict | None:
         """
         搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息
         :param name: 剑索的名称
@@ -212,7 +212,7 @@ class TmdbApi:
         # 返回
         return info
 
-    def __search_movie_by_name(self, name: str, year: str) -> Optional[dict]:
+    def __search_movie_by_name(self, name: str, year: str) -> dict | None:
         """
         根据名称查询电影TMDB匹配
         :param name: 识别的文件名或种子名
@@ -259,7 +259,7 @@ class TmdbApi:
                     return movie
         return {}
 
-    def __search_tv_by_name(self, name: str, year: str) -> Optional[dict]:
+    def __search_tv_by_name(self, name: str, year: str) -> dict | None:
         """
         根据名称查询电视剧TMDB匹配
         :param name: 识别的文件名或者种子名
@@ -305,7 +305,7 @@ class TmdbApi:
                     return tv
         return {}
 
-    def __search_tv_by_season(self, name: str, season_year: str, season_number: int) -> Optional[dict]:
+    def __search_tv_by_season(self, name: str, season_year: str, season_number: int) -> dict | None:
         """
         根据电视剧的名称和季的年份及序号匹配TMDB
         :param name: 识别的文件名或者种子名
@@ -367,7 +367,7 @@ class TmdbApi:
         return {}
 
     @staticmethod
-    def __get_tv_seasons(tv_info: dict) -> Optional[dict]:
+    def __get_tv_seasons(tv_info: dict) -> dict | None:
         """
         查询TMDB电视剧的所有季
         :param tv_info: TMDB 的季信息
@@ -404,7 +404,7 @@ class TmdbApi:
             ret_seasons[season_info.get("season_number")] = season_info
         return ret_seasons
 
-    def match_multi(self, name: str) -> Optional[dict]:
+    def match_multi(self, name: str) -> dict | None:
         """
         根据名称同时查询电影和电视剧，没有类型也没有年份时使用
         :param name: 识别的文件名或种子名
@@ -467,7 +467,7 @@ class TmdbApi:
             return ret_info
 
     @lru_cache(maxsize=settings.CACHE_CONF.get('tmdb'))
-    def match_web(self, name: str, mtype: MediaType) -> Optional[dict]:
+    def match_web(self, name: str, mtype: MediaType) -> dict | None:
         """
         搜索TMDB网站，直接抓取结果，结果只有一条时才返回
         :param name: 名称
@@ -662,7 +662,7 @@ class TmdbApi:
                                                      "credits,"
                                                      "alternative_titles,"
                                                      "translations,"
-                                                     "external_ids") -> Optional[dict]:
+                                                     "external_ids") -> dict | None:
         """
         获取电影的详情
         :param tmdbid: TMDB ID
@@ -774,7 +774,7 @@ class TmdbApi:
                                                   "credits,"
                                                   "alternative_titles,"
                                                   "translations,"
-                                                  "external_ids") -> Optional[dict]:
+                                                  "external_ids") -> dict | None:
         """
         获取电视剧的详情
         :param tmdbid: TMDB ID
@@ -1106,7 +1106,7 @@ class TmdbApi:
             print(str(e))
             return {}
 
-    def get_movie_similar(self, tmdbid: int) -> List[dict]:
+    def get_movie_similar(self, tmdbid: int) -> list[dict]:
         """
         获取电影的相似电影
         """
@@ -1119,7 +1119,7 @@ class TmdbApi:
             print(str(e))
             return []
 
-    def get_tv_similar(self, tmdbid: int) -> List[dict]:
+    def get_tv_similar(self, tmdbid: int) -> list[dict]:
         """
         获取电视剧的相似电视剧
         """
@@ -1132,7 +1132,7 @@ class TmdbApi:
             print(str(e))
             return []
 
-    def get_movie_recommend(self, tmdbid: int) -> List[dict]:
+    def get_movie_recommend(self, tmdbid: int) -> list[dict]:
         """
         获取电影的推荐电影
         """
@@ -1145,7 +1145,7 @@ class TmdbApi:
             print(str(e))
             return []
 
-    def get_tv_recommend(self, tmdbid: int) -> List[dict]:
+    def get_tv_recommend(self, tmdbid: int) -> list[dict]:
         """
         获取电视剧的推荐电视剧
         """
@@ -1158,7 +1158,7 @@ class TmdbApi:
             print(str(e))
             return []
 
-    def get_movie_credits(self, tmdbid: int, page: int = 1, count: int = 24) -> List[dict]:
+    def get_movie_credits(self, tmdbid: int, page: int = 1, count: int = 24) -> list[dict]:
         """
         获取电影的演职员列表
         """
@@ -1175,7 +1175,7 @@ class TmdbApi:
             print(str(e))
             return []
 
-    def get_tv_credits(self, tmdbid: int, page: int = 1, count: int = 24) -> List[dict]:
+    def get_tv_credits(self, tmdbid: int, page: int = 1, count: int = 24) -> list[dict]:
         """
         获取电视剧的演职员列表
         """
@@ -1225,7 +1225,7 @@ class TmdbApi:
             print(str(e))
             return {}
 
-    def get_person_credits(self, person_id: int, page: int = 1, count: int = 24) -> List[dict]:
+    def get_person_credits(self, person_id: int, page: int = 1, count: int = 24) -> list[dict]:
         """
         获取人物参演作品
         """

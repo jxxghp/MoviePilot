@@ -1,9 +1,9 @@
-from queue import Queue, Empty
-from typing import Dict, Any
+from queue import Empty, Queue
+from typing import Any
 
 from app.log import logger
-from app.utils.singleton import Singleton
 from app.schemas.types import EventType
+from app.utils.singleton import Singleton
 
 
 class EventManager(metaclass=Singleton):
@@ -15,7 +15,7 @@ class EventManager(metaclass=Singleton):
         # 事件队列
         self._eventQueue = Queue()
         # 事件响应函数字典
-        self._handlers: Dict[str, Dict[str, Any]] = {}
+        self._handlers: dict[str, dict[str, Any]] = {}
         # 已禁用的事件响应
         self._disabled_handlers = []
 
@@ -107,7 +107,7 @@ class EventManager(metaclass=Singleton):
         return decorator
 
 
-class Event(object):
+class Event:
     """
     事件对象
     """

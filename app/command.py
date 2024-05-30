@@ -2,7 +2,7 @@ import importlib
 import threading
 import traceback
 from threading import Thread
-from typing import Any, Union, Dict
+from typing import Any
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
@@ -12,7 +12,7 @@ from app.chain.system import SystemChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.event import Event as ManagerEvent
-from app.core.event import eventmanager, EventManager
+from app.core.event import EventManager, eventmanager
 from app.core.plugin import PluginManager
 from app.helper.message import MessageHelper
 from app.helper.thread import ThreadHelper
@@ -235,9 +235,9 @@ class Command(metaclass=Singleton):
                             }
                         )
 
-    def __run_command(self, command: Dict[str, any],
+    def __run_command(self, command: dict[str, any],
                       data_str: str = "",
-                      channel: MessageChannel = None, userid: Union[str, int] = None):
+                      channel: MessageChannel = None, userid: str | int = None):
         """
         运行定时服务
         """
@@ -322,7 +322,7 @@ class Command(metaclass=Singleton):
         return self._commands.get(cmd, {})
 
     def execute(self, cmd: str, data_str: str = "",
-                channel: MessageChannel = None, userid: Union[str, int] = None) -> None:
+                channel: MessageChannel = None, userid: str | int = None) -> None:
         """
         执行命令
         """

@@ -1,5 +1,6 @@
 import traceback
-from typing import Generator, Optional, Tuple, Any
+from collections.abc import Generator
+from typing import Any
 
 from app.core.config import settings
 from app.helper.module import ModuleHelper
@@ -68,7 +69,7 @@ class ModuleManager(metaclass=Singleton):
         self.stop()
         self.load_modules()
 
-    def test(self, modleid: str) -> Tuple[bool, str]:
+    def test(self, modleid: str) -> tuple[bool, str]:
         """
         测试模块
         """
@@ -76,12 +77,12 @@ class ModuleManager(metaclass=Singleton):
             return False, "模块未加载，请检查参数设置"
         module = self._running_modules[modleid]
         if hasattr(module, "test") \
-                and ObjectUtils.check_method(getattr(module, "test")):
+                and ObjectUtils.check_method(module.test):
             return module.test()
         return True, "模块不支持测试"
 
     @staticmethod
-    def check_setting(setting: Optional[tuple]) -> bool:
+    def check_setting(setting: tuple | None) -> bool:
         """
         检查开关是否己打开，开关使用,分隔多个值，符合其中即代表开启
         """

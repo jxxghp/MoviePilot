@@ -1,6 +1,5 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import List, Optional
 
 
 class NfoReader:
@@ -9,9 +8,9 @@ class NfoReader:
         self.tree = ET.parse(xml_file_path)
         self.root = self.tree.getroot()
 
-    def get_element_value(self, element_path) -> Optional[str]:
+    def get_element_value(self, element_path) -> str | None:
         element = self.root.find(element_path)
         return element.text if element is not None else None
 
-    def get_elements(self, element_path) -> List[ET.Element]:
+    def get_elements(self, element_path) -> list[ET.Element]:
         return self.root.findall(element_path)

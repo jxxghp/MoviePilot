@@ -1,7 +1,6 @@
-from typing import Union, Any, List
+from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends
-from fastapi import Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
 from starlette.responses import PlainTextResponse
 
@@ -17,7 +16,7 @@ from app.db.userauth import get_current_active_superuser
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.schemas import NotificationSwitch
-from app.schemas.types import SystemConfigKey, NotificationType, MessageChannel
+from app.schemas.types import MessageChannel, NotificationType, SystemConfigKey
 
 router = APIRouter()
 
@@ -55,7 +54,7 @@ def web_message(text: str, current_user: User = Depends(get_current_active_super
     return schemas.Response(success=True)
 
 
-@router.get("/web", summary="获取WEB消息", response_model=List[dict])
+@router.get("/web", summary="获取WEB消息", response_model=list[dict])
 def get_web_message(_: schemas.TokenPayload = Depends(verify_token),
                     db: Session = Depends(get_db),
                     page: int = 1,
@@ -75,7 +74,7 @@ def get_web_message(_: schemas.TokenPayload = Depends(verify_token),
 
 
 def wechat_verify(echostr: str, msg_signature: str,
-                  timestamp: Union[str, int], nonce: str) -> Any:
+                  timestamp: str | int, nonce: str) -> Any:
     """
     微信验证响应
     """
@@ -107,7 +106,7 @@ def vocechat_verify(token: str) -> Any:
 
 @router.get("/", summary="回调请求验证")
 def incoming_verify(token: str = None, echostr: str = None, msg_signature: str = None,
-                    timestamp: Union[str, int] = None, nonce: str = None) -> Any:
+                    timestamp: str | int = None, nonce: str = None) -> Any:
     """
     微信/VoceChat等验证响应
     """
@@ -118,7 +117,7 @@ def incoming_verify(token: str = None, echostr: str = None, msg_signature: str =
     return vocechat_verify(token)
 
 
-@router.get("/switchs", summary="查询通知消息渠道开关", response_model=List[NotificationSwitch])
+@router.get("/switchs", summary="查询通知消息渠道开关", response_model=list[NotificationSwitch])
 def read_switchs(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询通知消息渠道开关
@@ -143,7 +142,7 @@ def read_switchs(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.post("/switchs", summary="设置通知消息渠道开关", response_model=schemas.Response)
-def set_switchs(switchs: List[NotificationSwitch],
+def set_switchs(switchs: list[NotificationSwitch],
                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     设置通知消息渠道开关

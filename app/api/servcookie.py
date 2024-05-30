@@ -1,8 +1,8 @@
 import gzip
 import json
+from collections.abc import Callable
 from hashlib import md5
-from typing import Annotated, Callable
-from typing import Any, Dict, Optional
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from fastapi.responses import PlainTextResponse
@@ -70,7 +70,7 @@ async def update_cookie(req: schemas.CookieData):
     content = json.dumps({"encrypted": req.encrypted})
     with open(file_path, encoding="utf-8", mode="w") as file:
         file.write(content)
-    with open(file_path, encoding="utf-8", mode="r") as file:
+    with open(file_path, encoding="utf-8") as file:
         read_content = file.read()
     if read_content == content:
         return {"action": "done"}
@@ -78,7 +78,7 @@ async def update_cookie(req: schemas.CookieData):
         return {"action": "error"}
 
 
-def load_encrypt_data(uuid: str) -> Dict[str, Any]:
+def load_encrypt_data(uuid: str) -> dict[str, Any]:
     """
     加载本地加密原始数据
     """
@@ -89,14 +89,14 @@ def load_encrypt_data(uuid: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Item not found")
 
     # 读取文件
-    with open(file_path, encoding="utf-8", mode="r") as file:
+    with open(file_path, encoding="utf-8") as file:
         read_content = file.read()
     data = json.loads(read_content.encode("utf-8"))
     return data
 
 
 def get_decrypted_cookie_data(uuid: str, password: str,
-                              encrypted: str) -> Optional[Dict[str, Any]]:
+                              encrypted: str) -> dict[str, Any] | None:
     """
     加载本地加密数据并解密为Cookie
     """

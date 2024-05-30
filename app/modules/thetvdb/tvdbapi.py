@@ -6,19 +6,19 @@
 __author__ = "dbr/Ben"
 __version__ = "3.1.0"
 
-import sys
+import getpass
+import hashlib
+import logging
 import os
+import sys
+import tempfile
 import time
 import types
-import getpass
-import tempfile
 import warnings
-import logging
-import hashlib
 
 import requests
 import requests_cache
-from requests_cache.backends.base import _to_bytes, _DEFAULT_HEADERS
+from requests_cache.backends.base import _DEFAULT_HEADERS, _to_bytes
 
 IS_PY2 = sys.version_info[0] == 2
 
@@ -132,7 +132,7 @@ tvdb_invalidlanguage = TvdbError  # Unused/removed. This exists for backwards co
 # UI
 
 
-class BaseUI(object):
+class BaseUI:
     """Base user interface for Tvdb show selection.
 
     Selects first show.
@@ -294,7 +294,7 @@ class Show(dict):
 
     def __repr__(self):
         return "<Show %r (containing %s seasons)>" % (
-            self.data.get(u'seriesName', 'instance'),
+            self.data.get('seriesName', 'instance'),
             len(self),
         )
 
@@ -423,9 +423,9 @@ class Episode(dict):
         self.season = season
 
     def __repr__(self):
-        seasno = self.get(u'airedSeason', 0)
-        epno = self.get(u'airedEpisodeNumber', 0)
-        epname = self.get(u'episodeName')
+        seasno = self.get('airedSeason', 0)
+        epno = self.get('airedEpisodeNumber', 0)
+        epname = self.get('episodeName')
         if epname is not None:
             return "<Episode %02dx%02d - %r>" % (seasno, epno, epname)
         else:
@@ -638,10 +638,10 @@ class Tvdb:
 
         if apikey is None:
             raise ValueError(
-                (
+                
                     "apikey argument is now required - an API key can be easily registered "
                     "at https://thetvdb.com/api-information"
-                )
+                
             )
         self.config['auth_payload'] = {
             "apikey": apikey,
@@ -693,10 +693,10 @@ class Tvdb:
                 self.session.get
             except AttributeError:
                 raise ValueError(
-                    (
+                    
                         "cache argument must be True/False, string as cache path "
                         "or requests.Session-type object (e.g from requests_cache.CachedSession)"
-                    )
+                    
                 )
 
         self.config['banners_enabled'] = banners
@@ -712,18 +712,18 @@ class Tvdb:
         self.config['base_url'] = "http://thetvdb.com"
         self.config['api_url'] = "https://api.thetvdb.com"
 
-        self.config['url_getSeries'] = u"%(api_url)s/search/series?name=%%s" % self.config
+        self.config['url_getSeries'] = "%(api_url)s/search/series?name=%%s" % self.config
 
-        self.config['url_epInfo'] = u"%(api_url)s/series/%%s/episodes" % self.config
+        self.config['url_epInfo'] = "%(api_url)s/series/%%s/episodes" % self.config
 
-        self.config['url_seriesInfo'] = u"%(api_url)s/series/%%s" % self.config
-        self.config['url_actorsInfo'] = u"%(api_url)s/series/%%s/actors" % self.config
+        self.config['url_seriesInfo'] = "%(api_url)s/series/%%s" % self.config
+        self.config['url_actorsInfo'] = "%(api_url)s/series/%%s/actors" % self.config
 
-        self.config['url_seriesBanner'] = u"%(api_url)s/series/%%s/images" % self.config
+        self.config['url_seriesBanner'] = "%(api_url)s/series/%%s/images" % self.config
         self.config['url_seriesBannerInfo'] = (
-                u"%(api_url)s/series/%%s/images/query?keyType=%%s" % self.config
+                "%(api_url)s/series/%%s/images/query?keyType=%%s" % self.config
         )
-        self.config['url_artworkPrefix'] = u"%(base_url)s/banners/%%s" % self.config
+        self.config['url_artworkPrefix'] = "%(base_url)s/banners/%%s" % self.config
 
         self.__authorized = False
         self.headers = {
@@ -798,21 +798,21 @@ class Tvdb:
         links = r.get('links')
 
         if error:
-            if error == u'Resource not found':
+            if error == 'Resource not found':
                 # raise(tvdb_resourcenotfound)
                 # handle no data at a different level so it is more specific
                 pass
-            elif error.lower() == u'not authorized':
+            elif error.lower() == 'not authorized':
                 # Note: Error string sometimes comes back as "Not authorized" or "Not Authorized"
                 raise tvdb_notauthorized()
-            elif error.startswith(u"ID: ") and error.endswith("not found"):
+            elif error.startswith("ID: ") and error.endswith("not found"):
                 # FIXME: Refactor error out of in this method
                 raise tvdb_shownotfound("%s" % error)
             else:
                 raise tvdb_error("%s" % error)
 
         if errors:
-            if errors and u'invalidLanguage' in errors:
+            if errors and 'invalidLanguage' in errors:
                 # raise(tvdb_invalidlanguage(errors[u'invalidLanguage']))
                 # invalidLanguage does not mean there is no data
                 # there is just less data (missing translations)
@@ -841,7 +841,7 @@ class Tvdb:
         r_json = r.json()
         error = r_json.get('Error')
         if error:
-            if error == u'Not Authorized':
+            if error == 'Not Authorized':
                 raise tvdb_notauthorized
         token = r_json.get('token')
         self.headers['Authorization'] = "Bearer %s" % text_type(token)
@@ -1050,7 +1050,7 @@ class Tvdb:
 
             self._setShowData(sid, tag, value)
         # set language
-        self._setShowData(sid, u'language', self.config['language'])
+        self._setShowData(sid, 'language', self.config['language'])
 
         # Parse banners
         if self.config['banners_enabled']:

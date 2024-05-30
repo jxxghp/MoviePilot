@@ -6,7 +6,7 @@ import requests
 from app.utils.http import RequestUtils
 
 
-class BangumiApi(object):
+class BangumiApi:
     """
     https://bangumi.github.io/api/
     """

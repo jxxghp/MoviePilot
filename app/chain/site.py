@@ -1,20 +1,18 @@
 import base64
 import re
 from datetime import datetime
-from typing import Tuple, Optional
-from typing import Union
 from urllib.parse import urljoin
 
 from lxml import etree
 
 from app.chain import ChainBase
 from app.core.config import settings
-from app.core.event import eventmanager, Event, EventManager
+from app.core.event import Event, EventManager, eventmanager
 from app.db.models.site import Site
 from app.db.site_oper import SiteOper
 from app.db.siteicon_oper import SiteIconOper
-from app.db.systemconfig_oper import SystemConfigOper
 from app.db.sitestatistic_oper import SiteStatisticOper
+from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.cookie import CookieHelper
@@ -65,7 +63,7 @@ class SiteChain(ChainBase):
         return domain in self.special_site_test
 
     @staticmethod
-    def __zhuque_test(site: Site) -> Tuple[bool, str]:
+    def __zhuque_test(site: Site) -> tuple[bool, str]:
         """
         判断站点是否已经登陆：zhuique
         """
@@ -102,7 +100,7 @@ class SiteChain(ChainBase):
         return False, "Cookie已失效"
 
     @staticmethod
-    def __mteam_test(site: Site) -> Tuple[bool, str]:
+    def __mteam_test(site: Site) -> tuple[bool, str]:
         """
         判断站点是否已经登陆：m-team
         """
@@ -131,11 +129,11 @@ class SiteChain(ChainBase):
                 if res:
                     return True, "连接成功"
                 else:
-                    return True, f"连接成功，但更新状态失败"
+                    return True, "连接成功，但更新状态失败"
         return False, "鉴权已过期或无效"
 
     @staticmethod
-    def __yema_test(site: Site) -> Tuple[bool, str]:
+    def __yema_test(site: Site) -> tuple[bool, str]:
         """
         判断站点是否已经登陆：yemapt
         """
@@ -158,7 +156,7 @@ class SiteChain(ChainBase):
                 return True, "连接成功"
         return False, "Cookie已过期"
 
-    def __indexphp_test(self, site: Site) -> Tuple[bool, str]:
+    def __indexphp_test(self, site: Site) -> tuple[bool, str]:
         """
         判断站点是否已经登陆：ptlsp/1ptba
         """
@@ -166,7 +164,7 @@ class SiteChain(ChainBase):
         return self.__test(site)
 
     @staticmethod
-    def __parse_favicon(url: str, cookie: str, ua: str) -> Tuple[str, Optional[str]]:
+    def __parse_favicon(url: str, cookie: str, ua: str) -> tuple[str, str | None]:
         """
         解析站点favicon,返回base64 fav图标
         :param url: 站点地址
@@ -194,7 +192,7 @@ class SiteChain(ChainBase):
             logger.error(f"获取站点图标失败：{favicon_url}")
         return favicon_url, None
 
-    def sync_cookies(self, manual=False) -> Tuple[bool, str]:
+    def sync_cookies(self, manual=False) -> tuple[bool, str]:
         """
         通过CookieCloud同步站点Cookie
         """
@@ -370,7 +368,7 @@ class SiteChain(ChainBase):
                 logger.info(f"清理站点配置：{key}")
                 self.systemconfig.delete(key)
 
-    def test(self, url: str) -> Tuple[bool, str]:
+    def test(self, url: str) -> tuple[bool, str]:
         """
         测试站点是否可用
         :param url: 站点域名
@@ -403,7 +401,7 @@ class SiteChain(ChainBase):
             return False, f"{str(e)}！"
 
     @staticmethod
-    def __test(site_info: Site) -> Tuple[bool, str]:
+    def __test(site_info: Site) -> tuple[bool, str]:
         """
         通用站点测试
         """
@@ -423,8 +421,8 @@ class SiteChain(ChainBase):
                                                              proxies=proxy_server)
             if not public and not SiteUtils.is_logged_in(page_source):
                 if under_challenge(page_source):
-                    return False, f"无法通过Cloudflare！"
-                return False, f"仿真登录失败，Cookie已失效！"
+                    return False, "无法通过Cloudflare！"
+                return False, "仿真登录失败，Cookie已失效！"
         else:
             res = RequestUtils(cookies=site_cookie,
                                ua=ua,
@@ -445,10 +443,10 @@ class SiteChain(ChainBase):
             elif res is not None:
                 return False, f"状态码：{res.status_code}！"
             else:
-                return False, f"无法打开网站！"
+                return False, "无法打开网站！"
         return True, "连接成功"
 
-    def remote_list(self, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_list(self, channel: MessageChannel, userid: str | int = None):
         """
         查询所有站点，发送消息
         """
@@ -477,7 +475,7 @@ class SiteChain(ChainBase):
             channel=channel,
             title=title, text="\n".join(messages), userid=userid))
 
-    def remote_disable(self, arg_str, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_disable(self, arg_str, channel: MessageChannel, userid: str | int = None):
         """
         禁用站点
         """
@@ -501,7 +499,7 @@ class SiteChain(ChainBase):
         # 重新发送消息
         self.remote_list(channel, userid)
 
-    def remote_enable(self, arg_str, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_enable(self, arg_str, channel: MessageChannel, userid: str | int = None):
         """
         启用站点
         """
@@ -527,7 +525,7 @@ class SiteChain(ChainBase):
         self.remote_list(channel, userid)
 
     def update_cookie(self, site_info: Site,
-                      username: str, password: str, two_step_code: str = None) -> Tuple[bool, str]:
+                      username: str, password: str, two_step_code: str = None) -> tuple[bool, str]:
         """
         根据用户名密码更新站点Cookie
         :param site_info: 站点信息
@@ -555,7 +553,7 @@ class SiteChain(ChainBase):
             return True, msg
         return False, "未知错误"
 
-    def remote_cookie(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_cookie(self, arg_str: str, channel: MessageChannel, userid: str | int = None):
         """
         使用用户名密码更新站点Cookie
         """

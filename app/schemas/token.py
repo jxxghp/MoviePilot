@@ -1,4 +1,3 @@
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -8,13 +7,13 @@ class Token(BaseModel):
     token_type: str
     super_user: bool
     user_name: str
-    avatar: Optional[str] = None
+    avatar: str | None = None
 
 
 class TokenPayload(BaseModel):
     # 用户ID
-    sub: Optional[int] = None
+    sub: int | None = None
     # 用户名
-    username: Optional[str] = None
+    username: str | None = None
     # 超级用户
-    super_user: Optional[bool] = None
+    super_user: bool | None = None

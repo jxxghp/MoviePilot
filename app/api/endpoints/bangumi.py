@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends
 
@@ -10,7 +10,7 @@ from app.core.security import verify_token
 router = APIRouter()
 
 
-@router.get("/calendar", summary="Bangumi每日放送", response_model=List[schemas.MediaInfo])
+@router.get("/calendar", summary="Bangumi每日放送", response_model=list[schemas.MediaInfo])
 def calendar(page: int = 1,
              count: int = 30,
              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -23,7 +23,7 @@ def calendar(page: int = 1,
     return []
 
 
-@router.get("/credits/{bangumiid}", summary="查询Bangumi演职员表", response_model=List[schemas.MediaPerson])
+@router.get("/credits/{bangumiid}", summary="查询Bangumi演职员表", response_model=list[schemas.MediaPerson])
 def bangumi_credits(bangumiid: int,
                     page: int = 1,
                     count: int = 20,
@@ -37,7 +37,7 @@ def bangumi_credits(bangumiid: int,
     return []
 
 
-@router.get("/recommend/{bangumiid}", summary="查询Bangumi推荐", response_model=List[schemas.MediaInfo])
+@router.get("/recommend/{bangumiid}", summary="查询Bangumi推荐", response_model=list[schemas.MediaInfo])
 def bangumi_recommend(bangumiid: int,
                       page: int = 1,
                       count: int = 20,
@@ -60,7 +60,7 @@ def bangumi_person(person_id: int,
     return BangumiChain().person_detail(person_id=person_id)
 
 
-@router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])
+@router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=list[schemas.MediaInfo])
 def bangumi_person_credits(person_id: int,
                            page: int = 1,
                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:

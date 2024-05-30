@@ -6,9 +6,9 @@ import threading
 from types import FrameType
 
 import uvicorn as uvicorn
-from PIL import Image
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from PIL import Image
 from uvicorn import Config
 
 from app.utils.system import SystemUtils
@@ -18,17 +18,17 @@ if SystemUtils.is_frozen():
     sys.stdout = open(os.devnull, 'w')
     sys.stderr = open(os.devnull, 'w')
 
-from app.core.config import settings, global_vars
+from app.command import Command, CommandChian
+from app.core.config import global_vars, settings
 from app.core.module import ModuleManager
 from app.core.plugin import PluginManager
-from app.db.init import init_db, update_db, init_super_user
-from app.helper.thread import ThreadHelper
+from app.db.init import init_db, init_super_user, update_db
 from app.helper.display import DisplayHelper
+from app.helper.message import MessageHelper
 from app.helper.resource import ResourceHelper
 from app.helper.sites import SitesHelper
-from app.helper.message import MessageHelper
+from app.helper.thread import ThreadHelper
 from app.scheduler import Scheduler
-from app.command import Command, CommandChian
 from app.schemas import Notification, NotificationType
 
 # App
@@ -96,7 +96,7 @@ def stop_frontend():
             or not SystemUtils.is_windows():
         return
     import subprocess
-    subprocess.Popen(f"taskkill /f /im nginx.exe", shell=True)
+    subprocess.Popen("taskkill /f /im nginx.exe", shell=True)
 
 
 def start_tray():

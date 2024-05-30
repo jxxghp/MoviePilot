@@ -1,4 +1,3 @@
-from typing import List
 
 from app.db import DbOper
 from app.db.models.siteicon import SiteIcon
@@ -9,7 +8,7 @@ class SiteIconOper(DbOper):
     站点管理
     """
 
-    def list(self) -> List[SiteIcon]:
+    def list(self) -> list[SiteIcon]:
         """
         获取站点图标列表
         """

@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends
 
@@ -10,7 +10,7 @@ from app.schemas.types import MediaType
 router = APIRouter()
 
 
-@router.get("/seasons/{tmdbid}", summary="TMDB所有季", response_model=List[schemas.TmdbSeason])
+@router.get("/seasons/{tmdbid}", summary="TMDB所有季", response_model=list[schemas.TmdbSeason])
 def tmdb_seasons(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据TMDBID查询themoviedb所有季信息
@@ -21,7 +21,7 @@ def tmdb_seasons(tmdbid: int, _: schemas.TokenPayload = Depends(verify_token)) -
     return []
 
 
-@router.get("/similar/{tmdbid}/{type_name}", summary="类似电影/电视剧", response_model=List[schemas.MediaInfo])
+@router.get("/similar/{tmdbid}/{type_name}", summary="类似电影/电视剧", response_model=list[schemas.MediaInfo])
 def tmdb_similar(tmdbid: int,
                  type_name: str,
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -40,7 +40,7 @@ def tmdb_similar(tmdbid: int,
     return []
 
 
-@router.get("/recommend/{tmdbid}/{type_name}", summary="推荐电影/电视剧", response_model=List[schemas.MediaInfo])
+@router.get("/recommend/{tmdbid}/{type_name}", summary="推荐电影/电视剧", response_model=list[schemas.MediaInfo])
 def tmdb_recommend(tmdbid: int,
                    type_name: str,
                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -59,7 +59,7 @@ def tmdb_recommend(tmdbid: int,
     return []
 
 
-@router.get("/credits/{tmdbid}/{type_name}", summary="演员阵容", response_model=List[schemas.MediaPerson])
+@router.get("/credits/{tmdbid}/{type_name}", summary="演员阵容", response_model=list[schemas.MediaPerson])
 def tmdb_credits(tmdbid: int,
                  type_name: str,
                  page: int = 1,
@@ -86,7 +86,7 @@ def tmdb_person(person_id: int,
     return TmdbChain().person_detail(person_id=person_id)
 
 
-@router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])
+@router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=list[schemas.MediaInfo])
 def tmdb_person_credits(person_id: int,
                         page: int = 1,
                         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -99,7 +99,7 @@ def tmdb_person_credits(person_id: int,
     return []
 
 
-@router.get("/movies", summary="TMDB电影", response_model=List[schemas.MediaInfo])
+@router.get("/movies", summary="TMDB电影", response_model=list[schemas.MediaInfo])
 def tmdb_movies(sort_by: str = "popularity.desc",
                 with_genres: str = "",
                 with_original_language: str = "",
@@ -118,7 +118,7 @@ def tmdb_movies(sort_by: str = "popularity.desc",
     return [movie.to_dict() for movie in movies]
 
 
-@router.get("/tvs", summary="TMDB剧集", response_model=List[schemas.MediaInfo])
+@router.get("/tvs", summary="TMDB剧集", response_model=list[schemas.MediaInfo])
 def tmdb_tvs(sort_by: str = "popularity.desc",
              with_genres: str = "",
              with_original_language: str = "",
@@ -137,7 +137,7 @@ def tmdb_tvs(sort_by: str = "popularity.desc",
     return [tv.to_dict() for tv in tvs]
 
 
-@router.get("/trending", summary="TMDB流行趋势", response_model=List[schemas.MediaInfo])
+@router.get("/trending", summary="TMDB流行趋势", response_model=list[schemas.MediaInfo])
 def tmdb_trending(page: int = 1,
                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -149,7 +149,7 @@ def tmdb_trending(page: int = 1,
     return [info.to_dict() for info in infos]
 
 
-@router.get("/{tmdbid}/{season}", summary="TMDB季所有集", response_model=List[schemas.TmdbEpisode])
+@router.get("/{tmdbid}/{season}", summary="TMDB季所有集", response_model=list[schemas.TmdbEpisode])
 def tmdb_season_episodes(tmdbid: int, season: int,
                          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """

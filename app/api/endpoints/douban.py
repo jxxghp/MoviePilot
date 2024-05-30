@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 
@@ -37,7 +37,7 @@ def douban_person(person_id: int,
     return DoubanChain().person_detail(person_id=person_id)
 
 
-@router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])
+@router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=list[schemas.MediaInfo])
 def douban_person_credits(person_id: int,
                           page: int = 1,
                           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -50,7 +50,7 @@ def douban_person_credits(person_id: int,
     return []
 
 
-@router.get("/showing", summary="豆瓣正在热映", response_model=List[schemas.MediaInfo])
+@router.get("/showing", summary="豆瓣正在热映", response_model=list[schemas.MediaInfo])
 def movie_showing(page: int = 1,
                   count: int = 30,
                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -63,7 +63,7 @@ def movie_showing(page: int = 1,
     return []
 
 
-@router.get("/movies", summary="豆瓣电影", response_model=List[schemas.MediaInfo])
+@router.get("/movies", summary="豆瓣电影", response_model=list[schemas.MediaInfo])
 def douban_movies(sort: str = "R",
                   tags: str = "",
                   page: int = 1,
@@ -79,7 +79,7 @@ def douban_movies(sort: str = "R",
     return []
 
 
-@router.get("/tvs", summary="豆瓣剧集", response_model=List[schemas.MediaInfo])
+@router.get("/tvs", summary="豆瓣剧集", response_model=list[schemas.MediaInfo])
 def douban_tvs(sort: str = "R",
                tags: str = "",
                page: int = 1,
@@ -95,7 +95,7 @@ def douban_tvs(sort: str = "R",
     return []
 
 
-@router.get("/movie_top250", summary="豆瓣电影TOP250", response_model=List[schemas.MediaInfo])
+@router.get("/movie_top250", summary="豆瓣电影TOP250", response_model=list[schemas.MediaInfo])
 def movie_top250(page: int = 1,
                  count: int = 30,
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -108,7 +108,7 @@ def movie_top250(page: int = 1,
     return []
 
 
-@router.get("/tv_weekly_chinese", summary="豆瓣国产剧集周榜", response_model=List[schemas.MediaInfo])
+@router.get("/tv_weekly_chinese", summary="豆瓣国产剧集周榜", response_model=list[schemas.MediaInfo])
 def tv_weekly_chinese(page: int = 1,
                       count: int = 30,
                       _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -121,7 +121,7 @@ def tv_weekly_chinese(page: int = 1,
     return []
 
 
-@router.get("/tv_weekly_global", summary="豆瓣全球剧集周榜", response_model=List[schemas.MediaInfo])
+@router.get("/tv_weekly_global", summary="豆瓣全球剧集周榜", response_model=list[schemas.MediaInfo])
 def tv_weekly_global(page: int = 1,
                      count: int = 30,
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -134,7 +134,7 @@ def tv_weekly_global(page: int = 1,
     return []
 
 
-@router.get("/tv_animation", summary="豆瓣动画剧集", response_model=List[schemas.MediaInfo])
+@router.get("/tv_animation", summary="豆瓣动画剧集", response_model=list[schemas.MediaInfo])
 def tv_animation(page: int = 1,
                  count: int = 30,
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -147,7 +147,7 @@ def tv_animation(page: int = 1,
     return []
 
 
-@router.get("/movie_hot", summary="豆瓣热门电影", response_model=List[schemas.MediaInfo])
+@router.get("/movie_hot", summary="豆瓣热门电影", response_model=list[schemas.MediaInfo])
 def movie_hot(page: int = 1,
               count: int = 30,
               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -160,7 +160,7 @@ def movie_hot(page: int = 1,
     return []
 
 
-@router.get("/tv_hot", summary="豆瓣热门电视剧", response_model=List[schemas.MediaInfo])
+@router.get("/tv_hot", summary="豆瓣热门电视剧", response_model=list[schemas.MediaInfo])
 def tv_hot(page: int = 1,
            count: int = 30,
            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -173,7 +173,7 @@ def tv_hot(page: int = 1,
     return []
 
 
-@router.get("/credits/{doubanid}/{type_name}", summary="豆瓣演员阵容", response_model=List[schemas.MediaPerson])
+@router.get("/credits/{doubanid}/{type_name}", summary="豆瓣演员阵容", response_model=list[schemas.MediaPerson])
 def douban_credits(doubanid: str,
                    type_name: str,
                    page: int = 1,
@@ -189,7 +189,7 @@ def douban_credits(doubanid: str,
     return []
 
 
-@router.get("/recommend/{doubanid}/{type_name}", summary="豆瓣推荐电影/电视剧", response_model=List[schemas.MediaInfo])
+@router.get("/recommend/{doubanid}/{type_name}", summary="豆瓣推荐电影/电视剧", response_model=list[schemas.MediaInfo])
 def douban_recommend(doubanid: str,
                      type_name: str,
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:

@@ -1,4 +1,4 @@
-from .downloadhistory import DownloadHistory, DownloadFiles
+from .downloadhistory import DownloadFiles, DownloadHistory
 from .mediaserver import MediaServerItem
 from .plugindata import PluginData
 from .site import Site

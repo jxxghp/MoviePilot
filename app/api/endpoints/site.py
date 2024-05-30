@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -18,15 +18,15 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.db.userauth import get_current_active_superuser
 from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
-from app.schemas.types import SystemConfigKey, EventType
+from app.schemas.types import EventType, SystemConfigKey
 from app.utils.string import StringUtils
 
 router = APIRouter()
 
 
-@router.get("/", summary="所有站点", response_model=List[schemas.Site])
+@router.get("/", summary="所有站点", response_model=list[schemas.Site])
 def read_sites(db: Session = Depends(get_db),
-               _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+               _: schemas.TokenPayload = Depends(verify_token)) -> list[dict]:
     """
     获取站点列表
     """
@@ -125,7 +125,7 @@ def reset(db: Session = Depends(get_db),
 
 @router.post("/priorities", summary="批量更新站点优先级", response_model=schemas.Response)
 def update_sites_priority(
-        priorities: List[dict],
+        priorities: list[dict],
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -202,7 +202,7 @@ def site_icon(site_id: int,
     })
 
 
-@router.get("/resource/{site_id}", summary="站点资源", response_model=List[schemas.TorrentInfo])
+@router.get("/resource/{site_id}", summary="站点资源", response_model=list[schemas.TorrentInfo])
 def site_resource(site_id: int,
                   db: Session = Depends(get_db),
                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -256,8 +256,8 @@ def read_site_by_domain(
     return schemas.SiteStatistic(domain=domain)
 
 
-@router.get("/rss", summary="所有订阅站点", response_model=List[schemas.Site])
-def read_rss_sites(db: Session = Depends(get_db)) -> List[dict]:
+@router.get("/rss", summary="所有订阅站点", response_model=list[schemas.Site])
+def read_rss_sites(db: Session = Depends(get_db)) -> list[dict]:
     """
     获取站点列表
     """

@@ -1,57 +1,57 @@
-from typing import Optional
+
 from pydantic import BaseModel
 
 
 class RadarrMovie(BaseModel):
-    id: Optional[int]
-    title: Optional[str]
-    year: Optional[str]
+    id: int | None
+    title: str | None
+    year: str | None
     isAvailable: bool = False
     monitored: bool = False
-    tmdbId: Optional[int]
-    imdbId: Optional[str]
-    titleSlug: Optional[str]
-    folderName: Optional[str]
-    path: Optional[str]
-    profileId: Optional[int]
-    qualityProfileId: Optional[int]
-    added: Optional[str]
+    tmdbId: int | None
+    imdbId: str | None
+    titleSlug: str | None
+    folderName: str | None
+    path: str | None
+    profileId: int | None
+    qualityProfileId: int | None
+    added: str | None
     hasFile: bool = False
 
 
 class SonarrSeries(BaseModel):
-    id: Optional[int]
-    title: Optional[str]
-    sortTitle: Optional[str]
-    seasonCount: Optional[int]
-    status: Optional[str]
-    overview: Optional[str]
-    network: Optional[str]
-    airTime: Optional[str]
+    id: int | None
+    title: str | None
+    sortTitle: str | None
+    seasonCount: int | None
+    status: str | None
+    overview: str | None
+    network: str | None
+    airTime: str | None
     images: list = []
-    remotePoster: Optional[str]
+    remotePoster: str | None
     seasons: list = []
-    year: Optional[str]
-    path: Optional[str]
-    profileId: Optional[int]
-    languageProfileId: Optional[int]
+    year: str | None
+    path: str | None
+    profileId: int | None
+    languageProfileId: int | None
     seasonFolder: bool = False
     monitored: bool = False
     useSceneNumbering: bool = False
-    runtime: Optional[int]
-    tmdbId: Optional[int]
-    imdbId: Optional[str]
-    tvdbId: Optional[int]
-    tvRageId: Optional[int]
-    tvMazeId: Optional[int]
-    firstAired: Optional[str]
-    seriesType: Optional[str]
-    cleanTitle: Optional[str]
-    titleSlug: Optional[str]
-    certification: Optional[str]
+    runtime: int | None
+    tmdbId: int | None
+    imdbId: str | None
+    tvdbId: int | None
+    tvRageId: int | None
+    tvMazeId: int | None
+    firstAired: str | None
+    seriesType: str | None
+    cleanTitle: str | None
+    titleSlug: str | None
+    certification: str | None
     genres: list = []
     tags: list = []
-    added: Optional[str]
-    ratings: Optional[dict]
-    qualityProfileId: Optional[int]
+    added: str | None
+    ratings: dict | None
+    qualityProfileId: int | None
     statistics: dict = {}

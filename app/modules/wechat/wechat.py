@@ -2,10 +2,9 @@ import json
 import re
 import threading
 from datetime import datetime
-from typing import Optional, List, Dict
 
 from app.core.config import settings
-from app.core.context import MediaInfo, Context
+from app.core.context import Context, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.common import retry
@@ -81,14 +80,14 @@ class WeChat:
                 elif res is not None:
                     logger.error(f"获取微信access_token失败，错误码：{res.status_code}，错误原因：{res.reason}")
                 else:
-                    logger.error(f"获取微信access_token失败，未获取到返回信息")
+                    logger.error("获取微信access_token失败，未获取到返回信息")
                     raise Exception("获取微信access_token失败，网络连接失败")
             except Exception as e:
                 logger.error(f"获取微信access_token失败，错误信息：{str(e)}")
                 return None
         return self._access_token
 
-    def __send_message(self, title: str, text: str = None, userid: str = None) -> Optional[bool]:
+    def __send_message(self, title: str, text: str = None, userid: str = None) -> bool | None:
         """
         发送文本消息
         :param title: 消息标题
@@ -117,7 +116,7 @@ class WeChat:
         }
         return self.__post_request(message_url, req_json)
 
-    def __send_image_message(self, title: str, text: str, image_url: str, userid: str = None) -> Optional[bool]:
+    def __send_image_message(self, title: str, text: str, image_url: str, userid: str = None) -> bool | None:
         """
         发送图文消息
         :param title: 消息标题
@@ -148,7 +147,7 @@ class WeChat:
         }
         return self.__post_request(message_url, req_json)
 
-    def send_msg(self, title: str, text: str = "", image: str = "", userid: str = None) -> Optional[bool]:
+    def send_msg(self, title: str, text: str = "", image: str = "", userid: str = None) -> bool | None:
         """
         微信消息发送入口，支持文本、图片、链接跳转、指定发送对象
         :param title: 消息标题
@@ -168,7 +167,7 @@ class WeChat:
 
         return ret_code
 
-    def send_medias_msg(self, medias: List[MediaInfo], userid: str = "") -> Optional[bool]:
+    def send_medias_msg(self, medias: list[MediaInfo], userid: str = "") -> bool | None:
         """
         发送列表类消息
         """
@@ -204,8 +203,8 @@ class WeChat:
         }
         return self.__post_request(message_url, req_json)
 
-    def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "") -> Optional[bool]:
+    def send_torrents_msg(self, torrents: list[Context],
+                          userid: str = "", title: str = "") -> bool | None:
         """
         发送列表消息
         """
@@ -276,13 +275,13 @@ class WeChat:
                 logger.error(f"发送请求失败，错误码：{res.status_code}，错误原因：{res.reason}")
                 return False
             else:
-                logger.error(f"发送请求失败，未获取到返回信息")
+                logger.error("发送请求失败，未获取到返回信息")
                 return False
         except Exception as err:
             logger.error(f"发送请求失败，错误信息：{str(err)}")
             return False
 
-    def create_menus(self, commands: Dict[str, dict]):
+    def create_menus(self, commands: dict[str, dict]):
         """
         自动注册微信菜单
         :param commands: 命令字典
@@ -327,7 +326,7 @@ class WeChat:
         # 对commands按category分组
         category_dict = {}
         for key, value in commands.items():
-            category: Dict[str, dict] = value.get("category")
+            category: dict[str, dict] = value.get("category")
             if category:
                 if not category_dict.get(category):
                     category_dict[category] = {}

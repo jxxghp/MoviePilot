@@ -1,9 +1,8 @@
 import re
 import threading
-from typing import Optional, List
 
 from app.core.config import settings
-from app.core.context import MediaInfo, Context
+from app.core.context import Context, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.common import retry
@@ -58,7 +57,7 @@ class VoceChat:
         if result and result.status_code == 200:
             return result.json()
 
-    def send_msg(self, title: str, text: str = "", userid: str = None) -> Optional[bool]:
+    def send_msg(self, title: str, text: str = "", userid: str = None) -> bool | None:
         """
         微信消息发送入口，支持文本、图片、链接跳转、指定发送对象
         :param title: 消息标题
@@ -90,7 +89,7 @@ class VoceChat:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_medias_msg(self, title: str, medias: List[MediaInfo], userid: str = "") -> Optional[bool]:
+    def send_medias_msg(self, title: str, medias: list[MediaInfo], userid: str = "") -> bool | None:
         """
         发送列表类消息
         """
@@ -126,8 +125,8 @@ class VoceChat:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "") -> Optional[bool]:
+    def send_torrents_msg(self, torrents: list[Context],
+                          userid: str = "", title: str = "") -> bool | None:
         """
         发送列表消息
         """

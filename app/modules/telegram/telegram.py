@@ -2,14 +2,13 @@ import re
 import threading
 from pathlib import Path
 from threading import Event
-from typing import Optional, List, Dict
 
 import telebot
 from telebot import apihelper
 from telebot.types import InputFile
 
 from app.core.config import settings
-from app.core.context import MediaInfo, Context
+from app.core.context import Context, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.utils.common import retry
@@ -67,7 +66,7 @@ class Telegram:
         """
         return self._bot is not None
 
-    def send_msg(self, title: str, text: str = "", image: str = "", userid: str = "") -> Optional[bool]:
+    def send_msg(self, title: str, text: str = "", image: str = "", userid: str = "") -> bool | None:
         """
         发送Telegram消息
         :param title: 消息标题
@@ -100,7 +99,7 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_meidas_msg(self, medias: List[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_meidas_msg(self, medias: list[MediaInfo], userid: str = "", title: str = "") -> bool | None:
         """
         发送媒体列表消息
         """
@@ -138,8 +137,8 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "") -> Optional[bool]:
+    def send_torrents_msg(self, torrents: list[Context],
+                          userid: str = "", title: str = "") -> bool | None:
         """
         发送列表消息
         """
@@ -217,7 +216,7 @@ class Telegram:
             raise Exception("发送文本消息失败")
         return True if ret else False
 
-    def register_commands(self, commands: Dict[str, dict]):
+    def register_commands(self, commands: dict[str, dict]):
         """
         注册菜单命令
         """

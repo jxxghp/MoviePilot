@@ -1,8 +1,8 @@
-from typing import Union, Any, Optional
+from typing import Any
 
 import requests
 import urllib3
-from requests import Session, Response
+from requests import Response, Session
 from urllib3.exceptions import InsecureRequestWarning
 
 urllib3.disable_warnings(InsecureRequestWarning)
@@ -10,7 +10,7 @@ urllib3.disable_warnings(InsecureRequestWarning)
 
 class RequestUtils:
     _headers: dict = None
-    _cookies: Union[str, dict] = None
+    _cookies: str | dict = None
     _proxies: dict = None
     _timeout: int = 20
     _session: Session = None
@@ -18,7 +18,7 @@ class RequestUtils:
     def __init__(self,
                  headers: dict = None,
                  ua: str = None,
-                 cookies: Union[str, dict] = None,
+                 cookies: str | dict = None,
                  proxies: dict = None,
                  session: Session = None,
                  timeout: int = None,
@@ -48,7 +48,7 @@ class RequestUtils:
         if timeout:
             self._timeout = timeout
 
-    def post(self, url: str, data: Any = None, json: dict = None) -> Optional[Response]:
+    def post(self, url: str, data: Any = None, json: dict = None) -> Response | None:
         if json is None:
             json = {}
         try:
@@ -75,7 +75,7 @@ class RequestUtils:
         except requests.exceptions.RequestException:
             return None
 
-    def get(self, url: str, params: dict = None) -> Optional[str]:
+    def get(self, url: str, params: dict = None) -> str | None:
         try:
             if self._session:
                 r = self._session.get(url,
@@ -103,7 +103,7 @@ class RequestUtils:
                 json: dict = None,
                 allow_redirects: bool = True,
                 raise_exception: bool = False
-                ) -> Optional[Response]:
+                ) -> Response | None:
         try:
             if self._session:
                 return self._session.get(url,
@@ -138,7 +138,7 @@ class RequestUtils:
                  allow_redirects: bool = True,
                  files: Any = None,
                  json: dict = None,
-                 raise_exception: bool = False) -> Optional[Response]:
+                 raise_exception: bool = False) -> Response | None:
         try:
             if self._session:
                 return self._session.post(url,
@@ -172,7 +172,7 @@ class RequestUtils:
             return None
 
     @staticmethod
-    def cookie_parse(cookies_str: str, array: bool = False) -> Union[list, dict]:
+    def cookie_parse(cookies_str: str, array: bool = False) -> list | dict:
         """
         解析cookie，转化为字典或者数组
         :param cookies_str: cookie字符串

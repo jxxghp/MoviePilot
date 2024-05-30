@@ -27,7 +27,7 @@ class CategoryHelper(metaclass=Singleton):
         try:
             if not self._category_path.exists():
                 shutil.copy(settings.INNER_CONFIG_PATH / "category.yaml", self._category_path)
-            with open(self._category_path, mode='r', encoding='utf-8') as f:
+            with open(self._category_path, encoding='utf-8') as f:
                 try:
                     yaml = ruamel.yaml.YAML()
                     self._categorys = yaml.load(f)
@@ -40,7 +40,7 @@ class CategoryHelper(metaclass=Singleton):
         if self._categorys:
             self._movie_categorys = self._categorys.get('movie')
             self._tv_categorys = self._categorys.get('tv')
-        logger.info(f"已加载二级分类策略 category.yaml")
+        logger.info("已加载二级分类策略 category.yaml")
 
     @property
     def is_movie_category(self) -> bool:

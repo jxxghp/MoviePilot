@@ -5,9 +5,8 @@ Revises: 06abf3e7090b
 Create Date: 2023-12-12 13:26:34.039497
 
 """
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = 'd71e624f0208'
@@ -21,7 +20,7 @@ def upgrade() -> None:
     try:
         with op.batch_alter_table("subscribe") as batch_op:
             batch_op.add_column(sa.Column('save_path', sa.String, nullable=True))
-    except Exception as e:
+    except Exception:
         pass
     # ### end Alembic commands ###
 

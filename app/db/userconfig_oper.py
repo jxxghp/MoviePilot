@@ -1,5 +1,5 @@
 import json
-from typing import Any, Union, Dict, Optional
+from typing import Any
 
 from app.db import DbOper
 from app.db.models.userconfig import UserConfig
@@ -10,7 +10,7 @@ from app.utils.singleton import Singleton
 
 class UserConfigOper(DbOper, metaclass=Singleton):
     # 配置缓存
-    __USERCONF: Dict[str, Dict[str, Any]] = {}
+    __USERCONF: dict[str, dict[str, Any]] = {}
 
     def __init__(self):
         """
@@ -21,7 +21,7 @@ class UserConfigOper(DbOper, metaclass=Singleton):
             value = json.loads(item.value) if ObjectUtils.is_obj(item.value) else item.value
             self.__set_config_cache(username=item.username, key=item.key, value=value)
 
-    def set(self, username: str, key: Union[str, UserConfigKey], value: Any):
+    def set(self, username: str, key: str | UserConfigKey, value: Any):
         """
         设置用户配置
         """
@@ -44,7 +44,7 @@ class UserConfigOper(DbOper, metaclass=Singleton):
             conf = UserConfig(username=username, key=key, value=value)
             conf.create(self._db)
 
-    def get(self, username: str, key: Union[str, UserConfigKey] = None) -> Any:
+    def get(self, username: str, key: str | UserConfigKey = None) -> Any:
         """
         获取用户配置
         """
@@ -76,7 +76,7 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         user_cache[key] = value
         self.__USERCONF = cache
 
-    def __get_config_caches(self, username: str) -> Optional[Dict[str, Any]]:
+    def __get_config_caches(self, username: str) -> dict[str, Any] | None:
         """
         获取配置缓存
         """

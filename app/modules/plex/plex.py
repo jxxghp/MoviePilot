@@ -1,7 +1,8 @@
 import json
+from collections.abc import Generator
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Dict, Tuple, Generator, Any
+from typing import Any
 from urllib.parse import quote_plus
 
 from plexapi import media
@@ -59,7 +60,7 @@ class Plex:
             logger.error(f"Plex服务器连接失败：{str(e)}")
 
     @lru_cache(maxsize=10)
-    def __get_library_images(self, library_key: str, mtype: int) -> Optional[List[str]]:
+    def __get_library_images(self, library_key: str, mtype: int) -> list[str] | None:
         """
         获取媒体服务器最近添加的媒体的图片列表
         param: library_key
@@ -95,7 +96,7 @@ class Plex:
         return [f"{self._host.rstrip('/') + url}?X-Plex-Token={self._token}" for url in
                 list(poster_urls.keys())[:total_size]]
 
-    def get_librarys(self) -> List[schemas.MediaServerLibrary]:
+    def get_librarys(self) -> list[schemas.MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -162,7 +163,7 @@ class Plex:
                    title: str,
                    original_title: str = None,
                    year: str = None,
-                   tmdb_id: int = None) -> Optional[List[schemas.MediaServerItem]]:
+                   tmdb_id: int = None) -> list[schemas.MediaServerItem] | None:
         """
         根据标题和年份，检查电影是否在Plex中存在，存在则返回列表
         :param title: 标题
@@ -220,7 +221,7 @@ class Plex:
                         original_title: str = None,
                         year: str = None,
                         tmdb_id: int = None,
-                        season: int = None) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
+                        season: int = None) -> tuple[str | None, dict[int, list] | None]:
         """
         根据标题、年份、季查询电视剧所有集信息
         :param item_id: 媒体ID
@@ -267,7 +268,7 @@ class Plex:
             season_episodes[episode.seasonNumber].append(episode.index)
         return videos.key, season_episodes
 
-    def get_remote_image_by_id(self, item_id: str, image_type: str) -> Optional[str]:
+    def get_remote_image_by_id(self, item_id: str, image_type: str) -> str | None:
         """
         根据ItemId从Plex查询图片地址
         :param item_id: 在Emby中的ID
@@ -287,7 +288,7 @@ class Plex:
                 if hasattr(image, 'key') and image.key.startswith('http'):
                     return image.key
         except Exception as e:
-            logger.error(f"获取封面出错：" + str(e))
+            logger.error("获取封面出错：" + str(e))
         return None
 
     def refresh_root_library(self) -> bool:
@@ -298,7 +299,7 @@ class Plex:
             return False
         return self._plex.library.update()
 
-    def refresh_library_by_items(self, items: List[schemas.RefreshMediaItem]) -> bool:
+    def refresh_library_by_items(self, items: list[schemas.RefreshMediaItem]) -> bool:
         """
         按路径刷新媒体库 item: target_path
         """
@@ -320,7 +321,7 @@ class Plex:
                 self._plex.query(f'/library/sections/{lib_key}/refresh?path={quote_plus(str(Path(path).parent))}')
 
     @staticmethod
-    def __find_librarie(path: Path, libraries: List[Any]) -> Tuple[str, str]:
+    def __find_librarie(path: Path, libraries: list[Any]) -> tuple[str, str]:
         """
         判断这个path属于哪个媒体库
         多个媒体库配置的目录不应有重复和嵌套,
@@ -347,7 +348,7 @@ class Plex:
             logger.error(f"查找媒体库出错：{str(err)}")
         return "", ""
 
-    def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
+    def get_iteminfo(self, itemid: str) -> schemas.MediaServerItem | None:
         """
         获取单个项目详情
         """
@@ -377,7 +378,7 @@ class Plex:
         return None
 
     @staticmethod
-    def __get_ids(guids: List[Any]) -> dict:
+    def __get_ids(guids: list[Any]) -> dict:
         def parse_tmdb_id(value: str) -> (bool, int):
             """尝试将TMDB ID字符串转换为整数。如果成功，返回(True, int)，失败则返回(False, None)。"""
             try:
@@ -447,7 +448,7 @@ class Plex:
             logger.error(f"获取媒体库列表出错：{str(err)}")
         yield None
 
-    def get_webhook_message(self, form: any) -> Optional[schemas.WebhookEventInfo]:
+    def get_webhook_message(self, form: any) -> schemas.WebhookEventInfo | None:
         """
         解析Plex报文
         eventItem  字段的含义
@@ -623,7 +624,7 @@ class Plex:
         """
         return f'{self._playhost or self._host}web/index.html#!/server/{self._plex.machineIdentifier}/details?key={item_id}'
 
-    def get_resume(self, num: int = 12) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_resume(self, num: int = 12) -> list[schemas.MediaServerPlayItem] | None:
         """
         获取继续观看的媒体
         """
@@ -655,7 +656,7 @@ class Plex:
             ))
         return ret_resume[:num]
 
-    def get_latest(self, num: int = 20) -> Optional[List[schemas.MediaServerPlayItem]]:
+    def get_latest(self, num: int = 20) -> list[schemas.MediaServerPlayItem] | None:
         """
         获取最近添加媒体
         """

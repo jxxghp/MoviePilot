@@ -1,4 +1,3 @@
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -8,18 +7,18 @@ class MediaDirectory(BaseModel):
     下载目录/媒体库目录
     """
     # 类型 download/library
-    type: Optional[str] = None
+    type: str | None = None
     # 别名
-    name: Optional[str] = None
+    name: str | None = None
     # 路径
-    path: Optional[str] = None
+    path: str | None = None
     # 媒体类型 电影/电视剧
-    media_type: Optional[str] = None
+    media_type: str | None = None
     # 媒体类别 动画电影/国产剧
-    category: Optional[str] = None
+    category: str | None = None
     # 刮削媒体信息
-    scrape: Optional[bool] = False
+    scrape: bool | None = False
     # 自动二级分类，未指定类别时自动分类
-    auto_category: Optional[bool] = False
+    auto_category: bool | None = False
     # 优先级
-    priority: Optional[int] = 0
+    priority: int | None = 0

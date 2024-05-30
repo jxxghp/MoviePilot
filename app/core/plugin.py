@@ -5,7 +5,8 @@ import os
 import threading
 import time
 import traceback
-from typing import List, Any, Dict, Tuple, Optional, Callable
+from collections.abc import Callable
+from typing import Any
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -50,7 +51,7 @@ class PluginMonitorHandler(FileSystemEventHandler):
             # 使用os.path和pathlib处理跨平台的路径问题
             plugin_dir = event.src_path.split("plugins" + os.sep)[1].split(os.sep)[0]
             init_file = settings.ROOT_PATH / "app" / "plugins" / plugin_dir / "__init__.py"
-            with open(init_file, "r", encoding="utf-8") as f:
+            with open(init_file, encoding="utf-8") as f:
                 lines = f.readlines()
             pid = None
             for line in lines:
@@ -319,7 +320,7 @@ class PluginManager(metaclass=Singleton):
             return False
         return self.systemconfig.delete(self._config_key % pid)
 
-    def get_plugin_form(self, pid: str) -> Tuple[List[dict], Dict[str, Any]]:
+    def get_plugin_form(self, pid: str) -> tuple[list[dict], dict[str, Any]]:
         """
         获取插件表单
         :param pid: 插件ID
@@ -331,7 +332,7 @@ class PluginManager(metaclass=Singleton):
             return plugin.get_form() or ([], {})
         return [], {}
 
-    def get_plugin_page(self, pid: str) -> List[dict]:
+    def get_plugin_page(self, pid: str) -> list[dict]:
         """
         获取插件页面
         :param pid: 插件ID
@@ -343,7 +344,7 @@ class PluginManager(metaclass=Singleton):
             return plugin.get_page() or []
         return []
 
-    def get_plugin_dashboard(self, pid: str, key: str, **kwargs) -> Optional[schemas.PluginDashboard]:
+    def get_plugin_dashboard(self, pid: str, key: str, **kwargs) -> schemas.PluginDashboard | None:
         """
         获取插件仪表盘
         :param pid: 插件ID
@@ -364,11 +365,11 @@ class PluginManager(metaclass=Singleton):
             # 检查方法的参数个数
             params_count = __get_params_count(plugin.get_dashboard)
             if params_count > 1:
-                dashboard: Tuple = plugin.get_dashboard(key=key, **kwargs)
+                dashboard: tuple = plugin.get_dashboard(key=key, **kwargs)
             elif params_count > 0:
-                dashboard: Tuple = plugin.get_dashboard(**kwargs)
+                dashboard: tuple = plugin.get_dashboard(**kwargs)
             else:
-                dashboard: Tuple = plugin.get_dashboard()
+                dashboard: tuple = plugin.get_dashboard()
             if dashboard:
                 cols, attrs, elements = dashboard
                 return schemas.PluginDashboard(
@@ -381,7 +382,7 @@ class PluginManager(metaclass=Singleton):
                 )
         return None
 
-    def get_plugin_commands(self) -> List[Dict[str, Any]]:
+    def get_plugin_commands(self) -> list[dict[str, Any]]:
         """
         获取插件命令
         [{
@@ -401,7 +402,7 @@ class PluginManager(metaclass=Singleton):
                     logger.error(f"获取插件命令出错：{str(e)}")
         return ret_commands
 
-    def get_plugin_apis(self, plugin_id: str = None) -> List[Dict[str, Any]]:
+    def get_plugin_apis(self, plugin_id: str = None) -> list[dict[str, Any]]:
         """
         获取插件API
         [{
@@ -427,7 +428,7 @@ class PluginManager(metaclass=Singleton):
                     logger.error(f"获取插件 {pid} API出错：{str(e)}")
         return ret_apis
 
-    def get_plugin_services(self) -> List[Dict[str, Any]]:
+    def get_plugin_services(self) -> list[dict[str, Any]]:
         """
         获取插件服务
         [{
@@ -508,24 +509,24 @@ class PluginManager(metaclass=Singleton):
             return None
         return getattr(plugin, method)(*args, **kwargs)
 
-    def get_plugin_ids(self) -> List[str]:
+    def get_plugin_ids(self) -> list[str]:
         """
         获取所有插件ID
         """
         return list(self._plugins.keys())
 
-    def get_running_plugin_ids(self) -> List[str]:
+    def get_running_plugin_ids(self) -> list[str]:
         """
         获取所有运行态插件ID
         """
         return list(self._running_plugins.keys())
 
-    def get_online_plugins(self) -> List[schemas.Plugin]:
+    def get_online_plugins(self) -> list[schemas.Plugin]:
         """
         获取所有在线插件信息
         """
 
-        def __get_plugin_info(market: str) -> Optional[List[schemas.Plugin]]:
+        def __get_plugin_info(market: str) -> list[schemas.Plugin] | None:
             """
             获取插件信息
             """
@@ -552,7 +553,7 @@ class PluginManager(metaclass=Singleton):
                 # 是否有新版本
                 plugin.has_update = False
                 if plugin_static:
-                    installed_version = getattr(plugin_static, "plugin_version")
+                    installed_version = plugin_static.plugin_version
                     if StringUtils.compare_version(installed_version, plugin_info.get("version")) < 0:
                         # 需要更新
                         plugin.has_update = True
@@ -641,7 +642,7 @@ class PluginManager(metaclass=Singleton):
         logger.info(f"共获取到 {len(result)} 个第三方插件")
         return result
 
-    def get_local_plugins(self) -> List[schemas.Plugin]:
+    def get_local_plugins(self) -> list[schemas.Plugin]:
         """
         获取所有本地已下载的插件信息
         """

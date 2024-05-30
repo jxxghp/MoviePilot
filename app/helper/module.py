@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import importlib
 import pkgutil
 import traceback

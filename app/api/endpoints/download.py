@@ -1,11 +1,11 @@
-from typing import Any, List
+from typing import Any
 
 from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
-from app.core.context import MediaInfo, Context, TorrentInfo
+from app.core.context import Context, MediaInfo, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.db.models.user import User
@@ -14,7 +14,7 @@ from app.db.userauth import get_current_active_user
 router = APIRouter()
 
 
-@router.get("/", summary="正在下载", response_model=List[schemas.DownloadingTorrent])
+@router.get("/", summary="正在下载", response_model=list[schemas.DownloadingTorrent])
 def read(
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """

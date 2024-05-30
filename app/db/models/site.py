@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Integer, String, Sequence
+from sqlalchemy import Boolean, Column, Integer, Sequence, String
 from sqlalchemy.orm import Session
 
-from app.db import db_query, db_update, Base
+from app.db import Base, db_query, db_update
 
 
 class Site(Base):

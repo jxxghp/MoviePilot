@@ -1,7 +1,6 @@
 import random
-from typing import Optional, List
 
-from cachetools import cached, TTLCache
+from cachetools import TTLCache, cached
 
 from app import schemas
 from app.chain import ChainBase
@@ -17,7 +16,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
     """
 
     def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str,
-                      with_original_language: str, page: int = 1) -> Optional[List[MediaInfo]]:
+                      with_original_language: str, page: int = 1) -> list[MediaInfo] | None:
         """
         :param mtype:  媒体类型
         :param sort_by:  排序方式
@@ -31,7 +30,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
                                with_original_language=with_original_language,
                                page=page)
 
-    def tmdb_trending(self, page: int = 1) -> Optional[List[MediaInfo]]:
+    def tmdb_trending(self, page: int = 1) -> list[MediaInfo] | None:
         """
         TMDB流行趋势
         :param page: 第几页
@@ -39,14 +38,14 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("tmdb_trending", page=page)
 
-    def tmdb_seasons(self, tmdbid: int) -> List[schemas.TmdbSeason]:
+    def tmdb_seasons(self, tmdbid: int) -> list[schemas.TmdbSeason]:
         """
         根据TMDBID查询themoviedb所有季信息
         :param tmdbid:  TMDBID
         """
         return self.run_module("tmdb_seasons", tmdbid=tmdbid)
 
-    def tmdb_episodes(self, tmdbid: int, season: int) -> List[schemas.TmdbEpisode]:
+    def tmdb_episodes(self, tmdbid: int, season: int) -> list[schemas.TmdbEpisode]:
         """
         根据TMDBID查询某季的所有信信息
         :param tmdbid:  TMDBID
@@ -54,35 +53,35 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("tmdb_episodes", tmdbid=tmdbid, season=season)
 
-    def movie_similar(self, tmdbid: int) -> Optional[List[MediaInfo]]:
+    def movie_similar(self, tmdbid: int) -> list[MediaInfo] | None:
         """
         根据TMDBID查询类似电影
         :param tmdbid:  TMDBID
         """
         return self.run_module("tmdb_movie_similar", tmdbid=tmdbid)
 
-    def tv_similar(self, tmdbid: int) -> Optional[List[MediaInfo]]:
+    def tv_similar(self, tmdbid: int) -> list[MediaInfo] | None:
         """
         根据TMDBID查询类似电视剧
         :param tmdbid:  TMDBID
         """
         return self.run_module("tmdb_tv_similar", tmdbid=tmdbid)
 
-    def movie_recommend(self, tmdbid: int) -> Optional[List[MediaInfo]]:
+    def movie_recommend(self, tmdbid: int) -> list[MediaInfo] | None:
         """
         根据TMDBID查询推荐电影
         :param tmdbid:  TMDBID
         """
         return self.run_module("tmdb_movie_recommend", tmdbid=tmdbid)
 
-    def tv_recommend(self, tmdbid: int) -> Optional[List[MediaInfo]]:
+    def tv_recommend(self, tmdbid: int) -> list[MediaInfo] | None:
         """
         根据TMDBID查询推荐电视剧
         :param tmdbid:  TMDBID
         """
         return self.run_module("tmdb_tv_recommend", tmdbid=tmdbid)
 
-    def movie_credits(self, tmdbid: int, page: int = 1) -> Optional[List[schemas.MediaPerson]]:
+    def movie_credits(self, tmdbid: int, page: int = 1) -> list[schemas.MediaPerson] | None:
         """
         根据TMDBID查询电影演职人员
         :param tmdbid:  TMDBID
@@ -90,7 +89,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("tmdb_movie_credits", tmdbid=tmdbid, page=page)
 
-    def tv_credits(self, tmdbid: int, page: int = 1) -> Optional[List[schemas.MediaPerson]]:
+    def tv_credits(self, tmdbid: int, page: int = 1) -> list[schemas.MediaPerson] | None:
         """
         根据TMDBID查询电视剧演职人员
         :param tmdbid:  TMDBID
@@ -98,14 +97,14 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("tmdb_tv_credits", tmdbid=tmdbid, page=page)
 
-    def person_detail(self, person_id: int) -> Optional[schemas.MediaPerson]:
+    def person_detail(self, person_id: int) -> schemas.MediaPerson | None:
         """
         根据TMDBID查询演职员详情
         :param person_id:  人物ID
         """
         return self.run_module("tmdb_person_detail", person_id=person_id)
 
-    def person_credits(self, person_id: int, page: int = 1) -> Optional[List[MediaInfo]]:
+    def person_credits(self, person_id: int, page: int = 1) -> list[MediaInfo] | None:
         """
         根据人物ID查询人物参演作品
         :param person_id:  人物ID
@@ -114,7 +113,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         return self.run_module("tmdb_person_credits", person_id=person_id, page=page)
 
     @cached(cache=TTLCache(maxsize=1, ttl=3600))
-    def get_random_wallpager(self) -> Optional[str]:
+    def get_random_wallpager(self) -> str | None:
         """
         获取随机壁纸，缓存1个小时
         """

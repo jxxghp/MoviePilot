@@ -1,7 +1,7 @@
 import json
 import time
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
@@ -22,7 +22,7 @@ class TransferHistoryOper(DbOper):
         """
         return TransferHistory.get(self._db, historyid)
 
-    def get_by_title(self, title: str) -> List[TransferHistory]:
+    def get_by_title(self, title: str) -> list[TransferHistory]:
         """
         按标题查询转移记录
         :param title: 数据key
@@ -36,7 +36,7 @@ class TransferHistoryOper(DbOper):
         """
         return TransferHistory.get_by_src(self._db, src)
 
-    def list_by_hash(self, download_hash: str) -> List[TransferHistory]:
+    def list_by_hash(self, download_hash: str) -> list[TransferHistory]:
         """
         按种子hash查询转移记录
         :param download_hash: 种子hash
@@ -52,14 +52,14 @@ class TransferHistoryOper(DbOper):
         })
         TransferHistory(**kwargs).create(self._db)
 
-    def statistic(self, days: int = 7) -> List[Any]:
+    def statistic(self, days: int = 7) -> list[Any]:
         """
         统计最近days天的下载历史数量
         """
         return TransferHistory.statistic(self._db, days)
 
     def get_by(self, title: str = None, year: str = None, mtype: str = None,
-               season: str = None, episode: str = None, tmdbid: int = None, dest: str = None) -> List[TransferHistory]:
+               season: str = None, episode: str = None, tmdbid: int = None, dest: str = None) -> list[TransferHistory]:
         """
         按类型、标题、年份、季集查询转移记录
         """
@@ -178,7 +178,7 @@ class TransferHistoryOper(DbOper):
             )
         return his
 
-    def list_by_date(self, date: str) -> List[TransferHistory]:
+    def list_by_date(self, date: str) -> list[TransferHistory]:
         """
         查询某时间之后的转移历史
         :param date: 日期

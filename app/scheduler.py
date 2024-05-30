@@ -2,7 +2,6 @@ import logging
 import threading
 import traceback
 from datetime import datetime, timedelta
-from typing import List
 
 import pytz
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -77,7 +76,7 @@ class Scheduler(metaclass=Singleton):
             # 最大重试次数
             __max_try__ = 30
             if self._auth_count > __max_try__:
-                SchedulerChain().messagehelper.put(title=f"用户认证失败",
+                SchedulerChain().messagehelper.put(title="用户认证失败",
                                                    message="用户认证失败次数过多，将不再尝试认证！",
                                                    role="system")
                 return
@@ -460,7 +459,7 @@ class Scheduler(metaclass=Singleton):
                                                        message=str(e),
                                                        role="system")
 
-    def list(self) -> List[schemas.ScheduleInfo]:
+    def list(self) -> list[schemas.ScheduleInfo]:
         """
         当前所有任务
         """

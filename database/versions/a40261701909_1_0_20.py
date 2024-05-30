@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 
 from alembic import op
-import sqlalchemy as sa
 
 from app.core.config import Settings
 
@@ -67,7 +66,7 @@ def upgrade() -> None:
         download_dirs_value = json.dumps(download_dirs)
         try:
             op.execute(f"INSERT INTO systemconfig (key, value) VALUES ('DownloadDirectories', '{download_dirs_value}');")
-        except Exception as e:
+        except Exception:
             op.execute(f"UPDATE systemconfig SET value = '{download_dirs_value}' WHERE key = 'DownloadDirectories';")
 
     # 媒体库目录配置升级
@@ -111,7 +110,7 @@ def upgrade() -> None:
         library_dirs_value = json.dumps(library_dirs)
         try:
             op.execute(f"INSERT INTO systemconfig (key, value) VALUES ('LibraryDirectories', '{library_dirs_value}');")
-        except Exception as e:
+        except Exception:
             op.execute(f"UPDATE systemconfig SET value = '{library_dirs_value}' WHERE key = 'LibraryDirectories';")
 
 

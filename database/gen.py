@@ -1,8 +1,8 @@
 import importlib
 from pathlib import Path
 
-from alembic.config import Config as AlembicConfig
 from alembic.command import revision as alembic_revision
+from alembic.config import Config as AlembicConfig
 
 from app.core.config import settings
 

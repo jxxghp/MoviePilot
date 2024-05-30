@@ -1,69 +1,68 @@
-from typing import Optional, List
 
 from pydantic import BaseModel
 
 
 class Subscribe(BaseModel):
-    id: Optional[int] = None
+    id: int | None = None
     # 订阅名称
-    name: Optional[str] = None
+    name: str | None = None
     # 订阅年份
-    year: Optional[str] = None
+    year: str | None = None
     # 订阅类型 电影/电视剧
-    type: Optional[str] = None
+    type: str | None = None
     # 搜索关键字
-    keyword: Optional[str] = None
-    tmdbid: Optional[int] = None
-    doubanid: Optional[str] = None
-    bangumiid: Optional[int] = None
+    keyword: str | None = None
+    tmdbid: int | None = None
+    doubanid: str | None = None
+    bangumiid: int | None = None
     # 季号
-    season: Optional[int] = None
+    season: int | None = None
     # 海报
-    poster: Optional[str] = None
+    poster: str | None = None
     # 背景图
-    backdrop: Optional[str] = None
+    backdrop: str | None = None
     # 评分
-    vote: Optional[int] = 0
+    vote: int | None = 0
     # 描述
-    description: Optional[str] = None
+    description: str | None = None
     # 过滤规则
-    filter: Optional[str] = None
+    filter: str | None = None
     # 包含
-    include: Optional[str] = None
+    include: str | None = None
     # 排除
-    exclude: Optional[str] = None
+    exclude: str | None = None
     # 质量
-    quality: Optional[str] = None
+    quality: str | None = None
     # 分辨率
-    resolution: Optional[str] = None
+    resolution: str | None = None
     # 特效
-    effect: Optional[str] = None
+    effect: str | None = None
     # 总集数
-    total_episode: Optional[int] = 0
+    total_episode: int | None = 0
     # 开始集数
-    start_episode: Optional[int] = 0
+    start_episode: int | None = 0
     # 缺失集数
-    lack_episode: Optional[int] = 0
+    lack_episode: int | None = 0
     # 附加信息
-    note: Optional[str] = None
+    note: str | None = None
     # 状态：N-新建， R-订阅中
-    state: Optional[str] = None
+    state: str | None = None
     # 最后更新时间
-    last_update: Optional[str] = None
+    last_update: str | None = None
     # 订阅用户
-    username: Optional[str] = None
+    username: str | None = None
     # 订阅站点
-    sites: Optional[List[int]] = []
+    sites: list[int] | None = []
     # 是否洗版
-    best_version: Optional[int] = 0
+    best_version: int | None = 0
     # 当前优先级
-    current_priority: Optional[int] = None
+    current_priority: int | None = None
     # 保存路径
-    save_path: Optional[str] = None
+    save_path: str | None = None
     # 是否使用 imdbid 搜索
-    search_imdbid: Optional[int] = 0
+    search_imdbid: int | None = 0
     # 时间
-    date: Optional[str] = None
+    date: str | None = None
 
     class Config:
         orm_mode = True

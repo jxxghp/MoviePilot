@@ -1,10 +1,9 @@
 from pathlib import Path
-from typing import Tuple
 
 import regex as re
 
 from app.core.config import settings
-from app.core.meta import MetaAnime, MetaVideo, MetaBase
+from app.core.meta import MetaAnime, MetaBase, MetaVideo
 from app.core.meta.words import WordsMatcher
 from app.log import logger
 from app.schemas.types import MediaType
@@ -99,7 +98,7 @@ def is_anime(name: str) -> bool:
     return False
 
 
-def find_metainfo(title: str) -> Tuple[str, dict]:
+def find_metainfo(title: str) -> tuple[str, dict]:
     """
     从标题中提取媒体信息
     """

@@ -5,9 +5,8 @@ Revises: a521fbc28b18
 Create Date: 2023-10-12 08:54:49.728638
 
 """
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = 'd633ca6cd572'
@@ -23,7 +22,7 @@ def upgrade() -> None:
             batch_op.add_column(sa.Column('quality', sa.String, nullable=True))
             batch_op.add_column(sa.Column('resolution', sa.String, nullable=True))
             batch_op.add_column(sa.Column('effect', sa.String, nullable=True))
-    except Exception as e:
+    except Exception:
         pass
     # ### end Alembic commands ###
 

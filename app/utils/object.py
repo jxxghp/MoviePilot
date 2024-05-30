@@ -1,6 +1,7 @@
 import inspect
+from collections.abc import Callable
 from types import FunctionType
-from typing import Any, Callable
+from typing import Any
 
 
 class ObjectUtils:
@@ -67,7 +68,7 @@ class ObjectUtils:
         # 检查输入参数个数和类型是否一致
         if len(args) != len(parameters):
             return False
-        for arg, param in zip(args, parameters.values()):
+        for arg, param in zip(args, parameters.values(), strict=False):
             if not isinstance(arg, param.annotation):
                 return False
         return True

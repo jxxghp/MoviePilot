@@ -1,14 +1,15 @@
 import re
 import traceback
 
-import zhconv
 import anitopy
+import zhconv
+
 from app.core.meta.customization import CustomizationMatcher
 from app.core.meta.metabase import MetaBase
 from app.core.meta.releasegroup import ReleaseGroupsMatcher
 from app.log import logger
-from app.utils.string import StringUtils
 from app.schemas.types import MediaType
+from app.utils.string import StringUtils
 
 
 class MetaAnime(MetaBase):

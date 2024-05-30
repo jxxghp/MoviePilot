@@ -5,8 +5,8 @@ Revises: b2f011d3a8b7
 Create Date: 2023-09-28 13:37:16.479360
 
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = 'a521fbc28b18'
@@ -21,7 +21,7 @@ def upgrade() -> None:
         with op.batch_alter_table("downloadhistory") as batch_op:
             batch_op.add_column(sa.Column('date', sa.String, nullable=True))
             batch_op.add_column(sa.Column('channel', sa.String, nullable=True))
-    except Exception as e:
+    except Exception:
         pass
     # ### end Alembic commands ###
 

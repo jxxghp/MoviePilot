@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- encoding:utf-8 -*-
 
 """ 对企业微信发送给企业后台的消息加解密示例代码.
 @copyright: Copyright (c) 1998-2014 Tencent Inc.
@@ -7,13 +6,14 @@
 """
 import base64
 import hashlib
+
 # ------------------------------------------------------------------------
 import logging
 import random
 import socket
 import struct
 import time
-import xml.etree.cElementTree as ET
+import xml.etree.ElementTree as ET
 
 from Crypto.Cipher import AES
 
@@ -147,7 +147,7 @@ class PKCS7Encoder:
         return decrypted[:-pad]
 
 
-class Prpcrypt(object):
+class Prpcrypt:
     """提供接收和推送给企业微信消息的加解密接口"""
 
     def __init__(self, key):
@@ -222,7 +222,7 @@ class Prpcrypt(object):
         return str(random.randint(1000000000000000, 9999999999999999)).encode()
 
 
-class WXBizMsgCrypt(object):
+class WXBizMsgCrypt:
     # 构造函数
     def __init__(self, sToken, sEncodingAESKey, sReceiveId):
         try:
@@ -248,7 +248,7 @@ class WXBizMsgCrypt(object):
         ret, signature = sha1.getSHA1(self.m_sToken, sTimeStamp, sNonce, sEchoStr)
         if ret != 0:
             return ret, None
-        if not signature == sMsgSignature:
+        if signature != sMsgSignature:
             return WXBizMsgCrypt_ValidateSignature_Error, None
         pc = Prpcrypt(self.key)
         ret, sReplyEchoStr = pc.decrypt(sEchoStr, self.m_sReceiveId)
@@ -293,7 +293,7 @@ class WXBizMsgCrypt(object):
         ret, signature = sha1.getSHA1(self.m_sToken, sTimeStamp, sNonce, encrypt)
         if ret != 0:
             return ret, None
-        if not signature == sMsgSignature:
+        if signature != sMsgSignature:
             return WXBizMsgCrypt_ValidateSignature_Error, None
         pc = Prpcrypt(self.key)
         ret, xml_content = pc.decrypt(encrypt, self.m_sReceiveId)

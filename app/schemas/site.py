@@ -1,49 +1,48 @@
-from typing import Optional
 
 from pydantic import BaseModel
 
 
 class Site(BaseModel):
     # ID
-    id: Optional[int]
+    id: int | None
     # 站点名称
-    name: Optional[str]
+    name: str | None
     # 站点主域名Key
-    domain: Optional[str]
+    domain: str | None
     # 站点地址
-    url: Optional[str]
+    url: str | None
     # 站点优先级
-    pri: Optional[int] = 0
+    pri: int | None = 0
     # RSS地址
-    rss: Optional[str] = None
+    rss: str | None = None
     # Cookie
-    cookie: Optional[str] = None
+    cookie: str | None = None
     # User-Agent
-    ua: Optional[str] = None
+    ua: str | None = None
     # ApiKey
-    apikey: Optional[str] = None
+    apikey: str | None = None
     # Token
-    token: Optional[str] = None
+    token: str | None = None
     # 是否使用代理
-    proxy: Optional[int] = 0
+    proxy: int | None = 0
     # 过滤规则
-    filter: Optional[str] = None
+    filter: str | None = None
     # 是否演染
-    render: Optional[int] = 0
+    render: int | None = 0
     # 是否公开站点
-    public: Optional[int] = 0
+    public: int | None = 0
     # 备注
-    note: Optional[str] = None
+    note: str | None = None
     # 超时时间
-    timeout: Optional[int] = 0
+    timeout: int | None = 0
     # 流控单位周期
-    limit_interval: Optional[int] = None
+    limit_interval: int | None = None
     # 流控次数
-    limit_count: Optional[int] = None
+    limit_count: int | None = None
     # 流控间隔
-    limit_seconds: Optional[int] = None
+    limit_seconds: int | None = None
     # 是否启用
-    is_active: Optional[bool] = True
+    is_active: bool | None = True
 
     class Config:
         orm_mode = True
@@ -51,19 +50,19 @@ class Site(BaseModel):
 
 class SiteStatistic(BaseModel):
     # 站点ID
-    domain: Optional[str]
+    domain: str | None
     # 成功次数
-    success: Optional[int] = 0
+    success: int | None = 0
     # 失败次数
-    fail: Optional[int] = 0
+    fail: int | None = 0
     # 平均响应时间
-    seconds: Optional[int] = 0
+    seconds: int | None = 0
     # 最后状态
-    lst_state: Optional[int] = 0
+    lst_state: int | None = 0
     # 最后修改时间
-    lst_mod_date: Optional[str]
+    lst_mod_date: str | None
     # 备注
-    note: Optional[str] = None
+    note: str | None = None
 
     class Config:
         orm_mode = True

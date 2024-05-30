@@ -2,7 +2,6 @@ import secrets
 import sys
 import threading
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseSettings, validator
 
@@ -40,7 +39,7 @@ class Settings(BaseSettings):
     # 是否开启插件热加载
     PLUGIN_AUTO_RELOAD: bool = False
     # 配置文件目录
-    CONFIG_DIR: Optional[str] = None
+    CONFIG_DIR: str | None = None
     # 超级管理员
     SUPERUSER: str = "admin"
     # API密钥，需要更换
@@ -48,7 +47,7 @@ class Settings(BaseSettings):
     # 登录页面电影海报,tmdb/bing
     WALLPAPER: str = "tmdb"
     # 网络代理 IP:PORT
-    PROXY_HOST: Optional[str] = None
+    PROXY_HOST: str | None = None
     # 媒体搜索来源 themoviedb/douban/bangumi，多个用,分隔
     SEARCH_SOURCE: str = "themoviedb,douban,bangumi"
     # 媒体识别来源 themoviedb/douban
@@ -92,27 +91,27 @@ class Settings(BaseSettings):
     # 用户认证站点
     AUTH_SITE: str = ""
     # 交互搜索自动下载用户ID，使用,分割
-    AUTO_DOWNLOAD_USER: Optional[str] = None
+    AUTO_DOWNLOAD_USER: str | None = None
     # 消息通知渠道 telegram/wechat/slack/synologychat/vocechat，多个通知渠道用,分隔
     MESSAGER: str = "telegram"
     # WeChat企业ID
-    WECHAT_CORPID: Optional[str] = None
+    WECHAT_CORPID: str | None = None
     # WeChat应用Secret
-    WECHAT_APP_SECRET: Optional[str] = None
+    WECHAT_APP_SECRET: str | None = None
     # WeChat应用ID
-    WECHAT_APP_ID: Optional[str] = None
+    WECHAT_APP_ID: str | None = None
     # WeChat代理服务器
     WECHAT_PROXY: str = "https://qyapi.weixin.qq.com"
     # WeChat Token
-    WECHAT_TOKEN: Optional[str] = None
+    WECHAT_TOKEN: str | None = None
     # WeChat EncodingAESKey
-    WECHAT_ENCODING_AESKEY: Optional[str] = None
+    WECHAT_ENCODING_AESKEY: str | None = None
     # WeChat 管理员
-    WECHAT_ADMINS: Optional[str] = None
+    WECHAT_ADMINS: str | None = None
     # Telegram Bot Token
-    TELEGRAM_TOKEN: Optional[str] = None
+    TELEGRAM_TOKEN: str | None = None
     # Telegram Chat ID
-    TELEGRAM_CHAT_ID: Optional[str] = None
+    TELEGRAM_CHAT_ID: str | None = None
     # Telegram 用户ID，使用,分隔
     TELEGRAM_USERS: str = ""
     # Telegram 管理员ID，使用,分隔
@@ -138,11 +137,11 @@ class Settings(BaseSettings):
     # 下载器监控开关
     DOWNLOADER_MONITOR: bool = True
     # Qbittorrent地址，IP:PORT
-    QB_HOST: Optional[str] = None
+    QB_HOST: str | None = None
     # Qbittorrent用户名
-    QB_USER: Optional[str] = None
+    QB_USER: str | None = None
     # Qbittorrent密码
-    QB_PASSWORD: Optional[str] = None
+    QB_PASSWORD: str | None = None
     # Qbittorrent分类自动管理
     QB_CATEGORY: bool = False
     # Qbittorrent按顺序下载
@@ -150,11 +149,11 @@ class Settings(BaseSettings):
     # Qbittorrent忽略队列限制，强制继续
     QB_FORCE_RESUME: bool = False
     # Transmission地址，IP:PORT
-    TR_HOST: Optional[str] = None
+    TR_HOST: str | None = None
     # Transmission用户名
-    TR_USER: Optional[str] = None
+    TR_USER: str | None = None
     # Transmission密码
-    TR_PASSWORD: Optional[str] = None
+    TR_PASSWORD: str | None = None
     # 种子标签
     TORRENT_TAG: str = "MOVIEPILOT"
     # 下载站点字幕
@@ -162,41 +161,41 @@ class Settings(BaseSettings):
     # 媒体服务器 emby/jellyfin/plex，多个媒体服务器,分割
     MEDIASERVER: str = "emby"
     # 媒体服务器同步间隔（小时）
-    MEDIASERVER_SYNC_INTERVAL: Optional[int] = 6
+    MEDIASERVER_SYNC_INTERVAL: int | None = 6
     # 媒体服务器同步黑名单，多个媒体库名称,分割
-    MEDIASERVER_SYNC_BLACKLIST: Optional[str] = None
+    MEDIASERVER_SYNC_BLACKLIST: str | None = None
     # EMBY服务器地址，IP:PORT
-    EMBY_HOST: Optional[str] = None
+    EMBY_HOST: str | None = None
     # EMBY外网地址，http(s)://DOMAIN:PORT，未设置时使用EMBY_HOST
-    EMBY_PLAY_HOST: Optional[str] = None
+    EMBY_PLAY_HOST: str | None = None
     # EMBY Api Key
-    EMBY_API_KEY: Optional[str] = None
+    EMBY_API_KEY: str | None = None
     # Jellyfin服务器地址，IP:PORT
-    JELLYFIN_HOST: Optional[str] = None
+    JELLYFIN_HOST: str | None = None
     # Jellyfin外网地址，http(s)://DOMAIN:PORT，未设置时使用JELLYFIN_HOST
-    JELLYFIN_PLAY_HOST: Optional[str] = None
+    JELLYFIN_PLAY_HOST: str | None = None
     # Jellyfin Api Key
-    JELLYFIN_API_KEY: Optional[str] = None
+    JELLYFIN_API_KEY: str | None = None
     # Plex服务器地址，IP:PORT
-    PLEX_HOST: Optional[str] = None
+    PLEX_HOST: str | None = None
     # Plex外网地址，http(s)://DOMAIN:PORT，未设置时使用PLEX_HOST
-    PLEX_PLAY_HOST: Optional[str] = None
+    PLEX_PLAY_HOST: str | None = None
     # Plex Token
-    PLEX_TOKEN: Optional[str] = None
+    PLEX_TOKEN: str | None = None
     # 转移方式 link/copy/move/softlink
     TRANSFER_TYPE: str = "copy"
     # 是否同盘优先
     TRANSFER_SAME_DISK: bool = True
     # CookieCloud是否启动本地服务
-    COOKIECLOUD_ENABLE_LOCAL: Optional[bool] = False
+    COOKIECLOUD_ENABLE_LOCAL: bool | None = False
     # CookieCloud服务器地址
     COOKIECLOUD_HOST: str = "https://movie-pilot.org/cookiecloud"
     # CookieCloud用户KEY
-    COOKIECLOUD_KEY: Optional[str] = None
+    COOKIECLOUD_KEY: str | None = None
     # CookieCloud端对端加密密码
-    COOKIECLOUD_PASSWORD: Optional[str] = None
+    COOKIECLOUD_PASSWORD: str | None = None
     # CookieCloud同步间隔（分钟）
-    COOKIECLOUD_INTERVAL: Optional[int] = 60 * 24
+    COOKIECLOUD_INTERVAL: int | None = 60 * 24
     # OCR服务器地址
     OCR_HOST: str = "https://movie-pilot.org"
     # CookieCloud对应的浏览器UA
@@ -219,7 +218,7 @@ class Settings(BaseSettings):
     # 插件市场仓库地址，多个地址使用,分隔，地址以/结尾
     PLUGIN_MARKET: str = "https://github.com/jxxghp/MoviePilot-Plugins,https://github.com/thsrite/MoviePilot-Plugins,https://github.com/honue/MoviePilot-Plugins,https://github.com/InfinityPacer/MoviePilot-Plugins"
     # Github token，提高请求api限流阈值 ghp_****
-    GITHUB_TOKEN: Optional[str] = None
+    GITHUB_TOKEN: str | None = None
     # 自动检查和更新站点资源包（站点索引、认证等）
     AUTO_UPDATE_RESOURCE: bool = True
     # 元数据识别缓存过期时间（小时）
@@ -238,23 +237,23 @@ class Settings(BaseSettings):
     # 【已弃用】刮削入库的媒体文件
     SCRAP_METADATA: bool = True
     # 【已弃用】下载保存目录，容器内映射路径需要一致
-    DOWNLOAD_PATH: Optional[str] = None
+    DOWNLOAD_PATH: str | None = None
     # 【已弃用】电影下载保存目录，容器内映射路径需要一致
-    DOWNLOAD_MOVIE_PATH: Optional[str] = None
+    DOWNLOAD_MOVIE_PATH: str | None = None
     # 【已弃用】电视剧下载保存目录，容器内映射路径需要一致
-    DOWNLOAD_TV_PATH: Optional[str] = None
+    DOWNLOAD_TV_PATH: str | None = None
     # 【已弃用】动漫下载保存目录，容器内映射路径需要一致
-    DOWNLOAD_ANIME_PATH: Optional[str] = None
+    DOWNLOAD_ANIME_PATH: str | None = None
     # 【已弃用】下载目录二级分类
     DOWNLOAD_CATEGORY: bool = False
     # 【已弃用】媒体库目录，多个目录使用,分隔
-    LIBRARY_PATH: Optional[str] = None
+    LIBRARY_PATH: str | None = None
     # 【已弃用】电影媒体库目录名
     LIBRARY_MOVIE_NAME: str = "电影"
     # 【已弃用】电视剧媒体库目录名
     LIBRARY_TV_NAME: str = "电视剧"
     # 【已弃用】动漫媒体库目录名，不设置时使用电视剧目录
-    LIBRARY_ANIME_NAME: Optional[str] = None
+    LIBRARY_ANIME_NAME: str | None = None
     # 【已弃用】二级分类
     LIBRARY_CATEGORY: bool = True
 
@@ -392,7 +391,7 @@ class Settings(BaseSettings):
         case_sensitive = True
 
 
-class GlobalVar(object):
+class GlobalVar:
     """
     全局标识
     """

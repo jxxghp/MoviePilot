@@ -1,10 +1,8 @@
-from typing import Any, Self, List
-from typing import Tuple, Optional, Generator
+from collections.abc import Generator
+from typing import Any, List, Optional, Self, Tuple
 
-from sqlalchemy import create_engine, QueuePool
-from sqlalchemy import inspect
-from sqlalchemy.orm import declared_attr
-from sqlalchemy.orm import sessionmaker, Session, scoped_session, as_declarative
+from sqlalchemy import QueuePool, create_engine, inspect
+from sqlalchemy.orm import Session, as_declarative, declared_attr, scoped_session, sessionmaker
 
 from app.core.config import settings
 
@@ -39,7 +37,7 @@ def get_db() -> Generator:
             db.close()
 
 
-def get_args_db(args: tuple, kwargs: dict) -> Optional[Session]:
+def get_args_db(args: tuple, kwargs: dict) -> Session | None:
     """
     从参数中获取数据库Session对象
     """
@@ -57,7 +55,7 @@ def get_args_db(args: tuple, kwargs: dict) -> Optional[Session]:
     return db
 
 
-def update_args_db(args: tuple, kwargs: dict, db: Session) -> Tuple[tuple, dict]:
+def update_args_db(args: tuple, kwargs: dict, db: Session) -> tuple[tuple, dict]:
     """
     更新参数中的数据库Session对象，关键字传参时更新db的值，否则更新第1或第2个参数
     """
@@ -172,7 +170,7 @@ class Base:
 
     @classmethod
     @db_query
-    def list(cls, db: Session) -> List[Self]:
+    def list(cls, db: Session) -> list[Self]:
         result = db.query(cls).all()
         return list(result)
 

@@ -1,5 +1,6 @@
+from cachetools import TTLCache, cached
+
 from ..tmdb import TMDb
-from cachetools import cached, TTLCache
 
 try:
     from urllib import urlencode

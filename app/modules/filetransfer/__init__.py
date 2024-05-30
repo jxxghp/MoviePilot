@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 from threading import Lock
-from typing import Optional, List, Tuple, Union, Dict
+from typing import Dict, List, Optional, Tuple, Union
 
 from jinja2 import Template
 
@@ -13,7 +13,7 @@ from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.log import logger
 from app.modules import _ModuleBase
-from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, MediaDirectory
+from app.schemas import ExistMediaInfo, MediaDirectory, TmdbEpisode, TransferInfo
 from app.schemas.types import MediaType
 from app.utils.system import SystemUtils
 
@@ -40,7 +40,7 @@ class FileTransferModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -80,12 +80,12 @@ class FileTransferModule(_ModuleBase):
                                   f"与下载目录 {d_path.path} 在同一磁盘/存储空间/映射路径的目录，将无法硬链接"
         return True, ""
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, str | bool]:
         pass
 
     def transfer(self, path: Path, meta: MetaBase, mediainfo: MediaInfo,
                  transfer_type: str, target: Path = None,
-                 episodes_info: List[TmdbEpisode] = None,
+                 episodes_info: list[TmdbEpisode] = None,
                  scrape: bool = None) -> TransferInfo:
         """
         文件转移
@@ -213,7 +213,7 @@ class FileTransferModule(_ModuleBase):
 
         # 比对文件名并转移字幕
         org_dir: Path = org_path.parent
-        file_list: List[Path] = SystemUtils.list_files(org_dir, settings.RMT_SUBEXT)
+        file_list: list[Path] = SystemUtils.list_files(org_dir, settings.RMT_SUBEXT)
         if len(file_list) == 0:
             logger.debug(f"{org_dir} 目录下没有找到字幕文件...")
         else:
@@ -283,7 +283,7 @@ class FileTransferModule(_ModuleBase):
                                     return retcode
                             # 如果字幕文件的大小与已存在文件相同, 说明已经转移过了, 则跳出循环
                             elif new_file.stat().st_size == file_item.stat().st_size:
-                                logger.info(f"字幕 new_file 已存在")
+                                logger.info("字幕 new_file 已存在")
                                 break
                             # 否则 循环继续 > 通过new_sub_tag_list 获取新的tag附加到字幕文件名, 继续检查是否能转移
                         except OSError as reason:
@@ -301,8 +301,8 @@ class FileTransferModule(_ModuleBase):
         """
         dir_name = org_path.parent
         file_name = org_path.name
-        file_list: List[Path] = SystemUtils.list_files(dir_name, ['.mka'])
-        pending_file_list: List[Path] = [file for file in file_list if org_path.stem == file.stem]
+        file_list: list[Path] = SystemUtils.list_files(dir_name, ['.mka'])
+        pending_file_list: list[Path] = [file for file in file_list if org_path.stem == file.stem]
         if len(pending_file_list) == 0:
             logger.debug(f"{dir_name} 目录下没有找到匹配的音轨文件")
         else:
@@ -435,7 +435,7 @@ class FileTransferModule(_ModuleBase):
                        mediainfo: MediaInfo,
                        transfer_type: str,
                        target_dir: Path,
-                       episodes_info: List[TmdbEpisode] = None,
+                       episodes_info: list[TmdbEpisode] = None,
                        need_scrape: bool = False
                        ) -> TransferInfo:
         """
@@ -508,7 +508,7 @@ class FileTransferModule(_ModuleBase):
                 if in_meta.begin_episode is None:
                     logger.warn(f"文件 {in_path} 转移失败：未识别到文件集数")
                     return TransferInfo(success=False,
-                                        message=f"未识别到文件集数",
+                                        message="未识别到文件集数",
                                         path=in_path,
                                         fail_list=[str(in_path)])
 
@@ -556,14 +556,14 @@ class FileTransferModule(_ModuleBase):
                                 overflag = True
                             else:
                                 return TransferInfo(success=False,
-                                                    message=f"媒体库中已存在，且质量更好",
+                                                    message="媒体库中已存在，且质量更好",
                                                     path=in_path,
                                                     target_path=new_file,
                                                     fail_list=[str(in_path)])
                         case 'never':
                             # 存在不覆盖
                             return TransferInfo(success=False,
-                                                message=f"媒体库中已存在，当前设置为不覆盖",
+                                                message="媒体库中已存在，当前设置为不覆盖",
                                                 path=in_path,
                                                 target_path=new_file,
                                                 fail_list=[str(in_path)])
@@ -604,7 +604,7 @@ class FileTransferModule(_ModuleBase):
 
     @staticmethod
     def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None,
-                          episodes_info: List[TmdbEpisode] = None) -> dict:
+                          episodes_info: list[TmdbEpisode] = None) -> dict:
         """
         根据媒体信息，返回Format字典
         :param meta: 文件元数据
@@ -700,7 +700,7 @@ class FileTransferModule(_ModuleBase):
         else:
             return Path(render_str)
 
-    def media_exists(self, mediainfo: MediaInfo, **kwargs) -> Optional[ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, **kwargs) -> ExistMediaInfo | None:
         """
         判断媒体文件是否存在于本地文件系统，只支持标准媒体库结构
         :param mediainfo:  识别的媒体信息
@@ -747,7 +747,7 @@ class FileTransferModule(_ModuleBase):
                 return ExistMediaInfo(type=MediaType.MOVIE)
             else:
                 # 电视剧检索集数
-                seasons: Dict[int, list] = {}
+                seasons: dict[int, list] = {}
                 for media_file in media_files:
                     file_meta = MetaInfo(media_file.stem)
                     season_index = file_meta.begin_season or 1
