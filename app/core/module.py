@@ -1,5 +1,6 @@
 import traceback
-from typing import Generator, Optional, Tuple, Any
+from typing import Optional, Any
+from collections.abc import Generator
 
 from app.core.config import settings
 from app.helper.module import ModuleHelper
@@ -68,7 +69,7 @@ class ModuleManager(metaclass=Singleton):
         self.stop()
         self.load_modules()
 
-    def test(self, modleid: str) -> Tuple[bool, str]:
+    def test(self, modleid: str) -> tuple[bool, str]:
         """
         测试模块
         """

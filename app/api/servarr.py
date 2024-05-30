@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -167,7 +167,7 @@ def arr_languageprofile(_: str = Depends(verify_uri_apikey)) -> Any:
     }]
 
 
-@arr_router.get("/movie", summary="所有订阅电影", response_model=List[schemas.RadarrMovie])
+@arr_router.get("/movie", summary="所有订阅电影", response_model=list[schemas.RadarrMovie])
 def arr_movies(_: str = Depends(verify_uri_apikey), db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影
@@ -258,7 +258,7 @@ def arr_movies(_: str = Depends(verify_uri_apikey), db: Session = Depends(get_db
     return result
 
 
-@arr_router.get("/movie/lookup", summary="查询电影", response_model=List[schemas.RadarrMovie])
+@arr_router.get("/movie/lookup", summary="查询电影", response_model=list[schemas.RadarrMovie])
 def arr_movie_lookup(term: str, db: Session = Depends(get_db), _: str = Depends(verify_uri_apikey)) -> Any:
     """
     查询Rardar电影 term: `tmdb:${id}`
@@ -377,7 +377,7 @@ def arr_remove_movie(mid: int, db: Session = Depends(get_db), _: str = Depends(v
         )
 
 
-@arr_router.get("/series", summary="所有剧集", response_model=List[schemas.SonarrSeries])
+@arr_router.get("/series", summary="所有剧集", response_model=list[schemas.SonarrSeries])
 def arr_series(_: str = Depends(verify_uri_apikey), db: Session = Depends(get_db)) -> Any:
     """
     查询Sonarr剧集
@@ -537,7 +537,7 @@ def arr_series_lookup(term: str, db: Session = Depends(get_db), _: str = Depends
         return [SonarrSeries()]
 
     # 季信息
-    seas: List[int] = []
+    seas: list[int] = []
     sea_num = tvdbinfo.get('season')
     if sea_num:
         seas = list(range(1, int(sea_num) + 1))
@@ -555,7 +555,7 @@ def arr_series_lookup(term: str, db: Session = Depends(get_db), _: str = Depends
         hasfile = False
 
     # 查询订阅信息
-    seasons: List[dict] = []
+    seasons: list[dict] = []
     subscribes = Subscribe.get_by_tmdbid(db, mediainfo.tmdb_id)
     if subscribes:
         # 已监控

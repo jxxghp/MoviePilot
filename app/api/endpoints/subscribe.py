@@ -1,5 +1,5 @@
 import json
-from typing import List, Any
+from typing import Any
 
 import cn2an
 from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Header
@@ -32,7 +32,7 @@ def start_subscribe_add(title: str, year: str,
                          mtype=mtype, tmdbid=tmdbid, season=season, username=username)
 
 
-@router.get("/", summary="查询所有订阅", response_model=List[schemas.Subscribe])
+@router.get("/", summary="查询所有订阅", response_model=list[schemas.Subscribe])
 def read_subscribes(
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
@@ -51,7 +51,7 @@ def read_subscribes(
     return subscribes
 
 
-@router.get("/list", summary="查询所有订阅（API_TOKEN）", response_model=List[schemas.Subscribe])
+@router.get("/list", summary="查询所有订阅（API_TOKEN）", response_model=list[schemas.Subscribe])
 def list_subscribes(_: str = Depends(verify_uri_token)) -> Any:
     """
     查询所有订阅 API_TOKEN认证（?token=xxx）
@@ -315,7 +315,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
     return schemas.Response(success=True)
 
 
-@router.get("/history/{mtype}", summary="查询订阅历史", response_model=List[schemas.Subscribe])
+@router.get("/history/{mtype}", summary="查询订阅历史", response_model=list[schemas.Subscribe])
 def read_subscribe(
         mtype: str,
         page: int = 1,
@@ -348,7 +348,7 @@ def delete_subscribe(
     return schemas.Response(success=True)
 
 
-@router.get("/popular", summary="热门订阅（基于用户共享数据）", response_model=List[schemas.MediaInfo])
+@router.get("/popular", summary="热门订阅（基于用户共享数据）", response_model=list[schemas.MediaInfo])
 def popular_subscribes(
         stype: str,
         page: int = 1,

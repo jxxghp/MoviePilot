@@ -1,4 +1,5 @@
-from typing import Optional, Tuple, Union, Any, List, Generator
+from typing import Optional, Tuple, Union, Any, List
+from collections.abc import Generator
 
 from app import schemas
 from app.core.context import MediaInfo
@@ -18,7 +19,7 @@ class JellyfinModule(_ModuleBase):
     def get_name() -> str:
         return "Jellyfin"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "jellyfin"
 
     def scheduler_job(self) -> None:
@@ -32,7 +33,7 @@ class JellyfinModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -107,7 +108,7 @@ class JellyfinModule(_ModuleBase):
                     itemid=itemid
                 )
 
-    def media_statistic(self) -> List[schemas.Statistic]:
+    def media_statistic(self) -> list[schemas.Statistic]:
         """
         媒体数量统计
         """
@@ -115,7 +116,7 @@ class JellyfinModule(_ModuleBase):
         media_statistic.user_count = self.jellyfin.get_user_count()
         return [media_statistic]
 
-    def mediaserver_librarys(self, server: str = None, username: str = None) -> Optional[List[schemas.MediaServerLibrary]]:
+    def mediaserver_librarys(self, server: str = None, username: str = None) -> Optional[list[schemas.MediaServerLibrary]]:
         """
         媒体库列表
         """
@@ -140,7 +141,7 @@ class JellyfinModule(_ModuleBase):
         return self.jellyfin.get_iteminfo(item_id)
 
     def mediaserver_tv_episodes(self, server: str,
-                                item_id: Union[str, int]) -> Optional[List[schemas.MediaServerSeasonInfo]]:
+                                item_id: Union[str, int]) -> Optional[list[schemas.MediaServerSeasonInfo]]:
         """
         获取剧集信息
         """
@@ -155,7 +156,7 @@ class JellyfinModule(_ModuleBase):
         ) for season, episodes in seasoninfo.items()]
 
     def mediaserver_playing(self, count: int = 20,
-                            server: str = None, username: str = None) -> List[schemas.MediaServerPlayItem]:
+                            server: str = None, username: str = None) -> list[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
@@ -172,7 +173,7 @@ class JellyfinModule(_ModuleBase):
         return self.jellyfin.get_play_url(item_id)
 
     def mediaserver_latest(self, count: int = 20,
-                           server: str = None, username: str = None) -> List[schemas.MediaServerPlayItem]:
+                           server: str = None, username: str = None) -> list[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """

@@ -1,4 +1,3 @@
-from typing import List, Tuple
 
 import cn2an
 import regex as re
@@ -14,7 +13,7 @@ class WordsMatcher(metaclass=Singleton):
     def __init__(self):
         self.systemconfig = SystemConfigOper()
 
-    def prepare(self, title: str) -> Tuple[str, List[str]]:
+    def prepare(self, title: str) -> tuple[str, list[str]]:
         """
         预处理标题，支持三种格式
         1：屏蔽词
@@ -23,7 +22,7 @@ class WordsMatcher(metaclass=Singleton):
         """
         appley_words = []
         # 读取自定义识别词
-        words: List[str] = self.systemconfig.get(SystemConfigKey.CustomIdentifiers) or []
+        words: list[str] = self.systemconfig.get(SystemConfigKey.CustomIdentifiers) or []
         for word in words:
             if not word or word.startswith("#"):
                 continue
@@ -69,7 +68,7 @@ class WordsMatcher(metaclass=Singleton):
         return title, appley_words
 
     @staticmethod
-    def __replace_regex(title: str, replaced: str, replace: str) -> Tuple[str, str, bool]:
+    def __replace_regex(title: str, replaced: str, replace: str) -> tuple[str, str, bool]:
         """
         正则替换
         """
@@ -83,7 +82,7 @@ class WordsMatcher(metaclass=Singleton):
             return title, str(err), False
 
     @staticmethod
-    def __episode_offset(title: str, front: str, back: str, offset: str) -> Tuple[str, str, bool]:
+    def __episode_offset(title: str, front: str, back: str, offset: str) -> tuple[str, str, bool]:
         """
         集数偏移
         """

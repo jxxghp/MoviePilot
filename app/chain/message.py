@@ -1,7 +1,7 @@
 import copy
 import json
 import re
-from typing import Any, Optional, Dict, Union
+from typing import Any, Optional, Union
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
@@ -51,7 +51,7 @@ class MessageChain(ChainBase):
     def __get_noexits_info(
             self,
             _meta: MetaBase,
-            _mediainfo: MediaInfo) -> Dict[Union[int, str], Dict[int, NotExistMediaInfo]]:
+            _mediainfo: MediaInfo) -> dict[Union[int, str], dict[int, NotExistMediaInfo]]:
         """
         获取缺失的媒体信息
         """
@@ -134,7 +134,7 @@ class MessageChain(ChainBase):
         # 申明全局变量
         global _current_page, _current_meta, _current_media
         # 加载缓存
-        user_cache: Dict[str, dict] = self.load_cache(self._cache_file) or {}
+        user_cache: dict[str, dict] = self.load_cache(self._cache_file) or {}
         # 处理消息
         logger.info(f'收到用户消息内容，用户：{userid}，内容：{text}')
         # 保存消息
@@ -448,7 +448,7 @@ class MessageChain(ChainBase):
 
     def __auto_download(self, channel: MessageChannel, cache_list: list[Context],
                         userid: Union[str, int], username: str,
-                        no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]] = None):
+                        no_exists: Optional[dict[Union[int, str], dict[int, NotExistMediaInfo]]] = None):
         """
         自动择优下载
         """

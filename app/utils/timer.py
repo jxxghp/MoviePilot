@@ -1,5 +1,4 @@
 import random
-from typing import List
 import datetime
 
 
@@ -10,7 +9,7 @@ class TimerUtils:
                          begin_hour: int = 7,
                          end_hour: int = 23,
                          min_interval: int = 20,
-                         max_interval: int = 40) -> List[datetime.datetime]:
+                         max_interval: int = 40) -> list[datetime.datetime]:
         """
         按执行次数生成随机定时器
         :param num_executions: 执行次数

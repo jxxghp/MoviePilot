@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional
 
 from app import schemas
 from app.chain import ChainBase
@@ -11,7 +11,7 @@ class BangumiChain(ChainBase, metaclass=Singleton):
     Bangumi处理链，单例运行
     """
 
-    def calendar(self) -> Optional[List[MediaInfo]]:
+    def calendar(self) -> Optional[list[MediaInfo]]:
         """
         获取Bangumi每日放送
         """
@@ -25,14 +25,14 @@ class BangumiChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("bangumi_info", bangumiid=bangumiid)
 
-    def bangumi_credits(self, bangumiid: int) -> List[schemas.MediaPerson]:
+    def bangumi_credits(self, bangumiid: int) -> list[schemas.MediaPerson]:
         """
         根据BangumiID查询电影演职员表
         :param bangumiid:  BangumiID
         """
         return self.run_module("bangumi_credits", bangumiid=bangumiid)
 
-    def bangumi_recommend(self, bangumiid: int) -> Optional[List[MediaInfo]]:
+    def bangumi_recommend(self, bangumiid: int) -> Optional[list[MediaInfo]]:
         """
         根据BangumiID查询推荐电影
         :param bangumiid:  BangumiID
@@ -46,7 +46,7 @@ class BangumiChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("bangumi_person_detail", person_id=person_id)
 
-    def person_credits(self, person_id: int) -> Optional[List[MediaInfo]]:
+    def person_credits(self, person_id: int) -> Optional[list[MediaInfo]]:
         """
         根据人物ID查询人物参演作品
         :param person_id:  人物ID

@@ -40,7 +40,7 @@ class CategoryHelper(metaclass=Singleton):
         if self._categorys:
             self._movie_categorys = self._categorys.get('movie')
             self._tv_categorys = self._categorys.get('tv')
-        logger.info(f"已加载二级分类策略 category.yaml")
+        logger.info("已加载二级分类策略 category.yaml")
 
     @property
     def is_movie_category(self) -> bool:

@@ -1,8 +1,9 @@
 import gzip
 import json
 from hashlib import md5
-from typing import Annotated, Callable
-from typing import Any, Dict, Optional
+from typing import Annotated
+from collections.abc import Callable
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from fastapi.responses import PlainTextResponse
@@ -78,7 +79,7 @@ async def update_cookie(req: schemas.CookieData):
         return {"action": "error"}
 
 
-def load_encrypt_data(uuid: str) -> Dict[str, Any]:
+def load_encrypt_data(uuid: str) -> dict[str, Any]:
     """
     加载本地加密原始数据
     """
@@ -96,7 +97,7 @@ def load_encrypt_data(uuid: str) -> Dict[str, Any]:
 
 
 def get_decrypted_cookie_data(uuid: str, password: str,
-                              encrypted: str) -> Optional[Dict[str, Any]]:
+                              encrypted: str) -> Optional[dict[str, Any]]:
     """
     加载本地加密数据并解密为Cookie
     """

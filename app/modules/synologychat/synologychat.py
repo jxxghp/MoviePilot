@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Optional, List
+from typing import Optional
 from urllib.parse import quote
 from threading import Lock
 
@@ -58,7 +58,7 @@ class SynologyChat:
                 if not text:
                     text = "\n".join(titles[1:])
                 else:
-                    text = f"%s\n%s" % ("\n".join(titles[1:]), text)
+                    text = "%s\n%s" % ("\n".join(titles[1:]), text)
 
             if text:
                 caption = "*%s*\n%s" % (title, text.replace("\n\n", "\n"))
@@ -82,7 +82,7 @@ class SynologyChat:
             logger.error(f"SynologyChat发送消息错误：{str(msg_e)}")
             return False
 
-    def send_meidas_msg(self, medias: List[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_meidas_msg(self, medias: list[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表类消息
         """
@@ -126,7 +126,7 @@ class SynologyChat:
             logger.error(f"SynologyChat发送消息错误：{str(msg_e)}")
             return False
 
-    def send_torrents_msg(self, torrents: List[Context],
+    def send_torrents_msg(self, torrents: list[Context],
                           userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表消息
@@ -209,5 +209,5 @@ class SynologyChat:
             logger.error(f"SynologyChat请求失败，错误码：{ret.status_code}，错误原因：{ret.reason}")
             return False
         else:
-            logger.error(f"SynologyChat请求失败，未获取到返回信息")
+            logger.error("SynologyChat请求失败，未获取到返回信息")
             return False

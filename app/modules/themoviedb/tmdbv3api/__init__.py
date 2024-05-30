@@ -1,25 +1,25 @@
-from .objs.account import Account
-from .objs.auth import Authentication
-from .objs.certification import Certification
-from .objs.change import Change
-from .objs.collection import Collection
-from .objs.company import Company
-from .objs.configuration import Configuration
-from .objs.credit import Credit
-from .objs.discover import Discover
-from .objs.episode import Episode
-from .objs.find import Find
-from .objs.genre import Genre
-from .objs.group import Group
-from .objs.keyword import Keyword
-from .objs.list import List
-from .objs.movie import Movie
-from .objs.network import Network
-from .objs.person import Person
-from .objs.provider import Provider
-from .objs.review import Review
-from .objs.search import Search
-from .objs.season import Season
-from .objs.trending import Trending
-from .objs.tv import TV
-from .tmdb import TMDb
+from .objs.account import Account as Account
+from .objs.auth import Authentication as Authentication
+from .objs.certification import Certification as Certification
+from .objs.change import Change as Change
+from .objs.collection import Collection as Collection
+from .objs.company import Company as Company
+from .objs.configuration import Configuration as Configuration
+from .objs.credit import Credit as Credit
+from .objs.discover import Discover as Discover
+from .objs.episode import Episode as Episode
+from .objs.find import Find as Find
+from .objs.genre import Genre as Genre
+from .objs.group import Group as Group
+from .objs.keyword import Keyword as Keyword
+from .objs.list import List as List
+from .objs.movie import Movie as Movie
+from .objs.network import Network as Network
+from .objs.person import Person as Person
+from .objs.provider import Provider as Provider
+from .objs.review import Review as Review
+from .objs.search import Search as Search
+from .objs.season import Season as Season
+from .objs.trending import Trending as Trending
+from .objs.tv import TV as TV
+from .tmdb import TMDb as TMDb

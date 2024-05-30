@@ -2,7 +2,7 @@ import re
 import threading
 from pathlib import Path
 from threading import Event
-from typing import Optional, List, Dict
+from typing import Optional
 
 import telebot
 from telebot import apihelper
@@ -100,7 +100,7 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_meidas_msg(self, medias: List[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_meidas_msg(self, medias: list[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送媒体列表消息
         """
@@ -138,7 +138,7 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_torrents_msg(self, torrents: List[Context],
+    def send_torrents_msg(self, torrents: list[Context],
                           userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表消息
@@ -217,7 +217,7 @@ class Telegram:
             raise Exception("发送文本消息失败")
         return True if ret else False
 
-    def register_commands(self, commands: Dict[str, dict]):
+    def register_commands(self, commands: dict[str, dict]):
         """
         注册菜单命令
         """

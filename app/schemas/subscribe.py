@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -53,7 +53,7 @@ class Subscribe(BaseModel):
     # 订阅用户
     username: Optional[str] = None
     # 订阅站点
-    sites: Optional[List[int]] = []
+    sites: Optional[list[int]] = []
     # 是否洗版
     best_version: Optional[int] = 0
     # 当前优先级

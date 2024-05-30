@@ -1,6 +1,5 @@
-import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from app import schemas
 from app.core.config import settings
@@ -20,20 +19,20 @@ class DirectoryHelper:
     def __init__(self):
         self.systemconfig = SystemConfigOper()
 
-    def get_download_dirs(self) -> List[schemas.MediaDirectory]:
+    def get_download_dirs(self) -> list[schemas.MediaDirectory]:
         """
         获取下载目录
         """
-        dir_conf: List[dict] = self.systemconfig.get(SystemConfigKey.DownloadDirectories)
+        dir_conf: list[dict] = self.systemconfig.get(SystemConfigKey.DownloadDirectories)
         if not dir_conf:
             return []
         return [schemas.MediaDirectory(**d) for d in dir_conf]
 
-    def get_library_dirs(self) -> List[schemas.MediaDirectory]:
+    def get_library_dirs(self) -> list[schemas.MediaDirectory]:
         """
         获取媒体库目录
         """
-        dir_conf: List[dict] = self.systemconfig.get(SystemConfigKey.LibraryDirectories)
+        dir_conf: list[dict] = self.systemconfig.get(SystemConfigKey.LibraryDirectories)
         if not dir_conf:
             return []
         return [schemas.MediaDirectory(**d) for d in dir_conf]

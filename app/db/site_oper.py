@@ -1,7 +1,7 @@
-from typing import Tuple, List
 
 from app.db import DbOper
 from app.db.models.site import Site
+import builtins
 
 
 class SiteOper(DbOper):
@@ -9,7 +9,7 @@ class SiteOper(DbOper):
     站点管理
     """
 
-    def add(self, **kwargs) -> Tuple[bool, str]:
+    def add(self, **kwargs) -> tuple[bool, str]:
         """
         新增站点
         """
@@ -25,19 +25,19 @@ class SiteOper(DbOper):
         """
         return Site.get(self._db, sid)
 
-    def list(self) -> List[Site]:
+    def list(self) -> list[Site]:
         """
         获取站点列表
         """
         return Site.list(self._db)
 
-    def list_order_by_pri(self) -> List[Site]:
+    def list_order_by_pri(self) -> builtins.list[Site]:
         """
         获取站点列表
         """
         return Site.list_order_by_pri(self._db)
 
-    def list_active(self) -> List[Site]:
+    def list_active(self) -> builtins.list[Site]:
         """
         按状态获取站点列表
         """
@@ -63,7 +63,7 @@ class SiteOper(DbOper):
         """
         return Site.get_by_domain(self._db, domain)
 
-    def get_domains_by_ids(self, ids: List[int]) -> List[str]:
+    def get_domains_by_ids(self, ids: builtins.list[int]) -> builtins.list[str]:
         """
         按ID获取站点域名
         """
@@ -75,7 +75,7 @@ class SiteOper(DbOper):
         """
         return Site.get_by_domain(self._db, domain) is not None
 
-    def update_cookie(self, domain: str, cookies: str) -> Tuple[bool, str]:
+    def update_cookie(self, domain: str, cookies: str) -> tuple[bool, str]:
         """
         更新站点Cookie
         """
@@ -87,7 +87,7 @@ class SiteOper(DbOper):
         })
         return True, "更新站点Cookie成功"
 
-    def update_rss(self, domain: str, rss: str) -> Tuple[bool, str]:
+    def update_rss(self, domain: str, rss: str) -> tuple[bool, str]:
         """
         更新站点rss
         """

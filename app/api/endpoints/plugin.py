@@ -1,4 +1,4 @@
-from typing import Any, List, Annotated
+from typing import Any, Annotated
 
 from fastapi import APIRouter, Depends, Header
 
@@ -36,8 +36,8 @@ def remove_plugin_api(plugin_id: str):
                 break
 
 
-@router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
-def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "all") -> List[schemas.Plugin]:
+@router.get("/", summary="所有插件", response_model=list[schemas.Plugin])
+def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "all") -> list[schemas.Plugin]:
     """
     查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
     """
@@ -82,7 +82,7 @@ def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "a
     return installed_plugins + market_plugins
 
 
-@router.get("/installed", summary="已安装插件", response_model=List[str])
+@router.get("/installed", summary="已安装插件", response_model=list[str])
 def installed(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询用户已安装插件清单
@@ -143,7 +143,7 @@ def plugin_form(plugin_id: str,
 
 
 @router.get("/page/{plugin_id}", summary="获取插件数据页面")
-def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> list[dict]:
     """
     根据插件ID获取插件数据页面
     """
@@ -151,7 +151,7 @@ def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token))
 
 
 @router.get("/dashboard/meta", summary="获取所有插件仪表板元信息")
-def plugin_dashboard_meta(_: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+def plugin_dashboard_meta(_: schemas.TokenPayload = Depends(verify_token)) -> list[dict]:
     """
     获取所有插件仪表板元信息
     """

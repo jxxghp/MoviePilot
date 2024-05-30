@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 from fastapi import APIRouter, Depends
 
@@ -14,7 +14,7 @@ from app.db.userauth import get_current_active_user
 router = APIRouter()
 
 
-@router.get("/", summary="正在下载", response_model=List[schemas.DownloadingTorrent])
+@router.get("/", summary="正在下载", response_model=list[schemas.DownloadingTorrent])
 def read(
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """

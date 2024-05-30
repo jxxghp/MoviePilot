@@ -32,7 +32,7 @@ class SubtitleModule(_ModuleBase):
     def get_name() -> str:
         return "站点字幕"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         pass
 
     def stop(self) -> None:

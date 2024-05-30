@@ -23,7 +23,7 @@ class SlackModule(_ModuleBase):
     def stop(self):
         self.slack.stop()
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -32,7 +32,7 @@ class SlackModule(_ModuleBase):
             return True, ""
         return False, "Slack未就续，请检查参数设置和网络连接"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         return "MESSAGER", "slack"
 
     @staticmethod
@@ -205,7 +205,7 @@ class SlackModule(_ModuleBase):
                             image=message.image, userid=message.userid)
 
     @checkMessage(MessageChannel.Slack)
-    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
+    def post_medias_message(self, message: Notification, medias: list[MediaInfo]) -> Optional[bool]:
         """
         发送媒体信息选择列表
         :param message: 消息体
@@ -215,7 +215,7 @@ class SlackModule(_ModuleBase):
         return self.slack.send_meidas_msg(title=message.title, medias=medias, userid=message.userid)
 
     @checkMessage(MessageChannel.Slack)
-    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
+    def post_torrents_message(self, message: Notification, torrents: list[Context]) -> Optional[bool]:
         """
         发送种子信息选择列表
         :param message: 消息体

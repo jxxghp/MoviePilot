@@ -96,7 +96,7 @@ def stop_frontend():
             or not SystemUtils.is_windows():
         return
     import subprocess
-    subprocess.Popen(f"taskkill /f /im nginx.exe", shell=True)
+    subprocess.Popen("taskkill /f /im nginx.exe", shell=True)
 
 
 def start_tray():

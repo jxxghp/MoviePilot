@@ -2,7 +2,7 @@ import copy
 import time
 from pathlib import Path
 from threading import Lock
-from typing import Optional, List, Tuple
+from typing import Optional
 
 from app.chain import ChainBase
 from app.core.context import Context, MediaInfo
@@ -80,9 +80,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
             meta_dict = copy.deepcopy(self.recognize_temp)
         logger.info(f'获取到辅助识别结果：{meta_dict}')
         if meta_dict.get("name") == org_meta.name and meta_dict.get("year") == org_meta.year:
-            logger.info(f'辅助识别结果与原始识别结果一致')
+            logger.info('辅助识别结果与原始识别结果一致')
         else:
-            logger.info(f'辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...')
+            logger.info('辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...')
             org_meta.name = meta_dict.get("name")
             org_meta.year = meta_dict.get("year")
             org_meta.begin_season = meta_dict.get("season")
@@ -156,7 +156,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         # 返回上下文
         return Context(meta_info=file_meta, media_info=mediainfo)
 
-    def search(self, title: str) -> Tuple[Optional[MetaBase], List[MediaInfo]]:
+    def search(self, title: str) -> tuple[Optional[MetaBase], list[MediaInfo]]:
         """
         搜索媒体/人物信息
         :param title: 搜索内容
@@ -179,7 +179,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             meta.year = year
         # 开始搜索
         logger.info(f"开始搜索媒体信息：{meta.name}")
-        medias: Optional[List[MediaInfo]] = self.search_medias(meta=meta)
+        medias: Optional[list[MediaInfo]] = self.search_medias(meta=meta)
         if not medias:
             logger.warn(f"{meta.name} 没有找到对应的媒体信息！")
             return meta, []

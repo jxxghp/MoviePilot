@@ -272,7 +272,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("webhook_parser", body=body, form=form, args=args)
 
-    def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+    def search_medias(self, meta: MetaBase) -> Optional[list[MediaInfo]]:
         """
         搜索媒体信息
         :param meta:  识别的元数据
@@ -280,7 +280,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("search_medias", meta=meta)
 
-    def search_persons(self, name: str) -> Optional[List[MediaPerson]]:
+    def search_persons(self, name: str) -> Optional[list[MediaPerson]]:
         """
         搜索人物信息
         :param name:  人物名称
@@ -288,9 +288,9 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("search_persons", name=name)
 
     def search_torrents(self, site: CommentedMap,
-                        keywords: List[str],
+                        keywords: list[str],
                         mtype: MediaType = None,
-                        page: int = 0) -> List[TorrentInfo]:
+                        page: int = 0) -> list[TorrentInfo]:
         """
         搜索一个站点的种子资源
         :param site:  站点
@@ -302,7 +302,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("search_torrents", site=site, keywords=keywords,
                                mtype=mtype, page=page)
 
-    def refresh_torrents(self, site: CommentedMap) -> List[TorrentInfo]:
+    def refresh_torrents(self, site: CommentedMap) -> list[TorrentInfo]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
         :param site:  站点
@@ -311,9 +311,9 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("refresh_torrents", site=site)
 
     def filter_torrents(self, rule_string: str,
-                        torrent_list: List[TorrentInfo],
-                        season_episodes: Dict[int, list] = None,
-                        mediainfo: MediaInfo = None) -> List[TorrentInfo]:
+                        torrent_list: list[TorrentInfo],
+                        season_episodes: dict[int, list] = None,
+                        mediainfo: MediaInfo = None) -> list[TorrentInfo]:
         """
         过滤种子资源
         :param rule_string:  过滤规则
@@ -327,9 +327,9 @@ class ChainBase(metaclass=ABCMeta):
                                mediainfo=mediainfo)
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
-                 episodes: Set[int] = None, category: str = None,
+                 episodes: set[int] = None, category: str = None,
                  downloader: str = settings.DEFAULT_DOWNLOADER
-                 ) -> Optional[Tuple[Optional[str], str]]:
+                 ) -> Optional[tuple[Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接
@@ -358,7 +358,7 @@ class ChainBase(metaclass=ABCMeta):
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,
                       downloader: str = settings.DEFAULT_DOWNLOADER
-                      ) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
+                      ) -> Optional[list[Union[TransferTorrent, DownloadingTorrent]]]:
         """
         获取下载器种子列表
         :param status:  种子状态
@@ -370,7 +370,7 @@ class ChainBase(metaclass=ABCMeta):
 
     def transfer(self, path: Path, meta: MetaBase, mediainfo: MediaInfo,
                  transfer_type: str, target: Path = None,
-                 episodes_info: List[TmdbEpisode] = None,
+                 episodes_info: list[TmdbEpisode] = None,
                  scrape: bool = None) -> Optional[TransferInfo]:
         """
         文件转移
@@ -427,7 +427,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("stop_torrents", hashs=hashs, downloader=downloader)
 
     def torrent_files(self, tid: str,
-                      downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[Union[TorrentFilesList, List[File]]]:
+                      downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[Union[TorrentFilesList, list[File]]]:
         """
         获取种子文件
         :param tid:  种子Hash
@@ -474,7 +474,7 @@ class ChainBase(metaclass=ABCMeta):
         # 发送
         self.run_module("post_message", message=message)
 
-    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
+    def post_medias_message(self, message: Notification, medias: list[MediaInfo]) -> Optional[bool]:
         """
         发送媒体信息选择列表
         :param message:  消息体
@@ -490,7 +490,7 @@ class ChainBase(metaclass=ABCMeta):
                              note=note_list)
         return self.run_module("post_medias_message", message=message, medias=medias)
 
-    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
+    def post_torrents_message(self, message: Notification, torrents: list[Context]) -> Optional[bool]:
         """
         发送种子信息选择列表
         :param message:  消息体
@@ -521,14 +521,14 @@ class ChainBase(metaclass=ABCMeta):
         self.run_module("scrape_metadata", path=path, mediainfo=mediainfo, metainfo=metainfo,
                         transfer_type=transfer_type, force_nfo=force_nfo, force_img=force_img)
 
-    def media_category(self) -> Optional[Dict[str, list]]:
+    def media_category(self) -> Optional[dict[str, list]]:
         """
         获取媒体分类
         :return: 获取二级分类配置字典项，需包括电影、电视剧
         """
         return self.run_module("media_category")
 
-    def register_commands(self, commands: Dict[str, dict]) -> None:
+    def register_commands(self, commands: dict[str, dict]) -> None:
         """
         注册菜单命令
         """

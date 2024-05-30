@@ -15,7 +15,7 @@ class FilterModule(_ModuleBase):
     media: MediaInfo = None
 
     # 内置规则集
-    rule_set: Dict[str, dict] = {
+    rule_set: dict[str, dict] = {
         # 蓝光原盘
         "BLU": {
             "include": [r'Blu-?Ray.+VC-?1|Blu-?Ray.+AVC|UHD.+blu-?ray.+HEVC|MiniBD'],
@@ -146,13 +146,13 @@ class FilterModule(_ModuleBase):
     def test(self):
         pass
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         pass
 
     def filter_torrents(self, rule_string: str,
-                        torrent_list: List[TorrentInfo],
-                        season_episodes: Dict[int, list] = None,
-                        mediainfo: MediaInfo = None) -> List[TorrentInfo]:
+                        torrent_list: list[TorrentInfo],
+                        season_episodes: dict[int, list] = None,
+                        mediainfo: MediaInfo = None) -> list[TorrentInfo]:
         """
         过滤种子资源
         :param rule_string:  过滤规则
@@ -180,7 +180,7 @@ class FilterModule(_ModuleBase):
         return ret_torrents
 
     @staticmethod
-    def __match_season_episodes(torrent: TorrentInfo, season_episodes: Dict[int, list]):
+    def __match_season_episodes(torrent: TorrentInfo, season_episodes: dict[int, list]):
         """
         判断种子是否匹配季集数
         """

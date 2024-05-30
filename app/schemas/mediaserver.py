@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Dict, Union, List
+from typing import Optional, Union
 
 from pydantic import BaseModel
 
@@ -13,7 +13,7 @@ class ExistMediaInfo(BaseModel):
     # 类型 电影、电视剧
     type: Optional[MediaType]
     # 季
-    seasons: Optional[Dict[int, list]] = {}
+    seasons: Optional[dict[int, list]] = {}
     # 媒体服务器
     server: Optional[str] = None
     # 媒体ID
@@ -67,7 +67,7 @@ class MediaServerLibrary(BaseModel):
     # 封面图
     image: Optional[str] = None
     # 封面图列表
-    image_list: Optional[List[str]] = None
+    image_list: Optional[list[str]] = None
     # 跳转链接
     link: Optional[str] = None
 
@@ -101,7 +101,7 @@ class MediaServerItem(BaseModel):
     # 路径
     path: Optional[str] = None
     # 季集
-    seasoninfo: Optional[Dict[int, list]] = None
+    seasoninfo: Optional[dict[int, list]] = None
     # 备注
     note: Optional[str] = None
     # 同步时间
@@ -116,7 +116,7 @@ class MediaServerSeasonInfo(BaseModel):
     媒体服务器媒体剧集信息
     """
     season: Optional[int] = None
-    episodes: Optional[List[int]] = []
+    episodes: Optional[list[int]] = []
 
 
 class WebhookEventInfo(BaseModel):

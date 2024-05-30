@@ -2,7 +2,7 @@ import json
 import shutil
 import traceback
 from pathlib import Path
-from typing import Dict, Tuple, Optional, List
+from typing import Optional
 
 from cachetools import TTLCache, cached
 
@@ -36,7 +36,7 @@ class PluginHelper(metaclass=Singleton):
                     self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
 
     @cached(cache=TTLCache(maxsize=1000, ttl=1800))
-    def get_plugins(self, repo_url: str) -> Dict[str, dict]:
+    def get_plugins(self, repo_url: str) -> dict[str, dict]:
         """
         获取Github所有最新插件列表
         :param repo_url: Github仓库地址
@@ -58,7 +58,7 @@ class PluginHelper(metaclass=Singleton):
         return {}
 
     @staticmethod
-    def get_repo_info(repo_url: str) -> Tuple[Optional[str], Optional[str]]:
+    def get_repo_info(repo_url: str) -> tuple[Optional[str], Optional[str]]:
         """
         获取Github仓库信息
         :param repo_url: Github仓库地址
@@ -77,7 +77,7 @@ class PluginHelper(metaclass=Singleton):
         return user, repo
 
     @cached(cache=TTLCache(maxsize=1, ttl=1800))
-    def get_statistic(self) -> Dict:
+    def get_statistic(self) -> dict:
         """
         获取插件安装统计
         """
@@ -121,7 +121,7 @@ class PluginHelper(metaclass=Singleton):
                                            })
         return True if res else False
 
-    def install(self, pid: str, repo_url: str) -> Tuple[bool, str]:
+    def install(self, pid: str, repo_url: str) -> tuple[bool, str]:
         """
         安装插件
         """
@@ -133,7 +133,7 @@ class PluginHelper(metaclass=Singleton):
         if not user or not repo:
             return False, "不支持的插件仓库地址格式"
 
-        def __get_filelist(_p: str) -> Tuple[Optional[list], Optional[str]]:
+        def __get_filelist(_p: str) -> tuple[Optional[list], Optional[str]]:
             """
             获取插件的文件列表
             """
@@ -149,7 +149,7 @@ class PluginHelper(metaclass=Singleton):
                 return None, "插件在仓库中不存在"
             return ret, ""
 
-        def __download_files(_p: str, _l: List[dict]) -> Tuple[bool, str]:
+        def __download_files(_p: str, _l: list[dict]) -> tuple[bool, str]:
             """
             下载插件文件
             """

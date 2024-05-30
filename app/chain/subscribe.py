@@ -3,7 +3,7 @@ import random
 import time
 from datetime import datetime
 from json import JSONDecodeError
-from typing import Dict, List, Optional, Union, Tuple
+from typing import Optional, Union
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
@@ -58,7 +58,7 @@ class SubscribeChain(ChainBase):
             username: str = None,
             message: bool = True,
             exist_ok: bool = False,
-            **kwargs) -> Tuple[Optional[int], str]:
+            **kwargs) -> tuple[Optional[int], str]:
         """
         识别媒体信息并添加订阅
         """
@@ -110,7 +110,7 @@ class SubscribeChain(ChainBase):
                                                      bangumiid=mediainfo.bangumi_id,
                                                      cache=False)
                     if not mediainfo:
-                        logger.error(f"媒体信息识别失败！")
+                        logger.error("媒体信息识别失败！")
                         return None, "媒体信息识别失败"
                     if not mediainfo.seasons:
                         logger.error(f"媒体信息中没有季集信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}")
@@ -390,7 +390,7 @@ class SubscribeChain(ChainBase):
                 self.message.put('所有订阅搜索完成！', title="订阅搜索", role="system")
 
     def update_subscribe_priority(self, subscribe: Subscribe, meta: MetaInfo,
-                                  mediainfo: MediaInfo, downloads: List[Context]):
+                                  mediainfo: MediaInfo, downloads: list[Context]):
         """
         更新订阅已下载资源的优先级
         """
@@ -411,8 +411,8 @@ class SubscribeChain(ChainBase):
             })
 
     def finish_subscribe_or_not(self, subscribe: Subscribe, meta: MetaInfo, mediainfo: MediaInfo,
-                                downloads: List[Context] = None,
-                                lefts: Dict[Union[int | str], Dict[int, NotExistMediaInfo]] = None,
+                                downloads: list[Context] = None,
+                                lefts: dict[Union[int | str], dict[int, NotExistMediaInfo]] = None,
                                 force: bool = False):
         """
         判断是否应完成订阅
@@ -461,7 +461,7 @@ class SubscribeChain(ChainBase):
             self.torrentschain.refresh(sites=sites)
         )
 
-    def get_sub_sites(self, subscribe: Subscribe) -> List[int]:
+    def get_sub_sites(self, subscribe: Subscribe) -> list[int]:
         """
         获取订阅中涉及的站点清单
         """
@@ -473,7 +473,7 @@ class SubscribeChain(ChainBase):
         # 默认站点
         return self.systemconfig.get(SystemConfigKey.RssSites) or []
 
-    def get_subscribed_sites(self) -> Optional[List[int]]:
+    def get_subscribed_sites(self) -> Optional[list[int]]:
         """
         获取订阅中涉及的所有站点清单（节约资源）
         :return: 返回[]代表所有站点命中，返回None代表没有订阅
@@ -511,7 +511,7 @@ class SubscribeChain(ChainBase):
             "min_seeders_time": default_rule.get("min_seeders_time"),
         }
 
-    def match(self, torrents: Dict[str, List[Context]]):
+    def match(self, torrents: dict[str, list[Context]]):
         """
         从缓存中匹配订阅，并自动下载
         """
@@ -662,7 +662,7 @@ class SubscribeChain(ChainBase):
                         priority_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
                     else:
                         priority_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
-                    result: List[TorrentInfo] = self.filter_torrents(
+                    result: list[TorrentInfo] = self.filter_torrents(
                         rule_string=priority_rule,
                         torrent_list=[torrent_info],
                         mediainfo=torrent_mediainfo)
@@ -809,7 +809,7 @@ class SubscribeChain(ChainBase):
             })
             logger.info(f'{subscribe.name} 订阅元数据更新完成')
 
-    def __update_subscribe_note(self, subscribe: Subscribe, downloads: List[Context]):
+    def __update_subscribe_note(self, subscribe: Subscribe, downloads: list[Context]):
         """
         更新已下载集数到note字段
         """
@@ -844,7 +844,7 @@ class SubscribeChain(ChainBase):
             })
 
     @staticmethod
-    def __check_subscribe_note(subscribe: Subscribe, episodes: List[int]) -> bool:
+    def __check_subscribe_note(subscribe: Subscribe, episodes: list[int]) -> bool:
         """
         检查当前集是否已下载过
         """
@@ -860,7 +860,7 @@ class SubscribeChain(ChainBase):
             return True
         return False
 
-    def __update_lack_episodes(self, lefts: Dict[Union[int, str], Dict[int, NotExistMediaInfo]],
+    def __update_lack_episodes(self, lefts: dict[Union[int, str], dict[int, NotExistMediaInfo]],
                                subscribe: Subscribe,
                                mediainfo: MediaInfo,
                                update_date: bool = False):
@@ -979,7 +979,7 @@ class SubscribeChain(ChainBase):
         self.remote_list(channel, userid)
 
     @staticmethod
-    def __get_subscribe_no_exits(no_exists: Dict[Union[int, str], Dict[int, NotExistMediaInfo]],
+    def __get_subscribe_no_exits(no_exists: dict[Union[int, str], dict[int, NotExistMediaInfo]],
                                  mediakey: Union[str, int],
                                  begin_season: int,
                                  total_episode: int,

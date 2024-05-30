@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Any, Union
+from typing import Any, Union
 
 from fastapi import APIRouter, Depends
 
@@ -63,7 +63,7 @@ def recognize_file2(path: str,
     return recognize_file(path)
 
 
-@router.get("/search", summary="搜索媒体/人物信息", response_model=List[dict])
+@router.get("/search", summary="搜索媒体/人物信息", response_model=list[dict])
 def search(title: str,
            type: str = "media",
            page: int = 1,

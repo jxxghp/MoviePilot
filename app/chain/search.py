@@ -2,8 +2,7 @@ import pickle
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Dict
-from typing import List, Optional
+from typing import Optional
 
 from app.chain import ChainBase
 from app.core.context import Context
@@ -32,7 +31,7 @@ class SearchChain(ChainBase):
         self.torrenthelper = TorrentHelper()
 
     def search_by_id(self, tmdbid: int = None, doubanid: str = None,
-                     mtype: MediaType = None, area: str = "title", season: int = None) -> List[Context]:
+                     mtype: MediaType = None, area: str = "title", season: int = None) -> list[Context]:
         """
         根据TMDBID/豆瓣ID搜索资源，精确匹配，但不不过滤本地存在的资源
         :param tmdbid: TMDB ID
@@ -58,7 +57,7 @@ class SearchChain(ChainBase):
         self.systemconfig.set(SystemConfigKey.SearchResults, bytes_results)
         return results
 
-    def search_by_title(self, title: str, page: int = 0, site: int = None) -> List[TorrentInfo]:
+    def search_by_title(self, title: str, page: int = 0, site: int = None) -> list[TorrentInfo]:
         """
         根据标题搜索资源，不识别不过滤，直接返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
@@ -72,7 +71,7 @@ class SearchChain(ChainBase):
         # 搜索
         return self.__search_all_sites(keywords=[title], sites=[site] if site else None, page=page) or []
 
-    def last_search_results(self) -> List[Context]:
+    def last_search_results(self) -> list[Context]:
         """
         获取上次搜索结果
         """
@@ -87,11 +86,11 @@ class SearchChain(ChainBase):
 
     def process(self, mediainfo: MediaInfo,
                 keyword: str = None,
-                no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
-                sites: List[int] = None,
+                no_exists: dict[int, dict[int, NotExistMediaInfo]] = None,
+                sites: list[int] = None,
                 priority_rule: str = None,
-                filter_rule: Dict[str, str] = None,
-                area: str = "title") -> List[Context]:
+                filter_rule: dict[str, str] = None,
+                area: str = "title") -> list[Context]:
         """
         根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
         :param mediainfo: 媒体信息
@@ -103,7 +102,7 @@ class SearchChain(ChainBase):
         :param area: 搜索范围，title or imdbid
         """
 
-        def __do_filter(torrent_list: List[TorrentInfo]) -> List[TorrentInfo]:
+        def __do_filter(torrent_list: list[TorrentInfo]) -> list[TorrentInfo]:
             """
             执行优先级过滤
             """
@@ -125,7 +124,7 @@ class SearchChain(ChainBase):
                                                         tmdbid=mediainfo.tmdb_id,
                                                         doubanid=mediainfo.douban_id)
             if not mediainfo:
-                logger.error(f'媒体信息识别失败！')
+                logger.error('媒体信息识别失败！')
                 return []
 
         # 缺失的季集
@@ -151,7 +150,7 @@ class SearchChain(ChainBase):
                                                        mediainfo.sg_title] if k]))
 
         # 执行搜索
-        torrents: List[TorrentInfo] = self.__search_all_sites(
+        torrents: list[TorrentInfo] = self.__search_all_sites(
             mediainfo=mediainfo,
             keywords=keywords,
             sites=sites,
@@ -260,11 +259,11 @@ class SearchChain(ChainBase):
         # 返回
         return contexts
 
-    def __search_all_sites(self, keywords: List[str],
+    def __search_all_sites(self, keywords: list[str],
                            mediainfo: Optional[MediaInfo] = None,
-                           sites: List[int] = None,
+                           sites: list[int] = None,
                            page: int = 0,
-                           area: str = "title") -> Optional[List[TorrentInfo]]:
+                           area: str = "title") -> Optional[list[TorrentInfo]]:
         """
         多线程搜索多个站点
         :param mediainfo:  识别的媒体信息
@@ -347,10 +346,10 @@ class SearchChain(ChainBase):
         return results
 
     def filter_torrents_by_rule(self,
-                                torrents: List[TorrentInfo],
+                                torrents: list[TorrentInfo],
                                 mediainfo: MediaInfo,
-                                filter_rule: Dict[str, str] = None,
-                                ) -> List[TorrentInfo]:
+                                filter_rule: dict[str, str] = None,
+                                ) -> list[TorrentInfo]:
         """
         使用过滤规则过滤种子
         :param torrents: 种子列表

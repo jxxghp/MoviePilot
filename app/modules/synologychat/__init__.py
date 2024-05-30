@@ -20,7 +20,7 @@ class SynologyChatModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -29,7 +29,7 @@ class SynologyChatModule(_ModuleBase):
             return True, ""
         return False, "SynologyChat未就续，请检查参数设置、网络连接以及机器人是否可见"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         return "MESSAGER", "synologychat"
 
     def message_parser(self, body: Any, form: Any,
@@ -77,7 +77,7 @@ class SynologyChatModule(_ModuleBase):
                                    image=message.image, userid=message.userid)
 
     @checkMessage(MessageChannel.SynologyChat)
-    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
+    def post_medias_message(self, message: Notification, medias: list[MediaInfo]) -> Optional[bool]:
         """
         发送媒体信息选择列表
         :param message: 消息体
@@ -88,7 +88,7 @@ class SynologyChatModule(_ModuleBase):
                                                  userid=message.userid)
 
     @checkMessage(MessageChannel.SynologyChat)
-    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
+    def post_torrents_message(self, message: Notification, torrents: list[Context]) -> Optional[bool]:
         """
         发送种子信息选择列表
         :param message: 消息体

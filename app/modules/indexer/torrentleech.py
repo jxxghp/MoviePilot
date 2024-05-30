@@ -1,4 +1,3 @@
-from typing import List, Tuple
 from urllib.parse import quote
 
 from ruamel.yaml import CommentedMap
@@ -25,7 +24,7 @@ class TorrentLeech:
             self._proxy = settings.PROXY
             self._timeout = indexer.get('timeout') or 15
 
-    def search(self, keyword: str, page: int = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, page: int = 0) -> tuple[bool, list[dict]]:
 
         if StringUtils.is_chinese(keyword):
             # 不支持中文

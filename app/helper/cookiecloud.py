@@ -1,6 +1,6 @@
 import json
 from hashlib import md5
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Optional
 
 from app.core.config import settings
 from app.utils.common import decrypt
@@ -22,7 +22,7 @@ class CookieCloudHelper:
         self._enable_local = settings.COOKIECLOUD_ENABLE_LOCAL
         self._local_path = settings.COOKIE_PATH
 
-    def download(self) -> Tuple[Optional[dict], str]:
+    def download(self) -> tuple[Optional[dict], str]:
         """
         从CookieCloud下载数据
         :return: Cookie数据、错误信息
@@ -113,7 +113,7 @@ class CookieCloudHelper:
         md5_generator.update((str(self._key).strip() + '-' + str(self._password).strip()).encode('utf-8'))
         return (md5_generator.hexdigest()[:16]).encode('utf-8')
 
-    def _load_local_encrypt_data(self, uuid: str) -> Dict[str, Any]:
+    def _load_local_encrypt_data(self, uuid: str) -> dict[str, Any]:
         file_path = self._local_path / f"{uuid}.json"
         # 检查文件是否存在
         if not file_path.exists():

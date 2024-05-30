@@ -1,6 +1,6 @@
 import re
 import threading
-from typing import Optional, List
+from typing import Optional
 
 from app.core.config import settings
 from app.core.context import MediaInfo, Context
@@ -90,7 +90,7 @@ class VoceChat:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_medias_msg(self, title: str, medias: List[MediaInfo], userid: str = "") -> Optional[bool]:
+    def send_medias_msg(self, title: str, medias: list[MediaInfo], userid: str = "") -> Optional[bool]:
         """
         发送列表类消息
         """
@@ -126,7 +126,7 @@ class VoceChat:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_torrents_msg(self, torrents: List[Context],
+    def send_torrents_msg(self, torrents: list[Context],
                           userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表消息

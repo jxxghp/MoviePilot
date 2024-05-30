@@ -24,7 +24,7 @@ class WechatModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -33,7 +33,7 @@ class WechatModule(_ModuleBase):
             return True, ""
         return False, "获取微信token失败"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         return "MESSAGER", "wechat"
 
     def message_parser(self, body: Any, form: Any,
@@ -62,7 +62,7 @@ class WechatModule(_ModuleBase):
                                   sReceiveId=settings.WECHAT_CORPID)
             # 报文数据
             if not body:
-                logger.debug(f"微信请求数据为空")
+                logger.debug("微信请求数据为空")
                 return None
             logger.debug(f"收到微信请求：{body}")
             ret, sMsg = wxcpt.DecryptMsg(sPostData=body,
@@ -104,7 +104,7 @@ class WechatModule(_ModuleBase):
             user_id = DomUtils.tag_value(root_node, "FromUserName")
             # 没的消息类型和用户ID的消息不要
             if not msg_type or not user_id:
-                logger.warn(f"解析不到消息类型和用户ID")
+                logger.warn("解析不到消息类型和用户ID")
                 return None
             # 解析消息内容
             if msg_type == "event" and event == "click":
@@ -144,7 +144,7 @@ class WechatModule(_ModuleBase):
                              image=message.image, userid=message.userid)
 
     @checkMessage(MessageChannel.Wechat)
-    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
+    def post_medias_message(self, message: Notification, medias: list[MediaInfo]) -> Optional[bool]:
         """
         发送媒体信息选择列表
         :param message: 消息内容
@@ -157,7 +157,7 @@ class WechatModule(_ModuleBase):
         return self.wechat.send_medias_msg(medias=medias, userid=message.userid)
 
     @checkMessage(MessageChannel.Wechat)
-    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
+    def post_torrents_message(self, message: Notification, torrents: list[Context]) -> Optional[bool]:
         """
         发送种子信息选择列表
         :param message: 消息内容
@@ -166,7 +166,7 @@ class WechatModule(_ModuleBase):
         """
         return self.wechat.send_torrents_msg(title=message.title, torrents=torrents, userid=message.userid)
 
-    def register_commands(self, commands: Dict[str, dict]):
+    def register_commands(self, commands: dict[str, dict]):
         """
         注册命令，实现这个函数接收系统可用的命令菜单
         :param commands: 命令字典

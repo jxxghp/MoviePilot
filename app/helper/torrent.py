@@ -2,7 +2,7 @@ import datetime
 import re
 import traceback
 from pathlib import Path
-from typing import Tuple, Optional, List, Union, Dict
+from typing import Optional, Union
 from urllib.parse import unquote
 
 from requests import Response
@@ -35,13 +35,13 @@ class TorrentHelper(metaclass=Singleton):
                          ua: str = None,
                          referer: str = None,
                          proxy: bool = False) \
-            -> Tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list], Optional[str]]:
+            -> tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list], Optional[str]]:
         """
         把种子下载到本地
         :return: 种子保存路径、种子内容、种子主目录、种子文件清单、错误信息
         """
         if url.startswith("magnet:"):
-            return None, url, "", [], f"磁力链接"
+            return None, url, "", [], "磁力链接"
         # 请求种子文件
         req = RequestUtils(
             ua=ua,
@@ -52,7 +52,7 @@ class TorrentHelper(metaclass=Singleton):
         while req and req.status_code in [301, 302]:
             url = req.headers['Location']
             if url and url.startswith("magnet:"):
-                return None, url, "", [], f"获取到磁力链接"
+                return None, url, "", [], "获取到磁力链接"
             req = RequestUtils(
                 ua=ua,
                 cookies=cookie,
@@ -65,7 +65,7 @@ class TorrentHelper(metaclass=Singleton):
             # 解析内容格式
             if req.text and str(req.text).startswith("magnet:"):
                 # 磁力链接
-                return None, req.text, "", [], f"获取到磁力链接"
+                return None, req.text, "", [], "获取到磁力链接"
             elif req.text and "下载种子文件" in req.text:
                 # 首次下载提示页面
                 skip_flag = False
@@ -134,7 +134,7 @@ class TorrentHelper(metaclass=Singleton):
             return None, None, "", [], f"下载种子出错，状态码：{req.status_code}"
 
     @staticmethod
-    def get_torrent_info(torrent_path: Path) -> Tuple[str, List[str]]:
+    def get_torrent_info(torrent_path: Path) -> tuple[str, list[str]]:
         """
         获取种子文件的文件夹名和文件清单
         :param torrent_path: 种子文件路径
@@ -190,7 +190,7 @@ class TorrentHelper(metaclass=Singleton):
             file_name = str(datetime.datetime.now())
         return file_name
 
-    def sort_torrents(self, torrent_list: List[Context]) -> List[Context]:
+    def sort_torrents(self, torrent_list: list[Context]) -> list[Context]:
         """
         对种子对行排序
         """
@@ -237,7 +237,7 @@ class TorrentHelper(metaclass=Singleton):
 
         return torrent_list
 
-    def sort_group_torrents(self, torrent_list: List[Context]) -> List[Context]:
+    def sort_group_torrents(self, torrent_list: list[Context]) -> list[Context]:
         """
         对媒体信息进行排序、去重
         """
@@ -300,13 +300,13 @@ class TorrentHelper(metaclass=Singleton):
 
     @staticmethod
     def filter_torrent(torrent_info: TorrentInfo,
-                       filter_rule: Dict[str, str],
+                       filter_rule: dict[str, str],
                        mediainfo: MediaInfo) -> bool:
         """
         检查种子是否匹配订阅过滤规则
         """
 
-        def __get_size_range(size_str: str) -> Tuple[float, float]:
+        def __get_size_range(size_str: str) -> tuple[float, float]:
             """
             获取大小范围
             """

@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, Union
+from typing import Optional, Union
 
 from pydantic import BaseModel
 
@@ -56,7 +56,7 @@ class MetaInfo(BaseModel):
     # 资源类型
     edition: Optional[str] = None
     # 应用的识别词信息
-    apply_words: Optional[List[str]] = None
+    apply_words: Optional[list[str]] = None
 
 
 class MediaInfo(BaseModel):
@@ -104,9 +104,9 @@ class MediaInfo(BaseModel):
     # 二级分类
     category: Optional[str] = ""
     # 季季集清单
-    seasons: Optional[Dict[int, list]] = {}
+    seasons: Optional[dict[int, list]] = {}
     # 季详情
-    season_info: Optional[List[dict]] = []
+    season_info: Optional[list[dict]] = []
     # 别名和译名
     names: Optional[list] = []
     # 演员
@@ -123,7 +123,7 @@ class MediaInfo(BaseModel):
     # 集时长
     episode_run_time: Optional[list] = []
     # 风格
-    genres: Optional[List[dict]] = []
+    genres: Optional[list[dict]] = []
     # 首播日期
     first_air_date: Optional[str] = None
     # 首页

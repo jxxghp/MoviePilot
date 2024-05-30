@@ -30,7 +30,7 @@ class QbittorrentModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -40,7 +40,7 @@ class QbittorrentModule(_ModuleBase):
             return False, "无法获取Qbittorrent状态，请检查参数配置"
         return True, ""
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         return "DOWNLOADER", "qbittorrent"
 
     def scheduler_job(self) -> None:
@@ -52,8 +52,8 @@ class QbittorrentModule(_ModuleBase):
             self.qbittorrent.reconnect()
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
-                 episodes: Set[int] = None, category: str = None,
-                 downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[Tuple[Optional[str], str]]:
+                 episodes: set[int] = None, category: str = None,
+                 downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[tuple[Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接
@@ -65,7 +65,7 @@ class QbittorrentModule(_ModuleBase):
         :return: 种子Hash，错误信息
         """
 
-        def __get_torrent_info() -> Tuple[str, int]:
+        def __get_torrent_info() -> tuple[str, int]:
             """
             获取种子名称
             """
@@ -109,7 +109,7 @@ class QbittorrentModule(_ModuleBase):
             # 读取种子的名称
             torrent_name, torrent_size = __get_torrent_info()
             if not torrent_name:
-                return None, f"添加种子任务失败：无法读取种子文件"
+                return None, "添加种子任务失败：无法读取种子文件"
             # 查询所有下载器的种子
             torrents, error = self.qbittorrent.get_torrents()
             if error:
@@ -127,7 +127,7 @@ class QbittorrentModule(_ModuleBase):
                         if settings.TORRENT_TAG and settings.TORRENT_TAG not in torrent_tags:
                             logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
                             self.qbittorrent.set_torrents_tag(ids=torrent_hash, tags=[settings.TORRENT_TAG])
-                        return torrent_hash, f"下载任务已存在"
+                        return torrent_hash, "下载任务已存在"
             return None, f"添加种子任务失败：{content}"
         else:
             # 获取种子Hash
@@ -173,7 +173,7 @@ class QbittorrentModule(_ModuleBase):
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,
                       downloader: str = settings.DEFAULT_DOWNLOADER
-                      ) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
+                      ) -> Optional[list[Union[TransferTorrent, DownloadingTorrent]]]:
         """
         获取下载器种子列表
         :param status:  种子状态

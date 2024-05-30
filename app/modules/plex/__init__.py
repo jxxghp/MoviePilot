@@ -1,4 +1,5 @@
-from typing import Optional, Tuple, Union, Any, List, Generator
+from typing import Optional, Tuple, Union, Any, List
+from collections.abc import Generator
 
 from app import schemas
 from app.core.context import MediaInfo
@@ -21,7 +22,7 @@ class PlexModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -31,7 +32,7 @@ class PlexModule(_ModuleBase):
             return False, "无法连接Plex，请检查参数配置"
         return True, ""
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         return "MEDIASERVER", "plex"
 
     def scheduler_job(self) -> None:
@@ -101,7 +102,7 @@ class PlexModule(_ModuleBase):
                     itemid=item_id
                 )
 
-    def media_statistic(self) -> List[schemas.Statistic]:
+    def media_statistic(self) -> list[schemas.Statistic]:
         """
         媒体数量统计
         """
@@ -109,7 +110,7 @@ class PlexModule(_ModuleBase):
         media_statistic.user_count = 1
         return [media_statistic]
 
-    def mediaserver_librarys(self, server: str = None, **kwargs) -> Optional[List[schemas.MediaServerLibrary]]:
+    def mediaserver_librarys(self, server: str = None, **kwargs) -> Optional[list[schemas.MediaServerLibrary]]:
         """
         媒体库列表
         """
@@ -134,7 +135,7 @@ class PlexModule(_ModuleBase):
         return self.plex.get_iteminfo(item_id)
 
     def mediaserver_tv_episodes(self, server: str,
-                                item_id: Union[str, int]) -> Optional[List[schemas.MediaServerSeasonInfo]]:
+                                item_id: Union[str, int]) -> Optional[list[schemas.MediaServerSeasonInfo]]:
         """
         获取剧集信息
         """
@@ -148,7 +149,7 @@ class PlexModule(_ModuleBase):
             episodes=episodes
         ) for season, episodes in seasoninfo.items()]
 
-    def mediaserver_playing(self, count: int = 20, server: str = None, **kwargs) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_playing(self, count: int = 20, server: str = None, **kwargs) -> list[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
@@ -156,7 +157,7 @@ class PlexModule(_ModuleBase):
             return []
         return self.plex.get_resume(count)
 
-    def mediaserver_latest(self, count: int = 20, server: str = None, **kwargs) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_latest(self, count: int = 20, server: str = None, **kwargs) -> list[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """

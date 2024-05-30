@@ -64,7 +64,7 @@ class _PluginBase(metaclass=ABCMeta):
 
     @staticmethod
     @abstractmethod
-    def get_command() -> List[Dict[str, Any]]:
+    def get_command() -> list[dict[str, Any]]:
         """
         注册插件远程命令
         [{
@@ -78,7 +78,7 @@ class _PluginBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get_api(self) -> List[Dict[str, Any]]:
+    def get_api(self) -> list[dict[str, Any]]:
         """
         注册插件API
         [{
@@ -92,7 +92,7 @@ class _PluginBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+    def get_form(self) -> tuple[list[dict], dict[str, Any]]:
         """
         拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         插件配置页面使用Vuetify组件拼装，参考：https://vuetifyjs.com/
@@ -100,14 +100,14 @@ class _PluginBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get_page(self) -> List[dict]:
+    def get_page(self) -> list[dict]:
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
         插件详情页面使用Vuetify组件拼装，参考：https://vuetifyjs.com/
         """
         pass
 
-    def get_service(self) -> List[Dict[str, Any]]:
+    def get_service(self) -> list[dict[str, Any]]:
         """
         注册插件公共服务
         [{
@@ -120,7 +120,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
-    def get_dashboard(self, key: str, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
+    def get_dashboard(self, key: str, **kwargs) -> Optional[tuple[dict[str, Any], dict[str, Any], list[dict]]]:
         """
         获取插件仪表盘页面，需要返回：1、仪表板col配置字典；2、全局配置（自动刷新等）；3、仪表板页面元素配置json（含数据）
         1、col配置参考：
@@ -142,7 +142,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
-    def get_dashboard_meta(self) -> Optional[List[Dict[str, str]]]:
+    def get_dashboard_meta(self) -> Optional[list[dict[str, str]]]:
         """
         获取插件仪表盘元信息
         返回示例：

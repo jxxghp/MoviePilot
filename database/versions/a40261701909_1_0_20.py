@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 
 from alembic import op
-import sqlalchemy as sa
 
 from app.core.config import Settings
 

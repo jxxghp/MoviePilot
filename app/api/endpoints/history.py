@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -18,7 +18,7 @@ from app.schemas.types import EventType
 router = APIRouter()
 
 
-@router.get("/download", summary="查询下载历史记录", response_model=List[schemas.DownloadHistory])
+@router.get("/download", summary="查询下载历史记录", response_model=list[schemas.DownloadHistory])
 def download_history(page: int = 1,
                      count: int = 30,
                      db: Session = Depends(get_db),

@@ -3,7 +3,8 @@ import datetime
 import hashlib
 import random
 import re
-from typing import Union, Tuple, Optional, Any, List, Generator
+from typing import Union, Optional, Any
+from collections.abc import Generator
 from urllib import parse
 
 import cn2an
@@ -252,7 +253,7 @@ class StringUtils:
         return False
 
     @staticmethod
-    def get_url_netloc(url: str) -> Tuple[str, str]:
+    def get_url_netloc(url: str) -> tuple[str, str]:
         """
         获取URL的协议和域名部分
         """
@@ -411,7 +412,7 @@ class StringUtils:
         return '; '.join(['='.join(item) for item in cj.items()])
 
     @staticmethod
-    def get_idlist(content: str, dicts: List[dict]):
+    def get_idlist(content: str, dicts: list[dict]):
         """
         从字符串中提取id列表
         :param content: 字符串
@@ -539,7 +540,7 @@ class StringUtils:
 
     @staticmethod
     def get_keyword(content: str) \
-            -> Tuple[Optional[MediaType], Optional[str], Optional[int], Optional[int], Optional[str], Optional[str]]:
+            -> tuple[Optional[MediaType], Optional[str], Optional[int], Optional[int], Optional[str], Optional[str]]:
         """
         从搜索关键字中拆分中年份、季、集、类型
         """
@@ -601,7 +602,7 @@ class StringUtils:
         return reparse
 
     @staticmethod
-    def get_domain_address(address: str, prefix: bool = True) -> Tuple[Optional[str], Optional[int]]:
+    def get_domain_address(address: str, prefix: bool = True) -> tuple[Optional[str], Optional[int]]:
         """
         从地址中获取域名和端口号
         """
@@ -625,7 +626,7 @@ class StringUtils:
         return domain, port
 
     @staticmethod
-    def str_series(array: List[int]) -> str:
+    def str_series(array: list[int]) -> str:
         """
         将季集列表转化为字符串简写
         """
@@ -657,7 +658,7 @@ class StringUtils:
         return ",".join(result)
 
     @staticmethod
-    def format_ep(nums: List[int]) -> str:
+    def format_ep(nums: list[int]) -> str:
         """
         将剧集列表格式化为连续区间
         """

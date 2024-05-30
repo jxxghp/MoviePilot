@@ -3,7 +3,7 @@ from ..tmdb import TMDb
 try:
     from urllib import quote
 except ImportError:
-    from urllib.parse import quote
+    pass
 
 
 class TV(TMDb):

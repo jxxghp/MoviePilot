@@ -2,7 +2,7 @@ import importlib
 import threading
 import traceback
 from threading import Thread
-from typing import Any, Union, Dict
+from typing import Any, Union
 
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
@@ -235,7 +235,7 @@ class Command(metaclass=Singleton):
                             }
                         )
 
-    def __run_command(self, command: Dict[str, any],
+    def __run_command(self, command: dict[str, any],
                       data_str: str = "",
                       channel: MessageChannel = None, userid: Union[str, int] = None):
         """

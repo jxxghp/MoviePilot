@@ -1,5 +1,5 @@
 import time
-from typing import Optional, Union, Tuple, List
+from typing import Optional, Union
 
 import qbittorrentapi
 from qbittorrentapi import TorrentDictionary, TorrentFilesList
@@ -70,7 +70,7 @@ class Qbittorrent:
 
     def get_torrents(self, ids: Union[str, list] = None,
                      status: Union[str, list] = None,
-                     tags: Union[str, list] = None) -> Tuple[List[TorrentDictionary], bool]:
+                     tags: Union[str, list] = None) -> tuple[list[TorrentDictionary], bool]:
         """
         获取种子列表
         return: 种子列表, 是否发生异常
@@ -95,7 +95,7 @@ class Qbittorrent:
             return [], True
 
     def get_completed_torrents(self, ids: Union[str, list] = None,
-                               tags: Union[str, list] = None) -> Optional[List[TorrentDictionary]]:
+                               tags: Union[str, list] = None) -> Optional[list[TorrentDictionary]]:
         """
         获取已完成的种子
         return: 种子列表, 如发生异常则返回None
@@ -107,7 +107,7 @@ class Qbittorrent:
         return None if error else torrents or []
 
     def get_downloading_torrents(self, ids: Union[str, list] = None,
-                                 tags: Union[str, list] = None) -> Optional[List[TorrentDictionary]]:
+                                 tags: Union[str, list] = None) -> Optional[list[TorrentDictionary]]:
         """
         获取正在下载的种子
         return: 种子列表, 如发生异常则返回None
@@ -372,7 +372,7 @@ class Qbittorrent:
             logger.error(f"设置速度限制出错：{str(err)}")
             return False
 
-    def get_speed_limit(self) -> Optional[Tuple[float, float]]:
+    def get_speed_limit(self) -> Optional[tuple[float, float]]:
         """
         获取QB速度
         :return: 返回download_limit 和upload_limit ，默认是0

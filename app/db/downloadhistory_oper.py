@@ -1,4 +1,3 @@
-from typing import List
 
 from app.db import DbOper
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
@@ -29,7 +28,7 @@ class DownloadHistoryOper(DbOper):
         """
         DownloadHistory(**kwargs).create(self._db)
 
-    def add_files(self, file_items: List[dict]):
+    def add_files(self, file_items: list[dict]):
         """
         新增下载历史文件
         """
@@ -43,7 +42,7 @@ class DownloadHistoryOper(DbOper):
         """
         DownloadFiles.truncate(self._db)
 
-    def get_files_by_hash(self, download_hash: str, state: int = None) -> List[DownloadFiles]:
+    def get_files_by_hash(self, download_hash: str, state: int = None) -> list[DownloadFiles]:
         """
         按Hash查询下载文件记录
         :param download_hash: 数据key
@@ -58,14 +57,14 @@ class DownloadHistoryOper(DbOper):
         """
         return DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=False)
 
-    def get_files_by_fullpath(self, fullpath: str) -> List[DownloadFiles]:
+    def get_files_by_fullpath(self, fullpath: str) -> list[DownloadFiles]:
         """
         按fullpath查询下载文件记录
         :param fullpath: 数据key
         """
         return DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=True)
 
-    def get_files_by_savepath(self, fullpath: str) -> List[DownloadFiles]:
+    def get_files_by_savepath(self, fullpath: str) -> list[DownloadFiles]:
         """
         按savepath查询下载文件记录
         :param fullpath: 数据key
@@ -89,7 +88,7 @@ class DownloadHistoryOper(DbOper):
             return fileinfo.download_hash
         return ""
 
-    def list_by_page(self, page: int = 1, count: int = 30) -> List[DownloadHistory]:
+    def list_by_page(self, page: int = 1, count: int = 30) -> list[DownloadHistory]:
         """
         分页查询下载历史
         """
@@ -102,7 +101,7 @@ class DownloadHistoryOper(DbOper):
         DownloadHistory.truncate(self._db)
 
     def get_last_by(self, mtype=None, title: str = None, year: str = None,
-                    season: str = None, episode: str = None, tmdbid=None) -> List[DownloadHistory]:
+                    season: str = None, episode: str = None, tmdbid=None) -> list[DownloadHistory]:
         """
         按类型、标题、年份、季集查询下载记录
         """
@@ -114,7 +113,7 @@ class DownloadHistoryOper(DbOper):
                                            episode=episode,
                                            tmdbid=tmdbid)
 
-    def list_by_user_date(self, date: str, username: str = None) -> List[DownloadHistory]:
+    def list_by_user_date(self, date: str, username: str = None) -> list[DownloadHistory]:
         """
         查询某用户某时间之前的下载历史
         """
@@ -122,7 +121,7 @@ class DownloadHistoryOper(DbOper):
                                                  date=date,
                                                  username=username)
 
-    def list_by_date(self, date: str, type: str, tmdbid: str, seasons: str = None) -> List[DownloadHistory]:
+    def list_by_date(self, date: str, type: str, tmdbid: str, seasons: str = None) -> list[DownloadHistory]:
         """
         查询某时间之后的下载历史
         """
@@ -132,7 +131,7 @@ class DownloadHistoryOper(DbOper):
                                             tmdbid=tmdbid,
                                             seasons=seasons)
 
-    def list_by_type(self, mtype: str, days: int = 7) -> List[DownloadHistory]:
+    def list_by_type(self, mtype: str, days: int = 7) -> list[DownloadHistory]:
         """
         获取指定类型的下载历史
         """

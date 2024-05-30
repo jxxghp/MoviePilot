@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Tuple
 
 import regex as re
 
@@ -99,7 +98,7 @@ def is_anime(name: str) -> bool:
     return False
 
 
-def find_metainfo(title: str) -> Tuple[str, dict]:
+def find_metainfo(title: str) -> tuple[str, dict]:
     """
     从标题中提取媒体信息
     """

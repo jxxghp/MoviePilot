@@ -1,6 +1,7 @@
 import inspect
 from types import FunctionType
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 
 class ObjectUtils:

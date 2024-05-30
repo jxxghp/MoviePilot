@@ -1,4 +1,4 @@
-from typing import Tuple, Optional
+from typing import Optional
 
 from sqlalchemy import Boolean, Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
@@ -34,7 +34,7 @@ class User(Base):
 
     @staticmethod
     @db_query
-    def authenticate(db: Session, name: str, password: str, otp_password: str) -> Tuple[bool, Optional[User]]:
+    def authenticate(db: Session, name: str, password: str, otp_password: str) -> tuple[bool, Optional[User]]:
         user = db.query(User).filter(User.name == name).first()
         if not user:
             return False, None

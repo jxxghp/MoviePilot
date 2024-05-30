@@ -1,6 +1,6 @@
 import base64
 import re
-from typing import Any, List, Union
+from typing import Any, Union
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
@@ -16,7 +16,7 @@ from app.utils.otp import OtpUtils
 router = APIRouter()
 
 
-@router.get("/", summary="所有用户", response_model=List[schemas.User])
+@router.get("/", summary="所有用户", response_model=list[schemas.User])
 def read_users(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_superuser),

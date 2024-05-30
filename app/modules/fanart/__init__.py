@@ -317,7 +317,7 @@ class FanartModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -328,7 +328,7 @@ class FanartModule(_ModuleBase):
             return False, f"无法连接fanart，错误码：{ret.status_code}"
         return False, "fanart网络连接失败"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         return "FANART_API_KEY", True
 
     @staticmethod

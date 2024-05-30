@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -62,4 +62,4 @@ class PluginDashboard(Plugin):
     # col列数
     cols: Optional[dict] = {}
     # 页面元素
-    elements: Optional[List[dict]] = []
+    elements: Optional[list[dict]] = []

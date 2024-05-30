@@ -1,12 +1,12 @@
 from enum import Enum
-from typing import Union, Dict
+from typing import Union
 
 from app.schemas.types import ProgressKey
 from app.utils.singleton import Singleton
 
 
 class ProgressHelper(metaclass=Singleton):
-    _process_detail: Dict[str, dict] = {}
+    _process_detail: dict[str, dict] = {}
 
     def __init__(self):
         self._process_detail = {}

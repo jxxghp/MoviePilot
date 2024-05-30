@@ -1,4 +1,4 @@
-from typing import Union, Any, List
+from typing import Union, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi import Request
@@ -55,7 +55,7 @@ def web_message(text: str, current_user: User = Depends(get_current_active_super
     return schemas.Response(success=True)
 
 
-@router.get("/web", summary="获取WEB消息", response_model=List[dict])
+@router.get("/web", summary="获取WEB消息", response_model=list[dict])
 def get_web_message(_: schemas.TokenPayload = Depends(verify_token),
                     db: Session = Depends(get_db),
                     page: int = 1,
@@ -118,7 +118,7 @@ def incoming_verify(token: str = None, echostr: str = None, msg_signature: str =
     return vocechat_verify(token)
 
 
-@router.get("/switchs", summary="查询通知消息渠道开关", response_model=List[NotificationSwitch])
+@router.get("/switchs", summary="查询通知消息渠道开关", response_model=list[NotificationSwitch])
 def read_switchs(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询通知消息渠道开关
@@ -143,7 +143,7 @@ def read_switchs(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.post("/switchs", summary="设置通知消息渠道开关", response_model=schemas.Response)
-def set_switchs(switchs: List[NotificationSwitch],
+def set_switchs(switchs: list[NotificationSwitch],
                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     设置通知消息渠道开关

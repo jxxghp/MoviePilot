@@ -22,7 +22,7 @@ class VoceChatModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -31,7 +31,7 @@ class VoceChatModule(_ModuleBase):
             return True, ""
         return False, "获取VoceChat频道失败"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         return "MESSAGER", "vocechat"
 
     @staticmethod
@@ -106,7 +106,7 @@ class VoceChatModule(_ModuleBase):
         self.vocechat.send_msg(title=message.title, text=message.text, userid=message.userid)
 
     @checkMessage(MessageChannel.VoceChat)
-    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
+    def post_medias_message(self, message: Notification, medias: list[MediaInfo]) -> Optional[bool]:
         """
         发送媒体信息选择列表
         :param message: 消息内容
@@ -119,7 +119,7 @@ class VoceChatModule(_ModuleBase):
         return self.vocechat.send_medias_msg(title=message.title, medias=medias, userid=message.userid)
 
     @checkMessage(MessageChannel.VoceChat)
-    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
+    def post_torrents_message(self, message: Notification, torrents: list[Context]) -> Optional[bool]:
         """
         发送种子信息选择列表
         :param message: 消息内容
@@ -128,5 +128,5 @@ class VoceChatModule(_ModuleBase):
         """
         return self.vocechat.send_torrents_msg(title=message.title, torrents=torrents, userid=message.userid)
 
-    def register_commands(self, commands: Dict[str, dict]):
+    def register_commands(self, commands: dict[str, dict]):
         pass

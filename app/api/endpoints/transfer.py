@@ -73,7 +73,7 @@ def manual_transfer(path: str = None,
     elif path:
         in_path = Path(path)
     else:
-        return schemas.Response(success=False, message=f"缺少参数：path/logid")
+        return schemas.Response(success=False, message="缺少参数：path/logid")
 
     # 类型
     mtype = MediaType(type_name) if type_name else None

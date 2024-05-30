@@ -23,7 +23,7 @@ class TheTvDbModule(_ModuleBase):
     def stop(self):
         self.tvdb.close()
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -34,7 +34,7 @@ class TheTvDbModule(_ModuleBase):
             return False, f"无法连接 api.thetvdb.com，错误码：{ret.status_code}"
         return False, "api.thetvdb.com 网络连接失败"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         pass
 
     def tvdb_info(self, tvdbid: int) -> Optional[dict]:

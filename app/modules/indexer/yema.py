@@ -1,4 +1,3 @@
-from typing import Tuple, List
 
 from ruamel.yaml import CommentedMap
 
@@ -43,7 +42,7 @@ class YemaSpider:
             self._ua = indexer.get('ua')
             self._timeout = indexer.get('timeout') or 15
 
-    def search(self, keyword: str, mtype: MediaType = None, page: int = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, mtype: MediaType = None, page: int = 0) -> tuple[bool, list[dict]]:
         """
         搜索
         """

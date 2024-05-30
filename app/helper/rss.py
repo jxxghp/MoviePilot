@@ -1,7 +1,7 @@
 import re
 import traceback
 import xml.dom.minidom
-from typing import List, Tuple, Union
+from typing import Union
 from urllib.parse import urljoin
 
 import chardet
@@ -225,7 +225,7 @@ class RssHelper:
     }
 
     @staticmethod
-    def parse(url, proxy: bool = False, timeout: int = 15) -> Union[List[dict], None]:
+    def parse(url, proxy: bool = False, timeout: int = 15) -> Union[list[dict], None]:
         """
         解析RSS订阅URL，获取RSS中的种子信息
         :param url: RSS地址
@@ -322,7 +322,7 @@ class RssHelper:
                     return None
         return ret_array
 
-    def get_rss_link(self, url: str, cookie: str, ua: str, proxy: bool = False) -> Tuple[str, str]:
+    def get_rss_link(self, url: str, cookie: str, ua: str, proxy: bool = False) -> tuple[str, str]:
         """
         获取站点rss地址
         :param url: 站点地址

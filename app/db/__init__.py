@@ -1,5 +1,6 @@
 from typing import Any, Self, List
-from typing import Tuple, Optional, Generator
+from typing import Tuple, Optional
+from collections.abc import Generator
 
 from sqlalchemy import create_engine, QueuePool
 from sqlalchemy import inspect
@@ -57,7 +58,7 @@ def get_args_db(args: tuple, kwargs: dict) -> Optional[Session]:
     return db
 
 
-def update_args_db(args: tuple, kwargs: dict, db: Session) -> Tuple[tuple, dict]:
+def update_args_db(args: tuple, kwargs: dict, db: Session) -> tuple[tuple, dict]:
     """
     更新参数中的数据库Session对象，关键字传参时更新db的值，否则更新第1或第2个参数
     """
@@ -172,7 +173,7 @@ class Base:
 
     @classmethod
     @db_query
-    def list(cls, db: Session) -> List[Self]:
+    def list(cls, db: Session) -> list[Self]:
         result = db.query(cls).all()
         return list(result)
 

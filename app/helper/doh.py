@@ -10,7 +10,7 @@ import socket
 import struct
 import urllib
 import urllib.request
-from typing import Dict, Optional
+from typing import Optional
 
 from app.core.config import settings
 from app.log import logger
@@ -31,7 +31,7 @@ _executor = concurrent.futures.ThreadPoolExecutor()
 
 # 定义默认的DoH配置
 _doh_timeout = 5
-_doh_cache: Dict[str, str] = {}
+_doh_cache: dict[str, str] = {}
 _doh_resolvers = [
     # https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https
     "1.0.0.1",

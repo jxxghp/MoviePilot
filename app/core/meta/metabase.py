@@ -1,6 +1,6 @@
 import traceback
 from dataclasses import dataclass, asdict
-from typing import Union, Optional, List, Self
+from typing import Union, Optional, Self
 
 import cn2an
 import regex as re
@@ -60,7 +60,7 @@ class MetaBase(object):
     # 音频编码
     audio_encode: Optional[str] = None
     # 应用的识别词信息
-    apply_words: Optional[List[str]] = None
+    apply_words: Optional[list[str]] = None
     # 附加信息
     tmdbid: int = None
     doubanid: str = None
@@ -306,7 +306,7 @@ class MetaBase(object):
                 return ""
 
     @property
-    def season_list(self) -> List[int]:
+    def season_list(self) -> list[int]:
         """
         返回季的数组
         """
@@ -336,7 +336,7 @@ class MetaBase(object):
             return ""
 
     @property
-    def episode_list(self) -> List[int]:
+    def episode_list(self) -> list[int]:
         """
         返回集的数组
         """

@@ -33,7 +33,7 @@ class IndexerModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -42,13 +42,13 @@ class IndexerModule(_ModuleBase):
             return False, "未配置站点或未通过用户认证"
         return True, ""
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         return "INDEXER", "builtin"
 
     def search_torrents(self, site: CommentedMap,
-                        keywords: List[str] = None,
+                        keywords: list[str] = None,
                         mtype: MediaType = None,
-                        page: int = 0) -> List[TorrentInfo]:
+                        page: int = 0) -> list[TorrentInfo]:
         """
         搜索一个站点
         :param site:  站点
@@ -58,7 +58,7 @@ class IndexerModule(_ModuleBase):
         :return: 资源列表
         """
 
-        def __remove_duplicate(_torrents: List[TorrentInfo]) -> List[TorrentInfo]:
+        def __remove_duplicate(_torrents: list[TorrentInfo]) -> list[TorrentInfo]:
             """
             去除重复的种子
             :param _torrents: 种子列表
@@ -170,7 +170,7 @@ class IndexerModule(_ModuleBase):
     def __spider_search(indexer: CommentedMap,
                         search_word: str = None,
                         mtype: MediaType = None,
-                        page: int = 0) -> (bool, List[dict]):
+                        page: int = 0) -> (bool, list[dict]):
         """
         根据关键字搜索单个站点
         :param: indexer: 站点配置
@@ -187,7 +187,7 @@ class IndexerModule(_ModuleBase):
 
         return _spider.is_error, _spider.get_torrents()
 
-    def refresh_torrents(self, site: CommentedMap) -> Optional[List[TorrentInfo]]:
+    def refresh_torrents(self, site: CommentedMap) -> Optional[list[TorrentInfo]]:
         """
         获取站点最新一页的种子，多个站点需要多线程处理
         :param site:  站点

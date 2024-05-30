@@ -215,7 +215,7 @@ def latest_version(_: schemas.TokenPayload = Depends(verify_token)):
     查询Github所有Release版本
     """
     version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
-        f"https://api.github.com/repos/jxxghp/MoviePilot/releases")
+        "https://api.github.com/repos/jxxghp/MoviePilot/releases")
     if version_res:
         ver_json = version_res.json()
         if ver_json:

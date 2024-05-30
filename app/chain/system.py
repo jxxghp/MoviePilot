@@ -25,7 +25,7 @@ class SystemChain(ChainBase, metaclass=Singleton):
         """
         self.clear_cache()
         self.post_message(Notification(channel=channel,
-                                       title=f"缓存清理完成！", userid=userid))
+                                       title="缓存清理完成！", userid=userid))
 
     def restart(self, channel: MessageChannel, userid: Union[int, str]):
         """

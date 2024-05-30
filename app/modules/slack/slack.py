@@ -1,6 +1,6 @@
 import re
 from threading import Lock
-from typing import List, Optional
+from typing import Optional
 
 import requests
 from slack_bolt import App
@@ -161,7 +161,7 @@ class Slack:
             logger.error(f"Slack消息发送失败: {msg_e}")
             return False, str(msg_e)
 
-    def send_meidas_msg(self, medias: List[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_meidas_msg(self, medias: list[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表类消息
         """
@@ -244,7 +244,7 @@ class Slack:
             logger.error(f"Slack消息发送失败: {msg_e}")
             return False
 
-    def send_torrents_msg(self, torrents: List[Context],
+    def send_torrents_msg(self, torrents: list[Context],
                           userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表消息

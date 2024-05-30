@@ -1,4 +1,4 @@
-from typing import Optional, Union, Tuple, List, Dict
+from typing import Optional, Union
 
 import transmission_rpc
 from transmission_rpc import Client, Torrent, File
@@ -69,7 +69,7 @@ class Transmission:
         self.trc = self.__login_transmission()
 
     def get_torrents(self, ids: Union[str, list] = None, status: Union[str, list] = None,
-                     tags: Union[str, list] = None) -> Tuple[List[Torrent], bool]:
+                     tags: Union[str, list] = None) -> tuple[list[Torrent], bool]:
         """
         获取种子列表
         返回结果 种子列表, 是否有错误
@@ -99,7 +99,7 @@ class Transmission:
         return ret_torrents, False
 
     def get_completed_torrents(self, ids: Union[str, list] = None,
-                               tags: Union[str, list] = None) -> Optional[List[Torrent]]:
+                               tags: Union[str, list] = None) -> Optional[list[Torrent]]:
         """
         获取已完成的种子列表
         return 种子列表, 发生错误时返回None
@@ -114,7 +114,7 @@ class Transmission:
             return None
 
     def get_downloading_torrents(self, ids: Union[str, list] = None,
-                                 tags: Union[str, list] = None) -> Optional[List[Torrent]]:
+                                 tags: Union[str, list] = None) -> Optional[list[Torrent]]:
         """
         获取正在下载的种子列表
         return 种子列表, 发生错误时返回None
@@ -145,7 +145,7 @@ class Transmission:
             logger.error(f"设置种子标签出错：{str(err)}")
             return False
 
-    def get_torrent_tags(self, ids: str) -> List[str]:
+    def get_torrent_tags(self, ids: str) -> list[str]:
         """
         获取所有种子标签
         """
@@ -229,7 +229,7 @@ class Transmission:
             logger.error(f"删除种子出错：{str(err)}")
             return False
 
-    def get_files(self, tid: str) -> Optional[List[File]]:
+    def get_files(self, tid: str) -> Optional[list[File]]:
         """
         获取种子文件列表
         """
@@ -307,7 +307,7 @@ class Transmission:
             logger.error(f"设置速度限制出错：{str(err)}")
             return False
 
-    def get_speed_limit(self) -> Optional[Tuple[float, float]]:
+    def get_speed_limit(self) -> Optional[tuple[float, float]]:
         """
         获取TR速度
         :return: download_limit 下载速度 默认是0

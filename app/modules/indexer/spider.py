@@ -2,7 +2,6 @@ import copy
 import datetime
 import re
 import traceback
-from typing import List
 from urllib.parse import quote, urlencode, urlparse, parse_qs
 
 import chardet
@@ -16,6 +15,7 @@ from app.log import logger
 from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
+import builtins
 
 
 class TorrentSpider:
@@ -112,7 +112,7 @@ class TorrentSpider:
             self.referer = referer
         self.torrents_info_array = []
 
-    def get_torrents(self) -> List[dict]:
+    def get_torrents(self) -> builtins.list[dict]:
         """
         开始请求
         """
@@ -731,7 +731,7 @@ class TorrentSpider:
             items = items[0]
         return items
 
-    def parse(self, html_text: str) -> List[dict]:
+    def parse(self, html_text: str) -> builtins.list[dict]:
         """
         解析整个页面
         """

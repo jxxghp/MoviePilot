@@ -19,7 +19,7 @@ class BangumiModule(_ModuleBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> tuple[bool, str]:
         """
         测试模块连接性
         """
@@ -30,7 +30,7 @@ class BangumiModule(_ModuleBase):
             return False, f"无法连接Bangumi，错误码：{ret.status_code}"
         return False, "Bangumi网络连接失败"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> tuple[str, Union[str, bool]]:
         pass
 
     @staticmethod
@@ -60,7 +60,7 @@ class BangumiModule(_ModuleBase):
 
         return None
 
-    def search_medias(self, meta: MetaBase) -> Optional[List[MediaInfo]]:
+    def search_medias(self, meta: MetaBase) -> Optional[list[MediaInfo]]:
         """
         搜索媒体信息
         :param meta:  识别的元数据
@@ -88,7 +88,7 @@ class BangumiModule(_ModuleBase):
         logger.info(f"开始获取Bangumi信息：{bangumiid} ...")
         return self.bangumiapi.detail(bangumiid)
 
-    def bangumi_calendar(self) -> Optional[List[MediaInfo]]:
+    def bangumi_calendar(self) -> Optional[list[MediaInfo]]:
         """
         获取Bangumi每日放送
         """
@@ -97,7 +97,7 @@ class BangumiModule(_ModuleBase):
             return [MediaInfo(bangumi_info=info) for info in infos]
         return []
 
-    def bangumi_credits(self, bangumiid: int) -> List[schemas.MediaPerson]:
+    def bangumi_credits(self, bangumiid: int) -> list[schemas.MediaPerson]:
         """
         根据TMDBID查询电影演职员表
         :param bangumiid:  BangumiID
@@ -107,7 +107,7 @@ class BangumiModule(_ModuleBase):
             return [schemas.MediaPerson(source='bangumi', **person) for person in persons]
         return []
 
-    def bangumi_recommend(self, bangumiid: int) -> List[MediaInfo]:
+    def bangumi_recommend(self, bangumiid: int) -> list[MediaInfo]:
         """
         根据BangumiID查询推荐电影
         :param bangumiid:  BangumiID
@@ -134,7 +134,7 @@ class BangumiModule(_ModuleBase):
             })
         return None
 
-    def bangumi_person_credits(self, person_id: int) -> List[MediaInfo]:
+    def bangumi_person_credits(self, person_id: int) -> list[MediaInfo]:
         """
         根据TMDBID查询人物参演作品
         :param person_id:  人物ID

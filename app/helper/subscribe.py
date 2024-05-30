@@ -1,5 +1,4 @@
 from threading import Thread
-from typing import List
 
 from cachetools import TTLCache, cached
 
@@ -32,7 +31,7 @@ class SubscribeHelper(metaclass=Singleton):
                     self.systemconfig.set(SystemConfigKey.SubscribeReport, "1")
 
     @cached(cache=TTLCache(maxsize=20, ttl=1800))
-    def get_statistic(self, stype: str, page: int = 1, count: int = 30) -> List[dict]:
+    def get_statistic(self, stype: str, page: int = 1, count: int = 30) -> list[dict]:
         """
         获取订阅统计数据
         """
