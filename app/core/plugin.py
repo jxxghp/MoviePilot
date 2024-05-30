@@ -26,7 +26,6 @@ from app.utils.system import SystemUtils
 
 
 class PluginMonitorHandler(FileSystemEventHandler):
-
     # 计时器
     __reload_timer = None
     # 防抖时间间隔
@@ -350,6 +349,7 @@ class PluginManager(metaclass=Singleton):
         :param pid: 插件ID
         :param key: 仪表盘key
         """
+
         def __get_params_count(func: Callable):
             """
             获取函数的参数信息
@@ -630,14 +630,14 @@ class PluginManager(metaclass=Singleton):
         all_plugins.sort(
             key=lambda x: settings.PLUGIN_MARKET.split(",").index(x.repo_url) if x.repo_url else 0
         )
-        # 按插件ID和版本号去重，相同插件以前面的为准
-        result = []
-        _dup = []
+
+        # 相同ID的插件保留版本号最大版本
+        max_versions = {}
         for p in all_plugins:
-            key = f"{p.id}v{p.plugin_version}"
-            if key not in _dup:
-                _dup.append(key)
-                result.append(p)
+            if p.id not in max_versions or StringUtils.compare_version(p.plugin_version, max_versions[p.id]) > 0:
+                max_versions[p.id] = p.plugin_version
+        result = [p for p in all_plugins if
+                  p.plugin_version == max_versions[p.id]]
         logger.info(f"共获取到 {len(result)} 个第三方插件")
         return result
 
