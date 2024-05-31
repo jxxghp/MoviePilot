@@ -12,6 +12,7 @@ class TransferTorrent(BaseModel):
     path: Optional[Path] = None
     hash: Optional[str] = None
     tags: Optional[str] = None
+    size: Optional[int] = 0
     userid: Optional[str] = None
 
 

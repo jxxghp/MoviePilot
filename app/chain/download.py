@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from typing import List, Optional, Tuple, Set, Dict, Union
 
+from app import schemas
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.context import MediaInfo, TorrentInfo, Context
@@ -908,4 +909,14 @@ class DownloadChain(ChainBase):
         if not hash_str:
             return
         logger.warn(f"检测到下载源文件被删除，删除下载任务（不含文件）：{hash_str}")
-        self.remove_torrents(hashs=[hash_str], delete_file=False)
+        # 先查询种子
+        torrents: List[schemas.TransferTorrent] = self.list_torrents(hashs=[hash_str])
+        if torrents:
+            self.remove_torrents(hashs=[hash_str], delete_file=False)
+            # 发出下载任务删除事件，如需处理辅种，可监听该事件
+            self.eventmanager.send_event(EventType.DownloadDeleted, {
+                "hash": hash_str,
+                "torrents": [torrent.dict() for torrent in torrents]
+            })
+        else:
+            logger.info(f"没有在下载器中查询到 {hash_str} 对应的下载任务")

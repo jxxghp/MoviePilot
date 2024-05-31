@@ -32,6 +32,8 @@ class EventType(Enum):
     HistoryDeleted = "history.deleted"
     # 删除下载源文件
     DownloadFileDeleted = "downloadfile.deleted"
+    # 删除下载任务
+    DownloadDeleted = "download.deleted"
     # 收到用户外来消息
     UserMessage = "user.message"
     # 收到Webhook消息

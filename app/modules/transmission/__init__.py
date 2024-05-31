@@ -185,6 +185,7 @@ class TransmissionModule(_ModuleBase):
                     title=torrent.name,
                     path=Path(torrent.download_dir) / torrent.name,
                     hash=torrent.hashString,
+                    size=torrent.total_size,
                     tags=",".join(torrent.labels or [])
                 ))
         elif status == TorrentStatus.TRANSFER:

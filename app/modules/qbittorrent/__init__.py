@@ -197,6 +197,7 @@ class QbittorrentModule(_ModuleBase):
                     title=torrent.get('name'),
                     path=torrent_path,
                     hash=torrent.get('hash'),
+                    size=torrent.get('total_size'),
                     tags=torrent.get('tags')
                 ))
         elif status == TorrentStatus.TRANSFER:
