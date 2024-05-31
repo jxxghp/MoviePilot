@@ -626,11 +626,12 @@ class PluginManager(metaclass=Singleton):
                 plugins = future.result()
                 if plugins:
                     all_plugins.extend(plugins)
+        # 去重
+        all_plugins = list({f"{p.id}{p.plugin_version}": p for p in all_plugins}.values())
         # 所有插件按repo在设置中的顺序排序
         all_plugins.sort(
             key=lambda x: settings.PLUGIN_MARKET.split(",").index(x.repo_url) if x.repo_url else 0
         )
-
         # 相同ID的插件保留版本号最大版本
         max_versions = {}
         for p in all_plugins:
