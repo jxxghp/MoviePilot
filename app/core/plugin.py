@@ -638,7 +638,7 @@ class PluginManager(metaclass=Singleton):
                 max_versions[p.id] = p.plugin_version
         result = [p for p in all_plugins if
                   p.plugin_version == max_versions[p.id]]
-        logger.info(f"共获取到 {len(result)} 个第三方插件")
+        logger.info(f"共获取到 {len(result)} 个线上插件")
         return result
 
     def get_local_plugins(self) -> List[schemas.Plugin]:
