@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import List, Optional
 
@@ -58,10 +57,6 @@ class DirectoryHelper:
             # 有目标目录，但目标目录与当前目录不相等时不要
             if to_path and download_path != to_path:
                 continue
-            # 不存在目录则创建
-            # 注释说明：MP应该和下载器解耦，下载器的目录应该由下载器自己维护，否则在容器环境当下载器的目录映射与MP中不一致时会导致异常
-            #if not download_path.exists():
-            #    download_path.mkdir(parents=True, exist_ok=True)
             # 目录类型为全部的，符合条件
             if not download_dir.media_type:
                 return download_dir
