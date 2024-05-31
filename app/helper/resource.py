@@ -86,6 +86,7 @@ class ResourceHelper(metaclass=Singleton):
                 if not save_path:
                     continue
                 if item.get("download_url"):
+                    logger.info(f"开始更新资源文件：{item.get('name')} ...")
                     # 下载资源文件
                     res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS,
                                        timeout=180).get_res(item["download_url"])
