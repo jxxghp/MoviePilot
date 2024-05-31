@@ -49,7 +49,7 @@ def list_path(path: str,
     # 遍历目录
     path_obj = Path(path)
     if not path_obj.exists():
-        logger.error(f"目录不存在：{path}")
+        logger.warn(f"目录不存在：{path}")
         return []
 
     # 如果是文件
@@ -95,6 +95,47 @@ def list_path(path: str,
         ret_items.sort(key=lambda x: x.modify_time, reverse=True)
     else:
         ret_items.sort(key=lambda x: x.name, reverse=False)
+    return ret_items
+
+
+@router.get("/listdir", summary="所有目录（不含文件）", response_model=List[schemas.FileItem])
+def list_dir(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询当前目录下所有目录
+    """
+    # 返回结果
+    ret_items = []
+    if not path or path == "/":
+        if SystemUtils.is_windows():
+            partitions = SystemUtils.get_windows_drives() or ["C:/"]
+            for partition in partitions:
+                ret_items.append(schemas.FileItem(
+                    type="dir",
+                    path=partition + "/",
+                    name=partition,
+                    children=[]
+                ))
+            return ret_items
+        else:
+            path = "/"
+    else:
+        if not SystemUtils.is_windows() and not path.startswith("/"):
+            path = "/" + path
+
+    # 遍历目录
+    path_obj = Path(path)
+    if not path_obj.exists():
+        logger.warn(f"目录不存在：{path}")
+        return []
+
+    # 扁历所有目录
+    for item in SystemUtils.list_sub_directory(path_obj):
+        ret_items.append(schemas.FileItem(
+            type="dir",
+            path=str(item).replace("\\", "/") + "/",
+            name=item.name,
+            children=[]
+        ))
     return ret_items
 
 
