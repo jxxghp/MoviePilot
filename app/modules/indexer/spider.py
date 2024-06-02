@@ -674,7 +674,9 @@ class TorrentSpider:
             try:
                 args = filter_item.get("args")
                 if method_name == "re_search" and isinstance(args, list):
-                    text = re.search(r"%s" % args[0], text).group(args[-1])
+                    rematch = re.search(r"%s" % args[0], text)
+                    if rematch:
+                        text = rematch.group(args[-1])
                 elif method_name == "split" and isinstance(args, list):
                     text = text.split(r"%s" % args[0])[args[-1]]
                 elif method_name == "replace" and isinstance(args, list):

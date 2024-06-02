@@ -46,7 +46,9 @@ def download(
         torrent_info=torrentinfo
     )
     did = DownloadChain().download_single(context=context, username=current_user.name)
-    return schemas.Response(success=True if did else False, data={
+    if not did:
+        return schemas.Response(success=False, message="任务添加失败")
+    return schemas.Response(success=True, data={
         "download_id": did
     })
 
@@ -74,7 +76,9 @@ def add(
         torrent_info=torrentinfo
     )
     did = DownloadChain().download_single(context=context, username=current_user.name)
-    return schemas.Response(success=True if did else False, data={
+    if not did:
+        return schemas.Response(success=False, message="任务添加失败")
+    return schemas.Response(success=True, data={
         "download_id": did
     })
 

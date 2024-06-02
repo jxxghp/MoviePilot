@@ -53,12 +53,12 @@ class SearchChain(ChainBase):
                 }
             }
         results = self.process(mediainfo=mediainfo, area=area, no_exists=no_exists)
-        # 保存眲结果
+        # 保存结果
         bytes_results = pickle.dumps(results)
         self.systemconfig.set(SystemConfigKey.SearchResults, bytes_results)
         return results
 
-    def search_by_title(self, title: str, page: int = 0, site: int = None) -> List[TorrentInfo]:
+    def search_by_title(self, title: str, page: int = 0, site: int = None) -> List[Context]:
         """
         根据标题搜索资源，不识别不过滤，直接返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
@@ -70,7 +70,17 @@ class SearchChain(ChainBase):
         else:
             logger.info(f'开始浏览资源，站点：{site} ...')
         # 搜索
-        return self.__search_all_sites(keywords=[title], sites=[site] if site else None, page=page) or []
+        torrents = self.__search_all_sites(keywords=[title], sites=[site] if site else None, page=page) or []
+        if not torrents:
+            logger.warn(f'{title} 未搜索到资源')
+            return []
+        # 组装上下文
+        contexts = [Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+                            torrent_info=torrent) for torrent in torrents]
+        # 保存结果
+        bytes_results = pickle.dumps(contexts)
+        self.systemconfig.set(SystemConfigKey.SearchResults, bytes_results)
+        return contexts
 
     def last_search_results(self) -> List[Context]:
         """
