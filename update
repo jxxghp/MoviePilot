@@ -21,14 +21,14 @@ download_and_unzip() {
 install_backend_and_download_resources() {
     # 清理临时目录，上次安装失败可能有残留
     rm -rf /tmp/*
-    if download_and_unzip "https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"; then
+    if download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"; then
         echo "后端程序下载成功"
         pip install ${PIP_OPTIONS} --upgrade pip
         if pip install ${PIP_OPTIONS} -r /tmp/App/requirements.txt; then
             echo "安装依赖成功"
             frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" ${CURL_HEADERS} | jq -r .tag_name)
             if [[ "${frontend_version}" == *v* ]]; then
-                if download_and_unzip "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"; then
+                if download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"; then
                     echo "前端程序下载成功"
                     # 提前备份插件目录
                     rm -rf /plugins
@@ -49,7 +49,7 @@ install_backend_and_download_resources() {
                     rm -rf /tmp/*
                     echo "程序部分更新成功，前端版本：${frontend_version}，后端版本：${1}"s
                     echo "开始更新插件..."
-                    if download_and_unzip "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" "Plugins"; then
+                    if download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" "Plugins"; then
                         echo "插件下载成功"
                         # 恢复插件目录
                         cp -a /plugins/* /app/app/plugins/
@@ -61,7 +61,7 @@ install_backend_and_download_resources() {
                         rm -rf /tmp/*
                         echo "插件更新成功"
                         echo "开始更新资源包..."
-                        if download_and_unzip "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" "Resources"; then
+                        if download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" "Resources"; then
                             echo "资源包下载成功"
                             # 资源包
                             cp -a /tmp/Resources/resources/* /app/app/helper/

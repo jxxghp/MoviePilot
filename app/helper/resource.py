@@ -15,7 +15,7 @@ class ResourceHelper(metaclass=Singleton):
     检测和更新资源包
     """
     # 资源包的git仓库地址
-    _repo = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/package.json"
+    _repo = f"{settings.GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/package.json"
     _files_api = f"https://api.github.com/repos/jxxghp/MoviePilot-Resources/contents/resources"
     _base_dir: Path = settings.ROOT_PATH
 
@@ -87,9 +87,10 @@ class ResourceHelper(metaclass=Singleton):
                     continue
                 if item.get("download_url"):
                     logger.info(f"开始更新资源文件：{item.get('name')} ...")
+                    download_url = f"{settings.GITHUB_PROXY}{item.get('download_url')}"
                     # 下载资源文件
                     res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS,
-                                       timeout=180).get_res(item["download_url"])
+                                       timeout=180).get_res(download_url)
                     if not res:
                         logger.error(f"文件 {item.get('name')} 下载失败！")
                     elif res.status_code != 200:
