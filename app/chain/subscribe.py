@@ -464,14 +464,29 @@ class SubscribeChain(ChainBase):
     def get_sub_sites(self, subscribe: Subscribe) -> List[int]:
         """
         获取订阅中涉及的站点清单
+        :param subscribe: 订阅信息对象
+        :return: 涉及的站点清单
         """
-        if subscribe.sites:
-            try:
-                return json.loads(subscribe.sites)
-            except JSONDecodeError:
-                return []
-        # 默认站点
-        return self.systemconfig.get(SystemConfigKey.RssSites) or []
+        # 从系统配置获取默认订阅站点
+        default_sites = self.systemconfig.get(SystemConfigKey.RssSites) or []
+        # 如果订阅未指定站点信息，直接返回默认站点
+        if not subscribe.sites:
+            return default_sites
+        try:
+            # 尝试解析订阅中的站点数据
+            user_sites = json.loads(subscribe.sites)
+            # 计算 user_sites 和 default_sites 的交集
+            intersection_sites = [site for site in user_sites if site in default_sites]
+            # 如果交集与原始订阅不一致，更新数据库
+            if set(intersection_sites) != set(user_sites):
+                self.subscribeoper.update(subscribe.id, {
+                    "sites": json.dumps(intersection_sites)
+                })
+            # 如果交集为空，返回默认站点
+            return intersection_sites if intersection_sites else default_sites
+        except JSONDecodeError:
+            # 如果 JSON 解析失败，返回默认站点
+            return default_sites
 
     def get_subscribed_sites(self) -> Optional[List[int]]:
         """
