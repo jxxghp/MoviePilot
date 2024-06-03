@@ -13,7 +13,7 @@ router = APIRouter()
 
 
 @router.get("/last", summary="查询搜索结果", response_model=List[schemas.Context])
-async def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询搜索结果
     """
@@ -86,10 +86,10 @@ def search_by_id(mediaid: str,
 
 
 @router.get("/title", summary="模糊搜索资源", response_model=schemas.Response)
-async def search_by_title(keyword: str = None,
-                          page: int = 0,
-                          site: int = None,
-                          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def search_by_title(keyword: str = None,
+                    page: int = 0,
+                    site: int = None,
+                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据名称模糊搜索站点资源，支持分页，关键词为空是返回首页资源
     """

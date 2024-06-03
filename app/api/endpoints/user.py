@@ -87,8 +87,8 @@ def read_current_user(
 
 
 @router.post("/avatar/{user_id}", summary="上传用户头像", response_model=schemas.Response)
-async def upload_avatar(user_id: int, db: Session = Depends(get_db), file: UploadFile = File(...),
-                        _: User = Depends(get_current_active_user)):
+def upload_avatar(user_id: int, db: Session = Depends(get_db), file: UploadFile = File(...),
+                  _: User = Depends(get_current_active_user)):
     """
     上传用户头像
     """

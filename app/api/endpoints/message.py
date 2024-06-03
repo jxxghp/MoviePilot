@@ -30,7 +30,7 @@ def start_message_chain(body: Any, form: Any, args: Any):
 
 
 @router.post("/", summary="接收用户消息", response_model=schemas.Response)
-async def user_message(background_tasks: BackgroundTasks, request: Request):
+def user_message(background_tasks: BackgroundTasks, request: Request):
     """
     用户消息响应
     """
