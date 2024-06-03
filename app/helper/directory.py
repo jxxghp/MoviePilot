@@ -77,6 +77,22 @@ class DirectoryHelper:
         :param in_path: 源目录
         :param to_path: 目标目录
         """
+
+        def __comman_parts(path1: Path, path2: Path) -> int:
+            """
+            计算两个路径的公共路径长度
+            """
+            parts1 = path1.parts
+            parts2 = path2.parts
+            root_flag = parts1[0] == '/' and parts2[0] == '/'
+            length = min(len(parts1), len(parts2))
+            for i in range(length):
+                if parts1[i] == '/' and parts2[i] == '/':
+                    continue
+                if parts1[i] != parts2[i]:
+                    return i - 1 if root_flag else i
+            return length - 1 if root_flag else length
+
         # 处理类型
         if media:
             media_type = media.type.value
@@ -121,21 +137,19 @@ class DirectoryHelper:
         if in_path and settings.TRANSFER_SAME_DISK:
             # 优先同根路径
             max_length = 0
-            target_dir = None
+            target_dirs = []
             for matched_dir in matched_dirs:
                 try:
-                    # 计算in_path和path的公共字符串长度
-                    matched_path_str = str(Path(matched_dir.path))
-                    relative_len = len(StringUtils.find_common_prefix(str(in_path), matched_path_str))
-                    if relative_len > max_length:
-                        # 更新最大长度
+                    # 计算in_path和path的公共路径长度
+                    relative_len = __comman_parts(in_path, Path(matched_dir.path))
+                    if relative_len and relative_len >= max_length:
                         max_length = relative_len
-                        target_dir = matched_dir
+                        target_dirs.append(matched_dir)
                 except Exception as e:
                     logger.debug(f"计算目标路径时出错：{str(e)}")
                     continue
-            if target_dir:
-                return target_dir
+            if target_dirs:
+                matched_dirs = target_dirs
 
             # 优先同盘
             for matched_dir in matched_dirs:
