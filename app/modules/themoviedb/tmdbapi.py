@@ -1052,7 +1052,8 @@ class TmdbApi:
             return []
         try:
             logger.debug(f"正在发现电影：{kwargs}...")
-            tmdbinfo = self.discover.discover_movies(kwargs)
+            params_tuple = tuple(kwargs.items())
+            tmdbinfo = self.discover.discover_movies(params_tuple)
             if tmdbinfo:
                 for info in tmdbinfo:
                     info['media_type'] = MediaType.MOVIE

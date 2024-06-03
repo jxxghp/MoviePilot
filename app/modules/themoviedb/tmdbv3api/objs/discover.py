@@ -14,12 +14,13 @@ class Discover(TMDb):
     }
 
     @cached(cache=TTLCache(maxsize=1, ttl=43200))
-    def discover_movies(self, params):
+    def discover_movies(self, params_tuple):
         """
         Discover movies by different types of data like average rating, number of votes, genres and certifications.
         :param params: dict
         :return:
         """
+        params = dict(params_tuple)
         return self._request_obj(self._urls["movies"], urlencode(params), key="results", call_cached=False)
 
     @cached(cache=TTLCache(maxsize=1, ttl=43200))
