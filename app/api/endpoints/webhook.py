@@ -17,10 +17,10 @@ def start_webhook_chain(body: Any, form: Any, args: Any):
 
 
 @router.post("/", summary="Webhook消息响应", response_model=schemas.Response)
-def webhook_message(background_tasks: BackgroundTasks,
-                    request: Request,
-                    _: str = Depends(verify_uri_token)
-                    ) -> Any:
+async def webhook_message(background_tasks: BackgroundTasks,
+                          request: Request,
+                          _: str = Depends(verify_uri_token)
+                          ) -> Any:
     """
     Webhook响应
     """

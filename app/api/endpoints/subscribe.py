@@ -263,8 +263,8 @@ def delete_subscribe_by_mediaid(
 
 
 @router.post("/seerr", summary="OverSeerr/JellySeerr通知订阅", response_model=schemas.Response)
-def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
-                    authorization: str = Header(None)) -> Any:
+async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
+                          authorization: str = Header(None)) -> Any:
     """
     Jellyseerr/Overseerr网络勾子通知订阅
     """
