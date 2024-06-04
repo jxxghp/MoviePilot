@@ -118,13 +118,14 @@ class SystemUtils:
         硬链接
         """
         try:
-            # link到当前目录并改名
-            tmp_path = src.parent / (dest.name + ".mp")
+            # 准备目标路径，增加后缀 .mp
+            tmp_path = dest.with_suffix(dest.suffix + ".mp")
+            # 检查目标路径是否已存在，如果存在则先unlink
             if tmp_path.exists():
                 tmp_path.unlink()
             tmp_path.hardlink_to(src)
-            # 移动到目标目录
-            shutil.move(tmp_path, dest)
+            # 硬链接完成，移除 .mp 后缀
+            tmp_path.rename(dest)
             return 0, ""
         except Exception as err:
             print(str(err))
@@ -465,6 +466,13 @@ class SystemUtils:
         except Exception as err:
             print(str(err))
             return False, f"重启时发生错误：{str(err)}"
+
+    @staticmethod
+    def is_same_file(src: Path, dest: Path) -> bool:
+        """判断是否为同一个文件"""
+        if not src.exists() or not dest.exists():
+            return False
+        return src.samefile(dest)
 
     @staticmethod
     def is_same_disk(src: Path, dest: Path) -> bool:

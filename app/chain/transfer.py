@@ -360,11 +360,11 @@ class TransferChain(ChainBase):
                 # 硬链接检查
                 temp_transfer_type = transfer_type
                 if transfer_type == "link":
-                    if not SystemUtils.is_same_disk(file_path, transferinfo.target_path):
+                    if not SystemUtils.is_same_file(file_path, transferinfo.target_path):
                         logger.warn(
-                            f"{file_path} 与 {transferinfo.target_path} 不在同一磁盘/存储空间/映射目录，未能硬链接，请检查存储空间占用和整理耗时，确认是否为复制")
+                            f"{file_path} 与 {transferinfo.target_path} 不是同一硬链接文件，请检查存储空间占用和整理耗时，确认是否为复制")
                         self.messagehelper.put(
-                            f"{file_path} 与 {transferinfo.target_path} 不在同一磁盘/存储空间/映射目录，疑似硬链接失败，请检查是否为复制",
+                            f"{file_path} 与 {transferinfo.target_path} 不是同一硬链接文件，疑似硬链接失败，请检查是否为复制",
                             title="硬链接失败",
                             role="system")
                         temp_transfer_type = "copy"
