@@ -125,7 +125,7 @@ class SystemUtils:
                 tmp_path.unlink()
             tmp_path.hardlink_to(src)
             # 硬链接完成，移除 .mp 后缀
-            tmp_path.rename(dest)
+            shutil.move(tmp_path, dest)
             return 0, ""
         except Exception as err:
             print(str(err))
@@ -468,11 +468,28 @@ class SystemUtils:
             return False, f"重启时发生错误：{str(err)}"
 
     @staticmethod
-    def is_same_file(src: Path, dest: Path) -> bool:
-        """判断是否为同一个文件"""
-        if not src.exists() or not dest.exists():
+    def is_hardlink(src: Path, dest: Path) -> bool:
+        """判断是否为硬链接"""
+        try:
+            if not src.exists() or not dest.exists():
+                return False
+            if src.is_file():
+                # 如果是文件，直接比较文件
+                return src.samefile(dest)
+            else:
+                for src_file in src.glob("**/*"):
+                    if src_file.is_dir():
+                        continue
+                    # 计算目标文件路径
+                    relative_path = src_file.relative_to(src)
+                    target_file = dest.joinpath(relative_path)
+                    # 检查是否是硬链接
+                    if not target_file.exists() or not src_file.samefile(target_file):
+                        return False
+                return True
+        except (PermissionError, FileNotFoundError, ValueError, OSError) as e:
+            print(f"Error occurred: {e}")
             return False
-        return src.samefile(dest)
 
     @staticmethod
     def is_same_disk(src: Path, dest: Path) -> bool:
