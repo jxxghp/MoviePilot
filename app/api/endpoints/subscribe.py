@@ -189,6 +189,23 @@ def refresh_subscribes(
     return schemas.Response(success=True)
 
 
+@router.get("/reset/{subid}", summary="重置订阅", response_model=schemas.Response)
+def reset_subscribes(
+        subid: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    重置订阅
+    """
+    subscribe = Subscribe.get(db, subid)
+    if subscribe:
+        subscribe.update(db, {
+            "note": None
+        })
+        return schemas.Response(success=True)
+    return schemas.Response(success=False, message="订阅不存在")
+
+
 @router.get("/check", summary="刷新订阅 TMDB 信息", response_model=schemas.Response)
 def check_subscribes(
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
