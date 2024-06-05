@@ -138,6 +138,7 @@ class MessageChannel(Enum):
     SynologyChat = "SynologyChat"
     VoceChat = "VoceChat"
     Web = "Web"
+    WebPush = "WebPush"
 
 
 # 用户配置Key字典

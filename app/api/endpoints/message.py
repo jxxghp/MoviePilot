@@ -159,7 +159,7 @@ def set_switchs(switchs: List[NotificationSwitch],
     return schemas.Response(success=True)
 
 
-@router.post("/subscribe", summary="客户端webpush通知订阅", response_model=schemas.Response)
+@router.post("/webpush/subscribe", summary="客户端webpush通知订阅", response_model=schemas.Response)
 def subscribe(subscription: schemas.Subscription, _: schemas.TokenPayload = Depends(verify_token)):
     """
     客户端webpush通知订阅
@@ -168,7 +168,7 @@ def subscribe(subscription: schemas.Subscription, _: schemas.TokenPayload = Depe
     return schemas.Response(success=True)
 
 
-@router.post("/send-webpush", summary="发送webpush通知", response_model=schemas.Response)
+@router.post("/webpush/send", summary="发送webpush通知", response_model=schemas.Response)
 def send_notification(payload: schemas.SubscriptionMessage, _: schemas.TokenPayload = Depends(verify_token)):
     """
     发送webpush通知
@@ -178,7 +178,7 @@ def send_notification(payload: schemas.SubscriptionMessage, _: schemas.TokenPayl
             webpush(
                 subscription_info=sub,
                 data=json.dumps(payload.dict()),
-                vapid_private_key=settings.VAPID.get("private_key"),
+                vapid_private_key=settings.VAPID.get("privateKey"),
                 vapid_claims={
                     "sub": settings.VAPID.get("subject")
                 },
