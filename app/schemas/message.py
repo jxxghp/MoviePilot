@@ -84,6 +84,8 @@ class NotificationSwitch(BaseModel):
     synologychat: Optional[bool] = False
     # VoceChat开关
     vocechat: Optional[bool] = False
+    # WebPush开关
+    webpush: Optional[bool] = False
 
 
 class Subscription(BaseModel):
