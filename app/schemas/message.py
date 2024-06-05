@@ -84,3 +84,22 @@ class NotificationSwitch(BaseModel):
     synologychat: Optional[bool] = False
     # VoceChat开关
     vocechat: Optional[bool] = False
+
+
+class Subscription(BaseModel):
+    """
+    客户端消息订阅
+    """
+    endpoint: Optional[str]
+    keys: Optional[dict] = {}
+
+
+class SubscriptionMessage(BaseModel):
+    """
+    客户端订阅消息体
+    """
+    title: Optional[str]
+    body: Optional[str]
+    icon: Optional[str]
+    url: Optional[str]
+    data: Optional[dict] = {}

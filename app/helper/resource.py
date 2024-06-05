@@ -23,6 +23,10 @@ class ResourceHelper(metaclass=Singleton):
         self.siteshelper = SitesHelper()
         self.check()
 
+    @property
+    def proxies(self):
+        return None if settings.GITHUB_PROXY else settings.PROXY
+
     def check(self):
         """
         检测是否有更新，如有则下载安装
@@ -32,7 +36,7 @@ class ResourceHelper(metaclass=Singleton):
         if SystemUtils.is_frozen():
             return
         logger.info("开始检测资源包版本...")
-        res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS, timeout=10).get_res(self._repo)
+        res = RequestUtils(proxies=self.proxies, headers=settings.GITHUB_HEADERS, timeout=10).get_res(self._repo)
         if res:
             try:
                 resource_info = json.loads(res.text)
@@ -89,7 +93,7 @@ class ResourceHelper(metaclass=Singleton):
                     logger.info(f"开始更新资源文件：{item.get('name')} ...")
                     download_url = f"{settings.GITHUB_PROXY}{item.get('download_url')}"
                     # 下载资源文件
-                    res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS,
+                    res = RequestUtils(proxies=self.proxies, headers=settings.GITHUB_HEADERS,
                                        timeout=180).get_res(download_url)
                     if not res:
                         logger.error(f"文件 {item.get('name')} 下载失败！")

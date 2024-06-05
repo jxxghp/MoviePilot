@@ -2,7 +2,7 @@ import secrets
 import sys
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseSettings, validator
 
@@ -302,7 +302,7 @@ class Settings(BaseSettings):
     @property
     def LOG_PATH(self):
         return self.CONFIG_PATH / "logs"
-    
+
     @property
     def COOKIE_PATH(self):
         return self.CONFIG_PATH / "cookies"
@@ -372,6 +372,14 @@ class Settings(BaseSettings):
             return []
         return [d for d in settings.DOWNLOADER.split(",") if d]
 
+    @property
+    def VAPID(self):
+        return {
+            "subject": f"mailto: <{self.SUPERUSER}@movie-pilot.org>",
+            "publicKey": "BH3w49sZA6jXUnE-yt4jO6VKh73lsdsvwoJ6Hx7fmPIDKoqGiUl2GEoZzy-iJfn4SfQQcx7yQdHf9RknwrL_lSM",
+            "privateKey": "JTixnYY0vEw97t9uukfO3UWKfHKJdT5kCQDiv3gu894"
+        }
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         with self.CONFIG_PATH as p:
@@ -400,6 +408,8 @@ class GlobalVar(object):
     """
     # 系统停止事件
     STOP_EVENT: threading.Event = threading.Event()
+    # webpush订阅
+    SUBSCRIPTIONS: List[dict] = []
 
     def stop_system(self):
         """
@@ -412,6 +422,18 @@ class GlobalVar(object):
         是否停止
         """
         return self.STOP_EVENT.is_set()
+
+    def get_subscriptions(self):
+        """
+        获取webpush订阅
+        """
+        return self.SUBSCRIPTIONS
+
+    def push_subscription(self, subscription: dict):
+        """
+        添加webpush订阅
+        """
+        self.SUBSCRIPTIONS.append(subscription)
 
 
 # 实例化配置

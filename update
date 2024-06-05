@@ -92,6 +92,7 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
     if [ -n "${PROXY_HOST}" ]; then
         CURL_OPTIONS="-sL -x ${PROXY_HOST}"
         PIP_OPTIONS="--proxy=${PROXY_HOST}"
+        GITHUB_PROXY=""
         echo "使用代理更新程序"
     else
         CURL_OPTIONS="-sL"
