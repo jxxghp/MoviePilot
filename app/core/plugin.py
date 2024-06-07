@@ -14,6 +14,7 @@ from app import schemas
 from app.core.config import settings
 from app.core.event import eventmanager
 from app.db.systemconfig_oper import SystemConfigOper
+from app.db.plugindata_oper import PluginDataOper
 from app.helper.module import ModuleHelper
 from app.helper.plugin import PluginHelper
 from app.helper.sites import SitesHelper
@@ -96,6 +97,7 @@ class PluginManager(metaclass=Singleton):
         self.siteshelper = SitesHelper()
         self.pluginhelper = PluginHelper()
         self.systemconfig = SystemConfigOper()
+        self.plugindata = PluginDataOper()
         # 开发者模式监测插件修改
         if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
             self.__start_monitor()
@@ -318,6 +320,16 @@ class PluginManager(metaclass=Singleton):
         if not self._plugins.get(pid):
             return False
         return self.systemconfig.delete(self._config_key % pid)
+
+    def delete_plugin_data(self, pid: str) -> bool:
+        """
+        删除插件数据
+        :param pid: 插件ID
+        """
+        if not self._plugins.get(pid):
+            return False
+        self.plugindata.del_data(pid)
+        return True
 
     def get_plugin_form(self, pid: str) -> Tuple[List[dict], Dict[str, Any]]:
         """
