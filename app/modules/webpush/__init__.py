@@ -46,9 +46,9 @@ class WebPushModule(_ModuleBase):
             else:
                 caption = message.text
                 content = ""
-            try:
-                for sub in global_vars.get_subscriptions():
-                    logger.debug(f"给 {sub} 发送WebPush：{caption} {content}")
+            for sub in global_vars.get_subscriptions():
+                logger.debug(f"给 {sub} 发送WebPush：{caption} {content}")
+                try:
                     webpush(
                         subscription_info=sub,
                         data=json.dumps({
@@ -60,8 +60,8 @@ class WebPushModule(_ModuleBase):
                             "sub": settings.VAPID.get("subject")
                         },
                     )
-            except WebPushException as err:
-                print("WebPush Error:", str(err))
+                except WebPushException as err:
+                    print("WebPush Error:", str(err))
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
