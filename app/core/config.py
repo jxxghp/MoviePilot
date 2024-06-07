@@ -375,7 +375,7 @@ class Settings(BaseSettings):
     @property
     def VAPID(self):
         return {
-            "subject": f"mailto: <{self.SUPERUSER}@movie-pilot.org>",
+            "subject": f"mailto:{self.SUPERUSER}@movie-pilot.org",
             "publicKey": "BH3w49sZA6jXUnE-yt4jO6VKh73lsdsvwoJ6Hx7fmPIDKoqGiUl2GEoZzy-iJfn4SfQQcx7yQdHf9RknwrL_lSM",
             "privateKey": "JTixnYY0vEw97t9uukfO3UWKfHKJdT5kCQDiv3gu894"
         }
