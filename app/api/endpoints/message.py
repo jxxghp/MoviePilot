@@ -165,6 +165,7 @@ def subscribe(subscription: schemas.Subscription, _: schemas.TokenPayload = Depe
     客户端webpush通知订阅
     """
     global_vars.push_subscription(subscription.dict())
+    logger.debug(f"通知订阅成功: {subscription.dict()}")
     return schemas.Response(success=True)
 
 

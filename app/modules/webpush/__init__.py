@@ -48,6 +48,7 @@ class WebPushModule(_ModuleBase):
                 content = ""
             try:
                 for sub in global_vars.get_subscriptions():
+                    logger.debug(f"给 {sub} 发送WebPush：{caption} {content}")
                     webpush(
                         subscription_info=sub,
                         data=json.dumps({
