@@ -61,7 +61,7 @@ class WebPushModule(_ModuleBase):
                         },
                     )
                 except WebPushException as err:
-                    print("WebPush Error:", str(err))
+                    logger.error(f"WebPush发送失败: {str(err)}")
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
