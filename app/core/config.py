@@ -93,8 +93,8 @@ class Settings(BaseSettings):
     AUTH_SITE: str = ""
     # 交互搜索自动下载用户ID，使用,分割
     AUTO_DOWNLOAD_USER: Optional[str] = None
-    # 消息通知渠道 telegram/wechat/slack/synologychat/vocechat，多个通知渠道用,分隔
-    MESSAGER: str = "telegram"
+    # 消息通知渠道 telegram/wechat/slack/synologychat/vocechat/webpush，多个通知渠道用,分隔
+    MESSAGER: str = "webpush"
     # WeChat企业ID
     WECHAT_CORPID: Optional[str] = None
     # WeChat应用Secret
