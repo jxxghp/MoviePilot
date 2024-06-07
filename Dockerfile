@@ -30,6 +30,7 @@ RUN apt-get update -y \
         busybox \
         dumb-init \
         jq \
+        haproxy \
         fuse3 \
         rsync \
         ffmpeg \
@@ -67,9 +68,8 @@ COPY . .
 RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && cp -f /app/update /usr/local/bin/mp_update \
     && cp -f /app/entrypoint /entrypoint \
-    && cp -f /app/docker_http_proxy.conf /etc/nginx/docker_http_proxy.conf \
     && chmod +x /entrypoint /usr/local/bin/mp_update \
-    && mkdir -p ${HOME} \
+    && mkdir -p ${HOME} /var/lib/haproxy/server-state \
     && groupadd -r moviepilot -g 911 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 911 \
     && python_ver=$(python3 -V | awk '{print $2}') \
