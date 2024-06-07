@@ -44,13 +44,16 @@ class PluginDataOper(DbOper):
         else:
             return PluginData.get_plugin_data(self._db, plugin_id)
 
-    def del_data(self, plugin_id: str, key: str) -> Any:
+    def del_data(self, plugin_id: str, key: str = None) -> Any:
         """
         删除插件数据
         :param plugin_id: 插件id
         :param key: 数据key
         """
-        PluginData.del_plugin_data_by_key(self._db, plugin_id, key)
+        if key:
+            PluginData.del_plugin_data_by_key(self._db, plugin_id, key)
+        else:
+            PluginData.del_plugin_data(self._db, plugin_id)
 
     def truncate(self):
         """

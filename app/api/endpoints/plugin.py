@@ -176,13 +176,15 @@ def plugin_dashboard(plugin_id: str, key: str, user_agent: Annotated[str | None,
     return PluginManager().get_plugin_dashboard(plugin_id, key=key, user_agent=user_agent)
 
 
-@router.get("/reset/{plugin_id}", summary="重置插件配置", response_model=schemas.Response)
+@router.get("/reset/{plugin_id}", summary="重置插件配置及数据", response_model=schemas.Response)
 def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    根据插件ID重置插件配置
+    根据插件ID重置插件配置及数据
     """
     # 删除配置
     PluginManager().delete_plugin_config(plugin_id)
+    # 删除插件所有数据
+    PluginManager().delete_plugin_data(plugin_id)
     # 重新生效插件
     PluginManager().init_plugin(plugin_id, {
         "enabled": False,
