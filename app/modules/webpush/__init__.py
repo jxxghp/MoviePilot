@@ -27,7 +27,7 @@ class WebPushModule(_ModuleBase):
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        pass
+        return "MESSAGER", "webpush"
 
     @checkMessage(MessageChannel.WebPush)
     def post_message(self, message: Notification) -> None:
