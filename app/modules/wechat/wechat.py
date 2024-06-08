@@ -123,13 +123,15 @@ class WeChat:
         }
         return self.__post_request(message_url, req_json)
 
-    def __send_image_message(self, title: str, text: str, image_url: str, userid: str = None) -> Optional[bool]:
+    def __send_image_message(self, title: str, text: str, image_url: str,
+                             userid: str = None, link: str = None) -> Optional[bool]:
         """
         发送图文消息
         :param title: 消息标题
         :param text: 消息内容
         :param image_url: 图片地址
         :param userid: 消息发送对象的ID，为空则发给所有人
+        :param link: 跳转链接
         :return: 发送状态，错误信息
         """
         message_url = self._send_msg_url % self.__get_access_token()
@@ -147,7 +149,7 @@ class WeChat:
                         "title": title,
                         "description": text,
                         "picurl": image_url,
-                        "url": ''
+                        "url": link
                     }
                 ]
             }
@@ -170,7 +172,7 @@ class WeChat:
             return None
 
         if image:
-            ret_code = self.__send_image_message(title=title, text=text, image_url=image, userid=userid)
+            ret_code = self.__send_image_message(title=title, text=text, image_url=image, userid=userid, link=link)
         else:
             ret_code = self.__send_message(title=title, text=text, userid=userid, link=link)
 
