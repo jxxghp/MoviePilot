@@ -15,7 +15,7 @@ class WebPushModule(_ModuleBase):
 
     @staticmethod
     def get_name() -> str:
-        return "VoceChat"
+        return "WebPush"
 
     def stop(self):
         pass
