@@ -202,7 +202,7 @@ class SlackModule(_ModuleBase):
         :return: 成功或失败
         """
         self.slack.send_msg(title=message.title, text=message.text,
-                            image=message.image, userid=message.userid)
+                            image=message.image, userid=message.userid, link=message.link)
 
     @checkMessage(MessageChannel.Slack)
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:

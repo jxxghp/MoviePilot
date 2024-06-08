@@ -103,7 +103,8 @@ class VoceChatModule(_ModuleBase):
         :param message: 消息内容
         :return: 成功或失败
         """
-        self.vocechat.send_msg(title=message.title, text=message.text, userid=message.userid)
+        self.vocechat.send_msg(title=message.title, text=message.text,
+                               userid=message.userid, link=message.link)
 
     @checkMessage(MessageChannel.VoceChat)
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
@@ -116,7 +117,8 @@ class VoceChatModule(_ModuleBase):
         # 先发送标题
         self.vocechat.send_msg(title=message.title, userid=message.userid)
         # 再发送内容
-        return self.vocechat.send_medias_msg(title=message.title, medias=medias, userid=message.userid)
+        return self.vocechat.send_medias_msg(title=message.title, medias=medias,
+                                             userid=message.userid, link=message.link)
 
     @checkMessage(MessageChannel.VoceChat)
     def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
@@ -126,7 +128,8 @@ class VoceChatModule(_ModuleBase):
         :param torrents: 种子列表
         :return: 成功或失败
         """
-        return self.vocechat.send_torrents_msg(title=message.title, torrents=torrents, userid=message.userid)
+        return self.vocechat.send_torrents_msg(title=message.title, torrents=torrents,
+                                               userid=message.userid, link=message.link)
 
     def register_commands(self, commands: Dict[str, dict]):
         pass

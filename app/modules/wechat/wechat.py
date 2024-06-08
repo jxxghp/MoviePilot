@@ -88,12 +88,14 @@ class WeChat:
                 return None
         return self._access_token
 
-    def __send_message(self, title: str, text: str = None, userid: str = None) -> Optional[bool]:
+    def __send_message(self, title: str, text: str = None,
+                       userid: str = None, link: str = None) -> Optional[bool]:
         """
         发送文本消息
         :param title: 消息标题
         :param text: 消息内容
         :param userid: 消息发送对象的ID，为空则发给所有人
+        :param link: 跳转链接
         :return: 发送状态，错误信息
         """
         message_url = self._send_msg_url % self.__get_access_token()
@@ -102,8 +104,12 @@ class WeChat:
         else:
             conent = title
 
+        if link:
+            conent = f"{conent}\n点击查看：{link}"
+
         if not userid:
             userid = "@all"
+
         req_json = {
             "touser": userid,
             "msgtype": "text",
@@ -148,13 +154,15 @@ class WeChat:
         }
         return self.__post_request(message_url, req_json)
 
-    def send_msg(self, title: str, text: str = "", image: str = "", userid: str = None) -> Optional[bool]:
+    def send_msg(self, title: str, text: str = "", image: str = "",
+                 userid: str = None, link: str = None) -> Optional[bool]:
         """
         微信消息发送入口，支持文本、图片、链接跳转、指定发送对象
         :param title: 消息标题
         :param text: 消息内容
         :param image: 图片地址
         :param userid: 消息发送对象的ID，为空则发给所有人
+        :param link: 跳转链接
         :return: 发送状态，错误信息
         """
         if not self.__get_access_token():
@@ -162,9 +170,9 @@ class WeChat:
             return None
 
         if image:
-            ret_code = self.__send_image_message(title, text, image, userid)
+            ret_code = self.__send_image_message(title=title, text=text, image_url=image, userid=userid)
         else:
-            ret_code = self.__send_message(title, text, userid)
+            ret_code = self.__send_message(title=title, text=text, userid=userid, link=link)
 
         return ret_code
 
@@ -205,7 +213,7 @@ class WeChat:
         return self.__post_request(message_url, req_json)
 
     def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "") -> Optional[bool]:
+                          userid: str = "", title: str = "", link: str = None) -> Optional[bool]:
         """
         发送列表消息
         """
@@ -215,7 +223,7 @@ class WeChat:
 
         # 先发送标题
         if title:
-            self.__send_message(title=title, userid=userid)
+            self.__send_message(title=title, userid=userid, link=link)
 
         # 发送列表
         message_url = self._send_msg_url % self.__get_access_token()

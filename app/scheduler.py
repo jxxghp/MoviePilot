@@ -90,7 +90,8 @@ class Scheduler(metaclass=Singleton):
                     Notification(
                         mtype=NotificationType.Manual,
                         title="MoviePilot用户认证成功",
-                        text=f"使用站点：{msg}"
+                        text=f"使用站点：{msg}",
+                        link=settings.MP_DOMAIN('#/site')
                     )
                 )
             else:

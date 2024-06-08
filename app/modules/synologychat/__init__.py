@@ -74,7 +74,7 @@ class SynologyChatModule(_ModuleBase):
         :return: 成功或失败
         """
         self.synologychat.send_msg(title=message.title, text=message.text,
-                                   image=message.image, userid=message.userid)
+                                   image=message.image, userid=message.userid, link=message.link)
 
     @checkMessage(MessageChannel.SynologyChat)
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
@@ -95,4 +95,5 @@ class SynologyChatModule(_ModuleBase):
         :param torrents: 种子列表
         :return: 成功或失败
         """
-        return self.synologychat.send_torrents_msg(title=message.title, torrents=torrents, userid=message.userid)
+        return self.synologychat.send_torrents_msg(title=message.title, torrents=torrents,
+                                                   userid=message.userid, link=message.link)

@@ -169,10 +169,15 @@ class SubscribeChain(ChainBase):
             else:
                 text = f"评分：{mediainfo.vote_average}"
             # 群发
+            if mediainfo.type == MediaType.TV:
+                link = settings.MP_DOMAIN('#/subscribe-tv?tab=mysub')
+            else:
+                link = settings.MP_DOMAIN('#/subscribe-movie?tab=mysub')
             self.post_message(Notification(mtype=NotificationType.Subscribe,
                                            title=f"{mediainfo.title_year} {metainfo.season} 已添加订阅",
                                            text=text,
-                                           image=mediainfo.get_message_image()))
+                                           image=mediainfo.get_message_image(),
+                                           link=link))
         # 发送事件
         EventManager().send_event(EventType.SubscribeAdded, {
             "subscribe_id": sid,
@@ -922,9 +927,14 @@ class SubscribeChain(ChainBase):
         # 删除订阅
         self.subscribeoper.delete(subscribe.id)
         # 发送通知
+        if mediainfo.type == MediaType.TV:
+            link = settings.MP_DOMAIN('#/subscribe-tv?tab=mysub')
+        else:
+            link = settings.MP_DOMAIN('#/subscribe-movie?tab=mysub')
         self.post_message(Notification(mtype=NotificationType.Subscribe,
                                        title=f'{mediainfo.title_year} {meta.season} 已完成{msgstr}',
-                                       image=mediainfo.get_message_image()))
+                                       image=mediainfo.get_message_image(),
+                                       link=link))
         # 发送事件
         EventManager().send_event(EventType.SubscribeComplete, {
             "subscribe_id": subscribe.id,

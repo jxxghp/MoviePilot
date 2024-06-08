@@ -36,7 +36,8 @@ class SynologyChat:
             return True
         return False
 
-    def send_msg(self, title: str, text: str = "", image: str = "", userid: str = "") -> Optional[bool]:
+    def send_msg(self, title: str, text: str = "", image: str = "",
+                 userid: str = "", link: str = None) -> Optional[bool]:
         """
         发送Telegram消息
         :param title: 消息标题
@@ -44,6 +45,7 @@ class SynologyChat:
         :param image: 消息图片地址
         :param userid: 用户ID，如有则只发消息给该用户
         :user_id: 发送消息的目标用户ID，为空则发给管理员
+        :param link: 链接地址
         """
         if not title and not text:
             logger.error("标题和内容不能同时为空")
@@ -64,6 +66,10 @@ class SynologyChat:
                 caption = "*%s*\n%s" % (title, text.replace("\n\n", "\n"))
             else:
                 caption = title
+
+            if link:
+                caption = f"{caption}\n[查看详情]({link})"
+
             payload_data = {'text': quote(caption)}
             if image:
                 payload_data['file_url'] = quote(image)
@@ -127,7 +133,7 @@ class SynologyChat:
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "") -> Optional[bool]:
+                          userid: str = "", title: str = "", link: str = None) -> Optional[bool]:
         """
         发送列表消息
         """
@@ -156,6 +162,9 @@ class SynologyChat:
                           f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}\n" \
                           f"_{description}_"
                 index += 1
+
+            if link:
+                caption = f"{caption}\n[查看详情]({link})"
 
             if userid:
                 userids = [int(userid)]

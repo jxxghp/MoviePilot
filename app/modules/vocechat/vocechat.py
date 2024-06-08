@@ -58,12 +58,14 @@ class VoceChat:
         if result and result.status_code == 200:
             return result.json()
 
-    def send_msg(self, title: str, text: str = "", userid: str = None) -> Optional[bool]:
+    def send_msg(self, title: str, text: str = "",
+                 userid: str = None, link: str = None) -> Optional[bool]:
         """
         微信消息发送入口，支持文本、图片、链接跳转、指定发送对象
         :param title: 消息标题
         :param text: 消息内容
         :param userid: 消息发送对象的ID，为空则发给所有人
+        :param link: 消息链接
         :return: 发送状态，错误信息
         """
         if not self._client:
@@ -79,6 +81,9 @@ class VoceChat:
             else:
                 caption = f"**{title}**"
 
+            if link:
+                caption = f"{caption}\n[查看详情]({link})"
+
             if userid:
                 chat_id = userid
             else:
@@ -90,7 +95,8 @@ class VoceChat:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_medias_msg(self, title: str, medias: List[MediaInfo], userid: str = "") -> Optional[bool]:
+    def send_medias_msg(self, title: str, medias: List[MediaInfo],
+                        userid: str = "", link: str = None) -> Optional[bool]:
         """
         发送列表类消息
         """
@@ -115,6 +121,9 @@ class VoceChat:
                                                           f"类型：{media.type.value}")
                 index += 1
 
+            if link:
+                caption = f"{caption}\n[查看详情]({link})"
+
             if userid:
                 chat_id = userid
             else:
@@ -127,7 +136,7 @@ class VoceChat:
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "") -> Optional[bool]:
+                          userid: str = "", title: str = "", link: str = None) -> Optional[bool]:
         """
         发送列表消息
         """
@@ -154,6 +163,9 @@ class VoceChat:
                 caption = f"{caption}\n{index}.【{site_name}】[{title}]({link}) " \
                           f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}"
                 index += 1
+
+            if link:
+                caption = f"{caption}\n[查看详情]({link})"
 
             if userid:
                 chat_id = userid

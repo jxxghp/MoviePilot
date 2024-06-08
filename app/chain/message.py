@@ -520,5 +520,6 @@ class MessageChain(ChainBase):
         self.post_torrents_message(Notification(
             channel=channel,
             title=title,
-            userid=userid
+            userid=userid,
+            link=settings.MP_DOMAIN('#/resource')
         ), torrents=items)

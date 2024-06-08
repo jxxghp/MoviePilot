@@ -141,7 +141,7 @@ class WechatModule(_ModuleBase):
         :return: 成功或失败
         """
         self.wechat.send_msg(title=message.title, text=message.text,
-                             image=message.image, userid=message.userid)
+                             image=message.image, userid=message.userid, link=message.link)
 
     @checkMessage(MessageChannel.Wechat)
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
@@ -152,7 +152,7 @@ class WechatModule(_ModuleBase):
         :return: 成功或失败
         """
         # 先发送标题
-        self.wechat.send_msg(title=message.title, userid=message.userid)
+        self.wechat.send_msg(title=message.title, userid=message.userid, link=message.link)
         # 再发送内容
         return self.wechat.send_medias_msg(medias=medias, userid=message.userid)
 
@@ -164,7 +164,8 @@ class WechatModule(_ModuleBase):
         :param torrents: 种子列表
         :return: 成功或失败
         """
-        return self.wechat.send_torrents_msg(title=message.title, torrents=torrents, userid=message.userid)
+        return self.wechat.send_torrents_msg(title=message.title, torrents=torrents,
+                                             userid=message.userid, link=message.link)
 
     def register_commands(self, commands: Dict[str, dict]):
         """

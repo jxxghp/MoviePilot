@@ -67,13 +67,15 @@ class Telegram:
         """
         return self._bot is not None
 
-    def send_msg(self, title: str, text: str = "", image: str = "", userid: str = "") -> Optional[bool]:
+    def send_msg(self, title: str, text: str = "", image: str = "",
+                 userid: str = "", link: str = None) -> Optional[bool]:
         """
         发送Telegram消息
         :param title: 消息标题
         :param text: 消息内容
         :param image: 消息图片地址
         :param userid: 用户ID，如有则只发消息给该用户
+        :param link: 跳转链接
         :userid: 发送消息的目标用户ID，为空则发给管理员
         """
         if not self._telegram_token or not self._telegram_chat_id:
@@ -89,6 +91,9 @@ class Telegram:
             else:
                 caption = f"*{title}*"
 
+            if link:
+                caption = f"{caption}\n[查看详情]({link})"
+
             if userid:
                 chat_id = userid
             else:
@@ -100,7 +105,8 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_meidas_msg(self, medias: List[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_meidas_msg(self, medias: List[MediaInfo], userid: str = "",
+                        title: str = "", link: str = None) -> Optional[bool]:
         """
         发送媒体列表消息
         """
@@ -127,6 +133,9 @@ class Telegram:
                                                           f"类型：{media.type.value}")
                 index += 1
 
+            if link:
+                caption = f"{caption}\n[查看详情]({link})"
+
             if userid:
                 chat_id = userid
             else:
@@ -139,7 +148,7 @@ class Telegram:
             return False
 
     def send_torrents_msg(self, torrents: List[Context],
-                          userid: str = "", title: str = "") -> Optional[bool]:
+                          userid: str = "", title: str = "", link: str = None) -> Optional[bool]:
         """
         发送列表消息
         """
@@ -167,6 +176,9 @@ class Telegram:
                 caption = f"{caption}\n{index}.【{site_name}】[{title}]({link}) " \
                           f"{StringUtils.str_filesize(torrent.size)} {free} {seeder}"
                 index += 1
+
+            if link:
+                caption = f"{caption}\n[查看详情]({link})"
 
             if userid:
                 chat_id = userid

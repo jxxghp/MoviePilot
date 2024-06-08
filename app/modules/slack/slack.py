@@ -93,13 +93,13 @@ class Slack:
         """
         return True if self._client else False
 
-    def send_msg(self, title: str, text: str = "", image: str = "", url: str = "", userid: str = ""):
+    def send_msg(self, title: str, text: str = "", image: str = "", link: str = "", userid: str = ""):
         """
         发送Telegram消息
         :param title: 消息标题
         :param text: 消息内容
         :param image: 消息图片地址
-        :param url: 点击消息转转的URL
+        :param link: 点击消息转转的URL
         :param userid: 用户ID，如有则只发消息给该用户
         :user_id: 发送消息的目标用户ID，为空则发给管理员
         """
@@ -132,7 +132,7 @@ class Slack:
                         "alt_text": f"{title}"
                     }})
                 # 链接
-                if url:
+                if link:
                     blocks.append({
                         "type": "actions",
                         "elements": [
@@ -144,7 +144,7 @@ class Slack:
                                     "emoji": True
                                 },
                                 "value": "click_me_url",
-                                "url": f"{url}",
+                                "url": f"{link}",
                                 "action_id": "actionId-url"
                             }
                         ]

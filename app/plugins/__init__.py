@@ -229,6 +229,8 @@ class _PluginBase(metaclass=ABCMeta):
         """
         发送消息
         """
+        if not link:
+            link = settings.MP_DOMAIN(f"#/plugins?tab=installed&id={self.__class__.__name__}")
         self.chain.post_message(Notification(
             channel=channel, mtype=mtype, title=title, text=text,
             image=image, link=link, userid=userid

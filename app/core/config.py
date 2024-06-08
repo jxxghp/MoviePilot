@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     """
     # 项目名称
     PROJECT_NAME = "MoviePilot"
+    # 域名 格式；https://movie-pilot.org
+    APP_DOMAIN: str = ""
     # API路径
     API_V1_STR: str = "/api/v1"
     # 前端资源路径
@@ -379,6 +381,16 @@ class Settings(BaseSettings):
             "publicKey": "BH3w49sZA6jXUnE-yt4jO6VKh73lsdsvwoJ6Hx7fmPIDKoqGiUl2GEoZzy-iJfn4SfQQcx7yQdHf9RknwrL_lSM",
             "privateKey": "JTixnYY0vEw97t9uukfO3UWKfHKJdT5kCQDiv3gu894"
         }
+
+    def MP_DOMAIN(self, url: str = None):
+        if not self.APP_DOMAIN:
+            return None
+        domain = self.APP_DOMAIN.rstrip("/")
+        if not domain.startswith("http"):
+            domain = "http://" + domain
+        if not url:
+            return domain
+        return domain + "/" + url.lstrip("/")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

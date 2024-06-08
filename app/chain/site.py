@@ -109,11 +109,11 @@ class SiteChain(ChainBase):
         user_agent = site.ua or settings.USER_AGENT
         url = f"{site.url}api/member/profile"
         headers = {
-                "Content-Type": "application/json",
-                "User-Agent": user_agent,
-                "Accept": "application/json, text/plain, */*",
-                "Authorization": site.token
-            }
+            "Content-Type": "application/json",
+            "User-Agent": user_agent,
+            "Accept": "application/json, text/plain, */*",
+            "Authorization": site.token
+        }
         res = RequestUtils(
             headers=headers,
             proxies=settings.PROXY if site.proxy else None,
@@ -457,7 +457,8 @@ class SiteChain(ChainBase):
             self.post_message(Notification(
                 channel=channel,
                 title="没有维护任何站点信息！",
-                userid=userid))
+                userid=userid,
+                link=settings.MP_DOMAIN('#/site')))
         title = f"共有 {len(site_list)} 个站点，回复对应指令操作：" \
                 f"\n- 禁用站点：/site_disable [id]" \
                 f"\n- 启用站点：/site_enable [id]" \
@@ -475,7 +476,8 @@ class SiteChain(ChainBase):
         # 发送列表
         self.post_message(Notification(
             channel=channel,
-            title=title, text="\n".join(messages), userid=userid))
+            title=title, text="\n".join(messages), userid=userid,
+            link=settings.MP_DOMAIN('#/site')))
 
     def remote_disable(self, arg_str, channel: MessageChannel, userid: Union[str, int] = None):
         """

@@ -110,7 +110,7 @@ class TelegramModule(_ModuleBase):
         :return: 成功或失败
         """
         self.telegram.send_msg(title=message.title, text=message.text,
-                               image=message.image, userid=message.userid)
+                               image=message.image, userid=message.userid, link=message.link)
 
     @checkMessage(MessageChannel.Telegram)
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
@@ -121,7 +121,7 @@ class TelegramModule(_ModuleBase):
         :return: 成功或失败
         """
         return self.telegram.send_meidas_msg(title=message.title, medias=medias,
-                                             userid=message.userid)
+                                             userid=message.userid, link=message.link)
 
     @checkMessage(MessageChannel.Telegram)
     def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
@@ -131,7 +131,8 @@ class TelegramModule(_ModuleBase):
         :param torrents: 种子列表
         :return: 成功或失败
         """
-        return self.telegram.send_torrents_msg(title=message.title, torrents=torrents, userid=message.userid)
+        return self.telegram.send_torrents_msg(title=message.title, torrents=torrents,
+                                               userid=message.userid, link=message.link)
 
     def register_commands(self, commands: Dict[str, dict]):
         """

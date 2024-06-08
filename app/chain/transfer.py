@@ -269,7 +269,8 @@ class TransferChain(ChainBase):
                     self.post_message(Notification(
                         mtype=NotificationType.Manual,
                         title=f"{file_path.name} 未识别到媒体信息，无法入库！",
-                        text=f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别转移。"
+                        text=f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别转移。",
+                        link=settings.MP_DOMAIN('#/history')
                     ))
                     # 计数
                     processed_num += 1
@@ -332,7 +333,8 @@ class TransferChain(ChainBase):
                         mtype=NotificationType.Manual,
                         title=f"{file_mediainfo.title_year} {file_meta.season_episode} 入库失败！",
                         text=f"原因：{transferinfo.message or '未知'}",
-                        image=file_mediainfo.get_message_image()
+                        image=file_mediainfo.get_message_image(),
+                        link=settings.MP_DOMAIN('#/history')
                     ))
                     # 计数
                     processed_num += 1
@@ -506,7 +508,7 @@ class TransferChain(ChainBase):
                                          mediaid=media_id)
         if not state:
             self.post_message(Notification(channel=channel, title="手动整理失败",
-                                           text=errmsg, userid=userid))
+                                           text=errmsg, userid=userid, link=settings.MP_DOMAIN('#/history')))
             return
 
     def re_transfer(self, logid: int, mtype: MediaType = None,
@@ -642,7 +644,8 @@ class TransferChain(ChainBase):
         # 发送
         self.post_message(Notification(
             mtype=NotificationType.Organize,
-            title=msg_title, text=msg_str, image=mediainfo.get_message_image()))
+            title=msg_title, text=msg_str, image=mediainfo.get_message_image(),
+            link=settings.MP_DOMAIN('#/history')))
 
     def delete_files(self, path: Path) -> Tuple[bool, str]:
         """
