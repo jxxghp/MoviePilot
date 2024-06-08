@@ -139,15 +139,24 @@ class SubscribeChain(ChainBase):
             mediainfo.bangumi_id = bangumiid
         # 添加订阅
         kwargs.update({
-            'quality': self.__get_default_subscribe_config(mediainfo.type, "quality"),
-            'resolution': self.__get_default_subscribe_config(mediainfo.type, "resolution"),
-            'effect': self.__get_default_subscribe_config(mediainfo.type, "effect"),
-            'include': self.__get_default_subscribe_config(mediainfo.type, "include"),
-            'exclude': self.__get_default_subscribe_config(mediainfo.type, "exclude"),
-            'best_version': self.__get_default_subscribe_config(mediainfo.type, "best_version") if not kwargs.get("best_version") else kwargs.get("best_version"),
-            'search_imdbid': self.__get_default_subscribe_config(mediainfo.type, "search_imdbid"),
-            'sites': self.__get_default_subscribe_config(mediainfo.type, "sites") or None,
-            'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path"),
+            'quality': self.__get_default_subscribe_config(mediainfo.type, "quality") if not kwargs.get(
+                "quality") else kwargs.get("quality"),
+            'resolution': self.__get_default_subscribe_config(mediainfo.type, "resolution") if not kwargs.get(
+                "resolution") else kwargs.get("resolution"),
+            'effect': self.__get_default_subscribe_config(mediainfo.type, "effect") if not kwargs.get(
+                "effect") else kwargs.get("effect"),
+            'include': self.__get_default_subscribe_config(mediainfo.type, "include") if not kwargs.get(
+                "include") else kwargs.get("include"),
+            'exclude': self.__get_default_subscribe_config(mediainfo.type, "exclude") if not kwargs.get(
+                "exclude") else kwargs.get("exclude"),
+            'best_version': self.__get_default_subscribe_config(mediainfo.type, "best_version") if not kwargs.get(
+                "best_version") else kwargs.get("best_version"),
+            'search_imdbid': self.__get_default_subscribe_config(mediainfo.type, "search_imdbid") if not kwargs.get(
+                "search_imdbid") else kwargs.get("search_imdbid"),
+            'sites': self.__get_default_subscribe_config(mediainfo.type, "sites") or None if not kwargs.get(
+                "sites") else kwargs.get("sites"),
+            'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path") if not kwargs.get(
+                "save_path") else kwargs.get("save_path"),
         })
         sid, err_msg = self.subscribeoper.add(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
