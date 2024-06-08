@@ -655,19 +655,16 @@ class SubscribeChain(ChainBase):
                         _cache_key = f"{torrent_info.title}_{torrent_info.description}"
                         if _cache_key not in _recognize_cached:
                             _recognize_cached.append(_cache_key)
-                            logger.info(
-                                f'{torrent_info.site_name} - {torrent_info.title} 订阅缓存为未识别状态，尝试重新识别...')
+                            logger.info(f'{torrent_info.site_name} - {torrent_info.title} 订阅缓存为未识别状态，尝试重新识别...')
                             # 重新识别（不使用缓存）
                             torrent_mediainfo = self.recognize_media(meta=torrent_meta, cache=False)
                             if not torrent_mediainfo:
-                                logger.warn(
-                                    f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
+                                logger.warn(f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
                                 if self.torrenthelper.match_torrent(mediainfo=mediainfo,
                                                                     torrent_meta=torrent_meta,
                                                                     torrent=torrent_info):
                                     # 匹配成功
-                                    logger.info(
-                                        f'{mediainfo.title_year} 通过标题匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
+                                    logger.info(f'{mediainfo.title_year} 通过标题匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
                                     # 更新缓存
                                     torrent_mediainfo = mediainfo
                                     context.media_info = mediainfo
