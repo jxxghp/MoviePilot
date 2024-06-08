@@ -139,15 +139,24 @@ class SubscribeChain(ChainBase):
             mediainfo.bangumi_id = bangumiid
         # 添加订阅
         kwargs.update({
-            'quality': self.__get_default_subscribe_config(mediainfo.type, "quality"),
-            'resolution': self.__get_default_subscribe_config(mediainfo.type, "resolution"),
-            'effect': self.__get_default_subscribe_config(mediainfo.type, "effect"),
-            'include': self.__get_default_subscribe_config(mediainfo.type, "include"),
-            'exclude': self.__get_default_subscribe_config(mediainfo.type, "exclude"),
-            'best_version': self.__get_default_subscribe_config(mediainfo.type, "best_version") if not kwargs.get("best_version") else kwargs.get("best_version"),
-            'search_imdbid': self.__get_default_subscribe_config(mediainfo.type, "search_imdbid"),
-            'sites': self.__get_default_subscribe_config(mediainfo.type, "sites") or None,
-            'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path"),
+            'quality': self.__get_default_subscribe_config(mediainfo.type, "quality") if not kwargs.get(
+                "quality") else kwargs.get("quality"),
+            'resolution': self.__get_default_subscribe_config(mediainfo.type, "resolution") if not kwargs.get(
+                "resolution") else kwargs.get("resolution"),
+            'effect': self.__get_default_subscribe_config(mediainfo.type, "effect") if not kwargs.get(
+                "effect") else kwargs.get("effect"),
+            'include': self.__get_default_subscribe_config(mediainfo.type, "include") if not kwargs.get(
+                "include") else kwargs.get("include"),
+            'exclude': self.__get_default_subscribe_config(mediainfo.type, "exclude") if not kwargs.get(
+                "exclude") else kwargs.get("exclude"),
+            'best_version': self.__get_default_subscribe_config(mediainfo.type, "best_version") if not kwargs.get(
+                "best_version") else kwargs.get("best_version"),
+            'search_imdbid': self.__get_default_subscribe_config(mediainfo.type, "search_imdbid") if not kwargs.get(
+                "search_imdbid") else kwargs.get("search_imdbid"),
+            'sites': self.__get_default_subscribe_config(mediainfo.type, "sites") or None if not kwargs.get(
+                "sites") else kwargs.get("sites"),
+            'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path") if not kwargs.get(
+                "save_path") else kwargs.get("save_path"),
         })
         sid, err_msg = self.subscribeoper.add(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
@@ -646,16 +655,19 @@ class SubscribeChain(ChainBase):
                         _cache_key = f"{torrent_info.title}_{torrent_info.description}"
                         if _cache_key not in _recognize_cached:
                             _recognize_cached.append(_cache_key)
-                            logger.info(f'{torrent_info.site_name} - {torrent_info.title} 订阅缓存为未识别状态，尝试重新识别...')
+                            logger.info(
+                                f'{torrent_info.site_name} - {torrent_info.title} 订阅缓存为未识别状态，尝试重新识别...')
                             # 重新识别（不使用缓存）
                             torrent_mediainfo = self.recognize_media(meta=torrent_meta, cache=False)
                             if not torrent_mediainfo:
-                                logger.warn(f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
+                                logger.warn(
+                                    f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
                                 if self.torrenthelper.match_torrent(mediainfo=mediainfo,
                                                                     torrent_meta=torrent_meta,
                                                                     torrent=torrent_info):
                                     # 匹配成功
-                                    logger.info(f'{mediainfo.title_year} 通过标题匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
+                                    logger.info(
+                                        f'{mediainfo.title_year} 通过标题匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
                                     # 更新缓存
                                     torrent_mediainfo = mediainfo
                                     context.media_info = mediainfo
