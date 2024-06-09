@@ -77,6 +77,8 @@ def checkMessage(channel_type: MessageChannel):
                                 return None
                             if channel_type == MessageChannel.VoceChat and not switch.get("vocechat"):
                                 return None
+                            if channel_type == MessageChannel.WebPush and not switch.get("webpush"):
+                                return None
                 return func(self, message, *args, **kwargs)
 
         return wrapper
