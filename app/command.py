@@ -273,6 +273,8 @@ class Command(metaclass=Singleton):
                     data = cmd_data.get("data") or {}
                     data['channel'] = channel
                     data['user'] = userid
+                    if data_str:
+                        data['args'] = data_str
                     cmd_data['data'] = data
                     command['func'](**cmd_data)
                 elif args_num == 2:
