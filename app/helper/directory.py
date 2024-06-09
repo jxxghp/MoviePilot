@@ -144,12 +144,16 @@ class DirectoryHelper:
                     relative_len = __comman_parts(in_path, Path(matched_dir.path))
                     if relative_len and relative_len >= max_length:
                         max_length = relative_len
-                        target_dirs.append(matched_dir)
+                        target_dirs.append({
+                            'path': matched_dir,
+                            'relative_len': relative_len
+                        })
                 except Exception as e:
                     logger.debug(f"计算目标路径时出错：{str(e)}")
                     continue
             if target_dirs:
-                matched_dirs = target_dirs
+                target_dirs.sort(key=lambda x: x['relative_len'], reverse=True)
+                matched_dirs = [x['path'] for x in target_dirs]
 
             # 优先同盘
             for matched_dir in matched_dirs:
