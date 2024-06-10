@@ -1072,7 +1072,8 @@ class TmdbApi:
             return []
         try:
             logger.debug(f"正在发现电视剧：{kwargs}...")
-            tmdbinfo = self.discover.discover_tv_shows(kwargs)
+            params_tuple = tuple(kwargs.items())
+            tmdbinfo = self.discover.discover_tv_shows(params_tuple)
             if tmdbinfo:
                 for info in tmdbinfo:
                     info['media_type'] = MediaType.TV

@@ -200,7 +200,8 @@ def reset_subscribes(
     subscribe = Subscribe.get(db, subid)
     if subscribe:
         subscribe.update(db, {
-            "note": None
+            "note": "",
+            "lack_episode": subscribe.total_episode
         })
         return schemas.Response(success=True)
     return schemas.Response(success=False, message="订阅不存在")

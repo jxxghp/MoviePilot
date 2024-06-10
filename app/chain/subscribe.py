@@ -156,7 +156,7 @@ class SubscribeChain(ChainBase):
             'sites': self.__get_default_subscribe_config(mediainfo.type, "sites") or None if not kwargs.get(
                 "sites") else kwargs.get("sites"),
             'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path") if not kwargs.get(
-                "save_path") else kwargs.get("save_path"),
+                "save_path") else kwargs.get("save_path")
         })
         sid, err_msg = self.subscribeoper.add(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:

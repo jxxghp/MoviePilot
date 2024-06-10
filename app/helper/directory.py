@@ -7,7 +7,6 @@ from app.core.context import MediaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.types import SystemConfigKey, MediaType
-from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
 
