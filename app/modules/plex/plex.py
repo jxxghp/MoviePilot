@@ -1,9 +1,9 @@
 import json
-from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple, Generator, Any
 from urllib.parse import quote_plus
 
+from cachetools import TTLCache, cached
 from plexapi import media
 from plexapi.server import PlexServer
 
@@ -14,7 +14,6 @@ from app.schemas import MediaType
 
 
 class Plex:
-
     _plex = None
 
     def __init__(self):
@@ -58,7 +57,7 @@ class Plex:
             self._plex = None
             logger.error(f"Plex服务器连接失败：{str(e)}")
 
-    @lru_cache(maxsize=10)
+    @cached(cache=TTLCache(maxsize=100, ttl=86400))
     def __get_library_images(self, library_key: str, mtype: int) -> Optional[List[str]]:
         """
         获取媒体服务器最近添加的媒体的图片列表
@@ -76,10 +75,11 @@ class Plex:
         # 如果总数不足,接续获取下一页
         while len(poster_urls) < total_size:
             items = self._plex.fetchItems(f"/hubs/home/recentlyAdded?type={mtype}&sectionID={library_key}",
-                                          container_size=total_size,
-                                          container_start=container_start)
+                                          container_start=container_start,
+                                          container_size=8,
+                                          maxresults=8)
             for item in items:
-                if item.type == 'episode':
+                if item.type == "episode":
                     # 如果是剧集的单集,则去找上级的图片
                     if item.parentThumb is not None:
                         poster_urls[item.parentThumb] = None
@@ -631,8 +631,12 @@ class Plex:
             return []
         # 媒体库白名单
         allow_library = ",".join([lib.id for lib in self.get_librarys()])
-        params = {'contentDirectoryID': allow_library}
-        items = self._plex.fetchItems("/hubs/continueWatching/items", container_start=0, container_size=num, params=params)
+        params = {"contentDirectoryID": allow_library}
+        items = self._plex.fetchItems("/hubs/continueWatching/items",
+                                      container_start=0,
+                                      container_size=num,
+                                      maxresults=num,
+                                      params=params)
         ret_resume = []
         for item in items:
             item_type = MediaType.MOVIE.value if item.TYPE == "movie" else MediaType.TV.value
