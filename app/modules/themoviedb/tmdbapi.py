@@ -231,7 +231,7 @@ class TmdbApi:
             logger.error(f"连接TMDB出错：{str(e)} - {traceback.format_exc()}")
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
-        if len(movies) == 0:
+        if (movies is None) or (len(movies) == 0):
             logger.debug(f"{name} 未找到相关电影信息!")
             return {}
         else:
@@ -278,7 +278,7 @@ class TmdbApi:
             logger.error(f"连接TMDB出错：{str(e)} - {traceback.format_exc()}")
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
-        if len(tvs) == 0:
+        if (tvs is None) or (len(tvs) == 0):
             logger.debug(f"{name} 未找到相关剧集信息!")
             return {}
         else:
@@ -340,7 +340,7 @@ class TmdbApi:
             print(traceback.format_exc())
             return None
 
-        if len(tvs) == 0:
+        if (tvs is None) or (len(tvs) == 0):
             logger.debug("%s 未找到季%s相关信息!" % (name, season_number))
             return {}
         else:
@@ -422,7 +422,7 @@ class TmdbApi:
         logger.debug(f"API返回：{str(self.search.total_results)}")
         # 返回结果
         ret_info = {}
-        if len(multis) == 0:
+        if (multis is None) or (len(multis) == 0):
             logger.debug(f"{name} 未找到相关媒体息!")
             return {}
         else:
