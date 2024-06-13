@@ -29,9 +29,9 @@
 ![mp4](https://github.com/jxxghp/MoviePilot/assets/51039935/8bc6a0a5-7c57-464f-ae63-d6241310dc43)
 
 
-<h2 align="center">贡献者</h2>
+## 贡献者
 
-<a href="https://github.com/Requarks/wiki/graphs/contributors"><img src="https://opencollective.com/wikijs/contributors.svg?width=890" /></a>
+<a href="https://github.com/jxxghp/MoviePilot/graphs/contributors"><img src="https://opencollective.com/wikijs/contributors.svg?width=890" /></a>
 
 
 
