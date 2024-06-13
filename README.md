@@ -16,22 +16,8 @@
 
 访问官方Wiki：https://wiki.movie-pilot.org
 
-## 功能预览
-
-![image](https://github.com/jxxghp/MoviePilot/assets/51039935/f2654b09-26f3-464f-a0af-1de3f97832ee)
-
-![mp1](https://github.com/jxxghp/MoviePilot/assets/51039935/123a39cd-11b6-4bd3-b3a3-e3e1103416b9)
-
-![mp2](https://github.com/jxxghp/MoviePilot/assets/51039935/230de330-8162-4314-a897-0bce9b1e5d00)
-
-![mp3](https://github.com/jxxghp/MoviePilot/assets/51039935/de678f45-bbe4-4bdc-aefc-cc5ae774a726)
-
-![mp4](https://github.com/jxxghp/MoviePilot/assets/51039935/8bc6a0a5-7c57-464f-ae63-d6241310dc43)
-
-
 ## 贡献者
 
-## 贡献者
-
-<!-- readme: collaborators,contributors -start -->
-<!-- readme: collaborators,contributors -end -
+<a href="https://github.com/jxxghp/MoviePilot/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=jxxghp/MoviePilot" />
+</a>
