@@ -142,7 +142,7 @@ class StringUtils:
         """
         判断是否为英文单词，有空格时返回False
         """
-        return word.isalpha()
+        return word.encode().isalpha()
 
     @staticmethod
     def str_int(text: str) -> int:
