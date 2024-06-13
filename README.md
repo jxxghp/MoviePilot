@@ -31,7 +31,7 @@
 
 ## 贡献者
 
-<a href="https://github.com/jxxghp/MoviePilot/graphs/contributors"><img src="https://opencollective.com/MoviePilot/contributors.svg?width=890" /></a>
+## 贡献者
 
-
-
+<!-- readme: collaborators,contributors -start -->
+<!-- readme: collaborators,contributors -end -

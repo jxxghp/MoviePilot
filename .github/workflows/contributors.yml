@@ -1,0 +1,16 @@
+on:
+  push:
+    branches:
+      - main
+
+name: Generate a list of contributors
+
+jobs:
+  contrib-readme-en-job:
+    runs-on: ubuntu-latest
+    name: A job to automate contrib in readme
+    steps:
+      - name: Contribute List
+        uses: akhilmhdh/contributors-readme-action@v2.3.4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
