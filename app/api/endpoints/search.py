@@ -52,6 +52,8 @@ def search_by_id(mediaid: str,
             # 通过豆瓣ID识别TMDBID
             tmdbinfo = MediaChain().get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
             if tmdbinfo:
+                if tmdbinfo.get('season') and not season:
+                    season = tmdbinfo.get('season')
                 torrents = SearchChain().search_by_id(tmdbid=tmdbinfo.get("id"),
                                                       mtype=mtype, area=area, season=season)
             else:

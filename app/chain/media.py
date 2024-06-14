@@ -220,6 +220,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     season=meta.begin_season
                 )
                 if tmdbinfo:
+                    # 合季季后返回
+                    tmdbinfo['season'] = meta.begin_season
                     break
         return tmdbinfo
 
