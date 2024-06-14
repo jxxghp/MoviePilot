@@ -310,20 +310,16 @@ class SubscribeChain(ChainBase):
 
             # 电视剧订阅处理缺失集
             if meta.type == MediaType.TV:
-                # 实际缺失集与订阅开始结束集范围进行整合
+                # 实际缺失集与订阅开始结束集范围进行整合，同时剔除已下载的集数
                 no_exists = self.__get_subscribe_no_exits(
+                    subscribe_name=f'{subscribe.name} {meta.season}',
                     no_exists=no_exists,
                     mediakey=mediakey,
                     begin_season=meta.begin_season,
                     total_episode=subscribe.total_episode,
                     start_episode=subscribe.start_episode,
-
+                    downloaded_episodes=self.__get_downloaded_episodes(subscribe)
                 )
-                # 打印汇总缺失集信息
-                if no_exists and no_exists.get(mediakey):
-                    no_exists_info = no_exists.get(mediakey).get(subscribe.season)
-                    if no_exists_info:
-                        logger.info(f'订阅 {mediainfo.title_year} {meta.season} 缺失集：{no_exists_info.episodes}')
 
             # 站点范围
             sites = self.get_sub_sites(subscribe)
@@ -357,23 +353,17 @@ class SubscribeChain(ChainBase):
                 torrent_meta = context.meta_info
                 torrent_info = context.torrent_info
                 torrent_mediainfo = context.media_info
-                # 非洗版
-                if not subscribe.best_version:
-                    # 如果是电视剧过滤掉已经下载的集数
-                    if torrent_mediainfo.type == MediaType.TV:
-                        if self.__check_subscribe_note(subscribe, torrent_meta.episode_list):
-                            logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episode_list} 已下载过')
-                            continue
-                else:
+                # 洗版
+                if subscribe.best_version:
                     # 洗版时，非整季不要
                     if torrent_mediainfo.type == MediaType.TV:
                         if torrent_meta.episode_list:
                             logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
                             continue
-                    # 洗版时，优先级小于已下载优先级的不要
+                    # 洗版时，优先级小于等于已下载优先级的不要
                     if subscribe.current_priority \
-                            and torrent_info.pri_order < subscribe.current_priority:
-                        logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于已下载优先级')
+                            and torrent_info.pri_order <= subscribe.current_priority:
+                        logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
                         continue
                 matched_contexts.append(context)
 
@@ -620,20 +610,16 @@ class SubscribeChain(ChainBase):
 
             # 电视剧订阅
             if meta.type == MediaType.TV:
-                # 整合实际缺失集与订阅开始集结束集
+                # 整合实际缺失集与订阅开始集结束集，同时剔除已下载的集数
                 no_exists = self.__get_subscribe_no_exits(
+                    subscribe_name=f'{subscribe.name} {meta.season}',
                     no_exists=no_exists,
                     mediakey=mediakey,
                     begin_season=meta.begin_season,
                     total_episode=subscribe.total_episode,
                     start_episode=subscribe.start_episode,
-
+                    downloaded_episodes=self.__get_downloaded_episodes(subscribe)
                 )
-                # 打印汇总缺失集信息
-                if no_exists and no_exists.get(mediakey):
-                    no_exists_info = no_exists.get(mediakey).get(subscribe.season)
-                    if no_exists_info:
-                        logger.info(f'订阅 {mediainfo.title_year} {meta.season} 缺失集：{no_exists_info.episodes}')
 
             # 过滤规则
             filter_rule = self.get_filter_rule(subscribe)
@@ -655,16 +641,19 @@ class SubscribeChain(ChainBase):
                         _cache_key = f"{torrent_info.title}_{torrent_info.description}"
                         if _cache_key not in _recognize_cached:
                             _recognize_cached.append(_cache_key)
-                            logger.info(f'{torrent_info.site_name} - {torrent_info.title} 订阅缓存为未识别状态，尝试重新识别...')
+                            logger.info(
+                                f'{torrent_info.site_name} - {torrent_info.title} 订阅缓存为未识别状态，尝试重新识别...')
                             # 重新识别（不使用缓存）
                             torrent_mediainfo = self.recognize_media(meta=torrent_meta, cache=False)
                             if not torrent_mediainfo:
-                                logger.warn(f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
+                                logger.warn(
+                                    f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
                                 if self.torrenthelper.match_torrent(mediainfo=mediainfo,
                                                                     torrent_meta=torrent_meta,
                                                                     torrent=torrent_info):
                                     # 匹配成功
-                                    logger.info(f'{mediainfo.title_year} 通过标题匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
+                                    logger.info(
+                                        f'{mediainfo.title_year} 通过标题匹配到资源：{torrent_info.site_name} - {torrent_info.title}')
                                     # 更新缓存
                                     torrent_mediainfo = mediainfo
                                     context.media_info = mediainfo
@@ -737,10 +726,6 @@ class SubscribeChain(ChainBase):
                                             f'{torrent_info.title} 对应剧集 {torrent_meta.episode_list} 未包含缺失的剧集'
                                         )
                                         continue
-                            # 过滤掉已经下载的集数
-                            if self.__check_subscribe_note(subscribe, torrent_meta.episode_list):
-                                logger.info(f'{torrent_info.title} 对应剧集 {torrent_meta.episode_list} 已下载过')
-                                continue
                         else:
                             # 洗版时，非整季不要
                             if meta.type == MediaType.TV:
@@ -757,8 +742,8 @@ class SubscribeChain(ChainBase):
                     # 洗版时，优先级小于已下载优先级的不要
                     if subscribe.best_version:
                         if subscribe.current_priority \
-                                and torrent_info.pri_order < subscribe.current_priority:
-                            logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于已下载优先级')
+                                and torrent_info.pri_order <= subscribe.current_priority:
+                            logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
                             continue
 
                     # 匹配成功
@@ -873,21 +858,21 @@ class SubscribeChain(ChainBase):
             })
 
     @staticmethod
-    def __check_subscribe_note(subscribe: Subscribe, episodes: List[int]) -> bool:
+    def __get_downloaded_episodes(subscribe: Subscribe) -> List[int]:
         """
-        检查当前集是否已下载过
+        获取已下载过的集数
         """
         if not subscribe.note:
-            return False
-        if not episodes:
-            return False
+            return []
+        if subscribe.type != MediaType.TV.value:
+            return []
         try:
-            note = json.loads(subscribe.note)
+            episodes = json.loads(subscribe.note)
+            logger.info(f'订阅 {subscribe.name} 第{subscribe.season}季 已下载集数：{episodes}')
+            return episodes
         except JSONDecodeError:
-            return False
-        if set(episodes).issubset(set(note)):
-            return True
-        return False
+            logger.warn(f'订阅 {subscribe.name} note字段解析失败')
+        return []
 
     def __update_lack_episodes(self, lefts: Dict[Union[int, str], Dict[int, NotExistMediaInfo]],
                                subscribe: Subscribe,
@@ -1013,25 +998,31 @@ class SubscribeChain(ChainBase):
         self.remote_list(channel, userid)
 
     @staticmethod
-    def __get_subscribe_no_exits(no_exists: Dict[Union[int, str], Dict[int, NotExistMediaInfo]],
+    def __get_subscribe_no_exits(subscribe_name: str,
+                                 no_exists: Dict[Union[int, str], Dict[int, NotExistMediaInfo]],
                                  mediakey: Union[str, int],
                                  begin_season: int,
                                  total_episode: int,
-                                 start_episode: int):
+                                 start_episode: int,
+                                 downloaded_episodes: List[int] = None):
         """
         根据订阅开始集数和总集数，结合TMDB信息计算当前订阅的缺失集数
+        :param subscribe_name: 订阅名称
         :param no_exists: 缺失季集列表
         :param mediakey: TMDB ID或豆瓣ID
         :param begin_season: 开始季
         :param total_episode: 订阅设定总集数
         :param start_episode: 订阅设定开始集数
+        :param downloaded_episodes: 已下载集数
         """
         # 使用订阅的总集数和开始集数替换no_exists
-        if no_exists \
-                and no_exists.get(mediakey) \
-                and (total_episode or start_episode):
+        if not no_exists or not no_exists.get(mediakey):
+            return no_exists
+        no_exists_item = no_exists.get(mediakey)
+        if total_episode or start_episode:
+            logger.info(f'订阅 {subscribe_name} 设定的开始集数：{start_episode}、总集数：{total_episode}')
             # 该季原缺失信息
-            no_exist_season = no_exists.get(mediakey).get(begin_season)
+            no_exist_season = no_exists_item.get(begin_season)
             if no_exist_season:
                 # 原集列表
                 episode_list = no_exist_season.episodes
@@ -1069,6 +1060,38 @@ class SubscribeChain(ChainBase):
                     total_episode=total_episode,
                     start_episode=start_episode
                 )
+        # 根据订阅已下载集数更新缺失集数
+        if downloaded_episodes:
+            logger.info(f'订阅 {subscribe_name} 已下载集数：{downloaded_episodes}')
+            # 该季原缺失信息
+            no_exist_season = no_exists_item.get(begin_season)
+            if no_exist_season:
+                # 原集列表
+                episode_list = no_exist_season.episodes
+                # 原总集数
+                total = no_exist_season.total_episode
+                # 原开始集数
+                start = no_exist_season.start_episode
+                # 更新剧集列表
+                episodes = list(set(episode_list).difference(set(downloaded_episodes)))
+                # 更新集合
+                no_exists[mediakey][begin_season] = NotExistMediaInfo(
+                    season=begin_season,
+                    episodes=episodes,
+                    total_episode=total,
+                    start_episode=start
+                )
+            else:
+                # 开始集数
+                start = start_episode or 1
+                # 不存在的季
+                no_exists[mediakey][begin_season] = NotExistMediaInfo(
+                    season=begin_season,
+                    episodes=list(set(range(start, total_episode + 1)).difference(set(downloaded_episodes))),
+                    total_episode=total_episode,
+                    start_episode=start
+                )
+        logger.info(f'订阅 {subscribe_name} 缺失剧集数更新为：{no_exists}')
         return no_exists
 
     @eventmanager.register(EventType.SiteDeleted)
