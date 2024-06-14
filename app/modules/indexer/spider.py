@@ -682,6 +682,7 @@ class TorrentSpider:
                 elif method_name == "replace" and isinstance(args, list):
                     text = text.replace(r"%s" % args[0], r"%s" % args[-1])
                 elif method_name == "dateparse" and isinstance(args, str):
+                    text = text.replace("\n", " ").strip()
                     text = datetime.datetime.strptime(text, r"%s" % args)
                 elif method_name == "strip":
                     text = text.strip()
