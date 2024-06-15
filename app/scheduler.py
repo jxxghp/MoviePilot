@@ -160,7 +160,7 @@ class Scheduler(metaclass=Singleton):
             },
             "random_wallpager": {
                 "name": "壁纸缓存",
-                "func": TmdbChain().get_random_wallpager,
+                "func": TmdbChain().get_trending_wallpapers,
                 "running": False,
             }
         }
