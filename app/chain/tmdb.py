@@ -124,7 +124,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
             while True:
                 info = random.choice(infos)
                 if info and info.backdrop_path:
-                    return f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.backdrop_path}"
+                    return info.backdrop_path
         return None
 
     @cached(cache=TTLCache(maxsize=1, ttl=3600))
@@ -134,6 +134,5 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         """
         infos = self.tmdb_trending()
         if infos:
-            return [f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.backdrop_path}"
-                    for info in infos if info and info.backdrop_path][:num]
+            return [info.backdrop_path for info in infos if info and info.backdrop_path][:num]
         return None
