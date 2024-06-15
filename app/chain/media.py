@@ -194,6 +194,11 @@ class MediaChain(ChainBase, metaclass=Singleton):
         tmdbinfo = None
         doubaninfo = self.douban_info(doubanid=doubanid, mtype=mtype)
         if doubaninfo:
+            # 触发豆瓣subject_ip_rate_limit后无法获取到豆瓣信息, 
+            # 返回doubaninfo给调用函数处理
+            if "subject_ip_rate_limit" in doubaninfo.get("msg", ""):
+                return doubaninfo
+            
             # 优先使用原标题匹配
             if doubaninfo.get("original_title"):
                 meta = MetaInfo(title=doubaninfo.get("title"))

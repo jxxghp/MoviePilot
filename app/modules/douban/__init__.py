@@ -426,6 +426,19 @@ class DoubanModule(_ModuleBase):
             """
             info = self.doubanapi.tv_detail(doubanid)
             if info:
+                # 触发subject_ip_rate_limit后无法获取豆瓣信息，直接返回给调用函数处理
+                """
+                {
+                "msg": "subject_ip_rate_limit",
+                "code": 1309,
+                "request": "GET /v2/movie/26892385",
+                "localized_message": "您所在的网络存在异常，请登录后重试。"
+                }
+                """
+                if "subject_ip_rate_limit" in info.get("msg", ""):
+                    logger.warn(f"触发豆瓣IP速率限制，错误信息：{info} ...")
+                    return info
+                
                 celebrities = self.doubanapi.tv_celebrities(doubanid)
                 if celebrities:
                     info["directors"] = celebrities.get("directors")
@@ -438,6 +451,19 @@ class DoubanModule(_ModuleBase):
             """
             info = self.doubanapi.movie_detail(doubanid)
             if info:
+                # 触发subject_ip_rate_limit后无法获取豆瓣信息，直接返回给调用函数处理
+                """
+                {
+                "msg": "subject_ip_rate_limit",
+                "code": 1309,
+                "request": "GET /v2/movie/26892385",
+                "localized_message": "您所在的网络存在异常，请登录后重试。"
+                }
+                """
+                if "subject_ip_rate_limit" in info.get("msg", ""):
+                    logger.warn(f"触发豆瓣IP速率限制，错误信息：{info} ...")
+                    return info
+                
                 celebrities = self.doubanapi.movie_celebrities(doubanid)
                 if celebrities:
                     info["directors"] = celebrities.get("directors")

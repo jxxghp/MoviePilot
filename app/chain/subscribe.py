@@ -78,7 +78,9 @@ class SubscribeChain(ChainBase):
             if not tmdbid and doubanid:
                 # 将豆瓣信息转换为TMDB信息
                 tmdbinfo = self.mediachain.get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
-                if tmdbinfo:
+                
+                # 触发豆瓣 subject_ip_rate_limit 后无法通过豆瓣ID获取到TMDB媒体信息
+                if tmdbinfo and "subject_ip_rate_limit" not in tmdbinfo.get("msg", ""):
                     mediainfo = MediaInfo(tmdb_info=tmdbinfo)
             else:
                 # 识别TMDB信息，不使用缓存

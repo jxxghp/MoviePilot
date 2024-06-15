@@ -51,7 +51,8 @@ def search_by_id(mediaid: str,
         if settings.RECOGNIZE_SOURCE == "themoviedb":
             # 通过豆瓣ID识别TMDBID
             tmdbinfo = MediaChain().get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
-            if tmdbinfo:
+            # 触发豆瓣 subject_ip_rate_limit 后无法通过豆瓣ID获取到TMDB媒体信息
+            if tmdbinfo and "subject_ip_rate_limit" not in tmdbinfo.get("msg", ""):
                 if tmdbinfo.get('season') and not season:
                     season = tmdbinfo.get('season')
                 torrents = SearchChain().search_by_id(tmdbid=tmdbinfo.get("id"),
