@@ -88,3 +88,19 @@ class WebUtils:
             except Exception as err:
                 print(str(err))
         return None
+
+    @staticmethod
+    def get_bing_wallpapers(num: int = 7) -> Optional[str]:
+        """
+        获取7天的Bing每日壁纸
+        """
+        url = f"https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n={num}"
+        resp = RequestUtils(timeout=5).get_res(url)
+        if resp and resp.status_code == 200:
+            try:
+                result = resp.json()
+                if isinstance(result, dict):
+                    return [f"https://cn.bing.com{image.get('url')}" for image in result.get('images') or []]
+            except Exception as err:
+                print(str(err))
+        return None

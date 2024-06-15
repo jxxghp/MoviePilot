@@ -126,3 +126,14 @@ class TmdbChain(ChainBase, metaclass=Singleton):
                 if info and info.backdrop_path:
                     return f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.backdrop_path}"
         return None
+
+    @cached(cache=TTLCache(maxsize=1, ttl=3600))
+    def get_trending_wallpapers(self, num: int = 10) -> Optional[List[str]]:
+        """
+        获取所有流行壁纸
+        """
+        infos = self.tmdb_trending()
+        if infos:
+            return [f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{info.backdrop_path}"
+                    for info in infos if info and info.backdrop_path][:num]
+        return None
