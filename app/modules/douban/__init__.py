@@ -426,6 +426,9 @@ class DoubanModule(_ModuleBase):
             """
             info = self.doubanapi.tv_detail(doubanid)
             if info:
+                if "subject_ip_rate_limit" in info.get("msg", ""):
+                    logger.warn(f"触发豆瓣IP速率限制，错误信息：{info} ...")
+                    return None
                 celebrities = self.doubanapi.tv_celebrities(doubanid)
                 if celebrities:
                     info["directors"] = celebrities.get("directors")
@@ -438,6 +441,9 @@ class DoubanModule(_ModuleBase):
             """
             info = self.doubanapi.movie_detail(doubanid)
             if info:
+                if "subject_ip_rate_limit" in info.get("msg", ""):
+                    logger.warn(f"触发豆瓣IP速率限制，错误信息：{info} ...")
+                    return None
                 celebrities = self.doubanapi.movie_celebrities(doubanid)
                 if celebrities:
                     info["directors"] = celebrities.get("directors")
