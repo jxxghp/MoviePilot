@@ -226,7 +226,7 @@ class SiteChain(ChainBase):
             indexer = self.siteshelper.get_indexer(domain)
             # 数据库的站点信息
             site_info = self.siteoper.get_by_domain(domain)
-            if site_info:
+            if site_info and site_info.is_active == 1:
                 # 站点已存在，检查站点连通性
                 status, msg = self.test(domain)
                 # 更新站点Cookie
