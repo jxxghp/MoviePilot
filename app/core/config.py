@@ -199,6 +199,8 @@ class Settings(BaseSettings):
     COOKIECLOUD_PASSWORD: Optional[str] = None
     # CookieCloud同步间隔（分钟）
     COOKIECLOUD_INTERVAL: Optional[int] = 60 * 24
+    # CookieCloud同步黑名单，多个域名,分割
+    COOKIECLOUD_BLACKLIST: Optional[str] = None
     # OCR服务器地址
     OCR_HOST: str = "https://movie-pilot.org"
     # CookieCloud对应的浏览器UA

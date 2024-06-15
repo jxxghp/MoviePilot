@@ -226,7 +226,7 @@ class SiteChain(ChainBase):
             indexer = self.siteshelper.get_indexer(domain)
             # 数据库的站点信息
             site_info = self.siteoper.get_by_domain(domain)
-            if site_info:
+            if site_info and site_info.is_active == 1:
                 # 站点已存在，检查站点连通性
                 status, msg = self.test(domain)
                 # 更新站点Cookie
@@ -252,6 +252,11 @@ class SiteChain(ChainBase):
                 self.siteoper.update_cookie(domain=domain, cookies=cookie)
                 _update_count += 1
             elif indexer:
+                if settings.COOKIECLOUD_BLACKLIST and any(
+                        StringUtils.get_url_domain(domain) == StringUtils.get_url_domain(black_domain) for black_domain
+                        in str(settings.COOKIECLOUD_BLACKLIST).split(",")):
+                    logger.warn(f"站点 {domain} 已在黑名单中，不添加站点")
+                    continue
                 # 新增站点
                 domain_url = __indexer_domain(inx=indexer, sub_domain=domain)
                 res = RequestUtils(cookies=cookie,
