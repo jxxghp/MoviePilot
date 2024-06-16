@@ -78,9 +78,9 @@ def wallpaper() -> Any:
     获取登录页面电影海报
     """
     if settings.WALLPAPER == "tmdb":
-        url = WebUtils.get_bing_wallpaper()
-    else:
         url = TmdbChain().get_random_wallpager()
+    else:
+        url = WebUtils.get_bing_wallpaper()
     if url:
         return schemas.Response(
             success=True,
