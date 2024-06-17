@@ -18,7 +18,6 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.directory import DirectoryHelper
 from app.helper.format import FormatParser
-from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat
@@ -44,7 +43,6 @@ class TransferChain(ChainBase):
         self.tmdbchain = TmdbChain()
         self.systemconfig = SystemConfigOper()
         self.directoryhelper = DirectoryHelper()
-        self.messagehelper = MessageHelper()
 
     def process(self) -> bool:
         """
@@ -359,22 +357,10 @@ class TransferChain(ChainBase):
                     transfers[mkey].file_list_new.extend(transferinfo.file_list_new)
                     transfers[mkey].fail_list.extend(transferinfo.fail_list)
 
-                # 硬链接检查
-                temp_transfer_type = transfer_type
-                if transfer_type == "link":
-                    if not SystemUtils.is_hardlink(file_path, transferinfo.target_path):
-                        logger.warn(
-                            f"{file_path} 与 {transferinfo.target_path} 不是同一硬链接文件路径，请检查存储空间占用和整理耗时，确认是否为复制")
-                        self.messagehelper.put(
-                            f"{file_path} 与 {transferinfo.target_path} 不是同一硬链接文件路径，疑似硬链接失败，请检查是否为复制",
-                            title="硬链接失败",
-                            role="system")
-                        temp_transfer_type = "copy"
-
                 # 新增转移成功历史记录
                 self.transferhis.add_success(
                     src_path=file_path,
-                    mode=temp_transfer_type,
+                    mode=transfer_type,
                     download_hash=download_hash,
                     meta=file_meta,
                     mediainfo=file_mediainfo,
@@ -384,7 +370,7 @@ class TransferChain(ChainBase):
                 if transferinfo.need_scrape:
                     self.scrape_metadata(path=transferinfo.target_path,
                                          mediainfo=file_mediainfo,
-                                         transfer_type=temp_transfer_type,
+                                         transfer_type=transfer_type,
                                          metainfo=file_meta)
                 # 更新进度
                 processed_num += 1
