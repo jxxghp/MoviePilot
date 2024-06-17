@@ -20,3 +20,7 @@ class FileItem(BaseModel):
     modify_time: Optional[float] = None
     # 子节点
     children: Optional[list] = []
+    # ID
+    fileid: Optional[str] = None
+    # 父ID
+    parent_fileid: Optional[str] = None

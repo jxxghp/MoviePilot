@@ -94,6 +94,8 @@ class SystemConfigKey(Enum):
     DownloadDirectories = "DownloadDirectories"
     # 媒体库目录定义
     LibraryDirectories = "LibraryDirectories"
+    # 阿里云盘认证参数
+    UserAliyunParams = "UserAliyunParams"
 
 
 # 处理进度Key字典

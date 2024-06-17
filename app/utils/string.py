@@ -384,6 +384,21 @@ class StringUtils:
             return timestamp
 
     @staticmethod
+    def str_to_timestamp(date_str: str) -> float:
+        """
+        日期转时间戳
+        :param date_str:
+        :return:
+        """
+        if not date_str:
+            return 0
+        try:
+            return dateparser.parse(date_str).timestamp()
+        except Exception as e:
+            print(str(e))
+            return 0
+
+    @staticmethod
     def to_bool(text: str, default_val: bool = False) -> bool:
         """
         字符串转bool
