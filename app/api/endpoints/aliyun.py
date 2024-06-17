@@ -28,3 +28,11 @@ def check(ck: str, t: str, _: schemas.TokenPayload = Depends(verify_token)) -> A
     if data:
         return schemas.Response(success=True, data=data)
     return schemas.Response(success=False, message=errmsg)
+
+
+@router.get("/userinfo", summary="查询用户信息", response_model=schemas.Response)
+def userinfo(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    info = AliyunHelper().get_user_info()
+    if info:
+        return schemas.Response(success=True, data=info)
+    return schemas.Response(success=False)

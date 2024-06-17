@@ -35,6 +35,8 @@ class AliyunHelper:
     update_accessstoken_url = "https://auth.aliyundrive.com/v2/account/token"
     # 创建会话
     create_session_url = "https://api.aliyundrive.com/users/v1/users/device/create_session"
+    # 用户信息
+    user_info_url = "https://user.aliyundrive.com/v2/user/get"
     # 浏览文件
     list_file_url = "https://api.aliyundrive.com/adrive/v3/file/list"
 
@@ -134,7 +136,6 @@ class AliyunHelper:
             qrCodeStatus = data.get("qrCodeStatus")
             data["tip"] = status.get(qrCodeStatus) or "未知"
             if data.get("bizExt"):
-                # base 解码为 json
                 try:
                     bizExt = json.loads(base64.b64decode(data["bizExt"]).decode('GBK'))
                     pds_login_result = bizExt.get("pds_login_result")
@@ -151,6 +152,8 @@ class AliyunHelper:
                             "defaultDriveId": pds_login_result.get('defaultDriveId'),
                             "updateTime": time.time(),
                         })
+                        self.update_params(data)
+                        self.get_user_info()
                 except Exception as e:
                     return {}, f"bizExt 解码失败：{str(e)}"
             return data, ""
@@ -251,6 +254,26 @@ class AliyunHelper:
             "x-signature": self._X_SIGNATURE
         }
 
+    def get_user_info(self) -> dict:
+        """
+        获取用户信息（drive_id等）
+        """
+        params = self.get_access_params()
+        if not params:
+            return {}
+        headers = self.get_headers(params)
+        res = RequestUtils(headers=headers, timeout=10).post_res(self.user_info_url)
+        if res:
+            result = res.json()
+            self.update_params({
+                "resourceDriveId": result.get("resource_drive_id"),
+                "backDriveId": result.get("backup_drive_id")
+            })
+            return result
+        else:
+            self.__log_error(res, "获取用户信息")
+        return {}
+
     def list_files(self, parent_file_id: str = 'root', list_type: str = None,
                    limit: int = 100, order_by: str = 'updated_at') -> List[dict]:
         """
@@ -273,7 +296,7 @@ class AliyunHelper:
             if not parent_file_id or parent_file_id == "/":
                 parent_file_id = "root"
             res = RequestUtils(headers=headers, timeout=10).post_res(self.list_file_url, json={
-                "drive_id": params.get("defaultDriveId"),
+                "drive_id": params.get("resourceDriveId"),
                 "type": list_type,
                 "limit": limit,
                 "order_by": order_by,
