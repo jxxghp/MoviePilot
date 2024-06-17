@@ -10,6 +10,7 @@ from typing import List, Union, Tuple
 
 import docker
 import psutil
+
 from app import schemas
 
 
@@ -469,7 +470,9 @@ class SystemUtils:
 
     @staticmethod
     def is_hardlink(src: Path, dest: Path) -> bool:
-        """判断是否为硬链接"""
+        """
+        判断是否为硬链接（可能无法支持宿主机挂载smb盘符映射docker的场景）
+        """
         try:
             if not src.exists() or not dest.exists():
                 return False
@@ -487,7 +490,7 @@ class SystemUtils:
                     if not target_file.exists() or not src_file.samefile(target_file):
                         return False
                 return True
-        except (PermissionError, FileNotFoundError, ValueError, OSError) as e:
+        except Exception as e:
             print(f"Error occurred: {e}")
             return False
 
