@@ -262,54 +262,70 @@ def list_path(path: str,
 
 
 @router.get("/aliyun/listdir", summary="所有目录（阿里云盘，不含文件）", response_model=List[schemas.FileItem])
-def list_dir(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def list_dir(path: str,
+             fileid: str,
+             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询当前目录下所有目录
     """
-    if not path:
+    if not fileid:
         return []
+    if not path:
+        path = "/"
 
 
 @router.get("/aliyun/mkdir", summary="创建目录（阿里云盘）", response_model=schemas.Response)
-def mkdir(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def mkdir(path: str,
+          fileid: str,
+          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     创建目录
     """
-    if not path:
+    if not fileid:
         return schemas.Response(success=False)
+    if not path:
+        path = "/"
 
 
 @router.get("/aliyun/delete", summary="删除文件或目录（阿里云盘）", response_model=schemas.Response)
-def delete(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def delete(path: str,
+           fileid: str,
+           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     删除文件或目录
     """
-    if not path:
+    if not fileid:
         return schemas.Response(success=False)
+    if not path:
+        path = "/"
 
 
 @router.get("/aliyun/download", summary="下载文件（阿里云盘）")
-def download(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+def download(path: str,
+             fileid: str,
+             _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     下载文件或目录
     """
-    if not path:
+    if not fileid:
         return schemas.Response(success=False)
+    if not path:
+        path = "/"
 
 
 @router.get("/aliyun/rename", summary="重命名文件或目录（阿里云盘）", response_model=schemas.Response)
-def rename(path: str, new_name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def rename(fileid: str, new_name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     重命名文件或目录
     """
-    if not path or not new_name:
+    if not fileid or not new_name:
         return schemas.Response(success=False)
 
 
 @router.get("/aliyun/image", summary="读取图片（阿里云盘）", response_model=schemas.Response)
-def image(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+def image(fileid: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     读取图片
     """
-    if not path:
+    if not fileid:
         return schemas.Response(success=False)

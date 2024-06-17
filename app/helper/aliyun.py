@@ -1,10 +1,7 @@
 import base64
-import datetime
 import json
-import os
 import time
 import uuid
-from pathlib import Path
 from typing import Optional, Tuple, List
 
 from requests import Response
@@ -44,8 +41,7 @@ class AliyunHelper:
     def __init__(self):
         self.systemconfig = SystemConfigOper()
 
-    @staticmethod
-    def __log_error(res: Response, apiname: str):
+    def __log_error(self, res: Response, apiname: str):
         """
         统一处理和打印错误信息
         """
@@ -56,7 +52,11 @@ class AliyunHelper:
         code = result.get("code")
         message = result.get("message")
         display_message = result.get("display_message")
-        logger.warn(f"Aliyun {apiname}失败：{code} - {display_message or message}")
+        if code or message:
+            logger.warn(f"Aliyun {apiname}失败：{code} - {display_message or message}")
+            if code == "DeviceSessionSignatureInvalid":
+                logger.warn("设备会话签名无效，请重新扫码登录！")
+                self.clear_params()
 
     @property
     def auth_params(self):
