@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.api.endpoints import login, user, site, message, webhook, subscribe, \
     media, douban, search, plugin, tmdb, history, system, download, dashboard, \
-    local, transfer, mediaserver, bangumi, aliyun
+    local, transfer, mediaserver, bangumi, aliyun, u115
 
 api_router = APIRouter()
 api_router.include_router(login.router, prefix="/login", tags=["login"])
@@ -25,3 +25,4 @@ api_router.include_router(transfer.router, prefix="/transfer", tags=["transfer"]
 api_router.include_router(mediaserver.router, prefix="/mediaserver", tags=["mediaserver"])
 api_router.include_router(bangumi.router, prefix="/bangumi", tags=["bangumi"])
 api_router.include_router(aliyun.router, prefix="/aliyun", tags=["aliyun"])
+api_router.include_router(u115.router, prefix="/u115", tags=["115"])

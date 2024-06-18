@@ -96,6 +96,8 @@ class SystemConfigKey(Enum):
     LibraryDirectories = "LibraryDirectories"
     # 阿里云盘认证参数
     UserAliyunParams = "UserAliyunParams"
+    # 115网盘认证参数
+    User115Params = "User115Params"
 
 
 # 处理进度Key字典
