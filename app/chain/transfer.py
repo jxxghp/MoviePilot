@@ -44,6 +44,15 @@ class TransferChain(ChainBase):
         self.systemconfig = SystemConfigOper()
         self.directoryhelper = DirectoryHelper()
 
+    def recommend_name(self, meta: MetaBase, mediainfo: MediaInfo) -> Optional[str]:
+        """
+        获取重命名后的名称
+        :param meta: 元数据
+        :param mediainfo: 媒体信息
+        :return: 重命名后的名称（含目录）
+        """
+        return self.run_module("recommend_name", meta=meta, mediainfo=mediainfo)
+
     def process(self) -> bool:
         """
         获取下载器中的种子列表，并执行转移

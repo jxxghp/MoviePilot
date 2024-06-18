@@ -5,13 +5,44 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.chain.media import MediaChain
 from app.chain.transfer import TransferChain
+from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
 from app.schemas import MediaType
 
 router = APIRouter()
+
+
+@router.get("/name", summary="查询整理后的名称", response_model=schemas.Response)
+def query_name(path: str, filetype: str,
+               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询整理后的名称
+    :param path: 文件路径
+    :param filetype: 文件类型
+    :param _: Token校验
+    """
+    meta = MetaInfoPath(Path(path))
+    mediainfo = MediaChain().recognize_media(meta)
+    if not mediainfo:
+        return schemas.Response(success=False, message="未识别到媒体信息")
+    new_path = TransferChain().recommend_name(meta=meta, mediainfo=mediainfo)
+    if not new_path:
+        return schemas.Response(success=False, message="未识别到新名称")
+    if filetype == "dir":
+        parents = Path(new_path).parents
+        if len(parents) > 2:
+            new_name = parents[1].name
+        else:
+            new_name = parents[0].name
+    else:
+        new_name = Path(new_path).name
+    return schemas.Response(success=True, data={
+        "name": new_name
+    })
 
 
 @router.post("/manual", summary="手动转移", response_model=schemas.Response)
