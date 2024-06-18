@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends
 from starlette.responses import FileResponse, Response
 
 from app import schemas
+from app.chain.transfer import TransferChain
 from app.core.config import settings
+from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token, verify_uri_token
 from app.helper.aliyun import AliyunHelper
 from app.log import logger
-from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
@@ -20,9 +21,9 @@ IMAGE_TYPES = [".jpg", ".png", ".gif", ".bmp", ".jpeg", ".webp"]
 
 
 @router.get("/local/list", summary="所有目录和文件（本地）", response_model=List[schemas.FileItem])
-def list_path(path: str,
-              sort: str = 'time',
-              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def list_local(path: str,
+               sort: str = 'time',
+               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询当前目录下所有目录和文件
     :param path: 目录路径
@@ -102,7 +103,7 @@ def list_path(path: str,
 
 
 @router.get("/local/listdir", summary="所有目录（本地，不含文件）", response_model=List[schemas.FileItem])
-def list_dir(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def list_local_dir(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询当前目录下所有目录
     """
@@ -143,7 +144,7 @@ def list_dir(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/local/mkdir", summary="创建目录（本地）", response_model=schemas.Response)
-def mkdir(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def mkdir_local(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     创建目录
     """
@@ -157,7 +158,7 @@ def mkdir(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/local/delete", summary="删除文件或目录（本地）", response_model=schemas.Response)
-def delete(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def delete_local(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     删除文件或目录
     """
@@ -174,7 +175,7 @@ def delete(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/local/download", summary="下载文件（本地）")
-def download(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+def download_local(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     下载文件或目录
     """
@@ -196,7 +197,9 @@ def download(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> 
 
 
 @router.get("/local/rename", summary="重命名文件或目录（本地）", response_model=schemas.Response)
-def rename(path: str, new_name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def rename_local(path: str, new_name: str,
+                 recursive: bool = False,
+                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     重命名文件或目录
     """
@@ -206,11 +209,34 @@ def rename(path: str, new_name: str, _: schemas.TokenPayload = Depends(verify_to
     if not path_obj.exists():
         return schemas.Response(success=False)
     path_obj.rename(path_obj.parent / new_name)
+    if recursive:
+        transferchain = TransferChain()
+        media_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIO_TRACK_EXT
+        # 递归修改目录内文件（智能识别命名）
+        sub_files: List[schemas.FileItem] = list_local(path)
+        for sub_file in sub_files:
+            if sub_file.type == "dir":
+                continue
+            if not sub_file.extension:
+                continue
+            if f".{sub_file.extension.lower()}" not in media_exts:
+                continue
+            sub_path = Path(sub_file.path)
+            meta = MetaInfoPath(sub_path)
+            mediainfo = transferchain.recognize_media(meta)
+            if not mediainfo:
+                return schemas.Response(success=False, message=f"{sub_path.name} 未识别到媒体信息")
+            new_path = transferchain.recommend_name(meta=meta, mediainfo=mediainfo)
+            if not new_path:
+                return schemas.Response(success=False, message=f"{sub_path.name} 未识别到新名称")
+            ret: schemas.Response = rename_local(new_path, new_name=Path(new_path).name, recursive=False)
+            if not ret.success:
+                return schemas.Response(success=False, message=f"{sub_path.name} 重命名失败！")
     return schemas.Response(success=True)
 
 
 @router.get("/local/image", summary="读取图片（本地）")
-def image(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+def image_local(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     读取图片
     """
@@ -228,11 +254,11 @@ def image(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any
 
 
 @router.get("/aliyun/list", summary="所有目录和文件（阿里云盘）", response_model=List[schemas.FileItem])
-def list_path(path: str,
-              fileid: str,
-              filetype: str,
-              sort: str = 'updated_at',
-              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def list_aliyun(path: str,
+                fileid: str,
+                filetype: str = "dir",
+                sort: str = 'updated_at',
+                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询当前目录下所有目录和文件
     :param path: 当前路径
@@ -280,9 +306,9 @@ def list_path(path: str,
 
 
 @router.get("/aliyun/mkdir", summary="创建目录（阿里云盘）", response_model=schemas.Response)
-def mkdir(fileid: str,
-          name: str,
-          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def mkdir_aliyun(fileid: str,
+                 name: str,
+                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     创建目录
     """
@@ -295,8 +321,8 @@ def mkdir(fileid: str,
 
 
 @router.get("/aliyun/delete", summary="删除文件或目录（阿里云盘）", response_model=schemas.Response)
-def delete(fileid: str,
-           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def delete_aliyun(fileid: str,
+                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     删除文件或目录
     """
@@ -309,8 +335,8 @@ def delete(fileid: str,
 
 
 @router.get("/aliyun/download", summary="下载文件（阿里云盘）")
-def download(fileid: str,
-             _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+def download_aliyun(fileid: str,
+                    _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     下载文件或目录
     """
@@ -324,7 +350,9 @@ def download(fileid: str,
 
 
 @router.get("/aliyun/rename", summary="重命名文件或目录（阿里云盘）", response_model=schemas.Response)
-def rename(fileid: str, new_name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def rename_aliyun(fileid: str, new_name: str, path: str,
+                  recursive: bool = False,
+                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     重命名文件或目录
     """
@@ -332,12 +360,38 @@ def rename(fileid: str, new_name: str, _: schemas.TokenPayload = Depends(verify_
         return schemas.Response(success=False)
     result = AliyunHelper().rename_file(fileid, new_name)
     if result:
+        if recursive:
+            transferchain = TransferChain()
+            media_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIO_TRACK_EXT
+            # 递归修改目录内文件（智能识别命名）
+            sub_files: List[schemas.FileItem] = list_aliyun(path=path, fileid=fileid)
+            for sub_file in sub_files:
+                if sub_file.type == "dir":
+                    continue
+                if not sub_file.extension:
+                    continue
+                if f".{sub_file.extension.lower()}" not in media_exts:
+                    continue
+                sub_path = Path(f"{path}{sub_file.name}")
+                meta = MetaInfoPath(sub_path)
+                mediainfo = transferchain.recognize_media(meta)
+                if not mediainfo:
+                    return schemas.Response(success=False, message=f"{sub_path.name} 未识别到媒体信息")
+                new_path = transferchain.recommend_name(meta=meta, mediainfo=mediainfo)
+                if not new_path:
+                    return schemas.Response(success=False, message=f"{sub_path.name} 未识别到新名称")
+                ret: schemas.Response = rename_aliyun(fileid=sub_file.fileid,
+                                                      path=path,
+                                                      new_name=Path(new_path).name,
+                                                      recursive=False)
+                if not ret.success:
+                    return schemas.Response(success=False, message=f"{sub_path.name} 重命名失败！")
         return schemas.Response(success=True)
     return schemas.Response(success=False)
 
 
 @router.get("/aliyun/image", summary="读取图片（阿里云盘）", response_model=schemas.Response)
-def image(fileid: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+def image_aliyun(fileid: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     读取图片
     """
