@@ -22,6 +22,9 @@ def qrcode(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 @router.get("/check", summary="二维码登录确认", response_model=schemas.Response)
 def check(ck: str, t: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    二维码登录确认
+    """
     if not ck or not t:
         return schemas.Response(success=False, message="参数错误")
     data, errmsg = AliyunHelper().check_login(ck, t)
@@ -32,7 +35,14 @@ def check(ck: str, t: str, _: schemas.TokenPayload = Depends(verify_token)) -> A
 
 @router.get("/userinfo", summary="查询用户信息", response_model=schemas.Response)
 def userinfo(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    info = AliyunHelper().get_user_info()
+    """
+    查询用户信息
+    """
+    aliyunhelper = AliyunHelper()
+    # 浏览一次文件确定token正确性
+    aliyunhelper.list_files()
+    # 查询用户信息返回
+    info = aliyunhelper.get_user_info()
     if info:
         return schemas.Response(success=True, data=info)
     return schemas.Response(success=False)

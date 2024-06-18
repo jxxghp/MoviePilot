@@ -1,5 +1,4 @@
 import shutil
-from datetime import datetime
 from pathlib import Path
 from typing import Any, List
 
@@ -8,9 +7,10 @@ from starlette.responses import FileResponse, Response
 
 from app import schemas
 from app.core.config import settings
-from app.core.security import verify_token, verify_uri_token
+from app.core.security import verify_token, verify_uri_session
 from app.helper.aliyun import AliyunHelper
 from app.log import logger
+from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
@@ -102,7 +102,7 @@ def list_path(path: str,
 
 
 @router.get("/local/listdir", summary="所有目录（本地，不含文件）", response_model=List[schemas.FileItem])
-def list_dir(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+def list_dir(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询当前目录下所有目录
     """
@@ -174,7 +174,7 @@ def delete(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/local/download", summary="下载文件（本地）")
-def download(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def download(path: str, _: schemas.TokenPayload = Depends(verify_uri_session)) -> Any:
     """
     下载文件或目录
     """
@@ -210,7 +210,7 @@ def rename(path: str, new_name: str, _: schemas.TokenPayload = Depends(verify_to
 
 
 @router.get("/local/image", summary="读取图片（本地）")
-def image(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+def image(path: str, _: schemas.TokenPayload = Depends(verify_uri_session)) -> Any:
     """
     读取图片
     """
@@ -230,12 +230,14 @@ def image(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any
 @router.get("/aliyun/list", summary="所有目录和文件（阿里云盘）", response_model=List[schemas.FileItem])
 def list_path(path: str,
               fileid: str,
+              filetype: str,
               sort: str = 'updated_at',
               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询当前目录下所有目录和文件
     :param path: 当前路径
     :param fileid: 文件ID
+    :param filetype: 文件类型
     :param sort: 排序方式，name:按名称排序，time:按修改时间排序
     :param _: token
     :return: 所有目录和文件
@@ -246,6 +248,20 @@ def list_path(path: str,
         path = "/"
     if sort == "time":
         sort = "updated_at"
+    if filetype == "file":
+        fileinfo = AliyunHelper().get_file_detail(fileid)
+        if fileinfo:
+            return [schemas.FileItem(
+                fileid=fileinfo.get("file_id"),
+                parent_fileid=fileinfo.get("parent_file_id"),
+                type="file",
+                path=f"{path}{fileinfo.get('name')}",
+                name=fileinfo.get("name"),
+                size=fileinfo.get("size"),
+                extension=fileinfo.get("file_extension"),
+                modify_time=StringUtils.str_to_timestamp(fileinfo.get("updated_at"))
+            )]
+        return []
     items = AliyunHelper().list_files(parent_file_id=fileid, order_by=sort)
     if not items:
         return []
@@ -253,7 +269,7 @@ def list_path(path: str,
         fileid=item.get("file_id"),
         parent_fileid=item.get("parent_file_id"),
         type="dir" if item.get("type") == "folder" else "file",
-        path=f"{path}{item.get('name')}/",
+        path=f"{path}{item.get('name')}" + "/" if item.get("type") == "folder" else "",
         name=item.get("name"),
         size=item.get("size"),
         extension=item.get("file_extension"),
@@ -261,56 +277,48 @@ def list_path(path: str,
     ) for item in items]
 
 
-@router.get("/aliyun/listdir", summary="所有目录（阿里云盘，不含文件）", response_model=List[schemas.FileItem])
-def list_dir(path: str,
-             fileid: str,
-             _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    查询当前目录下所有目录
-    """
-    if not fileid:
-        return []
-    if not path:
-        path = "/"
-
-
 @router.get("/aliyun/mkdir", summary="创建目录（阿里云盘）", response_model=schemas.Response)
-def mkdir(path: str,
-          fileid: str,
+def mkdir(fileid: str,
+          name: str,
           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     创建目录
     """
-    if not fileid:
+    if not fileid or not name:
         return schemas.Response(success=False)
-    if not path:
-        path = "/"
+    result = AliyunHelper().create_folder(parent_file_id=fileid, name=name)
+    if result:
+        return schemas.Response(success=True)
+    return schemas.Response(success=False)
 
 
 @router.get("/aliyun/delete", summary="删除文件或目录（阿里云盘）", response_model=schemas.Response)
-def delete(path: str,
-           fileid: str,
+def delete(fileid: str,
            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     删除文件或目录
     """
     if not fileid:
         return schemas.Response(success=False)
-    if not path:
-        path = "/"
+    result = AliyunHelper().delete_file(fileid)
+    if result:
+        return schemas.Response(success=True)
+    return schemas.Response(success=False)
 
 
 @router.get("/aliyun/download", summary="下载文件（阿里云盘）")
-def download(path: str,
-             fileid: str,
-             _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+def download(fileid: str,
+             _: schemas.TokenPayload = Depends(verify_uri_session)) -> Any:
     """
     下载文件或目录
     """
     if not fileid:
         return schemas.Response(success=False)
-    if not path:
-        path = "/"
+    url = AliyunHelper().get_download_url(fileid)
+    if url:
+        # 重定向
+        return Response(status_code=302, headers={"Location": url})
+    return schemas.Response(success=False)
 
 
 @router.get("/aliyun/rename", summary="重命名文件或目录（阿里云盘）", response_model=schemas.Response)
@@ -320,12 +328,21 @@ def rename(fileid: str, new_name: str, _: schemas.TokenPayload = Depends(verify_
     """
     if not fileid or not new_name:
         return schemas.Response(success=False)
+    result = AliyunHelper().rename_file(fileid, new_name)
+    if result:
+        return schemas.Response(success=True)
+    return schemas.Response(success=False)
 
 
 @router.get("/aliyun/image", summary="读取图片（阿里云盘）", response_model=schemas.Response)
-def image(fileid: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+def image(fileid: str, _: schemas.TokenPayload = Depends(verify_uri_session)) -> Any:
     """
     读取图片
     """
     if not fileid:
         return schemas.Response(success=False)
+    url = AliyunHelper().get_download_url(fileid)
+    if url:
+        # 重定向
+        return Response(status_code=302, headers={"Location": url})
+    return schemas.Response(success=False)
