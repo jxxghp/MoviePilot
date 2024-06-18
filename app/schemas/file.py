@@ -24,3 +24,5 @@ class FileItem(BaseModel):
     fileid: Optional[str] = None
     # 父ID
     parent_fileid: Optional[str] = None
+    # 缩略图
+    thumbnail: Optional[str] = None

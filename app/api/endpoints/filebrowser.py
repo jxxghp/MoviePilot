@@ -7,7 +7,7 @@ from starlette.responses import FileResponse, Response
 
 from app import schemas
 from app.core.config import settings
-from app.core.security import verify_token, verify_uri_session
+from app.core.security import verify_token, verify_uri_token
 from app.helper.aliyun import AliyunHelper
 from app.log import logger
 from app.utils.http import RequestUtils
@@ -174,7 +174,7 @@ def delete(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/local/download", summary="下载文件（本地）")
-def download(path: str, _: schemas.TokenPayload = Depends(verify_uri_session)) -> Any:
+def download(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     下载文件或目录
     """
@@ -210,7 +210,7 @@ def rename(path: str, new_name: str, _: schemas.TokenPayload = Depends(verify_to
 
 
 @router.get("/local/image", summary="读取图片（本地）")
-def image(path: str, _: schemas.TokenPayload = Depends(verify_uri_session)) -> Any:
+def image(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     读取图片
     """
@@ -259,7 +259,8 @@ def list_path(path: str,
                 name=fileinfo.get("name"),
                 size=fileinfo.get("size"),
                 extension=fileinfo.get("file_extension"),
-                modify_time=StringUtils.str_to_timestamp(fileinfo.get("updated_at"))
+                modify_time=StringUtils.str_to_timestamp(fileinfo.get("updated_at")),
+                thumbnail=fileinfo.get("thumbnail")
             )]
         return []
     items = AliyunHelper().list_files(parent_file_id=fileid, order_by=sort)
@@ -273,7 +274,8 @@ def list_path(path: str,
         name=item.get("name"),
         size=item.get("size"),
         extension=item.get("file_extension"),
-        modify_time=StringUtils.str_to_timestamp(item.get("updated_at"))
+        modify_time=StringUtils.str_to_timestamp(item.get("updated_at")),
+        thumbnail=item.get("thumbnail")
     ) for item in items]
 
 
@@ -308,7 +310,7 @@ def delete(fileid: str,
 
 @router.get("/aliyun/download", summary="下载文件（阿里云盘）")
 def download(fileid: str,
-             _: schemas.TokenPayload = Depends(verify_uri_session)) -> Any:
+             _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     下载文件或目录
     """
@@ -335,7 +337,7 @@ def rename(fileid: str, new_name: str, _: schemas.TokenPayload = Depends(verify_
 
 
 @router.get("/aliyun/image", summary="读取图片（阿里云盘）", response_model=schemas.Response)
-def image(fileid: str, _: schemas.TokenPayload = Depends(verify_uri_session)) -> Any:
+def image(fileid: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     读取图片
     """

@@ -7,7 +7,7 @@ from app import schemas
 from app.chain.media import MediaChain
 from app.chain.subscribe import SubscribeChain
 from app.core.metainfo import MetaInfo
-from app.core.security import verify_uri_apikey
+from app.core.security import verify_apikey
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
 from app.schemas import RadarrMovie, SonarrSeries
@@ -18,7 +18,7 @@ arr_router = APIRouter(tags=['servarr'])
 
 
 @arr_router.get("/system/status", summary="系统状态")
-def arr_system_status(_: str = Depends(verify_uri_apikey)) -> Any:
+def arr_system_status(_: str = Depends(verify_apikey)) -> Any:
     """
     模拟Radarr、Sonarr系统状态
     """
@@ -72,7 +72,7 @@ def arr_system_status(_: str = Depends(verify_uri_apikey)) -> Any:
 
 
 @arr_router.get("/qualityProfile", summary="质量配置")
-def arr_qualityProfile(_: str = Depends(verify_uri_apikey)) -> Any:
+def arr_qualityProfile(_: str = Depends(verify_apikey)) -> Any:
     """
     模拟Radarr、Sonarr质量配置
     """
@@ -113,7 +113,7 @@ def arr_qualityProfile(_: str = Depends(verify_uri_apikey)) -> Any:
 
 
 @arr_router.get("/rootfolder", summary="根目录")
-def arr_rootfolder(_: str = Depends(verify_uri_apikey)) -> Any:
+def arr_rootfolder(_: str = Depends(verify_apikey)) -> Any:
     """
     模拟Radarr、Sonarr根目录
     """
@@ -129,7 +129,7 @@ def arr_rootfolder(_: str = Depends(verify_uri_apikey)) -> Any:
 
 
 @arr_router.get("/tag", summary="标签")
-def arr_tag(_: str = Depends(verify_uri_apikey)) -> Any:
+def arr_tag(_: str = Depends(verify_apikey)) -> Any:
     """
     模拟Radarr、Sonarr标签
     """
@@ -142,7 +142,7 @@ def arr_tag(_: str = Depends(verify_uri_apikey)) -> Any:
 
 
 @arr_router.get("/languageprofile", summary="语言")
-def arr_languageprofile(_: str = Depends(verify_uri_apikey)) -> Any:
+def arr_languageprofile(_: str = Depends(verify_apikey)) -> Any:
     """
     模拟Radarr、Sonarr语言
     """
@@ -168,7 +168,7 @@ def arr_languageprofile(_: str = Depends(verify_uri_apikey)) -> Any:
 
 
 @arr_router.get("/movie", summary="所有订阅电影", response_model=List[schemas.RadarrMovie])
-def arr_movies(_: str = Depends(verify_uri_apikey), db: Session = Depends(get_db)) -> Any:
+def arr_movies(_: str = Depends(verify_apikey), db: Session = Depends(get_db)) -> Any:
     """
     查询Rardar电影
     """
@@ -259,7 +259,7 @@ def arr_movies(_: str = Depends(verify_uri_apikey), db: Session = Depends(get_db
 
 
 @arr_router.get("/movie/lookup", summary="查询电影", response_model=List[schemas.RadarrMovie])
-def arr_movie_lookup(term: str, db: Session = Depends(get_db), _: str = Depends(verify_uri_apikey)) -> Any:
+def arr_movie_lookup(term: str, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
     """
     查询Rardar电影 term: `tmdb:${id}`
     存在和不存在均不能返回错误
@@ -305,7 +305,7 @@ def arr_movie_lookup(term: str, db: Session = Depends(get_db), _: str = Depends(
 
 
 @arr_router.get("/movie/{mid}", summary="电影订阅详情", response_model=schemas.RadarrMovie)
-def arr_movie(mid: int, db: Session = Depends(get_db), _: str = Depends(verify_uri_apikey)) -> Any:
+def arr_movie(mid: int, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
     """
     查询Rardar电影订阅
     """
@@ -333,7 +333,7 @@ def arr_movie(mid: int, db: Session = Depends(get_db), _: str = Depends(verify_u
 @arr_router.post("/movie", summary="新增电影订阅")
 def arr_add_movie(movie: RadarrMovie,
                   db: Session = Depends(get_db),
-                  _: str = Depends(verify_uri_apikey)
+                  _: str = Depends(verify_apikey)
                   ) -> Any:
     """
     新增Rardar电影订阅
@@ -362,7 +362,7 @@ def arr_add_movie(movie: RadarrMovie,
 
 
 @arr_router.delete("/movie/{mid}", summary="删除电影订阅", response_model=schemas.Response)
-def arr_remove_movie(mid: int, db: Session = Depends(get_db), _: str = Depends(verify_uri_apikey)) -> Any:
+def arr_remove_movie(mid: int, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
     """
     删除Rardar电影订阅
     """
@@ -378,7 +378,7 @@ def arr_remove_movie(mid: int, db: Session = Depends(get_db), _: str = Depends(v
 
 
 @arr_router.get("/series", summary="所有剧集", response_model=List[schemas.SonarrSeries])
-def arr_series(_: str = Depends(verify_uri_apikey), db: Session = Depends(get_db)) -> Any:
+def arr_series(_: str = Depends(verify_apikey), db: Session = Depends(get_db)) -> Any:
     """
     查询Sonarr剧集
     """
@@ -514,7 +514,7 @@ def arr_series(_: str = Depends(verify_uri_apikey), db: Session = Depends(get_db
 
 
 @arr_router.get("/series/lookup", summary="查询剧集")
-def arr_series_lookup(term: str, db: Session = Depends(get_db), _: str = Depends(verify_uri_apikey)) -> Any:
+def arr_series_lookup(term: str, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
     """
     查询Sonarr剧集 term: `tvdb:${id}` title
     """
@@ -603,7 +603,7 @@ def arr_series_lookup(term: str, db: Session = Depends(get_db), _: str = Depends
 
 
 @arr_router.get("/series/{tid}", summary="剧集详情")
-def arr_serie(tid: int, db: Session = Depends(get_db), _: str = Depends(verify_uri_apikey)) -> Any:
+def arr_serie(tid: int, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
     """
     查询Sonarr剧集
     """
@@ -639,7 +639,7 @@ def arr_serie(tid: int, db: Session = Depends(get_db), _: str = Depends(verify_u
 @arr_router.post("/series", summary="新增剧集订阅")
 def arr_add_series(tv: schemas.SonarrSeries,
                    db: Session = Depends(get_db),
-                   _: str = Depends(verify_uri_apikey)) -> Any:
+                   _: str = Depends(verify_apikey)) -> Any:
     """
     新增Sonarr剧集订阅
     """
@@ -681,7 +681,7 @@ def arr_add_series(tv: schemas.SonarrSeries,
 
 
 @arr_router.delete("/series/{tid}", summary="删除剧集订阅")
-def arr_remove_series(tid: int, db: Session = Depends(get_db), _: str = Depends(verify_uri_apikey)) -> Any:
+def arr_remove_series(tid: int, db: Session = Depends(get_db), _: str = Depends(verify_apikey)) -> Any:
     """
     删除Sonarr剧集订阅
     """
