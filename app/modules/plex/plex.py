@@ -11,6 +11,7 @@ from app import schemas
 from app.core.config import settings
 from app.log import logger
 from app.schemas import MediaType
+from app.utils.http import RequestUtils
 
 
 class Plex:
@@ -19,16 +20,10 @@ class Plex:
     def __init__(self):
         self._host = settings.PLEX_HOST
         if self._host:
-            if not self._host.endswith("/"):
-                self._host += "/"
-            if not self._host.startswith("http"):
-                self._host = "http://" + self._host
+            self._host = RequestUtils.standardize_base_url(self._host)
         self._playhost = settings.PLEX_PLAY_HOST
         if self._playhost:
-            if not self._playhost.endswith("/"):
-                self._playhost += "/"
-            if not self._playhost.startswith("http"):
-                self._playhost = "http://" + self._playhost
+            self._playhost = RequestUtils.standardize_base_url(self._playhost)
         self._token = settings.PLEX_TOKEN
         if self._host and self._token:
             try:

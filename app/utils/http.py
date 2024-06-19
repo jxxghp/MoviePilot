@@ -1,4 +1,5 @@
 from typing import Union, Any, Optional
+from urllib.parse import urljoin
 
 import requests
 import urllib3
@@ -90,7 +91,7 @@ class RequestUtils:
         """
         发送POST请求
         :param url: 请求的URL
-        :param data: 请求的数据，表单格式
+        :param data: 请求的数据
         :param json: 请求的JSON数据
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestException则返回None
@@ -103,7 +104,7 @@ class RequestUtils:
         """
         发送PUT请求
         :param url: 请求的URL
-        :param data: 请求的数据，表单格式
+        :param data: 请求的数据
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestException则返回None
         """
@@ -121,7 +122,7 @@ class RequestUtils:
         发送GET请求并返回响应对象
         :param url: 请求的URL
         :param params: 请求的参数
-        :param data: 请求的数据，表单格式
+        :param data: 请求的数据
         :param json: 请求的JSON数据
         :param allow_redirects: 是否允许重定向
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
@@ -150,7 +151,7 @@ class RequestUtils:
         """
         发送POST请求并返回响应对象
         :param url: 请求的URL
-        :param data: 请求的数据，表单格式
+        :param data: 请求的数据
         :param params: 请求的参数
         :param allow_redirects: 是否允许重定向
         :param files: 请求的文件
@@ -182,7 +183,7 @@ class RequestUtils:
         """
         发送PUT请求并返回响应对象
         :param url: 请求的URL
-        :param data: 请求的数据，表单格式
+        :param data: 请求的数据
         :param params: 请求的参数
         :param allow_redirects: 是否允许重定向
         :param files: 请求的文件
@@ -222,3 +223,32 @@ class RequestUtils:
             return [{"name": k, "value": v} for k, v in cookie_dict.items()]
         return cookie_dict
 
+    @staticmethod
+    def standardize_base_url(host: str) -> str:
+        """
+        标准化提供的主机地址，确保它以http://或https://开头，并且以斜杠(/)结尾
+        :param host: 提供的主机地址字符串
+        :return: 标准化后的主机地址字符串
+        """
+        if not host:
+            return host
+        if not host.endswith("/"):
+            host += "/"
+        if not host.startswith("http://") and not host.startswith("https://"):
+            host = "http://" + host
+        return host
+
+    @staticmethod
+    def adapt_request_url(host: str, endpoint: str) -> Optional[str]:
+        """
+        基于传入的host，适配请求的URL，确保每个请求的URL是完整的，用于在发送请求前自动处理和修正请求的URL。
+        :param host: 主机头
+        :param endpoint: 端点
+        :return: 完整的请求URL字符串
+        """
+        if not host and not endpoint:
+            return None
+        if endpoint.startswith(("http://", "https://")):
+            return endpoint
+        host = RequestUtils.standardize_base_url(host)
+        return urljoin(host, endpoint) if host else endpoint
