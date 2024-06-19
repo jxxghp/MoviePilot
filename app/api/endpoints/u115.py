@@ -57,7 +57,7 @@ def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 @router.get("/list", summary="所有目录和文件（115网盘）", response_model=List[schemas.FileItem])
 def list_115(path: str,
              fileid: str,
-             pickcode: str,
+             pickcode: str = None,
              filetype: str = "dir",
              sort: str = 'updated_at',
              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
