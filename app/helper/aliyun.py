@@ -222,7 +222,7 @@ class AliyunHelper:
                 return '类 Unix 操作系统'
 
         res = RequestUtils(headers=headers, timeout=5).post_res(self.create_session_url, json={
-            'deviceName': f'MoviePilot Web',
+            'deviceName': f'MoviePilot {SystemUtils.platform}',
             'modelName': __os_name(),
             'pubKey': self._X_PUBLIC_KEY,
         })

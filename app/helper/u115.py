@@ -66,21 +66,9 @@ class U115Helper(metaclass=Singleton):
         """
         生成二维码
         """
-
-        def __get_os():
-            """
-            获取操作系统名称
-            """
-            if SystemUtils.is_windows():
-                return LoginTarget.Windows
-            elif SystemUtils.is_macos():
-                return LoginTarget.Mac
-            else:
-                return LoginTarget.Linux
-
         try:
             self.cloud = py115.connect()
-            self._session = self.cloud.qrcode_login(__get_os())
+            self._session = self.cloud.qrcode_login(LoginTarget.Web)
             image_bin = self._session.image_data
             if not image_bin:
                 logger.warn("115生成二维码失败：未获取到二维码数据！")
