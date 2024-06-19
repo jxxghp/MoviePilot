@@ -10,7 +10,9 @@ from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token, verify_uri_token
+from app.helper.progress import ProgressHelper
 from app.log import logger
+from app.schemas.types import ProgressKey
 from app.utils.system import SystemUtils
 
 router = APIRouter()
@@ -212,24 +214,38 @@ def rename_local(path: str, new_name: str,
         media_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIO_TRACK_EXT
         # 递归修改目录内文件（智能识别命名）
         sub_files: List[schemas.FileItem] = list_local(path)
-        for sub_file in sub_files:
-            if sub_file.type == "dir":
-                continue
-            if not sub_file.extension:
-                continue
-            if f".{sub_file.extension.lower()}" not in media_exts:
-                continue
-            sub_path = Path(sub_file.path)
-            meta = MetaInfoPath(sub_path)
-            mediainfo = transferchain.recognize_media(meta)
-            if not mediainfo:
-                return schemas.Response(success=False, message=f"{sub_path.name} 未识别到媒体信息")
-            new_path = transferchain.recommend_name(meta=meta, mediainfo=mediainfo)
-            if not new_path:
-                return schemas.Response(success=False, message=f"{sub_path.name} 未识别到新名称")
-            ret: schemas.Response = rename_local(new_path, new_name=Path(new_path).name, recursive=False)
-            if not ret.success:
-                return schemas.Response(success=False, message=f"{sub_path.name} 重命名失败！")
+        if sub_files:
+            # 开始进度
+            progress = ProgressHelper()
+            progress.start(ProgressKey.BatchRename)
+            total = len(sub_files)
+            handled = 0
+            for sub_file in sub_files:
+                handled += 1
+                progress.update(value=handled / total * 100,
+                                text=f"正在处理 {sub_file.name} ...",
+                                key=ProgressKey.BatchRename)
+                if sub_file.type == "dir":
+                    continue
+                if not sub_file.extension:
+                    continue
+                if f".{sub_file.extension.lower()}" not in media_exts:
+                    continue
+                sub_path = Path(sub_file.path)
+                meta = MetaInfoPath(sub_path)
+                mediainfo = transferchain.recognize_media(meta)
+                if not mediainfo:
+                    progress.end(ProgressKey.BatchRename)
+                    return schemas.Response(success=False, message=f"{sub_path.name} 未识别到媒体信息")
+                new_path = transferchain.recommend_name(meta=meta, mediainfo=mediainfo)
+                if not new_path:
+                    progress.end(ProgressKey.BatchRename)
+                    return schemas.Response(success=False, message=f"{sub_path.name} 未识别到新名称")
+                ret: schemas.Response = rename_local(new_path, new_name=Path(new_path).name, recursive=False)
+                if not ret.success:
+                    progress.end(ProgressKey.BatchRename)
+                    return schemas.Response(success=False, message=f"{sub_path.name} 重命名失败！")
+            progress.end(ProgressKey.BatchRename)
     return schemas.Response(success=True)
 
 

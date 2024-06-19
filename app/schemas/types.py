@@ -106,6 +106,8 @@ class ProgressKey(Enum):
     Search = "search"
     # 转移
     FileTransfer = "filetransfer"
+    # 批量重命名
+    BatchRename = "batchrename"
 
 
 # 媒体图片类型
