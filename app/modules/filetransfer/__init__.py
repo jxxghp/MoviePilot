@@ -83,6 +83,25 @@ class FileTransferModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
+    def recommend_name(self, meta: MetaBase, mediainfo: MediaInfo) -> Optional[str]:
+        """
+        获取重命名后的名称
+        :param meta: 元数据
+        :param mediainfo: 媒体信息
+        :return: 重命名后的名称（含目录）
+        """
+        # 重命名格式
+        rename_format = settings.TV_RENAME_FORMAT \
+            if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+        # 获取重命名后的名称
+        path = self.get_rename_path(
+            template_string=rename_format,
+            rename_dict=self.__get_naming_dict(meta=meta,
+                                               mediainfo=mediainfo,
+                                               file_ext=Path(meta.title).suffix)
+        )
+        return str(path)
+
     def transfer(self, path: Path, meta: MetaBase, mediainfo: MediaInfo,
                  transfer_type: str, target: Path = None,
                  episodes_info: List[TmdbEpisode] = None,

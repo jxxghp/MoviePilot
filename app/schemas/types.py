@@ -94,6 +94,10 @@ class SystemConfigKey(Enum):
     DownloadDirectories = "DownloadDirectories"
     # 媒体库目录定义
     LibraryDirectories = "LibraryDirectories"
+    # 阿里云盘认证参数
+    UserAliyunParams = "UserAliyunParams"
+    # 115网盘认证参数
+    User115Params = "User115Params"
 
 
 # 处理进度Key字典
@@ -102,6 +106,8 @@ class ProgressKey(Enum):
     Search = "search"
     # 转移
     FileTransfer = "filetransfer"
+    # 批量重命名
+    BatchRename = "batchrename"
 
 
 # 媒体图片类型

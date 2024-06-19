@@ -10,7 +10,7 @@ from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
-from app.core.security import verify_token, verify_uri_token
+from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
@@ -52,7 +52,7 @@ def read_subscribes(
 
 
 @router.get("/list", summary="查询所有订阅（API_TOKEN）", response_model=List[schemas.Subscribe])
-def list_subscribes(_: str = Depends(verify_uri_token)) -> Any:
+def list_subscribes(_: str = Depends(verify_apitoken)) -> Any:
     """
     查询所有订阅 API_TOKEN认证（?token=xxx）
     """

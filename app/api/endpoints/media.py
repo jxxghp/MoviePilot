@@ -8,7 +8,7 @@ from app.chain.media import MediaChain
 from app.core.config import settings
 from app.core.context import Context
 from app.core.metainfo import MetaInfo, MetaInfoPath
-from app.core.security import verify_token, verify_uri_token
+from app.core.security import verify_token, verify_apitoken
 from app.schemas import MediaType
 
 router = APIRouter()
@@ -32,7 +32,7 @@ def recognize(title: str,
 @router.get("/recognize2", summary="识别种子媒体信息（API_TOKEN）", response_model=schemas.Context)
 def recognize2(title: str,
                subtitle: str = None,
-               _: str = Depends(verify_uri_token)) -> Any:
+               _: str = Depends(verify_apitoken)) -> Any:
     """
     根据标题、副标题识别媒体信息 API_TOKEN认证（?token=xxx）
     """
@@ -55,7 +55,7 @@ def recognize_file(path: str,
 
 @router.get("/recognize_file2", summary="识别文件媒体信息（API_TOKEN）", response_model=schemas.Context)
 def recognize_file2(path: str,
-                    _: str = Depends(verify_uri_token)) -> Any:
+                    _: str = Depends(verify_apitoken)) -> Any:
     """
     根据文件路径识别媒体信息 API_TOKEN认证（?token=xxx）
     """
