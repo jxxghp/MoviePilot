@@ -9,6 +9,7 @@ class Token(BaseModel):
     super_user: bool
     user_name: str
     avatar: Optional[str] = None
+    level: int = 1
 
 
 class TokenPayload(BaseModel):

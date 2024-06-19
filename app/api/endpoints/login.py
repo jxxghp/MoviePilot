@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.security import get_password_hash
 from app.db import get_db
 from app.db.models.user import User
+from app.helper.sites import SitesHelper
 from app.log import logger
 from app.utils.web import WebUtils
 
@@ -58,17 +59,20 @@ async def login_access_token(
     elif user and not user.is_active:
         raise HTTPException(status_code=403, detail="用户未启用")
     logger.info(f"用户 {user.name} 登录成功！")
+    level = SitesHelper().auth_level
     return schemas.Token(
         access_token=security.create_access_token(
             userid=user.id,
             username=user.name,
             super_user=user.is_superuser,
-            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+            level=level
         ),
         token_type="bearer",
         super_user=user.is_superuser,
         user_name=user.name,
-        avatar=user.avatar
+        avatar=user.avatar,
+        level=level
     )
 
 
