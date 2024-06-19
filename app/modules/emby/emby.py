@@ -18,16 +18,10 @@ class Emby:
     def __init__(self):
         self._host = settings.EMBY_HOST
         if self._host:
-            if not self._host.endswith("/"):
-                self._host += "/"
-            if not self._host.startswith("http"):
-                self._host = "http://" + self._host
+            self._host = RequestUtils.standardize_base_url(self._host)
         self._playhost = settings.EMBY_PLAY_HOST
         if self._playhost:
-            if not self._playhost.endswith("/"):
-                self._playhost += "/"
-            if not self._playhost.startswith("http"):
-                self._playhost = "http://" + self._playhost
+            self._playhost = RequestUtils.standardize_base_url(self._playhost)
         self._apikey = settings.EMBY_API_KEY
         self.user = self.get_user(settings.SUPERUSER)
         self.folders = self.get_emby_folders()
