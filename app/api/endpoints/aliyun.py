@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from starlette.responses import Response
 
 from app import schemas
@@ -147,7 +147,7 @@ def download_aliyun(fileid: str,
     if url:
         # 重定向
         return Response(status_code=302, headers={"Location": url})
-    return schemas.Response(success=False)
+    raise HTTPException(status_code=500, detail="下载文件出错")
 
 
 @router.get("/rename", summary="重命名文件或目录（阿里云盘）", response_model=schemas.Response)
@@ -202,4 +202,4 @@ def image_aliyun(fileid: str, _: schemas.TokenPayload = Depends(verify_uri_token
     if url:
         # 重定向
         return Response(status_code=302, headers={"Location": url})
-    return schemas.Response(success=False)
+    raise HTTPException(status_code=500, detail="下载图片出错")

@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 from typing import Any, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from starlette.responses import FileResponse, Response
 
 from app import schemas
@@ -181,7 +181,7 @@ def download_local(path: str, _: schemas.TokenPayload = Depends(verify_uri_token
         return schemas.Response(success=False)
     path_obj = Path(path)
     if not path_obj.exists():
-        return schemas.Response(success=False)
+        raise HTTPException(status_code=404, detail="文件不存在")
     if path_obj.is_file():
         # 做为文件流式下载
         return FileResponse(path_obj)
@@ -247,5 +247,5 @@ def image_local(path: str, _: schemas.TokenPayload = Depends(verify_uri_token)) 
         return None
     # 判断是否图片文件
     if path_obj.suffix.lower() not in IMAGE_TYPES:
-        return None
+        raise HTTPException(status_code=500, detail="图片读取出错")
     return Response(content=path_obj.read_bytes(), media_type="image/jpeg")
