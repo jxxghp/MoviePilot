@@ -67,8 +67,11 @@ class AliyunHelper:
         if code or message:
             logger.warn(f"Aliyun {apiname}失败：{code} - {display_message or message}")
             if action:
-                if code in ["UserDeviceOffline", "DeviceSessionSignatureInvalid"]:
-                    logger.warn("设备已下线或无效，正在重新建立会话...")
+                if code == "DeviceSessionSignatureInvalid":
+                    logger.warn("设备已失效，正在重新建立会话...")
+                    self.create_session(self.get_headers(self.auth_params))
+                if code == "UserDeviceOffline":
+                    logger.warn("设备已离线，尝试重新登录，如仍报错请检查阿里云盘绑定设备数量是否超限！")
                     self.create_session(self.get_headers(self.auth_params))
                 if code == "AccessTokenInvalid":
                     logger.warn("访问令牌已失效，正在刷新令牌...")
