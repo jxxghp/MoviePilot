@@ -6,6 +6,8 @@ import urllib3
 from requests import Session, Response
 from urllib3.exceptions import InsecureRequestWarning
 
+from app.log import logger
+
 urllib3.disable_warnings(InsecureRequestWarning)
 
 
@@ -71,7 +73,8 @@ class RequestUtils:
         kwargs.setdefault("stream", False)
         try:
             return req_method(method, url, **kwargs)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"请求失败: {e}")
             if raise_exception:
                 raise
             return None
