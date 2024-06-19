@@ -107,7 +107,8 @@ class SiteChain(ChainBase):
         判断站点是否已经登陆：m-team
         """
         user_agent = site.ua or settings.USER_AGENT
-        url = f"{site.url}api/member/profile"
+        domain = StringUtils.get_url_domain(site.url)
+        url = f"https://api.{domain}/api/member/profile"
         headers = {
             "Content-Type": "application/json",
             "User-Agent": user_agent,
@@ -127,7 +128,7 @@ class SiteChain(ChainBase):
                                    timeout=site.timeout or 15,
                                    proxies=settings.PROXY if site.proxy else None,
                                    referer=f"{site.url}index"
-                                   ).post_res(url=urljoin(url, "api/member/updateLastBrowse"))
+                                   ).post_res(url=f"https://api.{domain}/api/member/updateLastBrowse")
                 if res:
                     return True, "连接成功"
                 else:

@@ -19,13 +19,14 @@ class MTorrentSpider:
     """
     _indexerid = None
     _domain = None
+    _url = None
     _name = ""
     _proxy = None
     _cookie = None
     _ua = None
     _size = 100
-    _searchurl = "%sapi/torrent/search"
-    _downloadurl = "%sapi/torrent/genDlToken"
+    _searchurl = "https://api.%s/api/torrent/search"
+    _downloadurl = "https://api.%s/api/torrent/genDlToken"
     _pageurl = "%sdetail/%s"
     _timeout = 15
 
@@ -54,7 +55,8 @@ class MTorrentSpider:
         self.systemconfig = SystemConfigOper()
         if indexer:
             self._indexerid = indexer.get('id')
-            self._domain = indexer.get('domain')
+            self._url = indexer.get('domain')
+            self._domain = StringUtils.get_url_domain(self._url)
             self._searchurl = self._searchurl % self._domain
             self._name = indexer.get('name')
             if indexer.get('proxy'):
@@ -124,7 +126,7 @@ class MTorrentSpider:
                     'grabs': int(result.get('status', {}).get("timesCompleted") or '0'),
                     'downloadvolumefactor': self.__get_downloadvolumefactor(result.get('status', {}).get("discount")),
                     'uploadvolumefactor': self.__get_uploadvolumefactor(result.get('status', {}).get("discount")),
-                    'page_url': self._pageurl % (self._domain, result.get('id')),
+                    'page_url': self._pageurl % (self._url, result.get('id')),
                     'imdbid': self.__find_imdbid(result.get('imdb')),
                     'labels': labels,
                     'category': category
