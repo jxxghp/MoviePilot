@@ -48,8 +48,10 @@ def list_local(fileitem: schemas.FileItem,
         else:
             path = "/"
     else:
-        if not SystemUtils.is_windows() and not fileitem.path.startswith("/"):
-            path = "/" + fileitem.path
+        if SystemUtils.is_windows():
+            path = path.lstrip("/")
+        elif not path.startswith("/"):
+            path = "/" + path
 
     # 遍历目录
     path_obj = Path(path)
