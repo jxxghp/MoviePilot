@@ -49,6 +49,8 @@ class AliyunHelper:
     rename_file_url = "https://api.aliyundrive.com/v3/file/update"
     # 获取下载链接
     download_url = "https://api.aliyundrive.com/v2/file/get_download_url"
+    # 移动文件
+    move_file_url = "https://api.aliyundrive.com/v3/file/move"
 
     def __init__(self):
         self.systemconfig = SystemConfigOper()
@@ -373,13 +375,13 @@ class AliyunHelper:
                 break
         return ret_items
 
-    def create_folder(self, parent_file_id: str, name: str) -> bool:
+    def create_folder(self, parent_file_id: str, name: str) -> Optional[dict]:
         """
         创建目录
         """
         params = self.get_access_params()
         if not params:
-            return False
+            return None
         headers = self.get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.create_folder_url, json={
             "drive_id": params.get("resourceDriveId"),
@@ -389,10 +391,28 @@ class AliyunHelper:
             "type": "folder"
         })
         if res:
-            return True
+            """
+            {
+                "parent_file_id": "root",
+                "type": "folder",
+                "file_id": "6673f2c8a88344741bd64ad192d7512b92087719",
+                "domain_id": "bj29",
+                "drive_id": "39146740",
+                "file_name": "test",
+                "encrypt_mode": "none"
+            }
+            """
+            result = res.json()
+            return {
+                "file_id": result.get("file_id"),
+                "drive_id": result.get("drive_id"),
+                "parent_file_id": result.get("parent_file_id"),
+                "type": result.get("type"),
+                "name": result.get("file_name")
+            }
         else:
             self.__handle_error(res, "创建目录")
-        return False
+        return None
 
     def delete_file(self, file_id: str) -> bool:
         """
@@ -467,3 +487,23 @@ class AliyunHelper:
         else:
             self.__handle_error(res, "获取下载链接")
         return None
+
+    def move(self, drive_id: str, file_id: str, target_id: str) -> bool:
+        """
+        移动文件
+        """
+        params = self.get_access_params()
+        if not params:
+            return False
+        headers = self.get_headers(params)
+        res = RequestUtils(headers=headers, timeout=10).post_res(self.move_file_url, json={
+            "drive_id": drive_id,
+            "file_id": file_id,
+            "to_parent_file_id": target_id,
+            "check_name_mode": "refuse"
+        })
+        if res:
+            return True
+        else:
+            self.__handle_error(res, "移动文件")
+        return False

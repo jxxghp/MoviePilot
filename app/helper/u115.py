@@ -9,7 +9,6 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.singleton import Singleton
-from app.utils.system import SystemUtils
 
 
 class U115Helper(metaclass=Singleton):
@@ -136,18 +135,17 @@ class U115Helper(metaclass=Singleton):
             logger.error(f"浏览115文件失败：{str(e)}")
         return None
 
-    def create_folder(self, parent_file_id: str, name: str) -> bool:
+    def create_folder(self, parent_file_id: str, name: str) -> Optional[File]:
         """
         创建目录
         """
         if not self.__init_cloud():
-            return False
+            return None
         try:
-            self.cloud.storage().make_dir(parent_file_id, name)
-            return True
+            return self.cloud.storage().make_dir(parent_file_id, name)
         except Exception as e:
             logger.error(f"创建115目录失败：{str(e)}")
-        return False
+        return None
 
     def delete_file(self, file_id: str) -> bool:
         """
@@ -161,12 +159,6 @@ class U115Helper(metaclass=Singleton):
         except Exception as e:
             logger.error(f"删除115文件失败：{str(e)}")
         return False
-
-    def get_file_detail(self, file_id: str) -> Optional[dict]:
-        """
-        获取文件详情
-        """
-        pass
 
     def rename_file(self, file_id: str, name: str) -> bool:
         """
@@ -204,3 +196,16 @@ class U115Helper(metaclass=Singleton):
         except Exception as e:
             logger.error(f"获取115存储空间失败：{str(e)}")
         return None
+
+    def move(self, file_id: str, target_id: str) -> bool:
+        """
+        移动文件
+        """
+        if not self.__init_cloud():
+            return False
+        try:
+            self.cloud.storage().move(file_id, target_id)
+            return True
+        except Exception as e:
+            logger.error(f"移动115文件失败：{str(e)}")
+        return False
