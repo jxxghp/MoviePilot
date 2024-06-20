@@ -315,3 +315,14 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 season=meta.begin_season
             )
         return None
+
+    def meta_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
+                 season: int = None, episode: int = None) -> Optional[str]:
+        """
+        获取NFO文件内容文本
+        :param meta: 元数据
+        :param mediainfo: 媒体信息
+        :param season: 季号
+        :param episode: 集号
+        """
+        return self.run_module("meta_nfo", meta=meta, mediainfo=mediainfo, season=season, episode=episode)
