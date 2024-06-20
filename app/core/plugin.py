@@ -158,6 +158,11 @@ class PluginManager(metaclass=Singleton):
             if pid and plugin_id != pid:
                 continue
             try:
+                # 如果插件具有认证级别且当前认证级别不足，则不进行实例化
+                if hasattr(plugin, "auth_level"):
+                    plugin.auth_level = plugin.auth_level
+                    if self.siteshelper.auth_level < plugin.auth_level:
+                        continue
                 # 存储Class
                 self._plugins[plugin_id] = plugin
                 # 未安装的不加载
