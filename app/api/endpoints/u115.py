@@ -1,4 +1,3 @@
-import base64
 from pathlib import Path
 from typing import Any, List
 
@@ -56,30 +55,28 @@ def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return schemas.Response(success=False)
 
 
-@router.get("/list", summary="所有目录和文件（115网盘）", response_model=List[schemas.FileItem])
-def list_115(path: str,
-             fileid: str,
-             pickcode: str = None,
-             filetype: str = "dir",
+@router.post("/list", summary="所有目录和文件（115网盘）", response_model=List[schemas.FileItem])
+def list_115(fileitem: schemas.FileItem,
              sort: str = 'updated_at',
              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询当前目录下所有目录和文件
-    :param path: 当前路径
-    :param fileid: 文件ID
-    :param pickcode: 115 pickcode
-    :param filetype: 文件类型
+    :param fileitem: 文件项
     :param sort: 排序方式，name:按名称排序，time:按修改时间排序
     :param _: token
     :return: 所有目录和文件
     """
-    if not fileid:
+    if not fileitem.fileid:
         return []
-    if not path:
+    if not fileitem.path:
         path = "/"
-    if fileid == "root":
+    else:
+        path = fileitem.path
+    if fileitem.fileid == "root":
         fileid = "0"
-    if filetype == "file":
+    else:
+        fileid = fileitem.fileid
+    if fileitem.type == "file":
         name = Path(path).name
         suffix = Path(name).suffix[1:]
         return [schemas.FileItem(
@@ -88,7 +85,7 @@ def list_115(path: str,
             path=path.rstrip('/'),
             name=name,
             extension=suffix,
-            pickcode=pickcode
+            pickcode=fileitem.pickcode
         )]
     items = U115Helper().list_files(parent_file_id=fileid)
     if not items:
@@ -111,30 +108,30 @@ def list_115(path: str,
     return file_list
 
 
-@router.get("/mkdir", summary="创建目录（115网盘）", response_model=schemas.Response)
-def mkdir_115(fileid: str,
+@router.post("/mkdir", summary="创建目录（115网盘）", response_model=schemas.Response)
+def mkdir_115(fileitem: schemas.FileItem,
               name: str,
               _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     创建目录
     """
-    if not fileid or not name:
+    if not fileitem.fileid or not name:
         return schemas.Response(success=False)
-    result = U115Helper().create_folder(parent_file_id=fileid, name=name)
+    result = U115Helper().create_folder(parent_file_id=fileitem.fileid, name=name)
     if result:
         return schemas.Response(success=True)
     return schemas.Response(success=False)
 
 
-@router.get("/delete", summary="删除文件或目录（115网盘）", response_model=schemas.Response)
-def delete_115(fileid: str,
+@router.post("/delete", summary="删除文件或目录（115网盘）", response_model=schemas.Response)
+def delete_115(fileitem: schemas.FileItem,
                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     删除文件或目录
     """
-    if not fileid:
+    if not fileitem.fileid:
         return schemas.Response(success=False)
-    result = U115Helper().delete_file(fileid)
+    result = U115Helper().delete_file(fileitem.fileid)
     if result:
         return schemas.Response(success=True)
     return schemas.Response(success=False)
@@ -157,22 +154,23 @@ def download_115(pickcode: str,
     return schemas.Response(success=False)
 
 
-@router.get("/rename", summary="重命名文件或目录（115网盘）", response_model=schemas.Response)
-def rename_115(fileid: str, new_name: str, path: str,
+@router.post("/rename", summary="重命名文件或目录（115网盘）", response_model=schemas.Response)
+def rename_115(fileitem: schemas.FileItem,
+               new_name: str,
                recursive: bool = False,
                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     重命名文件或目录
     """
-    if not fileid or not new_name:
+    if not fileitem.fileid or not new_name:
         return schemas.Response(success=False)
-    result = U115Helper().rename_file(fileid, new_name)
+    result = U115Helper().rename_file(fileitem.fileid, new_name)
     if result:
         if recursive:
             transferchain = TransferChain()
             media_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIO_TRACK_EXT
             # 递归修改目录内文件（智能识别命名）
-            sub_files: List[schemas.FileItem] = list_115(path=path, fileid=fileid)
+            sub_files: List[schemas.FileItem] = list_115(fileitem)
             if sub_files:
                 # 开始进度
                 progress = ProgressHelper()
@@ -190,7 +188,7 @@ def rename_115(fileid: str, new_name: str, path: str,
                         continue
                     if f".{sub_file.extension.lower()}" not in media_exts:
                         continue
-                    sub_path = Path(f"{path}{sub_file.name}")
+                    sub_path = Path(f"{fileitem.path}{sub_file.name}")
                     meta = MetaInfoPath(sub_path)
                     mediainfo = transferchain.recognize_media(meta)
                     if not mediainfo:
@@ -200,8 +198,7 @@ def rename_115(fileid: str, new_name: str, path: str,
                     if not new_path:
                         progress.end(ProgressKey.BatchRename)
                         return schemas.Response(success=False, message=f"{sub_path.name} 未识别到新名称")
-                    ret: schemas.Response = rename_115(fileid=sub_file.fileid,
-                                                       path=path,
+                    ret: schemas.Response = rename_115(fileitem=sub_file,
                                                        new_name=Path(new_path).name,
                                                        recursive=False)
                     if not ret.success:

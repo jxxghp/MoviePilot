@@ -20,20 +20,21 @@ router = APIRouter()
 IMAGE_TYPES = [".jpg", ".png", ".gif", ".bmp", ".jpeg", ".webp"]
 
 
-@router.get("/list", summary="所有目录和文件（本地）", response_model=List[schemas.FileItem])
-def list_local(path: str,
+@router.post("/list", summary="所有目录和文件（本地）", response_model=List[schemas.FileItem])
+def list_local(fileitem: schemas.FileItem,
                sort: str = 'time',
                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询当前目录下所有目录和文件
-    :param path: 目录路径
+    :param fileitem: 文件项
     :param sort: 排序方式，name:按名称排序，time:按修改时间排序
     :param _: token
     :return: 所有目录和文件
     """
     # 返回结果
     ret_items = []
-    if not path or path == "/":
+    path = fileitem.path
+    if not fileitem.path or fileitem.path == "/":
         if SystemUtils.is_windows():
             partitions = SystemUtils.get_windows_drives() or ["C:/"]
             for partition in partitions:
@@ -47,8 +48,8 @@ def list_local(path: str,
         else:
             path = "/"
     else:
-        if not SystemUtils.is_windows() and not path.startswith("/"):
-            path = "/" + path
+        if not SystemUtils.is_windows() and not fileitem.path.startswith("/"):
+            path = "/" + fileitem.path
 
     # 遍历目录
     path_obj = Path(path)
@@ -143,28 +144,30 @@ def list_local_dir(path: str, _: schemas.TokenPayload = Depends(verify_token)) -
     return ret_items
 
 
-@router.get("/mkdir", summary="创建目录（本地）", response_model=schemas.Response)
-def mkdir_local(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.post("/mkdir", summary="创建目录（本地）", response_model=schemas.Response)
+def mkdir_local(fileitem: schemas.FileItem,
+                name: str,
+                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     创建目录
     """
-    if not path:
+    if not fileitem.path:
         return schemas.Response(success=False)
-    path_obj = Path(path)
+    path_obj = Path(fileitem.path) / name
     if path_obj.exists():
         return schemas.Response(success=False)
     path_obj.mkdir(parents=True, exist_ok=True)
     return schemas.Response(success=True)
 
 
-@router.get("/delete", summary="删除文件或目录（本地）", response_model=schemas.Response)
-def delete_local(path: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.post("/delete", summary="删除文件或目录（本地）", response_model=schemas.Response)
+def delete_local(fileitem: schemas.FileItem, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     删除文件或目录
     """
-    if not path:
+    if not fileitem.path:
         return schemas.Response(success=False)
-    path_obj = Path(path)
+    path_obj = Path(fileitem.path)
     if not path_obj.exists():
         return schemas.Response(success=True)
     if path_obj.is_file():
@@ -196,16 +199,17 @@ def download_local(path: str, _: schemas.TokenPayload = Depends(verify_uri_token
         return reponse
 
 
-@router.get("/rename", summary="重命名文件或目录（本地）", response_model=schemas.Response)
-def rename_local(path: str, new_name: str,
+@router.post("/rename", summary="重命名文件或目录（本地）", response_model=schemas.Response)
+def rename_local(fileitem: schemas.FileItem,
+                 new_name: str,
                  recursive: bool = False,
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     重命名文件或目录
     """
-    if not path or not new_name:
+    if not fileitem.path or not new_name:
         return schemas.Response(success=False)
-    path_obj = Path(path)
+    path_obj = Path(fileitem.path)
     if not path_obj.exists():
         return schemas.Response(success=False)
     path_obj.rename(path_obj.parent / new_name)
@@ -213,7 +217,7 @@ def rename_local(path: str, new_name: str,
         transferchain = TransferChain()
         media_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIO_TRACK_EXT
         # 递归修改目录内文件（智能识别命名）
-        sub_files: List[schemas.FileItem] = list_local(path)
+        sub_files: List[schemas.FileItem] = list_local(fileitem=fileitem)
         if sub_files:
             # 开始进度
             progress = ProgressHelper()
@@ -241,7 +245,7 @@ def rename_local(path: str, new_name: str,
                 if not new_path:
                     progress.end(ProgressKey.BatchRename)
                     return schemas.Response(success=False, message=f"{sub_path.name} 未识别到新名称")
-                ret: schemas.Response = rename_local(new_path, new_name=Path(new_path).name, recursive=False)
+                ret: schemas.Response = rename_local(fileitem, new_name=Path(new_path).name, recursive=False)
                 if not ret.success:
                     progress.end(ProgressKey.BatchRename)
                     return schemas.Response(success=False, message=f"{sub_path.name} 重命名失败！")
