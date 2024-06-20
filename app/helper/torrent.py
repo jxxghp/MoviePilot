@@ -1,12 +1,13 @@
 import datetime
 import re
 import traceback
+from io import BytesIO
 from pathlib import Path
 from typing import Tuple, Optional, List, Union, Dict
 from urllib.parse import unquote
 
 from requests import Response
-from torrentool.api import Torrent
+from torf import Torrent
 
 from app.core.config import settings
 from app.core.context import Context, TorrentInfo, MediaInfo
@@ -90,7 +91,7 @@ class TorrentHelper(metaclass=Singleton):
                             ).post_res(url=action, data=data)
                             if req and req.status_code == 200:
                                 # 检查是不是种子文件，如果不是抛出异常
-                                Torrent.from_string(req.content)
+                                Torrent.read_stream(BytesIO(req.content))
                                 # 跳过成功
                                 logger.info(f"触发了站点首次种子下载，已自动跳过：{url}")
                                 skip_flag = True
@@ -143,7 +144,7 @@ class TorrentHelper(metaclass=Singleton):
         if not torrent_path or not torrent_path.exists():
             return "", []
         try:
-            torrentinfo = Torrent.from_file(torrent_path)
+            torrentinfo = Torrent.read(torrent_path)
             # 获取文件清单
             if (not torrentinfo.files
                     or (len(torrentinfo.files) == 1

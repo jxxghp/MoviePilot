@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List
 
-from torrentool.torrent import Torrent
+from torf import Torrent, Magnet
 from transmission_rpc import File
 
 from app import schemas
@@ -71,9 +71,9 @@ class TransmissionModule(_ModuleBase):
             """
             try:
                 if isinstance(content, Path):
-                    torrentinfo = Torrent.from_file(content)
+                    torrentinfo = Torrent.read(content)
                 else:
-                    torrentinfo = Torrent.from_string(content)
+                    torrentinfo = Magnet.from_string(content).torrent()
                 return torrentinfo.name, torrentinfo.total_size
             except Exception as e:
                 logger.error(f"获取种子名称失败：{e}")
