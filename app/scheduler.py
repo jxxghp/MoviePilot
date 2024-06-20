@@ -94,6 +94,10 @@ class Scheduler(metaclass=Singleton):
                         link=settings.MP_DOMAIN('#/site')
                     )
                 )
+                PluginManager().init_config()
+                for plugin_id in PluginManager().get_running_plugin_ids():
+                    self.update_plugin_job(plugin_id)
+
             else:
                 self._auth_count += 1
                 logger.error(f"用户认证失败：{msg}，共失败 {self._auth_count} 次")
