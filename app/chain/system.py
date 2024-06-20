@@ -153,7 +153,10 @@ class SystemChain(ChainBase, metaclass=Singleton):
         """
         获取前端版本
         """
-        version_file = Path(settings.FRONTEND_PATH) / "version.txt"
+        if SystemUtils.is_frozen() and SystemUtils.is_windows():
+            version_file = settings.CONFIG_PATH.parent / "nginx" / "html" / "version.txt"
+        else:
+            version_file = Path(settings.FRONTEND_PATH) / "version.txt"
         if version_file.exists():
             try:
                 with open(version_file, 'r') as f:
