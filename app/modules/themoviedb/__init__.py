@@ -332,6 +332,19 @@ class TheMovieDbModule(_ModuleBase):
                                                force_img=force_img)
         logger.info(f"{path} 刮削完成")
 
+    def meta_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
+                 season: int = None, episode: int = None) -> Optional[str]:
+        """
+        获取NFO文件内容文本
+        :param meta: 元数据
+        :param mediainfo: 媒体信息
+        :param season: 季号
+        :param episode: 集号
+        """
+        if settings.SCRAP_SOURCE != "themoviedb":
+            return None
+        return self.scraper.get_meta_nfo(meta=meta, mediainfo=mediainfo, season=season, episode=episode)
+
     def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,
                       page: int = 1) -> Optional[List[MediaInfo]]:
         """

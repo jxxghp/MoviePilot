@@ -765,6 +765,16 @@ class DoubanModule(_ModuleBase):
                     logger.error(f"刮削文件 {file} 失败，原因：{str(e)}")
         logger.info(f"{path} 刮削完成")
 
+    def meta_nfo(self, mediainfo: MediaInfo, season: int = None, **kwargs) -> Optional[str]:
+        """
+        获取NFO文件内容文本
+        :param mediainfo: 媒体信息
+        :param season: 季号
+        """
+        if settings.SCRAP_SOURCE != "douban":
+            return None
+        return self.scraper.get_meta_nfo(mediainfo=mediainfo, season=season)
+
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """
         补充抓取媒体信息图片

@@ -26,8 +26,8 @@ class TmdbScraper:
     def __init__(self, tmdb):
         self.tmdb = tmdb
 
-    def meta_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
-                 season: int = None, episode: int = None) -> Optional[str]:
+    def get_meta_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
+                     season: int = None, episode: int = None) -> Optional[str]:
         """
         获取NFO文件内容文本
         :param meta: 元数据
