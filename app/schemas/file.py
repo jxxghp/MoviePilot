@@ -28,3 +28,5 @@ class FileItem(BaseModel):
     thumbnail: Optional[str] = None
     # 115 pickcode
     pickcode: Optional[str] = None
+    # drive_id
+    drive_id: Optional[str] = None

@@ -304,7 +304,7 @@ class AliyunHelper:
             self.__handle_error(res, "获取用户信息")
         return {}
 
-    def list_files(self, parent_file_id: str = 'root', list_type: str = None,
+    def list_files(self, drive_id: str = None, parent_file_id: str = 'root', list_type: str = None,
                    limit: int = 100, order_by: str = 'updated_at') -> List[dict]:
         """
         浏览文件
@@ -316,17 +316,36 @@ class AliyunHelper:
         params = self.get_access_params()
         if not params:
             return []
-        # 最终返回数据
-        ret_items = []
         # 请求头
         headers = self.get_headers(params)
+        # 根目录处理
+        if not drive_id:
+            return [
+                {
+                    "file_id": parent_file_id,
+                    "drive_id": params.get("resourceDriveId"),
+                    "parent_file_id": "root",
+                    "type": "folder",
+                    "path": "/资源库/",
+                    "name": "资源库",
+                }, {
+                    "file_id": parent_file_id,
+                    "drive_id": params.get("backDriveId"),
+                    "parent_file_id": "root",
+                    "type": "folder",
+                    "path": "/备份盘/",
+                    "name": "备份盘",
+                }
+            ]
+        # 返回数据
+        ret_items = []
         # 分页获取
         next_marker = None
         while True:
             if not parent_file_id or parent_file_id == "/":
                 parent_file_id = "root"
             res = RequestUtils(headers=headers, timeout=10).post_res(self.list_file_url, json={
-                "drive_id": params.get("resourceDriveId"),
+                "drive_id": drive_id,
                 "type": list_type,
                 "limit": limit,
                 "order_by": order_by,

@@ -87,10 +87,11 @@ def list_aliyun(fileitem: schemas.FileItem,
                 size=fileinfo.get("size"),
                 extension=fileinfo.get("file_extension"),
                 modify_time=StringUtils.str_to_timestamp(fileinfo.get("updated_at")),
-                thumbnail=fileinfo.get("thumbnail")
+                thumbnail=fileinfo.get("thumbnail"),
+                drive_id=fileinfo.get("drive_id"),
             )]
         return []
-    items = AliyunHelper().list_files(parent_file_id=fileitem.fileid, order_by=sort)
+    items = AliyunHelper().list_files(drive_id=fileitem.drive_id, parent_file_id=fileitem.fileid, order_by=sort)
     if not items:
         return []
     return [schemas.FileItem(
@@ -102,7 +103,8 @@ def list_aliyun(fileitem: schemas.FileItem,
         size=item.get("size"),
         extension=item.get("file_extension"),
         modify_time=StringUtils.str_to_timestamp(item.get("updated_at")),
-        thumbnail=item.get("thumbnail")
+        thumbnail=item.get("thumbnail"),
+        drive_id=item.get("drive_id"),
     ) for item in items]
 
 
