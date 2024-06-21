@@ -336,8 +336,8 @@ class TheMovieDbModule(_ModuleBase):
                                                force_img=force_img)
         logger.info(f"{path} 刮削完成")
 
-    def meta_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
-                 season: int = None, episode: int = None) -> Optional[str]:
+    def metadata_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
+                     season: int = None, episode: int = None) -> Optional[str]:
         """
         获取NFO文件内容文本
         :param meta: 元数据

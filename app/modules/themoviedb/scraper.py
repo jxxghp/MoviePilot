@@ -247,7 +247,8 @@ class TmdbScraper:
         :param file_path: 电影文件路径
         """
         # 开始生成XML
-        logger.info(f"正在生成电影NFO文件：{file_path.name}")
+        if file_path:
+            logger.info(f"正在生成电影NFO文件：{file_path.name}")
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "movie")
         # 公共部分

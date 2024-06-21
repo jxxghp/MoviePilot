@@ -294,6 +294,25 @@ class SystemUtils:
         return dirs
 
     @staticmethod
+    def list_sub_all(directory: Path) -> List[Path]:
+        """
+        列出当前目录下的所有子目录和文件（不递归）
+        """
+        if not directory.exists():
+            return []
+
+        if directory.is_file():
+            return []
+
+        items = []
+
+        # 遍历目录
+        for path in directory.iterdir():
+            items.append(path)
+
+        return items
+
+    @staticmethod
     def get_directory_size(path: Path) -> float:
         """
         计算目录的大小

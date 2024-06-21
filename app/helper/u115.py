@@ -233,14 +233,14 @@ class U115Helper(metaclass=Singleton):
             logger.error(f"移动115文件失败：{str(e)}")
         return False
 
-    def upload(self, parent_file_id: str, file_path: Path) -> Optional[dict]:
+    def upload(self, parent_file_id: str, file_path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件
         """
         if not self.__init_cloud():
             return None
         try:
-            ticket = self.cloud.storage().request_upload(dir_id=parent_file_id, file_path=file_path)
+            ticket = self.cloud.storage().request_upload(dir_id=parent_file_id, file_path=str(file_path))
             if ticket is None:
                 logger.warn(f"115请求上传出错")
                 return None
@@ -256,13 +256,23 @@ class U115Helper(metaclass=Singleton):
                 )
                 por = bucket.put_object_from_file(
                     key=ticket.object_key,
-                    filename=file_path,
+                    filename=str(file_path),
                     headers=ticket.headers,
                 )
                 result = por.resp.response.json()
                 if result:
-                    logger.info(f"115上传文件成功：{result}")
-                    return result
+                    fileitem = result.get('data')
+                    logger.info(f"115上传文件成功：{fileitem}")
+                    return schemas.FileItem(
+                        fileid=fileitem.get('file_id'),
+                        parent_fileid=parent_file_id,
+                        type="file",
+                        name=fileitem.get('file_name'),
+                        path=f"{file_path / fileitem.get('file_name')}",
+                        size=fileitem.get('file_size'),
+                        extension=Path(fileitem.get('file_name')).suffix[1:],
+                        pickcode=fileitem.get('pickcode')
+                    )
                 else:
                     logger.warn(f"115上传文件失败：{por.resp.response.text}")
                     return None

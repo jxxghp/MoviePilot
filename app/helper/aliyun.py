@@ -546,7 +546,7 @@ class AliyunHelper:
             self.__handle_error(res, "移动文件")
         return False
 
-    def upload(self, parent_file_id: str, file_path: Path) -> Optional[dict]:
+    def upload(self, drive_id: str, parent_file_id: str, file_path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件，并标记完成
         """
@@ -555,7 +555,7 @@ class AliyunHelper:
             return None
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.create_file_url, json={
-            "drive_id": params.get("resourceDriveId"),
+            "drive_id": drive_id,
             "parent_file_id": parent_file_id,
             "name": file_path.name,
             "type": "file",
@@ -566,7 +566,6 @@ class AliyunHelper:
             return None
         # 获取上传参数
         result = res.json()
-        drive_id = result.get("drive_id")
         file_id = result.get("file_id")
         upload_id = result.get("upload_id")
         part_info_list = result.get("part_info_list")
@@ -587,10 +586,15 @@ class AliyunHelper:
             if not res:
                 self.__handle_error(res, "标记上传状态")
                 return None
-            return {
-                "drive_id": drive_id,
-                "file_id": file_id
-            }
+            result = res.json()
+            return schemas.FileItem(
+                fileid=result.get("file_id"),
+                drive_id=result.get("drive_id"),
+                parent_fileid=result.get("parent_file_id"),
+                type="file",
+                name=result.get("name"),
+                path=f"{file_path.parent}/{result.get('name')}",
+            )
         else:
             logger.warn("上传文件失败：无法获取上传地址！")
         return None

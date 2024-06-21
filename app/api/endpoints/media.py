@@ -116,14 +116,12 @@ def scrape(fileitem: schemas.FileItem,
     if storage == "local":
         if not scrape_path.exists():
             return schemas.Response(success=False, message="刮削路径不存在")
-        # 刮削本地
-        chain.scrape_metadata(path=scrape_path, mediainfo=mediainfo, transfer_type=settings.TRANSFER_TYPE)
     else:
         if not fileitem.fileid:
             return schemas.Response(success=False, message="刮削文件ID无效")
-        # 刮削在线
-        chain.scrape_metadata_online(storage=storage, fileitem=fileitem, meta=meta, mediainfo=mediainfo)
-    return schemas.Response(success=True, message="刮削完成")
+    # 手动刮削
+    chain.manual_scrape(storage=storage, fileitem=fileitem, meta=meta, mediainfo=mediainfo)
+    return schemas.Response(success=True, message=f"{fileitem.path} 刮削完成")
 
 
 @router.get("/category", summary="查询自动分类配置", response_model=dict)

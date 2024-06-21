@@ -765,7 +765,7 @@ class DoubanModule(_ModuleBase):
                     logger.error(f"刮削文件 {file} 失败，原因：{str(e)}")
         logger.info(f"{path} 刮削完成")
 
-    def meta_nfo(self, mediainfo: MediaInfo, season: int = None, **kwargs) -> Optional[str]:
+    def metadata_nfo(self, mediainfo: MediaInfo, season: int = None, **kwargs) -> Optional[str]:
         """
         获取NFO文件内容文本
         :param mediainfo: 媒体信息
