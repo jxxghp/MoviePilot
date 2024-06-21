@@ -15,6 +15,7 @@ from app.helper.aliyun import AliyunHelper
 from app.helper.u115 import U115Helper
 from app.log import logger
 from app.schemas.types import EventType, MediaType
+from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
@@ -332,72 +333,203 @@ class MediaChain(ChainBase, metaclass=Singleton):
         return None
 
     def scrape_metadata_online(self, storage: str, fileitem: schemas.FileItem,
-                               meta: MetaBase, mediainfo: MediaInfo):
+                               meta: MetaBase, mediainfo: MediaInfo, init_folder: bool = True):
         """
         远程刮削媒体信息（网盘等）
         """
 
-        def __list_files(s: str, f: str):
-            if s == "aliyun":
-                return AliyunHelper().list(parent_file_id=f)
-            if s == "u115":
-                return U115Helper().list(parent_file_id=f)
+        def __list_files(_storage: str, _fileid: str, _path: str = None, _drive_id: str = None):
+            if _storage == "aliyun":
+                return AliyunHelper().list(drive_id=_drive_id, parent_file_id=_fileid, path=_path)
+            if _storage == "u115":
+                return U115Helper().list(parent_file_id=_fileid, path=_path)
             return []
 
-        def __upload_file(s: str, p: str, f: Path):
-            if s == "aliyun":
-                return AliyunHelper().upload(parent_file_id=p, file_path=f)
-            if s == "u115":
-                return U115Helper().upload(parent_file_id=p, file_path=f)
+        def __upload_file(_storage: str, _fileid: str, _path: Path):
+            if _storage == "aliyun":
+                return AliyunHelper().upload(parent_file_id=_fileid, file_path=_path)
+            if _storage == "u115":
+                return U115Helper().upload(parent_file_id=_fileid, file_path=_path)
+
+        def __save_image(u: str, f: Path):
+            """
+            下载图片并保存
+            """
+            try:
+                logger.info(f"正在下载{f.stem}图片：{u} ...")
+                r = RequestUtils(proxies=settings.PROXY).get_res(url=u)
+                if r:
+                    f.write_bytes(r.content)
+                else:
+                    logger.info(f"{f.stem}图片下载失败，请检查网络连通性！")
+            except Exception as err:
+                logger.error(f"{f.stem}图片下载失败：{str(err)}！")
 
         if storage not in ["aliyun", "u115"]:
             logger.warn(f"不支持的存储类型：{storage}")
             return
+
+        # 当前文件路径
         filepath = Path(fileitem.path)
+        if fileitem.type == "file" \
+                and (not filepath.suffix or filepath.suffix.lower() not in settings.RMT_MEDIAEXT):
+            return
+        logger.info(f"开始刮削：{filepath} ...")
         if mediainfo.type == MediaType.MOVIE:
+            # 电影
             if fileitem.type == "file":
                 # 电影文件
+                logger.info(f"正在生成电影nfo：{mediainfo.title_year} - {filepath.name}")
                 movie_nfo = self.meta_nfo(meta=meta, mediainfo=mediainfo)
                 if not movie_nfo:
-                    logger.warn(f"无法生成电影NFO文件：{meta.name}")
+                    logger.warn(f"{filepath.name} nfo文件生成失败！")
                     return
                 # 写入到临时目录
                 nfo_path = settings.TEMP_PATH / f"{filepath.stem}.nfo"
                 nfo_path.write_bytes(movie_nfo)
                 # 上传NFO文件
+                logger.info(f"上传NFO文件：{nfo_path.name} ...")
                 __upload_file(storage, fileitem.parent_fileid, nfo_path)
+                logger.info(f"{nfo_path.name} 上传成功")
             else:
                 # 电影目录
-                files = __list_files(storage, fileitem.fileid)
+                files = __list_files(_storage=storage, _fileid=fileitem.fileid,
+                                     _drive_id=fileitem.drive_id, _path=fileitem.path)
                 for file in files:
                     self.scrape_metadata_online(storage=storage, fileitem=file,
-                                                meta=meta, mediainfo=mediainfo)
+                                                meta=meta, mediainfo=mediainfo,
+                                                init_folder=False)
+                # 生成图片文件和上传
+                if init_folder:
+                    for attr_name, attr_value in vars(mediainfo).items():
+                        if attr_value \
+                                and attr_name.endswith("_path") \
+                                and attr_value \
+                                and isinstance(attr_value, str) \
+                                and attr_value.startswith("http"):
+                            image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
+                            # 写入nfo到根目录
+                            image_path = settings.TEMP_PATH / image_name
+                            __save_image(attr_value, image_path)
+                            # 上传图片文件到当前目录
+                            logger.info(f"上传图片文件：{image_path.name} ...")
+                            __upload_file(storage, fileitem.fileid, image_path)
+                            logger.info(f"{image_path.name} 上传成功")
         else:
             # 电视剧
             if fileitem.type == "file":
-                # 电视剧文件
-                tv_nfo = self.meta_nfo(meta=meta, mediainfo=mediainfo, season=meta.begin_season, episode=meta.begin_episode)
-                if not tv_nfo:
-                    logger.warn(f"无法生成电视剧NFO文件：{meta.name}")
+                # 当前为集文件，重新识别季集
+                file_meta = MetaInfoPath(filepath)
+                if not file_meta.begin_episode:
+                    logger.warn(f"{filepath.name} 无法识别文件集数！")
+                    return
+                file_mediainfo = self.recognize_media(meta=file_meta)
+                if not file_mediainfo:
+                    logger.warn(f"{filepath.name} 无法识别文件媒体信息！")
+                    return
+                # 获取集的nfo文件
+                episode_nfo = self.meta_nfo(meta=file_meta, mediainfo=file_mediainfo,
+                                            season=file_meta.begin_season, episode=file_meta.begin_episode)
+                if not episode_nfo:
+                    logger.warn(f"{filepath.name} nfo生成失败！")
                     return
                 # 写入到临时目录
                 nfo_path = settings.TEMP_PATH / f"{filepath.stem}.nfo"
-                nfo_path.write_bytes(tv_nfo)
-                # 上传NFO文件
+                nfo_path.write_bytes(episode_nfo)
+                # 上传NFO文件，到文件当前目录下
+                logger.info(f"上传NFO文件：{nfo_path.name} ...")
                 __upload_file(storage, fileitem.parent_fileid, nfo_path)
-            else:
-                # 根目录
-                tv_nfo = self.meta_nfo(meta=meta, mediainfo=mediainfo)
-                if not tv_nfo:
-                    logger.warn(f"无法生成电视剧NFO文件：{meta.name}")
-                    return
-                # 写入nfo到根目录
-                nfo_path = settings.TEMP_PATH / f"tvshow.nfo"
-                nfo_path.write_bytes(tv_nfo)
-                # 上传NFO文件
-                __upload_file(storage, fileitem.fileid, nfo_path)
-                # 递归刮削目录内的文件和子目录
-                files = __list_files(storage, fileitem.fileid)
+                logger.info(f"{nfo_path.name} 上传成功")
+            elif meta.begin_season:
+                # 当前为季的目录，处理目录内的文件
+                files = __list_files(_storage=storage, _fileid=fileitem.fileid,
+                                     _drive_id=fileitem.drive_id, _path=fileitem.path)
                 for file in files:
                     self.scrape_metadata_online(storage=storage, fileitem=file,
-                                                meta=meta, mediainfo=mediainfo)
+                                                meta=meta, mediainfo=mediainfo,
+                                                init_folder=False)
+                # 生成季的nfo和图片
+                if init_folder:
+                    # 季nfo
+                    season_nfo = self.meta_nfo(meta=meta, mediainfo=mediainfo, season=meta.begin_season)
+                    if not season_nfo:
+                        logger.warn(f"无法生成电视剧季nfo文件：{meta.name}")
+                        return
+                    # 写入nfo到根目录
+                    nfo_path = settings.TEMP_PATH / "season.nfo"
+                    nfo_path.write_bytes(season_nfo)
+                    # 上传NFO文件
+                    logger.info(f"上传NFO文件：{nfo_path.name} ...")
+                    __upload_file(storage, fileitem.fileid, nfo_path)
+                    logger.info(f"{nfo_path.name} 上传成功")
+                    # TMDB季poster图片
+                    sea_seq = str(meta.begin_season).rjust(2, '0')
+                    # 查询季剧详情
+                    seasoninfo = self.tmdb_info(tmdbid=mediainfo.tmdb_id, mtype=MediaType.TV,
+                                                season=meta.begin_season)
+                    if not seasoninfo:
+                        logger.warn(f"无法获取 {mediainfo.title_year} 第{meta.begin_season}季 的媒体信息！")
+                        return
+                    if seasoninfo.get("poster_path"):
+                        # 下载图片
+                        ext = Path(seasoninfo.get('poster_path')).suffix
+                        url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{seasoninfo.get('poster_path')}"
+                        image_path = filepath.parent.with_name(f"season{sea_seq}-poster{ext}")
+                        __save_image(url, image_path)
+                        # 上传图片文件到当前目录
+                        logger.info(f"上传图片文件：{image_path.name} ...")
+                        __upload_file(storage, fileitem.fileid, image_path)
+                        logger.info(f"{image_path.name} 上传成功")
+                    # 季的其它图片
+                    for attr_name, attr_value in vars(mediainfo).items():
+                        if attr_value \
+                                and attr_name.startswith("season") \
+                                and not attr_name.endswith("poster_path") \
+                                and attr_value \
+                                and isinstance(attr_value, str) \
+                                and attr_value.startswith("http"):
+                            image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
+                            image_path = filepath.parent.with_name(image_name)
+                            __save_image(attr_value, image_path)
+                            # 上传图片文件到当前目录
+                            logger.info(f"上传图片文件：{image_path.name} ...")
+                            __upload_file(storage, fileitem.fileid, image_path)
+                            logger.info(f"{image_path.name} 上传成功")
+            else:
+                # 当前为根目录，处理目录内的文件
+                files = __list_files(_storage=storage, _fileid=fileitem.fileid,
+                                     _drive_id=fileitem.drive_id, _path=fileitem.path)
+                for file in files:
+                    self.scrape_metadata_online(storage=storage, fileitem=file,
+                                                meta=meta, mediainfo=mediainfo,
+                                                init_folder=False)
+                # 生成根目录的nfo和图片
+                if init_folder:
+                    tv_nfo = self.meta_nfo(meta=meta, mediainfo=mediainfo)
+                    if not tv_nfo:
+                        logger.warn(f"无法生成电视剧nfo文件：{meta.name}")
+                        return
+                    # 写入nfo到根目录
+                    nfo_path = settings.TEMP_PATH / "tvshow.nfo"
+                    nfo_path.write_bytes(tv_nfo)
+                    # 上传NFO文件
+                    logger.info(f"上传NFO文件：{nfo_path.name} ...")
+                    __upload_file(storage, fileitem.fileid, nfo_path)
+                    logger.info(f"{nfo_path.name} 上传成功")
+                    # 生成根目录图片
+                    for attr_name, attr_value in vars(mediainfo).items():
+                        if attr_name \
+                                and attr_name.endswith("_path") \
+                                and not attr_name.startswith("season") \
+                                and attr_value \
+                                and isinstance(attr_value, str) \
+                                and attr_value.startswith("http"):
+                            image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
+                            image_path = filepath.parent.with_name(image_name)
+                            __save_image(attr_value, image_path)
+                            # 上传图片文件到当前目录
+                            logger.info(f"上传图片文件：{image_path.name} ...")
+                            __upload_file(storage, fileitem.fileid, image_path)
+                            logger.info(f"{image_path.name} 上传成功")
+
+        logger.info(f"{filepath.name} 刮削完成")

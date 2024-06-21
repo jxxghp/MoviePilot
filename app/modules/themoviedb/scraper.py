@@ -305,7 +305,8 @@ class TmdbScraper:
         :param season: 季号
         :param season_path: 电视剧季的目录
         """
-        logger.info(f"正在生成季NFO文件：{season_path.name}")
+        if season_path:
+            logger.info(f"正在生成季NFO文件：{season_path.name}")
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "season")
         # 简介
@@ -343,7 +344,8 @@ class TmdbScraper:
         :param file_path: 集文件的路径
         """
         # 开始生成集的信息
-        logger.info(f"正在生成剧集NFO文件：{file_path.name}")
+        if file_path:
+            logger.info(f"正在生成剧集NFO文件：{file_path.name}")
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "episodedetails")
         # TMDBID

@@ -216,14 +216,18 @@ class TheMovieDbModule(_ModuleBase):
                                       tmdbid=info.get("id"))
         return info
 
-    def tmdb_info(self, tmdbid: int, mtype: MediaType) -> Optional[dict]:
+    def tmdb_info(self, tmdbid: int, mtype: MediaType, season: int = None) -> Optional[dict]:
         """
         获取TMDB信息
         :param tmdbid: int
         :param mtype:  媒体类型
+        :param season:  季号
         :return: TVDB信息
         """
-        return self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
+        if not season:
+            return self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
+        else:
+            return self.tmdb.get_tv_season_detail(tmdbid=tmdbid, season=season)
 
     def media_category(self) -> Optional[Dict[str, list]]:
         """

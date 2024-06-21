@@ -69,7 +69,11 @@ class AliyunHelper:
         if res is None:
             logger.warn("无法连接到阿里云盘！")
             return
-        result = res.json()
+        try:
+            result = res.json()
+        except Exception as err:
+            logger.error(f"解析阿里云盘返回数据失败：{str(err)}")
+            return
         code = result.get("code")
         message = result.get("message")
         display_message = result.get("display_message")
@@ -336,7 +340,7 @@ class AliyunHelper:
                     fileid=parent_file_id,
                     drive_id=params.get("resourceDriveId"),
                     parent_fileid="root",
-                    type="folder",
+                    type="dir",
                     path="/资源库/",
                     name="资源库"
                 ),
@@ -344,7 +348,7 @@ class AliyunHelper:
                     fileid=parent_file_id,
                     drive_id=params.get("backDriveId"),
                     parent_fileid="root",
-                    type="folder",
+                    type="dir",
                     path="/备份盘/",
                     name="备份盘"
                 )
@@ -386,8 +390,8 @@ class AliyunHelper:
         return [schemas.FileItem(
             fileid=fileinfo.get("file_id"),
             parent_fileid=fileinfo.get("parent_file_id"),
-            type="file",
-            path=f"{path}{fileinfo.get('name')}",
+            type="dir" if fileinfo.get("type") == "folder" else "file",
+            path=f"{path}{fileinfo.get('name')}" + ("/" if fileinfo.get("type") == "folder" else ""),
             name=fileinfo.get("name"),
             size=fileinfo.get("size"),
             extension=fileinfo.get("file_extension"),
@@ -472,7 +476,7 @@ class AliyunHelper:
                 fileid=result.get("file_id"),
                 drive_id=result.get("drive_id"),
                 parent_fileid=result.get("parent_file_id"),
-                type=result.get("type"),
+                type="file",
                 name=result.get("name"),
                 size=result.get("size"),
                 extension=result.get("file_extension"),
