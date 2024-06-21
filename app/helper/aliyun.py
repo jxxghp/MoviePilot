@@ -76,10 +76,10 @@ class AliyunHelper:
             if action:
                 if code == "DeviceSessionSignatureInvalid":
                     logger.warn("设备已失效，正在重新建立会话...")
-                    self.__create_session(self.get_headers(self.__auth_params))
+                    self.__create_session(self.__get_headers(self.__auth_params))
                 if code == "UserDeviceOffline":
                     logger.warn("设备已离线，尝试重新登录，如仍报错请检查阿里云盘绑定设备数量是否超限！")
-                    self.__create_session(self.get_headers(self.__auth_params))
+                    self.__create_session(self.__get_headers(self.__auth_params))
                 if code == "AccessTokenInvalid":
                     logger.warn("访问令牌已失效，正在刷新令牌...")
                     self.__update_accesstoken(self.__auth_params, self.__auth_params.get("refreshToken"))
@@ -192,7 +192,7 @@ class AliyunHelper:
         """
         更新阿里云盘访问令牌
         """
-        headers = self.get_headers(params)
+        headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(
             self.update_accessstoken_url, json={
                 "refresh_token": refresh_token,
@@ -273,10 +273,10 @@ class AliyunHelper:
             update_device = True
         # 更新设备信息重新创建会话
         if update_device:
-            self.__create_session(self.get_headers(params))
+            self.__create_session(self.__get_headers(params))
         return params
 
-    def get_headers(self, params: dict):
+    def __get_headers(self, params: dict):
         """
         获取请求头
         """
@@ -300,7 +300,7 @@ class AliyunHelper:
         params = self.__access_params
         if not params:
             return {}
-        headers = self.get_headers(params)
+        headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.user_info_url)
         if res:
             result = res.json()
@@ -326,7 +326,7 @@ class AliyunHelper:
         if not params:
             return []
         # 请求头
-        headers = self.get_headers(params)
+        headers = self.__get_headers(params)
         # 根目录处理
         if not drive_id:
             return [
@@ -389,7 +389,7 @@ class AliyunHelper:
         params = self.__access_params
         if not params:
             return None
-        headers = self.get_headers(params)
+        headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.create_folder_url, json={
             "drive_id": params.get("resourceDriveId"),
             "parent_file_id": parent_file_id,
@@ -428,7 +428,7 @@ class AliyunHelper:
         params = self.__access_params
         if not params:
             return False
-        headers = self.get_headers(params)
+        headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.delete_file_url, json={
             "drive_id": params.get("resourceDriveId"),
             "file_id": file_id
@@ -446,7 +446,7 @@ class AliyunHelper:
         params = self.__access_params
         if not params:
             return None
-        headers = self.get_headers(params)
+        headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.file_detail_url, json={
             "drive_id": params.get("resourceDriveId"),
             "file_id": file_id
@@ -464,7 +464,7 @@ class AliyunHelper:
         params = self.__access_params
         if not params:
             return False
-        headers = self.get_headers(params)
+        headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.rename_file_url, json={
             "drive_id": params.get("resourceDriveId"),
             "file_id": file_id,
@@ -484,7 +484,7 @@ class AliyunHelper:
         params = self.__access_params
         if not params:
             return None
-        headers = self.get_headers(params)
+        headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.download_url, json={
             "drive_id": params.get("resourceDriveId"),
             "file_id": file_id
@@ -502,7 +502,7 @@ class AliyunHelper:
         params = self.__access_params
         if not params:
             return False
-        headers = self.get_headers(params)
+        headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.move_file_url, json={
             "drive_id": drive_id,
             "file_id": file_id,
@@ -522,7 +522,7 @@ class AliyunHelper:
         params = self.__access_params
         if not params:
             return None
-        headers = self.get_headers(params)
+        headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.create_file_url, json={
             "drive_id": params.get("resourceDriveId"),
             "parent_file_id": parent_file_id,

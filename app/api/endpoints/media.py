@@ -98,24 +98,27 @@ def search(title: str,
 
 
 @router.get("/scrape", summary="刮削媒体信息", response_model=schemas.Response)
-def scrape(path: str,
+def scrape(path: str, storage: str = "local",
            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     刮削媒体信息
     """
     if not path:
         return schemas.Response(success=False, message="刮削路径无效")
-    scrape_path = Path(path)
-    if not scrape_path.exists():
-        return schemas.Response(success=False, message="刮削路径不存在")
-    # 识别
     chain = MediaChain()
-    meta = MetaInfoPath(scrape_path)
+    # 识别媒体信息
+    meta = MetaInfoPath(path)
     mediainfo = chain.recognize_media(meta)
     if not media_info:
         return schemas.Response(success=False, message="刮削失败，无法识别媒体信息")
-    # 刮削
-    chain.scrape_metadata(path=scrape_path, mediainfo=mediainfo, transfer_type=settings.TRANSFER_TYPE)
+    if storage == "local":
+        scrape_path = Path(path)
+        if not scrape_path.exists():
+            return schemas.Response(success=False, message="刮削路径不存在")
+        # 刮削
+        chain.scrape_metadata(path=scrape_path, mediainfo=mediainfo, transfer_type=settings.TRANSFER_TYPE)
+    else:
+        chain.scrape_metadata_online(storage=storage, path=path, mediainfo=mediainfo)
     return schemas.Response(success=True, message="刮削完成")
 
 

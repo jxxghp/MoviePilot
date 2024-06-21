@@ -26,6 +26,17 @@ class MediaChain(ChainBase, metaclass=Singleton):
     # 临时识别结果 {title, name, year, season, episode}
     recognize_temp: Optional[dict] = None
 
+    def meta_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
+                 season: int = None, episode: int = None) -> Optional[str]:
+        """
+        获取NFO文件内容文本
+        :param meta: 元数据
+        :param mediainfo: 媒体信息
+        :param season: 季号
+        :param episode: 集号
+        """
+        return self.run_module("meta_nfo", meta=meta, mediainfo=mediainfo, season=season, episode=episode)
+
     def recognize_by_meta(self, metainfo: MetaBase) -> Optional[MediaInfo]:
         """
         根据主副标题识别媒体信息
@@ -316,13 +327,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
             )
         return None
 
-    def meta_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
-                 season: int = None, episode: int = None) -> Optional[str]:
+    def scrape_metadata_online(self, storage: str, path: str, mediainfo: MediaInfo):
         """
-        获取NFO文件内容文本
-        :param meta: 元数据
-        :param mediainfo: 媒体信息
-        :param season: 季号
-        :param episode: 集号
+        远程刮削媒体信息（网盘等）
         """
-        return self.run_module("meta_nfo", meta=meta, mediainfo=mediainfo, season=season, episode=episode)
+        # TODO: 远程刮削媒体信息
+        pass
