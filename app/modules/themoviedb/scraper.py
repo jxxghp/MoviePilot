@@ -139,7 +139,7 @@ class TmdbScraper:
                     if self._force_nfo or not file_path.with_name("season.nfo").exists():
                         self.__gen_tv_season_nfo_file(seasoninfo=seasoninfo,
                                                       season=meta.begin_season,
-                                                      season_path=file_path.parent)
+                                                      season_path=file_path)
                     # TMDB季poster图片
                     sea_seq = str(meta.begin_season).rjust(2, '0')
                     if seasoninfo.get("poster_path"):
