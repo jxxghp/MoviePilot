@@ -42,8 +42,8 @@ class AliyunHelper:
     user_info_url = "https://user.aliyundrive.com/v2/user/get"
     # 浏览文件
     list_file_url = "https://api.aliyundrive.com/adrive/v3/file/list"
-    # 创建目录
-    create_folder_url = "https://api.aliyundrive.com/adrive/v2/file/createWithFolders"
+    # 创建目录或文件
+    create_folder_file_url = "https://api.aliyundrive.com/adrive/v2/file/createWithFolders"
     # 文件详情
     file_detail_url = "https://api.aliyundrive.com/v2/file/get"
     # 删除文件
@@ -54,8 +54,6 @@ class AliyunHelper:
     download_url = "https://api.aliyundrive.com/v2/file/get_download_url"
     # 移动文件
     move_file_url = "https://api.aliyundrive.com/v2/file/move"
-    # 创建文件
-    create_file_url = "https://api.aliyundrive.com/adrive/v2/file/create"
     # 上传文件完成
     upload_file_complete_url = "https://api.aliyundrive.com/v2/file/complete"
 
@@ -400,7 +398,7 @@ class AliyunHelper:
             drive_id=fileinfo.get("drive_id"),
         ) for fileinfo in ret_items]
 
-    def create_folder(self, parent_file_id: str, name: str, path: str = "/") -> Optional[schemas.FileItem]:
+    def create_folder(self, drive_id: str, parent_file_id: str, name: str, path: str = "/") -> Optional[schemas.FileItem]:
         """
         创建目录
         """
@@ -408,8 +406,8 @@ class AliyunHelper:
         if not params:
             return None
         headers = self.__get_headers(params)
-        res = RequestUtils(headers=headers, timeout=10).post_res(self.create_folder_url, json={
-            "drive_id": params.get("resourceDriveId"),
+        res = RequestUtils(headers=headers, timeout=10).post_res(self.create_folder_file_url, json={
+            "drive_id": drive_id,
             "parent_file_id": parent_file_id,
             "name": name,
             "check_name_mode": "refuse",
@@ -554,12 +552,19 @@ class AliyunHelper:
         if not params:
             return None
         headers = self.__get_headers(params)
-        res = RequestUtils(headers=headers, timeout=10).post_res(self.create_file_url, json={
+        res = RequestUtils(headers=headers, timeout=10).post_res(self.create_folder_file_url, json={
             "drive_id": drive_id,
             "parent_file_id": parent_file_id,
             "name": file_path.name,
+            "check_name_mode": "refuse",
+            "create_scene": "file_upload",
             "type": "file",
-            "check_name_mode": "refuse"
+            "part_info_list": [
+                {
+                    "part_number": 1
+                }
+            ],
+            "size": file_path.stat().st_size
         })
         if not res:
             self.__handle_error(res, "创建文件")

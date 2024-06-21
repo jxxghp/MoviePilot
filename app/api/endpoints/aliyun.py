@@ -92,7 +92,8 @@ def mkdir_aliyun(fileitem: schemas.FileItem,
     """
     if not fileitem.fileid or not name:
         return schemas.Response(success=False)
-    result = AliyunHelper().create_folder(parent_file_id=fileitem.fileid, name=name, path=fileitem.path)
+    result = AliyunHelper().create_folder(drive_id=fileitem.drive_id, parent_file_id=fileitem.fileid,
+                                          name=name, path=fileitem.path)
     if result:
         return schemas.Response(success=True)
     return schemas.Response(success=False)
