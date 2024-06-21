@@ -4,11 +4,15 @@ from pathlib import Path
 from threading import Lock
 from typing import Optional, List, Tuple
 
+from app import schemas
 from app.chain import ChainBase
+from app.core.config import settings
 from app.core.context import Context, MediaInfo
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo, MetaInfoPath
+from app.helper.aliyun import AliyunHelper
+from app.helper.u115 import U115Helper
 from app.log import logger
 from app.schemas.types import EventType, MediaType
 from app.utils.singleton import Singleton
@@ -327,9 +331,73 @@ class MediaChain(ChainBase, metaclass=Singleton):
             )
         return None
 
-    def scrape_metadata_online(self, storage: str, path: str, mediainfo: MediaInfo):
+    def scrape_metadata_online(self, storage: str, fileitem: schemas.FileItem,
+                               meta: MetaBase, mediainfo: MediaInfo):
         """
         远程刮削媒体信息（网盘等）
         """
-        # TODO: 远程刮削媒体信息
-        pass
+
+        def __list_files(s: str, f: str):
+            if s == "aliyun":
+                return AliyunHelper().list(parent_file_id=f)
+            if s == "u115":
+                return U115Helper().list(parent_file_id=f)
+            return []
+
+        def __upload_file(s: str, p: str, f: Path):
+            if s == "aliyun":
+                return AliyunHelper().upload(parent_file_id=p, file_path=f)
+            if s == "u115":
+                return U115Helper().upload(parent_file_id=p, file_path=f)
+
+        if storage not in ["aliyun", "u115"]:
+            logger.warn(f"不支持的存储类型：{storage}")
+            return
+        filepath = Path(fileitem.path)
+        if mediainfo.type == MediaType.MOVIE:
+            if fileitem.type == "file":
+                # 电影文件
+                movie_nfo = self.meta_nfo(meta=meta, mediainfo=mediainfo)
+                if not movie_nfo:
+                    logger.warn(f"无法生成电影NFO文件：{meta.name}")
+                    return
+                # 写入到临时目录
+                nfo_path = settings.TEMP_PATH / f"{filepath.stem}.nfo"
+                nfo_path.write_bytes(movie_nfo)
+                # 上传NFO文件
+                __upload_file(storage, fileitem.parent_fileid, nfo_path)
+            else:
+                # 电影目录
+                files = __list_files(storage, fileitem.fileid)
+                for file in files:
+                    self.scrape_metadata_online(storage=storage, fileitem=schemas.FileItem(**file),
+                                                meta=meta, mediainfo=mediainfo)
+        else:
+            # 电视剧
+            if fileitem.type == "file":
+                # 电视剧文件
+                tv_nfo = self.meta_nfo(meta=meta, mediainfo=mediainfo, season=meta.begin_season, episode=meta.begin_episode)
+                if not tv_nfo:
+                    logger.warn(f"无法生成电视剧NFO文件：{meta.name}")
+                    return
+                # 写入到临时目录
+                nfo_path = settings.TEMP_PATH / f"{filepath.stem}.nfo"
+                nfo_path.write_bytes(tv_nfo)
+                # 上传NFO文件
+                __upload_file(storage, fileitem.parent_fileid, nfo_path)
+            else:
+                # 根目录
+                tv_nfo = self.meta_nfo(meta=meta, mediainfo=mediainfo)
+                if not tv_nfo:
+                    logger.warn(f"无法生成电视剧NFO文件：{meta.name}")
+                    return
+                # 写入nfo到根目录
+                nfo_path = settings.TEMP_PATH / f"tvshow.nfo"
+                nfo_path.write_bytes(tv_nfo)
+                # 上传NFO文件
+                __upload_file(storage, fileitem.fileid, nfo_path)
+                # 递归刮削目录内的文件和子目录
+                files = __list_files(storage, fileitem.fileid)
+                for file in files:
+                    self.scrape_metadata_online(storage=storage, fileitem=schemas.FileItem(**file),
+                                                meta=meta, mediainfo=mediainfo)

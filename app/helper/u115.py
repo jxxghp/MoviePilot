@@ -1,4 +1,5 @@
 import base64
+from pathlib import Path
 from typing import Optional, Tuple, Generator
 
 import oss2
@@ -211,7 +212,7 @@ class U115Helper(metaclass=Singleton):
             logger.error(f"移动115文件失败：{str(e)}")
         return False
 
-    def upload(self, file_path: str, parent_file_id: str) -> Optional[dict]:
+    def upload(self, parent_file_id: str, file_path: Path) -> Optional[dict]:
         """
         上传文件
         """

@@ -515,7 +515,7 @@ class AliyunHelper:
             self.__handle_error(res, "移动文件")
         return False
 
-    def upload(self, parent_file_id: str, name: str, filepath: Path) -> Optional[dict]:
+    def upload(self, parent_file_id: str, file_path: Path) -> Optional[dict]:
         """
         上传文件，并标记完成
         """
@@ -526,7 +526,7 @@ class AliyunHelper:
         res = RequestUtils(headers=headers, timeout=10).post_res(self.create_file_url, json={
             "drive_id": params.get("resourceDriveId"),
             "parent_file_id": parent_file_id,
-            "name": name,
+            "name": file_path.name,
             "type": "file",
             "check_name_mode": "refuse"
         })
@@ -543,7 +543,7 @@ class AliyunHelper:
             # 上传地址
             upload_url = part_info_list[0].get("upload_url")
             # 上传文件
-            res = RequestUtils(headers=headers).put_res(upload_url, data=filepath.read_bytes())
+            res = RequestUtils(headers=headers).put_res(upload_url, data=file_path.read_bytes())
             if not res:
                 self.__handle_error(res, "上传文件")
                 return None
