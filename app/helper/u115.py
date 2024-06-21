@@ -1,12 +1,13 @@
 import base64
 from pathlib import Path
-from typing import Optional, Tuple, Generator
+from typing import Optional, Tuple, List
 
 import oss2
 import py115
 from py115 import Cloud
-from py115.types import LoginTarget, QrcodeSession, QrcodeStatus, Credential, File, DownloadTicket
+from py115.types import LoginTarget, QrcodeSession, QrcodeStatus, Credential, DownloadTicket
 
+from app import schemas
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.types import SystemConfigKey
@@ -137,26 +138,46 @@ class U115Helper(metaclass=Singleton):
             logger.error(f"获取115存储空间失败：{str(e)}")
         return None
 
-    def list(self, parent_file_id: str = '0') -> Optional[Generator[File, None, None]]:
+    def list(self, parent_file_id: str = '0', path: str = "/") -> Optional[List[schemas.FileItem]]:
         """
         浏览文件
         """
         if not self.__init_cloud():
             return None
         try:
-            return self.cloud.storage().list(dir_id=parent_file_id)
+            items = self.cloud.storage().list(dir_id=parent_file_id)
+            return [schemas.FileItem(
+                fileid=item.file_id,
+                parent_fileid=item.parent_id,
+                type="dir" if item.is_dir else "file",
+                path=f"{path}{item.name}" + "/" if item.is_dir else "",
+                name=item.name,
+                size=item.size,
+                extension=Path(item.name).suffix[1:],
+                modify_time=item.modified_time.timestamp() if item.modified_time else 0,
+                pickcode=item.pickcode
+            ) for item in items]
         except Exception as e:
             logger.error(f"浏览115文件失败：{str(e)}")
         return None
 
-    def create_folder(self, parent_file_id: str, name: str) -> Optional[File]:
+    def create_folder(self, parent_file_id: str, name: str, path: str = "/") -> Optional[schemas.FileItem]:
         """
         创建目录
         """
         if not self.__init_cloud():
             return None
         try:
-            return self.cloud.storage().make_dir(parent_file_id, name)
+            result = self.cloud.storage().make_dir(parent_file_id, name)
+            return schemas.FileItem(
+                fileid=result.file_id,
+                parent_fileid=result.parent_id,
+                type="dir",
+                path=f"{path}{name}/",
+                name=name,
+                modify_time=result.modified_time.timestamp() if result.modified_time else 0,
+                pickcode=result.pickcode
+            )
         except Exception as e:
             logger.error(f"创建115目录失败：{str(e)}")
         return None
