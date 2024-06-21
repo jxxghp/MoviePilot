@@ -370,7 +370,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 # 电影目录
                 files = __list_files(storage, fileitem.fileid)
                 for file in files:
-                    self.scrape_metadata_online(storage=storage, fileitem=schemas.FileItem(**file),
+                    self.scrape_metadata_online(storage=storage, fileitem=file,
                                                 meta=meta, mediainfo=mediainfo)
         else:
             # 电视剧
@@ -399,5 +399,5 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 # 递归刮削目录内的文件和子目录
                 files = __list_files(storage, fileitem.fileid)
                 for file in files:
-                    self.scrape_metadata_online(storage=storage, fileitem=schemas.FileItem(**file),
+                    self.scrape_metadata_online(storage=storage, fileitem=file,
                                                 meta=meta, mediainfo=mediainfo)
