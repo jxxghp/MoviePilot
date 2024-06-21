@@ -578,7 +578,12 @@ class AliyunHelper:
             # 上传地址
             upload_url = part_info_list[0].get("upload_url")
             # 上传文件
-            res = RequestUtils(headers=headers).put_res(upload_url, data=file_path.read_bytes())
+            res = RequestUtils(headers={
+                "Content-Type": "",
+                "User-Agent": settings.USER_AGENT,
+                "Referer": "https://www.alipan.com/",
+                "Accept": "*/*",
+            }).put_res(upload_url, data=file_path.read_bytes())
             if not res:
                 self.__handle_error(res, "上传文件")
                 return None

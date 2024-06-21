@@ -276,7 +276,8 @@ class TmdbScraper:
         :param dir_path: 电视剧根目录
         """
         # 开始生成XML
-        logger.info(f"正在生成电视剧NFO文件：{dir_path.name}")
+        if dir_path:
+            logger.info(f"正在生成电视剧NFO文件：{dir_path.name}")
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "tvshow")
         # 公共部分
