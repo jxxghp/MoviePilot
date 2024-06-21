@@ -47,10 +47,8 @@ def userinfo(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     查询用户信息
     """
     aliyunhelper = AliyunHelper()
-    # 浏览一次文件确定token正确性
-    aliyunhelper.list_files()
     # 查询用户信息返回
-    info = aliyunhelper.get_user_info()
+    info = aliyunhelper.user_info()
     if info:
         return schemas.Response(success=True, data=info)
     return schemas.Response(success=False)
@@ -76,7 +74,7 @@ def list_aliyun(fileitem: schemas.FileItem,
     if sort == "time":
         sort = "updated_at"
     if fileitem.type == "file":
-        fileinfo = AliyunHelper().get_file_detail(fileitem.fileid)
+        fileinfo = AliyunHelper().detail(fileitem.fileid)
         if fileinfo:
             return [schemas.FileItem(
                 fileid=fileinfo.get("file_id"),
@@ -91,7 +89,7 @@ def list_aliyun(fileitem: schemas.FileItem,
                 drive_id=fileinfo.get("drive_id"),
             )]
         return []
-    items = AliyunHelper().list_files(drive_id=fileitem.drive_id, parent_file_id=fileitem.fileid, order_by=sort)
+    items = AliyunHelper().list(drive_id=fileitem.drive_id, parent_file_id=fileitem.fileid, order_by=sort)
     if not items:
         return []
     return [schemas.FileItem(
@@ -131,7 +129,7 @@ def delete_aliyun(fileitem: schemas.FileItem,
     """
     if not fileitem.fileid:
         return schemas.Response(success=False)
-    result = AliyunHelper().delete_file(fileitem.fileid)
+    result = AliyunHelper().delete(fileitem.fileid)
     if result:
         return schemas.Response(success=True)
     return schemas.Response(success=False)
@@ -145,7 +143,7 @@ def download_aliyun(fileid: str,
     """
     if not fileid:
         return schemas.Response(success=False)
-    url = AliyunHelper().get_download_url(fileid)
+    url = AliyunHelper().download(fileid)
     if url:
         # 重定向
         return Response(status_code=302, headers={"Location": url})
@@ -162,7 +160,7 @@ def rename_aliyun(fileitem: schemas.FileItem,
     """
     if not fileitem.fileid or not new_name:
         return schemas.Response(success=False)
-    result = AliyunHelper().rename_file(fileitem.fileid, new_name)
+    result = AliyunHelper().rename(fileitem.fileid, new_name)
     if result:
         if recursive:
             transferchain = TransferChain()
@@ -214,7 +212,7 @@ def image_aliyun(fileid: str, _: schemas.TokenPayload = Depends(verify_uri_token
     """
     if not fileid:
         return schemas.Response(success=False)
-    url = AliyunHelper().get_download_url(fileid)
+    url = AliyunHelper().download_url(fileid)
     if url:
         # 重定向
         return Response(status_code=302, headers={"Location": url})

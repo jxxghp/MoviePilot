@@ -46,7 +46,7 @@ def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询存储空间信息
     """
-    storage_info = U115Helper().get_storage()
+    storage_info = U115Helper().storage()
     if storage_info:
         return schemas.Response(success=True, data={
             "total": storage_info[0],
@@ -87,7 +87,7 @@ def list_115(fileitem: schemas.FileItem,
             extension=suffix,
             pickcode=fileitem.pickcode
         )]
-    items = U115Helper().list_files(parent_file_id=fileid)
+    items = U115Helper().list(parent_file_id=fileid)
     if not items:
         return []
     file_list = [schemas.FileItem(
@@ -131,7 +131,7 @@ def delete_115(fileitem: schemas.FileItem,
     """
     if not fileitem.fileid:
         return schemas.Response(success=False)
-    result = U115Helper().delete_file(fileitem.fileid)
+    result = U115Helper().delete(fileitem.fileid)
     if result:
         return schemas.Response(success=True)
     return schemas.Response(success=False)
@@ -164,7 +164,7 @@ def rename_115(fileitem: schemas.FileItem,
     """
     if not fileitem.fileid or not new_name:
         return schemas.Response(success=False)
-    result = U115Helper().rename_file(fileitem.fileid, new_name)
+    result = U115Helper().rename(fileitem.fileid, new_name)
     if result:
         if recursive:
             transferchain = TransferChain()
