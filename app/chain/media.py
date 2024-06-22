@@ -480,21 +480,12 @@ class MediaChain(ChainBase, metaclass=Singleton):
                         __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
                                     _path=nfo_path, _content=season_nfo)
                         # TMDB季poster图片
-                        if settings.SCRAP_SOURCE == "themoviedb":
-                            sea_seq = str(meta.begin_season).rjust(2, '0')
-                            # 查询季剧详情
-                            seasoninfo = self.tmdb_info(tmdbid=mediainfo.tmdb_id, mtype=MediaType.TV,
-                                                        season=meta.begin_season)
-                            if not seasoninfo:
-                                logger.warn(f"无法获取 {mediainfo.title_year} 第{meta.begin_season}季 的媒体信息！")
-                                return
-                            # 生成季poster图片
-                            if seasoninfo.get("poster_path"):
+                        image_dict = self.metadata_img(mediainfo=mediainfo, season=season_meta.begin_season)
+                        if image_dict:
+                            for image_name, image_url in image_dict.items():
+                                image_path = filepath.with_name(image_name)
                                 # 下载图片
-                                content = __save_image(f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original"
-                                                       f"{seasoninfo.get('poster_path')}")
-                                image_path = filepath.with_name(f"season{sea_seq}"
-                                                                f"-poster{Path(seasoninfo.get('poster_path')).suffix}")
+                                content = __save_image(image_url)
                                 # 保存图片文件到当前目录
                                 __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
                                             _path=image_path, _content=content)
@@ -509,15 +500,12 @@ class MediaChain(ChainBase, metaclass=Singleton):
                         __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
                                     _path=nfo_path, _content=tv_nfo)
                         # 生成目录图片
-                        for attr_name, attr_value in vars(mediainfo).items():
-                            if attr_name \
-                                    and attr_name.endswith("_path") \
-                                    and attr_value \
-                                    and isinstance(attr_value, str) \
-                                    and attr_value.startswith("http"):
-                                image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
+                        image_dict = self.metadata_img(mediainfo=mediainfo)
+                        if image_dict:
+                            for image_name, image_url in image_dict.items():
                                 image_path = filepath.parent.with_name(image_name)
-                                content = __save_image(attr_value)
+                                # 下载图片
+                                content = __save_image(image_url)
                                 # 保存图片文件到当前目录
                                 __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
                                             _path=image_path, _content=content)

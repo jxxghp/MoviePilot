@@ -17,7 +17,7 @@ class DoubanScraper:
     _force_nfo = False
     _force_img = False
 
-    def get_meta_nfo(self, mediainfo: MediaInfo, season: int = None) -> Optional[str]:
+    def get_metadata_nfo(self, mediainfo: MediaInfo, season: int = None) -> Optional[str]:
         """
         获取NFO文件内容文本
         :param mediainfo: 媒体信息
@@ -37,6 +37,19 @@ class DoubanScraper:
             return doc.toprettyxml(indent="  ", encoding="utf-8")
 
         return None
+
+    @staticmethod
+    def get_metadata_img(mediainfo: MediaInfo) -> Optional[dict]:
+        """
+        获取图片内容
+        :param mediainfo: 媒体信息
+        """
+        ret_dict = {}
+        if mediainfo.poster_path:
+            ret_dict[f"poster{Path(mediainfo.poster_path).suffix}"] = mediainfo.poster_path
+        if mediainfo.backdrop_path:
+            ret_dict[f"backdrop{Path(mediainfo.backdrop_path).suffix}"] = mediainfo.backdrop_path
+        return ret_dict
 
     def gen_scraper_files(self, meta: MetaBase, mediainfo: MediaInfo,
                           file_path: Path, transfer_type: str,
@@ -68,15 +81,11 @@ class DoubanScraper:
                     self.__gen_movie_nfo_file(mediainfo=mediainfo,
                                               file_path=file_path)
                 # 生成电影图片
-                image_path = file_path.with_name(f"poster{Path(mediainfo.poster_path).suffix}")
-                if self._force_img or not image_path.exists():
-                    self.__save_image(url=mediainfo.poster_path,
-                                      file_path=image_path)
-                # 背景图
-                if mediainfo.backdrop_path:
-                    image_path = file_path.with_name(f"backdrop{Path(mediainfo.backdrop_path).suffix}")
+                image_dict = self.get_metadata_img(mediainfo)
+                for img_name, img_url in image_dict.items():
+                    image_path = file_path.with_name(img_name)
                     if self._force_img or not image_path.exists():
-                        self.__save_image(url=mediainfo.backdrop_path,
+                        self.__save_image(url=img_url,
                                           file_path=image_path)
             # 电视剧
             else:
@@ -86,15 +95,11 @@ class DoubanScraper:
                     self.__gen_tv_nfo_file(mediainfo=mediainfo,
                                            dir_path=file_path.parents[1])
                 # 生成根目录图片
-                image_path = file_path.with_name(f"poster{Path(mediainfo.poster_path).suffix}")
-                if self._force_img or not image_path.exists():
-                    self.__save_image(url=mediainfo.poster_path,
-                                      file_path=image_path)
-                # 背景图
-                if mediainfo.backdrop_path:
-                    image_path = file_path.with_name(f"backdrop{Path(mediainfo.backdrop_path).suffix}")
+                image_dict = self.get_metadata_img(mediainfo)
+                for img_name, img_url in image_dict.items():
+                    image_path = file_path.with_name(img_name)
                     if self._force_img or not image_path.exists():
-                        self.__save_image(url=mediainfo.backdrop_path,
+                        self.__save_image(url=img_url,
                                           file_path=image_path)
                 # 季目录NFO
                 if self._force_nfo or not file_path.with_name("season.nfo").exists():

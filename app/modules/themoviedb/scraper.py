@@ -1,6 +1,6 @@
 import traceback
 from pathlib import Path
-from typing import Union, Optional
+from typing import Union, Optional, Tuple
 from xml.dom import minidom
 
 from requests import RequestException
@@ -26,8 +26,8 @@ class TmdbScraper:
     def __init__(self, tmdb):
         self.tmdb = tmdb
 
-    def get_meta_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
-                     season: int = None, episode: int = None) -> Optional[str]:
+    def get_metadata_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
+                         season: int = None, episode: int = None) -> Optional[str]:
         """
         获取NFO文件内容文本
         :param meta: 元数据
@@ -57,6 +57,48 @@ class TmdbScraper:
             return doc.toprettyxml(indent="  ", encoding="utf-8")
 
         return None
+
+    def get_metadata_img(self, mediainfo: MediaInfo, season: int = None) -> dict:
+        """
+        获取图片名称和url
+        :param mediainfo: 媒体信息
+        :param season: 季号
+        """
+        images = {}
+        if mediainfo.type == MediaType.MOVIE:
+            for attr_name, attr_value in vars(mediainfo).items():
+                if attr_value \
+                        and attr_name.endswith("_path") \
+                        and attr_value \
+                        and isinstance(attr_value, str) \
+                        and attr_value.startswith("http"):
+                    image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
+                    images[image_name] = attr_value
+        else:
+            if season:
+                # 查询季信息
+                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
+                if seasoninfo:
+                    # TMDB季poster图片
+                    poster_name, poster_url = self.get_season_poster(seasoninfo, season)
+                    if poster_name and poster_url:
+                        images[poster_name] = poster_url
+        return images
+
+    @staticmethod
+    def get_season_poster(seasoninfo: dict, season: int) -> Tuple[str, str]:
+        """
+        获取季的海报
+        """
+        # TMDB季poster图片
+        sea_seq = str(season).rjust(2, '0')
+        if seasoninfo.get("poster_path"):
+            # 后缀
+            ext = Path(seasoninfo.get('poster_path')).suffix
+            # URL
+            url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{seasoninfo.get('poster_path')}"
+            image_name = f"season{sea_seq}-poster{ext}"
+            return image_name, url
 
     @staticmethod
     def __get_episode_detail(seasoninfo: dict, episode: int) -> dict:
@@ -97,17 +139,11 @@ class TmdbScraper:
                     self.__gen_movie_nfo_file(mediainfo=mediainfo,
                                               file_path=file_path)
                 # 生成电影图片
-                for attr_name, attr_value in vars(mediainfo).items():
-                    if attr_value \
-                            and attr_name.endswith("_path") \
-                            and attr_value \
-                            and isinstance(attr_value, str) \
-                            and attr_value.startswith("http"):
-                        image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
-                        image_path = file_path.with_name(image_name)
-                        if self._force_img or not image_path.exists():
-                            self.__save_image(url=attr_value,
-                                              file_path=image_path)
+                image_dict = self.get_metadata_img(mediainfo=mediainfo)
+                for image_name, image_url in image_dict.items():
+                    image_path = file_path.with_name(image_name)
+                    if self._force_img or not image_path.exists():
+                        self.__save_image(url=image_url, file_path=image_path)
             # 电视剧，路径为每一季的文件名 名称/Season xx/名称 SxxExx.xxx
             else:
                 # 如果有上游传入的元信息则使用，否则使用文件名识别
@@ -120,18 +156,11 @@ class TmdbScraper:
                     self.__gen_tv_nfo_file(mediainfo=mediainfo,
                                            dir_path=file_path.parents[1])
                 # 生成根目录图片
-                for attr_name, attr_value in vars(mediainfo).items():
-                    if attr_name \
-                            and attr_name.endswith("_path") \
-                            and not attr_name.startswith("season") \
-                            and attr_value \
-                            and isinstance(attr_value, str) \
-                            and attr_value.startswith("http"):
-                        image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
-                        image_path = file_path.parent.with_name(image_name)
-                        if self._force_img or not image_path.exists():
-                            self.__save_image(url=attr_value,
-                                              file_path=image_path)
+                image_dict = self.get_metadata_img(mediainfo=mediainfo)
+                for image_name, image_url in image_dict.items():
+                    image_path = file_path.parent.with_name(image_name)
+                    if self._force_img or not image_path.exists():
+                        self.__save_image(url=image_url, file_path=image_path)
                 # 查询季信息
                 seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, meta.begin_season)
                 if seasoninfo:
@@ -140,29 +169,12 @@ class TmdbScraper:
                         self.__gen_tv_season_nfo_file(seasoninfo=seasoninfo,
                                                       season=meta.begin_season,
                                                       season_path=file_path)
-                    # TMDB季poster图片
-                    sea_seq = str(meta.begin_season).rjust(2, '0')
-                    if seasoninfo.get("poster_path"):
-                        # 后缀
-                        ext = Path(seasoninfo.get('poster_path')).suffix
-                        # URL
-                        url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{seasoninfo.get('poster_path')}"
-                        image_path = file_path.parent.with_name(f"season{sea_seq}-poster{ext}")
+                    # TMDB季图片
+                    poster_name, poster_url = self.get_season_poster(seasoninfo, meta.begin_season)
+                    if poster_name and poster_url:
+                        image_path = file_path.parent.with_name(poster_name)
                         if self._force_img or not image_path.exists():
-                            self.__save_image(url=url, file_path=image_path)
-                    # 季的其它图片
-                    for attr_name, attr_value in vars(mediainfo).items():
-                        if attr_value \
-                                and attr_name.startswith("season") \
-                                and not attr_name.endswith("poster_path") \
-                                and attr_value \
-                                and isinstance(attr_value, str) \
-                                and attr_value.startswith("http"):
-                            image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
-                            image_path = file_path.parent.with_name(image_name)
-                            if self._force_img or not image_path.exists():
-                                self.__save_image(url=attr_value,
-                                                  file_path=image_path)
+                            self.__save_image(url=poster_url, file_path=image_path)
                 # 查询集详情
                 episodeinfo = self.__get_episode_detail(seasoninfo, meta.begin_episode)
                 if episodeinfo:

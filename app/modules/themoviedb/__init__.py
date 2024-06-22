@@ -347,7 +347,17 @@ class TheMovieDbModule(_ModuleBase):
         """
         if settings.SCRAP_SOURCE != "themoviedb":
             return None
-        return self.scraper.get_meta_nfo(meta=meta, mediainfo=mediainfo, season=season, episode=episode)
+        return self.scraper.get_metadata_nfo(meta=meta, mediainfo=mediainfo, season=season, episode=episode)
+
+    def metadata_img(self, mediainfo: MediaInfo, season: int = None) -> dict:
+        """
+        获取图片名称和url
+        :param mediainfo: 媒体信息
+        :param season: 季号
+        """
+        if settings.SCRAP_SOURCE != "themoviedb":
+            return {}
+        return self.scraper.get_metadata_img(mediainfo=mediainfo, season=season)
 
     def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,
                       page: int = 1) -> Optional[List[MediaInfo]]:
