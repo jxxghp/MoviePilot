@@ -82,7 +82,7 @@ class FormatParser(object):
                 return int(s) + self.__offset, int(e) + self.__offset, self.part
             return self._start_ep + self.__offset, None, self.part
         if not self._format:
-            return None, None, None
+            return self._start_ep, self._end_ep, self.part
         s, e = self.__handle_single(file_name)
         return s + self.__offset if s is not None else None, \
             e + self.__offset if e is not None else None, self.part
