@@ -457,48 +457,61 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 # 保存或上传nfo文件
                 __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.parent_fileid,
                             _path=filepath.with_suffix(".nfo"), _content=episode_nfo)
-            elif meta.begin_season:
-                # 当前为季的目录，处理目录内的文件
+            else:
+                # 当前为目录，处理目录内的文件
                 files = __list_files(_storage=storage, _fileid=fileitem.fileid,
                                      _drive_id=fileitem.drive_id, _path=fileitem.path)
                 for file in files:
                     self.manual_scrape(storage=storage, fileitem=file,
                                        meta=meta, mediainfo=mediainfo,
                                        init_folder=False)
-                # 生成季的nfo和图片
+                # 生成目录的nfo和图片
                 if init_folder:
-                    # 季nfo
-                    season_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo, season=meta.begin_season)
-                    if not season_nfo:
-                        logger.warn(f"无法生成电视剧季nfo文件：{meta.name}")
-                        return
-                    # 写入nfo到根目录
-                    nfo_path = filepath / "season.nfo"
-                    __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
-                                _path=nfo_path, _content=season_nfo)
-                    # TMDB季poster图片
-                    if settings.SCRAP_SOURCE == "themoviedb":
-                        sea_seq = str(meta.begin_season).rjust(2, '0')
-                        # 查询季剧详情
-                        seasoninfo = self.tmdb_info(tmdbid=mediainfo.tmdb_id, mtype=MediaType.TV,
-                                                    season=meta.begin_season)
-                        if not seasoninfo:
-                            logger.warn(f"无法获取 {mediainfo.title_year} 第{meta.begin_season}季 的媒体信息！")
+                    # 识别文件夹名称
+                    season_meta = MetaInfo(filepath.name)
+                    if season_meta.begin_season:
+                        # 当前目录有季号，生成季nfo
+                        season_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo, season=meta.begin_season)
+                        if not season_nfo:
+                            logger.warn(f"无法生成电视剧季nfo文件：{meta.name}")
                             return
-                        if seasoninfo.get("poster_path"):
-                            # 下载图片
-                            content = __save_image(f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original"
-                                                   f"{seasoninfo.get('poster_path')}")
-                            image_path = filepath.with_name(f"season{sea_seq}"
-                                                            f"-poster{Path(seasoninfo.get('poster_path')).suffix}")
-                            # 保存图片文件到当前目录
-                            __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
-                                        _path=image_path, _content=content)
-                        # 季的其它图片
+                        # 写入nfo到根目录
+                        nfo_path = filepath / "season.nfo"
+                        __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
+                                    _path=nfo_path, _content=season_nfo)
+                        # TMDB季poster图片
+                        if settings.SCRAP_SOURCE == "themoviedb":
+                            sea_seq = str(meta.begin_season).rjust(2, '0')
+                            # 查询季剧详情
+                            seasoninfo = self.tmdb_info(tmdbid=mediainfo.tmdb_id, mtype=MediaType.TV,
+                                                        season=meta.begin_season)
+                            if not seasoninfo:
+                                logger.warn(f"无法获取 {mediainfo.title_year} 第{meta.begin_season}季 的媒体信息！")
+                                return
+                            # 生成季poster图片
+                            if seasoninfo.get("poster_path"):
+                                # 下载图片
+                                content = __save_image(f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original"
+                                                       f"{seasoninfo.get('poster_path')}")
+                                image_path = filepath.with_name(f"season{sea_seq}"
+                                                                f"-poster{Path(seasoninfo.get('poster_path')).suffix}")
+                                # 保存图片文件到当前目录
+                                __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
+                                            _path=image_path, _content=content)
+                    if season_meta.name:
+                        # 当前目录有名称，生成tvshow nfo 和 tv图片
+                        tv_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo)
+                        if not tv_nfo:
+                            logger.warn(f"无法生成电视剧nfo文件：{meta.name}")
+                            return
+                        # 写入tvshow nfo到根目录
+                        nfo_path = filepath / "tvshow.nfo"
+                        __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
+                                    _path=nfo_path, _content=tv_nfo)
+                        # 生成目录图片
                         for attr_name, attr_value in vars(mediainfo).items():
-                            if attr_value \
-                                    and attr_name.startswith("season") \
-                                    and not attr_name.endswith("poster_path") \
+                            if attr_name \
+                                    and attr_name.endswith("_path") \
                                     and attr_value \
                                     and isinstance(attr_value, str) \
                                     and attr_value.startswith("http"):
@@ -508,37 +521,5 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                 # 保存图片文件到当前目录
                                 __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
                                             _path=image_path, _content=content)
-            else:
-                # 当前为根目录，处理目录内的文件
-                files = __list_files(_storage=storage, _fileid=fileitem.fileid,
-                                     _drive_id=fileitem.drive_id, _path=fileitem.path)
-                for file in files:
-                    self.manual_scrape(storage=storage, fileitem=file,
-                                       meta=meta, mediainfo=mediainfo,
-                                       init_folder=False)
-                # 生成根目录的nfo和图片
-                if init_folder:
-                    tv_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo)
-                    if not tv_nfo:
-                        logger.warn(f"无法生成电视剧nfo文件：{meta.name}")
-                        return
-                    # 写入nfo到根目录
-                    nfo_path = filepath / "tvshow.nfo"
-                    __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
-                                _path=nfo_path, _content=tv_nfo)
-                    # 生成根目录图片
-                    for attr_name, attr_value in vars(mediainfo).items():
-                        if attr_name \
-                                and attr_name.endswith("_path") \
-                                and not attr_name.startswith("season") \
-                                and attr_value \
-                                and isinstance(attr_value, str) \
-                                and attr_value.startswith("http"):
-                            image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
-                            image_path = filepath.parent.with_name(image_name)
-                            content = __save_image(attr_value)
-                            # 保存图片文件到当前目录
-                            __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
-                                        _path=image_path, _content=content)
 
         logger.info(f"{filepath.name} 刮削完成")

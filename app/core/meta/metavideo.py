@@ -73,6 +73,15 @@ class MetaVideo(MetaBase):
             self.begin_episode = int(title)
             self.type = MediaType.TV
             return
+        # 全名为Season xx 及 Sxx 直接返回
+        season_full_res = re.search(r"^Season\s+(\d{1,3})$|^S(\d{1,3})$", title)
+        if season_full_res:
+            self.type = MediaType.TV
+            season = season_full_res.group(1)
+            if season:
+                self.begin_season = int(season)
+                self.total_season = 1
+            return
         # 去掉名称中第1个[]的内容
         title = re.sub(r'%s' % self._name_no_begin_re, "", title, count=1)
         # 把xxxx-xxxx年份换成前一个年份，常出现在季集上
