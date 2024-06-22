@@ -464,7 +464,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 for file in files:
                     self.manual_scrape(storage=storage, fileitem=file,
                                        meta=meta, mediainfo=mediainfo,
-                                       init_folder=False)
+                                       init_folder=True if file.type == "dir" else False)
                 # 生成目录的nfo和图片
                 if init_folder:
                     # 识别文件夹名称

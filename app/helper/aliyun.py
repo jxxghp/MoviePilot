@@ -571,6 +571,16 @@ class AliyunHelper:
             return None
         # 获取上传参数
         result = res.json()
+        if result.get("'exist'"):
+            logger.info(f"文件{result.get('file_name')}已存在，无需上传")
+            return schemas.FileItem(
+                drive_id=result.get("drive_id"),
+                fileid=result.get("file_id"),
+                parent_fileid=result.get("parent_file_id"),
+                type="file",
+                name=result.get("file_name"),
+                path=f"{file_path.parent}/{result.get('file_name')}"
+            )
         file_id = result.get("file_id")
         upload_id = result.get("upload_id")
         part_info_list = result.get("part_info_list")

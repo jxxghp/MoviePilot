@@ -522,7 +522,7 @@ class ChainBase(metaclass=ABCMeta):
         self.run_module("scrape_metadata", path=path, mediainfo=mediainfo, metainfo=metainfo,
                         transfer_type=transfer_type, force_nfo=force_nfo, force_img=force_img)
 
-    def metadata_img(self, mediainfo: MediaInfo, season: int = None) -> dict:
+    def metadata_img(self, mediainfo: MediaInfo, season: int = None) -> Optional[dict]:
         """
         获取图片名称和url
         :param mediainfo: 媒体信息

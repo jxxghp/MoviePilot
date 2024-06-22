@@ -190,7 +190,7 @@ def image_aliyun(fileid: str, _: schemas.TokenPayload = Depends(verify_uri_token
     """
     if not fileid:
         return schemas.Response(success=False)
-    url = AliyunHelper().download_url(fileid)
+    url = AliyunHelper().download(fileid)
     if url:
         # 重定向
         return Response(status_code=302, headers={"Location": url})
