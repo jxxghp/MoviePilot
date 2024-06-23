@@ -399,6 +399,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
         if fileitem.type == "file" \
                 and (not filepath.suffix or filepath.suffix.lower() not in settings.RMT_MEDIAEXT):
             return
+        if not mediainfo:
+            return
         logger.info(f"开始刮削：{filepath} ...")
         if mediainfo.type == MediaType.MOVIE:
             # 电影

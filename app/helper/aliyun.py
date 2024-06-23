@@ -438,7 +438,7 @@ class AliyunHelper:
             self.__handle_error(res, "创建目录")
         return None
 
-    def delete(self, file_id: str) -> bool:
+    def delete(self, drive_id: str, file_id: str) -> bool:
         """
         删除文件
         """
@@ -447,7 +447,7 @@ class AliyunHelper:
             return False
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.delete_file_url, json={
-            "drive_id": params.get("resourceDriveId"),
+            "drive_id": drive_id,
             "file_id": file_id
         })
         if res:
@@ -571,7 +571,7 @@ class AliyunHelper:
             return None
         # 获取上传参数
         result = res.json()
-        if result.get("'exist'"):
+        if result.get("exist"):
             logger.info(f"文件{result.get('file_name')}已存在，无需上传")
             return schemas.FileItem(
                 drive_id=result.get("drive_id"),

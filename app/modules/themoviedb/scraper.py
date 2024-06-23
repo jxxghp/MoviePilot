@@ -65,24 +65,24 @@ class TmdbScraper:
         :param season: 季号
         """
         images = {}
-        if mediainfo.type == MediaType.MOVIE:
-            for attr_name, attr_value in vars(mediainfo).items():
-                if attr_value \
-                        and attr_name.endswith("_path") \
-                        and attr_value \
-                        and isinstance(attr_value, str) \
-                        and attr_value.startswith("http"):
-                    image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
-                    images[image_name] = attr_value
-        else:
-            if season:
-                # 查询季信息
-                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
-                if seasoninfo:
-                    # TMDB季poster图片
-                    poster_name, poster_url = self.get_season_poster(seasoninfo, season)
-                    if poster_name and poster_url:
-                        images[poster_name] = poster_url
+        if season:
+            # 只需要季的图片
+            seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
+            if seasoninfo:
+                # TMDB季poster图片
+                poster_name, poster_url = self.get_season_poster(seasoninfo, season)
+                if poster_name and poster_url:
+                    images[poster_name] = poster_url
+            return images
+        # 主媒体图片
+        for attr_name, attr_value in vars(mediainfo).items():
+            if attr_value \
+                    and attr_name.endswith("_path") \
+                    and attr_value \
+                    and isinstance(attr_value, str) \
+                    and attr_value.startswith("http"):
+                image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
+                images[image_name] = attr_value
         return images
 
     @staticmethod

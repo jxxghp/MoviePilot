@@ -107,7 +107,7 @@ def delete_aliyun(fileitem: schemas.FileItem,
     """
     if not fileitem.fileid:
         return schemas.Response(success=False)
-    result = AliyunHelper().delete(fileitem.fileid)
+    result = AliyunHelper().delete(drive_id=fileitem.drive_id, file_id=fileitem.fileid)
     if result:
         return schemas.Response(success=True)
     return schemas.Response(success=False)
