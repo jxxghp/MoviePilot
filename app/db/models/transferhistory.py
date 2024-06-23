@@ -91,6 +91,11 @@ class TransferHistory(Base):
 
     @staticmethod
     @db_query
+    def get_by_dest(db: Session, dest: str):
+        return db.query(TransferHistory).filter(TransferHistory.dest == dest).first()
+
+    @staticmethod
+    @db_query
     def list_by_hash(db: Session, download_hash: str):
         result = db.query(TransferHistory).filter(TransferHistory.download_hash == download_hash).all()
         return list(result)
