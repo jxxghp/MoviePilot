@@ -456,7 +456,7 @@ class AliyunHelper:
             self.__handle_error(res, "删除文件")
         return False
 
-    def detail(self, file_id: str, path: str = "/") -> Optional[schemas.FileItem]:
+    def detail(self, drive_id: str, file_id: str, path: str = "/") -> Optional[schemas.FileItem]:
         """
         获取文件详情
         """
@@ -465,7 +465,7 @@ class AliyunHelper:
             return None
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.file_detail_url, json={
-            "drive_id": params.get("resourceDriveId"),
+            "drive_id": drive_id,
             "file_id": file_id
         })
         if res:
@@ -486,7 +486,7 @@ class AliyunHelper:
             self.__handle_error(res, "获取文件详情")
         return None
 
-    def rename(self, file_id: str, name: str) -> bool:
+    def rename(self, drive_id: str, file_id: str, name: str) -> bool:
         """
         重命名文件
         """
@@ -495,7 +495,7 @@ class AliyunHelper:
             return False
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.rename_file_url, json={
-            "drive_id": params.get("resourceDriveId"),
+            "drive_id": drive_id,
             "file_id": file_id,
             "name": name,
             "check_name_mode": "refuse"
@@ -506,7 +506,7 @@ class AliyunHelper:
             self.__handle_error(res, "重命名文件")
         return False
 
-    def download(self, file_id: str) -> Optional[str]:
+    def download(self, drive_id: str, file_id: str) -> Optional[str]:
         """
         获取下载链接
         """
@@ -515,7 +515,7 @@ class AliyunHelper:
             return None
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.download_url, json={
-            "drive_id": params.get("resourceDriveId"),
+            "drive_id": drive_id,
             "file_id": file_id
         })
         if res:
