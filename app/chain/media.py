@@ -334,7 +334,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         return None
 
     def manual_scrape(self, storage: str, fileitem: schemas.FileItem,
-                      meta: MetaBase, mediainfo: MediaInfo, init_folder: bool = True):
+                      meta: MetaBase = None, mediainfo: MediaInfo = None, init_folder: bool = True):
         """
         手动刮削媒体信息
         """
@@ -399,7 +399,12 @@ class MediaChain(ChainBase, metaclass=Singleton):
         if fileitem.type == "file" \
                 and (not filepath.suffix or filepath.suffix.lower() not in settings.RMT_MEDIAEXT):
             return
+        if not meta:
+            meta = MetaInfoPath(filepath)
         if not mediainfo:
+            mediainfo = self.recognize_by_meta(meta)
+        if not mediainfo:
+            logger.warn(f"{filepath} 无法识别文件媒体信息！")
             return
         logger.info(f"开始刮削：{filepath} ...")
         if mediainfo.type == MediaType.MOVIE:

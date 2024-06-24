@@ -905,6 +905,7 @@ class TransferChain(ChainBase):
                                                season=season,
                                                epformat=epformat,
                                                min_filesize=min_filesize,
+                                               scrape=scrape,
                                                force=force)
             return state, errmsg
 
