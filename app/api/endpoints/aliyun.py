@@ -73,7 +73,7 @@ def list_aliyun(fileitem: schemas.FileItem,
     if sort == "time":
         sort = "updated_at"
     if fileitem.type == "file":
-        fileitem = AliyunHelper().detail(fileitem.fileid, path=path)
+        fileitem = AliyunHelper().detail(drive_id=fileitem.drive_id, file_id=fileitem.fileid, path=path)
         if fileitem:
             return [fileitem]
         return []
@@ -115,13 +115,14 @@ def delete_aliyun(fileitem: schemas.FileItem,
 
 @router.get("/download", summary="下载文件（阿里云盘）")
 def download_aliyun(fileid: str,
+                    drive_id: str = None,
                     _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     下载文件或目录
     """
     if not fileid:
         return schemas.Response(success=False)
-    url = AliyunHelper().download(fileid)
+    url = AliyunHelper().download(drive_id=drive_id, file_id=fileid)
     if url:
         # 重定向
         return Response(status_code=302, headers={"Location": url})
@@ -138,7 +139,7 @@ def rename_aliyun(fileitem: schemas.FileItem,
     """
     if not fileitem.fileid or not new_name:
         return schemas.Response(success=False)
-    result = AliyunHelper().rename(fileitem.fileid, new_name)
+    result = AliyunHelper().rename(drive_id=fileitem.drive_id, file_id=fileitem.fileid, name=new_name)
     if result:
         if recursive:
             transferchain = TransferChain()
@@ -184,13 +185,13 @@ def rename_aliyun(fileitem: schemas.FileItem,
 
 
 @router.get("/image", summary="读取图片（阿里云盘）", response_model=schemas.Response)
-def image_aliyun(fileid: str, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+def image_aliyun(fileid: str, drive_id: str = None, _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """
     读取图片
     """
     if not fileid:
         return schemas.Response(success=False)
-    url = AliyunHelper().download(fileid)
+    url = AliyunHelper().download(drive_id=drive_id, file_id=fileid)
     if url:
         # 重定向
         return Response(status_code=302, headers={"Location": url})

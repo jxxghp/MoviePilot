@@ -142,7 +142,7 @@ class ChainBase(metaclass=ABCMeta):
                         bangumiid: int = None,
                         cache: bool = True) -> Optional[MediaInfo]:
         """
-        识别媒体信息
+        识别媒体信息，不含Fanart图片
         :param meta:     识别的元数据
         :param mtype:    识别的媒体类型，与tmdbid配套
         :param tmdbid:   tmdbid

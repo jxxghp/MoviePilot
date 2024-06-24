@@ -1072,6 +1072,9 @@ class SubscribeChain(ChainBase):
                 total = no_exist_season.total_episode
                 # 原开始集数
                 start = no_exist_season.start_episode
+                # 整季缺失
+                if not episode_list:
+                    episode_list = list(range(start, total + 1))
                 # 更新剧集列表
                 episodes = list(set(episode_list).difference(set(downloaded_episodes)))
                 # 更新集合

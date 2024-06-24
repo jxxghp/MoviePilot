@@ -36,6 +36,13 @@ class TransferHistoryOper(DbOper):
         """
         return TransferHistory.get_by_src(self._db, src)
 
+    def get_by_dest(self, dest: str) -> TransferHistory:
+        """
+        按转移路径查询转移记录
+        :param dest: 数据key
+        """
+        return TransferHistory.get_by_dest(self._db, dest)
+
     def list_by_hash(self, download_hash: str) -> List[TransferHistory]:
         """
         按种子hash查询转移记录

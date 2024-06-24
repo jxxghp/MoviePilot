@@ -216,6 +216,13 @@ class DownloadChain(ChainBase):
         _media = context.media_info
         _meta = context.meta_info
 
+        # 补充完整的media数据
+        if not _media.genre_ids:
+            new_media = self.recognize_media(mtype=_media.type, tmdbid=_media.tmdb_id,
+                                             doubanid=_media.douban_id, bangumiid=_media.bangumi_id)
+            if new_media:
+                _media = new_media
+
         # 实际下载的集数
         download_episodes = StringUtils.format_ep(list(episodes)) if episodes else None
         _folder_name = ""
