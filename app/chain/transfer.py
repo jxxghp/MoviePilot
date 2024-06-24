@@ -165,7 +165,21 @@ class TransferChain(ChainBase):
                                             ),
                                             meta=meta,
                                             mediainfo=mediainfo)
-
+            if result and result[0] and scrape:
+                # 刮削元数据
+                self.progress.update(value=0,
+                                     text=f"正在刮削 {path} ...",
+                                     key=ProgressKey.FileTransfer)
+                self.mediachain.manual_scrape(storage=storage,
+                                              fileitem=schemas.FileItem(
+                                                  path=str(path) + ("/" if filetype == "dir" else ""),
+                                                  type=filetype,
+                                                  drive_id=drive_id,
+                                                  fileid=fileid,
+                                                  name=path.name
+                                              ),
+                                              meta=meta,
+                                              mediainfo=mediainfo)
         # 结速进度
         self.progress.end(ProgressKey.FileTransfer)
         return result
