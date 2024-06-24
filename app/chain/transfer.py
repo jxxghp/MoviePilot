@@ -487,12 +487,12 @@ class TransferChain(ChainBase):
                 return U115Helper().list(parent_file_id=_fileid, path=_path)
             return []
 
-        def __rename_file(_storage: str, _fileid: str, _name: str) -> bool:
+        def __rename_file(_storage: str, _deive_id: str, _fileid: str, _name: str) -> bool:
             """
             重命名文件
             """
             if _storage == "aliyun":
-                return AliyunHelper().rename(file_id=_fileid, name=_name)
+                return AliyunHelper().rename(drive_id=_deive_id, file_id=_fileid, name=_name)
             elif _storage == "u115":
                 return U115Helper().rename(file_id=_fileid, name=_name)
             return False
@@ -560,7 +560,7 @@ class TransferChain(ChainBase):
         if fileitem.type == "file":
             # 重命名文件
             logger.info(f"正在整理 {fileitem.name} => {file_name} ...")
-            if not __rename_file(storage, fileitem.fileid, file_name):
+            if not __rename_file(_storage=storage, _deive_id=fileitem.drive_id, _fileid=fileitem.fileid, _name=file_name):
                 logger.error(f"{fileitem.name} 重命名失败")
                 return False, f"{fileitem.name} 重命名失败"
             logger.info(f"{fileitem.path} 整理完成")
@@ -570,7 +570,8 @@ class TransferChain(ChainBase):
                 # 电影目录
                 # 重命名当前目录
                 logger.info(f"正在重命名 {fileitem.path} => {folder_name} ...")
-                if not __rename_file(_storage=storage, _fileid=fileitem.fileid, _name=folder_name):
+                if not __rename_file(_storage=storage, _deive_id=fileitem.drive_id,
+                                     _fileid=fileitem.fileid, _name=folder_name):
                     logger.error(f"{fileitem.path} 重命名失败")
                     return False, f"{fileitem.path} 重命名失败"
                 logger.info(f"{fileitem.path} 重命名完成")
@@ -605,14 +606,16 @@ class TransferChain(ChainBase):
                 if folder_meta.begin_season and not folder_meta.name:
                     # 季目录
                     logger.info(f"正在重命名 {fileitem.path} => {season_name} ...")
-                    if not __rename_file(_storage=storage, _fileid=fileitem.fileid, _name=season_name):
+                    if not __rename_file(_storage=storage, _deive_id=fileitem.drive_id,
+                                         _fileid=fileitem.fileid, _name=season_name):
                         logger.error(f"{fileitem.path} 重命名失败")
                         return False, f"{fileitem.path} 重命名失败"
                     logger.info(f"{fileitem.path} 重命名完成")
                 elif folder_meta.name:
                     # 根目录，重命名当前目录
                     logger.info(f"正在重命名 {fileitem.path} => {folder_name} ...")
-                    if not __rename_file(_storage=storage, _fileid=fileitem.fileid, _name=folder_name):
+                    if not __rename_file(_storage=storage, _deive_id=fileitem.drive_id,
+                                         _fileid=fileitem.fileid, _name=folder_name):
                         logger.error(f"{fileitem.path} 重命名失败")
                         return False, f"{fileitem.path} 重命名失败"
                     logger.info(f"{fileitem.path} 重命名完成")
