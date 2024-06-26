@@ -9,8 +9,6 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Synology-blue?style=for-the-badge)
 
 
-
-
 基于 [NAStool](https://github.com/NAStool/nas-tools) 部分代码重新设计，聚焦自动化核心需求，减少问题同时更易于扩展和维护。
 
 # 仅用于学习交流使用，请勿在任何国内平台宣传该项目！

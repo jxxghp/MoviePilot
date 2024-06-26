@@ -139,3 +139,15 @@ class DownloadHistoryOper(DbOper):
         return DownloadHistory.list_by_type(db=self._db,
                                             mtype=mtype,
                                             days=days)
+
+    def delete_history(self, historyid):
+        """
+        删除下载记录
+        """
+        DownloadHistory.delete(self._db, historyid)
+
+    def delete_downloadfile(self, downloadfileid):
+        """
+        删除下载文件记录
+        """
+        DownloadFiles.delete(self._db, downloadfileid)
