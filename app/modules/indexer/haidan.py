@@ -24,7 +24,7 @@ class HaiDanSpider:
     _ua = None
     _size = 100
     _searchurl = "%storrents.php"
-    _detailurl = "%sdetails.php?group_id=%s"
+    _detailurl = "%sdetails.php?group_id=%s&torrent_id=%s"
     _timeout = 15
 
     # 电影分类
@@ -137,7 +137,7 @@ class HaiDanSpider:
                     'grabs': int(item.get("times_completed") or '0'),
                     'downloadvolumefactor': self.__get_downloadvolumefactor(item.get('sp_state')),
                     'uploadvolumefactor': self.__get_uploadvolumefactor(item.get('sp_state')),
-                    'page_url': self._detailurl % (self._url, item.get('group_id')),
+                    'page_url': self._detailurl % (self._url, item.get('group_id'), tid),
                     'labels': [],
                     'category': category
                 }
