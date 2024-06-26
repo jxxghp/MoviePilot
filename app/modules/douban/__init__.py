@@ -624,13 +624,16 @@ class DoubanModule(_ModuleBase):
         # 搜索
         logger.info(f"开始使用名称 {name} 匹配豆瓣信息 ...")
         result = self.doubanapi.search(f"{name} {year or ''}".strip())
-        if not result or not result.get("items"):
+        if not result:
             logger.warn(f"未找到 {name} 的豆瓣信息")
             return {}
         # 触发rate limit
         if "search_access_rate_limit" in result.values():
-            logger.warn(f"触发豆瓣API速率限制 错误信息 {result} ...")
-            raise Exception("触发豆瓣API速率限制")
+            logger.warn(f"触发豆瓣API速率限制，错误信息：{result} ...")
+            return {}
+        if not result.get("items"):
+            logger.warn(f"未找到 {name} 的豆瓣信息")
+            return {}
         for item_obj in result.get("items"):
             type_name = item_obj.get("type_name")
             if type_name not in [MediaType.TV.value, MediaType.MOVIE.value]:
