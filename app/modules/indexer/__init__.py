@@ -9,6 +9,7 @@ from app.db.sitestatistic_oper import SiteStatisticOper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.modules import _ModuleBase
+from app.modules.indexer.haidan import HaiDanSpider
 from app.modules.indexer.mtorrent import MTorrentSpider
 from app.modules.indexer.spider import TorrentSpider
 from app.modules.indexer.tnode import TNodeSpider
@@ -117,6 +118,11 @@ class IndexerModule(_ModuleBase):
                         keyword=search_word,
                         mtype=mtype,
                         page=page
+                    )
+                elif site.get('parser') == "Haidan":
+                    error_flag, result = HaiDanSpider(site).search(
+                        keyword=search_word,
+                        mtype=mtype
                     )
                 else:
                     error_flag, result = self.__spider_search(
