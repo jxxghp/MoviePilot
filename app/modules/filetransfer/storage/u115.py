@@ -11,7 +11,7 @@ from app import schemas
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.modules.filetransfer.storage import StorageBase
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey, StorageSchema
 from app.utils.singleton import Singleton
 
 
@@ -19,6 +19,13 @@ class U115Pan(StorageBase, metaclass=Singleton):
     """
     115相关操作
     """
+
+    # 存储类型
+    schema = StorageSchema.U115
+    # 支持的整理方式
+    transtype = {
+        "move": "移动"
+    }
 
     cloud: Optional[Cloud] = None
     _session: QrcodeSession = None
@@ -233,19 +240,6 @@ class U115Pan(StorageBase, metaclass=Singleton):
             logger.error(f"115下载失败：{str(e)}")
         return None
 
-    def move(self, fileitem: schemas.FileItem, target_dir: schemas.FileItem) -> bool:
-        """
-        移动文件
-        """
-        if not self.__init_cloud():
-            return False
-        try:
-            self.cloud.storage().move(fileitem.fileid, target_dir.fileid)
-            return True
-        except Exception as e:
-            logger.error(f"移动115文件失败：{str(e)}")
-        return False
-
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件
@@ -292,3 +286,25 @@ class U115Pan(StorageBase, metaclass=Singleton):
         except Exception as e:
             logger.error(f"上传115文件失败：{str(e)}")
         return None
+
+    def move(self, fileitem: schemas.FileItem, target_dir: schemas.FileItem) -> bool:
+        """
+        移动文件
+        """
+        if not self.__init_cloud():
+            return False
+        try:
+            self.cloud.storage().move(fileitem.fileid, target_dir.fileid)
+            return True
+        except Exception as e:
+            logger.error(f"移动115文件失败：{str(e)}")
+        return False
+
+    def copy(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+        pass
+
+    def link(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+        pass
+
+    def softlink(self, fileitm: schemas.FileItem, target_file: schemas.FileItem) -> bool:
+        pass

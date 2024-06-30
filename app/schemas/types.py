@@ -1,12 +1,14 @@
 from enum import Enum
 
 
+# 媒体类型
 class MediaType(Enum):
     MOVIE = '电影'
     TV = '电视剧'
     UNKNOWN = '未知'
 
 
+# 种子状态
 class TorrentStatus(Enum):
     TRANSFER = "可转移"
     DOWNLOADING = "下载中"
@@ -104,7 +106,7 @@ class SystemConfigKey(Enum):
 class ProgressKey(Enum):
     # 搜索
     Search = "search"
-    # 转移
+    # 整理
     FileTransfer = "filetransfer"
     # 批量重命名
     BatchRename = "batchrename"
@@ -134,6 +136,7 @@ class NotificationType(Enum):
     Plugin = "插件消息"
 
 
+# 消息渠道
 class MessageChannel(Enum):
     """
     消息渠道
@@ -151,3 +154,12 @@ class MessageChannel(Enum):
 class UserConfigKey(Enum):
     # 监控面板
     Dashboard = "Dashboard"
+
+
+# 支持的存储类型
+class StorageSchema(Enum):
+    # 存储类型
+    Local = "local"
+    Alipan = "alipan"
+    U115 = "u115"
+    Rclone = "rclone"

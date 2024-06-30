@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.modules.filetransfer.storage import StorageBase
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey, StorageSchema
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -22,6 +22,13 @@ class AliPan(StorageBase):
     """
     阿里云相关操作
     """
+
+    # 存储类型
+    schema = StorageSchema.Alipan
+    # 支持的整理方式
+    transtype = {
+        "move": "移动"
+    }
 
     _X_SIGNATURE = ('f4b7bed5d8524a04051bd2da876dd79afe922b8205226d65855d02b267422adb1'
                     'e0d8a816b021eaf5c36d101892180f79df655c5712b348c2a540ca136e6b22001')
@@ -531,26 +538,6 @@ class AliPan(StorageBase):
             self.__handle_error(res, "获取下载链接")
         return None
 
-    def move(self, fileitem: schemas.FileItem, target_dir: schemas.FileItem) -> bool:
-        """
-        移动文件
-        """
-        params = self.__access_params
-        if not params:
-            return False
-        headers = self.__get_headers(params)
-        res = RequestUtils(headers=headers, timeout=10).post_res(self.move_file_url, json={
-            "drive_id": fileitem.drive_id,
-            "file_id": fileitem.fileid,
-            "to_parent_file_id": target_dir.fileid,
-            "check_name_mode": "refuse"
-        })
-        if res:
-            return True
-        else:
-            self.__handle_error(res, "移动文件")
-        return False
-
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件，并标记完成
@@ -625,3 +612,32 @@ class AliPan(StorageBase):
         else:
             logger.warn("上传文件失败：无法获取上传地址！")
         return None
+
+    def move(self, fileitem: schemas.FileItem, target_dir: schemas.FileItem) -> bool:
+        """
+        移动文件
+        """
+        params = self.__access_params
+        if not params:
+            return False
+        headers = self.__get_headers(params)
+        res = RequestUtils(headers=headers, timeout=10).post_res(self.move_file_url, json={
+            "drive_id": fileitem.drive_id,
+            "file_id": fileitem.fileid,
+            "to_parent_file_id": target_dir.fileid,
+            "check_name_mode": "refuse"
+        })
+        if res:
+            return True
+        else:
+            self.__handle_error(res, "移动文件")
+        return False
+
+    def copy(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+        pass
+
+    def link(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+        pass
+
+    def softlink(self, fileitm: schemas.FileItem, target_file: schemas.FileItem) -> bool:
+        pass

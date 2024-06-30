@@ -252,6 +252,7 @@ class IndexerModule(_ModuleBase):
             seeding_size=site_obj.seeding_size,
             seeding_info=site_obj.seeding_info,
             leeching=site_obj.leeching,
+            leeching_size=site_obj.leeching_size,
             message_unread=site_obj.message_unread,
             message_unread_contents=site_obj.message_unread_contents,
             updated_at=datetime.now().strftime('%Y-%m-%d'),

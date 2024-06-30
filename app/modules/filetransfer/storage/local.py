@@ -7,6 +7,7 @@ from starlette.responses import FileResponse, Response
 from app import schemas
 from app.log import logger
 from app.modules.filetransfer.storage import StorageBase
+from app.schemas.types import StorageSchema
 from app.utils.system import SystemUtils
 
 
@@ -14,6 +15,16 @@ class LocalStorage(StorageBase):
     """
     本地文件操作
     """
+
+    # 存储类型
+    schema = StorageSchema.Local
+    # 支持的整理方式
+    transtype = {
+        "copy": "复制",
+        "move": "移动",
+        "link": "硬链接",
+        "softlink": "软链接"
+    }
 
     def check(self) -> bool:
         """
@@ -96,9 +107,8 @@ class LocalStorage(StorageBase):
         if not fileitem.path:
             return None
         path_obj = Path(fileitem.path) / name
-        if path_obj.exists():
-            return None
-        path_obj.mkdir(parents=True, exist_ok=True)
+        if not path_obj.exists():
+            path_obj.mkdir(parents=True, exist_ok=True)
         return schemas.FileItem(
             type="dir",
             path=str(path_obj).replace("\\", "/") + "/",
@@ -166,19 +176,6 @@ class LocalStorage(StorageBase):
             Path(f"{path_obj.stem}.zip").unlink()
             return reponse
 
-    def move(self, fileitem: schemas.FileItem, target_dir: schemas.FileItem) -> bool:
-        """
-        移动文件
-        """
-        if not fileitem.path or not target_dir.path:
-            return False
-        path_obj = Path(fileitem.path)
-        target_obj = Path(target_dir.path)
-        if not path_obj.exists() or not target_obj.exists():
-            return False
-        path_obj.rename(target_obj / path_obj.name)
-        return True
-
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件
@@ -198,3 +195,47 @@ class LocalStorage(StorageBase):
             size=path.stat().st_size,
             modify_time=path.stat().st_mtime,
         )
+
+    def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+        """
+        复制文件
+        """
+        file_path = Path(fileitem.path)
+        code, message = SystemUtils.copy(file_path, target_file)
+        if code != 0:
+            logger.error(f"复制文件失败：{message}")
+            return False
+        return True
+
+    def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+        """
+        硬链接文件
+        """
+        file_path = Path(fileitem.path)
+        code, message = SystemUtils.link(file_path, target_file)
+        if code != 0:
+            logger.error(f"硬链接文件失败：{message}")
+            return False
+        return True
+
+    def softlink(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+        """
+        软链接文件
+        """
+        file_path = Path(fileitem.path)
+        code, message = SystemUtils.copy(file_path, target_file)
+        if code != 0:
+            logger.error(f"软链接文件失败：{message}")
+            return False
+        return True
+
+    def move(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+        """
+        移动文件
+        """
+        file_path = Path(fileitem.path)
+        code, message = SystemUtils.move(file_path, target_file)
+        if code != 0:
+            logger.error(f"移动文件失败：{message}")
+            return False
+        return True

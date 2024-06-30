@@ -3,6 +3,7 @@ import importlib
 import pkgutil
 import traceback
 from pathlib import Path
+from typing import List, Any
 
 from app.log import logger
 
@@ -13,7 +14,7 @@ class ModuleHelper:
     """
 
     @classmethod
-    def load(cls, package_path: str, filter_func=lambda name, obj: True):
+    def load(cls, package_path: str, filter_func=lambda name, obj: True) -> List[Any]:
         """
         导入模块
         :param package_path: 父包名
@@ -41,7 +42,7 @@ class ModuleHelper:
         return submodules
 
     @classmethod
-    def load_with_pre_filter(cls, package_path: str, filter_func=lambda name, obj: True):
+    def load_with_pre_filter(cls, package_path: str, filter_func=lambda name, obj: True) -> List[Any]:
         """
         导入子模块
         :param package_path: 父包名

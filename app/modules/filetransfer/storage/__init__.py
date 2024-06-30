@@ -9,7 +9,21 @@ class StorageBase(metaclass=ABCMeta):
     """
     存储基类
     """
-    
+
+    transtype = {}
+
+    def support_transtype(self) -> dict:
+        """
+        支持的整理方式
+        """
+        return self.transtype
+
+    def is_support_transtype(self, transtype: str) -> bool:
+        """
+        是否支持整理方式
+        """
+        return transtype in self.transtype
+
     @abstractmethod
     def check(self) -> bool:
         """
@@ -53,13 +67,6 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def move(self, fileitm: schemas.FileItem, target_dir: schemas.FileItem) -> bool:
-        """
-        移动文件
-        """
-        pass
-
-    @abstractmethod
     def upload(self, fileitm: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件
@@ -70,6 +77,34 @@ class StorageBase(metaclass=ABCMeta):
     def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         获取文件详情
+        """
+        pass
+
+    @abstractmethod
+    def copy(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+        """
+        复制文件
+        """
+        pass
+
+    @abstractmethod
+    def move(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+        """
+        移动文件
+        """
+        pass
+
+    @abstractmethod
+    def link(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+        """
+        硬链接文件
+        """
+        pass
+
+    @abstractmethod
+    def softlink(self, fileitm: schemas.FileItem, target_file: schemas.FileItem) -> bool:
+        """
+        软链接文件
         """
         pass
     

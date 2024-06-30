@@ -4,6 +4,8 @@ from pydantic import BaseModel
 
 
 class FileItem(BaseModel):
+    # 存储类型
+    storage: Optional[str] = "local"
     # 类型 dir/file
     type: Optional[str] = None
     # 文件路径

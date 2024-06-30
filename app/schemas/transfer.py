@@ -42,12 +42,10 @@ class TransferInfo(BaseModel):
     """
     # 是否成功标志
     success: bool = True
-    # 转移⼁路径
+    # 整理⼁路径
     path: Optional[Path] = None
     # 转移后路径
     target_path: Optional[Path] = None
-    # 是否蓝光原盘
-    is_bluray: Optional[bool] = False
     # 处理文件数
     file_count: Optional[int] = 0
     # 处理文件清单
