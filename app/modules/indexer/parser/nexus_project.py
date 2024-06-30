@@ -1,17 +1,12 @@
 # -*- coding: utf-8 -*-
 import re
 
-from app.modules.indexer.parser import SiteSchema, SITE_BASE_ORDER
+from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 
 
 class NexusProjectSiteUserInfo(NexusPhpSiteUserInfo):
     schema = SiteSchema.NexusProject
-    order = SITE_BASE_ORDER + 25
-
-    @classmethod
-    def match(cls, html_text: str) -> bool:
-        return 'Nexus Project' in html_text
 
     def _parse_site_page(self, html_text: str):
         html_text = self._prepare_html_text(html_text)

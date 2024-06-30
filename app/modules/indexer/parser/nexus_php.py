@@ -5,22 +5,12 @@ from typing import Optional
 from lxml import etree
 
 from app.log import logger
-from app.modules.indexer.parser import SiteParserBase, SiteSchema, SITE_BASE_ORDER
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.utils.string import StringUtils
 
 
 class NexusPhpSiteUserInfo(SiteParserBase):
     schema = SiteSchema.NexusPhp
-    order = SITE_BASE_ORDER * 2
-
-    @classmethod
-    def match(cls, html_text: str) -> bool:
-        """
-        默认使用NexusPhp解析
-        :param html_text:
-        :return:
-        """
-        return True
 
     def _parse_site_page(self, html_text: str):
         html_text = self._prepare_html_text(html_text)

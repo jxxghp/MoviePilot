@@ -3,18 +3,13 @@ import re
 
 from lxml import etree
 
-from app.modules.indexer.parser import SiteSchema, SITE_BASE_ORDER
+from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 from app.utils.string import StringUtils
 
 
 class NexusHhanclubSiteUserInfo(NexusPhpSiteUserInfo):
     schema = SiteSchema.NexusHhanclub
-    order = SITE_BASE_ORDER + 20
-
-    @classmethod
-    def match(cls, html_text: str) -> bool:
-        return 'hhanclub.top' in html_text
 
     def _parse_user_traffic_info(self, html_text):
         super()._parse_user_traffic_info(html_text)

@@ -2,25 +2,13 @@
 import json
 from typing import Optional
 
-from lxml import etree
-
 from app.log import logger
-from app.modules.indexer.parser import SiteSchema, SITE_BASE_ORDER
+from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 
 
 class NexusRabbitSiteUserInfo(NexusPhpSiteUserInfo):
     schema = SiteSchema.NexusRabbit
-    order = SITE_BASE_ORDER + 5
-
-    @classmethod
-    def match(cls, html_text: str) -> bool:
-        html = etree.HTML(html_text)
-        if not html:
-            return False
-
-        printable_text = html.xpath("string(.)") if html else ""
-        return 'Style by Rabbit' in printable_text
 
     def _parse_site_page(self, html_text: str):
         super()._parse_site_page(html_text)

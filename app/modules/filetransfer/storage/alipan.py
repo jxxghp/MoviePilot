@@ -11,13 +11,14 @@ from app import schemas
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
+from app.modules.filetransfer.storage import StorageBase
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
 
-class AliyunHelper:
+class AliPan(StorageBase):
     """
     阿里云相关操作
     """
@@ -297,6 +298,12 @@ class AliyunHelper:
             "x-signature": self._X_SIGNATURE
         }
 
+    def check(self) -> bool:
+        """
+        检查存储是否可用
+        """
+        pass
+
     def user_info(self) -> dict:
         """
         获取用户信息（drive_id等）
@@ -398,7 +405,7 @@ class AliyunHelper:
             drive_id=fileinfo.get("drive_id"),
         ) for fileinfo in ret_items]
 
-    def create_folder(self, drive_id: str, parent_file_id: str, name: str, path: str = "/") -> Optional[schemas.FileItem]:
+    def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """
         创建目录
         """
@@ -407,8 +414,8 @@ class AliyunHelper:
             return None
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.create_folder_file_url, json={
-            "drive_id": drive_id,
-            "parent_file_id": parent_file_id,
+            "drive_id": fileitem.drive_id,
+            "parent_file_id": fileitem.parent_fileid,
             "name": name,
             "check_name_mode": "refuse",
             "type": "folder"
@@ -432,13 +439,13 @@ class AliyunHelper:
                 parent_fileid=result.get("parent_file_id"),
                 type=result.get("type"),
                 name=result.get("file_name"),
-                path=f"{path}{result.get('file_name')}",
+                path=f"{fileitem.path}{result.get('file_name')}",
             )
         else:
             self.__handle_error(res, "创建目录")
         return None
 
-    def delete(self, drive_id: str, file_id: str) -> bool:
+    def delete(self, fileitem: schemas.FileItem) -> bool:
         """
         删除文件
         """
@@ -447,8 +454,8 @@ class AliyunHelper:
             return False
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.delete_file_url, json={
-            "drive_id": drive_id,
-            "file_id": file_id
+            "drive_id": fileitem.drive_id,
+            "file_id": fileitem.fileid
         })
         if res:
             return True
@@ -456,7 +463,7 @@ class AliyunHelper:
             self.__handle_error(res, "删除文件")
         return False
 
-    def detail(self, drive_id: str, file_id: str, path: str = "/") -> Optional[schemas.FileItem]:
+    def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         获取文件详情
         """
@@ -465,8 +472,8 @@ class AliyunHelper:
             return None
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.file_detail_url, json={
-            "drive_id": drive_id,
-            "file_id": file_id
+            "drive_id": fileitem.drive_id,
+            "file_id": fileitem.fileid
         })
         if res:
             result = res.json()
@@ -480,13 +487,13 @@ class AliyunHelper:
                 extension=result.get("file_extension"),
                 modify_time=StringUtils.str_to_timestamp(result.get("updated_at")),
                 thumbnail=result.get("thumbnail"),
-                path=f"{path}{result.get('name')}"
+                path=f"{fileitem.path}{result.get('name')}"
             )
         else:
             self.__handle_error(res, "获取文件详情")
         return None
 
-    def rename(self, drive_id: str, file_id: str, name: str) -> bool:
+    def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
         """
         重命名文件
         """
@@ -495,8 +502,8 @@ class AliyunHelper:
             return False
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.rename_file_url, json={
-            "drive_id": drive_id,
-            "file_id": file_id,
+            "drive_id": fileitem.drive_id,
+            "file_id": fileitem.fileid,
             "name": name,
             "check_name_mode": "refuse"
         })
@@ -506,7 +513,7 @@ class AliyunHelper:
             self.__handle_error(res, "重命名文件")
         return False
 
-    def download(self, drive_id: str, file_id: str) -> Optional[str]:
+    def download(self, fileitem: schemas.FileItem) -> Optional[str]:
         """
         获取下载链接
         """
@@ -515,8 +522,8 @@ class AliyunHelper:
             return None
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.download_url, json={
-            "drive_id": drive_id,
-            "file_id": file_id
+            "drive_id": fileitem.drive_id,
+            "file_id": fileitem.fileid
         })
         if res:
             return res.json().get("url")
@@ -524,7 +531,7 @@ class AliyunHelper:
             self.__handle_error(res, "获取下载链接")
         return None
 
-    def move(self, drive_id: str, file_id: str, target_id: str) -> bool:
+    def move(self, fileitem: schemas.FileItem, target_dir: schemas.FileItem) -> bool:
         """
         移动文件
         """
@@ -533,9 +540,9 @@ class AliyunHelper:
             return False
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.move_file_url, json={
-            "drive_id": drive_id,
-            "file_id": file_id,
-            "to_parent_file_id": target_id,
+            "drive_id": fileitem.drive_id,
+            "file_id": fileitem.fileid,
+            "to_parent_file_id": target_dir.fileid,
             "check_name_mode": "refuse"
         })
         if res:
@@ -544,7 +551,7 @@ class AliyunHelper:
             self.__handle_error(res, "移动文件")
         return False
 
-    def upload(self, drive_id: str, parent_file_id: str, file_path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件，并标记完成
         """
@@ -553,9 +560,9 @@ class AliyunHelper:
             return None
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.create_folder_file_url, json={
-            "drive_id": drive_id,
-            "parent_file_id": parent_file_id,
-            "name": file_path.name,
+            "drive_id": fileitem.drive_id,
+            "parent_file_id": fileitem.parent_fileid,
+            "name": path.name,
             "check_name_mode": "refuse",
             "create_scene": "file_upload",
             "type": "file",
@@ -564,7 +571,7 @@ class AliyunHelper:
                     "part_number": 1
                 }
             ],
-            "size": file_path.stat().st_size
+            "size": path.stat().st_size
         })
         if not res:
             self.__handle_error(res, "创建文件")
@@ -579,7 +586,7 @@ class AliyunHelper:
                 parent_fileid=result.get("parent_file_id"),
                 type="file",
                 name=result.get("file_name"),
-                path=f"{file_path.parent}/{result.get('file_name')}"
+                path=f"{fileitem.path}{result.get('file_name')}"
             )
         file_id = result.get("file_id")
         upload_id = result.get("upload_id")
@@ -593,13 +600,13 @@ class AliyunHelper:
                 "User-Agent": settings.USER_AGENT,
                 "Referer": "https://www.alipan.com/",
                 "Accept": "*/*",
-            }).put_res(upload_url, data=file_path.read_bytes())
+            }).put_res(upload_url, data=path.read_bytes())
             if not res:
                 self.__handle_error(res, "上传文件")
                 return None
             # 标记文件上传完毕
             res = RequestUtils(headers=headers, timeout=10).post_res(self.upload_file_complete_url, json={
-                "drive_id": drive_id,
+                "drive_id": fileitem.drive_id,
                 "file_id": file_id,
                 "upload_id": upload_id
             })
@@ -613,7 +620,7 @@ class AliyunHelper:
                 parent_fileid=result.get("parent_file_id"),
                 type="file",
                 name=result.get("name"),
-                path=f"{file_path.parent}/{result.get('name')}",
+                path=f"{fileitem.path}{result.get('name')}",
             )
         else:
             logger.warn("上传文件失败：无法获取上传地址！")

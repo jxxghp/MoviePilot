@@ -14,8 +14,6 @@ from app.log import logger
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
 
-SITE_BASE_ORDER = 1000
-
 
 # 站点框架
 class SiteSchema(Enum):
@@ -39,8 +37,6 @@ class SiteSchema(Enum):
 class SiteParserBase(metaclass=ABCMeta):
     # 站点模版
     schema = SiteSchema.NexusPhp
-    # 站点解析时判断顺序，值越小越先解析
-    order = SITE_BASE_ORDER
     # 请求模式 cookie/apikey
     request_mode = "cookie"
 
@@ -154,15 +150,6 @@ class SiteParserBase(metaclass=ABCMeta):
         :return: 站点解析模型
         """
         return self.schema
-
-    @classmethod
-    def match(cls, html_text: str) -> bool:
-        """
-        是否匹配当前解析模型
-        :param html_text: 站点首页html
-        :return: 是否匹配
-        """
-        pass
 
     def parse(self):
         """

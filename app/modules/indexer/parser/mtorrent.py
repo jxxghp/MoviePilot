@@ -3,16 +3,13 @@ import json
 from typing import Optional, Tuple
 from urllib.parse import urljoin
 
-from lxml import etree
-
 from app.log import logger
-from app.modules.indexer.parser import SiteParserBase, SiteSchema, SITE_BASE_ORDER
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.utils.string import StringUtils
 
 
 class MTorrentSiteUserInfo(SiteParserBase):
     schema = SiteSchema.MTorrent
-    order = SITE_BASE_ORDER + 60
     request_mode = "apikey"
 
     # 用户级别字典
@@ -36,15 +33,6 @@ class MTorrentSiteUserInfo(SiteParserBase):
         "17": "Offer memberStaff",
         "18": "Bet memberStaff",
     }
-
-    @classmethod
-    def match(cls, html_text: str) -> bool:
-        html = etree.HTML(html_text)
-        if not html:
-            return False
-        if html.xpath("//title/text()") and "M-Team" in html.xpath("//title/text()")[0]:
-            return True
-        return False
 
     def _parse_site_page(self, html_text: str):
         """

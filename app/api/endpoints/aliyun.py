@@ -9,7 +9,7 @@ from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token, verify_uri_token
-from app.helper.aliyun import AliyunHelper
+from app.modules.filetransfer.storage.alipan import AliyunHelper
 from app.helper.progress import ProgressHelper
 from app.schemas.types import ProgressKey
 

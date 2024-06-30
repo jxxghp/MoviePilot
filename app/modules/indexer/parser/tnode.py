@@ -3,17 +3,12 @@ import json
 import re
 from typing import Optional
 
-from app.modules.indexer.parser import SiteParserBase, SiteSchema, SITE_BASE_ORDER
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.utils.string import StringUtils
 
 
 class TNodeSiteUserInfo(SiteParserBase):
     schema = SiteSchema.TNode
-    order = SITE_BASE_ORDER + 60
-
-    @classmethod
-    def match(cls, html_text: str) -> bool:
-        return 'Powered By TNode' in html_text
 
     def _parse_site_page(self, html_text: str):
         html_text = self._prepare_html_text(html_text)

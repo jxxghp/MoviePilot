@@ -11,8 +11,8 @@ from app.core.context import Context, MediaInfo
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo, MetaInfoPath
-from app.helper.aliyun import AliyunHelper
-from app.helper.u115 import U115Helper
+from app.modules.filetransfer.storage.alipan import AliyunHelper
+from app.modules.filetransfer.storage.u115 import U115Helper
 from app.log import logger
 from app.schemas.types import EventType, MediaType
 from app.utils.http import RequestUtils

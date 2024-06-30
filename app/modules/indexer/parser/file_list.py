@@ -4,22 +4,12 @@ from typing import Optional
 
 from lxml import etree
 
-from app.modules.indexer.parser import SiteParserBase, SiteSchema, SITE_BASE_ORDER
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.utils.string import StringUtils
 
 
 class FileListSiteUserInfo(SiteParserBase):
     schema = SiteSchema.FileList
-    order = SITE_BASE_ORDER + 50
-
-    @classmethod
-    def match(cls, html_text: str) -> bool:
-        html = etree.HTML(html_text)
-        if not html:
-            return False
-
-        printable_text = html.xpath("string(.)") if html else ""
-        return 'Powered by FileList' in printable_text
 
     def _parse_site_page(self, html_text: str):
         html_text = self._prepare_html_text(html_text)

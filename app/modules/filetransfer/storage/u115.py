@@ -10,11 +10,12 @@ from py115.types import LoginTarget, QrcodeSession, QrcodeStatus, Credential, Do
 from app import schemas
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
+from app.modules.filetransfer.storage import StorageBase
 from app.schemas.types import SystemConfigKey
 from app.utils.singleton import Singleton
 
 
-class U115Helper(metaclass=Singleton):
+class U115Pan(StorageBase, metaclass=Singleton):
     """
     115相关操作
     """
@@ -138,19 +139,25 @@ class U115Helper(metaclass=Singleton):
             logger.error(f"获取115存储空间失败：{str(e)}")
         return None
 
-    def list(self, parent_file_id: str = '0', path: str = "/") -> Optional[List[schemas.FileItem]]:
+    def check(self) -> bool:
+        """
+        检查存储是否可用
+        """
+        pass
+
+    def list(self, fileitem: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
         """
         浏览文件
         """
         if not self.__init_cloud():
             return None
         try:
-            items = self.cloud.storage().list(dir_id=parent_file_id)
+            items = self.cloud.storage().list(dir_id=fileitem.parent_fileid)
             return [schemas.FileItem(
                 fileid=item.file_id,
                 parent_fileid=item.parent_id,
                 type="dir" if item.is_dir else "file",
-                path=f"{path}{item.name}" + ("/" if item.is_dir else ""),
+                path=f"{fileitem.path}{item.name}" + ("/" if item.is_dir else ""),
                 name=item.name,
                 size=item.size,
                 extension=Path(item.name).suffix[1:],
@@ -161,19 +168,19 @@ class U115Helper(metaclass=Singleton):
             logger.error(f"浏览115文件失败：{str(e)}")
         return None
 
-    def create_folder(self, parent_file_id: str, name: str, path: str = "/") -> Optional[schemas.FileItem]:
+    def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """
         创建目录
         """
         if not self.__init_cloud():
             return None
         try:
-            result = self.cloud.storage().make_dir(parent_file_id, name)
+            result = self.cloud.storage().make_dir(fileitem.parent_fileid, name)
             return schemas.FileItem(
                 fileid=result.file_id,
                 parent_fileid=result.parent_id,
                 type="dir",
-                path=f"{path}{name}/",
+                path=f"{fileitem.path}{name}/",
                 name=name,
                 modify_time=result.modified_time.timestamp() if result.modified_time else 0,
                 pickcode=result.pickcode
@@ -182,65 +189,71 @@ class U115Helper(metaclass=Singleton):
             logger.error(f"创建115目录失败：{str(e)}")
         return None
 
-    def delete(self, file_id: str) -> bool:
+    def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
+        """
+        获取文件详情
+        """
+        pass
+
+    def delete(self, fileitem: schemas.FileItem) -> bool:
         """
         删除文件
         """
         if not self.__init_cloud():
             return False
         try:
-            self.cloud.storage().delete(file_id)
+            self.cloud.storage().delete(fileitem.fileid)
             return True
         except Exception as e:
             logger.error(f"删除115文件失败：{str(e)}")
         return False
 
-    def rename(self, file_id: str, name: str) -> bool:
+    def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
         """
         重命名文件
         """
         if not self.__init_cloud():
             return False
         try:
-            self.cloud.storage().rename(file_id, name)
+            self.cloud.storage().rename(fileitem.fileid, name)
             return True
         except Exception as e:
             logger.error(f"重命名115文件失败：{str(e)}")
         return False
 
-    def download(self, pickcode: str) -> Optional[DownloadTicket]:
+    def download(self, fileitem: schemas.FileItem) -> Optional[DownloadTicket]:
         """
         获取下载链接
         """
         if not self.__init_cloud():
             return None
         try:
-            return self.cloud.storage().request_download(pickcode)
+            return self.cloud.storage().request_download(fileitem.pickcode)
         except Exception as e:
             logger.error(f"115下载失败：{str(e)}")
         return None
 
-    def move(self, file_id: str, target_id: str) -> bool:
+    def move(self, fileitem: schemas.FileItem, target_dir: schemas.FileItem) -> bool:
         """
         移动文件
         """
         if not self.__init_cloud():
             return False
         try:
-            self.cloud.storage().move(file_id, target_id)
+            self.cloud.storage().move(fileitem.fileid, target_dir.fileid)
             return True
         except Exception as e:
             logger.error(f"移动115文件失败：{str(e)}")
         return False
 
-    def upload(self, parent_file_id: str, file_path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件
         """
         if not self.__init_cloud():
             return None
         try:
-            ticket = self.cloud.storage().request_upload(dir_id=parent_file_id, file_path=str(file_path))
+            ticket = self.cloud.storage().request_upload(dir_id=fileitem.fileid, file_path=str(path))
             if ticket is None:
                 logger.warn(f"115请求上传出错")
                 return None
@@ -256,7 +269,7 @@ class U115Helper(metaclass=Singleton):
                 )
                 por = bucket.put_object_from_file(
                     key=ticket.object_key,
-                    filename=str(file_path),
+                    filename=str(path),
                     headers=ticket.headers,
                 )
                 result = por.resp.response.json()
@@ -265,10 +278,10 @@ class U115Helper(metaclass=Singleton):
                     logger.info(f"115上传文件成功：{fileitem}")
                     return schemas.FileItem(
                         fileid=fileitem.get('file_id'),
-                        parent_fileid=parent_file_id,
+                        parent_fileid=fileitem.fileid,
                         type="file",
                         name=fileitem.get('file_name'),
-                        path=f"{file_path / fileitem.get('file_name')}",
+                        path=f"{fileitem.path}{fileitem.get('file_name')}",
                         size=fileitem.get('file_size'),
                         extension=Path(fileitem.get('file_name')).suffix[1:],
                         pickcode=fileitem.get('pickcode')
