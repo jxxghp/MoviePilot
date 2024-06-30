@@ -11,7 +11,7 @@ from app import schemas
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
-from app.modules.filetransfer.storage import StorageBase
+from app.modules.filemanager.storage import StorageBase
 from app.schemas.types import SystemConfigKey, StorageSchema
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils

@@ -4,7 +4,7 @@ from typing import Optional, List
 
 from app import schemas
 from app.log import logger
-from app.modules.filetransfer.storage import StorageBase
+from app.modules.filemanager.storage import StorageBase
 from app.schemas.types import StorageSchema
 from app.utils.system import SystemUtils
 
@@ -64,14 +64,14 @@ class Rclone(StorageBase):
 
     def move(self, fileitm: schemas.FileItem, target_file: schemas.FileItem) -> bool:
         """
-        移动文件
+        移动文件，target_file格式：rclone:path
         """
         try:
             retcode = subprocess.run(
                 [
                     'rclone', 'moveto',
                     fileitm.path,
-                    f'MP:{target_file}'
+                    f'{target_file}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode
@@ -83,14 +83,14 @@ class Rclone(StorageBase):
 
     def copy(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
         """
-        复制文件
+        复制文件，target_file格式：rclone:path
         """
         try:
             retcode = subprocess.run(
                 [
                     'rclone', 'copyto',
                     fileitm.path,
-                    f'MP:{target_file}'
+                    f'{target_file}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode

@@ -6,19 +6,17 @@ from typing import Optional, List, Tuple, Union
 
 from app import schemas
 from app.chain import ChainBase
+from app.chain.storage import StorageChain
 from app.core.config import settings
 from app.core.context import Context, MediaInfo
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo, MetaInfoPath
-from app.modules.filetransfer.storage.alipan import AliyunHelper
-from app.modules.filetransfer.storage.u115 import U115Helper
 from app.log import logger
 from app.schemas.types import EventType, MediaType
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
-from app.utils.system import SystemUtils
 
 recognize_lock = Lock()
 
@@ -339,46 +337,19 @@ class MediaChain(ChainBase, metaclass=Singleton):
         手动刮削媒体信息
         """
 
-        def __list_files(_storage: str, _fileid: str, _path: str = None, _drive_id: str = None):
+        def __list_files(_fileitem: schemas.FileItem):
             """
             列出下级文件
             """
-            if _storage == "aliyun":
-                return AliyunHelper().list(drive_id=_drive_id, parent_file_id=_fileid, path=_path)
-            elif _storage == "u115":
-                return U115Helper().list(parent_file_id=_fileid, path=_path)
-            else:
-                items = SystemUtils.list_sub_all(Path(_path))
-                return [schemas.FileItem(
-                    type="file" if item.is_file() else "dir",
-                    path=str(item),
-                    name=item.name,
-                    basename=item.stem,
-                    extension=item.suffix[1:],
-                    size=item.stat().st_size,
-                    modify_time=item.stat().st_mtime
-                ) for item in items]
+            return StorageChain().list_files(fileitem=_fileitem)
 
-        def __save_file(_storage: str, _drive_id: str, _fileid: str, _path: Path, _content: Union[bytes, str]):
+        def __save_file(_fileitem: schemas.FileItem, _path: Path, _content: Union[bytes, str]):
             """
             保存或上传文件
             """
-            if _storage != "local":
-                # 写入到临时目录
-                temp_path = settings.TEMP_PATH / _path.name
-                temp_path.write_bytes(_content)
-                # 上传文件
-                logger.info(f"正在上传 {_path.name} ...")
-                if _storage == "aliyun":
-                    AliyunHelper().upload(drive_id=_drive_id, parent_file_id=_fileid, file_path=temp_path)
-                elif _storage == "u115":
-                    U115Helper().upload(parent_file_id=_fileid, file_path=temp_path)
-                logger.info(f"{_path.name} 上传完成")
-            else:
-                # 保存到本地
-                logger.info(f"正在保存 {_path.name} ...")
-                _path.write_bytes(_content)
-                logger.info(f"{_path} 已保存")
+            tmp_file = settings.TEMP_PATH / _path.name
+            tmp_file.write_bytes(_content)
+            StorageChain().upload_file(fileitem=_fileitem, path=tmp_file)
 
         def __save_image(_url: str) -> Optional[bytes]:
             """
@@ -417,12 +388,10 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     logger.warn(f"{filepath.name} nfo文件生成失败！")
                     return
                 # 保存或上传nfo文件
-                __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.parent_fileid,
-                            _path=filepath.with_suffix(".nfo"), _content=movie_nfo)
+                __save_file(_fileitem=fileitem, _path=filepath.with_suffix(".nfo"), _content=movie_nfo)
             else:
                 # 电影目录
-                files = __list_files(_storage=storage, _fileid=fileitem.fileid,
-                                     _drive_id=fileitem.drive_id, _path=fileitem.path)
+                files = __list_files(_fileitem=fileitem)
                 for file in files:
                     self.manual_scrape(storage=storage, fileitem=file,
                                        meta=meta, mediainfo=mediainfo,
@@ -441,8 +410,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             # 下载图片
                             content = __save_image(_url=attr_value)
                             # 写入nfo到根目录
-                            __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
-                                        _path=image_path, _content=content)
+                            __save_file(_fileitem=fileitem, _path=image_path, _content=content)
         else:
             # 电视剧
             if fileitem.type == "file":
@@ -462,12 +430,10 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     logger.warn(f"{filepath.name} nfo生成失败！")
                     return
                 # 保存或上传nfo文件
-                __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.parent_fileid,
-                            _path=filepath.with_suffix(".nfo"), _content=episode_nfo)
+                __save_file(_fileitem=fileitem, _path=filepath.with_suffix(".nfo"), _content=episode_nfo)
             else:
                 # 当前为目录，处理目录内的文件
-                files = __list_files(_storage=storage, _fileid=fileitem.fileid,
-                                     _drive_id=fileitem.drive_id, _path=fileitem.path)
+                files = __list_files(_fileitem=fileitem)
                 for file in files:
                     self.manual_scrape(storage=storage, fileitem=file,
                                        meta=meta, mediainfo=mediainfo,
@@ -484,8 +450,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             return
                         # 写入nfo到根目录
                         nfo_path = filepath / "season.nfo"
-                        __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
-                                    _path=nfo_path, _content=season_nfo)
+                        __save_file(_fileitem=fileitem, _path=nfo_path, _content=season_nfo)
                         # TMDB季poster图片
                         image_dict = self.metadata_img(mediainfo=mediainfo, season=season_meta.begin_season)
                         if image_dict:
@@ -494,8 +459,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                 # 下载图片
                                 content = __save_image(image_url)
                                 # 保存图片文件到当前目录
-                                __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
-                                            _path=image_path, _content=content)
+                                __save_file(_fileitem=fileitem, _path=image_path, _content=content)
                     if season_meta.name:
                         # 当前目录有名称，生成tvshow nfo 和 tv图片
                         tv_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo)
@@ -504,8 +468,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             return
                         # 写入tvshow nfo到根目录
                         nfo_path = filepath / "tvshow.nfo"
-                        __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
-                                    _path=nfo_path, _content=tv_nfo)
+                        __save_file(_fileitem=fileitem, _path=nfo_path, _content=tv_nfo)
                         # 生成目录图片
                         image_dict = self.metadata_img(mediainfo=mediainfo)
                         if image_dict:
@@ -514,7 +477,6 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                 # 下载图片
                                 content = __save_image(image_url)
                                 # 保存图片文件到当前目录
-                                __save_file(_storage=storage, _drive_id=fileitem.drive_id, _fileid=fileitem.fileid,
-                                            _path=image_path, _content=content)
+                                __save_file(_fileitem=fileitem, _path=image_path, _content=content)
 
         logger.info(f"{filepath.name} 刮削完成")

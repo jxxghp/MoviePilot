@@ -4,7 +4,7 @@ from typing import Optional, List
 
 from app import schemas
 from app.log import logger
-from app.modules.filetransfer.storage import StorageBase
+from app.modules.filemanager.storage import StorageBase
 from app.schemas.types import StorageSchema
 from app.utils.system import SystemUtils
 

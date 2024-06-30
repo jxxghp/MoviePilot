@@ -10,7 +10,7 @@ from py115.types import LoginTarget, QrcodeSession, QrcodeStatus, Credential
 from app import schemas
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
-from app.modules.filetransfer.storage import StorageBase
+from app.modules.filemanager.storage import StorageBase
 from app.schemas.types import SystemConfigKey, StorageSchema
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
@@ -73,7 +73,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         self.systemconfig.delete(SystemConfigKey.User115Params)
 
-    def generate_qrcode(self) -> Optional[str]:
+    def generate_qrcode(self) -> Optional[Tuple[dict, str]]:
         """
         生成二维码
         """
@@ -86,10 +86,12 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 return None
             # 转换为base64图片格式
             image_base64 = base64.b64encode(image_bin).decode()
-            return f"data:image/png;base64,{image_base64}"
+            return {
+                "codeContent": f"data:image/jpeg;base64,{image_base64}"
+            }, ""
         except Exception as e:
             logger.warn(f"115生成二维码失败：{str(e)}")
-        return None
+            return {}, f"生成二维码失败：{str(e)}"
 
     def check_login(self) -> Optional[Tuple[dict, str]]:
         """

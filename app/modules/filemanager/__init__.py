@@ -107,6 +107,71 @@ class FileTransferModule(_ModuleBase):
         )
         return str(path)
 
+    def list_files(self, fileitem: FileItem) -> Optional[List[FileItem]]:
+        """
+        浏览文件
+        :param fileitem: 源文件
+        :return: 文件列表
+        """
+        storage_oper = self.__get_storage_oper(fileitem.storage)
+        if not storage_oper:
+            logger.error(f"不支持 {fileitem.storage} 的文件浏览")
+            return None
+        return storage_oper.list(fileitem)
+
+    def create_folder(self, fileitem: FileItem, name: str) -> Optional[FileItem]:
+        """
+        创建目录
+        :param fileitem: 源文件
+        :param name: 目录名
+        :return: 创建的目录
+        """
+        storage_oper = self.__get_storage_oper(fileitem.storage)
+        if not storage_oper:
+            logger.error(f"不支持 {fileitem.storage} 的目录创建")
+            return None
+        return storage_oper.create_folder(fileitem, name)
+
+    def delete_file(self, fileitem: FileItem) -> bool:
+        """
+        删除文件或目录
+        """
+        storage_oper = self.__get_storage_oper(fileitem.storage)
+        if not storage_oper:
+            logger.error(f"不支持 {fileitem.storage} 的删除处理")
+            return False
+        return storage_oper.delete(fileitem)
+
+    def rename_file(self, fileitem: FileItem, name: str) -> bool:
+        """
+        重命名文件或目录
+        """
+        storage_oper = self.__get_storage_oper(fileitem.storage)
+        if not storage_oper:
+            logger.error(f"不支持 {fileitem.storage} 的重命名处理")
+            return False
+        return storage_oper.rename(fileitem, name)
+
+    def download_file(self, fileitem: FileItem, path: Path) -> bool:
+        """
+        下载文件
+        """
+        storage_oper = self.__get_storage_oper(fileitem.storage)
+        if not storage_oper:
+            logger.error(f"不支持 {fileitem.storage} 的下载处理")
+            return False
+        return storage_oper.download(fileitem, path)
+
+    def upload_file(self, fileitem: FileItem, path: Path) -> bool:
+        """
+        上传文件
+        """
+        storage_oper = self.__get_storage_oper(fileitem.storage)
+        if not storage_oper:
+            logger.error(f"不支持 {fileitem.storage} 的上传处理")
+            return False
+        return storage_oper.upload(fileitem, path)
+
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
                  transfer_type: str, target_storage: str = None, target_path: Path = None,
                  episodes_info: List[TmdbEpisode] = None,
