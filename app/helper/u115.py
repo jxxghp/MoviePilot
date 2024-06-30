@@ -246,9 +246,9 @@ class U115Helper(metaclass=Singleton):
                 return None
             elif ticket.is_done:
                 logger.warn(f"115请求上传失败：文件已存在")
-                return {}
+                return None
             else:
-                auth = oss2.StsAuth(**ticket.oss_token)
+                auth = oss2.Auth(**ticket.oss_token)
                 bucket = oss2.Bucket(
                     auth=auth,
                     endpoint=ticket.oss_endpoint,

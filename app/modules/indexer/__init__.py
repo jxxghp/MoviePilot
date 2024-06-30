@@ -9,12 +9,12 @@ from app.db.sitestatistic_oper import SiteStatisticOper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.modules import _ModuleBase
-from app.modules.indexer.haidan import HaiDanSpider
-from app.modules.indexer.mtorrent import MTorrentSpider
 from app.modules.indexer.spider import TorrentSpider
-from app.modules.indexer.tnode import TNodeSpider
-from app.modules.indexer.torrentleech import TorrentLeech
-from app.modules.indexer.yema import YemaSpider
+from app.modules.indexer.spider.haidan import HaiDanSpider
+from app.modules.indexer.spider.mtorrent import MTorrentSpider
+from app.modules.indexer.spider.tnode import TNodeSpider
+from app.modules.indexer.spider.torrentleech import TorrentLeech
+from app.modules.indexer.spider.yema import YemaSpider
 from app.schemas.types import MediaType
 from app.utils.string import StringUtils
 
