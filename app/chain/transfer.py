@@ -949,6 +949,11 @@ class TransferChain(ChainBase):
             for file in files:
                 Path(file).unlink()
             logger.warn(f"文件 {path} 已删除")
+            # 删除thumb图片
+            thumb_file = path.parent / (path.stem + "-thumb.jpg")
+            if thumb_file.exists():
+                thumb_file.unlink()
+                logger.info(f"文件 {thumb_file} 已删除")
             # 需要删除父目录
         elif str(path.parent) == str(path.root):
             # 根目录，不删除
