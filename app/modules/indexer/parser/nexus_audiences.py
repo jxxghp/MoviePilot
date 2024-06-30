@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from urllib.parse import urljoin
 
-from app.modules.indexer.parser import  SiteSchema
+from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 
 

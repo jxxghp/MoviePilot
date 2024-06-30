@@ -67,3 +67,50 @@ class SiteStatistic(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class SiteUserData(BaseModel):
+    # 用户名
+    username: Optional[str]
+    # 用户ID
+    userid: Optional[int]
+    # 用户等级
+    user_level: Optional[str]
+    # 加入时间
+    join_at: Optional[str]
+    # 积分
+    bonus: Optional[float] = 0.0
+    # 上传
+    upload: Optional[int] = 0
+    # 下载
+    download: Optional[int] = 0
+    # 分享率
+    ratio: Optional[float] = 0
+    # 做种
+    seeding: Optional[int] = 0
+    # 下载
+    leeching: Optional[int] = 0
+    # 做种大小
+    seeding_size: Optional[int] = 0
+    # 下载大小
+    leeching_size: Optional[int] = 0
+    # 上传量
+    uploaded: Optional[int] = 0
+    # 完成量
+    completed: Optional[int] = 0
+    # 未完成量
+    incomplete: Optional[int] = 0
+    # 上传量
+    uploaded_size: Optional[int] = 0
+    # 完成量
+    completed_size: Optional[int] = 0
+    # 未完成量
+    incomplete_size: Optional[int] = 0
+    # 做种人数, 种子大小
+    seeding_info: Optional[list] = []
+    # 未读消息
+    message_unread: Optional[int] = 0
+    # 未读消息内容
+    message_unread_contents: Optional[list] = []
+    # 错误信息
+    err_msg: Optional[str] = None

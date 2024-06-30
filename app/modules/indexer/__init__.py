@@ -6,6 +6,7 @@ from ruamel.yaml import CommentedMap
 from app.core.config import settings
 from app.core.context import TorrentInfo
 from app.db.sitestatistic_oper import SiteStatisticOper
+from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.modules import _ModuleBase
@@ -15,6 +16,7 @@ from app.modules.indexer.spider.mtorrent import MTorrentSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
 from app.modules.indexer.spider.torrentleech import TorrentLeech
 from app.modules.indexer.spider.yema import YemaSpider
+from app.schemas import SiteUserData
 from app.schemas.types import MediaType
 from app.utils.string import StringUtils
 
@@ -24,8 +26,12 @@ class IndexerModule(_ModuleBase):
     索引模块
     """
 
+    _site_schemas = []
+
     def init_module(self) -> None:
-        pass
+        # 加载模块
+        self._site_schemas = ModuleHelper.load('app.modules.indexer.parser',
+                                               filter_func=lambda _, obj: hasattr(obj, 'schema'))
 
     @staticmethod
     def get_name() -> str:
@@ -200,3 +206,54 @@ class IndexerModule(_ModuleBase):
         :reutrn: 种子资源列表
         """
         return self.search_torrents(site=site)
+
+    def site_userdata(self, site: CommentedMap) -> Optional[SiteUserData]:
+        """
+        获取站点的所有用户数据
+        :param site:  站点
+        :return: 用户数据
+        """
+
+        def __get_site_obj():
+            """
+            获取站点解析器
+            """
+            for site_schema in self._site_schemas:
+                if site_schema.schema == site.get("schema"):
+                    return site_schema(
+                        site_name=site.get("name"),
+                        url=site.get("url"),
+                        site_cookie=site.get("cookie"),
+                        apikey=site.get("apikey"),
+                        token=site.get("token"),
+                        ua=site.get("ua"),
+                        proxy=site.get("proxy"))
+            return None
+
+        site_obj = __get_site_obj()
+        if not site_obj:
+            logger.warn(f"站点  {site.get('name')} 未找到站点解析器: {site.get('schema')}")
+            return None
+
+        # 获取用户数据
+        logger.debug(f"站点 {site.get('name')} 开始以 {site.get('schema')} 模型解析")
+        site_obj.parse()
+        logger.debug(f"站点 {site.get('name')} 解析完成")
+        return SiteUserData(
+            userid=site_obj.userid,
+            username=site_obj.username,
+            user_level=site_obj.user_level,
+            join_at=site_obj.join_at,
+            upload=site_obj.upload,
+            download=site_obj.download,
+            ratio=site_obj.ratio,
+            bonus=site_obj.bonus,
+            seeding=site_obj.seeding,
+            seeding_size=site_obj.seeding_size,
+            seeding_info=site_obj.seeding_info,
+            leeching=site_obj.leeching,
+            message_unread=site_obj.message_unread,
+            message_unread_contents=site_obj.message_unread_contents,
+            updated_at=datetime.now().strftime('%Y-%m-%d'),
+            err_msg=site_obj.err_msg
+        )

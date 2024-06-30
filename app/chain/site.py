@@ -6,6 +6,7 @@ from typing import Union
 from urllib.parse import urljoin
 
 from lxml import etree
+from ruamel.yaml import CommentedMap
 
 from app.chain import ChainBase
 from app.core.config import settings
@@ -23,7 +24,7 @@ from app.helper.message import MessageHelper
 from app.helper.rss import RssHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
-from app.schemas import MessageChannel, Notification
+from app.schemas import MessageChannel, Notification, SiteUserData
 from app.schemas.types import EventType
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
@@ -57,6 +58,14 @@ class SiteChain(ChainBase):
             "star-space.net": self.__indexphp_test,
             "yemapt.org": self.__yema_test,
         }
+
+    def site_userdata(self, site: CommentedMap) -> Optional[SiteUserData]:
+        """
+        获取站点的所有用户数据
+        :param site:  站点
+        :return: 用户数据
+        """
+        return self.run_module("site_userdata", site=site)
 
     def is_special_site(self, domain: str) -> bool:
         """
