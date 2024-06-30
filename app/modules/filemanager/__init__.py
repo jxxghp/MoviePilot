@@ -21,7 +21,7 @@ from app.utils.system import SystemUtils
 lock = Lock()
 
 
-class FileTransferModule(_ModuleBase):
+class FileManagerModule(_ModuleBase):
     """
     文件整理模块
     """
