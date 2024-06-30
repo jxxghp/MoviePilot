@@ -6,6 +6,8 @@ from typing import Any
 from Crypto import Random
 from Crypto.Cipher import AES
 
+from app.schemas.exception import ImmediateException
+
 
 def retry(ExceptionToCheck: Any,
           tries: int = 3, delay: int = 3, backoff: int = 2, logger: Any = None):
@@ -23,6 +25,8 @@ def retry(ExceptionToCheck: Any,
             while mtries > 1:
                 try:
                     return f(*args, **kwargs)
+                except ImmediateException:
+                    raise
                 except ExceptionToCheck as e:
                     msg = f"{str(e)}, {mdelay} 秒后重试 ..."
                     if logger:
