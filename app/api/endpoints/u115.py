@@ -10,7 +10,6 @@ from app.core.config import settings
 from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token, verify_uri_token
 from app.helper.progress import ProgressHelper
-from app.modules.filetransfer.storage.u115 import U115Helper
 from app.schemas.types import ProgressKey
 from app.utils.http import RequestUtils
 

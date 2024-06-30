@@ -2,8 +2,6 @@ import shutil
 from pathlib import Path
 from typing import Optional, List
 
-from starlette.responses import FileResponse, Response
-
 from app import schemas
 from app.log import logger
 from app.modules.filetransfer.storage import StorageBase
@@ -117,6 +115,12 @@ class LocalStorage(StorageBase):
             modify_time=path_obj.stat().st_mtime,
         )
 
+    def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取目录
+        """
+        pass
+
     def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         获取文件详情
@@ -156,45 +160,17 @@ class LocalStorage(StorageBase):
             return False
         path_obj.rename(path_obj.parent / name)
 
-    def download(self, fileitem: schemas.FileItem) -> Optional[Response]:
+    def download(self, fileitem: schemas.FileItem, path: Path) -> bool:
         """
         下载文件
         """
-        if not fileitem.path:
-            return None
-        path_obj = Path(fileitem.path)
-        if not path_obj.exists():
-            return None
-        if path_obj.is_file():
-            # 做为文件流式下载
-            return FileResponse(path_obj)
-        else:
-            # 做为压缩包下载
-            shutil.make_archive(base_name=path_obj.stem, format="zip", root_dir=path_obj)
-            reponse = Response(content=path_obj.read_bytes(), media_type="application/zip")
-            # 删除压缩包
-            Path(f"{path_obj.stem}.zip").unlink()
-            return reponse
+        return False
 
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件
         """
-        if not fileitem.path:
-            return None
-        path_obj = Path(fileitem.path)
-        if not path_obj.exists():
-            return None
-        shutil.copy(path, path_obj / path.name)
-        return schemas.FileItem(
-            type="file",
-            path=str(path_obj / path.name).replace("\\", "/"),
-            name=path.name,
-            basename=path.stem,
-            extension=path.suffix[1:],
-            size=path.stat().st_size,
-            modify_time=path.stat().st_mtime,
-        )
+        return None
 
     def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         """

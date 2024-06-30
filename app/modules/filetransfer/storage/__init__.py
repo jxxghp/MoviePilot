@@ -46,6 +46,13 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取目录
+        """
+        pass
+
+    @abstractmethod
     def delete(self, fileitm: schemas.FileItem) -> bool:
         """
         删除文件
@@ -60,9 +67,9 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def download(self, fileitm: schemas.FileItem) -> Any:
+    def download(self, fileitm: schemas.FileItem, path: Path):
         """
-        下载链接
+        下载文件，保存到本地
         """
         pass
 

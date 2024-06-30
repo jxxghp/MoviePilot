@@ -181,7 +181,7 @@ class FileTransferModule(_ModuleBase):
         pass
 
     def __transfer_command(self, fileitem: FileItem, target_storage: str,
-                           target_file: Path, transfer_type: str) -> int:
+                           target_file: Path, transfer_type: str) -> bool:
         """
         使用系统命令处理单个文件
         :param fileitem: 源文件
@@ -192,29 +192,60 @@ class FileTransferModule(_ModuleBase):
 
         if fileitem.storage != "local" and target_storage != "local":
             logger.error(f"不支持 {fileitem.storage} 到 {target_storage} 的文件整理")
-            return 1
-        retcode = 0
+            return False
         # 源操作对象
         source_oper = self.__get_storage_oper(fileitem.storage)
         # 目的操作对象
         target_oper = self.__get_storage_oper(target_storage)
-
         with lock:
             if fileitem.storage == "local" and target_storage == "local":
                 # 本地到本地
                 if transfer_type == "copy":
-                    retcode = source_oper.copy(fileitem, target_file)
+                    return source_oper.copy(fileitem, target_file)
                 elif transfer_type == "move":
-                    retcode = source_oper.move(fileitem, target_file)
+                    return source_oper.move(fileitem, target_file)
                 elif transfer_type == "link":
-                    retcode = source_oper.link(fileitem, target_file)
+                    return source_oper.link(fileitem, target_file)
                 elif transfer_type == "softlink":
-                    retcode = source_oper.softlink(fileitem, target_file)
-            # TODO 本地到网盘
-
-            # TODO 网盘到本地
-
-        return retcode
+                    return source_oper.softlink(fileitem, target_file)
+            elif fileitem.storage == "local" and target_storage != "local":
+                # 本地到网盘
+                if transfer_type == "copy":
+                    # 复制
+                    filepath = Path(fileitem.path)
+                    if not filepath.exists():
+                        logger.error(f"文件 {filepath} 不存在")
+                        return False
+                    # TODO 根据目的路径创建文件夹
+                    target_fileitem = target_oper.get_folder(target_file.parent)
+                    if target_fileitem:
+                        # 上传文件
+                        return target_oper.upload(target_fileitem, filepath)
+                elif transfer_type == "move":
+                    # 移动
+                    filepath = Path(fileitem.path)
+                    if not filepath.exists():
+                        logger.error(f"文件 {filepath} 不存在")
+                        return False
+                    # TODO 根据目的路径获取文件夹
+                    target_fileitem = target_oper.get_folder(target_file.parent)
+                    if target_fileitem:
+                        # 上传文件
+                        result = target_oper.upload(target_fileitem, filepath)
+                        if result:
+                            # 删除源文件
+                            return source_oper.delete(fileitem)
+            elif fileitem.storage != "local" and target_storage == "local":
+                # 网盘到本地
+                if transfer_type == "copy":
+                    # 下载
+                    return target_oper.download(fileitem, target_file)
+                elif transfer_type == "move":
+                    # 下载
+                    if target_oper.download(fileitem, target_file):
+                        # 删除源文件
+                        return source_oper.delete(fileitem)
+        return False
 
     def __transfer_other_files(self, fileitem: FileItem, target_storage: str, target_file: Path,
                                transfer_type: str) -> int:

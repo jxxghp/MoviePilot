@@ -5,13 +5,14 @@ from typing import Optional, Tuple, List
 import oss2
 import py115
 from py115 import Cloud
-from py115.types import LoginTarget, QrcodeSession, QrcodeStatus, Credential, DownloadTicket
+from py115.types import LoginTarget, QrcodeSession, QrcodeStatus, Credential
 
 from app import schemas
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.modules.filetransfer.storage import StorageBase
 from app.schemas.types import SystemConfigKey, StorageSchema
+from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 
 
@@ -196,6 +197,12 @@ class U115Pan(StorageBase, metaclass=Singleton):
             logger.error(f"创建115目录失败：{str(e)}")
         return None
 
+    def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        TODO 获取目录，不存在则创建
+        """
+        pass
+
     def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         获取文件详情
@@ -228,17 +235,23 @@ class U115Pan(StorageBase, metaclass=Singleton):
             logger.error(f"重命名115文件失败：{str(e)}")
         return False
 
-    def download(self, fileitem: schemas.FileItem) -> Optional[DownloadTicket]:
+    def download(self, fileitem: schemas.FileItem, path: Path) -> bool:
         """
         获取下载链接
         """
         if not self.__init_cloud():
-            return None
+            return False
         try:
-            return self.cloud.storage().request_download(fileitem.pickcode)
+            ticket = self.cloud.storage().request_download(fileitem.pickcode)
+            if ticket:
+                res = RequestUtils(headers=ticket.headers).get_res(ticket.url)
+                if res:
+                    with open(path, "wb") as f:
+                        f.write(res.content)
+                    return True
         except Exception as e:
             logger.error(f"115下载失败：{str(e)}")
-        return None
+        return False
 
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """

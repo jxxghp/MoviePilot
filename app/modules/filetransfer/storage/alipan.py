@@ -452,6 +452,12 @@ class AliPan(StorageBase):
             self.__handle_error(res, "创建目录")
         return None
 
+    def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        TODO 获取目录，不存在则创建
+        """
+        pass
+
     def delete(self, fileitem: schemas.FileItem) -> bool:
         """
         删除文件
@@ -520,27 +526,35 @@ class AliPan(StorageBase):
             self.__handle_error(res, "重命名文件")
         return False
 
-    def download(self, fileitem: schemas.FileItem) -> Optional[str]:
+    def download(self, fileitem: schemas.FileItem, path: Path) -> bool:
         """
-        获取下载链接
+        下载文件，保存到本地
         """
         params = self.__access_params
         if not params:
-            return None
+            return False
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.download_url, json={
             "drive_id": fileitem.drive_id,
             "file_id": fileitem.fileid
         })
         if res:
-            return res.json().get("url")
+            download_url = res.json().get("url")
+            if not download_url:
+                return False
+            res = RequestUtils().get_res(download_url)
+            if res:
+                with path.open("wb") as f:
+                    f.write(res.content)
+                return True
         else:
             self.__handle_error(res, "获取下载链接")
-        return None
+        return False
 
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件，并标记完成
+        TODO 上传文件分片、秒传
         """
         params = self.__access_params
         if not params:
@@ -634,10 +648,19 @@ class AliPan(StorageBase):
         return False
 
     def copy(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+        """
+        复制文件
+        """
         pass
 
     def link(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+        """
+        硬链接文件
+        """
         pass
 
     def softlink(self, fileitm: schemas.FileItem, target_file: schemas.FileItem) -> bool:
+        """
+        软链接文件
+        """
         pass
