@@ -170,7 +170,22 @@ class LocalStorage(StorageBase):
         """
         上传文件
         """
-        return None
+        filepath = Path(fileitem.path)
+        if not filepath.exists():
+            logger.warn(f"文件不存在：{filepath}")
+            return None
+        if not path.exists():
+            filepath.rename(path)
+        if path.exists():
+            return schemas.FileItem(
+                type="file",
+                path=str(path).replace("\\", "/"),
+                name=path.name,
+                basename=path.stem,
+                extension=path.suffix[1:],
+                size=path.stat().st_size,
+                modify_time=path.stat().st_mtime,
+            )
 
     def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         """
