@@ -30,6 +30,34 @@ class LocalStorage(StorageBase):
         """
         return True
 
+    def __get_fileitem(self, path: Path):
+        """
+        获取文件项
+        """
+        return schemas.FileItem(
+            storage=self.schema.value,
+            type="file",
+            path=str(path).replace("\\", "/"),
+            name=path.name,
+            basename=path.stem,
+            extension=path.suffix[1:],
+            size=path.stat().st_size,
+            modify_time=path.stat().st_mtime,
+        )
+
+    def __get_diritem(self, path: Path):
+        """
+        获取目录项
+        """
+        return schemas.FileItem(
+            storage=self.schema.value,
+            type="dir",
+            path=str(path).replace("\\", "/") + "/",
+            name=path.name,
+            basename=path.stem,
+            modify_time=path.stat().st_mtime,
+        )
+
     def list(self, fileitem: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
         """
         浏览文件
@@ -65,41 +93,16 @@ class LocalStorage(StorageBase):
 
         # 如果是文件
         if path_obj.is_file():
-            ret_items.append(schemas.FileItem(
-                storage=self.schema.value,
-                type="file",
-                path=str(path_obj).replace("\\", "/"),
-                name=path_obj.name,
-                basename=path_obj.stem,
-                extension=path_obj.suffix[1:],
-                size=path_obj.stat().st_size,
-                modify_time=path_obj.stat().st_mtime,
-            ))
+            ret_items.append(self.__get_fileitem(path_obj))
             return ret_items
 
         # 扁历所有目录
         for item in SystemUtils.list_sub_directory(path_obj):
-            ret_items.append(schemas.FileItem(
-                storage=self.schema.value,
-                type="dir",
-                path=str(item).replace("\\", "/") + "/",
-                name=item.name,
-                basename=item.stem,
-                modify_time=item.stat().st_mtime,
-            ))
+            ret_items.append(self.__get_diritem(item))
 
         # 遍历所有文件，不含子目录
         for item in SystemUtils.list_sub_all(path_obj):
-            ret_items.append(schemas.FileItem(
-                storage=self.schema.value,
-                type="file",
-                path=str(item).replace("\\", "/"),
-                name=item.name,
-                basename=item.stem,
-                extension=item.suffix[1:],
-                size=item.stat().st_size,
-                modify_time=item.stat().st_mtime,
-            ))
+            ret_items.append(self.__get_fileitem(item))
         return ret_items
 
     def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
@@ -110,15 +113,8 @@ class LocalStorage(StorageBase):
             return None
         path_obj = Path(fileitem.path) / name
         if not path_obj.exists():
-            path_obj.mkdir(parents=True, exist_ok=True)
-        return schemas.FileItem(
-            storage=self.schema.value,
-            type="dir",
-            path=str(path_obj).replace("\\", "/") + "/",
-            name=name,
-            basename=name,
-            modify_time=path_obj.stat().st_mtime,
-        )
+            path_obj.mkdir(parents=True)
+        return self.__get_diritem(path_obj)
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
         """
@@ -126,30 +122,16 @@ class LocalStorage(StorageBase):
         """
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
-        return schemas.FileItem(
-            storage=self.schema.value,
-            type="dir",
-            path=str(path).replace("\\", "/") + "/",
-            name=path.name,
-            basename=path.stem,
-            modify_time=path.stat().st_mtime,
-        )
+        return self.__get_diritem(path)
 
     def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         获取文件详情
         """
         path_obj = Path(fileitm.path)
-        return schemas.FileItem(
-            storage=self.schema.value,
-            type="file",
-            path=str(path_obj).replace("\\", "/"),
-            name=path_obj.name,
-            basename=path_obj.stem,
-            extension=path_obj.suffix[1:],
-            size=path_obj.stat().st_size,
-            modify_time=path_obj.stat().st_mtime,
-        )
+        if not path_obj.exists():
+            return None
+        return self.__get_fileitem(path_obj)
 
     def delete(self, fileitem: schemas.FileItem) -> bool:
         """
@@ -160,10 +142,14 @@ class LocalStorage(StorageBase):
         path_obj = Path(fileitem.path)
         if not path_obj.exists():
             return False
-        if path_obj.is_file():
-            path_obj.unlink()
-        else:
-            shutil.rmtree(path_obj, ignore_errors=True)
+        try:
+            if path_obj.is_file():
+                path_obj.unlink()
+            else:
+                shutil.rmtree(path_obj, ignore_errors=True)
+        except Exception as e:
+            logger.error(f"删除文件失败：{e}")
+            return False
         return True
 
     def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
@@ -173,13 +159,18 @@ class LocalStorage(StorageBase):
         path_obj = Path(fileitem.path)
         if not path_obj.exists():
             return False
-        path_obj.rename(path_obj.parent / name)
+        try:
+            path_obj.rename(path_obj.parent / name)
+        except Exception as e:
+            logger.error(f"重命名文件失败：{e}")
+            return False
+        return True
 
     def download(self, fileitem: schemas.FileItem, path: Path) -> bool:
         """
         下载文件
         """
-        return False
+        pass
 
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
@@ -190,18 +181,14 @@ class LocalStorage(StorageBase):
             logger.warn(f"文件不存在：{filepath}")
             return None
         if not path.exists():
-            filepath.rename(path)
+            try:
+                filepath.rename(path)
+            except Exception as e:
+                logger.error(f"移动文件失败：{e}")
+                return None
         if path.exists():
-            return schemas.FileItem(
-                storage=self.schema.value,
-                type="file",
-                path=str(path).replace("\\", "/"),
-                name=path.name,
-                basename=path.stem,
-                extension=path.suffix[1:],
-                size=path.stat().st_size,
-                modify_time=path.stat().st_mtime,
-            )
+            return self.__get_fileitem(path)
+        return None
 
     def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         """

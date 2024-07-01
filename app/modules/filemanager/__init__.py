@@ -256,13 +256,13 @@ class FileManagerModule(_ModuleBase):
         :param transfer_type: 整理方式
         """
 
-        def __get_fileitem(_path: Path) -> FileItem:
+        def __get_targetitem(_path: Path) -> FileItem:
             """
             获取文件信息
             """
             return FileItem(
                 storage=target_storage,
-                path=str(_path),
+                path=str(_path).replace("\\", "/"),
                 name=_path.name,
                 basename=_path.stem,
                 type="file",
@@ -296,7 +296,7 @@ class FileManagerModule(_ModuleBase):
                 elif transfer_type == "softlink":
                     state = source_oper.softlink(fileitem, target_file)
                 if state:
-                    return __get_fileitem(target_file), ""
+                    return __get_targetitem(target_file), ""
             elif fileitem.storage == "local" and target_storage != "local":
                 # 本地到网盘
                 filepath = Path(fileitem.path)
@@ -327,18 +327,18 @@ class FileManagerModule(_ModuleBase):
                 # 检查本地是否存在
                 if target_file.exists():
                     logger.warn(f"文件已存在：{target_file}")
-                    return __get_fileitem(target_file), ""
+                    return __get_targetitem(target_file), ""
                 # 网盘到本地
                 if transfer_type == "copy":
                     # 下载
                     if target_oper.download(fileitem, target_file):
-                        return __get_fileitem(target_file), ""
+                        return __get_targetitem(target_file), ""
                 elif transfer_type == "move":
                     # 下载
                     if target_oper.download(fileitem, target_file):
                         # 删除源文件
                         source_oper.delete(fileitem)
-                        return __get_fileitem(target_file), ""
+                        return __get_targetitem(target_file), ""
 
         return None, "不支持的整理操作"
 
@@ -658,8 +658,23 @@ class FileManagerModule(_ModuleBase):
         :param need_scrape: 是否需要刮削
         :return: TransferInfo、错误信息
         """
-        # 检查目录路径
 
+        def __get_targetitem(_path: Path) -> FileItem:
+            """
+            获取文件信息
+            """
+            return FileItem(
+                storage=target_storage,
+                path=str(_path).replace("\\", "/"),
+                name=_path.name,
+                basename=_path.stem,
+                type="file",
+                size=_path.stat().st_size,
+                extension=_path.suffix.lstrip('.'),
+                modify_time=_path.stat().st_mtime
+            )
+
+        # 检查目录路径
         if fileitem.storage == "local" and not Path(fileitem.path).exists():
             return TransferInfo(success=False,
                                 fileitem=fileitem,
@@ -763,32 +778,14 @@ class FileManagerModule(_ModuleBase):
                                     return TransferInfo(success=False,
                                                         message=f"媒体库中已存在，且质量更好",
                                                         fileitem=fileitem,
-                                                        target_fileitem=FileItem(
-                                                            path=str(target_file),
-                                                            storage=target_storage,
-                                                            type="file",
-                                                            size=target_file.stat().st_size,
-                                                            name=target_file.name,
-                                                            basename=target_file.stem,
-                                                            extension=target_file.suffix[1:],
-                                                            modify_time=target_file.stat().st_mtime
-                                                        ),
+                                                        target_fileitem=__get_targetitem(target_file),
                                                         fail_list=[fileitem.path])
                             case 'never':
                                 # 存在不覆盖
                                 return TransferInfo(success=False,
                                                     message=f"媒体库中已存在，当前设置为不覆盖",
                                                     fileitem=fileitem,
-                                                    target_fileitem=FileItem(
-                                                        path=str(target_file),
-                                                        storage=target_storage,
-                                                        type="file",
-                                                        size=target_file.stat().st_size,
-                                                        name=target_file.name,
-                                                        basename=target_file.stem,
-                                                        extension=target_file.suffix[1:],
-                                                        modify_time=target_file.stat().st_mtime
-                                                    ),
+                                                    target_fileitem=__get_targetitem(target_file),
                                                     fail_list=[fileitem.path])
                             case 'latest':
                                 # 仅保留最新版本

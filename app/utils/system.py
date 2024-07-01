@@ -94,7 +94,6 @@ class SystemUtils:
             shutil.copy2(src, dest)
             return 0, ""
         except Exception as err:
-            print(str(err))
             return -1, str(err)
 
     @staticmethod
@@ -109,7 +108,6 @@ class SystemUtils:
             shutil.move(temp, dest)
             return 0, ""
         except Exception as err:
-            print(str(err))
             return -1, str(err)
 
     @staticmethod
@@ -128,7 +126,6 @@ class SystemUtils:
             shutil.move(tmp_path, dest)
             return 0, ""
         except Exception as err:
-            print(str(err))
             return -1, str(err)
 
     @staticmethod
@@ -140,7 +137,6 @@ class SystemUtils:
             dest.symlink_to(src)
             return 0, ""
         except Exception as err:
-            print(str(err))
             return -1, str(err)
 
     @staticmethod
