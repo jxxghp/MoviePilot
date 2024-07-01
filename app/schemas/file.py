@@ -9,7 +9,7 @@ class FileItem(BaseModel):
     # 类型 dir/file
     type: Optional[str] = None
     # 文件路径
-    path: Optional[str] = None
+    path: Optional[str] = "/"
     # 文件名
     name: Optional[str] = None
     # 文件名

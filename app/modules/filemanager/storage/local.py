@@ -42,6 +42,7 @@ class LocalStorage(StorageBase):
                 partitions = SystemUtils.get_windows_drives() or ["C:/"]
                 for partition in partitions:
                     ret_items.append(schemas.FileItem(
+                        storage=self.schema.value,
                         type="dir",
                         path=partition + "/",
                         name=partition,
@@ -65,6 +66,7 @@ class LocalStorage(StorageBase):
         # 如果是文件
         if path_obj.is_file():
             ret_items.append(schemas.FileItem(
+                storage=self.schema.value,
                 type="file",
                 path=str(path_obj).replace("\\", "/"),
                 name=path_obj.name,
@@ -78,6 +80,7 @@ class LocalStorage(StorageBase):
         # 扁历所有目录
         for item in SystemUtils.list_sub_directory(path_obj):
             ret_items.append(schemas.FileItem(
+                storage=self.schema.value,
                 type="dir",
                 path=str(item).replace("\\", "/") + "/",
                 name=item.name,
@@ -88,6 +91,7 @@ class LocalStorage(StorageBase):
         # 遍历所有文件，不含子目录
         for item in SystemUtils.list_sub_all(path_obj):
             ret_items.append(schemas.FileItem(
+                storage=self.schema.value,
                 type="file",
                 path=str(item).replace("\\", "/"),
                 name=item.name,
@@ -108,6 +112,7 @@ class LocalStorage(StorageBase):
         if not path_obj.exists():
             path_obj.mkdir(parents=True, exist_ok=True)
         return schemas.FileItem(
+            storage=self.schema.value,
             type="dir",
             path=str(path_obj).replace("\\", "/") + "/",
             name=name,
@@ -127,6 +132,7 @@ class LocalStorage(StorageBase):
         """
         path_obj = Path(fileitm.path)
         return schemas.FileItem(
+            storage=self.schema.value,
             type="file",
             path=str(path_obj).replace("\\", "/"),
             name=path_obj.name,
@@ -178,6 +184,7 @@ class LocalStorage(StorageBase):
             filepath.rename(path)
         if path.exists():
             return schemas.FileItem(
+                storage=self.schema.value,
                 type="file",
                 path=str(path).replace("\\", "/"),
                 name=path.name,

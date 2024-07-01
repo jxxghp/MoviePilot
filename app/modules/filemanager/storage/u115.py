@@ -162,8 +162,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not self.__init_cloud():
             return None
         try:
-            items = self.cloud.storage().list(dir_id=fileitem.parent_fileid)
+            items = self.cloud.storage().list(dir_id=fileitem.fileid)
             return [schemas.FileItem(
+                storage=self.schema.value,
                 fileid=item.file_id,
                 parent_fileid=item.parent_id,
                 type="dir" if item.is_dir else "file",
@@ -187,6 +188,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         try:
             result = self.cloud.storage().make_dir(fileitem.parent_fileid, name)
             return schemas.FileItem(
+                storage=self.schema.value,
                 fileid=result.file_id,
                 parent_fileid=result.parent_id,
                 type="dir",
@@ -201,9 +203,36 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
         """
-        TODO 获取目录，不存在则创建
+        根据文件路程获取目录，不存在则创建
         """
-        pass
+
+        def __find_dir_name(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
+            """
+            查找下级目录中匹配名称的目录
+            """
+            sub_files = self.list(_fileitem)
+            for sub_file in sub_files:
+                if sub_file.type != "dir":
+                    continue
+                if sub_file.name == _name:
+                    return sub_file
+            return None
+
+        # 逐级查找和创建目录
+        fileitem = schemas.FileItem(fileid="0")
+        for part in path.parts:
+            if part == "/":
+                continue
+            dir_file = __find_dir_name(fileitem, part)
+            if dir_file:
+                return dir_file
+            else:
+                dir_file = self.create_folder(dir_file, part)
+                if not dir_file:
+                    logger.warn(f"创建 115 目录 {fileitem.path}{part} 失败!")
+                    return None
+                fileitem = dir_file
+        return None
 
     def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
@@ -286,6 +315,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     fileitem = result.get('data')
                     logger.info(f"115上传文件成功：{fileitem}")
                     return schemas.FileItem(
+                        storage=self.schema.value,
                         fileid=fileitem.get('file_id'),
                         parent_fileid=fileitem.fileid,
                         type="file",
@@ -321,5 +351,5 @@ class U115Pan(StorageBase, metaclass=Singleton):
     def link(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
         pass
 
-    def softlink(self, fileitm: schemas.FileItem, target_file: schemas.FileItem) -> bool:
+    def softlink(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
         pass

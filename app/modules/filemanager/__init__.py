@@ -14,6 +14,7 @@ from app.helper.message import MessageHelper
 from app.helper.module import ModuleHelper
 from app.log import logger
 from app.modules import _ModuleBase
+from app.modules.filemanager.storage import StorageBase
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, MediaDirectory, FileItem
 from app.schemas.types import MediaType
 from app.utils.system import SystemUtils
@@ -230,12 +231,12 @@ class FileManagerModule(_ModuleBase):
                                    episodes_info=episodes_info,
                                    need_scrape=need_scrape)
 
-    def __get_storage_oper(self, storage: str):
+    def __get_storage_oper(self, _storage: str):
         """
         获取存储操作对象
         """
         for storage_schema in self._storage_schemas:
-            if storage_schema.schema == storage:
+            if storage_schema.schema == _storage:
                 return storage_schema()
         return None
 
@@ -259,9 +260,9 @@ class FileManagerModule(_ModuleBase):
             logger.error(f"不支持 {fileitem.storage} 到 {target_storage} 的文件整理")
             return False
         # 源操作对象
-        source_oper = self.__get_storage_oper(fileitem.storage)
+        source_oper: StorageBase = self.__get_storage_oper(fileitem.storage)
         # 目的操作对象
-        target_oper = self.__get_storage_oper(target_storage)
+        target_oper: StorageBase = self.__get_storage_oper(target_storage)
         with lock:
             if fileitem.storage == "local" and target_storage == "local":
                 # 本地到本地
@@ -281,18 +282,19 @@ class FileManagerModule(_ModuleBase):
                     if not filepath.exists():
                         logger.error(f"文件 {filepath} 不存在")
                         return False
-                    # TODO 根据目的路径创建文件夹
+                    # 根据目的路径创建文件夹
                     target_fileitem = target_oper.get_folder(target_file.parent)
                     if target_fileitem:
                         # 上传文件
-                        return target_oper.upload(target_fileitem, filepath)
+                        if target_oper.upload(target_fileitem, filepath):
+                            return True
                 elif transfer_type == "move":
                     # 移动
                     filepath = Path(fileitem.path)
                     if not filepath.exists():
                         logger.error(f"文件 {filepath} 不存在")
                         return False
-                    # TODO 根据目的路径获取文件夹
+                    # 根据目的路径获取文件夹
                     target_fileitem = target_oper.get_folder(target_file.parent)
                     if target_fileitem:
                         # 上传文件

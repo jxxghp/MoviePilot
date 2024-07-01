@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Optional, List, Any
+from typing import Optional, List
 
 from app import schemas
 
@@ -109,7 +109,7 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def softlink(self, fileitm: schemas.FileItem, target_file: schemas.FileItem) -> bool:
+    def softlink(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
         """
         软链接文件
         """

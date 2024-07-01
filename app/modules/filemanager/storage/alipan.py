@@ -331,8 +331,7 @@ class AliPan(StorageBase):
             self.__handle_error(res, "获取用户信息")
         return {}
 
-    def list(self, drive_id: str = None, parent_file_id: str = 'root', list_type: str = None,
-             limit: int = 100, order_by: str = 'updated_at', path: str = "/") -> List[schemas.FileItem]:
+    def list(self, fileitem: schemas.FileItem = None) -> List[schemas.FileItem]:
         """
         浏览文件
         limit 返回文件数量，默认 50，最大 100
@@ -346,10 +345,11 @@ class AliPan(StorageBase):
         # 请求头
         headers = self.__get_headers(params)
         # 根目录处理
-        if not drive_id:
+        if not fileitem or not fileitem.drive_id:
             return [
                 schemas.FileItem(
-                    fileid=parent_file_id,
+                    storage=self.schema.value,
+                    fileid=fileitem.fileid,
                     drive_id=params.get("resourceDriveId"),
                     parent_fileid="root",
                     type="dir",
@@ -357,7 +357,8 @@ class AliPan(StorageBase):
                     name="资源库"
                 ),
                 schemas.FileItem(
-                    fileid=parent_file_id,
+                    storage=self.schema.value,
+                    fileid=fileitem.fileid,
                     drive_id=params.get("backDriveId"),
                     parent_fileid="root",
                     type="dir",
@@ -370,13 +371,12 @@ class AliPan(StorageBase):
         # 分页获取
         next_marker = None
         while True:
-            if not parent_file_id or parent_file_id == "/":
+            if not fileitem.parent_fileid or fileitem.parent_fileid == "/":
                 parent_file_id = "root"
+            else:
+                parent_file_id = fileitem.fileid
             res = RequestUtils(headers=headers, timeout=10).post_res(self.list_file_url, json={
-                "drive_id": drive_id,
-                "type": list_type,
-                "limit": limit,
-                "order_by": order_by,
+                "drive_id": fileitem.drive_id,
                 "parent_file_id": parent_file_id,
                 "marker": next_marker
             }, params={
@@ -400,10 +400,11 @@ class AliPan(StorageBase):
                 self.__handle_error(res, "浏览文件")
                 break
         return [schemas.FileItem(
+            storage=self.schema.value,
             fileid=fileinfo.get("file_id"),
             parent_fileid=fileinfo.get("parent_file_id"),
             type="dir" if fileinfo.get("type") == "folder" else "file",
-            path=f"{path}{fileinfo.get('name')}" + ("/" if fileinfo.get("type") == "folder" else ""),
+            path=f"{fileitem.path}{fileinfo.get('name')}" + ("/" if fileinfo.get("type") == "folder" else ""),
             name=fileinfo.get("name"),
             size=fileinfo.get("size"),
             extension=fileinfo.get("file_extension"),
@@ -441,6 +442,7 @@ class AliPan(StorageBase):
             """
             result = res.json()
             return schemas.FileItem(
+                storage=self.schema.value,
                 fileid=result.get("file_id"),
                 drive_id=result.get("drive_id"),
                 parent_fileid=result.get("parent_file_id"),
@@ -454,9 +456,36 @@ class AliPan(StorageBase):
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
         """
-        TODO 获取目录，不存在则创建
+        根据文件路程获取目录，不存在则创建
         """
-        pass
+
+        def __find_dir_name(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
+            """
+            查找下级目录中匹配名称的目录
+            """
+            sub_files = self.list(_fileitem)
+            for sub_file in sub_files:
+                if sub_file.type != "dir":
+                    continue
+                if sub_file.name == _name:
+                    return sub_file
+            return None
+
+        # 逐级查找和创建目录
+        fileitem = schemas.FileItem(fileid="root")
+        for part in path.parts:
+            if part == "/":
+                continue
+            dir_file = __find_dir_name(fileitem, part)
+            if dir_file:
+                return dir_file
+            else:
+                dir_file = self.create_folder(dir_file, part)
+                if not dir_file:
+                    logger.warn(f"创建 aplipan 目录 {fileitem.path}{part} 失败！")
+                    return None
+                fileitem = dir_file
+        return None
 
     def delete(self, fileitem: schemas.FileItem) -> bool:
         """
@@ -491,6 +520,7 @@ class AliPan(StorageBase):
         if res:
             result = res.json()
             return schemas.FileItem(
+                storage=self.schema.value,
                 fileid=result.get("file_id"),
                 drive_id=result.get("drive_id"),
                 parent_fileid=result.get("parent_file_id"),
@@ -582,6 +612,7 @@ class AliPan(StorageBase):
         if result.get("exist"):
             logger.info(f"文件{result.get('file_name')}已存在，无需上传")
             return schemas.FileItem(
+                storage=self.schema.value,
                 drive_id=result.get("drive_id"),
                 fileid=result.get("file_id"),
                 parent_fileid=result.get("parent_file_id"),
@@ -616,6 +647,7 @@ class AliPan(StorageBase):
                 return None
             result = res.json()
             return schemas.FileItem(
+                storage=self.schema.value,
                 fileid=result.get("file_id"),
                 drive_id=result.get("drive_id"),
                 parent_fileid=result.get("parent_file_id"),
@@ -659,7 +691,7 @@ class AliPan(StorageBase):
         """
         pass
 
-    def softlink(self, fileitm: schemas.FileItem, target_file: schemas.FileItem) -> bool:
+    def softlink(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
         """
         软链接文件
         """

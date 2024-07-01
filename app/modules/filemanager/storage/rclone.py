@@ -103,5 +103,5 @@ class Rclone(StorageBase):
     def link(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
         pass
 
-    def softlink(self, fileitm: schemas.FileItem, target_file: schemas.FileItem) -> bool:
+    def softlink(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
         pass
