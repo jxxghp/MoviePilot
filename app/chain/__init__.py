@@ -507,21 +507,6 @@ class ChainBase(metaclass=ABCMeta):
                              note=note_list)
         return self.run_module("post_torrents_message", message=message, torrents=torrents)
 
-    def scrape_metadata(self, path: Path, mediainfo: MediaInfo, transfer_type: str,
-                        metainfo: MetaBase = None, force_nfo: bool = False, force_img: bool = False) -> None:
-        """
-        刮削元数据
-        :param path: 媒体文件路径
-        :param mediainfo:  识别的媒体信息
-        :param metainfo: 源文件的识别元数据
-        :param transfer_type:  转移模式
-        :param force_nfo:  强制刮削nfo
-        :param force_img:  强制刮削图片
-        :return: 成功或失败
-        """
-        self.run_module("scrape_metadata", path=path, mediainfo=mediainfo, metainfo=metainfo,
-                        transfer_type=transfer_type, force_nfo=force_nfo, force_img=force_img)
-
     def metadata_img(self, mediainfo: MediaInfo, season: int = None) -> Optional[dict]:
         """
         获取图片名称和url

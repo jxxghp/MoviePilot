@@ -350,6 +350,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
             tmp_file = settings.TEMP_PATH / _path.name
             tmp_file.write_bytes(_content)
             StorageChain().upload_file(fileitem=_fileitem, path=tmp_file)
+            if tmp_file.exists():
+                tmp_file.unlink()
 
         def __save_image(_url: str) -> Optional[bytes]:
             """
