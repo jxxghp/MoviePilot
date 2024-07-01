@@ -125,7 +125,7 @@ class LocalStorage(StorageBase):
         获取目录
         """
         if not path.exists():
-            return None
+            path.mkdir(parents=True, exist_ok=True)
         return schemas.FileItem(
             storage=self.schema.value,
             type="dir",
