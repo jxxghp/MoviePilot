@@ -1,13 +1,12 @@
 import json
 import time
-from pathlib import Path
 from typing import Any, List
 
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
 from app.db import DbOper
 from app.db.models.transferhistory import TransferHistory
-from app.schemas import TransferInfo
+from app.schemas import TransferInfo, FileItem
 
 
 class TransferHistoryOper(DbOper):
@@ -119,15 +118,19 @@ class TransferHistoryOper(DbOper):
         """
         TransferHistory.update_download_hash(self._db, historyid, download_hash)
 
-    def add_success(self, src_path: Path, mode: str, meta: MetaBase,
+    def add_success(self, fileitem: FileItem, mode: str, meta: MetaBase,
                     mediainfo: MediaInfo, transferinfo: TransferInfo,
                     download_hash: str = None):
         """
         新增转移成功历史记录
         """
         self.add_force(
-            src=str(src_path),
-            dest=str(transferinfo.target_path or ''),
+            src=fileitem.path,
+            src_storage=fileitem.storage,
+            src_fileitem=json.dumps(fileitem.dict()),
+            dest=transferinfo.target_item.path,
+            dest_storage=transferinfo.target_item.storage,
+            dest_fileitem=json.dumps(transferinfo.target_item.dict()),
             mode=mode,
             type=mediainfo.type.value,
             category=mediainfo.category,
@@ -145,15 +148,19 @@ class TransferHistoryOper(DbOper):
             files=json.dumps(transferinfo.file_list)
         )
 
-    def add_fail(self, src_path: Path, mode: str, meta: MetaBase, mediainfo: MediaInfo = None,
+    def add_fail(self, fileitem: FileItem, mode: str, meta: MetaBase, mediainfo: MediaInfo = None,
                  transferinfo: TransferInfo = None, download_hash: str = None):
         """
         新增转移失败历史记录
         """
         if mediainfo and transferinfo:
             his = self.add_force(
-                src=str(src_path),
-                dest=str(transferinfo.target_path or ''),
+                src=fileitem.path,
+                src_storage=fileitem.storage,
+                src_fileitem=json.dumps(fileitem.dict()),
+                dest=transferinfo.target_item.path,
+                dest_storage=transferinfo.target_item.storage,
+                dest_fileitem=json.dumps(transferinfo.target_item.dict()),
                 mode=mode,
                 type=mediainfo.type.value,
                 category=mediainfo.category,
@@ -175,7 +182,9 @@ class TransferHistoryOper(DbOper):
             his = self.add_force(
                 title=meta.name,
                 year=meta.year,
-                src=str(src_path),
+                src=fileitem.path,
+                src_storage=fileitem.storage,
+                src_fileitem=json.dumps(fileitem.dict()),
                 mode=mode,
                 seasons=meta.season,
                 episodes=meta.episode,

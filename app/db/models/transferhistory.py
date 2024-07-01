@@ -11,10 +11,18 @@ class TransferHistory(Base):
     转移历史记录
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
-    # 源目录
+    # 源路径
     src = Column(String, index=True)
-    # 目标目录
+    # 源存储
+    src_storage = Column(String)
+    # 源文件项
+    src_fileitem = Column(String)
+    # 目标路径
     dest = Column(String)
+    # 目标存储
+    dest_storage = Column(String)
+    # 目标文件项
+    dest_fileitem = Column(String)
     # 转移模式 move/copy/link...
     mode = Column(String)
     # 类型 电影/电视剧

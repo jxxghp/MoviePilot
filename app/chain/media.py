@@ -331,8 +331,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
             )
         return None
 
-    def manual_scrape(self, storage: str, fileitem: schemas.FileItem,
-                      meta: MetaBase = None, mediainfo: MediaInfo = None, init_folder: bool = True):
+    def scrape_metadata(self, storage: str, fileitem: schemas.FileItem,
+                        meta: MetaBase = None, mediainfo: MediaInfo = None, init_folder: bool = True):
         """
         手动刮削媒体信息
         """
@@ -395,9 +395,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 # 电影目录
                 files = __list_files(_fileitem=fileitem)
                 for file in files:
-                    self.manual_scrape(storage=storage, fileitem=file,
-                                       meta=meta, mediainfo=mediainfo,
-                                       init_folder=False)
+                    self.scrape_metadata(storage=storage, fileitem=file,
+                                         meta=meta, mediainfo=mediainfo,
+                                         init_folder=False)
                 # 生成目录内图片文件
                 if init_folder:
                     # 图片
@@ -437,9 +437,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 # 当前为目录，处理目录内的文件
                 files = __list_files(_fileitem=fileitem)
                 for file in files:
-                    self.manual_scrape(storage=storage, fileitem=file,
-                                       meta=meta, mediainfo=mediainfo,
-                                       init_folder=True if file.type == "dir" else False)
+                    self.scrape_metadata(storage=storage, fileitem=file,
+                                         meta=meta, mediainfo=mediainfo,
+                                         init_folder=True if file.type == "dir" else False)
                 # 生成目录的nfo和图片
                 if init_folder:
                     # 识别文件夹名称

@@ -4,6 +4,37 @@ from typing import Optional
 from pydantic import BaseModel
 
 
+class FileItem(BaseModel):
+    # 存储类型
+    storage: Optional[str] = "local"
+    # 类型 dir/file
+    type: Optional[str] = None
+    # 文件路径
+    path: Optional[str] = "/"
+    # 文件名
+    name: Optional[str] = None
+    # 文件名
+    basename: Optional[str] = None
+    # 文件后缀
+    extension: Optional[str] = None
+    # 文件大小
+    size: Optional[int] = None
+    # 修改时间
+    modify_time: Optional[float] = None
+    # 子节点
+    children: Optional[list] = []
+    # ID
+    fileid: Optional[str] = None
+    # 父ID
+    parent_fileid: Optional[str] = None
+    # 缩略图
+    thumbnail: Optional[str] = None
+    # 115 pickcode
+    pickcode: Optional[str] = None
+    # drive_id
+    drive_id: Optional[str] = None
+
+
 class TransferTorrent(BaseModel):
     """
     待转移任务信息
@@ -43,9 +74,9 @@ class TransferInfo(BaseModel):
     # 是否成功标志
     success: bool = True
     # 整理⼁路径
-    path: Optional[Path] = None
+    fileitem: Optional[FileItem] = None
     # 转移后路径
-    target_path: Optional[Path] = None
+    target_item: Optional[FileItem] = None
     # 处理文件数
     file_count: Optional[int] = 0
     # 处理文件清单
@@ -65,9 +96,9 @@ class TransferInfo(BaseModel):
         """
         返回字典
         """
-        dicts = vars(self).copy()  # 创建一个字典的副本以避免修改原始数据
-        dicts["path"] = str(self.path) if self.path else None
-        dicts["target_path"] = str(self.target_path) if self.target_path else None
+        dicts = vars(self).copy()
+        dicts["fileitem"] = self.fileitem.dict() if self.fileitem else None
+        dicts["target_item"] = self.target_item.dict() if self.target_item else None
         return dicts
 
 

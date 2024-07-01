@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
-from app.schemas import MediaType
+from app.schemas import MediaType, FileItem
 
 router = APIRouter()
 
@@ -46,13 +47,10 @@ def query_name(path: str, filetype: str,
 
 
 @router.post("/manual", summary="手动转移", response_model=schemas.Response)
-def manual_transfer(storage: str = "local",
-                    path: str = None,
-                    drive_id: str = None,
-                    fileid: str = None,
-                    filetype: str = None,
+def manual_transfer(fileitem: FileItem = None,
                     logid: int = None,
-                    target: str = None,
+                    target_storage: str = None,
+                    target_path: str = None,
                     tmdbid: int = None,
                     doubanid: str = None,
                     type_name: str = None,
@@ -68,13 +66,10 @@ def manual_transfer(storage: str = "local",
                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     手动转移，文件或历史记录，支持自定义剧集识别格式
-    :param storage: 存储类型：local/aliyun/u115
-    :param path: 转移路径或文件
-    :param drive_id: 云盘ID（网盘等）
-    :param fileid: 文件ID（网盘等）
-    :param filetype: 文件类型，dir/file
+    :param fileitem: 文件信息
     :param logid: 转移历史记录ID
-    :param target: 目标路径
+    :param target_storage: 目标存储
+    :param target_path: 目标路径
     :param type_name: 媒体类型、电影/电视剧
     :param tmdbid: tmdbid
     :param doubanid: 豆瓣ID
@@ -90,7 +85,7 @@ def manual_transfer(storage: str = "local",
     :param _: Token校验
     """
     force = False
-    target = Path(target) if target else None
+    target_path = Path(target_path) if target_path else None
     transfer = TransferChain()
     if logid:
         # 查询历史记录
@@ -101,18 +96,19 @@ def manual_transfer(storage: str = "local",
         force = True
         if history.status and ("move" in history.mode):
             # 重新整理成功的转移，则使用成功的 dest 做 in_path
-            in_path = Path(history.dest)
+            src_fileitem = json.loads(history.dest_fileitem)
         else:
             # 源路径
-            in_path = Path(history.src)
+            src_fileitem = json.loads(history.src_fileitem)
             # 目的路径
-            if history.dest and str(history.dest) != "None":
+            if history.dest_fileitem:
                 # 删除旧的已整理文件
-                transfer.delete_files(Path(history.dest))
-    elif path:
-        in_path = Path(path)
+                dest_fileitem = json.loads(history.dest_fileitem)
+                transfer.delete_files(dest_fileitem)
+    elif fileitem:
+        src_fileitem = fileitem
     else:
-        return schemas.Response(success=False, message=f"缺少参数：path/logid")
+        return schemas.Response(success=False, message=f"缺少参数")
 
     # 类型
     mtype = MediaType(type_name) if type_name else None
@@ -127,12 +123,9 @@ def manual_transfer(storage: str = "local",
         )
     # 开始转移
     state, errormsg = transfer.manual_transfer(
-        storage=storage,
-        in_path=in_path,
-        drive_id=drive_id,
-        fileid=fileid,
-        filetype=filetype,
-        target=target,
+        fileitem=src_fileitem,
+        target_storage=target_storage,
+        target_path=target_path,
         tmdbid=tmdbid,
         doubanid=doubanid,
         mtype=mtype,
