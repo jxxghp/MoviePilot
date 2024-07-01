@@ -1,5 +1,6 @@
 import concurrent
 import concurrent.futures
+import importlib.util
 import inspect
 import threading
 import time
@@ -220,8 +221,6 @@ class PluginManager(metaclass=Singleton):
             # 清空指定插件
             if pid in self._running_plugins:
                 self._running_plugins.pop(pid)
-            if pid in self._plugins:
-                self._plugins.pop(pid)
         else:
             # 清空
             self._plugins = {}
@@ -748,10 +747,18 @@ class PluginManager(metaclass=Singleton):
     @staticmethod
     def is_plugin_exists(pid: str) -> bool:
         """
-        判断插件是否在本地文件系统存在
+        判断插件是否在本地包中存在
         :param pid: 插件ID
         """
         if not pid:
             return False
-        plugin_dir = settings.ROOT_PATH / "app" / "plugins" / pid.lower()
-        return plugin_dir.exists()
+        try:
+            # 构建包名
+            package_name = f"app.plugins.{pid.lower()}"
+            # 检查包是否存在
+            package_exists = importlib.util.find_spec(package_name) is not None
+            logger.debug(f"{pid} exists: {package_exists}")
+            return package_exists
+        except Exception as e:
+            logger.debug(f"获取插件是否在本地包中存在失败，{e}")
+            return False
