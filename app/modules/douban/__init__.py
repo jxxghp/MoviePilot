@@ -15,6 +15,7 @@ from app.modules.douban.apiv2 import DoubanApi
 from app.modules.douban.douban_cache import DoubanCache
 from app.modules.douban.scraper import DoubanScraper
 from app.schemas import MediaPerson
+from app.schemas.exception import APIRateLimitException
 from app.schemas.types import MediaType
 from app.utils.common import retry
 from app.utils.http import RequestUtils
@@ -147,11 +148,12 @@ class DoubanModule(_ModuleBase):
 
         return None
 
-    def douban_info(self, doubanid: str, mtype: MediaType = None) -> Optional[dict]:
+    def douban_info(self, doubanid: str, mtype: MediaType = None, raise_exception: bool = True) -> Optional[dict]:
         """
         获取豆瓣信息
         :param doubanid: 豆瓣ID
         :param mtype:    媒体类型
+        :param raise_exception: 触发速率限制时是否抛出异常
         :return: 豆瓣信息
         """
         """
@@ -427,7 +429,10 @@ class DoubanModule(_ModuleBase):
             info = self.doubanapi.tv_detail(doubanid)
             if info:
                 if "subject_ip_rate_limit" in info.get("msg", ""):
-                    logger.warn(f"触发豆瓣IP速率限制，错误信息：{info} ...")
+                    msg = f"触发豆瓣IP速率限制，错误信息：{info} ..."
+                    logger.warn(msg)
+                    if raise_exception:
+                        raise APIRateLimitException(msg)
                     return None
                 celebrities = self.doubanapi.tv_celebrities(doubanid)
                 if celebrities:
@@ -442,7 +447,10 @@ class DoubanModule(_ModuleBase):
             info = self.doubanapi.movie_detail(doubanid)
             if info:
                 if "subject_ip_rate_limit" in info.get("msg", ""):
-                    logger.warn(f"触发豆瓣IP速率限制，错误信息：{info} ...")
+                    msg = f"触发豆瓣IP速率限制，错误信息：{info} ..."
+                    logger.warn(msg)
+                    if raise_exception:
+                        raise APIRateLimitException(msg)
                     return None
                 celebrities = self.doubanapi.movie_celebrities(doubanid)
                 if celebrities:
@@ -601,7 +609,8 @@ class DoubanModule(_ModuleBase):
 
     @retry(Exception, 5, 3, 3, logger=logger)
     def match_doubaninfo(self, name: str, imdbid: str = None,
-                         mtype: MediaType = None, year: str = None, season: int = None) -> dict:
+                         mtype: MediaType = None, year: str = None, season: int = None,
+                         raise_exception: bool = False) -> dict:
         """
         搜索和匹配豆瓣信息
         :param name:  名称
@@ -609,6 +618,7 @@ class DoubanModule(_ModuleBase):
         :param mtype:  类型
         :param year:  年份
         :param season:  季号
+        :param raise_exception: 触发速率限制时是否抛出异常
         """
         if imdbid:
             # 优先使用IMDBID查询
@@ -629,7 +639,10 @@ class DoubanModule(_ModuleBase):
             return {}
         # 触发rate limit
         if "search_access_rate_limit" in result.values():
-            logger.warn(f"触发豆瓣API速率限制，错误信息：{result} ...")
+            msg = f"触发豆瓣API速率限制，错误信息：{result} ..."
+            logger.warn(msg)
+            if raise_exception:
+                raise APIRateLimitException(msg)
             return {}
         if not result.get("items"):
             logger.warn(f"未找到 {name} 的豆瓣信息")

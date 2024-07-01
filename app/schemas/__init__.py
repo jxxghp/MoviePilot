@@ -15,3 +15,4 @@ from .tmdb import *
 from .transfer import *
 from .file import *
 from .filetransfer import *
+from .exception import *
