@@ -52,6 +52,8 @@ class EventType(Enum):
     SubscribeComplete = "subscribe.complete"
     # 系统错误
     SystemError = "system.error"
+    # 刮削元数据
+    MetadataScrape = "metadata.scrape"
 
 
 # 系统配置Key字典

@@ -124,7 +124,16 @@ class LocalStorage(StorageBase):
         """
         获取目录
         """
-        pass
+        if not path.exists():
+            return None
+        return schemas.FileItem(
+            storage=self.schema.value,
+            type="dir",
+            path=str(path).replace("\\", "/") + "/",
+            name=path.name,
+            basename=path.stem,
+            modify_time=path.stat().st_mtime,
+        )
 
     def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
         """

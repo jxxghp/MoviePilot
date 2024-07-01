@@ -331,7 +331,22 @@ class MediaChain(ChainBase, metaclass=Singleton):
             )
         return None
 
-    def scrape_metadata(self, storage: str, fileitem: schemas.FileItem,
+    @eventmanager.register(EventType.MetadataScrape)
+    def scrape_metadata_event(self, event: Event):
+        """
+        监控手动刮削事件
+        """
+        if not event:
+            return
+        event_data = event.event_data or {}
+        fileitem = event_data.get("fileitem")
+        meta = event_data.get("meta")
+        mediainfo = event_data.get("mediainfo")
+        if not fileitem:
+            return
+        self.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
+
+    def scrape_metadata(self, fileitem: schemas.FileItem,
                         meta: MetaBase = None, mediainfo: MediaInfo = None, init_folder: bool = True):
         """
         手动刮削媒体信息
@@ -395,7 +410,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 # 电影目录
                 files = __list_files(_fileitem=fileitem)
                 for file in files:
-                    self.scrape_metadata(storage=storage, fileitem=file,
+                    self.scrape_metadata(fileitem=file,
                                          meta=meta, mediainfo=mediainfo,
                                          init_folder=False)
                 # 生成目录内图片文件
@@ -437,7 +452,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 # 当前为目录，处理目录内的文件
                 files = __list_files(_fileitem=fileitem)
                 for file in files:
-                    self.scrape_metadata(storage=storage, fileitem=file,
+                    self.scrape_metadata(fileitem=file,
                                          meta=meta, mediainfo=mediainfo,
                                          init_folder=True if file.type == "dir" else False)
                 # 生成目录的nfo和图片
