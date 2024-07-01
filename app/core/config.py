@@ -241,6 +241,29 @@ class Settings(BaseSettings):
     # 服务器地址，对应 https://github.com/jxxghp/MoviePilot-Server 项目
     MP_SERVER_HOST: str = "https://movie-pilot.org"
 
+    # 【已弃用】刮削入库的媒体文件
+    SCRAP_METADATA: bool = True
+    # 【已弃用】下载保存目录，容器内映射路径需要一致
+    DOWNLOAD_PATH: Optional[str] = None
+    # 【已弃用】电影下载保存目录，容器内映射路径需要一致
+    DOWNLOAD_MOVIE_PATH: Optional[str] = None
+    # 【已弃用】电视剧下载保存目录，容器内映射路径需要一致
+    DOWNLOAD_TV_PATH: Optional[str] = None
+    # 【已弃用】动漫下载保存目录，容器内映射路径需要一致
+    DOWNLOAD_ANIME_PATH: Optional[str] = None
+    # 【已弃用】下载目录二级分类
+    DOWNLOAD_CATEGORY: bool = False
+    # 【已弃用】媒体库目录，多个目录使用,分隔
+    LIBRARY_PATH: Optional[str] = None
+    # 【已弃用】电影媒体库目录名
+    LIBRARY_MOVIE_NAME: str = "电影"
+    # 【已弃用】电视剧媒体库目录名
+    LIBRARY_TV_NAME: str = "电视剧"
+    # 【已弃用】动漫媒体库目录名，不设置时使用电视剧目录
+    LIBRARY_ANIME_NAME: Optional[str] = None
+    # 【已弃用】二级分类
+    LIBRARY_CATEGORY: bool = True
+
     @validator("SUBSCRIBE_RSS_INTERVAL",
                "COOKIECLOUD_INTERVAL",
                "MEDIASERVER_SYNC_INTERVAL",
