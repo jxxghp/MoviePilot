@@ -2,7 +2,6 @@ import re
 import threading
 from typing import Optional, List
 
-from app.core.config import settings
 from app.core.context import MediaInfo, Context
 from app.core.metainfo import MetaInfo
 from app.log import logger
@@ -23,18 +22,18 @@ class VoceChat:
     # 请求对象
     _client = None
 
-    def __init__(self):
+    def __init__(self, host: str = None, apikey: str = None, channel_id: str = None):
         """
         初始化
         """
-        self._host = settings.VOCECHAT_HOST
+        self._host = host
         if self._host:
             if not self._host.endswith("/"):
                 self._host += "/"
             if not self._host.startswith("http"):
                 self._playhost = "http://" + self._host
-        self._apikey = settings.VOCECHAT_API_KEY
-        self._channel_id = settings.VOCECHAT_CHANNEL_ID
+        self._apikey = apikey
+        self._channel_id = channel_id
         if self._apikey and self._host and self._channel_id:
             self._client = RequestUtils(headers={
                 "content-type": "text/markdown",

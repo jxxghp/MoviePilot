@@ -21,22 +21,21 @@ class Slack:
 
     _client: WebClient = None
     _service: SocketModeHandler = None
-
     _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
+    _channel = ""
 
-    def __init__(self):
+    def __init__(self, oauth_token: str, app_token: str, channel: str = ""):
 
-        if not settings.SLACK_OAUTH_TOKEN or not settings.SLACK_APP_TOKEN:
-            return
-        
         try:
-            slack_app = App(token=settings.SLACK_OAUTH_TOKEN,
+            slack_app = App(token=oauth_token,
                             ssl_check_enabled=False,
                             url_verification_enabled=False)
         except Exception as err:
             logger.error(f"Slack初始化失败: {str(err)}")
             return
+
         self._client = slack_app.client
+        self._channel = channel
 
         # 注册消息响应
         @slack_app.event("message")
@@ -72,7 +71,7 @@ class Slack:
         try:
             self._service = SocketModeHandler(
                 slack_app,
-                settings.SLACK_APP_TOKEN
+                app_token
             )
             self._service.connect()
             logger.info("Slack消息接收服务启动")
@@ -337,7 +336,7 @@ class Slack:
                 if conversation_id:
                     break
                 for channel in result["channels"]:
-                    if channel.get("name") == (settings.SLACK_CHANNEL or "全体"):
+                    if channel.get("name") == (self._channel or "全体"):
                         conversation_id = channel.get("id")
                         break
         except Exception as e:

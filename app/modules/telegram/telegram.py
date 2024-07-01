@@ -24,14 +24,14 @@ class Telegram:
     _event = Event()
     _bot: telebot.TeleBot = None
 
-    def __init__(self):
+    def __init__(self, token: str = None, chat_id: str = None):
         """
         初始化参数
         """
         # Token
-        self._telegram_token = settings.TELEGRAM_TOKEN
+        self._telegram_token = token
         # Chat Id
-        self._telegram_chat_id = settings.TELEGRAM_CHAT_ID
+        self._telegram_chat_id = chat_id
         # 初始化机器人
         if self._telegram_token and self._telegram_chat_id:
             # bot

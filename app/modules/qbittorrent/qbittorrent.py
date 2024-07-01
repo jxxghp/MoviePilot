@@ -8,7 +8,6 @@ from qbittorrentapi.transfer import TransferInfoDictionary
 
 from app.core.config import settings
 from app.log import logger
-from app.utils.string import StringUtils
 
 
 class Qbittorrent:
@@ -23,12 +22,10 @@ class Qbittorrent:
         """
         若不设置参数，则创建配置文件设置的下载器
         """
-        if host and port:
-            self._host, self._port = host, port
-        else:
-            self._host, self._port = StringUtils.get_domain_address(address=settings.QB_HOST, prefix=True)
-        self._username = username if username else settings.QB_USER
-        self._password = password if password else settings.QB_PASSWORD
+        self._host = host
+        self._port = port
+        self._username = username
+        self._password = password
         if self._host and self._port:
             self.qbc = self.__login_qbittorrent()
 

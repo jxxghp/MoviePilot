@@ -58,16 +58,24 @@ class EventType(Enum):
 
 # 系统配置Key字典
 class SystemConfigKey(Enum):
-    # 用户已安装的插件
-    UserInstalledPlugins = "UserInstalledPlugins"
-    # 搜索结果
-    SearchResults = "SearchResults"
+    # 下载器配置
+    Downloaders = "Downloaders"
+    # 媒体服务器配置
+    MediaServers = "MediaServers"
+    # 消息通知配置
+    Notifications = "Notifications"
+    # 下载目录配置
+    DownloadDirectories = "DownloadDirectories"
+    # 媒体库目录配置
+    LibraryDirectories = "LibraryDirectories"
+    # 阿里云盘认证参数
+    UserAliyunParams = "UserAliyunParams"
+    # 115网盘认证参数
+    User115Params = "User115Params"
     # 搜索站点范围
     IndexerSites = "IndexerSites"
     # 订阅站点范围
     RssSites = "RssSites"
-    # 种子优先级规则
-    TorrentsPriority = "TorrentsPriority"
     # 通知消息渠道设置
     NotificationChannels = "NotificationChannels"
     # 自定义制作组/字幕组
@@ -76,6 +84,10 @@ class SystemConfigKey(Enum):
     Customization = "Customization"
     # 自定义识别词
     CustomIdentifiers = "CustomIdentifiers"
+    # 转移屏蔽词
+    TransferExcludeWords = "TransferExcludeWords"
+    # 种子优先级规则
+    TorrentsPriority = "TorrentsPriority"
     # 搜索优先级规则
     SearchFilterRules = "SearchFilterRules"
     # 订阅优先级规则
@@ -86,22 +98,14 @@ class SystemConfigKey(Enum):
     DefaultFilterRules = "DefaultFilterRules"
     # 默认搜索过滤规则
     DefaultSearchFilterRules = "DefaultSearchFilterRules"
-    # 转移屏蔽词
-    TransferExcludeWords = "TransferExcludeWords"
-    # 插件安装统计
-    PluginInstallReport = "PluginInstallReport"
     # 订阅统计
     SubscribeReport = "SubscribeReport"
     # 用户自定义CSS
     UserCustomCSS = "UserCustomCSS"
-    # 下载目录定义
-    DownloadDirectories = "DownloadDirectories"
-    # 媒体库目录定义
-    LibraryDirectories = "LibraryDirectories"
-    # 阿里云盘认证参数
-    UserAliyunParams = "UserAliyunParams"
-    # 115网盘认证参数
-    User115Params = "User115Params"
+    # 用户已安装的插件
+    UserInstalledPlugins = "UserInstalledPlugins"
+    # 插件安装统计
+    PluginInstallReport = "PluginInstallReport"
 
 
 # 处理进度Key字典

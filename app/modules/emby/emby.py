@@ -15,14 +15,14 @@ from app.utils.http import RequestUtils
 
 class Emby:
 
-    def __init__(self):
-        self._host = settings.EMBY_HOST
+    def __init__(self, host: str = None, play_host: str = None, apikey: str = None):
+        self._host = host
         if self._host:
             self._host = RequestUtils.standardize_base_url(self._host)
-        self._playhost = settings.EMBY_PLAY_HOST
+        self._playhost = play_host
         if self._playhost:
             self._playhost = RequestUtils.standardize_base_url(self._playhost)
-        self._apikey = settings.EMBY_API_KEY
+        self._apikey = apikey
         self.user = self.get_user(settings.SUPERUSER)
         self.folders = self.get_emby_folders()
         self.serverid = self.get_server_id()

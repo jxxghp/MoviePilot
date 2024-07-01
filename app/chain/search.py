@@ -1,5 +1,4 @@
 import pickle
-import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict
@@ -23,6 +22,8 @@ class SearchChain(ChainBase):
     """
     站点资源搜索处理链
     """
+    
+    __result_temp_file = "__search_result__"
 
     def __init__(self):
         super().__init__()
@@ -53,9 +54,9 @@ class SearchChain(ChainBase):
                 }
             }
         results = self.process(mediainfo=mediainfo, area=area, no_exists=no_exists)
-        # 保存结果
+        # 保存到本地文件
         bytes_results = pickle.dumps(results)
-        self.systemconfig.set(SystemConfigKey.SearchResults, bytes_results)
+        self.save_cache(bytes_results, self.__result_temp_file)
         return results
 
     def search_by_title(self, title: str, page: int = 0, site: int = None) -> List[Context]:
@@ -77,23 +78,20 @@ class SearchChain(ChainBase):
         # 组装上下文
         contexts = [Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
                             torrent_info=torrent) for torrent in torrents]
-        # 保存结果
+        # 保存到本地文件
         bytes_results = pickle.dumps(contexts)
-        self.systemconfig.set(SystemConfigKey.SearchResults, bytes_results)
+        self.save_cache(bytes_results, self.__result_temp_file)
         return contexts
 
     def last_search_results(self) -> List[Context]:
         """
         获取上次搜索结果
         """
-        results = self.systemconfig.get(SystemConfigKey.SearchResults)
+        # 读取本地文件缓存
+        results = self.load_cache(self.__result_temp_file)
         if not results:
             return []
-        try:
-            return pickle.loads(results)
-        except Exception as e:
-            logger.error(f'加载搜索结果失败：{str(e)} - {traceback.format_exc()}')
-            return []
+        return results
 
     def process(self, mediainfo: MediaInfo,
                 keyword: str = None,

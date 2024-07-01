@@ -19,14 +19,14 @@ class Plex:
     _plex = None
     _session = None
 
-    def __init__(self):
-        self._host = settings.PLEX_HOST
+    def __init__(self, host: str = None, play_host: str = None, token: str = None):
+        self._host = host
         if self._host:
             self._host = RequestUtils.standardize_base_url(self._host)
-        self._playhost = settings.PLEX_PLAY_HOST
+        self._playhost = play_host
         if self._playhost:
             self._playhost = RequestUtils.standardize_base_url(self._playhost)
-        self._token = settings.PLEX_TOKEN
+        self._token = token
         if self._host and self._token:
             try:
                 self._plex = PlexServer(self._host, self._token)

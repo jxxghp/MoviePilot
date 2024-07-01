@@ -95,100 +95,10 @@ class Settings(BaseSettings):
     AUTH_SITE: str = ""
     # 交互搜索自动下载用户ID，使用,分割
     AUTO_DOWNLOAD_USER: Optional[str] = None
-    # 消息通知渠道 telegram/wechat/slack/synologychat/vocechat/webpush，多个通知渠道用,分隔
-    MESSAGER: str = "webpush"
-    # WeChat企业ID
-    WECHAT_CORPID: Optional[str] = None
-    # WeChat应用Secret
-    WECHAT_APP_SECRET: Optional[str] = None
-    # WeChat应用ID
-    WECHAT_APP_ID: Optional[str] = None
-    # WeChat代理服务器
-    WECHAT_PROXY: str = "https://qyapi.weixin.qq.com"
-    # WeChat Token
-    WECHAT_TOKEN: Optional[str] = None
-    # WeChat EncodingAESKey
-    WECHAT_ENCODING_AESKEY: Optional[str] = None
-    # WeChat 管理员
-    WECHAT_ADMINS: Optional[str] = None
-    # Telegram Bot Token
-    TELEGRAM_TOKEN: Optional[str] = None
-    # Telegram Chat ID
-    TELEGRAM_CHAT_ID: Optional[str] = None
-    # Telegram 用户ID，使用,分隔
-    TELEGRAM_USERS: str = ""
-    # Telegram 管理员ID，使用,分隔
-    TELEGRAM_ADMINS: str = ""
-    # Slack Bot User OAuth Token
-    SLACK_OAUTH_TOKEN: str = ""
-    # Slack App-Level Token
-    SLACK_APP_TOKEN: str = ""
-    # Slack 频道名称
-    SLACK_CHANNEL: str = ""
-    # SynologyChat Webhook
-    SYNOLOGYCHAT_WEBHOOK: str = ""
-    # SynologyChat Token
-    SYNOLOGYCHAT_TOKEN: str = ""
-    # VoceChat地址
-    VOCECHAT_HOST: str = ""
-    # VoceChat ApiKey
-    VOCECHAT_API_KEY: str = ""
-    # VoceChat 频道ID
-    VOCECHAT_CHANNEL_ID: str = ""
-    # 下载器 qbittorrent/transmission，启用多个下载器时使用,分隔，只有第一个会被默认使用
-    DOWNLOADER: str = "qbittorrent"
-    # 下载器监控开关
-    DOWNLOADER_MONITOR: bool = True
-    # Qbittorrent地址，IP:PORT
-    QB_HOST: Optional[str] = None
-    # Qbittorrent用户名
-    QB_USER: Optional[str] = None
-    # Qbittorrent密码
-    QB_PASSWORD: Optional[str] = None
-    # Qbittorrent分类自动管理
-    QB_CATEGORY: bool = False
-    # Qbittorrent按顺序下载
-    QB_SEQUENTIAL: bool = True
-    # Qbittorrent忽略队列限制，强制继续
-    QB_FORCE_RESUME: bool = False
-    # Transmission地址，IP:PORT
-    TR_HOST: Optional[str] = None
-    # Transmission用户名
-    TR_USER: Optional[str] = None
-    # Transmission密码
-    TR_PASSWORD: Optional[str] = None
     # 种子标签
     TORRENT_TAG: str = "MOVIEPILOT"
     # 下载站点字幕
     DOWNLOAD_SUBTITLE: bool = True
-    # 媒体服务器 emby/jellyfin/plex，多个媒体服务器,分割
-    MEDIASERVER: str = "emby"
-    # 媒体服务器同步间隔（小时）
-    MEDIASERVER_SYNC_INTERVAL: Optional[int] = 6
-    # 媒体服务器同步黑名单，多个媒体库名称,分割
-    MEDIASERVER_SYNC_BLACKLIST: Optional[str] = None
-    # EMBY服务器地址，IP:PORT
-    EMBY_HOST: Optional[str] = None
-    # EMBY外网地址，http(s)://DOMAIN:PORT，未设置时使用EMBY_HOST
-    EMBY_PLAY_HOST: Optional[str] = None
-    # EMBY Api Key
-    EMBY_API_KEY: Optional[str] = None
-    # Jellyfin服务器地址，IP:PORT
-    JELLYFIN_HOST: Optional[str] = None
-    # Jellyfin外网地址，http(s)://DOMAIN:PORT，未设置时使用JELLYFIN_HOST
-    JELLYFIN_PLAY_HOST: Optional[str] = None
-    # Jellyfin Api Key
-    JELLYFIN_API_KEY: Optional[str] = None
-    # Plex服务器地址，IP:PORT
-    PLEX_HOST: Optional[str] = None
-    # Plex外网地址，http(s)://DOMAIN:PORT，未设置时使用PLEX_HOST
-    PLEX_PLAY_HOST: Optional[str] = None
-    # Plex Token
-    PLEX_TOKEN: Optional[str] = None
-    # 转移方式 link/copy/move/softlink
-    TRANSFER_TYPE: str = "copy"
-    # 是否同盘优先
-    TRANSFER_SAME_DISK: bool = True
     # CookieCloud是否启动本地服务
     COOKIECLOUD_ENABLE_LOCAL: Optional[bool] = False
     # CookieCloud服务器地址
@@ -243,7 +153,6 @@ class Settings(BaseSettings):
 
     @validator("SUBSCRIBE_RSS_INTERVAL",
                "COOKIECLOUD_INTERVAL",
-               "MEDIASERVER_SYNC_INTERVAL",
                "META_CACHE_EXPIRE",
                pre=True, always=True)
     def convert_int(cls, value):
@@ -334,24 +243,6 @@ class Settings(BaseSettings):
                 "Authorization": f"Bearer {self.GITHUB_TOKEN}"
             }
         return {}
-
-    @property
-    def DEFAULT_DOWNLOADER(self):
-        """
-        默认下载器
-        """
-        if not self.DOWNLOADER:
-            return None
-        return next((d for d in settings.DOWNLOADER.split(",") if d), None)
-
-    @property
-    def DOWNLOADERS(self):
-        """
-        下载器列表
-        """
-        if not self.DOWNLOADER:
-            return []
-        return [d for d in settings.DOWNLOADER.split(",") if d]
 
     @property
     def VAPID(self):

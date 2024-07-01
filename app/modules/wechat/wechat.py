@@ -4,7 +4,6 @@ import threading
 from datetime import datetime
 from typing import Optional, List, Dict
 
-from app.core.config import settings
 from app.core.context import MediaInfo, Context
 from app.core.metainfo import MetaInfo
 from app.log import logger
@@ -28,24 +27,33 @@ class WeChat:
     _appsecret = None
     # 企业微信AppID
     _appid = None
+    # 代理
+    _proxy = None
 
     # 企业微信发送消息URL
-    _send_msg_url = f"{settings.WECHAT_PROXY}/cgi-bin/message/send?access_token=%s"
+    _send_msg_url = "/cgi-bin/message/send?access_token=%s"
     # 企业微信获取TokenURL
-    _token_url = f"{settings.WECHAT_PROXY}/cgi-bin/gettoken?corpid=%s&corpsecret=%s"
+    _token_url = "/cgi-bin/gettoken?corpid=%s&corpsecret=%s"
     # 企业微信创新菜单URL
-    _create_menu_url = f"{settings.WECHAT_PROXY}/cgi-bin/menu/create?access_token=%s&agentid=%s"
+    _create_menu_url = "/cgi-bin/menu/create?access_token=%s&agentid=%s"
 
-    def __init__(self):
+    def __init__(self, corpid: str = None, appsecret: str = None, appid: str = None, proxy: str = None):
         """
         初始化
         """
-        self._corpid = settings.WECHAT_CORPID
-        self._appsecret = settings.WECHAT_APP_SECRET
-        self._appid = settings.WECHAT_APP_ID
+        self._corpid = corpid
+        self._appsecret = appsecret
+        self._appid = appid
+        self._proxy = proxy or "https://qyapi.weixin.qq.com"
 
         if self._corpid and self._appsecret and self._appid:
             self.__get_access_token()
+
+        if self._proxy:
+            self._proxy = self._proxy.rstrip("/")
+            self._send_msg_url = f"{self._proxy}/{self._send_msg_url}"
+            self._token_url = f"{self._proxy}/{self._token_url}"
+            self._create_menu_url = f"{self._proxy}/{self._create_menu_url}"
 
     def get_state(self):
         """
