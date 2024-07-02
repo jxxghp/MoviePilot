@@ -83,7 +83,7 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def download(self, fileitm: schemas.FileItem, path: Path):
+    def download(self, fileitm: schemas.FileItem, path: Path) -> bool:
         """
         下载文件，保存到本地
         """
