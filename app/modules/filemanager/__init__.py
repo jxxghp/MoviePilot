@@ -15,7 +15,7 @@ from app.helper.module import ModuleHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storage import StorageBase
-from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, MediaDirectory, FileItem
+from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem
 from app.schemas.types import MediaType
 from app.utils.system import SystemUtils
 
@@ -51,39 +51,31 @@ class FileManagerModule(_ModuleBase):
         测试模块连接性
         """
         directoryhelper = DirectoryHelper()
-        # 检查下载目录
-        download_paths = directoryhelper.get_download_dirs()
+        # 检查本地下载目录是否存在
+        download_paths = directoryhelper.get_local_download_dirs()
         if not download_paths:
             return False, "下载目录未设置"
         for d_path in download_paths:
-            path = d_path.path
+            path = d_path.download_path
             if not path:
                 return False, f"下载目录 {d_path.name} 对应路径未设置"
             download_path = Path(path)
             if not download_path.exists():
                 return False, f"下载目录 {d_path.name} 对应路径 {path} 不存在"
-        # 检查媒体库目录
-        libaray_paths = directoryhelper.get_library_dirs()
+        # 检查本地媒体库目录是否存在
+        libaray_paths = directoryhelper.get_local_library_dirs()
         if not libaray_paths:
             return False, "媒体库目录未设置"
         for l_path in libaray_paths:
-            path = l_path.path
+            path = l_path.library_path
             if not path:
                 return False, f"媒体库目录 {l_path.name} 对应路径未设置"
             library_path = Path(path)
             if not library_path.exists():
                 return False, f"媒体库目录{l_path.name} 对应的路径 {path} 不存在"
-        # 检查硬链接条件
-        if settings.DOWNLOADER_MONITOR and settings.TRANSFER_TYPE == "link":
-            for d_path in download_paths:
-                link_ok = False
-                for l_path in libaray_paths:
-                    if SystemUtils.is_same_disk(Path(d_path.path), Path(l_path.path)):
-                        link_ok = True
-                        break
-                if not link_ok:
-                    return False, f"媒体库目录中未找到" \
-                                  f"与下载目录 {d_path.path} 在同一磁盘/存储空间/映射路径的目录，将无法硬链接"
+        # TODO 检查硬链接条件
+
+        # TODO 检查网盘目录
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
@@ -198,20 +190,23 @@ class FileManagerModule(_ModuleBase):
         # 获取目标路径
         directoryhelper = DirectoryHelper()
         if target_path:
-            dir_info = directoryhelper.get_library_dir(mediainfo, in_path=fileitem.path, to_path=target_path)
+            dir_info = directoryhelper.get_dir(mediainfo, dest_path=target_path)
         else:
-            dir_info = directoryhelper.get_library_dir(mediainfo, in_path=fileitem.path)
+            dir_info = directoryhelper.get_dir(mediainfo)
         if dir_info:
             # 是否需要刮削
             if scrape is None:
-                need_scrape = dir_info.scrape
+                need_scrape = dir_info.scraping
             else:
                 need_scrape = scrape
+            # 是否需要重命名
+            need_rename = dir_info.renaming
             # 拼装媒体库一、二级子目录
             target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=dir_info)
         elif target_path:
             # 自定义目标路径
             need_scrape = scrape or False
+            need_rename = True
         else:
             # 未找到有效的媒体库目录
             logger.error(
@@ -229,7 +224,8 @@ class FileManagerModule(_ModuleBase):
                                    target_storage=target_storage,
                                    target_path=target_path,
                                    episodes_info=episodes_info,
-                                   need_scrape=need_scrape)
+                                   need_scrape=need_scrape,
+                                   need_rename=need_rename)
 
     def __get_storage_oper(self, _storage: str):
         """
@@ -595,7 +591,7 @@ class FileManagerModule(_ModuleBase):
         if target_storage == "local" and (target_file.exists() or target_file.is_symlink()):
             if not over_flag:
                 logger.warn(f"文件已存在：{target_file}")
-                return 0
+                return None, f"{target_file} 已存在"
             else:
                 logger.info(f"正在删除已存在的文件：{target_file}")
                 target_file.unlink()
@@ -617,24 +613,24 @@ class FileManagerModule(_ModuleBase):
         return None, errmsg
 
     @staticmethod
-    def __get_dest_dir(mediainfo: MediaInfo, target_dir: MediaDirectory) -> Path:
+    def __get_dest_dir(mediainfo: MediaInfo, target_dir: TransferDirectoryConf) -> Path:
         """
         根据设置并装媒体库目录
         :param mediainfo: 媒体信息
         :target_dir: 媒体库根目录
         :typename_dir: 是否加上类型目录
         """
-        if not target_dir.media_type and target_dir.auto_category:
+        if not target_dir.media_type and target_dir.library_type_folder:
             # 一级自动分类
-            download_dir = Path(target_dir.path) / mediainfo.type.value
+            library_dir = Path(target_dir.library_path) / mediainfo.type.value
         else:
-            download_dir = Path(target_dir.path)
+            library_dir = Path(target_dir.library_path)
 
-        if not target_dir.category and target_dir.auto_category and mediainfo.category:
+        if not target_dir.media_category and target_dir.library_category_folder and mediainfo.category:
             # 二级自动分类
-            download_dir = download_dir / mediainfo.category
+            library_dir = library_dir / mediainfo.category
 
-        return download_dir
+        return library_dir
 
     def transfer_media(self,
                        fileitem: FileItem,
@@ -644,7 +640,8 @@ class FileManagerModule(_ModuleBase):
                        target_storage: str,
                        target_path: Path,
                        episodes_info: List[TmdbEpisode] = None,
-                       need_scrape: bool = False
+                       need_scrape: bool = False,
+                       need_rename: bool = True
                        ) -> TransferInfo:
         """
         识别并整理一个文件或者一个目录下的所有文件
@@ -656,6 +653,7 @@ class FileManagerModule(_ModuleBase):
         :param transfer_type: 文件整理方式
         :param episodes_info: 当前季的全部集信息
         :param need_scrape: 是否需要刮削
+        :param need_rename: 是否需要重命名
         :return: TransferInfo、错误信息
         """
 
@@ -693,12 +691,15 @@ class FileManagerModule(_ModuleBase):
         # 判断是否为文件夹
         if fileitem.type == "dir":
             # 整理整个目录，一般为蓝光原盘
-            new_path = self.get_rename_path(
-                path=target_path,
-                template_string=rename_format,
-                rename_dict=self.__get_naming_dict(meta=in_meta,
-                                                   mediainfo=mediainfo)
-            ).parent
+            if need_rename:
+                new_path = self.get_rename_path(
+                    path=target_path,
+                    template_string=rename_format,
+                    rename_dict=self.__get_naming_dict(meta=in_meta,
+                                                       mediainfo=mediainfo)
+                ).parent
+            else:
+                new_path = target_path / fileitem.name
             # 整理目录
             new_item, errmsg = self.__transfer_dir(fileitem=fileitem,
                                                    target_storage=target_storage,
@@ -740,16 +741,19 @@ class FileManagerModule(_ModuleBase):
                     in_meta.end_episode = None
 
             # 目的文件名
-            new_file = self.get_rename_path(
-                path=target_path,
-                template_string=rename_format,
-                rename_dict=self.__get_naming_dict(
-                    meta=in_meta,
-                    mediainfo=mediainfo,
-                    episodes_info=episodes_info,
-                    file_ext=f".{fileitem.extension}"
+            if need_rename:
+                new_file = self.get_rename_path(
+                    path=target_path,
+                    template_string=rename_format,
+                    rename_dict=self.__get_naming_dict(
+                        meta=in_meta,
+                        mediainfo=mediainfo,
+                        episodes_info=episodes_info,
+                        file_ext=f".{fileitem.extension}"
+                    )
                 )
-            )
+            else:
+                new_file = target_path / fileitem.name
 
             # 判断是否要覆盖
             overflag = False

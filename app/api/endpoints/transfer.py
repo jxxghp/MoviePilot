@@ -96,14 +96,14 @@ def manual_transfer(fileitem: FileItem = None,
         force = True
         if history.status and ("move" in history.mode):
             # 重新整理成功的转移，则使用成功的 dest 做 in_path
-            src_fileitem = json.loads(history.dest_fileitem)
+            src_fileitem = FileItem(**json.loads(history.dest_fileitem))
         else:
             # 源路径
-            src_fileitem = json.loads(history.src_fileitem)
+            src_fileitem = FileItem(**json.loads(history.src_fileitem))
             # 目的路径
             if history.dest_fileitem:
                 # 删除旧的已整理文件
-                dest_fileitem = json.loads(history.dest_fileitem)
+                dest_fileitem = FileItem(**json.loads(history.dest_fileitem))
                 transfer.delete_files(dest_fileitem)
     elif fileitem:
         src_fileitem = fileitem

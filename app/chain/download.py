@@ -245,22 +245,23 @@ class DownloadChain(ChainBase):
         # 下载目录
         if save_path:
             # 有自定义下载目录时，尝试匹配目录配置
-            dir_info = self.directoryhelper.get_download_dir(_media, to_path=Path(save_path))
+            dir_info = self.directoryhelper.get_dir(_media, src_path=Path(save_path), local=True)
         else:
             # 根据媒体信息查询下载目录配置
-            dir_info = self.directoryhelper.get_download_dir(_media)
+            dir_info = self.directoryhelper.get_dir(_media, local=True)
+
         # 拼装子目录
         if dir_info:
             # 一级目录
-            if not dir_info.media_type and dir_info.auto_category:
+            if not dir_info.media_type and dir_info.download_type_folder:
                 # 一级自动分类
-                download_dir = Path(dir_info.path) / _media.type.value
+                download_dir = Path(dir_info.download_path) / _media.type.value
             else:
                 # 一级不分类
-                download_dir = Path(dir_info.path)
+                download_dir = Path(dir_info.download_path)
 
             # 二级目录
-            if not dir_info.category and dir_info.auto_category and _media and _media.category:
+            if not dir_info.media_category and dir_info.download_category_folder and _media and _media.category:
                 # 二级自动分类
                 download_dir = download_dir / _media.category
         elif save_path:

@@ -374,7 +374,7 @@ class PluginManager(metaclass=Singleton):
             return plugin.get_page() or []
         return []
 
-    def get_plugin_dashboard(self, pid: str, key: str, **kwargs) -> Optional[schemas.PluginDashboard]:
+    def get_plugin_dashboard(self, pid: str, key: str = None, **kwargs) -> Optional[schemas.PluginDashboard]:
         """
         获取插件仪表盘
         :param pid: 插件ID

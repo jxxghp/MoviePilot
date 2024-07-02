@@ -63,11 +63,11 @@ class TransferChain(ChainBase):
 
         # 全局锁，避免重复处理
         with lock:
-            logger.info("开始执行下载器文件转移 ...")
+            logger.info("开始整理下载器中已经完成下载的文件 ...")
             # 从下载器获取种子列表
             torrents: Optional[List[TransferTorrent]] = self.list_torrents(status=TorrentStatus.TRANSFER)
             if not torrents:
-                logger.info("没有获取到已完成的下载任务")
+                logger.info("没有已完成下载但未整理的任务")
                 return False
 
             logger.info(f"获取到 {len(torrents)} 个已完成的下载任务")
@@ -109,7 +109,7 @@ class TransferChain(ChainBase):
                 # 设置下载任务状态
                 self.transfer_completed(hashs=torrent.hash, path=torrent.path)
             # 结束
-            logger.info("下载器文件转移执行完成")
+            logger.info("所有下载器中下载完成的文件已整理完成")
             return True
 
     def __do_transfer(self, fileitem: FileItem,

@@ -176,7 +176,6 @@ def tv_hot(page: int = 1,
 @router.get("/credits/{doubanid}/{type_name}", summary="豆瓣演员阵容", response_model=List[schemas.MediaPerson])
 def douban_credits(doubanid: str,
                    type_name: str,
-                   page: int = 1,
                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据豆瓣ID查询演员阵容，type_name: 电影/电视剧

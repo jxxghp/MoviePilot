@@ -64,10 +64,8 @@ class SystemConfigKey(Enum):
     MediaServers = "MediaServers"
     # 消息通知配置
     Notifications = "Notifications"
-    # 下载目录配置
-    DownloadDirectories = "DownloadDirectories"
-    # 媒体库目录配置
-    LibraryDirectories = "LibraryDirectories"
+    # 目录配置
+    Directories = "Directories"
     # 阿里云盘认证参数
     UserAliyunParams = "UserAliyunParams"
     # 115网盘认证参数

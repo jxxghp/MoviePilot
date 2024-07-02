@@ -164,7 +164,7 @@ def plugin_dashboard(plugin_id: str, user_agent: Annotated[str | None, Header()]
     """
     根据插件ID获取插件仪表板
     """
-    return PluginManager().get_plugin_dashboard(plugin_id, key=None, user_agent=user_agent)
+    return PluginManager().get_plugin_dashboard(plugin_id, user_agent=user_agent)
 
 
 @router.get("/dashboard/{plugin_id}/{key}", summary="获取插件仪表板配置")

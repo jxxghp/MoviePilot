@@ -119,26 +119,26 @@ def not_exists(media_in: schemas.MediaInfo,
 
 
 @router.get("/latest", summary="最新入库条目", response_model=List[schemas.MediaServerPlayItem])
-def latest(count: int = 18,
+def latest(server: str, count: int = 18,
            userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器最新入库条目
     """
-    return MediaServerChain().latest(count=count, username=userinfo.username) or []
+    return MediaServerChain().latest(server=server, count=count, username=userinfo.username) or []
 
 
 @router.get("/playing", summary="正在播放条目", response_model=List[schemas.MediaServerPlayItem])
-def playing(count: int = 12,
+def playing(server: str, count: int = 12,
             userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器正在播放条目
     """
-    return MediaServerChain().playing(count=count, username=userinfo.username) or []
+    return MediaServerChain().playing(server=server, count=count, username=userinfo.username) or []
 
 
 @router.get("/library", summary="媒体库列表", response_model=List[schemas.MediaServerLibrary])
-def library(userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def library(server: str, userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器媒体库列表
     """
-    return MediaServerChain().librarys(username=userinfo.username) or []
+    return MediaServerChain().librarys(server=server, username=userinfo.username) or []

@@ -1,4 +1,4 @@
-from pathlib import Path
+import json
 from typing import List, Any
 
 from fastapi import APIRouter, Depends
@@ -81,17 +81,19 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
     """
     删除转移历史记录
     """
-    history = TransferHistory.get(db, history_in.id)
+    history: TransferHistory = TransferHistory.get(db, history_in.id)
     if not history:
         return schemas.Response(success=False, msg="记录不存在")
     # 册除媒体库文件
-    if deletedest and history.dest:
-        state, msg = TransferChain().delete_files(Path(history.dest))
+    if deletedest and history.dest_fileitem:
+        dest_fileitem = schemas.FileItem(**json.loads(history.dest_fileitem))
+        state, msg = TransferChain().delete_files(dest_fileitem)
         if not state:
             return schemas.Response(success=False, msg=msg)
     # 删除源文件
-    if deletesrc and history.src:
-        state, msg = TransferChain().delete_files(Path(history.src))
+    if deletesrc and history.dest_fileitem:
+        dest_fileitem = schemas.FileItem(**json.loads(history.dest_fileitem))
+        state, msg = TransferChain().delete_files(dest_fileitem)
         if not state:
             return schemas.Response(success=False, msg=msg)
         # 发送事件

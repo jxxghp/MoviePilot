@@ -120,7 +120,7 @@ def scrape(fileitem: schemas.FileItem,
         if not fileitem.fileid:
             return schemas.Response(success=False, message="刮削文件ID无效")
     # 手动刮削
-    chain.scrape_metadata(storage=storage, fileitem=fileitem, meta=meta, mediainfo=mediainfo)
+    chain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
     return schemas.Response(success=True, message=f"{fileitem.path} 刮削完成")
 
 

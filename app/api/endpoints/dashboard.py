@@ -43,23 +43,23 @@ def statistic2(_: str = Depends(verify_apitoken)) -> Any:
     return statistic()
 
 
-@router.get("/storage", summary="存储空间", response_model=schemas.Storage)
+@router.get("/storage", summary="本地存储空间", response_model=schemas.Storage)
 def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    查询存储空间信息
+    查询本地存储空间信息
     """
-    library_dirs = DirectoryHelper().get_library_dirs()
-    total_storage, free_storage = SystemUtils.space_usage([Path(d.path) for d in library_dirs if d.path])
+    library_dirs = DirectoryHelper().get_local_library_dirs()
+    total_storage, free_storage = SystemUtils.space_usage([Path(d.library_path) for d in library_dirs])
     return schemas.Storage(
         total_storage=total_storage,
         used_storage=total_storage - free_storage
     )
 
 
-@router.get("/storage2", summary="存储空间（API_TOKEN）", response_model=schemas.Storage)
+@router.get("/storage2", summary="本地存储空间（API_TOKEN）", response_model=schemas.Storage)
 def storage2(_: str = Depends(verify_apitoken)) -> Any:
     """
-    查询存储空间信息 API_TOKEN认证（?token=xxx）
+    查询本地存储空间信息 API_TOKEN认证（?token=xxx）
     """
     return storage()
 
@@ -78,8 +78,8 @@ def downloader(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     查询下载器信息
     """
     # 下载目录空间
-    download_dirs = DirectoryHelper().get_download_dirs()
-    _, free_space = SystemUtils.space_usage([Path(d.path) for d in download_dirs if d.path])
+    download_dirs = DirectoryHelper().get_local_download_dirs()
+    _, free_space = SystemUtils.space_usage([Path(d.download_path) for d in download_dirs])
     # 下载器信息
     downloader_info = schemas.DownloaderInfo()
     transfer_infos = DashboardChain().downloader_info()
