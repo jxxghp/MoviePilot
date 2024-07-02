@@ -21,6 +21,7 @@ from app.utils.system import SystemUtils
 class TransmissionModule(_ModuleBase):
     _servers: Dict[str, Transmission] = {}
     _default_server: Transmission = None
+    _default_server_name: str = None
 
     def init_module(self) -> None:
         # 读取下载器配置
@@ -32,6 +33,7 @@ class TransmissionModule(_ModuleBase):
             if server.type == "transmission":
                 self._servers[server.name] = Transmission(**server.config)
                 if server.default:
+                    self._default_server_name = server.name
                     self._default_server = self._servers[server.name]
 
     @staticmethod
@@ -77,7 +79,7 @@ class TransmissionModule(_ModuleBase):
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None,
-                 downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[Tuple[Optional[str], str]]:
+                 downloader: str = None) -> Optional[Tuple[Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接
@@ -86,7 +88,7 @@ class TransmissionModule(_ModuleBase):
         :param episodes:  需要下载的集数
         :param category:  分类，TR中未使用
         :param downloader:  下载器
-        :return: 种子Hash
+        :return: 下载器名称、种子Hash、错误原因
         """
 
         def __get_torrent_info() -> Tuple[str, int]:
@@ -104,9 +106,9 @@ class TransmissionModule(_ModuleBase):
                 return "", 0
 
         if not content:
-            return None, "下载内容为空"
+            return None, None, "下载内容为空"
         if isinstance(content, Path) and not content.exists():
-            return None, f"种子文件不存在：{content}"
+            return None, None, f"种子文件不存在：{content}"
 
         # 获取下载器
         server = self.get_server(downloader)
@@ -132,11 +134,11 @@ class TransmissionModule(_ModuleBase):
             # 读取种子的名称
             torrent_name, torrent_size = __get_torrent_info()
             if not torrent_name:
-                return None, f"添加种子任务失败：无法读取种子文件"
+                return None, None, f"添加种子任务失败：无法读取种子文件"
             # 查询所有下载器的种子
             torrents, error = server.get_torrents()
             if error:
-                return None, "无法连接transmission下载器"
+                return None, None, "无法连接transmission下载器"
             if torrents:
                 for torrent in torrents:
                     # 名称与大小相等则认为是同一个种子
@@ -155,15 +157,15 @@ class TransmissionModule(_ModuleBase):
                             if settings.TORRENT_TAG and settings.TORRENT_TAG not in labels:
                                 labels.append(settings.TORRENT_TAG)
                                 server.set_torrent_tag(ids=torrent_hash, tags=labels)
-                        return torrent_hash, f"下载任务已存在"
-            return None, f"添加种子任务失败：{content}"
+                        return downloader or self._default_server, torrent_hash, f"下载任务已存在"
+            return None, None, f"添加种子任务失败：{content}"
         else:
             torrent_hash = torrent.hashString
             if is_paused:
                 # 选择文件
                 torrent_files = server.get_files(torrent_hash)
                 if not torrent_files:
-                    return torrent_hash, "获取种子文件失败，下载任务可能在暂停状态"
+                    return downloader or self._default_server, torrent_hash, "获取种子文件失败，下载任务可能在暂停状态"
                 # 需要的文件信息
                 file_ids = []
                 unwanted_file_ids = []
@@ -184,13 +186,13 @@ class TransmissionModule(_ModuleBase):
                 server.set_unwanted_files(torrent_hash, unwanted_file_ids)
                 # 开始任务
                 server.start_torrents(torrent_hash)
-                return torrent_hash, "添加下载任务成功"
+                return downloader or self._default_server, torrent_hash, "添加下载任务成功"
             else:
-                return torrent_hash, "添加下载任务成功"
+                return downloader or self._default_server, torrent_hash, "添加下载任务成功"
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,
-                      downloader: str = settings.DEFAULT_DOWNLOADER
+                      downloader: str = None
                       ) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
         """
         获取下载器种子列表
@@ -259,7 +261,7 @@ class TransmissionModule(_ModuleBase):
         return ret_torrents
 
     def transfer_completed(self, hashs: str, path: Path = None,
-                           downloader: str = settings.DEFAULT_DOWNLOADER) -> None:
+                           downloader: str = None) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash
@@ -291,7 +293,7 @@ class TransmissionModule(_ModuleBase):
                     shutil.rmtree(path, ignore_errors=True)
 
     def remove_torrents(self, hashs: Union[str, list], delete_file: bool = True,
-                        downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[bool]:
+                        downloader: str = None) -> Optional[bool]:
         """
         删除下载器种子
         :param hashs:  种子Hash
@@ -306,7 +308,7 @@ class TransmissionModule(_ModuleBase):
         return server.delete_torrents(delete_file=delete_file, ids=hashs)
 
     def start_torrents(self, hashs: Union[list, str],
-                       downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[bool]:
+                       downloader: str = None) -> Optional[bool]:
         """
         开始下载
         :param hashs:  种子Hash
@@ -320,7 +322,7 @@ class TransmissionModule(_ModuleBase):
         return server.start_torrents(ids=hashs)
 
     def stop_torrents(self, hashs: Union[list, str],
-                      downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[bool]:
+                      downloader: str = None) -> Optional[bool]:
         """
         停止下载
         :param hashs:  种子Hash
@@ -333,7 +335,7 @@ class TransmissionModule(_ModuleBase):
             return None
         return server.start_torrents(ids=hashs)
 
-    def torrent_files(self, tid: str, downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[List[File]]:
+    def torrent_files(self, tid: str, downloader: str = None) -> Optional[List[File]]:
         """
         获取种子文件列表
         """

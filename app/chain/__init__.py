@@ -329,8 +329,8 @@ class ChainBase(metaclass=ABCMeta):
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None,
-                 downloader: str = settings.DEFAULT_DOWNLOADER
-                 ) -> Optional[Tuple[Optional[str], str]]:
+                 downloader: str = None
+                 ) -> Optional[Tuple[Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接
@@ -339,7 +339,7 @@ class ChainBase(metaclass=ABCMeta):
         :param episodes:  需要下载的集数
         :param category:  种子分类
         :param downloader:  下载器
-        :return: 种子Hash，错误信息
+        :return: 下载器名称、种子Hash、错误信息
         """
         return self.run_module("download", content=content, download_dir=download_dir,
                                cookie=cookie, episodes=episodes, category=category,
@@ -358,7 +358,7 @@ class ChainBase(metaclass=ABCMeta):
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,
-                      downloader: str = settings.DEFAULT_DOWNLOADER
+                      downloader: str = None
                       ) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
         """
         获取下载器种子列表
@@ -390,7 +390,7 @@ class ChainBase(metaclass=ABCMeta):
                                target_path=target_path, episodes_info=episodes_info, scrape=scrape)
 
     def transfer_completed(self, hashs: str, path: Path = None,
-                           downloader: str = settings.DEFAULT_DOWNLOADER) -> None:
+                           downloader: str = None) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash
@@ -400,7 +400,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("transfer_completed", hashs=hashs, path=path, downloader=downloader)
 
     def remove_torrents(self, hashs: Union[str, list], delete_file: bool = True,
-                        downloader: str = settings.DEFAULT_DOWNLOADER) -> bool:
+                        downloader: str = None) -> bool:
         """
         删除下载器种子
         :param hashs:  种子Hash
@@ -410,7 +410,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("remove_torrents", hashs=hashs, delete_file=delete_file, downloader=downloader)
 
-    def start_torrents(self, hashs: Union[list, str], downloader: str = settings.DEFAULT_DOWNLOADER) -> bool:
+    def start_torrents(self, hashs: Union[list, str], downloader: str = None) -> bool:
         """
         开始下载
         :param hashs:  种子Hash
@@ -419,7 +419,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("start_torrents", hashs=hashs, downloader=downloader)
 
-    def stop_torrents(self, hashs: Union[list, str], downloader: str = settings.DEFAULT_DOWNLOADER) -> bool:
+    def stop_torrents(self, hashs: Union[list, str], downloader: str = None) -> bool:
         """
         停止下载
         :param hashs:  种子Hash
@@ -429,7 +429,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("stop_torrents", hashs=hashs, downloader=downloader)
 
     def torrent_files(self, tid: str,
-                      downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[Union[TorrentFilesList, List[File]]]:
+                      downloader: str = None) -> Optional[Union[TorrentFilesList, List[File]]]:
         """
         获取种子文件
         :param tid:  种子Hash

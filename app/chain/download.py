@@ -276,9 +276,9 @@ class DownloadChain(ChainBase):
                                                 download_dir=download_dir,
                                                 category=_media.category)
         if result:
-            _hash, error_msg = result
+            _downloader, _hash, error_msg = result
         else:
-            _hash, error_msg = None, "未知错误"
+            _downloader, _hash, error_msg = None, None, "未找到下载器"
 
         if _hash:
             # 下载文件路径
@@ -325,7 +325,7 @@ class DownloadChain(ChainBase):
                     continue
                 files_to_add.append({
                     "download_hash": _hash,
-                    "downloader": settings.DEFAULT_DOWNLOADER,
+                    "downloader": _downloader,
                     "fullpath": str(download_dir / _folder_name / file),
                     "savepath": str(download_dir / _folder_name),
                     "filepath": file,

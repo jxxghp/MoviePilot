@@ -21,6 +21,7 @@ from app.utils.system import SystemUtils
 class QbittorrentModule(_ModuleBase):
     _servers: Dict[str, Qbittorrent] = {}
     _default_server: Qbittorrent = None
+    _default_server_name: str = None
 
     def init_module(self) -> None:
         """
@@ -35,6 +36,7 @@ class QbittorrentModule(_ModuleBase):
             if server.type == "qbittorrent":
                 self._servers[server.name] = Qbittorrent(**server.config)
                 if server.default:
+                    self._default_server_name = server.name
                     self._default_server = self._servers[server.name]
 
     @staticmethod
@@ -77,7 +79,7 @@ class QbittorrentModule(_ModuleBase):
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None,
-                 downloader: str = None) -> Optional[Tuple[Optional[str], str]]:
+                 downloader: str = None) -> Optional[Tuple[Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接
@@ -104,10 +106,10 @@ class QbittorrentModule(_ModuleBase):
                 return "", 0
 
         if not content:
-            return None, "下载内容为空"
+            return None, None, "下载内容为空"
         if isinstance(content, Path) and not content.exists():
             logger.error(f"种子文件不存在：{content}")
-            return None, f"种子文件不存在：{content}"
+            return None, None, f"种子文件不存在：{content}"
 
         # 获取下载器
         server = self.get_server(downloader)
@@ -135,11 +137,11 @@ class QbittorrentModule(_ModuleBase):
             # 读取种子的名称
             torrent_name, torrent_size = __get_torrent_info()
             if not torrent_name:
-                return None, f"添加种子任务失败：无法读取种子文件"
+                return None, None, f"添加种子任务失败：无法读取种子文件"
             # 查询所有下载器的种子
             torrents, error = server.get_torrents()
             if error:
-                return None, "无法连接qbittorrent下载器"
+                return None, None, "无法连接qbittorrent下载器"
             if torrents:
                 for torrent in torrents:
                     # 名称与大小相等则认为是同一个种子
@@ -153,19 +155,19 @@ class QbittorrentModule(_ModuleBase):
                         if settings.TORRENT_TAG and settings.TORRENT_TAG not in torrent_tags:
                             logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
                             server.set_torrents_tag(ids=torrent_hash, tags=[settings.TORRENT_TAG])
-                        return torrent_hash, f"下载任务已存在"
-            return None, f"添加种子任务失败：{content}"
+                        return downloader or self._default_server, torrent_hash, f"下载任务已存在"
+            return None, None, f"添加种子任务失败：{content}"
         else:
             # 获取种子Hash
             torrent_hash = server.get_torrent_id_by_tag(tags=tag)
             if not torrent_hash:
-                return None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{content}"
+                return None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{content}"
             else:
                 if is_paused:
                     # 种子文件
                     torrent_files = server.get_files(torrent_hash)
                     if not torrent_files:
-                        return torrent_hash, "获取种子文件失败，下载任务可能在暂停状态"
+                        return downloader or self._default_server, torrent_hash, "获取种子文件失败，下载任务可能在暂停状态"
 
                     # 不需要的文件ID
                     file_ids = []
@@ -190,15 +192,15 @@ class QbittorrentModule(_ModuleBase):
                         server.torrents_set_force_start(torrent_hash)
                     else:
                         server.start_torrents(torrent_hash)
-                    return torrent_hash, f"添加下载成功，已选择集数：{sucess_epidised}"
+                    return downloader or self._default_server, torrent_hash, f"添加下载成功，已选择集数：{sucess_epidised}"
                 else:
                     if settings.QB_FORCE_RESUME:
                         server.torrents_set_force_start(torrent_hash)
-                    return torrent_hash, "添加下载成功"
+                    return downloader or self._default_server, torrent_hash, "添加下载成功"
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,
-                      downloader: str = settings.DEFAULT_DOWNLOADER
+                      downloader: str = None
                       ) -> Optional[List[Union[TransferTorrent, DownloadingTorrent]]]:
         """
         获取下载器种子列表
@@ -273,7 +275,7 @@ class QbittorrentModule(_ModuleBase):
         return ret_torrents
 
     def transfer_completed(self, hashs: str, path: Path = None,
-                           downloader: str = settings.DEFAULT_DOWNLOADER) -> None:
+                           downloader: str = None) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash
@@ -296,7 +298,7 @@ class QbittorrentModule(_ModuleBase):
                     shutil.rmtree(path, ignore_errors=True)
 
     def remove_torrents(self, hashs: Union[str, list], delete_file: bool = True,
-                        downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[bool]:
+                        downloader: str = None) -> Optional[bool]:
         """
         删除下载器种子
         :param hashs:  种子Hash
@@ -310,7 +312,7 @@ class QbittorrentModule(_ModuleBase):
         return server.delete_torrents(delete_file=delete_file, ids=hashs)
 
     def start_torrents(self, hashs: Union[list, str],
-                       downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[bool]:
+                       downloader: str = None) -> Optional[bool]:
         """
         开始下载
         :param hashs:  种子Hash
@@ -322,7 +324,7 @@ class QbittorrentModule(_ModuleBase):
             return None
         return server.start_torrents(ids=hashs)
 
-    def stop_torrents(self, hashs: Union[list, str], downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[bool]:
+    def stop_torrents(self, hashs: Union[list, str], downloader: str = None) -> Optional[bool]:
         """
         停止下载
         :param hashs:  种子Hash
@@ -334,7 +336,7 @@ class QbittorrentModule(_ModuleBase):
             return None
         return server.stop_torrents(ids=hashs)
 
-    def torrent_files(self, tid: str, downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[TorrentFilesList]:
+    def torrent_files(self, tid: str, downloader: str = None) -> Optional[TorrentFilesList]:
         """
         获取种子文件列表
         """
