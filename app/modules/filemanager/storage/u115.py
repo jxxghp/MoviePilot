@@ -153,7 +153,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         检查存储是否可用
         """
-        pass
+        return True if self.list(schemas.FileItem(
+            fileid="0"
+        )) else False
 
     def list(self, fileitem: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
         """

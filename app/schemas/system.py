@@ -49,6 +49,18 @@ class NotificationConf(BaseModel):
     enabled: Optional[bool] = False
 
 
+class StorageConf(BaseModel):
+    """
+    存储配置
+    """
+    # 名称
+    name: Optional[str] = None
+    # 类型 local/alipan/u115/rclone
+    type: Optional[str] = None
+    # 配置
+    config: Optional[dict] = {}
+
+
 class TransferDirectoryConf(BaseModel):
     """
     文件整理目录配置

@@ -66,6 +66,8 @@ class SystemConfigKey(Enum):
     Notifications = "Notifications"
     # 目录配置
     Directories = "Directories"
+    # 存储配置
+    Storages = "Storages"
     # 阿里云盘认证参数
     UserAliyunParams = "UserAliyunParams"
     # 115网盘认证参数

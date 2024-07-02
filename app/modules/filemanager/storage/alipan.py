@@ -309,7 +309,13 @@ class AliPan(StorageBase):
         """
         检查存储是否可用
         """
-        pass
+        params = self.__access_params
+        if not params:
+            return False
+        return True if self.list(schemas.FileItem(
+            fileid="root",
+            drive_id=params.get("resourceDriveId")
+        )) else False
 
     def user_info(self) -> dict:
         """

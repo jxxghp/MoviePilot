@@ -51,31 +51,37 @@ class FileManagerModule(_ModuleBase):
         测试模块连接性
         """
         directoryhelper = DirectoryHelper()
-        # 检查本地下载目录是否存在
-        download_paths = directoryhelper.get_local_download_dirs()
-        if not download_paths:
-            return False, "下载目录未设置"
-        for d_path in download_paths:
-            path = d_path.download_path
-            if not path:
-                return False, f"下载目录 {d_path.name} 对应路径未设置"
-            download_path = Path(path)
-            if not download_path.exists():
-                return False, f"下载目录 {d_path.name} 对应路径 {path} 不存在"
-        # 检查本地媒体库目录是否存在
-        libaray_paths = directoryhelper.get_local_library_dirs()
-        if not libaray_paths:
-            return False, "媒体库目录未设置"
-        for l_path in libaray_paths:
-            path = l_path.library_path
-            if not path:
-                return False, f"媒体库目录 {l_path.name} 对应路径未设置"
-            library_path = Path(path)
-            if not library_path.exists():
-                return False, f"媒体库目录{l_path.name} 对应的路径 {path} 不存在"
-        # TODO 检查硬链接条件
+        # 检查目录
+        dirs = directoryhelper.get_dirs()
+        if not dirs:
+            return False, "未设置任何目录"
+        for d in dirs:
+            download_path = d.download_path
+            if not download_path:
+                return False, f"{d.name} 的下载目录未设置"
+            if d.storage == "local" and not Path(download_path).exists():
+                return False, f"{d.name} 的下载目录 {download_path} 不存在"
+            library_path = d.library_path
+            if not library_path:
+                return False, f"{d.name} 的媒体库目录未设置"
+            if d.library_storage == "local" and not Path(library_path).exists():
+                return False, f"{d.name} 的媒体库目录 {library_path} 不存在"
+            # 检查软硬链接
+            if d.transfer_type in ["link", "softlink"] \
+                    and (d.storage != "local" or d.library_storage != "local"):
+                return False, f"{d.name} 不是本地存储，不支持软硬链接"
+            # 检查硬链接
+            if d.transfer_type == "link" \
+                    and not SystemUtils.is_same_disk(Path(download_path), Path(library_path)):
+                return False, f"{d.name} 的下载目录 {download_path} 与媒体库目录 {library_path} 不在同一磁盘，无法硬链接"
+            # 检查网盘
+            if d.storage != "local":
+                storage_oper = self.__get_storage_oper(d.storage)
+                if not storage_oper:
+                    return False, f"{d.name} 的存储类型 {d.storage} 不支持"
+                if not storage_oper.check():
+                    return False, f"{d.name} 的存储测试不通过"
 
-        # TODO 检查网盘目录
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
@@ -155,14 +161,14 @@ class FileManagerModule(_ModuleBase):
             return False
         return storage_oper.download(fileitem, path)
 
-    def upload_file(self, fileitem: FileItem, path: Path) -> bool:
+    def upload_file(self, fileitem: FileItem, path: Path) -> Optional[FileItem]:
         """
         上传文件
         """
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的上传处理")
-            return False
+            return None
         return storage_oper.upload(fileitem, path)
 
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
@@ -227,7 +233,7 @@ class FileManagerModule(_ModuleBase):
                                    need_scrape=need_scrape,
                                    need_rename=need_rename)
 
-    def __get_storage_oper(self, _storage: str):
+    def __get_storage_oper(self, _storage: str) -> Optional[StorageBase]:
         """
         获取存储操作对象
         """

@@ -11,7 +11,7 @@ from app.utils.system import SystemUtils
 
 class Rclone(StorageBase):
     """
-    rclone相关操作
+    TODO rclone相关操作
     """
 
     # 存储类型
@@ -53,7 +53,7 @@ class Rclone(StorageBase):
     def rename(self, fileitm: schemas.FileItem, name: str) -> bool:
         pass
 
-    def download(self, fileitm: schemas.FileItem, path: Path) -> bool:
+    def download(self, fileitm: schemas.FileItem, path: Path):
         pass
 
     def upload(self, fileitm: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:

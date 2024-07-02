@@ -15,15 +15,20 @@ class DirectoryHelper:
     def __init__(self):
         self.systemconfig = SystemConfigOper()
 
-    def get_download_dirs(self) -> List[schemas.TransferDirectoryConf]:
+    def get_dirs(self) -> List[schemas.TransferDirectoryConf]:
         """
         获取所有下载目录
         """
         dir_confs: List[dict] = self.systemconfig.get(SystemConfigKey.Directories)
         if not dir_confs:
             return []
-        dirs = [schemas.TransferDirectoryConf(**d) for d in dir_confs]
-        return sorted([d for d in dirs if d.download_path], key=lambda x: x.priority)
+        return [schemas.TransferDirectoryConf(**d) for d in dir_confs]
+
+    def get_download_dirs(self) -> List[schemas.TransferDirectoryConf]:
+        """
+        获取所有下载目录
+        """
+        return sorted([d for d in self.get_dirs() if d.download_path], key=lambda x: x.priority)
 
     def get_local_download_dirs(self) -> List[schemas.TransferDirectoryConf]:
         """
@@ -35,11 +40,7 @@ class DirectoryHelper:
         """
         获取所有媒体库目录
         """
-        dir_confs: List[dict] = self.systemconfig.get(SystemConfigKey.Directories)
-        if not dir_confs:
-            return []
-        dirs = [schemas.TransferDirectoryConf(**d) for d in dir_confs]
-        return sorted([d for d in dirs if d.library_path], key=lambda x: x.priority)
+        return sorted([d for d in self.get_dirs() if d.library_path], key=lambda x: x.priority)
 
     def get_local_library_dirs(self) -> List[schemas.TransferDirectoryConf]:
         """
@@ -61,9 +62,12 @@ class DirectoryHelper:
             media_type = media.type.value
         else:
             media_type = MediaType.UNKNOWN.value
-        dirs = self.get_download_dirs()
+        dirs = self.get_dirs()
         # 按照配置顺序查找
         for d in dirs:
+            if not d.download_path or not d.library_path:
+                continue
+            # 下载目录
             download_path = Path(d.download_path)
             # 有目录时直接匹配
             if src_path and download_path != src_path:
