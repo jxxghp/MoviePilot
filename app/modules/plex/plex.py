@@ -19,7 +19,10 @@ class Plex:
     _plex = None
     _session = None
 
-    def __init__(self, host: str = None, play_host: str = None, token: str = None):
+    def __init__(self, host: str, token: str, play_host: str = None, **kwargs):
+        if not host or not token:
+            logger.error("Plex服务器配置不完整！")
+            return
         self._host = host
         if self._host:
             self._host = RequestUtils.standardize_base_url(self._host)

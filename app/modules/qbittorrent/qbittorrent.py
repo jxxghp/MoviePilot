@@ -18,7 +18,7 @@ class Qbittorrent:
 
     qbc: Client = None
 
-    def __init__(self, host: str = None, port: int = None, username: str = None, password: str = None):
+    def __init__(self, host: str = None, port: int = None, username: str = None, password: str = None, **kwargs):
         """
         若不设置参数，则创建配置文件设置的下载器
         """

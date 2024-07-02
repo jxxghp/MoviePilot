@@ -12,7 +12,10 @@ from app.utils.http import RequestUtils
 
 class Jellyfin:
 
-    def __init__(self, host: str = None, play_host: str = None, apikey: str = None):
+    def __init__(self, host: str, apikey: str, play_host: str = None, **kwargs):
+        if not host or not apikey:
+            logger.error("Jellyfin服务器配置不完整！！")
+            return
         self._host = host
         if self._host:
             self._host = RequestUtils.standardize_base_url(self._host)

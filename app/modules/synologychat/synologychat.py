@@ -1,10 +1,9 @@
 import json
 import re
+from threading import Lock
 from typing import Optional, List
 from urllib.parse import quote
-from threading import Lock
 
-from app.core.config import settings
 from app.core.context import MediaInfo, Context
 from app.core.metainfo import MetaInfo
 from app.log import logger
@@ -15,10 +14,13 @@ lock = Lock()
 
 
 class SynologyChat:
-    def __init__(self):
+    def __init__(self, webhook: str, token: str, **kwargs):
+        if not webhook or not token:
+            logger.error("SynologyChat配置不完整！")
+            return
         self._req = RequestUtils(content_type="application/x-www-form-urlencoded")
-        self._webhook_url = settings.SYNOLOGYCHAT_WEBHOOK
-        self._token = settings.SYNOLOGYCHAT_TOKEN
+        self._webhook_url = webhook
+        self._token = token
         if self._webhook_url:
             self._domain = StringUtils.get_base_url(self._webhook_url)
 

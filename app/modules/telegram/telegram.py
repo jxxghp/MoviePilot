@@ -24,10 +24,13 @@ class Telegram:
     _event = Event()
     _bot: telebot.TeleBot = None
 
-    def __init__(self, token: str = None, chat_id: str = None):
+    def __init__(self, token: str, chat_id: str, **kwargs):
         """
         初始化参数
         """
+        if not token or not chat_id:
+            logger.error("Telegram配置不完整！")
+            return
         # Token
         self._telegram_token = token
         # Chat Id

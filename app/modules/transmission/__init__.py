@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from typing import Set, Tuple, Optional, Union, List
+from typing import Set, Tuple, Optional, Union, List, Dict
 
 from torrentool.torrent import Torrent
 from transmission_rpc import File
@@ -8,6 +8,7 @@ from transmission_rpc import File
 from app import schemas
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
+from app.helper.downloader import DownloaderHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.transmission.transmission import Transmission
@@ -18,14 +19,32 @@ from app.utils.system import SystemUtils
 
 
 class TransmissionModule(_ModuleBase):
-    transmission: Transmission = None
+    _servers: Dict[str, Transmission] = {}
+    _default_server: Transmission = None
 
     def init_module(self) -> None:
-        self.transmission = Transmission()
+        # 读取下载器配置
+        self._servers = {}
+        downloaders = DownloaderHelper().get_downloaders()
+        if not downloaders:
+            return
+        for server in downloaders:
+            if server.type == "transmission":
+                self._servers[server.name] = Transmission(**server.config)
+                if server.default:
+                    self._default_server = self._servers[server.name]
 
     @staticmethod
     def get_name() -> str:
         return "Transmission"
+    
+    def get_server(self, name: str = None) -> Optional[Transmission]:
+        """
+        获取服务器，name为空则返回默认服务器
+        """
+        if name:
+            return self._servers.get(name)
+        return self._default_server
 
     def stop(self):
         pass
@@ -34,22 +53,27 @@ class TransmissionModule(_ModuleBase):
         """
         测试模块连接性
         """
-        if self.transmission.is_inactive():
-            self.transmission.reconnect()
-        if not self.transmission.transfer_info():
-            return False, "无法获取Transmission状态，请检查参数配置"
+        if not self._servers:
+            return False, "未配置Transmission下载器"
+        for name, server in self._servers.items():
+            if server.is_inactive():
+                server.reconnect()
+            if not server.transfer_info():
+                return False, f"无法连接Transmission下载器：{name}"
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        return "DOWNLOADER", "transmission"
+        pass
 
     def scheduler_job(self) -> None:
         """
         定时任务，每10分钟调用一次
         """
         # 定时重连
-        if self.transmission.is_inactive():
-            self.transmission.reconnect()
+        for name, server in self._servers.items():
+            if server.is_inactive():
+                logger.info(f"Transmission下载器 {name} 连接断开，尝试重连 ...")
+                server.reconnect()
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None,
@@ -79,14 +103,15 @@ class TransmissionModule(_ModuleBase):
                 logger.error(f"获取种子名称失败：{e}")
                 return "", 0
 
-        # 不是默认下载器不处理
-        if downloader != "transmission":
-            return None
-
         if not content:
-            return None
+            return None, "下载内容为空"
         if isinstance(content, Path) and not content.exists():
             return None, f"种子文件不存在：{content}"
+
+        # 获取下载器
+        server = self.get_server(downloader)
+        if not server:
+            return None
 
         # 如果要选择文件则先暂停
         is_paused = True if episodes else False
@@ -96,7 +121,7 @@ class TransmissionModule(_ModuleBase):
         else:
             labels = None
         # 添加任务
-        torrent = self.transmission.add_torrent(
+        torrent = server.add_torrent(
             content=content.read_bytes() if isinstance(content, Path) else content,
             download_dir=str(download_dir),
             is_paused=is_paused,
@@ -109,7 +134,7 @@ class TransmissionModule(_ModuleBase):
             if not torrent_name:
                 return None, f"添加种子任务失败：无法读取种子文件"
             # 查询所有下载器的种子
-            torrents, error = self.transmission.get_torrents()
+            torrents, error = server.get_torrents()
             if error:
                 return None, "无法连接transmission下载器"
             if torrents:
@@ -126,17 +151,17 @@ class TransmissionModule(_ModuleBase):
                                       for tag in torrent.labels] if hasattr(torrent, "labels") else []
                             if "已整理" in labels:
                                 labels.remove("已整理")
-                                self.transmission.set_torrent_tag(ids=torrent_hash, tags=labels)
+                                server.set_torrent_tag(ids=torrent_hash, tags=labels)
                             if settings.TORRENT_TAG and settings.TORRENT_TAG not in labels:
                                 labels.append(settings.TORRENT_TAG)
-                                self.transmission.set_torrent_tag(ids=torrent_hash, tags=labels)
+                                server.set_torrent_tag(ids=torrent_hash, tags=labels)
                         return torrent_hash, f"下载任务已存在"
             return None, f"添加种子任务失败：{content}"
         else:
             torrent_hash = torrent.hashString
             if is_paused:
                 # 选择文件
-                torrent_files = self.transmission.get_files(torrent_hash)
+                torrent_files = server.get_files(torrent_hash)
                 if not torrent_files:
                     return torrent_hash, "获取种子文件失败，下载任务可能在暂停状态"
                 # 需要的文件信息
@@ -155,10 +180,10 @@ class TransmissionModule(_ModuleBase):
                         continue
                     file_ids.append(file_id)
                 # 选择文件
-                self.transmission.set_files(torrent_hash, file_ids)
-                self.transmission.set_unwanted_files(torrent_hash, unwanted_file_ids)
+                server.set_files(torrent_hash, file_ids)
+                server.set_unwanted_files(torrent_hash, unwanted_file_ids)
                 # 开始任务
-                self.transmission.start_torrents(torrent_hash)
+                server.start_torrents(torrent_hash)
                 return torrent_hash, "添加下载任务成功"
             else:
                 return torrent_hash, "添加下载任务成功"
@@ -174,12 +199,14 @@ class TransmissionModule(_ModuleBase):
         :param downloader:  下载器
         :return: 下载器中符合状态的种子列表
         """
-        if downloader != "transmission":
+        # 获取下载器
+        server = self.get_server(downloader)
+        if not server:
             return None
         ret_torrents = []
         if hashs:
             # 按Hash获取
-            torrents, _ = self.transmission.get_torrents(ids=hashs, tags=settings.TORRENT_TAG)
+            torrents, _ = server.get_torrents(ids=hashs, tags=settings.TORRENT_TAG)
             for torrent in torrents or []:
                 ret_torrents.append(TransferTorrent(
                     title=torrent.name,
@@ -190,7 +217,7 @@ class TransmissionModule(_ModuleBase):
                 ))
         elif status == TorrentStatus.TRANSFER:
             # 获取已完成且未整理的
-            torrents = self.transmission.get_completed_torrents(tags=settings.TORRENT_TAG)
+            torrents = server.get_completed_torrents(tags=settings.TORRENT_TAG)
             for torrent in torrents or []:
                 # 含"已整理"tag的不处理
                 if "已整理" in torrent.labels or []:
@@ -209,7 +236,7 @@ class TransmissionModule(_ModuleBase):
                 ))
         elif status == TorrentStatus.DOWNLOADING:
             # 获取正在下载的任务
-            torrents = self.transmission.get_downloading_torrents(tags=settings.TORRENT_TAG)
+            torrents = server.get_downloading_torrents(tags=settings.TORRENT_TAG)
             for torrent in torrents or []:
                 meta = MetaInfo(torrent.name)
                 dlspeed = torrent.rate_download if hasattr(torrent, "rate_download") else torrent.rateDownload
@@ -240,16 +267,18 @@ class TransmissionModule(_ModuleBase):
         :param downloader:  下载器
         :return: None
         """
-        if downloader != "transmission":
+        # 获取下载器
+        server = self.get_server(downloader)
+        if not server:
             return None
         # 获取原标签
-        org_tags = self.transmission.get_torrent_tags(ids=hashs)
+        org_tags = server.get_torrent_tags(ids=hashs)
         # 种子打上已整理标签
         if org_tags:
             tags = org_tags + ['已整理']
         else:
             tags = ['已整理']
-        self.transmission.set_torrent_tag(ids=hashs, tags=tags)
+        server.set_torrent_tag(ids=hashs, tags=tags)
         # 移动模式删除种子
         if settings.TRANSFER_TYPE in ["move", "rclone_move"]:
             if self.remove_torrents(hashs):
@@ -270,9 +299,11 @@ class TransmissionModule(_ModuleBase):
         :param downloader:  下载器
         :return: bool
         """
-        if downloader != "transmission":
+        # 获取下载器
+        server = self.get_server(downloader)
+        if not server:
             return None
-        return self.transmission.delete_torrents(delete_file=delete_file, ids=hashs)
+        return server.delete_torrents(delete_file=delete_file, ids=hashs)
 
     def start_torrents(self, hashs: Union[list, str],
                        downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[bool]:
@@ -282,9 +313,11 @@ class TransmissionModule(_ModuleBase):
         :param downloader:  下载器
         :return: bool
         """
-        if downloader != "transmission":
+        # 获取下载器
+        server = self.get_server(downloader)
+        if not server:
             return None
-        return self.transmission.start_torrents(ids=hashs)
+        return server.start_torrents(ids=hashs)
 
     def stop_torrents(self, hashs: Union[list, str],
                       downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[bool]:
@@ -294,28 +327,43 @@ class TransmissionModule(_ModuleBase):
         :param downloader:  下载器
         :return: bool
         """
-        if downloader != "transmission":
+        # 获取下载器
+        server = self.get_server(downloader)
+        if not server:
             return None
-        return self.transmission.start_torrents(ids=hashs)
+        return server.start_torrents(ids=hashs)
 
     def torrent_files(self, tid: str, downloader: str = settings.DEFAULT_DOWNLOADER) -> Optional[List[File]]:
         """
         获取种子文件列表
         """
-        if downloader != "transmission":
+        # 获取下载器
+        server = self.get_server(downloader)
+        if not server:
             return None
-        return self.transmission.get_files(tid=tid)
+        return server.get_files(tid=tid)
 
-    def downloader_info(self) -> [schemas.DownloaderInfo]:
+    def downloader_info(self, downloader: str = None) -> Optional[List[schemas.DownloaderInfo]]:
         """
         下载器信息
         """
-        info = self.transmission.transfer_info()
-        if not info:
-            return [schemas.DownloaderInfo()]
-        return [schemas.DownloaderInfo(
-            download_speed=info.download_speed,
-            upload_speed=info.upload_speed,
-            download_size=info.current_stats.downloaded_bytes,
-            upload_size=info.current_stats.uploaded_bytes
-        )]
+        if downloader:
+            server = self.get_server(downloader)
+            if not server:
+                return None
+            servers = [server]
+        else:
+            servers = self._servers.values()
+        # 调用Qbittorrent API查询实时信息
+        ret_info = []
+        for server in servers:
+            info = server.transfer_info()
+            if not info:
+                continue
+            ret_info.append(schemas.DownloaderInfo(
+                download_speed=info.download_speed,
+                upload_speed=info.upload_speed,
+                download_size=info.current_stats.downloaded_bytes,
+                upload_size=info.current_stats.uploaded_bytes
+            ))
+        return ret_info

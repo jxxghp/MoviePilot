@@ -22,10 +22,13 @@ class VoceChat:
     # 请求对象
     _client = None
 
-    def __init__(self, host: str = None, apikey: str = None, channel_id: str = None):
+    def __init__(self, host: str, apikey: str, channel_id: str, **kwargs):
         """
         初始化
         """
+        if not host or not apikey or not channel_id:
+            logger.error("VoceChat配置不完整！")
+            return
         self._host = host
         if self._host:
             if not self._host.endswith("/"):

@@ -21,7 +21,6 @@ class EmbyModule(_ModuleBase):
         mediaservers = MediaServerHelper().get_mediaservers()
         if not mediaservers:
             return
-        # 读取Emby配置
         for server in mediaservers:
             if server.type == "emby":
                 self._servers[server.name] = Emby(**server.config)
@@ -142,16 +141,24 @@ class EmbyModule(_ModuleBase):
                     )
         return None
 
-    def media_statistic(self) -> List[schemas.Statistic]:
+    def media_statistic(self, server: str = None) -> Optional[List[schemas.Statistic]]:
         """
         媒体数量统计
         """
+        if server:
+            server_obj = self.get_server(server)
+            if not server_obj:
+                return None
+            servers = [server_obj]
+        else:
+            servers = self._servers.values()
         media_statistics = []
-        for server in self._servers.values():
+        for server in servers:
             media_statistic = server.get_medias_count()
+            if not media_statistics:
+                continue
             media_statistic.user_count = server.get_user_count()
-            if media_statistic:
-                media_statistics.append(media_statistic)
+            media_statistics.append(media_statistic)
         return media_statistics
 
     def mediaserver_librarys(self, server: str,
