@@ -4,8 +4,8 @@ from typing import List, Union, Optional
 
 from app import schemas
 from app.chain import ChainBase
-from app.core.config import settings
 from app.db.mediaserver_oper import MediaServerOper
+from app.helper.mediaserver import MediaServerHelper
 from app.log import logger
 
 lock = threading.Lock()
@@ -19,8 +19,9 @@ class MediaServerChain(ChainBase):
     def __init__(self):
         super().__init__()
         self.dboper = MediaServerOper()
+        self.mediaserverhelper = MediaServerHelper()
 
-    def librarys(self, server: str = None, username: str = None) -> List[schemas.MediaServerLibrary]:
+    def librarys(self, server: str, username: str = None) -> List[schemas.MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库
         """
@@ -44,13 +45,13 @@ class MediaServerChain(ChainBase):
         """
         return self.run_module("mediaserver_tv_episodes", server=server, item_id=item_id)
 
-    def playing(self, count: int = 20, server: str = None, username: str = None) -> List[schemas.MediaServerPlayItem]:
+    def playing(self, server: str, count: int = 20, username: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
         return self.run_module("mediaserver_playing", count=count, server=server, username=username)
 
-    def latest(self, count: int = 20, server: str = None, username: str = None) -> List[schemas.MediaServerPlayItem]:
+    def latest(self, server: str, count: int = 20, username: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """
@@ -67,12 +68,9 @@ class MediaServerChain(ChainBase):
         同步媒体库所有数据到本地数据库
         """
         # 设置的媒体服务器
-        if not settings.MEDIASERVER:
+        mediaservers = self.mediaserverhelper.get_mediaservers()
+        if not mediaservers:
             return
-        # 同步黑名单
-        sync_blacklist = settings.MEDIASERVER_SYNC_BLACKLIST.split(
-            ",") if settings.MEDIASERVER_SYNC_BLACKLIST else []
-        mediaservers = settings.MEDIASERVER.split(",")
         with lock:
             # 汇总统计
             total_count = 0
@@ -82,14 +80,16 @@ class MediaServerChain(ChainBase):
             for mediaserver in mediaservers:
                 if not mediaserver:
                     continue
-                logger.info(f"开始同步媒体库 {mediaserver} 的数据 ...")
-                for library in self.librarys(mediaserver):
+                server_name = mediaserver.name
+                sync_blacklist = mediaserver.config.get("sync_blacklist") or []
+                logger.info(f"开始同步媒体库 {server_name} 的数据 ...")
+                for library in self.librarys(server_name):
                     # 同步黑名单 跳过
                     if library.name in sync_blacklist:
                         continue
-                    logger.info(f"正在同步 {mediaserver} 媒体库 {library.name} ...")
+                    logger.info(f"正在同步 {server_name} 媒体库 {library.name} ...")
                     library_count = 0
-                    for item in self.items(mediaserver, library.id):
+                    for item in self.items(server_name, library.id):
                         if not item:
                             continue
                         if not item.item_id:
@@ -102,7 +102,7 @@ class MediaServerChain(ChainBase):
                         item_type = "电视剧" if item.item_type in ['Series', 'show'] else "电影"
                         if item_type == "电视剧":
                             # 查询剧集信息
-                            espisodes_info = self.episodes(mediaserver, item.item_id) or []
+                            espisodes_info = self.episodes(server_name, item.item_id) or []
                             for episode in espisodes_info:
                                 seasoninfo[episode.season] = episode.episodes
                         # 插入数据
@@ -110,7 +110,7 @@ class MediaServerChain(ChainBase):
                         item_dict['seasoninfo'] = json.dumps(seasoninfo)
                         item_dict['item_type'] = item_type
                         self.dboper.add(**item_dict)
-                    logger.info(f"{mediaserver} 媒体库 {library.name} 同步完成，共同步数量：{library_count}")
+                    logger.info(f"{server_name} 媒体库 {library.name} 同步完成，共同步数量：{library_count}")
                     # 总数累加
                     total_count += library_count
-            logger.info("【MediaServer】媒体库数据同步完成，同步数量：%s" % total_count)
+                logger.info(f"媒体库 {server_name} 数据同步完成，同步数量：%s" % total_count)

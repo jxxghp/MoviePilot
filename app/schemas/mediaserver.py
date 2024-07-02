@@ -156,3 +156,15 @@ class MediaServerPlayItem(BaseModel):
     image: Optional[str] = None
     link: Optional[str] = None
     percent: Optional[float] = None
+
+
+class MediaServerConf(BaseModel):
+    """
+    媒体服务器配置
+    """
+    # 名称
+    name: Optional[str] = None
+    # 类型 emby/jellyfin/plex
+    type: Optional[str] = None
+    # 配置
+    config: Optional[dict] = {}

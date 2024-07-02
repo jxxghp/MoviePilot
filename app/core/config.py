@@ -39,18 +39,16 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     # 是否开发模式
     DEV: bool = False
-    # 是否开启插件热加载
-    PLUGIN_AUTO_RELOAD: bool = False
     # 配置文件目录
     CONFIG_DIR: Optional[str] = None
     # 超级管理员
     SUPERUSER: str = "admin"
     # API密钥，需要更换
     API_TOKEN: str = "moviepilot"
-    # 登录页面电影海报,tmdb/bing
-    WALLPAPER: str = "tmdb"
     # 网络代理 IP:PORT
     PROXY_HOST: Optional[str] = None
+    # 登录页面电影海报,tmdb/bing
+    WALLPAPER: str = "tmdb"
     # 媒体搜索来源 themoviedb/douban/bangumi，多个用,分隔
     SEARCH_SOURCE: str = "themoviedb,douban,bangumi"
     # 媒体识别来源 themoviedb/douban
@@ -71,6 +69,16 @@ class Settings(BaseSettings):
     FANART_ENABLE: bool = True
     # Fanart API Key
     FANART_API_KEY: str = "d2d31f9ecabea050fc7d68aa3146015f"
+    # 元数据识别缓存过期时间（小时）
+    META_CACHE_EXPIRE: int = 0
+    # 电视剧动漫的分类genre_ids
+    ANIME_GENREIDS = [16]
+    # 用户认证站点
+    AUTH_SITE: str = ""
+    # 自动检查和更新站点资源包（站点索引、认证等）
+    AUTO_UPDATE_RESOURCE: bool = True
+    # 是否启用DOH解析域名
+    DOH_ENABLE: bool = True
     # 支持的后缀格式
     RMT_MEDIAEXT: list = ['.mp4', '.mkv', '.ts', '.iso',
                           '.rmvb', '.avi', '.mov', '.mpeg',
@@ -79,26 +87,26 @@ class Settings(BaseSettings):
                           '.tp', '.f4v']
     # 支持的字幕文件后缀格式
     RMT_SUBEXT: list = ['.srt', '.ass', '.ssa', '.sup']
-    # 下载器临时文件后缀
-    DOWNLOAD_TMPEXT: list = ['.!qB', '.part']
     # 支持的音轨文件后缀格式
     RMT_AUDIO_TRACK_EXT: list = ['.mka']
-    # 索引器
-    INDEXER: str = "builtin"
+    # 下载器临时文件后缀
+    DOWNLOAD_TMPEXT: list = ['.!qB', '.part']
     # 订阅模式
     SUBSCRIBE_MODE: str = "spider"
     # RSS订阅模式刷新时间间隔（分钟）
     SUBSCRIBE_RSS_INTERVAL: int = 30
+    # 订阅数据共享
+    SUBSCRIBE_STATISTIC_SHARE: bool = True
     # 订阅搜索开关
     SUBSCRIBE_SEARCH: bool = False
-    # 用户认证站点
-    AUTH_SITE: str = ""
-    # 交互搜索自动下载用户ID，使用,分割
-    AUTO_DOWNLOAD_USER: Optional[str] = None
+    # 搜索多个名称
+    SEARCH_MULTIPLE_NAME: bool = False
     # 种子标签
     TORRENT_TAG: str = "MOVIEPILOT"
     # 下载站点字幕
     DOWNLOAD_SUBTITLE: bool = True
+    # 交互搜索自动下载用户ID，使用,分割
+    AUTO_DOWNLOAD_USER: Optional[str] = None
     # CookieCloud是否启动本地服务
     COOKIECLOUD_ENABLE_LOCAL: Optional[bool] = False
     # CookieCloud服务器地址
@@ -111,12 +119,8 @@ class Settings(BaseSettings):
     COOKIECLOUD_INTERVAL: Optional[int] = 60 * 24
     # CookieCloud同步黑名单，多个域名,分割
     COOKIECLOUD_BLACKLIST: Optional[str] = None
-    # OCR服务器地址
-    OCR_HOST: str = "https://movie-pilot.org"
     # CookieCloud对应的浏览器UA
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.57"
-    # 电视剧动漫的分类genre_ids
-    ANIME_GENREIDS = [16]
     # 电影重命名格式
     MOVIE_RENAME_FORMAT: str = "{{title}}{% if year %} ({{year}}){% endif %}" \
                                "/{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if videoFormat %} - {{videoFormat}}{% endif %}" \
@@ -126,30 +130,22 @@ class Settings(BaseSettings):
                             "/Season {{season}}" \
                             "/{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}" \
                             "{{fileExt}}"
-    # 转移时覆盖模式
-    OVERWRITE_MODE: str = "size"
-    # 大内存模式
-    BIG_MEMORY_MODE: bool = False
+    # OCR服务器地址
+    OCR_HOST: str = "https://movie-pilot.org"
+    # 服务器地址，对应 https://github.com/jxxghp/MoviePilot-Server 项目
+    MP_SERVER_HOST: str = "https://movie-pilot.org"
     # 插件市场仓库地址，多个地址使用,分隔，地址以/结尾
     PLUGIN_MARKET: str = "https://github.com/jxxghp/MoviePilot-Plugins,https://github.com/thsrite/MoviePilot-Plugins,https://github.com/honue/MoviePilot-Plugins,https://github.com/InfinityPacer/MoviePilot-Plugins"
+    # 插件安装数据共享
+    PLUGIN_STATISTIC_SHARE: bool = True
+    # 是否开启插件热加载
+    PLUGIN_AUTO_RELOAD: bool = False
     # Github token，提高请求api限流阈值 ghp_****
     GITHUB_TOKEN: Optional[str] = None
     # Github代理服务器，格式：https://mirror.ghproxy.com/
     GITHUB_PROXY: Optional[str] = ''
-    # 自动检查和更新站点资源包（站点索引、认证等）
-    AUTO_UPDATE_RESOURCE: bool = True
-    # 元数据识别缓存过期时间（小时）
-    META_CACHE_EXPIRE: int = 0
-    # 是否启用DOH解析域名
-    DOH_ENABLE: bool = True
-    # 搜索多个名称
-    SEARCH_MULTIPLE_NAME: bool = False
-    # 订阅数据共享
-    SUBSCRIBE_STATISTIC_SHARE: bool = True
-    # 插件安装数据共享
-    PLUGIN_STATISTIC_SHARE: bool = True
-    # 服务器地址，对应 https://github.com/jxxghp/MoviePilot-Server 项目
-    MP_SERVER_HOST: str = "https://movie-pilot.org"
+    # 大内存模式
+    BIG_MEMORY_MODE: bool = False
 
     @validator("SUBSCRIBE_RSS_INTERVAL",
                "COOKIECLOUD_INTERVAL",
