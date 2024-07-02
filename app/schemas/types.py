@@ -76,8 +76,6 @@ class SystemConfigKey(Enum):
     IndexerSites = "IndexerSites"
     # 订阅站点范围
     RssSites = "RssSites"
-    # 通知消息渠道设置
-    NotificationChannels = "NotificationChannels"
     # 自定义制作组/字幕组
     CustomReleaseGroups = "CustomReleaseGroups"
     # 自定义占位符

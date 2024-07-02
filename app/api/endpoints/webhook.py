@@ -22,7 +22,7 @@ async def webhook_message(background_tasks: BackgroundTasks,
                           _: str = Depends(verify_apitoken)
                           ) -> Any:
     """
-    Webhook响应
+    Webhook响应，配置请求中需要添加参数：token=API_TOKEN&source=消息配置名
     """
     body = await request.body()
     form = await request.form()
@@ -35,7 +35,7 @@ async def webhook_message(background_tasks: BackgroundTasks,
 def webhook_message(background_tasks: BackgroundTasks,
                     request: Request, _: str = Depends(verify_apitoken)) -> Any:
     """
-    Webhook响应
+    Webhook响应，配置请求中需要添加参数：token=API_TOKEN&source=消息配置名
     """
     args = request.query_params
     background_tasks.add_task(start_webhook_chain, None, None, args)

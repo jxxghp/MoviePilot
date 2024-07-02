@@ -14,12 +14,10 @@ from app.core.security import verify_token
 from app.db import get_db
 from app.db.models import User
 from app.db.models.message import Message
-from app.db.systemconfig_oper import SystemConfigOper
 from app.db.userauth import get_current_active_superuser
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
-from app.schemas import NotificationSwitch
-from app.schemas.types import SystemConfigKey, NotificationType, MessageChannel
+from app.schemas.types import MessageChannel
 
 router = APIRouter()
 
@@ -34,7 +32,7 @@ def start_message_chain(body: Any, form: Any, args: Any):
 @router.post("/", summary="接收用户消息", response_model=schemas.Response)
 async def user_message(background_tasks: BackgroundTasks, request: Request):
     """
-    用户消息响应
+    用户消息响应，配置请求中需要添加参数：token=API_TOKEN&source=消息配置名
     """
     body = await request.body()
     form = await request.form()
@@ -119,45 +117,6 @@ def incoming_verify(token: str = None, echostr: str = None, msg_signature: str =
     if echostr and msg_signature and timestamp and nonce:
         return wechat_verify(echostr, msg_signature, timestamp, nonce)
     return vocechat_verify(token)
-
-
-@router.get("/switchs", summary="查询通知消息渠道开关", response_model=List[NotificationSwitch])
-def read_switchs(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    查询通知消息渠道开关
-    """
-    return_list = []
-    # 读取数据库
-    switchs = SystemConfigOper().get(SystemConfigKey.NotificationChannels)
-    if not switchs:
-        for noti in NotificationType:
-            return_list.append(NotificationSwitch(mtype=noti.value, wechat=True,
-                                                  telegram=True, slack=True,
-                                                  synologychat=True, vocechat=True))
-    else:
-        for switch in switchs:
-            return_list.append(NotificationSwitch(**switch))
-        for noti in NotificationType:
-            if not any([x.mtype == noti.value for x in return_list]):
-                return_list.append(NotificationSwitch(mtype=noti.value, wechat=True,
-                                                      telegram=True, slack=True,
-                                                      synologychat=True, vocechat=True))
-    return return_list
-
-
-@router.post("/switchs", summary="设置通知消息渠道开关", response_model=schemas.Response)
-def set_switchs(switchs: List[NotificationSwitch],
-                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
-    """
-    设置通知消息渠道开关
-    """
-    switch_list = []
-    for switch in switchs:
-        switch_list.append(switch.dict())
-    # 存入数据库
-    SystemConfigOper().set(SystemConfigKey.NotificationChannels, switch_list)
-
-    return schemas.Response(success=True)
 
 
 @router.post("/webpush/subscribe", summary="客户端webpush通知订阅", response_model=schemas.Response)
