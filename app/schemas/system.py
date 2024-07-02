@@ -83,6 +83,8 @@ class TransferDirectoryConf(BaseModel):
     monitor_type: Optional[str] = None
     # 整理方式 move/copy/link/softlink
     transfer_type: Optional[str] = None
+    # 文件覆盖模式 always/size/never/latest
+    overwrite_mode: Optional[str] = None
     # 整理到媒体库目录
     library_path: Optional[str] = None
     # 媒体库目录存储

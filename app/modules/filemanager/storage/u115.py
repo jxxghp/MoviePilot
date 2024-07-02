@@ -228,7 +228,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             else:
                 dir_file = self.create_folder(dir_file, part)
                 if not dir_file:
-                    logger.warn(f"创建 115 目录 {fileitem.path}{part} 失败!")
+                    logger.warn(f"115创建目录 {fileitem.path}{part} 失败!")
                     return None
                 fileitem = dir_file
         return None
@@ -249,7 +249,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             self.cloud.storage().delete(fileitem.fileid)
             return True
         except Exception as e:
-            logger.error(f"删除115文件失败：{str(e)}")
+            logger.error(f"115删除文件失败：{str(e)}")
         return False
 
     def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
@@ -262,7 +262,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             self.cloud.storage().rename(fileitem.fileid, name)
             return True
         except Exception as e:
-            logger.error(f"重命名115文件失败：{str(e)}")
+            logger.error(f"115重命名文件失败：{str(e)}")
         return False
 
     def download(self, fileitem: schemas.FileItem, path: Path) -> bool:
@@ -328,20 +328,20 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     logger.warn(f"115上传文件失败：{por.resp.response.text}")
                     return None
         except Exception as e:
-            logger.error(f"上传115文件失败：{str(e)}")
+            logger.error(f"115上传文件失败：{str(e)}")
         return None
 
-    def move(self, fileitem: schemas.FileItem, target_dir: schemas.FileItem) -> bool:
+    def move(self, fileitem: schemas.FileItem, target: schemas.FileItem) -> bool:
         """
         移动文件
         """
         if not self.__init_cloud():
             return False
         try:
-            self.cloud.storage().move(fileitem.fileid, target_dir.fileid)
+            self.cloud.storage().move(fileitem.fileid, target.fileid)
             return True
         except Exception as e:
-            logger.error(f"移动115文件失败：{str(e)}")
+            logger.error(f"115移动文件失败：{str(e)}")
         return False
 
     def copy(self, fileitm: schemas.FileItem, target_file: Path) -> bool:

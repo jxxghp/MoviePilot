@@ -663,7 +663,7 @@ class AliPan(StorageBase):
             logger.warn("上传文件失败：无法获取上传地址！")
         return None
 
-    def move(self, fileitem: schemas.FileItem, target_dir: schemas.FileItem) -> bool:
+    def move(self, fileitem: schemas.FileItem, target: schemas.FileItem) -> bool:
         """
         移动文件
         """
@@ -674,7 +674,7 @@ class AliPan(StorageBase):
         res = RequestUtils(headers=headers, timeout=10).post_res(self.move_file_url, json={
             "drive_id": fileitem.drive_id,
             "file_id": fileitem.fileid,
-            "to_parent_file_id": target_dir.fileid,
+            "to_parent_file_id": target.fileid,
             "check_name_mode": "refuse"
         })
         if res:

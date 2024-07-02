@@ -250,7 +250,7 @@ class Rclone(StorageBase):
             logger.error(f"获取文件详情失败：{err}")
         return None
 
-    def move(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+    def move(self, fileitm: schemas.FileItem, target: Path) -> bool:
         """
         移动文件，target_file格式：rclone:path
         """
@@ -259,7 +259,7 @@ class Rclone(StorageBase):
                 [
                     'rclone', 'moveto',
                     f'MP:{fileitm.path}',
-                    f'MP:{target_file}'
+                    f'MP:{target}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode
@@ -270,23 +270,7 @@ class Rclone(StorageBase):
         return False
 
     def copy(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
-        """
-        复制文件，target_file格式：rclone:path
-        """
-        try:
-            retcode = subprocess.run(
-                [
-                    'rclone', 'copyto',
-                    f'MP:{fileitm.path}',
-                    f'MP:{target_file}'
-                ],
-                startupinfo=self.__get_hidden_shell()
-            ).returncode
-            if retcode == 0:
-                return True
-        except Exception as err:
-            logger.error(f"复制文件失败：{err}")
-        return False
+        pass
 
     def link(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
         pass

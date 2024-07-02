@@ -1,3 +1,4 @@
+import copy
 import re
 from pathlib import Path
 from threading import Lock
@@ -208,12 +209,15 @@ class FileManagerModule(_ModuleBase):
                 need_scrape = scrape
             # 是否需要重命名
             need_rename = dir_info.renaming
+            # 覆盖模式
+            overwrite_mode = dir_info.overwrite_mode
             # 拼装媒体库一、二级子目录
             target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=dir_info)
         elif target_path:
             # 自定义目标路径
             need_scrape = scrape or False
             need_rename = True
+            overwrite_mode = "never"
         else:
             # 未找到有效的媒体库目录
             logger.error(
@@ -228,6 +232,7 @@ class FileManagerModule(_ModuleBase):
                                    in_meta=meta,
                                    mediainfo=mediainfo,
                                    transfer_type=transfer_type,
+                                   overwrite_mode=overwrite_mode,
                                    target_storage=target_storage,
                                    target_path=target_path,
                                    episodes_info=episodes_info,
@@ -274,7 +279,8 @@ class FileManagerModule(_ModuleBase):
                 modify_time=_path.stat().st_mtime
             )
 
-        if fileitem.storage != "local" and target_storage != "local":
+        if (fileitem.storage != target_storage
+                and fileitem.storage != "local" and target_storage != "local"):
             logger.error(f"不支持 {fileitem.storage} 到 {target_storage} 的文件整理")
             return None, f"不支持 {fileitem.storage} 到 {target_storage} 的文件整理"
 
@@ -300,6 +306,8 @@ class FileManagerModule(_ModuleBase):
                     state = source_oper.softlink(fileitem, target_file)
                 if state:
                     return __get_targetitem(target_file), ""
+                else:
+                    return None, f"{fileitem.path} {transfer_type}失败"
             elif fileitem.storage == "local" and target_storage != "local":
                 # 本地到网盘
                 filepath = Path(fileitem.path)
@@ -315,6 +323,10 @@ class FileManagerModule(_ModuleBase):
                         new_item = target_oper.upload(target_fileitem, filepath)
                         if new_item:
                             return new_item, ""
+                        else:
+                            return None, f"{fileitem.path} 上传 {target_storage} 失败"
+                    else:
+                        return None, f"{target_file.parent} {target_storage} 目录获取失败"
                 elif transfer_type == "move":
                     # 移动
                     # 根据目的路径获取文件夹
@@ -326,22 +338,53 @@ class FileManagerModule(_ModuleBase):
                             # 删除源文件
                             source_oper.delete(fileitem)
                             return new_item, ""
+                        else:
+                            return None, f"{fileitem.path} 上传 {target_storage} 失败"
+                    else:
+                        return None, f"{target_file.parent} {target_storage} 目录获取失败"
             elif fileitem.storage != "local" and target_storage == "local":
-                # 检查本地是否存在
+                # 网盘到本地
                 if target_file.exists():
                     logger.warn(f"文件已存在：{target_file}")
                     return __get_targetitem(target_file), ""
                 # 网盘到本地
                 if transfer_type == "copy":
                     # 下载
-                    if target_oper.download(fileitem, target_file):
+                    if source_oper.download(fileitem, target_file):
                         return __get_targetitem(target_file), ""
+                    else:
+                        return None, f"{fileitem.path} {fileitem.storage} 下载失败"
                 elif transfer_type == "move":
                     # 下载
-                    if target_oper.download(fileitem, target_file):
+                    if source_oper.download(fileitem, target_file):
                         # 删除源文件
                         source_oper.delete(fileitem)
                         return __get_targetitem(target_file), ""
+                    else:
+                        return None, f"{fileitem.path} {fileitem.storage} 下载失败"
+            elif fileitem.storage == target_storage:
+                # 同一网盘
+                if transfer_type == "move":
+                    # 移动
+                    # 根据目的路径获取文件夹
+                    target_diritem = target_oper.get_folder(target_file.parent)
+                    if target_diritem:
+                        # 重命名文件
+                        if target_oper.rename(fileitem, target_file.name):
+                            # 移动文件到新目录
+                            if source_oper.move(fileitem, target_diritem):
+                                ret_fileitem = copy.deepcopy(fileitem)
+                                ret_fileitem.path = target_diritem.path + "/" + target_file.name
+                                ret_fileitem.name = target_file.name
+                                ret_fileitem.basename = target_file.stem
+                                ret_fileitem.parent_fileid = target_diritem.fileid
+                                return ret_fileitem, ""
+                            else:
+                                return None, f"{fileitem.path} {target_storage} 移动文件失败"
+                        else:
+                            return None, f"{fileitem.path} {target_storage} 重命名文件失败"
+                    else:
+                        return None, f"{target_file.parent} {target_storage} 目录获取失败"
 
         return None, "不支持的整理操作"
 
@@ -644,6 +687,7 @@ class FileManagerModule(_ModuleBase):
                        in_meta: MetaBase,
                        mediainfo: MediaInfo,
                        transfer_type: str,
+                       overwrite_mode: str,
                        target_storage: str,
                        target_path: Path,
                        episodes_info: List[TmdbEpisode] = None,
@@ -658,6 +702,7 @@ class FileManagerModule(_ModuleBase):
         :param target_storage: 目标存储
         :param target_path: 目标路径
         :param transfer_type: 文件整理方式
+        :param overwrite_mode: 覆盖模式
         :param episodes_info: 当前季的全部集信息
         :param need_scrape: 是否需要刮削
         :param need_rename: 是否需要重命名
@@ -775,8 +820,8 @@ class FileManagerModule(_ModuleBase):
                             overflag = True
                     if not overflag:
                         # 目标文件已存在
-                        logger.info(f"目标文件已存在，整理覆盖模式：{settings.OVERWRITE_MODE}")
-                        match settings.OVERWRITE_MODE:
+                        logger.info(f"文件本地系统中已经存在同名文件 {target_file}，当前整理覆盖模式设置为 {overwrite_mode}")
+                        match overwrite_mode:
                             case 'always':
                                 # 总是覆盖同名文件
                                 overflag = True
@@ -787,27 +832,29 @@ class FileManagerModule(_ModuleBase):
                                     overflag = True
                                 else:
                                     return TransferInfo(success=False,
-                                                        message=f"媒体库中已存在，且质量更好",
+                                                        message=f"本地媒体库存在同名文件，且质量更好",
                                                         fileitem=fileitem,
                                                         target_fileitem=__get_targetitem(target_file),
                                                         fail_list=[fileitem.path])
                             case 'never':
                                 # 存在不覆盖
                                 return TransferInfo(success=False,
-                                                    message=f"媒体库中已存在，当前设置为不覆盖",
+                                                    message=f"本地媒体库存在同名文件，当前整理覆盖模式设置为不覆盖",
                                                     fileitem=fileitem,
                                                     target_fileitem=__get_targetitem(target_file),
                                                     fail_list=[fileitem.path])
                             case 'latest':
                                 # 仅保留最新版本
-                                logger.info(f"仅保留最新版本，将覆盖：{new_file}")
+                                logger.info(f"当前整理覆盖模式设置为仅保留最新版本，将覆盖：{new_file}")
                                 overflag = True
                 else:
-                    # FIXME
-                    if settings.OVERWRITE_MODE == 'latest':
+                    if overwrite_mode == 'latest':
                         # 文件不存在，但仅保留最新版本
-                        logger.info(f"整理覆盖模式：{settings.OVERWRITE_MODE}，仅保留最新版本")
-                        self.delete_all_version_files(new_file)
+                        logger.info(f"当前整理覆盖模式设置为 {overwrite_mode}，仅保留最新版本")
+                        self.__delete_local_version_files(new_file)
+            else:
+                # TODO 支持网盘
+                pass
             # 整理文件
             new_item, err_msg = self.__transfer_file(fileitem=fileitem,
                                                      target_storage=target_storage,
@@ -931,19 +978,19 @@ class FileManagerModule(_ModuleBase):
 
     def media_exists(self, mediainfo: MediaInfo, **kwargs) -> Optional[ExistMediaInfo]:
         """
+        TODO 支持网盘
         判断媒体文件是否存在于本地文件系统，只支持标准媒体库结构
         :param mediainfo:  识别的媒体信息
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
-        # 目的路径
-        dest_paths = DirectoryHelper().get_library_dirs()
+        # 检查本地媒体库
+        dest_dirs = DirectoryHelper().get_local_library_dirs()
         # 检查每一个媒体库目录
-        for dest_path in dest_paths:
+        for dest_dir in dest_dirs:
             # 媒体分类路径
-            target_dir = self.__get_dest_dir(mediainfo=mediainfo, target_dir=dest_path)
+            target_dir = self.__get_dest_dir(mediainfo=mediainfo, target_dir=dest_dir)
             if not target_dir.exists():
                 continue
-
             # 重命名格式
             rename_format = settings.TV_RENAME_FORMAT \
                 if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
@@ -954,25 +1001,21 @@ class FileManagerModule(_ModuleBase):
                 rename_dict=self.__get_naming_dict(meta=meta,
                                                    mediainfo=mediainfo)
             )
-
             # 取相对路径的第1层目录
             if rel_path.parts:
                 media_path = target_dir / rel_path.parts[0]
             else:
                 continue
-
             # 检查媒体文件夹是否存在
             if not media_path.exists():
                 continue
-
             # 检索媒体文件
             media_files = SystemUtils.list_files(directory=media_path, extensions=settings.RMT_MEDIAEXT)
             if not media_files:
                 continue
-
             if mediainfo.type == MediaType.MOVIE:
                 # 电影存在任何文件为存在
-                logger.info(f"文件系统已存在：{mediainfo.title_year}")
+                logger.info(f"{mediainfo.title_year} 在本地文件系统中找到了")
                 return ExistMediaInfo(type=MediaType.MOVIE)
             else:
                 # 电视剧检索集数
@@ -987,15 +1030,16 @@ class FileManagerModule(_ModuleBase):
                         seasons[season_index] = []
                     seasons[season_index].append(episode_index)
                 # 返回剧集情况
-                logger.info(f"{mediainfo.title_year} 文件系统已存在：{seasons}")
+                logger.info(f"{mediainfo.title_year} 在本地文件系统中找到了这些季集：{seasons}")
                 return ExistMediaInfo(type=MediaType.TV, seasons=seasons)
         # 不存在
         return None
 
     @staticmethod
-    def delete_all_version_files(path: Path) -> bool:
+    def __delete_local_version_files(path: Path) -> bool:
         """
-        删除目录下的所有版本文件
+        TODO 支持网盘
+        删除目录下的所有版本文件（仅本地）
         :param path: 目录路径
         """
         # 识别文件中的季集信息

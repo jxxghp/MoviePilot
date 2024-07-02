@@ -176,19 +176,7 @@ class LocalStorage(StorageBase):
         """
         上传文件
         """
-        filepath = Path(fileitem.path)
-        if not filepath.exists():
-            logger.warn(f"文件不存在：{filepath}")
-            return None
-        if not path.exists():
-            try:
-                filepath.rename(path)
-            except Exception as e:
-                logger.error(f"移动文件失败：{e}")
-                return None
-        if path.exists():
-            return self.__get_fileitem(path)
-        return None
+        pass
 
     def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         """
@@ -223,12 +211,12 @@ class LocalStorage(StorageBase):
             return False
         return True
 
-    def move(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def move(self, fileitem: schemas.FileItem, target: Path) -> bool:
         """
         移动文件
         """
         file_path = Path(fileitem.path)
-        code, message = SystemUtils.move(file_path, target_file)
+        code, message = SystemUtils.move(file_path, target)
         if code != 0:
             logger.error(f"移动文件失败：{message}")
             return False

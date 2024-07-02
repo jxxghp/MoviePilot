@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Union
 
 from app import schemas
 from app.helper.storage import StorageHelper
@@ -111,7 +111,7 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def move(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+    def move(self, fileitm: schemas.FileItem, target: Union[schemas.FileItem, Path]) -> bool:
         """
         移动文件
         """
