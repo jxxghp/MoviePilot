@@ -72,7 +72,29 @@ class TransferChain(ChainBase):
 
             logger.info(f"获取到 {len(torrents)} 个已完成的下载任务")
 
+            # 检查是否为下载器监控目录中的文件
+            need_handle = False
+            download_dirs = self.directoryhelper.get_download_dirs()
             for torrent in torrents:
+                # 文件路径
+                file_path = Path(torrent.path)
+                if not file_path.exists():
+                    logger.warn(f"文件不存在：{file_path}")
+                    continue
+                # 检查是否为下载器监控目录中的文件
+                for dir_info in download_dirs:
+                    if dir_info.monitor_type != "downloader":
+                        continue
+                    if not dir_info.download_path:
+                        continue
+                    if file_path.is_relative_to(Path(dir_info.download_path)):
+                        need_handle = True
+                        break
+                if not need_handle:
+                    logger.info(f"文件 {file_path} 不在下载器监控目录中，不通过下载器进行整理")
+                    # 设置下载任务状态
+                    self.transfer_completed(hashs=torrent.hash, path=torrent.path)
+                    continue
                 # 查询下载记录识别情况
                 downloadhis: DownloadHistory = self.downloadhis.get_by_hash(torrent.hash)
                 if downloadhis:
@@ -93,7 +115,6 @@ class TransferChain(ChainBase):
                     mediainfo = None
 
                 # 执行转移
-                file_path = Path(torrent.path)
                 self.__do_transfer(
                     fileitem=FileItem(
                         storage="local",
