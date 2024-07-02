@@ -3,6 +3,7 @@ from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.core.config import settings
 from app.core.context import Context, MediaInfo
+from app.helper.notification import NotificationHelper
 from app.log import logger
 from app.modules import _ModuleBase, checkMessage
 from app.modules.vocechat.vocechat import VoceChat
@@ -10,10 +11,19 @@ from app.schemas import MessageChannel, CommingMessage, Notification
 
 
 class VoceChatModule(_ModuleBase):
-    vocechat: VoceChat = None
+    _clients: Dict[str, VoceChat] = {}
 
     def init_module(self) -> None:
-        self.vocechat = VoceChat()
+        """
+        初始化模块
+        """
+        self._clients = {}
+        clients = NotificationHelper().get_notifications()
+        if not clients:
+            return
+        for client in clients:
+            if client.type == "vocechat" and client.enabled:
+                self._clients[client.name] = VoceChat(**client.config)
 
     @staticmethod
     def get_name() -> str:
@@ -32,7 +42,7 @@ class VoceChatModule(_ModuleBase):
         return False, "获取VoceChat频道失败"
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        return "MESSAGER", "vocechat"
+        pass
 
     @staticmethod
     def message_parser(body: Any, form: Any,

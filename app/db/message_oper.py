@@ -19,6 +19,7 @@ class MessageOper(DbOper):
 
     def add(self,
             channel: MessageChannel = None,
+            source: str = None,
             mtype: NotificationType = None,
             title: str = None,
             text: str = None,
@@ -31,6 +32,7 @@ class MessageOper(DbOper):
         """
         新增媒体服务器数据
         :param channel: 消息渠道
+        :param source: 来源
         :param mtype: 消息类型
         :param title: 标题
         :param text: 文本内容
@@ -42,6 +44,7 @@ class MessageOper(DbOper):
         """
         kwargs.update({
             "channel": channel.value if channel else '',
+            "source": source,
             "mtype": mtype.value if mtype else '',
             "title": title,
             "text": text,

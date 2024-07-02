@@ -41,6 +41,9 @@ class Telegram:
             _bot = telebot.TeleBot(self._telegram_token, parse_mode="Markdown")
             # 记录句柄
             self._bot = _bot
+            # 标记渠道来源
+            if kwargs.get("name"):
+                self._ds_url = f"{self._ds_url}&source={kwargs.get('name')}"
 
             @_bot.message_handler(commands=['start', 'help'])
             def send_welcome(message):

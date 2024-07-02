@@ -1,10 +1,6 @@
 from abc import abstractmethod, ABCMeta
 from typing import Tuple, Union
 
-from app.db.systemconfig_oper import SystemConfigOper
-from app.schemas import Notification
-from app.schemas.types import SystemConfigKey, MessageChannel
-
 
 class _ModuleBase(metaclass=ABCMeta):
     """
@@ -49,38 +45,3 @@ class _ModuleBase(metaclass=ABCMeta):
         模块测试, 返回测试结果和错误信息
         """
         pass
-
-
-def checkMessage(channel_type: MessageChannel):
-    """
-    检查消息渠道及消息类型，如不符合则不处理
-    """
-
-    def decorator(func):
-        def wrapper(self, message: Notification, *args, **kwargs):
-            # 检查消息渠道
-            if message.channel and message.channel != channel_type:
-                return None
-            else:
-                # 检查消息类型开关
-                if message.mtype:
-                    switchs = SystemConfigOper().get(SystemConfigKey.NotificationChannels) or []
-                    for switch in switchs:
-                        if switch.get("mtype") == message.mtype.value:
-                            if channel_type == MessageChannel.Wechat and not switch.get("wechat"):
-                                return None
-                            if channel_type == MessageChannel.Telegram and not switch.get("telegram"):
-                                return None
-                            if channel_type == MessageChannel.Slack and not switch.get("slack"):
-                                return None
-                            if channel_type == MessageChannel.SynologyChat and not switch.get("synologychat"):
-                                return None
-                            if channel_type == MessageChannel.VoceChat and not switch.get("vocechat"):
-                                return None
-                            if channel_type == MessageChannel.WebPush and not switch.get("webpush"):
-                                return None
-                return func(self, message, *args, **kwargs)
-
-        return wrapper
-
-    return decorator

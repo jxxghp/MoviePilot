@@ -54,6 +54,7 @@ class SubscribeChain(ChainBase):
             bangumiid: int = None,
             season: int = None,
             channel: MessageChannel = None,
+            source: str = None,
             userid: str = None,
             username: str = None,
             message: bool = True,
@@ -164,6 +165,7 @@ class SubscribeChain(ChainBase):
             if not exist_ok and message:
                 # 发回原用户
                 self.post_message(Notification(channel=channel,
+                                               source=source,
                                                mtype=NotificationType.Subscribe,
                                                title=f"{mediainfo.title_year} {metainfo.season} "
                                                      f"添加订阅失败！",

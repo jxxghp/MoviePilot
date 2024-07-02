@@ -33,7 +33,7 @@ class QbittorrentModule(_ModuleBase):
         if not downloaders:
             return
         for server in downloaders:
-            if server.type == "qbittorrent":
+            if server.type == "qbittorrent" and server.enabled:
                 self._servers[server.name] = Qbittorrent(**server.config)
                 if server.default:
                     self._default_server_name = server.name

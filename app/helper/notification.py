@@ -1,4 +1,7 @@
+from typing import List
+
 from app.db.systemconfig_oper import SystemConfigOper
+from app.schemas import NotificationConf
 from app.schemas.types import SystemConfigKey
 
 
@@ -10,11 +13,11 @@ class NotificationHelper:
     def __init__(self):
         self.systemconfig = SystemConfigOper()
 
-    def get_notifications(self) -> dict:
+    def get_notifications(self) -> List[NotificationConf]:
         """
         获取消息通知渠道
         """
-        notification_conf: dict = self.systemconfig.get(SystemConfigKey.Notifications)
-        if not notification_conf:
-            return {}
-        return notification_conf
+        notification_confs: List[dict] = self.systemconfig.get(SystemConfigKey.Notifications)
+        if not notification_confs:
+            return []
+        return [NotificationConf(**conf) for conf in notification_confs]

@@ -30,7 +30,7 @@ class TransmissionModule(_ModuleBase):
         if not downloaders:
             return
         for server in downloaders:
-            if server.type == "transmission":
+            if server.type == "transmission" and server.enabled:
                 self._servers[server.name] = Transmission(**server.config)
                 if server.default:
                     self._default_server_name = server.name

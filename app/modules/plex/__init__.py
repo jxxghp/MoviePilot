@@ -22,7 +22,7 @@ class PlexModule(_ModuleBase):
         if not mediaservers:
             return
         for server in mediaservers:
-            if server.type == "plex":
+            if server.type == "plex" and server.enabled:
                 self._servers[server.name] = Plex(**server.config)
 
     @staticmethod
@@ -72,6 +72,12 @@ class PlexModule(_ModuleBase):
         :param args:  请求参数
         :return: 字典，解析为消息时需要包含：title、text、image
         """
+        source = args.get("source")
+        if source:
+            server = self.get_server(source)
+            if not server:
+                return None
+            return server.get_webhook_message(body)
         for server in self._servers.values():
             result = server.get_webhook_message(body)
             if result:

@@ -235,9 +235,8 @@ class Command(metaclass=Singleton):
                             }
                         )
 
-    def __run_command(self, command: Dict[str, any],
-                      data_str: str = "",
-                      channel: MessageChannel = None, userid: Union[str, int] = None):
+    def __run_command(self, command: Dict[str, any], data_str: str = "",
+                      channel: MessageChannel = None, source: str = None, userid: Union[str, int] = None):
         """
         运行定时服务
         """
@@ -247,6 +246,7 @@ class Command(metaclass=Singleton):
                 self.chain.post_message(
                     Notification(
                         channel=channel,
+                        source=source,
                         title=f"开始执行 {command.get('description')} ...",
                         userid=userid
                     )
@@ -259,6 +259,7 @@ class Command(metaclass=Singleton):
                 self.chain.post_message(
                     Notification(
                         channel=channel,
+                        source=source,
                         title=f"{command.get('description')} 执行完成",
                         userid=userid
                     )
@@ -272,17 +273,18 @@ class Command(metaclass=Singleton):
                     # 有内置参数直接使用内置参数
                     data = cmd_data.get("data") or {}
                     data['channel'] = channel
+                    data['source'] = source
                     data['user'] = userid
                     if data_str:
                         data['args'] = data_str
                     cmd_data['data'] = data
                     command['func'](**cmd_data)
-                elif args_num == 2:
-                    # 没有输入参数，只输入渠道和用户ID
-                    command['func'](channel, userid)
-                elif args_num > 2:
+                elif args_num == 3:
+                    # 没有输入参数，只输入渠道来源、和用户ID
+                    command['func'](channel, source, userid)
+                elif args_num > 3:
                     # 多个输入参数：用户输入、用户ID
-                    command['func'](data_str, channel, userid)
+                    command['func'](data_str, channel, source, userid)
             else:
                 # 没有参数
                 command['func']()
@@ -324,7 +326,8 @@ class Command(metaclass=Singleton):
         return self._commands.get(cmd, {})
 
     def execute(self, cmd: str, data_str: str = "",
-                channel: MessageChannel = None, userid: Union[str, int] = None) -> None:
+                channel: MessageChannel = None, source: str = None,
+                userid: Union[str, int] = None) -> None:
         """
         执行命令
         """
@@ -338,7 +341,7 @@ class Command(metaclass=Singleton):
 
                 # 执行命令
                 self.__run_command(command, data_str=data_str,
-                                   channel=channel, userid=userid)
+                                   channel=channel, source=source, userid=userid)
 
                 if userid:
                     logger.info(f"用户 {userid} {command.get('description')} 执行完成")
@@ -369,10 +372,12 @@ class Command(metaclass=Singleton):
         event_str = event.event_data.get('cmd')
         # 消息渠道
         event_channel = event.event_data.get('channel')
+        # 消息来源
+        event_source = event.event_data.get('source')
         # 消息用户
         event_user = event.event_data.get('user')
         if event_str:
             cmd = event_str.split()[0]
             args = " ".join(event_str.split()[1:])
             if self.get(cmd):
-                self.execute(cmd, args, event_channel, event_user)
+                self.execute(cmd, args, event_channel, event_source, event_user)

@@ -50,6 +50,7 @@ def web_message(text: str, current_user: User = Depends(get_current_active_super
     """
     MessageChain().handle_message(
         channel=MessageChannel.Web,
+        source=current_user.name,
         userid=current_user.name,
         username=current_user.name,
         text=text
@@ -104,7 +105,7 @@ def vocechat_verify(token: str) -> Any:
     """
     if token == settings.API_TOKEN:
         return {"status": "OK"}
-    return {"status": "ERROR"}
+    return {"status": "API_TOKEN ERROR"}
 
 
 @router.get("/", summary="回调请求验证")

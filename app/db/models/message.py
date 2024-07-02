@@ -11,6 +11,8 @@ class Message(Base):
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
     # 消息渠道
     channel = Column(String)
+    # 消息来源
+    source = Column(String)
     # 消息类型
     mtype = Column(String)
     # 标题

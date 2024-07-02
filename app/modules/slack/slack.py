@@ -41,6 +41,10 @@ class Slack:
         self._client = slack_app.client
         self._channel = channel
 
+        # 标记消息来源
+        if kwargs.get("name"):
+            self._ds_url = f"{self._ds_url}&source={kwargs.get('name')}"
+
         # 注册消息响应
         @slack_app.event("message")
         def slack_message(message):

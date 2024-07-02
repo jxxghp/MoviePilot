@@ -249,19 +249,20 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("bangumi_info", bangumiid=bangumiid)
 
-    def message_parser(self, body: Any, form: Any,
+    def message_parser(self, source: str, body: Any, form: Any,
                        args: Any) -> Optional[CommingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
         username: 用户名
         text: 内容
+        :param source: 消息来源（渠道配置名称）
         :param body: 请求体
         :param form: 表单
         :param args: 参数
         :return: 消息渠道、消息内容
         """
-        return self.run_module("message_parser", body=body, form=form, args=args)
+        return self.run_module("message_parser", source=source, body=body, form=form, args=args)
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[WebhookEventInfo]:
         """
@@ -454,29 +455,19 @@ class ChainBase(metaclass=ABCMeta):
         :return: 成功或失败
         """
         logger.info(f"发送消息：channel={message.channel}，"
+                    f"source={message.source},"
                     f"title={message.title}, "
                     f"text={message.text}，"
                     f"userid={message.userid}")
         # 发送事件
-        self.eventmanager.send_event(etype=EventType.NoticeMessage,
-                                     data={
-                                         "channel": message.channel,
-                                         "type": message.mtype,
-                                         "title": message.title,
-                                         "text": message.text,
-                                         "image": message.image,
-                                         "userid": message.userid,
-                                     })
+        self.eventmanager.send_event(etype=EventType.NoticeMessage, data=message.dict())
         # 保存消息
         self.messagehelper.put(message, role="user")
-        self.messageoper.add(channel=message.channel, mtype=message.mtype,
-                             title=message.title, text=message.text,
-                             image=message.image, link=message.link,
-                             userid=message.userid, action=1)
+        self.messageoper.add(**message.dict(), action=1)
         # 发送
         self.run_module("post_message", message=message)
 
-    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
+    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """
         发送媒体信息选择列表
         :param message:  消息体
@@ -485,14 +476,10 @@ class ChainBase(metaclass=ABCMeta):
         """
         note_list = [media.to_dict() for media in medias]
         self.messagehelper.put(message, role="user", note=note_list)
-        self.messageoper.add(channel=message.channel, mtype=message.mtype,
-                             title=message.title, text=message.text,
-                             image=message.image, link=message.link,
-                             userid=message.userid, action=1,
-                             note=note_list)
+        self.messageoper.add(**message.dict(), action=1, note=note_list)
         return self.run_module("post_medias_message", message=message, medias=medias)
 
-    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
+    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> None:
         """
         发送种子信息选择列表
         :param message:  消息体
@@ -501,11 +488,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         note_list = [torrent.torrent_info.to_dict() for torrent in torrents]
         self.messagehelper.put(message, role="user", note=note_list)
-        self.messageoper.add(channel=message.channel, mtype=message.mtype,
-                             title=message.title, text=message.text,
-                             image=message.image, link=message.link,
-                             userid=message.userid, action=1,
-                             note=note_list)
+        self.messageoper.add(**message.dict(), action=1, note=note_list)
         return self.run_module("post_torrents_message", message=message, torrents=torrents)
 
     def metadata_img(self, mediainfo: MediaInfo, season: int = None) -> Optional[dict]:

@@ -94,6 +94,7 @@ class DownloadChain(ChainBase):
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: MessageChannel = None,
+                         source: str = None,
                          userid: Union[str, int] = None
                          ) -> Tuple[Optional[Union[Path, str]], str, list]:
         """
@@ -187,6 +188,7 @@ class DownloadChain(ChainBase):
             logger.error(f"下载种子文件失败：{torrent.title} - {torrent_url}")
             self.post_message(Notification(
                 channel=channel,
+                source=source,
                 mtype=NotificationType.Manual,
                 title=f"{torrent.title} 种子下载失败！",
                 text=f"错误信息：{error_msg}\n站点：{torrent.site_name}",
@@ -198,7 +200,7 @@ class DownloadChain(ChainBase):
 
     def download_single(self, context: Context, torrent_file: Path = None,
                         episodes: Set[int] = None,
-                        channel: MessageChannel = None,
+                        channel: MessageChannel = None, source: str = None,
                         save_path: str = None,
                         userid: Union[str, int] = None,
                         username: str = None) -> Optional[str]:
@@ -208,6 +210,7 @@ class DownloadChain(ChainBase):
         :param torrent_file: 种子文件路径
         :param episodes: 需要下载的集数
         :param channel: 通知渠道
+        :param source: 通知来源
         :param save_path: 保存路径
         :param userid: 用户ID
         :param username: 调用下载的用户名/插件名
@@ -230,6 +233,7 @@ class DownloadChain(ChainBase):
             # 下载种子文件，得到的可能是文件也可能是磁力链
             content, _folder_name, _file_list = self.download_torrent(_torrent,
                                                                       channel=channel,
+                                                                      source=source,
                                                                       userid=userid)
             if not content:
                 return None
@@ -352,6 +356,7 @@ class DownloadChain(ChainBase):
             # 只发送给对应渠道和用户
             self.post_message(Notification(
                 channel=channel,
+                source=source,
                 mtype=NotificationType.Manual,
                 title="添加下载任务失败：%s %s"
                       % (_media.title_year, _meta.season_episode),
@@ -367,6 +372,7 @@ class DownloadChain(ChainBase):
                        no_exists: Dict[Union[int, str], Dict[int, NotExistMediaInfo]] = None,
                        save_path: str = None,
                        channel: MessageChannel = None,
+                       source: str = None,
                        userid: str = None,
                        username: str = None
                        ) -> Tuple[List[Context], Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
@@ -376,6 +382,7 @@ class DownloadChain(ChainBase):
         :param no_exists:  缺失的剧集信息
         :param save_path:  保存路径
         :param channel:  通知渠道
+        :param source:  通知来源
         :param userid:  用户ID
         :param username: 调用下载的用户名/插件名
         :return: 已经下载的资源列表、剩余未下载到的剧集 no_exists[tmdb_id/douban_id] = {season: NotExistMediaInfo}
@@ -446,7 +453,7 @@ class DownloadChain(ChainBase):
             if context.media_info.type == MediaType.MOVIE:
                 logger.info(f"开始下载电影 {context.torrent_info.title} ...")
                 if self.download_single(context, save_path=save_path, channel=channel,
-                                        userid=userid, username=username):
+                                        source=source, userid=userid, username=username):
                     # 下载成功
                     logger.info(f"{context.torrent_info.title} 添加下载成功")
                     downloaded_list.append(context)
@@ -526,14 +533,15 @@ class DownloadChain(ChainBase):
                                         torrent_file=content if isinstance(content, Path) else None,
                                         save_path=save_path,
                                         channel=channel,
+                                        source=source,
                                         userid=userid,
                                         username=username
                                     )
                             else:
                                 # 下载
                                 logger.info(f"开始下载 {torrent.title} ...")
-                                download_id = self.download_single(context,
-                                                                   save_path=save_path, channel=channel,
+                                download_id = self.download_single(context, save_path=save_path,
+                                                                   channel=channel, source=source,
                                                                    userid=userid, username=username)
 
                             if download_id:
@@ -600,8 +608,8 @@ class DownloadChain(ChainBase):
                             if torrent_episodes.issubset(set(need_episodes)):
                                 # 下载
                                 logger.info(f"开始下载 {meta.title} ...")
-                                download_id = self.download_single(context,
-                                                                   save_path=save_path, channel=channel,
+                                download_id = self.download_single(context, save_path=save_path,
+                                                                   channel=channel, source=source,
                                                                    userid=userid, username=username)
                                 if download_id:
                                     # 下载成功
@@ -686,6 +694,7 @@ class DownloadChain(ChainBase):
                                 episodes=selected_episodes,
                                 save_path=save_path,
                                 channel=channel,
+                                source=source,
                                 userid=userid,
                                 username=username
                             )
@@ -839,7 +848,7 @@ class DownloadChain(ChainBase):
             # 全部存在
             return True, no_exists
 
-    def remote_downloading(self, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_downloading(self, channel: MessageChannel, source: str, userid: Union[str, int] = None):
         """
         查询正在下载的任务，并发送消息
         """
@@ -847,6 +856,7 @@ class DownloadChain(ChainBase):
         if not torrents:
             self.post_message(Notification(
                 channel=channel,
+                source=source,
                 mtype=NotificationType.Download,
                 title="没有正在下载的任务！",
                 userid=userid,
@@ -864,6 +874,7 @@ class DownloadChain(ChainBase):
             index += 1
         self.post_message(Notification(
             channel=channel,
+            source=source,
             mtype=NotificationType.Download,
             title=title,
             text="\n".join(messages),

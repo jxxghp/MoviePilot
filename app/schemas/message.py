@@ -15,6 +15,8 @@ class CommingMessage(BaseModel):
     username: Optional[str] = None
     # 消息渠道
     channel: Optional[MessageChannel] = None
+    # 来源（渠道名称）
+    source: Optional[str] = None
     # 消息体
     text: Optional[str] = None
     # 时间
@@ -39,6 +41,8 @@ class Notification(BaseModel):
     """
     # 消息渠道
     channel: Optional[MessageChannel] = None
+    # 消息来源
+    source: Optional[str] = None
     # 消息类型
     mtype: Optional[NotificationType] = None
     # 标题
