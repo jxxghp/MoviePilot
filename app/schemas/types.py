@@ -68,10 +68,6 @@ class SystemConfigKey(Enum):
     Directories = "Directories"
     # 存储配置
     Storages = "Storages"
-    # 阿里云盘认证参数
-    UserAliyunParams = "UserAliyunParams"
-    # 115网盘认证参数
-    User115Params = "User115Params"
     # 搜索站点范围
     IndexerSites = "IndexerSites"
     # 订阅站点范围

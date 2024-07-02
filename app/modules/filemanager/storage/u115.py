@@ -8,10 +8,9 @@ from py115 import Cloud
 from py115.types import LoginTarget, QrcodeSession, QrcodeStatus, Credential
 
 from app import schemas
-from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.modules.filemanager.storage import StorageBase
-from app.schemas.types import SystemConfigKey, StorageSchema
+from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 
@@ -23,6 +22,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
     # 存储类型
     schema = StorageSchema.U115
+
     # 支持的整理方式
     transtype = {
         "move": "移动"
@@ -30,9 +30,6 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
     cloud: Optional[Cloud] = None
     _session: QrcodeSession = None
-
-    def __init__(self):
-        self.systemconfig = SystemConfigOper()
 
     def __init_cloud(self) -> bool:
         """
@@ -56,22 +53,22 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         获取已保存的115认证参数
         """
-        cookie_dict = self.systemconfig.get(SystemConfigKey.User115Params)
+        cookie_dict = self.get_config()
         if not cookie_dict:
             return None
-        return Credential.from_dict(cookie_dict)
+        return Credential.from_dict(cookie_dict.dict())
 
     def __save_credentail(self, credential: Credential):
         """
         设置115认证参数
         """
-        self.systemconfig.set(SystemConfigKey.User115Params, credential.to_dict())
+        self.set_config(credential.to_dict())
 
     def __clear_credential(self):
         """
         清除115认证参数
         """
-        self.systemconfig.delete(SystemConfigKey.User115Params)
+        self.set_config({})
 
     def generate_qrcode(self) -> Optional[Tuple[dict, str]]:
         """

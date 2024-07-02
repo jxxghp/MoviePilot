@@ -3,14 +3,30 @@ from pathlib import Path
 from typing import Optional, List
 
 from app import schemas
+from app.helper.storage import StorageHelper
 
 
 class StorageBase(metaclass=ABCMeta):
     """
     存储基类
     """
-
+    schema = None
     transtype = {}
+
+    def __init__(self):
+        self.storagehelper = StorageHelper()
+
+    def get_config(self) -> Optional[schemas.StorageConf]:
+        """
+        获取配置
+        """
+        return self.storagehelper.get_storage(self.schema.value)
+
+    def set_config(self, conf: dict):
+        """
+        设置配置
+        """
+        self.storagehelper.set_storage(self.schema.value, conf)
 
     def support_transtype(self) -> dict:
         """

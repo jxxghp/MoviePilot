@@ -53,8 +53,6 @@ class StorageConf(BaseModel):
     """
     存储配置
     """
-    # 名称
-    name: Optional[str] = None
     # 类型 local/alipan/u115/rclone
     type: Optional[str] = None
     # 配置

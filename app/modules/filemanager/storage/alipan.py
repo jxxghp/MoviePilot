@@ -9,10 +9,9 @@ from requests import Response
 
 from app import schemas
 from app.core.config import settings
-from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.modules.filemanager.storage import StorageBase
-from app.schemas.types import SystemConfigKey, StorageSchema
+from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -25,6 +24,7 @@ class AliPan(StorageBase):
 
     # 存储类型
     schema = StorageSchema.Alipan
+
     # 支持的整理方式
     transtype = {
         "move": "移动"
@@ -65,9 +65,6 @@ class AliPan(StorageBase):
     # 上传文件完成
     upload_file_complete_url = "https://api.aliyundrive.com/v2/file/complete"
 
-    def __init__(self):
-        self.systemconfig = SystemConfigOper()
-
     def __handle_error(self, res: Response, apiname: str, action: bool = True):
         """
         统一处理和打印错误信息
@@ -103,7 +100,8 @@ class AliPan(StorageBase):
         """
         获取阿里云盘认证参数并初始化参数格式
         """
-        return self.systemconfig.get(SystemConfigKey.UserAliyunParams) or {}
+        conf = self.get_config()
+        return conf.config if conf else {}
 
     def __update_params(self, params: dict):
         """
@@ -111,13 +109,13 @@ class AliPan(StorageBase):
         """
         current_params = self.__auth_params
         current_params.update(params)
-        self.systemconfig.set(SystemConfigKey.UserAliyunParams, current_params)
+        self.set_config(current_params)
 
     def __clear_params(self):
         """
         清除阿里云盘认证参数
         """
-        self.systemconfig.delete(SystemConfigKey.UserAliyunParams)
+        self.set_config({})
 
     def generate_qrcode(self) -> Optional[Tuple[dict, str]]:
         """
