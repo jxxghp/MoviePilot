@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
 
 from app import schemas
 from app.chain import ChainBase
@@ -57,3 +57,9 @@ class StorageChain(ChainBase):
         重命名文件或目录
         """
         return self.run_module("rename_file", fileitem=fileitem, name=name)
+
+    def snapshot_storage(self, fileitem: schemas.FileItem) -> Optional[Dict]:
+        """
+        快照存储
+        """
+        return self.run_module("snapshot_storage", fileitem=fileitem)

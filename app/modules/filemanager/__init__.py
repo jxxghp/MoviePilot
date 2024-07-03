@@ -173,6 +173,16 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.upload(fileitem, path)
 
+    def snapshot_storage(self, fileitem: FileItem) -> Optional[Dict]:
+        """
+        快照存储
+        """
+        storage_oper = self.__get_storage_oper(fileitem.storage)
+        if not storage_oper:
+            logger.error(f"不支持 {storage} 的快照处理")
+            return None
+        return storage_oper.snapshot(fileitem)
+
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
                  transfer_type: str, target_storage: str = None, target_path: Path = None,
                  episodes_info: List[TmdbEpisode] = None,

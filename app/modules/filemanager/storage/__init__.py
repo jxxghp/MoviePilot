@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Dict
 
 from app import schemas
 from app.helper.storage import StorageHelper
@@ -137,4 +137,23 @@ class StorageBase(metaclass=ABCMeta):
         软链接文件
         """
         pass
+
+    def snapshot(self, fileitm: schemas.FileItem) -> Dict[str, float]:
+        """
+        快照文件系统，输出所有层级文件信息
+        """
+        files_info = {}
+
+        def __snapshot_file(_fileitm: schemas.FileItem):
+            """
+            递归获取文件信息
+            """
+            files_info[_fileitm.path] = _fileitm.size
+            if _fileitm.type == "dir":
+                for sub_file in self.list(_fileitm):
+                    __snapshot_file(sub_file)
+
+        __snapshot_file(fileitm)
+
+        return files_info
     
