@@ -64,7 +64,14 @@ class StorageBase(metaclass=ABCMeta):
     @abstractmethod
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
         """
-        获取目录
+        获取目录，如目录不存在则创建
+        """
+        pass
+
+    @abstractmethod
+    def get_item(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取文件或目录，不存在返回None
         """
         pass
 

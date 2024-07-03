@@ -98,7 +98,7 @@ class Rclone(StorageBase):
                 items = json.loads(ret.stdout)
                 return [self.__get_rcloneitem(item) for item in items]
         except Exception as err:
-            logger.error(f"浏览文件失败：{err}")
+            logger.error(f"rclone浏览文件失败：{err}")
         return None
 
     def create_folder(self, fileitm: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
@@ -119,7 +119,7 @@ class Rclone(StorageBase):
                 ret_fileitem.name = name
                 return ret_fileitem
         except Exception as err:
-            logger.error(f"创建目录失败：{err}")
+            logger.error(f"rclone创建目录失败：{err}")
         return None
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
@@ -127,12 +127,11 @@ class Rclone(StorageBase):
         根据文件路程获取目录，不存在则创建
         """
 
-        def __find_dir_name(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
+        def __find_dir(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
             """
             查找下级目录中匹配名称的目录
             """
-            sub_files = self.list(_fileitem)
-            for sub_file in sub_files:
+            for sub_file in self.list(_fileitem):
                 if sub_file.type != "dir":
                     continue
                 if sub_file.name == _name:
@@ -144,15 +143,35 @@ class Rclone(StorageBase):
         for part in path.parts:
             if part == "/":
                 continue
-            dir_file = __find_dir_name(fileitem, part)
+            dir_file = __find_dir(fileitem, part)
             if dir_file:
-                return dir_file
+                fileitem = dir_file
             else:
                 dir_file = self.create_folder(dir_file, part)
                 if not dir_file:
                     logger.warn(f"rclone创建目录 {fileitem.path}{part} 失败！")
                     return None
                 fileitem = dir_file
+        return fileitem
+
+    def get_item(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取文件或目录，不存在返回None
+        """
+        try:
+            ret = subprocess.run(
+                [
+                    'rclone', 'lsjson',
+                    f'MP:{path}'
+                ],
+                capture_output=True,
+                startupinfo=self.__get_hidden_shell()
+            )
+            if ret.returncode == 0:
+                items = json.loads(ret.stdout)
+                return self.__get_rcloneitem(items[0])
+        except Exception as err:
+            logger.error(f"rclone获取文件失败：{err}")
         return None
 
     def delete(self, fileitm: schemas.FileItem) -> bool:
@@ -170,7 +189,7 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return True
         except Exception as err:
-            logger.error(f"删除文件失败：{err}")
+            logger.error(f"rclone删除文件失败：{err}")
         return False
 
     def rename(self, fileitm: schemas.FileItem, name: str) -> bool:
@@ -189,7 +208,7 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return True
         except Exception as err:
-            logger.error(f"重命名文件失败：{err}")
+            logger.error(f"rclone重命名文件失败：{err}")
         return False
 
     def download(self, fileitm: schemas.FileItem, path: Path) -> bool:
@@ -208,7 +227,7 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return True
         except Exception as err:
-            logger.error(f"复制文件失败：{err}")
+            logger.error(f"rclone复制文件失败：{err}")
         return False
 
     def upload(self, fileitm: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
@@ -227,7 +246,7 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return self.__get_fileitem(path)
         except Exception as err:
-            logger.error(f"上传文件失败：{err}")
+            logger.error(f"rclone上传文件失败：{err}")
         return None
 
     def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
@@ -247,7 +266,7 @@ class Rclone(StorageBase):
                 items = json.loads(ret.stdout)
                 return self.__get_rcloneitem(items[0])
         except Exception as err:
-            logger.error(f"获取文件详情失败：{err}")
+            logger.error(f"rclone获取文件详情失败：{err}")
         return None
 
     def move(self, fileitm: schemas.FileItem, target: Path) -> bool:
@@ -266,7 +285,7 @@ class Rclone(StorageBase):
             if retcode == 0:
                 return True
         except Exception as err:
-            logger.error(f"移动文件失败：{err}")
+            logger.error(f"rclone移动文件失败：{err}")
         return False
 
     def copy(self, fileitm: schemas.FileItem, target_file: Path) -> bool:

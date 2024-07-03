@@ -809,52 +809,50 @@ class FileManagerModule(_ModuleBase):
 
             # 判断是否要覆盖
             overflag = False
-            if target_storage == "local":
-                # 本地目标存储
-                if new_file.exists() or new_file.is_symlink():
-                    # 本地目标文件已存在
-                    target_file = new_file
-                    if new_file.is_symlink():
-                        target_file = new_file.readlink()
-                        if not target_file.exists():
+            # 目的操作对象
+            target_oper: StorageBase = self.__get_storage_oper(target_storage)
+            target_item = target_oper.get_item(new_file)
+            if target_item:
+                # 目标文件已存在
+                target_file = new_file
+                if target_storage == "local" and new_file.is_symlink():
+                    target_file = new_file.readlink()
+                    if not target_file.exists():
+                        overflag = True
+                if not overflag:
+                    # 目标文件已存在
+                    logger.info(f"目的文件系统中已经存在同名文件 {target_file}，当前整理覆盖模式设置为 {overwrite_mode}")
+                    match overwrite_mode:
+                        case 'always':
+                            # 总是覆盖同名文件
                             overflag = True
-                    if not overflag:
-                        # 目标文件已存在
-                        logger.info(f"文件本地系统中已经存在同名文件 {target_file}，当前整理覆盖模式设置为 {overwrite_mode}")
-                        match overwrite_mode:
-                            case 'always':
-                                # 总是覆盖同名文件
+                        case 'size':
+                            # 存在时大覆盖小
+                            if target_item.size < fileitem.size:
+                                logger.info(f"目标文件文件大小更小，将覆盖：{new_file}")
                                 overflag = True
-                            case 'size':
-                                # 存在时大覆盖小
-                                if target_file.stat().st_size < fileitem.size:
-                                    logger.info(f"目标文件文件大小更小，将覆盖：{new_file}")
-                                    overflag = True
-                                else:
-                                    return TransferInfo(success=False,
-                                                        message=f"本地媒体库存在同名文件，且质量更好",
-                                                        fileitem=fileitem,
-                                                        target_fileitem=__get_targetitem(target_file),
-                                                        fail_list=[fileitem.path])
-                            case 'never':
-                                # 存在不覆盖
+                            else:
                                 return TransferInfo(success=False,
-                                                    message=f"本地媒体库存在同名文件，当前整理覆盖模式设置为不覆盖",
+                                                    message=f"媒体库存在同名文件，且质量更好",
                                                     fileitem=fileitem,
                                                     target_fileitem=__get_targetitem(target_file),
                                                     fail_list=[fileitem.path])
-                            case 'latest':
-                                # 仅保留最新版本
-                                logger.info(f"当前整理覆盖模式设置为仅保留最新版本，将覆盖：{new_file}")
-                                overflag = True
-                else:
-                    if overwrite_mode == 'latest':
-                        # 文件不存在，但仅保留最新版本
-                        logger.info(f"当前整理覆盖模式设置为 {overwrite_mode}，仅保留最新版本")
-                        self.__delete_local_version_files(new_file)
+                        case 'never':
+                            # 存在不覆盖
+                            return TransferInfo(success=False,
+                                                message=f"媒体库存在同名文件，当前覆盖模式为不覆盖",
+                                                fileitem=fileitem,
+                                                target_fileitem=__get_targetitem(target_file),
+                                                fail_list=[fileitem.path])
+                        case 'latest':
+                            # 仅保留最新版本
+                            logger.info(f"当前整理覆盖模式设置为仅保留最新版本，将覆盖：{new_file}")
+                            overflag = True
             else:
-                # TODO 支持网盘
-                pass
+                if overwrite_mode == 'latest':
+                    # 文件不存在，但仅保留最新版本
+                    logger.info(f"当前整理覆盖模式设置为 {overwrite_mode}，仅保留最新版本，正在删除已有版本文件 ...")
+                    self.__delete_version_files(target_storage, new_file)
             # 整理文件
             new_item, err_msg = self.__transfer_file(fileitem=fileitem,
                                                      target_storage=target_storage,
@@ -978,32 +976,34 @@ class FileManagerModule(_ModuleBase):
 
     def media_exists(self, mediainfo: MediaInfo, **kwargs) -> Optional[ExistMediaInfo]:
         """
-        TODO 支持网盘
-        判断媒体文件是否存在于本地文件系统，只支持标准媒体库结构
+        判断媒体文件是否存在于文件系统（网盘或本地文件），只支持标准媒体库结构
         :param mediainfo:  识别的媒体信息
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
         # 检查本地媒体库
-        dest_dirs = DirectoryHelper().get_local_library_dirs()
+        dest_dirs = DirectoryHelper().get_library_dirs()
         # 检查每一个媒体库目录
         for dest_dir in dest_dirs:
+            # 存储
+            storage_oper = self.__get_storage_oper(dest_dir.library_storage)
+            if not storage_oper:
+                continue
             # 媒体分类路径
-            target_dir = self.__get_dest_dir(mediainfo=mediainfo, target_dir=dest_dir)
-            if not target_dir.exists():
+            dir_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=dest_dir)
+            if not storage_oper.get_item(dir_path):
                 continue
             # 重命名格式
             rename_format = settings.TV_RENAME_FORMAT \
                 if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
             # 获取相对路径（重命名路径）
-            meta = MetaInfo(mediainfo.title)
             rel_path = self.get_rename_path(
                 template_string=rename_format,
-                rename_dict=self.__get_naming_dict(meta=meta,
+                rename_dict=self.__get_naming_dict(meta=MetaInfo(mediainfo.title),
                                                    mediainfo=mediainfo)
             )
             # 取相对路径的第1层目录
             if rel_path.parts:
-                media_path = target_dir / rel_path.parts[0]
+                media_path = dir_path / rel_path.parts[0]
             else:
                 continue
             # 检查媒体文件夹是否存在
@@ -1035,32 +1035,45 @@ class FileManagerModule(_ModuleBase):
         # 不存在
         return None
 
-    @staticmethod
-    def __delete_local_version_files(path: Path) -> bool:
+    def __delete_version_files(self, target_storage: str, path: Path) -> bool:
         """
-        TODO 支持网盘
-        删除目录下的所有版本文件（仅本地）
+        删除目录下的所有版本文件
+        :param target_storage: 存储类型
         :param path: 目录路径
         """
+        # 存储
+        storage_oper = self.__get_storage_oper(target_storage)
+        if not storage_oper:
+            return False
         # 识别文件中的季集信息
         meta = MetaInfoPath(path)
         season = meta.season
         episode = meta.episode
-        # 检索媒体文件
         logger.warn(f"正在删除目标目录中其它版本的文件：{path.parent}")
-        media_files = SystemUtils.list_files(directory=path.parent, extensions=settings.RMT_MEDIAEXT)
+        # 获取父目录
+        parent_item = storage_oper.get_item(path.parent)
+        if not parent_item:
+            logger.warn(f"目录 {path.parent} 不存在")
+            return False
+        # 检索媒体文件
+        media_files = storage_oper.list(parent_item)
         if not media_files:
-            logger.info(f"目录中没有媒体文件：{path.parent}")
+            logger.info(f"目录 {path.parent} 中没有文件")
             return False
         # 删除文件
         for media_file in media_files:
-            if str(media_file) == str(path):
+            media_path = Path(media_file.path)
+            if media_path == path:
+                continue
+            if media_file.type != "file":
+                continue
+            if f".{media_file.extension.lower()}" not in settings.RMT_MEDIAEXT:
                 continue
             # 识别文件中的季集信息
-            filemeta = MetaInfoPath(media_file)
+            filemeta = MetaInfoPath(media_path)
             # 相同季集的文件才删除
             if filemeta.season != season or filemeta.episode != episode:
                 continue
-            logger.info(f"正在删除文件：{media_file}")
-            media_file.unlink()
+            logger.info(f"正在删除文件：{media_file.name}")
+            storage_oper.delete(media_file)
         return True

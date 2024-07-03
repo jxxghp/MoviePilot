@@ -88,7 +88,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             }, ""
         except Exception as e:
             logger.warn(f"115生成二维码失败：{str(e)}")
-            return {}, f"生成二维码失败：{str(e)}"
+            return {}, f"115生成二维码失败：{str(e)}"
 
     def check_login(self) -> Optional[Tuple[dict, str]]:
         """
@@ -143,7 +143,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         try:
             return self.cloud.storage().space()
         except Exception as e:
-            logger.error(f"获取115存储空间失败：{str(e)}")
+            logger.error(f"115获取存储空间失败：{str(e)}")
         return None
 
     def check(self) -> bool:
@@ -175,7 +175,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 pickcode=item.pickcode
             ) for item in items]
         except Exception as e:
-            logger.error(f"浏览115文件失败：{str(e)}")
+            logger.error(f"115浏览文件失败：{str(e)}")
         return None
 
     def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
@@ -197,7 +197,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 pickcode=result.pickcode
             )
         except Exception as e:
-            logger.error(f"创建115目录失败：{str(e)}")
+            logger.error(f"115创建目录失败：{str(e)}")
         return None
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
@@ -205,12 +205,11 @@ class U115Pan(StorageBase, metaclass=Singleton):
         根据文件路程获取目录，不存在则创建
         """
 
-        def __find_dir_name(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
+        def __find_dir(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
             """
             查找下级目录中匹配名称的目录
             """
-            sub_files = self.list(_fileitem)
-            for sub_file in sub_files:
+            for sub_file in self.list(_fileitem):
                 if sub_file.type != "dir":
                     continue
                 if sub_file.name == _name:
@@ -222,16 +221,40 @@ class U115Pan(StorageBase, metaclass=Singleton):
         for part in path.parts:
             if part == "/":
                 continue
-            dir_file = __find_dir_name(fileitem, part)
+            dir_file = __find_dir(fileitem, part)
             if dir_file:
-                return dir_file
+                fileitem = dir_file
             else:
                 dir_file = self.create_folder(dir_file, part)
                 if not dir_file:
                     logger.warn(f"115创建目录 {fileitem.path}{part} 失败!")
                     return None
                 fileitem = dir_file
-        return None
+        return fileitem
+
+    def get_item(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取文件或目录，不存在返回None
+        """
+        def __find_item(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
+            """
+            查找下级目录中匹配名称的目录或文件
+            """
+            for sub_file in self.list(_fileitem):
+                if sub_file.name == _name:
+                    return sub_file
+            return None
+
+        # 逐级查找和创建目录
+        fileitem = schemas.FileItem(fileid="0")
+        for part in path.parts:
+            if part == "/":
+                continue
+            item = __find_item(fileitem, part)
+            if not item:
+                return None
+            fileitem = item
+        return fileitem
 
     def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
         """

@@ -124,6 +124,16 @@ class LocalStorage(StorageBase):
             path.mkdir(parents=True, exist_ok=True)
         return self.__get_diritem(path)
 
+    def get_item(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取文件或目录，不存在返回None
+        """
+        if not path.exists():
+            return None
+        if path.is_file():
+            return self.__get_fileitem(path)
+        return self.__get_diritem(path)
+
     def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         获取文件详情

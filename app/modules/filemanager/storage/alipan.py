@@ -463,12 +463,11 @@ class AliPan(StorageBase):
         根据文件路程获取目录，不存在则创建
         """
 
-        def __find_dir_name(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
+        def __find_dir(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
             """
             查找下级目录中匹配名称的目录
             """
-            sub_files = self.list(_fileitem)
-            for sub_file in sub_files:
+            for sub_file in self.list(_fileitem):
                 if sub_file.type != "dir":
                     continue
                 if sub_file.name == _name:
@@ -480,16 +479,40 @@ class AliPan(StorageBase):
         for part in path.parts:
             if part == "/":
                 continue
-            dir_file = __find_dir_name(fileitem, part)
+            dir_file = __find_dir(fileitem, part)
             if dir_file:
-                return dir_file
+                fileitem = dir_file
             else:
                 dir_file = self.create_folder(dir_file, part)
                 if not dir_file:
-                    logger.warn(f"创建 aplipan 目录 {fileitem.path}{part} 失败！")
+                    logger.warn(f"{self.schema.value}创建目录 {fileitem.path}{part} 失败！")
                     return None
                 fileitem = dir_file
-        return None
+        return fileitem
+
+    def get_item(self, path: Path) -> Optional[schemas.FileItem]:
+        """
+        获取文件或目录，不存在返回None
+        """
+        def __find_item(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
+            """
+            查找下级目录中匹配名称的目录或文件
+            """
+            for sub_file in self.list(_fileitem):
+                if sub_file.name == _name:
+                    return sub_file
+            return None
+
+        # 逐级查找和创建目录
+        fileitem = schemas.FileItem(fileid="root")
+        for part in path.parts:
+            if part == "/":
+                continue
+            item = __find_item(fileitem, part)
+            if not item:
+                return None
+            fileitem = item
+        return fileitem
 
     def delete(self, fileitem: schemas.FileItem) -> bool:
         """
@@ -614,7 +637,7 @@ class AliPan(StorageBase):
         # 获取上传参数
         result = res.json()
         if result.get("exist"):
-            logger.info(f"文件{result.get('file_name')}已存在，无需上传")
+            logger.info(f"文件 {result.get('file_name')} 已存在，无需上传")
             return schemas.FileItem(
                 storage=self.schema.value,
                 drive_id=result.get("drive_id"),
@@ -660,7 +683,7 @@ class AliPan(StorageBase):
                 path=f"{fileitem.path}{result.get('name')}",
             )
         else:
-            logger.warn("上传文件失败：无法获取上传地址！")
+            logger.warn("阿里云盘上传文件失败：无法获取上传地址！")
         return None
 
     def move(self, fileitem: schemas.FileItem, target: schemas.FileItem) -> bool:
