@@ -393,10 +393,6 @@ class Monitor(metaclass=Singleton):
                     logger.error("文件转移模块运行失败")
                     return
 
-                if not transferinfo:
-                    logger.error("文件转移模块运行失败")
-                    return
-
                 if not transferinfo.success:
                     # 转移失败
                     logger.warn(f"{event_path.name} 入库失败：{transferinfo.message}")
