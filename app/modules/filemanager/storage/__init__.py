@@ -138,9 +138,9 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
-    def snapshot(self, fileitm: schemas.FileItem) -> Dict[str, float]:
+    def snapshot(self, path: Path) -> Dict[str, float]:
         """
-        快照文件系统，输出所有层级文件信息
+        快照文件系统，输出所有层级文件信息（不含目录）
         """
         files_info = {}
 
@@ -148,12 +148,17 @@ class StorageBase(metaclass=ABCMeta):
             """
             递归获取文件信息
             """
-            files_info[_fileitm.path] = _fileitm.size
             if _fileitm.type == "dir":
                 for sub_file in self.list(_fileitm):
                     __snapshot_file(sub_file)
+            else:
+                files_info[_fileitm.path] = _fileitm.size
 
-        __snapshot_file(fileitm)
+        fileitem = self.get_item(path)
+        if not fileitem:
+            return {}
+
+        __snapshot_file(fileitem)
 
         return files_info
     

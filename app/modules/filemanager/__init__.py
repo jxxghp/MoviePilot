@@ -173,15 +173,25 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.upload(fileitem, path)
 
-    def snapshot_storage(self, fileitem: FileItem) -> Optional[Dict]:
+    def get_file_item(self, storage: str, path: Path) -> Optional[FileItem]:
+        """
+        根据路径获取文件项
+        """
+        storage_oper = self.__get_storage_oper(storage)
+        if not storage_oper:
+            logger.error(f"不支持 {storage} 的文件获取")
+            return None
+        return storage_oper.get_item(path)
+
+    def snapshot_storage(self, storage: str, path: Path) -> Optional[Dict[str, float]]:
         """
         快照存储
         """
-        storage_oper = self.__get_storage_oper(fileitem.storage)
+        storage_oper = self.__get_storage_oper(storage)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的快照处理")
             return None
-        return storage_oper.snapshot(fileitem)
+        return storage_oper.snapshot(path)
 
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
                  transfer_type: str, target_storage: str = None, target_path: Path = None,

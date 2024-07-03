@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import time
 import uuid
@@ -612,12 +613,27 @@ class AliPan(StorageBase):
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件，并标记完成
-        TODO 上传文件分片、秒传
         """
+
+        def __sha1(_path: Path):
+            """
+            计算文件sha1，用于快传
+            """
+            _sha1 = hashlib.sha1()
+            with open(_path, 'rb') as f:
+                while True:
+                    data = f.read(8192)
+                    if not data:
+                        break
+                    _sha1.update(data)
+            return _sha1.hexdigest()
+
         params = self.__access_params
         if not params:
             return None
         headers = self.__get_headers(params)
+        # 计算sha1
+        sha1 = __sha1(path)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.create_folder_file_url, json={
             "drive_id": fileitem.drive_id,
             "parent_file_id": fileitem.parent_fileid,
@@ -625,6 +641,8 @@ class AliPan(StorageBase):
             "check_name_mode": "refuse",
             "create_scene": "file_upload",
             "type": "file",
+            "content_hash": sha1,
+            "content_hash_name": "sha1",
             "part_info_list": [
                 {
                     "part_number": 1
@@ -635,10 +653,11 @@ class AliPan(StorageBase):
         if not res:
             self.__handle_error(res, "创建文件")
             return None
-        # 获取上传参数
+        # 获取上传请求结果
         result = res.json()
-        if result.get("exist"):
-            logger.info(f"文件 {result.get('file_name')} 已存在，无需上传")
+        if result.get("exist") or result.get("rapid_upload"):
+            # 已存在
+            logger.info(f"文件 {result.get('file_name')} 已存在或已秒传完成，无需上传")
             return schemas.FileItem(
                 storage=self.schema.value,
                 drive_id=result.get("drive_id"),
@@ -648,6 +667,7 @@ class AliPan(StorageBase):
                 name=result.get("file_name"),
                 path=f"{fileitem.path}{result.get('file_name')}"
             )
+        # 上传文件
         file_id = result.get("file_id")
         upload_id = result.get("upload_id")
         part_info_list = result.get("part_info_list")

@@ -28,8 +28,10 @@ from app.helper.resource import ResourceHelper
 from app.helper.sites import SitesHelper
 from app.helper.message import MessageHelper
 from app.scheduler import Scheduler
+from app.monitor import Monitor
 from app.command import Command, CommandChian
 from app.schemas import Notification, NotificationType
+
 
 # App
 App = FastAPI(title=settings.PROJECT_NAME,
@@ -195,6 +197,8 @@ def shutdown_server():
     DisplayHelper().stop()
     # 停止定时服务
     Scheduler().stop()
+    # 停止监控
+    Monitor().stop()
     # 停止线程池
     ThreadHelper().shutdown()
     # 停止前端服务
@@ -217,9 +221,11 @@ def start_module():
     # 加载模块
     ModuleManager()
     # 安装在线插件
-    PluginManager().install_online_plugin()
+    PluginManager().sync()
     # 加载插件
     PluginManager().start()
+    # 启动监控任务
+    Monitor()
     # 启动定时服务
     Scheduler()
     # 启动事件消费

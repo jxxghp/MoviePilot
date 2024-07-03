@@ -58,8 +58,14 @@ class StorageChain(ChainBase):
         """
         return self.run_module("rename_file", fileitem=fileitem, name=name)
 
-    def snapshot_storage(self, fileitem: schemas.FileItem) -> Optional[Dict]:
+    def get_file_item(self, storage: str, path: Path) -> Optional[schemas.FileItem]:
+        """
+        根据路径获取文件项
+        """
+        return self.run_module("get_file_item", storage=storage, path=path)
+
+    def snapshot_storage(self, storage: str, path: Path) -> Optional[Dict[str, float]]:
         """
         快照存储
         """
-        return self.run_module("snapshot_storage", fileitem=fileitem)
+        return self.run_module("snapshot_storage", storage=storage, path=path)

@@ -279,7 +279,7 @@ class PluginManager(metaclass=Singleton):
         # 重新加载
         self.start(plugin_id)
 
-    def install_online_plugin(self):
+    def sync(self):
         """
         安装本地不存在的在线插件
         """
