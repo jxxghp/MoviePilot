@@ -454,6 +454,7 @@ class ChainBase(metaclass=ABCMeta):
         :param message:  消息体
         :return: 成功或失败
         """
+        # TODO 根据消息场景开关决定发给谁
         logger.info(f"发送消息：channel={message.channel}，"
                     f"source={message.source},"
                     f"title={message.title}, "

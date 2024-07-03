@@ -179,7 +179,6 @@ class SubscribeChain(ChainBase):
                 text = f"评分：{mediainfo.vote_average}，来自用户：{username}"
             else:
                 text = f"评分：{mediainfo.vote_average}"
-            # 群发
             if mediainfo.type == MediaType.TV:
                 link = settings.MP_DOMAIN('#/subscribe-tv?tab=mysub')
             else:

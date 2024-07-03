@@ -81,11 +81,11 @@ class MediaServerChain(ChainBase):
                 if not mediaserver:
                     continue
                 server_name = mediaserver.name
-                sync_blacklist = mediaserver.config.get("sync_blacklist") or []
+                sync_blacklist = mediaserver.sync_libraries or []
                 logger.info(f"开始同步媒体库 {server_name} 的数据 ...")
                 for library in self.librarys(server_name):
                     # 同步黑名单 跳过
-                    if library.name in sync_blacklist:
+                    if library.id in sync_blacklist:
                         continue
                     logger.info(f"正在同步 {server_name} 媒体库 {library.name} ...")
                     library_count = 0

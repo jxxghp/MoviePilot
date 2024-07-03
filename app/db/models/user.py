@@ -3,9 +3,9 @@ from typing import Tuple, Optional
 from sqlalchemy import Boolean, Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
+from app import schemas
 from app.core.security import verify_password
 from app.db import db_query, db_update, Base
-from app.schemas import User
 from app.utils.otp import OtpUtils
 
 
@@ -15,9 +15,9 @@ class User(Base):
     """
     # ID
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
-    # 用户名
+    # 用户名，唯一值
     name = Column(String, index=True, nullable=False)
-    # 邮箱，未启用
+    # 邮箱
     email = Column(String)
     # 加密后密码
     hashed_password = Column(String)
@@ -31,10 +31,15 @@ class User(Base):
     is_otp = Column(Boolean(), default=False)
     # otp秘钥
     otp_secret = Column(String, default=None)
+    # 用户权限 json
+    permissions = Column(String, default='')
+    # 用户个性化设置 json
+    settings = Column(String, default='')
 
     @staticmethod
     @db_query
-    def authenticate(db: Session, name: str, password: str, otp_password: str) -> Tuple[bool, Optional[User]]:
+    def authenticate(db: Session, name: str, password: str,
+                     otp_password: str) -> Tuple[bool, Optional[schemas.User]]:
         user = db.query(User).filter(User.name == name).first()
         if not user:
             return False, None

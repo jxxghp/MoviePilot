@@ -19,7 +19,7 @@ class TelegramModule(_ModuleBase):
         """
         初始化模块
         """
-        clients = NotificationHelper().get_notifications()
+        clients = NotificationHelper().get_clients()
         if not clients:
             return
         self._configs = {}

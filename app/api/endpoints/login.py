@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from typing import Any, List
 
@@ -72,7 +73,8 @@ async def login_access_token(
         super_user=user.is_superuser,
         user_name=user.name,
         avatar=user.avatar,
-        level=level
+        level=level,
+        permissions=json.loads(user.permissions or '{}')
     )
 
 

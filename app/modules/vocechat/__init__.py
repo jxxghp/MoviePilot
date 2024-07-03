@@ -18,7 +18,7 @@ class VoceChatModule(_ModuleBase):
         初始化模块
         """
         self._clients = {}
-        clients = NotificationHelper().get_notifications()
+        clients = NotificationHelper().get_clients()
         if not clients:
             return
         for client in clients:

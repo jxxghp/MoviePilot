@@ -64,6 +64,8 @@ class SystemConfigKey(Enum):
     MediaServers = "MediaServers"
     # 消息通知配置
     Notifications = "Notifications"
+    # 通知场景开关设置
+    NotificationSwitchs = "NotificationSwitchs"
     # 目录配置
     Directories = "Directories"
     # 存储配置

@@ -339,7 +339,7 @@ class DownloadChain(ChainBase):
             if files_to_add:
                 self.downloadhis.add_files(files_to_add)
 
-            # 发送消息（群发，不带channel和userid）
+            # 发送消息 TODO 根据消息场景开关决定发给谁
             self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent,
                                        username=username, download_episodes=download_episodes)
             # 下载成功后处理

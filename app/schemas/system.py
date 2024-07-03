@@ -2,6 +2,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from app.schemas import NotificationType
+
 
 class MediaServerConf(BaseModel):
     """
@@ -15,6 +17,8 @@ class MediaServerConf(BaseModel):
     config: Optional[dict] = {}
     # 是否启用
     enabled: Optional[bool] = False
+    # 同步媒体体库列表
+    sync_libraries: Optional[list] = []
 
 
 class DownloaderConf(BaseModel):
@@ -47,6 +51,16 @@ class NotificationConf(BaseModel):
     switchs: Optional[list] = []
     # 是否启用
     enabled: Optional[bool] = False
+
+
+class NotificationSwitchConf(BaseModel):
+    """
+    通知场景开关配置
+    """
+    # 场景名称
+    type: NotificationType = None
+    # 通知范围 all/user/admin/userandadmin
+    action: Optional[str] = 'all'
 
 
 class StorageConf(BaseModel):
