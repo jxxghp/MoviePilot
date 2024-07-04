@@ -1,13 +1,13 @@
 import json
 from typing import Optional, Union, List, Tuple, Any, Dict
 
-from app.core.context import MediaInfo, Context
 from app.core.config import settings
+from app.core.context import MediaInfo, Context
 from app.helper.notification import NotificationHelper
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.telegram.telegram import Telegram
-from app.schemas import MessageChannel, CommingMessage, Notification, NotificationConf
+from app.schemas import MessageChannel, CommingMessage, Notification
 
 
 class TelegramModule(_ModuleBase, _MessageBase):
