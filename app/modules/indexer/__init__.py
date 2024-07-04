@@ -50,7 +50,7 @@ class IndexerModule(_ModuleBase):
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        return "INDEXER", "builtin"
+        pass
 
     def search_torrents(self, site: CommentedMap,
                         keywords: List[str] = None,

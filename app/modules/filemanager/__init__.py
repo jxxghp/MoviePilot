@@ -37,7 +37,7 @@ class FileManagerModule(_ModuleBase):
 
     def init_module(self) -> None:
         # 加载模块
-        self._storage_schemas = ModuleHelper.load('app.modules.filetransfer.storage',
+        self._storage_schemas = ModuleHelper.load('app.modules.filemanager.storage',
                                                   filter_func=lambda _, obj: hasattr(obj, 'schema'))
 
     @staticmethod
