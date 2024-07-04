@@ -18,8 +18,6 @@ class PluginDataOper(DbOper):
         :param key: 数据key
         :param value: 数据值
         """
-        if ObjectUtils.is_obj(value):
-            value = json.dumps(value)
         plugin = PluginData.get_plugin_data_by_key(self._db, plugin_id, key)
         if plugin:
             plugin.update(self._db, {

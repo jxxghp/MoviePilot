@@ -207,9 +207,9 @@ class IndexerModule(_ModuleBase):
         """
         return self.search_torrents(site=site)
 
-    def site_userdata(self, site: CommentedMap) -> Optional[SiteUserData]:
+    def refresh_userdata(self, site: CommentedMap) -> Optional[SiteUserData]:
         """
-        获取站点的所有用户数据
+        刷新站点的用户数据
         :param site:  站点
         :return: 用户数据
         """
@@ -240,6 +240,7 @@ class IndexerModule(_ModuleBase):
         site_obj.parse()
         logger.debug(f"站点 {site.get('name')} 解析完成")
         return SiteUserData(
+            domain=StringUtils.get_url_domain(site.get("url")),
             userid=site_obj.userid,
             username=site_obj.username,
             user_level=site_obj.user_level,

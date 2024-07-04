@@ -1,7 +1,9 @@
+from datetime import datetime
 from typing import Tuple, List
 
 from app.db import DbOper
 from app.db.models.site import Site
+from app.db.models.siteuserdata import SiteUserData
 
 
 class SiteOper(DbOper):
@@ -98,3 +100,30 @@ class SiteOper(DbOper):
             "rss": rss
         })
         return True, "更新站点RSS地址成功"
+
+    def update_userdata(self, domain: str, payload: dict) -> Tuple[bool, str]:
+        """
+        更新站点用户数据
+        """
+        site = Site.get_by_domain(self._db, domain)
+        if not site:
+            return False, "站点不存在"
+        payload.update({
+            "domain": domain,
+            "updated_day": datetime.now().strftime('%Y-%m-%d'),
+            "updated_time": datetime.now().strftime('%H:%M:%S')
+        })
+        SiteUserData.update(self._db, payload)
+        return True, "更新站点用户数据成功"
+
+    def get_userdata_by_domain(self, domain: str) -> List[SiteUserData]:
+        """
+        获取站点用户数据
+        """
+        return SiteUserData.get_by_domain(self._db, domain)
+
+    def get_userdata_by_date(self, date: str) -> List[SiteUserData]:
+        """
+        获取站点用户数据
+        """
+        return SiteUserData.get_by_date(self._db, date)

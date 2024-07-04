@@ -1,3 +1,4 @@
+import json
 from typing import Any, Self, List
 from typing import Tuple, Optional, Generator
 
@@ -7,6 +8,7 @@ from sqlalchemy.orm import declared_attr
 from sqlalchemy.orm import sessionmaker, Session, scoped_session, as_declarative
 
 from app.core.config import settings
+from app.utils.object import ObjectUtils
 
 # 数据库引擎
 Engine = create_engine(f"sqlite:///{settings.CONFIG_PATH}/user.db",
@@ -156,6 +158,8 @@ class Base:
     def update(self, db: Session, payload: dict):
         payload = {k: v for k, v in payload.items() if v is not None}
         for key, value in payload.items():
+            if ObjectUtils.is_obj(value):
+                value = json.dumps(value)
             setattr(self, key, value)
         if inspect(self).detached:
             db.add(self)

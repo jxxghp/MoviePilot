@@ -101,6 +101,8 @@ class Settings(BaseSettings):
     SUBSCRIBE_SEARCH: bool = False
     # 搜索多个名称
     SEARCH_MULTIPLE_NAME: bool = False
+    # 站点数据刷新间隔（小时）
+    SITEDATA_REFRESH_INTERVAL: int = 6
     # 种子标签
     TORRENT_TAG: str = "MOVIEPILOT"
     # 下载站点字幕

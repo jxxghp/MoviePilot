@@ -30,7 +30,7 @@ class SiteStatisticOper(DbOper):
                 "seconds": avg_seconds or sta.seconds,
                 "lst_state": 0,
                 "lst_mod_date": lst_date,
-                "note": json.dumps(note) if note else sta.note
+                "note": note or sta.note
             })
         else:
             note = {}

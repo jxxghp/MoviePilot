@@ -166,6 +166,11 @@ class Scheduler(metaclass=Singleton):
                 "name": "壁纸缓存",
                 "func": TmdbChain().get_trending_wallpapers,
                 "running": False,
+            },
+            "sitedata_refresh": {
+                "name": "站点数据刷新",
+                "func": SiteChain().refresh_userdatas,
+                "running": False,
             }
         }
 
@@ -340,6 +345,18 @@ class Scheduler(metaclass=Singleton):
             minutes=10,
             kwargs={
                 'job_id': 'user_auth'
+            }
+        )
+
+        # 站点数据刷新，每隔30分钟
+        self._scheduler.add_job(
+            self.start,
+            "interval",
+            id="sitedata_refresh",
+            name="站点数据刷新",
+            minutes=settings.SITEDATA_REFRESH_INTERVAL * 60,
+            kwargs={
+                'job_id': 'sitedata_refresh'
             }
         )
 

@@ -487,7 +487,7 @@ class SubscribeChain(ChainBase):
             # 如果交集与原始订阅不一致，更新数据库
             if set(intersection_sites) != set(user_sites):
                 self.subscribeoper.update(subscribe.id, {
-                    "sites": json.dumps(intersection_sites)
+                    "sites": intersection_sites
                 })
             # 如果交集为空，返回默认站点
             return intersection_sites if intersection_sites else default_sites
@@ -857,7 +857,7 @@ class SubscribeChain(ChainBase):
             note = list(set(note).union(set(episodes)))
             # 更新订阅
             self.subscribeoper.update(subscribe.id, {
-                "note": json.dumps(note)
+                "note": note
             })
 
     @staticmethod
@@ -1140,7 +1140,7 @@ class SubscribeChain(ChainBase):
                 continue
             sites.remove(site_id)
             self.subscribeoper.update(subscribe.id, {
-                "sites": json.dumps(sites)
+                "sites": sites
             })
 
     @staticmethod

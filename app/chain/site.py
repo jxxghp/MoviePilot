@@ -59,13 +59,26 @@ class SiteChain(ChainBase):
             "yemapt.org": self.__yema_test,
         }
 
-    def site_userdata(self, site: CommentedMap) -> Optional[SiteUserData]:
+    def refresh_userdata(self, site: CommentedMap = None) -> Optional[SiteUserData]:
         """
-        获取站点的所有用户数据
+        刷新站点的用户数据
         :param site:  站点
         :return: 用户数据
         """
-        return self.run_module("site_userdata", site=site)
+        userdata = self.run_module("refresh_userdata", site=site)
+        if userdata:
+            self.siteoper.update_userdata(domain=StringUtils.get_url_domain(site.get("domain")),
+                                          payload=userdata)
+        return userdata
+
+    def refresh_userdatas(self) -> None:
+        """
+        刷新所有站点的用户数据
+        """
+        sites = self.siteshelper.get_indexers()
+        for site in sites:
+            if site.get("is_active"):
+                self.refresh_userdata(site)
 
     def is_special_site(self, domain: str) -> bool:
         """

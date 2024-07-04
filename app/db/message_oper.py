@@ -1,4 +1,3 @@
-import json
 import time
 from typing import Optional, Union
 
@@ -53,7 +52,7 @@ class MessageOper(DbOper):
             "userid": userid,
             "action": action,
             "reg_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-            "note": json.dumps(note) if note else ''
+            "note": note
         })
         Message(**kwargs).create(self._db)
 
