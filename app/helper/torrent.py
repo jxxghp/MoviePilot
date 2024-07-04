@@ -1,7 +1,7 @@
 import datetime
 import re
 from pathlib import Path
-from typing import Tuple, Optional, List, Union
+from typing import Tuple, Optional, List, Union, Dict
 from urllib.parse import unquote
 
 from requests import Response
@@ -384,3 +384,52 @@ class TorrentHelper(metaclass=Singleton):
         # 未匹配
         logger.debug(f'{torrent.site_name} - {torrent.title} 标题不匹配，识别名称：{meta_names}')
         return False
+
+    @staticmethod
+    def filter_torrent(torrent_info: TorrentInfo,
+                       filter_params: Dict[str, str]) -> bool:
+        """
+        检查种子是否匹配订阅过滤规则
+        """
+
+        if not filter_params:
+            return True
+
+        # 匹配内容
+        content = (f"{torrent_info.title} "
+                   f"{torrent_info.description} "
+                   f"{' '.join(torrent_info.labels or [])} "
+                   f"{torrent_info.volume_factor}")
+
+        # 包含
+        include = filter_params.get("include")
+        if include:
+            if not re.search(r"%s" % include, content, re.I):
+                logger.info(f"{content} 不匹配包含规则 {include}")
+                return False
+        # 排除
+        exclude = filter_params.get("exclude")
+        if exclude:
+            if re.search(r"%s" % exclude, content, re.I):
+                logger.info(f"{content} 匹配排除规则 {exclude}")
+                return False
+        # 质量
+        quality = filter_params.get("quality")
+        if quality:
+            if not re.search(r"%s" % quality, torrent_info.title, re.I):
+                logger.info(f"{torrent_info.title} 不匹配质量规则 {quality}")
+                return False
+        # 分辨率
+        resolution = filter_params.get("resolution")
+        if resolution:
+            if not re.search(r"%s" % resolution, torrent_info.title, re.I):
+                logger.info(f"{torrent_info.title} 不匹配分辨率规则 {resolution}")
+                return False
+        # 特效
+        effect = filter_params.get("effect")
+        if effect:
+            if not re.search(r"%s" % effect, torrent_info.title, re.I):
+                logger.info(f"{torrent_info.title} 不匹配特效规则 {effect}")
+                return False
+
+        return True

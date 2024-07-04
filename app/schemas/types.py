@@ -88,11 +88,13 @@ class SystemConfigKey(Enum):
     CustomFilterRules = "CustomFilterRules"
     # 用户规则组
     UserRuleGroups = "UserRuleGroups"
-    # 搜索默认过滤规则
+    # 搜索默认过滤规则组
     SearchFilterRuleGroups = "SearchFilterRuleGroups"
-    # 订阅默认过滤规则
+    # 订阅默认过滤规则组
     SubscribeFilterRuleGroups = "SubscribeFilterRuleGroups"
-    # 洗版默认过滤规则
+    # 订阅默认参数
+    SubscribeDefaultParams = "SubscribeDefaultParams"
+    # 洗版默认过滤规则组
     BeseVersionFilterRuleGroups = "BeseVersionFilterRuleGroups"
     # 订阅统计
     SubscribeReport = "SubscribeReport"

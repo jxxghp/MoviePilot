@@ -718,6 +718,11 @@ class SubscribeChain(ChainBase):
                             logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
                             continue
 
+                    # 匹配订阅参数
+                    if not self.torrenthelper.filter_torrent(torrent_info=torrent_info,
+                                                             filter_params=self.get_params(subscribe)):
+                        continue
+
                     # 匹配成功
                     logger.info(f'{mediainfo.title_year} 匹配成功：{torrent_info.title}')
                     _match_context.append(context)
@@ -1132,3 +1137,21 @@ class SubscribeChain(ChainBase):
         if not value:
             return None
         return value.get(default_config_key) or None
+
+    def get_params(self, subscribe: Subscribe):
+        """
+        获取订阅默认参数
+        """
+        # 默认过滤规则
+        default_rule = self.systemconfig.get(SystemConfigKey.SubscribeDefaultParams) or {}
+        return {
+            "include": subscribe.include or default_rule.get("include"),
+            "exclude": subscribe.exclude or default_rule.get("exclude"),
+            "quality": subscribe.quality or default_rule.get("quality"),
+            "resolution": subscribe.resolution or default_rule.get("resolution"),
+            "effect": subscribe.effect or default_rule.get("effect"),
+            "tv_size": default_rule.get("tv_size"),
+            "movie_size": default_rule.get("movie_size"),
+            "min_seeders": default_rule.get("min_seeders"),
+            "min_seeders_time": default_rule.get("min_seeders_time"),
+        }
