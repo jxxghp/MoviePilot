@@ -39,18 +39,18 @@ class DownloadChain(ChainBase):
         self.messagehelper = MessageHelper()
 
     def post_download_message(self, meta: MetaBase, mediainfo: MediaInfo, torrent: TorrentInfo,
-                              channel: MessageChannel = None, userid: str = None, username: str = None,
+                              channel: MessageChannel = None, username: str = None,
                               download_episodes: str = None):
         """
-        发送添加下载的消息
+        发送添加下载的消息，根据消息场景开关决定发给谁
         :param meta: 元数据
         :param mediainfo: 媒体信息
         :param torrent: 种子信息
         :param channel: 通知渠道
-        :param userid: 用户ID，指定时精确发送对应用户
         :param username: 通知显示的下载用户信息
         :param download_episodes: 下载的集数
         """
+        # 拼装消息内容
         msg_text = ""
         if username:
             msg_text = f"用户：{username}"
@@ -82,15 +82,16 @@ class DownloadChain(ChainBase):
             torrent.description = re.sub(r'<[^>]+>', '', description)
             msg_text = f"{msg_text}\n描述：{torrent.description}"
 
+        # 下载成功按规则发送消息
         self.post_message(Notification(
             channel=channel,
             mtype=NotificationType.Download,
-            userid=userid,
             title=f"{mediainfo.title_year} "
                   f"{'%s %s' % (meta.season, download_episodes) if download_episodes else meta.season_episode} 开始下载",
             text=msg_text,
             image=mediainfo.get_message_image(),
-            link=settings.MP_DOMAIN('/#/downloading')))
+            link=settings.MP_DOMAIN('/#/downloading'),
+            username=username))
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: MessageChannel = None,
@@ -339,7 +340,7 @@ class DownloadChain(ChainBase):
             if files_to_add:
                 self.downloadhis.add_files(files_to_add)
 
-            # 发送消息 TODO 根据消息场景开关决定发给谁
+            # 下载成功发送消息
             self.post_download_message(meta=_meta, mediainfo=_media, torrent=_torrent,
                                        username=username, download_episodes=download_episodes)
             # 下载成功后处理

@@ -1,20 +1,17 @@
 import json
 import re
-from typing import Optional, Union, List, Tuple, Any, Dict
+from typing import Optional, Union, List, Tuple, Any
 
-from app.core.context import MediaInfo, Context
 from app.core.config import settings
+from app.core.context import MediaInfo, Context
 from app.helper.notification import NotificationHelper
 from app.log import logger
-from app.modules import _ModuleBase
+from app.modules import _ModuleBase, _MessageBase
 from app.modules.slack.slack import Slack
-from app.schemas import MessageChannel, CommingMessage, Notification, NotificationConf
+from app.schemas import MessageChannel, CommingMessage, Notification
 
 
-class SlackModule(_ModuleBase):
-    _channel = MessageChannel.Telegram
-    _configs: Dict[str, NotificationConf] = {}
-    _clients: Dict[str, Slack] = {}
+class SlackModule(_ModuleBase, _MessageBase):
 
     def init_module(self) -> None:
         """
@@ -33,18 +30,6 @@ class SlackModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "Slack"
-
-    def get_client(self, name: str) -> Optional[Slack]:
-        """
-        获取Telegram客户端
-        """
-        return self._clients.get(name)
-
-    def get_config(self, name: str) -> Optional[NotificationConf]:
-        """
-        获取Telegram配置
-        """
-        return self._configs.get(name)
 
     def stop(self):
         """
@@ -66,32 +51,14 @@ class SlackModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def checkMessage(self, message: Notification, source: str) -> bool:
-        """
-        检查消息渠道及消息类型，如不符合则不处理
-        """
-        # 检查消息渠道
-        if message.channel and message.channel != self._channel:
-            return False
-        # 检查消息来源
-        if message.source and message.source != source:
-            return False
-        # 检查消息类型开关
-        if message.mtype:
-            conf = self.get_config(source)
-            if conf:
-                switchs = conf.switchs or []
-                if message.mtype.value not in switchs:
-                    return False
-        return True
-
-    def message_parser(self, body: Any, form: Any,
+    def message_parser(self, source: str, body: Any, form: Any,
                        args: Any) -> Optional[CommingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
         username: 用户名
         text: 内容
+        :param source: 消息来源
         :param body: 请求体
         :param form: 表单
         :param args: 参数
@@ -207,11 +174,8 @@ class SlackModule(_ModuleBase):
         }
         """
         # 来源
-        source = args.get("source")
-        if not source:
-            return None
         # 获取客户端
-        client = self.get_client(source)
+        client: Slack = self.get_client(source)
         if not client:
             return None
         # 校验token
@@ -260,10 +224,17 @@ class SlackModule(_ModuleBase):
         for conf in self._configs.values():
             if not self.checkMessage(message, conf.name):
                 continue
-            client = self.get_client(conf.name)
+            targets = message.targets
+            userid = message.userid
+            if not userid and targets is not None:
+                userid = targets.get('slack_userid')
+                if not userid:
+                    logger.warn(f"用户没有指定 Slack用户ID，消息无法发送")
+                    return
+            client: Slack = self.get_client(conf.name)
             if client:
                 client.send_msg(title=message.title, text=message.text,
-                                image=message.image, userid=message.userid, link=message.link)
+                                image=message.image, userid=userid, link=message.link)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """
@@ -275,7 +246,7 @@ class SlackModule(_ModuleBase):
         for conf in self._configs.values():
             if not self.checkMessage(message, conf.name):
                 continue
-            client = self.get_client(conf.name)
+            client: Slack = self.get_client(conf.name)
             if client:
                 client.send_meidas_msg(title=message.title, medias=medias, userid=message.userid)
 
@@ -289,7 +260,7 @@ class SlackModule(_ModuleBase):
         for conf in self._configs.values():
             if not self.checkMessage(message, conf.name):
                 continue
-            client = self.get_client(conf.name)
+            client: Slack = self.get_client(conf.name)
             if client:
                 client.send_torrents_msg(title=message.title, torrents=torrents,
                                          userid=message.userid)

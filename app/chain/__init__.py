@@ -16,11 +16,13 @@ from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.core.module import ModuleManager
 from app.db.message_oper import MessageOper
+from app.db.user_oper import UserOper
 from app.helper.message import MessageHelper
+from app.helper.notification import NotificationHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
     WebhookEventInfo, TmdbEpisode, MediaPerson, FileItem
-from app.schemas.types import TorrentStatus, MediaType, MediaImageType, EventType
+from app.schemas.types import TorrentStatus, MediaType, MediaImageType, EventType, NotificationType
 from app.utils.object import ObjectUtils
 
 
@@ -37,6 +39,8 @@ class ChainBase(metaclass=ABCMeta):
         self.eventmanager = EventManager()
         self.messageoper = MessageOper()
         self.messagehelper = MessageHelper()
+        self.notificationhelper = NotificationHelper()
+        self.useroper = UserOper()
 
     @staticmethod
     def load_cache(filename: str) -> Any:
@@ -454,12 +458,31 @@ class ChainBase(metaclass=ABCMeta):
         :param message:  消息体
         :return: 成功或失败
         """
-        # TODO 根据消息场景开关决定发给谁
         logger.info(f"发送消息：channel={message.channel}，"
                     f"source={message.source},"
                     f"title={message.title}, "
                     f"text={message.text}，"
                     f"userid={message.userid}")
+        if not message.userid and message.mtype:
+            # 没有指定用户ID时，按规则确定发送对象
+            # 默认发送全体
+            to_targets = {}
+            notify_action = self.notificationhelper.get_switch(message.mtype)
+            if notify_action == "admin":
+                # 仅发送管理员
+                logger.info(f"已设置 {message.mtype} 的消息只发送给管理员")
+                to_targets = self.useroper.get_settings(settings.SUPERUSER)
+            elif notify_action == "user":
+                # 发送对应用户
+                if message.username:
+                    logger.info(f"已设置 {message.mtype} 的消息只发送给用户 {message.username}")
+                    to_targets = self.useroper.get_settings(message.username)
+                if not message.username or to_targets is None:
+                    if message.username:
+                        logger.info(f"没有 {message.username} 这个用户，该消息将发送给管理员")
+                    # 回滚发送管理员
+                    to_targets = self.useroper.get_settings(settings.SUPERUSER)
+            message.targets = to_targets
         # 发送事件
         self.eventmanager.send_event(etype=EventType.NoticeMessage, data=message.dict())
         # 保存消息

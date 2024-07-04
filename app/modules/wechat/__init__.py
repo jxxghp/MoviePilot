@@ -5,17 +5,14 @@ from app.core.config import settings
 from app.core.context import Context, MediaInfo
 from app.helper.notification import NotificationHelper
 from app.log import logger
-from app.modules import _ModuleBase
+from app.modules import _ModuleBase, _MessageBase
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.modules.wechat.wechat import WeChat
-from app.schemas import MessageChannel, CommingMessage, Notification, NotificationConf
+from app.schemas import MessageChannel, CommingMessage, Notification
 from app.utils.dom import DomUtils
 
 
-class WechatModule(_ModuleBase):
-    _channel = MessageChannel.Wechat
-    _configs: Dict[str, NotificationConf] = {}
-    _clients: Dict[str, WeChat] = {}
+class WechatModule(_ModuleBase, _MessageBase):
 
     def init_module(self) -> None:
         """
@@ -35,18 +32,6 @@ class WechatModule(_ModuleBase):
     def get_name() -> str:
         return "微信"
 
-    def get_client(self, name: str) -> Optional[WeChat]:
-        """
-        获取Telegram客户端
-        """
-        return self._clients.get(name)
-
-    def get_config(self, name: str) -> Optional[NotificationConf]:
-        """
-        获取Telegram配置
-        """
-        return self._configs.get(name)
-
     def stop(self):
         pass
 
@@ -63,25 +48,22 @@ class WechatModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def message_parser(self, body: Any, form: Any,
+    def message_parser(self, source: str, body: Any, form: Any,
                        args: Any) -> Optional[CommingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
         username: 用户名
         text: 内容
+        :param source: 消息来源
         :param body: 请求体
         :param form: 表单
         :param args: 参数
         :return: 渠道、消息体
         """
         try:
-            # 消息来源
-            source = args.get("source")
-            if not source:
-                return None
             # 获取客户端
-            client = self.get_client(source)
+            client: WeChat = self.get_client(source)
             if not client:
                 return None
             # URL参数
@@ -168,25 +150,6 @@ class WechatModule(_ModuleBase):
             logger.error(f"微信消息处理发生错误：{str(err)}")
         return None
 
-    def checkMessage(self, message: Notification, source: str) -> bool:
-        """
-        检查消息渠道及消息类型，如不符合则不处理
-        """
-        # 检查消息渠道
-        if message.channel and message.channel != self._channel:
-            return False
-        # 检查消息来源
-        if message.source and message.source != source:
-            return False
-        # 检查消息类型开关
-        if message.mtype:
-            conf = self.get_config(source)
-            if conf:
-                switchs = conf.switchs or []
-                if message.mtype.value not in switchs:
-                    return False
-        return True
-
     def post_message(self, message: Notification) -> None:
         """
         发送消息
@@ -196,10 +159,17 @@ class WechatModule(_ModuleBase):
         for conf in self._configs.values():
             if not self.checkMessage(message, conf.name):
                 continue
-            client = self.get_client(conf.name)
+            targets = message.targets
+            userid = message.userid
+            if not userid and targets is not None:
+                userid = targets.get('wechat_userid')
+                if not userid:
+                    logger.warn(f"用户没有指定 微信用户ID，消息无法发送")
+                    return
+            client: WeChat = self.get_client(conf.name)
             if client:
                 client.send_msg(title=message.title, text=message.text,
-                                image=message.image, userid=message.userid, link=message.link)
+                                image=message.image, userid=userid, link=message.link)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """
@@ -211,7 +181,7 @@ class WechatModule(_ModuleBase):
         for conf in self._configs.values():
             if not self.checkMessage(message, conf.name):
                 continue
-            client = self.get_client(conf.name)
+            client: WeChat = self.get_client(conf.name)
             if client:
                 # 先发送标题
                 client.send_msg(title=message.title, userid=message.userid, link=message.link)
@@ -228,7 +198,7 @@ class WechatModule(_ModuleBase):
         for conf in self._configs.values():
             if not self.checkMessage(message, conf.name):
                 continue
-            client = self.get_client(conf.name)
+            client: WeChat = self.get_client(conf.name)
             if client:
                 client.send_torrents_msg(title=message.title, torrents=torrents,
                                          userid=message.userid, link=message.link)

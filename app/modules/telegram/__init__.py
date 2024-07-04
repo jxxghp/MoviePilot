@@ -5,15 +5,12 @@ from app.core.context import MediaInfo, Context
 from app.core.config import settings
 from app.helper.notification import NotificationHelper
 from app.log import logger
-from app.modules import _ModuleBase
+from app.modules import _ModuleBase, _MessageBase
 from app.modules.telegram.telegram import Telegram
 from app.schemas import MessageChannel, CommingMessage, Notification, NotificationConf
 
 
-class TelegramModule(_ModuleBase):
-    _channel = MessageChannel.Telegram
-    _configs: Dict[str, NotificationConf] = {}
-    _clients: Dict[str, Telegram] = {}
+class TelegramModule(_ModuleBase, _MessageBase):
 
     def init_module(self) -> None:
         """
@@ -32,18 +29,6 @@ class TelegramModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "Telegram"
-
-    def get_client(self, name: str) -> Optional[Telegram]:
-        """
-        获取Telegram客户端
-        """
-        return self._clients.get(name)
-
-    def get_config(self, name: str) -> Optional[NotificationConf]:
-        """
-        获取Telegram配置
-        """
-        return self._configs.get(name)
 
     def stop(self):
         """
@@ -65,25 +50,6 @@ class TelegramModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def checkMessage(self, message: Notification, source: str) -> bool:
-        """
-        检查消息渠道及消息类型，如不符合则不处理
-        """
-        # 检查消息渠道
-        if message.channel and message.channel != self._channel:
-            return False
-        # 检查消息来源
-        if message.source and message.source != source:
-            return False
-        # 检查消息类型开关
-        if message.mtype:
-            conf = self.get_config(source)
-            if conf:
-                switchs = conf.switchs or []
-                if message.mtype.value not in switchs:
-                    return False
-        return True
-
     def message_parser(self, source: str, body: Any, form: Any,
                        args: Any) -> Optional[CommingMessage]:
         """
@@ -91,7 +57,7 @@ class TelegramModule(_ModuleBase):
         userid: 用户ID
         username: 用户名
         text: 内容
-        :param source: 消息来源（渠道配置名称）
+        :param source: 消息来源
         :param body: 请求体
         :param form: 表单
         :param args: 参数
@@ -121,7 +87,7 @@ class TelegramModule(_ModuleBase):
             }
         """
         # 获取渠道
-        client = self.get_client(source)
+        client: Telegram = self.get_client(source)
         if not client:
             return None
         # 获取配置
@@ -173,10 +139,17 @@ class TelegramModule(_ModuleBase):
         for conf in self._configs.values():
             if not self.checkMessage(message, conf.name):
                 continue
-            client = self.get_client(conf.name)
+            targets = message.targets
+            userid = message.userid
+            if not userid and targets is not None:
+                userid = targets.get('telegram_userid')
+                if not userid:
+                    logger.warn(f"用户没有指定 Telegram用户ID，消息无法发送")
+                    return
+            client: Telegram = self.get_client(conf.name)
             if client:
                 client.send_msg(title=message.title, text=message.text,
-                                image=message.image, userid=message.userid, link=message.link)
+                                image=message.image, userid=userid, link=message.link)
 
     def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """
@@ -188,7 +161,7 @@ class TelegramModule(_ModuleBase):
         for conf in self._configs.values():
             if not self.checkMessage(message, conf.name):
                 continue
-            client = self.get_client(conf.name)
+            client: Telegram = self.get_client(conf.name)
             if client:
                 client.send_meidas_msg(title=message.title, medias=medias,
                                        userid=message.userid, link=message.link)
@@ -203,7 +176,7 @@ class TelegramModule(_ModuleBase):
         for conf in self._configs.values():
             if not self.checkMessage(message, conf.name):
                 continue
-            client = self.get_client(conf.name)
+            client: Telegram = self.get_client(conf.name)
             if client:
                 client.send_torrents_msg(title=message.title, torrents=torrents,
                                          userid=message.userid, link=message.link)

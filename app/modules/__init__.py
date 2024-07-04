@@ -1,5 +1,7 @@
 from abc import abstractmethod, ABCMeta
-from typing import Tuple, Union
+from typing import Tuple, Union, Dict, Any, Optional
+
+from app.schemas import Notification, MessageChannel, NotificationConf
 
 
 class _ModuleBase(metaclass=ABCMeta):
@@ -45,3 +47,48 @@ class _ModuleBase(metaclass=ABCMeta):
         模块测试, 返回测试结果和错误信息
         """
         pass
+
+
+class _MessageBase:
+    """
+    消息基类
+    """
+
+    _channel: MessageChannel = None
+    _configs: Dict[str, NotificationConf] = {}
+    _clients: Dict[str, Any] = {}
+
+    def get_client(self, name: str) -> Optional[Any]:
+        """
+        获取客户端
+        """
+        if not name:
+            return None
+        return self._clients.get(name)
+
+    def get_config(self, name: str) -> Optional[NotificationConf]:
+        """
+        获取配置
+        """
+        if not name:
+            return None
+        return self._configs.get(name)
+
+    def checkMessage(self, message: Notification, source: str) -> bool:
+        """
+        检查消息渠道及消息类型，如不符合则不处理
+        """
+        # 检查消息渠道
+        if message.channel and message.channel != self._channel:
+            return False
+        # 检查消息来源
+        if message.source and message.source != source:
+            return False
+        # 检查消息类型开关
+        if message.mtype:
+            conf = self.get_config(source)
+            if conf:
+                switchs = conf.switchs or []
+                if message.mtype.value not in switchs:
+                    return False
+        return True

@@ -55,10 +55,14 @@ class Notification(BaseModel):
     link: Optional[str] = None
     # 用户ID
     userid: Optional[Union[str, int]] = None
+    # 用户名称
+    username: Optional[str] = None
     # 时间
     date: Optional[str] = None
     # 消息方向
     action: Optional[int] = 1
+    # 消息目标用户ID字典，未指定用户ID时使用
+    targets: Optional[dict] = None
 
     def to_dict(self):
         """

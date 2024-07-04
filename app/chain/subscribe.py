@@ -163,7 +163,7 @@ class SubscribeChain(ChainBase):
         if not sid:
             logger.error(f'{mediainfo.title_year} {err_msg}')
             if not exist_ok and message:
-                # 发回原用户
+                # 失败发回原用户
                 self.post_message(Notification(channel=channel,
                                                source=source,
                                                mtype=NotificationType.Subscribe,
@@ -183,11 +183,13 @@ class SubscribeChain(ChainBase):
                 link = settings.MP_DOMAIN('#/subscribe-tv?tab=mysub')
             else:
                 link = settings.MP_DOMAIN('#/subscribe-movie?tab=mysub')
+            # 订阅成功按规则发送消息
             self.post_message(Notification(mtype=NotificationType.Subscribe,
                                            title=f"{mediainfo.title_year} {metainfo.season} 已添加订阅",
                                            text=text,
                                            image=mediainfo.get_message_image(),
-                                           link=link))
+                                           link=link,
+                                           username=username))
         # 发送事件
         EventManager().send_event(EventType.SubscribeAdded, {
             "subscribe_id": sid,
@@ -926,10 +928,12 @@ class SubscribeChain(ChainBase):
             link = settings.MP_DOMAIN('#/subscribe-tv?tab=mysub')
         else:
             link = settings.MP_DOMAIN('#/subscribe-movie?tab=mysub')
+        # 完成订阅按规则发送消息
         self.post_message(Notification(mtype=NotificationType.Subscribe,
                                        title=f'{mediainfo.title_year} {meta.season} 已完成{msgstr}',
                                        image=mediainfo.get_message_image(),
-                                       link=link))
+                                       link=link,
+                                       username=subscribe.username))
         # 发送事件
         EventManager().send_event(EventType.SubscribeComplete, {
             "subscribe_id": subscribe.id,

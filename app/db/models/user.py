@@ -1,9 +1,8 @@
-from typing import Tuple, Optional
+from typing import Tuple, Any
 
 from sqlalchemy import Boolean, Column, Integer, String, Sequence
 from sqlalchemy.orm import Session
 
-from app import schemas
 from app.core.security import verify_password
 from app.db import db_query, db_update, Base
 from app.utils.otp import OtpUtils
@@ -39,14 +38,14 @@ class User(Base):
     @staticmethod
     @db_query
     def authenticate(db: Session, name: str, password: str,
-                     otp_password: str) -> Tuple[bool, Optional[schemas.User]]:
+                     otp_password: str) -> Tuple[bool, Any]:
         user = db.query(User).filter(User.name == name).first()
         if not user:
             return False, None
         if not verify_password(password, str(user.hashed_password)):
             return False, user
         if user.is_otp:
-            if not otp_password or not OtpUtils.check(user.otp_secret, otp_password):
+            if not otp_password or not OtpUtils.check(str(user.otp_secret), otp_password):
                 return False, user
         return True, user
 

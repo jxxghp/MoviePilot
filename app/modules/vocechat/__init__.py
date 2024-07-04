@@ -5,24 +5,25 @@ from app.core.config import settings
 from app.core.context import Context, MediaInfo
 from app.helper.notification import NotificationHelper
 from app.log import logger
-from app.modules import _ModuleBase, checkMessage
+from app.modules import _ModuleBase, _MessageBase
 from app.modules.vocechat.vocechat import VoceChat
 from app.schemas import MessageChannel, CommingMessage, Notification
 
 
-class VoceChatModule(_ModuleBase):
-    _clients: Dict[str, VoceChat] = {}
+class VoceChatModule(_ModuleBase, _MessageBase):
 
     def init_module(self) -> None:
         """
         初始化模块
         """
-        self._clients = {}
         clients = NotificationHelper().get_clients()
         if not clients:
             return
+        self._configs = {}
+        self._clients = {}
         for client in clients:
             if client.type == "vocechat" and client.enabled:
+                self._configs[client.name] = client
                 self._clients[client.name] = VoceChat(**client.config)
 
     @staticmethod
@@ -36,22 +37,23 @@ class VoceChatModule(_ModuleBase):
         """
         测试模块连接性
         """
-        state = self.vocechat.get_state()
-        if state:
-            return True, ""
-        return False, "获取VoceChat频道失败"
+        for name, client in self._clients.items():
+            state = client.get_state()
+            if not state:
+                return False, f"VoceChat {name} 未就续"
+        return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    @staticmethod
-    def message_parser(body: Any, form: Any,
+    def message_parser(self, source: str, body: Any, form: Any,
                        args: Any) -> Optional[CommingMessage]:
         """
         解析消息内容，返回字典，注意以下约定值：
         userid: 用户ID
         username: 用户名
         text: 内容
+        :param source: 消息来源
         :param body: 请求体
         :param form: 表单
         :param args: 参数
@@ -73,6 +75,14 @@ class VoceChatModule(_ModuleBase):
               "target": { "gid": 2 } //发送给谁，gid代表是发送给频道，uid代表是发送给个人，此时的数据结构举例：{"uid":1}
             }
             """
+            # 获取渠道
+            client: VoceChat = self.get_client(source)
+            if not client:
+                return None
+            # 获取配置
+            config = self.get_config(source)
+            if not config:
+                return None
             # 报文体
             msg_body = json.loads(body)
             # 类型
@@ -90,7 +100,8 @@ class VoceChatModule(_ModuleBase):
             content = msg_body.get("detail", {}).get("content")
             # 用户ID
             gid = msg_body.get("target", {}).get("gid")
-            if gid and str(gid) == str(settings.VOCECHAT_CHANNEL_ID):
+            channel_id = config.config.get("channel_id")
+            if gid and str(gid) == str(channel_id):
                 # 来自监听频道的消息
                 userid = f"GID#{gid}"
             else:
@@ -106,40 +117,61 @@ class VoceChatModule(_ModuleBase):
             logger.error(f"VoceChat消息处理发生错误：{str(err)}")
         return None
 
-    @checkMessage(MessageChannel.VoceChat)
     def post_message(self, message: Notification) -> None:
         """
         发送消息
         :param message: 消息内容
         :return: 成功或失败
         """
-        self.vocechat.send_msg(title=message.title, text=message.text,
-                               userid=message.userid, link=message.link)
+        for conf in self._configs.values():
+            if not self.checkMessage(message, conf.name):
+                continue
+            targets = message.targets
+            userid = message.userid
+            if not message.userid and targets:
+                userid = targets.get('telegram_userid')
+            client: VoceChat = self.get_client(conf.name)
+            if client:
+                client.send_msg(title=message.title, text=message.text,
+                                userid=userid, link=message.link)
 
-    @checkMessage(MessageChannel.VoceChat)
-    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
+    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> None:
         """
         发送媒体信息选择列表
         :param message: 消息内容
         :param medias: 媒体列表
         :return: 成功或失败
         """
-        # 先发送标题
-        self.vocechat.send_msg(title=message.title, userid=message.userid)
-        # 再发送内容
-        return self.vocechat.send_medias_msg(title=message.title, medias=medias,
-                                             userid=message.userid, link=message.link)
+        for conf in self._configs.values():
+            if not self.checkMessage(message, conf.name):
+                continue
+            client: VoceChat = self.get_client(conf.name)
+            if client:
+                client.send_msg(title=message.title, userid=message.userid)
+                client.send_medias_msg(title=message.title, medias=medias,
+                                       userid=message.userid, link=message.link)
 
-    @checkMessage(MessageChannel.VoceChat)
-    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> Optional[bool]:
+    def post_torrents_message(self, message: Notification, torrents: List[Context]) -> None:
         """
         发送种子信息选择列表
         :param message: 消息内容
         :param torrents: 种子列表
         :return: 成功或失败
         """
-        return self.vocechat.send_torrents_msg(title=message.title, torrents=torrents,
-                                               userid=message.userid, link=message.link)
+        for conf in self._configs.values():
+            if not self.checkMessage(message, conf.name):
+                continue
+            targets = message.targets
+            userid = message.userid
+            if not userid and targets is not None:
+                userid = targets.get('vocechat_userid')
+                if not userid:
+                    logger.warn(f"用户没有指定 VoceChat用户ID，消息无法发送")
+                    return
+            client: VoceChat = self.get_client(conf.name)
+            if client:
+                client.send_torrents_msg(title=message.title, torrents=torrents,
+                                         userid=userid, link=message.link)
 
     def register_commands(self, commands: Dict[str, dict]):
         pass

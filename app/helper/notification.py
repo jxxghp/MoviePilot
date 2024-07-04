@@ -1,8 +1,8 @@
-from typing import List
+from typing import List, Optional
 
 from app.db.systemconfig_oper import SystemConfigOper
 from app.schemas import NotificationConf, NotificationSwitchConf
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey, NotificationType
 
 
 class NotificationHelper:
@@ -22,7 +22,7 @@ class NotificationHelper:
             return []
         return [NotificationConf(**conf) for conf in client_confs]
     
-    def get_switchs(self) -> List[dict]:
+    def get_switchs(self) -> List[NotificationSwitchConf]:
         """
         获取消息通知场景开关
         """
@@ -30,3 +30,13 @@ class NotificationHelper:
         if not switchs:
             return []
         return [NotificationSwitchConf(**switch) for switch in switchs]
+
+    def get_switch(self, mtype: NotificationType) -> Optional[str]:
+        """
+        获取消息通知场景开关
+        """
+        switchs = self.get_switchs()
+        for switch in switchs:
+            if switch.type == mtype.value:
+                return switch.action
+        return None

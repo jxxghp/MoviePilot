@@ -2,8 +2,6 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from app.schemas import NotificationType
-
 
 class MediaServerConf(BaseModel):
     """
@@ -58,8 +56,8 @@ class NotificationSwitchConf(BaseModel):
     通知场景开关配置
     """
     # 场景名称
-    type: NotificationType = None
-    # 通知范围 all/user/admin/userandadmin
+    type: str = None
+    # 通知范围 all/user/admin
     action: Optional[str] = 'all'
 
 
