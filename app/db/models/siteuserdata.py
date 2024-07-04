@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Sequence
+from sqlalchemy import Column, Integer, String, Sequence, Float
 from sqlalchemy.orm import Session
 
 from app.db import db_query, Base
@@ -22,21 +22,21 @@ class SiteUserData(Base):
     # 加入时间
     join_at = Column(String)
     # 积分
-    bonus = Column(Integer, default=0)
+    bonus = Column(Float, default=0)
     # 上传量
-    upload = Column(Integer, default=0)
+    upload = Column(Float, default=0)
     # 下载量
-    download = Column(Integer, default=0)
+    download = Column(Float, default=0)
     # 分享率
-    ratio = Column(Integer, default=0)
+    ratio = Column(Float, default=0)
     # 做种数
-    seeding = Column(Integer, default=0)
+    seeding = Column(Float, default=0)
     # 下载数
-    leeching = Column(Integer, default=0)
+    leeching = Column(Float, default=0)
     # 做种体积
-    seeding_size = Column(Integer, default=0)
+    seeding_size = Column(Float, default=0)
     # 下载体积
-    leeching_size = Column(Integer, default=0)
+    leeching_size = Column(Float, default=0)
     # 做种人数, 种子大小 JSON
     seeding_info = Column(String)
     # 未读消息
