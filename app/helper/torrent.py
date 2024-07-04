@@ -1,8 +1,7 @@
 import datetime
 import re
-import traceback
 from pathlib import Path
-from typing import Tuple, Optional, List, Union, Dict
+from typing import Tuple, Optional, List, Union
 from urllib.parse import unquote
 
 from requests import Response
@@ -13,8 +12,8 @@ from app.core.context import Context, TorrentInfo, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
-from app.utils.http import RequestUtils
 from app.schemas.types import MediaType, SystemConfigKey
+from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
@@ -297,135 +296,6 @@ class TorrentHelper(metaclass=Singleton):
         """
         if url not in self._invalid_torrents:
             self._invalid_torrents.append(url)
-
-    @staticmethod
-    def filter_torrent(torrent_info: TorrentInfo,
-                       filter_rule: Dict[str, str],
-                       mediainfo: MediaInfo) -> bool:
-        """
-        检查种子是否匹配订阅过滤规则
-        """
-
-        def __get_size_range(size_str: str) -> Tuple[float, float]:
-            """
-            获取大小范围
-            """
-            if not size_str:
-                return 0, 0
-            try:
-                size_range = size_str.split("-")
-                if len(size_range) == 1:
-                    return 0, float(size_range[0])
-                elif len(size_range) == 2:
-                    return float(size_range[0]), float(size_range[1])
-            except Exception as e:
-                logger.error(f"解析大小范围失败：{str(e)} - {traceback.format_exc()}")
-            return 0, 0
-
-        def __get_pubminutes(pubdate: str) -> float:
-            """
-            将字符串转换为时间，并计算与当前时间差）（分钟）
-            """
-            try:
-                if not pubdate:
-                    return 0
-                pubdate = pubdate.replace("T", " ").replace("Z", "")
-                pubdate = datetime.datetime.strptime(pubdate, "%Y-%m-%d %H:%M:%S")
-                now = datetime.datetime.now()
-                return (now - pubdate).total_seconds() // 60
-            except Exception as e:
-                print(str(e))
-                return 0
-
-        if not filter_rule:
-            return True
-
-        # 匹配内容
-        content = (f"{torrent_info.title} "
-                   f"{torrent_info.description} "
-                   f"{' '.join(torrent_info.labels or [])} "
-                   f"{torrent_info.volume_factor}")
-
-        # 最少做种人数
-        min_seeders = filter_rule.get("min_seeders")
-        if min_seeders and torrent_info.seeders < int(min_seeders):
-            # 最少做种人数生效发布时间（分钟）（在设置发布时间之外的最少做种人数生效）
-            min_seeders_time = filter_rule.get("min_seeders_time") or 0
-            if min_seeders_time:
-                # 发布时间与当前时间差（分钟）
-                pubdate_minutes = __get_pubminutes(torrent_info.pubdate)
-                if pubdate_minutes > int(min_seeders_time):
-                    logger.info(f"{torrent_info.title} 发布时间大于 {min_seeders_time} 分钟，做种人数不足 {min_seeders}")
-                    return False
-            else:
-                logger.info(f"{torrent_info.title} 做种人数不足 {min_seeders}")
-                return False
-
-        # 包含
-        include = filter_rule.get("include")
-        if include:
-            if not re.search(r"%s" % include, content, re.I):
-                logger.info(f"{content} 不匹配包含规则 {include}")
-                return False
-        # 排除
-        exclude = filter_rule.get("exclude")
-        if exclude:
-            if re.search(r"%s" % exclude, content, re.I):
-                logger.info(f"{content} 匹配排除规则 {exclude}")
-                return False
-        # 质量
-        quality = filter_rule.get("quality")
-        if quality:
-            if not re.search(r"%s" % quality, torrent_info.title, re.I):
-                logger.info(f"{torrent_info.title} 不匹配质量规则 {quality}")
-                return False
-        # 分辨率
-        resolution = filter_rule.get("resolution")
-        if resolution:
-            if not re.search(r"%s" % resolution, torrent_info.title, re.I):
-                logger.info(f"{torrent_info.title} 不匹配分辨率规则 {resolution}")
-                return False
-        # 特效
-        effect = filter_rule.get("effect")
-        if effect:
-            if not re.search(r"%s" % effect, torrent_info.title, re.I):
-                logger.info(f"{torrent_info.title} 不匹配特效规则 {effect}")
-                return False
-
-        # 大小
-        tv_size = filter_rule.get("tv_size")
-        movie_size = filter_rule.get("movie_size")
-        if movie_size or tv_size:
-            if mediainfo.type == MediaType.TV:
-                size = tv_size
-            else:
-                size = movie_size
-            # 大小范围
-            begin_size, end_size = __get_size_range(size)
-            if begin_size or end_size:
-                meta = MetaInfo(title=torrent_info.title, subtitle=torrent_info.description)
-                # 集数
-                if mediainfo.type == MediaType.TV:
-                    # 电视剧
-                    season = meta.begin_season or 1
-                    if meta.total_episode:
-                        # 识别的总集数
-                        episodes_num = meta.total_episode
-                    else:
-                        # 整季集数
-                        episodes_num = len(mediainfo.seasons.get(season) or [1])
-                    # 比较大小
-                    if not (begin_size * 1024 ** 3 <= (torrent_info.size / episodes_num) <= end_size * 1024 ** 3):
-                        logger.info(f"{torrent_info.title} {StringUtils.str_filesize(torrent_info.size)} "
-                                    f"共{episodes_num}集，不匹配大小规则 {size}")
-                        return False
-                else:
-                    # 电影比较大小
-                    if not (begin_size * 1024 ** 3 <= torrent_info.size <= end_size * 1024 ** 3):
-                        logger.info(
-                            f"{torrent_info.title} {StringUtils.str_filesize(torrent_info.size)} 不匹配大小规则 {size}")
-                        return False
-        return True
 
     @staticmethod
     def match_torrent(mediainfo: MediaInfo, torrent_meta: MetaInfo, torrent: TorrentInfo) -> bool:

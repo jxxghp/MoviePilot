@@ -97,8 +97,7 @@ class SearchChain(ChainBase):
                 keyword: str = None,
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
                 sites: List[int] = None,
-                priority_rule: str = None,
-                filter_rule: Dict[str, str] = None,
+                rule_groups: List[str] = None,
                 area: str = "title") -> List[Context]:
         """
         根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
@@ -106,8 +105,7 @@ class SearchChain(ChainBase):
         :param keyword: 搜索关键词
         :param no_exists: 缺失的媒体信息
         :param sites: 站点ID列表，为空时搜索所有站点
-        :param priority_rule: 优先级规则，为空时使用搜索优先级规则
-        :param filter_rule: 过滤规则，为空是使用默认过滤规则
+        :param rule_groups: 过滤规则组名称列表
         :param area: 搜索范围，title or imdbid
         """
 
@@ -115,7 +113,7 @@ class SearchChain(ChainBase):
             """
             执行优先级过滤
             """
-            return self.filter_torrents(rule_string=priority_rule,
+            return self.filter_torrents(rule_groups=rule_groups,
                                         torrent_list=torrent_list,
                                         season_episodes=season_episodes,
                                         mediainfo=mediainfo) or []
@@ -220,27 +218,16 @@ class SearchChain(ChainBase):
                              key=ProgressKey.Search)
 
         # 开始过滤规则过滤
-        if _match_torrents:
-            logger.info(f'开始过滤规则过滤，当前规则：{filter_rule} ...')
-            _match_torrents = self.filter_torrents_by_rule(torrents=_match_torrents,
-                                                           mediainfo=mediainfo,
-                                                           filter_rule=filter_rule)
-        if not _match_torrents:
-            logger.warn(f'{keyword or mediainfo.title} 没有符合过滤规则的资源')
-            return []
-        logger.info(f"过滤规则过滤完成，剩余 {len(_match_torrents)} 个资源")
-
-        # 开始优先级规则/剧集过滤
-        if priority_rule is None:
-            # 取搜索优先级规则
-            priority_rule = self.systemconfig.get(SystemConfigKey.SearchFilterRules)
-        if priority_rule:
-            logger.info(f'开始优先级规则/剧集过滤，当前规则：{priority_rule} ...')
+        if rule_groups is None:
+            # 取搜索过滤规则
+            rule_groups: List[str] = self.systemconfig.get(SystemConfigKey.SearchFilterRuleGroups)
+        if rule_groups:
+            logger.info(f'开始过滤规则/剧集过滤，使用规则组：{rule_groups} ...')
             _match_torrents = __do_filter(_match_torrents)
             if not _match_torrents:
-                logger.warn(f'{keyword or mediainfo.title} 没有符合优先级规则的资源')
+                logger.warn(f'{keyword or mediainfo.title} 没有符合过滤规则的资源')
                 return []
-            logger.info(f"优先级规则/剧集过滤完成，剩余 {len(_match_torrents)} 个资源")
+            logger.info(f"过滤规则/剧集过滤完成，剩余 {len(_match_torrents)} 个资源")
 
         # 去掉mediainfo中多余的数据
         mediainfo.clear()
@@ -353,34 +340,6 @@ class SearchChain(ChainBase):
         self.progress.end(ProgressKey.Search)
         # 返回
         return results
-
-    def filter_torrents_by_rule(self,
-                                torrents: List[TorrentInfo],
-                                mediainfo: MediaInfo,
-                                filter_rule: Dict[str, str] = None,
-                                ) -> List[TorrentInfo]:
-        """
-        使用过滤规则过滤种子
-        :param torrents: 种子列表
-        :param filter_rule: 过滤规则
-        :param mediainfo: 媒体信息
-        """
-
-        if not filter_rule:
-            # 没有则取搜索默认过滤规则
-            filter_rule = self.systemconfig.get(SystemConfigKey.DefaultSearchFilterRules)
-        if not filter_rule:
-            return torrents
-
-        # 使用默认过滤规则再次过滤
-        return list(filter(
-            lambda t: self.torrenthelper.filter_torrent(
-                torrent_info=t,
-                filter_rule=filter_rule,
-                mediainfo=mediainfo
-            ),
-            torrents
-        ))
 
     @eventmanager.register(EventType.SiteDeleted)
     def remove_site(self, event: Event):

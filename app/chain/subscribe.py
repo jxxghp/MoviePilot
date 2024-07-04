@@ -329,20 +329,16 @@ class SubscribeChain(ChainBase):
 
             # 优先级过滤规则
             if subscribe.best_version:
-                priority_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
+                rule_groups = self.systemconfig.get(SystemConfigKey.BeseVersionFilterRuleGroups)
             else:
-                priority_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
-
-            # 过滤规则
-            filter_rule = self.get_filter_rule(subscribe)
+                rule_groups = self.systemconfig.get(SystemConfigKey.SubscribeFilterRuleGroups)
 
             # 搜索，同时电视剧会过滤掉不需要的剧集
             contexts = self.searchchain.process(mediainfo=mediainfo,
                                                 keyword=subscribe.keyword,
                                                 no_exists=no_exists,
                                                 sites=sites,
-                                                priority_rule=priority_rule,
-                                                filter_rule=filter_rule,
+                                                rule_groups=rule_groups,
                                                 area="imdbid" if subscribe.search_imdbid else "title")
             if not contexts:
                 logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
@@ -515,24 +511,6 @@ class SubscribeChain(ChainBase):
 
         return ret_sites
 
-    def get_filter_rule(self, subscribe: Subscribe):
-        """
-        获取订阅过滤规则，同时组合默认规则
-        """
-        # 默认过滤规则
-        default_rule = self.systemconfig.get(SystemConfigKey.DefaultFilterRules) or {}
-        return {
-            "include": subscribe.include or default_rule.get("include"),
-            "exclude": subscribe.exclude or default_rule.get("exclude"),
-            "quality": subscribe.quality or default_rule.get("quality"),
-            "resolution": subscribe.resolution or default_rule.get("resolution"),
-            "effect": subscribe.effect or default_rule.get("effect"),
-            "tv_size": default_rule.get("tv_size"),
-            "movie_size": default_rule.get("movie_size"),
-            "min_seeders": default_rule.get("min_seeders"),
-            "min_seeders_time": default_rule.get("min_seeders_time"),
-        }
-
     def match(self, torrents: Dict[str, List[Context]]):
         """
         从缓存中匹配订阅，并自动下载
@@ -624,9 +602,6 @@ class SubscribeChain(ChainBase):
                     downloaded_episodes=self.__get_downloaded_episodes(subscribe)
                 )
 
-            # 过滤规则
-            filter_rule = self.get_filter_rule(subscribe)
-
             # 遍历缓存种子
             _match_context = []
             for domain, contexts in torrents.items():
@@ -678,18 +653,18 @@ class SubscribeChain(ChainBase):
                     else:
                         continue
 
-                    # 优先级过滤规则
+                    # 过滤规则
                     if subscribe.best_version:
-                        priority_rule = self.systemconfig.get(SystemConfigKey.BestVersionFilterRules)
+                        rule_groups = self.systemconfig.get(SystemConfigKey.BeseVersionFilterRuleGroups)
                     else:
-                        priority_rule = self.systemconfig.get(SystemConfigKey.SubscribeFilterRules)
+                        rule_groups = self.systemconfig.get(SystemConfigKey.SubscribeFilterRuleGroups)
                     result: List[TorrentInfo] = self.filter_torrents(
-                        rule_string=priority_rule,
+                        rule_groups=rule_groups,
                         torrent_list=[torrent_info],
                         mediainfo=torrent_mediainfo)
                     if result is not None and not result:
                         # 不符合过滤规则
-                        logger.debug(f"{torrent_info.title} 不匹配当前过滤规则")
+                        logger.debug(f"{torrent_info.title} 不匹配过滤规则")
                         continue
 
                     # 不在订阅站点范围的不处理
@@ -735,12 +710,6 @@ class SubscribeChain(ChainBase):
                                 if torrent_meta.episode_list:
                                     logger.debug(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
                                     continue
-
-                    # 过滤规则
-                    if not self.torrenthelper.filter_torrent(torrent_info=torrent_info,
-                                                             filter_rule=filter_rule,
-                                                             mediainfo=torrent_mediainfo):
-                        continue
 
                     # 洗版时，优先级小于已下载优先级的不要
                     if subscribe.best_version:

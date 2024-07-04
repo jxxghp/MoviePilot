@@ -3,6 +3,7 @@ from typing import List, Tuple, Union, Dict, Optional
 
 from app.core.context import TorrentInfo, MediaInfo
 from app.core.metainfo import MetaInfo
+from app.helper.rule import RuleHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filter.RuleParser import RuleParser
@@ -133,8 +134,17 @@ class FilterModule(_ModuleBase):
         },
     }
 
+    def __init__(self):
+        super().__init__()
+        self.rulehelper = RuleHelper()
+
     def init_module(self) -> None:
         self.parser = RuleParser()
+        # 加载用户自定义规则，如跟内置规则冲突，以用户自定义规则为准
+        custom_rules = self.rulehelper.get_custom_rules()
+        for rule in custom_rules:
+            logger.info(f"加载自定义规则 {rule.id} - {rule.name}")
+            self.rule_set[rule.id] = rule.dict()
 
     @staticmethod
     def get_name() -> str:
@@ -149,21 +159,45 @@ class FilterModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def filter_torrents(self, rule_string: str,
+    def filter_torrents(self, rule_groups: List[str],
                         torrent_list: List[TorrentInfo],
                         season_episodes: Dict[int, list] = None,
                         mediainfo: MediaInfo = None) -> List[TorrentInfo]:
         """
         过滤种子资源
-        :param rule_string:  过滤规则
+        :param rule_groups:  过滤规则组名称列表
         :param torrent_list:  资源列表
         :param season_episodes:  季集数过滤 {season:[episodes]}
         :param mediainfo:  媒体信息
         :return: 过滤后的资源列表，添加资源优先级
         """
-        if not rule_string:
+        if not rule_groups:
             return torrent_list
         self.media = mediainfo
+        # 查询规则表详情
+        for group_name in rule_groups:
+            rule_group = self.rulehelper.get_rule_group(group_name)
+            if not rule_group:
+                logger.error(f"规则组 {group_name} 不存在")
+                continue
+            if rule_group.media_type and rule_group.media_type != mediainfo.type.value:
+                # 规则组不适用当前媒体类型
+                continue
+            # 过滤种子
+            torrent_list = self.__filter_torrents(
+                rule_string=rule_group.rule_string,
+                rule_name=rule_group.name,
+                torrent_list=torrent_list,
+                season_episodes=season_episodes
+            )
+        return torrent_list
+
+    def __filter_torrents(self, rule_string: str, rule_name: str,
+                          torrent_list: List[TorrentInfo],
+                          season_episodes: Dict[int, list]) -> List[TorrentInfo]:
+        """
+        过滤种子
+        """
         # 返回种子列表
         ret_torrents = []
         for torrent in torrent_list:
@@ -173,7 +207,8 @@ class FilterModule(_ModuleBase):
                 continue
             # 能命中优先级的才返回
             if not self.__get_order(torrent, rule_string):
-                logger.debug(f"种子 {torrent.site_name} - {torrent.title} {torrent.description} 不匹配优先级规则")
+                logger.debug(f"种子 {torrent.site_name} - {torrent.title} {torrent.description} "
+                             f"不匹配 {rule_name} 过滤规则")
                 continue
             ret_torrents.append(torrent)
 
@@ -196,7 +231,8 @@ class FilterModule(_ModuleBase):
         torrent_episodes = meta.episode_list
         if not set(torrent_seasons).issubset(set(seasons)):
             # 种子季不在过滤季中
-            logger.debug(f"种子 {torrent.site_name} - {torrent.title} 包含季 {torrent_seasons} 不是需要的季 {list(seasons)}")
+            logger.debug(
+                f"种子 {torrent.site_name} - {torrent.title} 包含季 {torrent_seasons} 不是需要的季 {list(seasons)}")
             return False
         if not torrent_episodes:
             # 整季按匹配处理
@@ -207,7 +243,7 @@ class FilterModule(_ModuleBase):
                     and not set(torrent_episodes).intersection(set(need_episodes)):
                 # 单季集没有交集的不要
                 logger.debug(f"种子 {torrent.site_name} - {torrent.title} "
-                            f"集 {torrent_episodes} 没有需要的集：{need_episodes}")
+                             f"集 {torrent_episodes} 没有需要的集：{need_episodes}")
                 return False
         return True
 
@@ -290,6 +326,10 @@ class FilterModule(_ModuleBase):
         includes = self.rule_set[rule_name].get("include") or []
         # 排除规则项
         excludes = self.rule_set[rule_name].get("exclude") or []
+        # 大小范围规则项
+        size_range = self.rule_set[rule_name].get("size_range")
+        # 做种人数规则项
+        seeders = self.rule_set[rule_name].get("seeders")
         # FREE规则
         downloadvolumefactor = self.rule_set[rule_name].get("downloadvolumefactor")
         for include in includes:
@@ -299,6 +339,14 @@ class FilterModule(_ModuleBase):
         for exclude in excludes:
             if re.search(r"%s" % exclude, content, re.IGNORECASE):
                 # 发现排除项
+                return False
+        if size_range:
+            if not self.__match_size(torrent, size_range):
+                # 大小范围不匹配
+                return False
+        if seeders:
+            if torrent.seeders < int(seeders):
+                # 做种人数不匹配
                 return False
         if downloadvolumefactor is not None:
             if torrent.downloadvolumefactor != downloadvolumefactor:
@@ -310,6 +358,7 @@ class FilterModule(_ModuleBase):
         """
         判断种子是否匹配TMDB规则
         """
+
         def __get_media_value(key: str):
             try:
                 return getattr(self.media, key)
@@ -346,3 +395,30 @@ class FilterModule(_ModuleBase):
                 return False
 
         return True
+
+    @staticmethod
+    def __match_size(torrent: TorrentInfo, size_range: str) -> bool:
+        """
+        判断种子是否匹配大小范围（MB）
+        """
+        if not size_range:
+            return True
+        size_range = size_range.strip()
+        if size_range.find("-") != -1:
+            # 区间
+            size_min, size_max = size_range.split("-")
+            size_min = float(size_min.strip()) * 1024 * 1024
+            size_max = float(size_max.strip()) * 1024 * 1024
+            if size_min <= torrent.size <= size_max:
+                return True
+        elif size_range.startswith(">"):
+            # 大于
+            size_min = float(size_range[1:].strip()) * 1024 * 1024
+            if torrent.size >= size_min:
+                return True
+        elif size_range.startswith("<"):
+            # 小于
+            size_max = float(size_range[1:].strip()) * 1024 * 1024
+            if torrent.size <= size_max:
+                return True
+        return False

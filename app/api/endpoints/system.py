@@ -19,9 +19,9 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.db.userauth import get_current_active_superuser
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
+from app.helper.rule import RuleHelper
 from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
-from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
 from app.utils.system import SystemUtils
 from version import APP_VERSION
@@ -223,10 +223,10 @@ def latest_version(_: schemas.TokenPayload = Depends(verify_token)):
     return schemas.Response(success=False)
 
 
-@router.get("/ruletest", summary="优先级规则测试", response_model=schemas.Response)
+@router.get("/ruletest", summary="过滤规则测试", response_model=schemas.Response)
 def ruletest(title: str,
+             rulegroup_name: str,
              subtitle: str = None,
-             ruletype: str = None,
              _: schemas.TokenPayload = Depends(verify_token)):
     """
     过滤规则测试，规则类型 1-订阅，2-洗版，3-搜索
@@ -235,20 +235,16 @@ def ruletest(title: str,
         title=title,
         description=subtitle,
     )
-    if ruletype == "2":
-        rule_string = SystemConfigOper().get(SystemConfigKey.BestVersionFilterRules)
-    elif ruletype == "3":
-        rule_string = SystemConfigOper().get(SystemConfigKey.SearchFilterRules)
-    else:
-        rule_string = SystemConfigOper().get(SystemConfigKey.SubscribeFilterRules)
-    if not rule_string:
-        return schemas.Response(success=False, message="优先级规则未设置！")
+    # 查询规则组详情
+    rulegroup = RuleHelper().get_rule_group(rulegroup_name)
+    if not rulegroup:
+        return schemas.Response(success=False, message=f"过滤规则组 {rulegroup_name} 不存在！")
 
     # 过滤
-    result = SearchChain().filter_torrents(rule_string=rule_string,
+    result = SearchChain().filter_torrents(rule_groups=[rulegroup.name],
                                            torrent_list=[torrent])
     if not result:
-        return schemas.Response(success=False, message="不符合优先级规则！")
+        return schemas.Response(success=False, message="不符合过滤规则！")
     return schemas.Response(success=True, data={
         "priority": 100 - result[0].pri_order + 1
     })

@@ -84,16 +84,16 @@ class SystemConfigKey(Enum):
     TransferExcludeWords = "TransferExcludeWords"
     # 种子优先级规则
     TorrentsPriority = "TorrentsPriority"
-    # 搜索优先级规则
-    SearchFilterRules = "SearchFilterRules"
-    # 订阅优先级规则
-    SubscribeFilterRules = "SubscribeFilterRules"
-    # 洗版规则
-    BestVersionFilterRules = "BestVersionFilterRules"
-    # 默认订阅过滤规则
-    DefaultFilterRules = "DefaultFilterRules"
-    # 默认搜索过滤规则
-    DefaultSearchFilterRules = "DefaultSearchFilterRules"
+    # 用户自定义规则
+    CustomFilterRules = "CustomFilterRules"
+    # 用户规则组
+    UserRuleGroups = "UserRuleGroups"
+    # 搜索默认过滤规则
+    SearchFilterRuleGroups = "SearchFilterRuleGroups"
+    # 订阅默认过滤规则
+    SubscribeFilterRuleGroups = "SubscribeFilterRuleGroups"
+    # 洗版默认过滤规则
+    BeseVersionFilterRuleGroups = "BeseVersionFilterRuleGroups"
     # 订阅统计
     SubscribeReport = "SubscribeReport"
     # 用户自定义CSS

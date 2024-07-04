@@ -13,5 +13,5 @@ from .mediaserver import *
 from .message import *
 from .tmdb import *
 from .transfer import *
-from .filetransfer import *
+from .rule import *
 from .system import *
