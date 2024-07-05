@@ -206,6 +206,7 @@ class Telegram:
                 image_file = Path(settings.TEMP_PATH) / Path(image).name
                 image_file.write_bytes(req.content)
                 photo = InputFile(image_file)
+                caption =  re.sub(r'([_`])', r'\\\1', caption)
                 ret = self._bot.send_photo(chat_id=userid or self._telegram_chat_id,
                                            photo=photo,
                                            caption=caption,
