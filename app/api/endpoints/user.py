@@ -9,7 +9,7 @@ from app import schemas
 from app.core.security import get_password_hash
 from app.db import get_db
 from app.db.models.user import User
-from app.db.userauth import get_current_active_superuser, get_current_active_user
+from app.db.user_oper import get_current_active_superuser, get_current_active_user
 from app.db.userconfig_oper import UserConfigOper
 from app.utils.otp import OtpUtils
 

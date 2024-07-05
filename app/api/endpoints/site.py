@@ -15,7 +15,7 @@ from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.userauth import get_current_active_superuser
+from app.db.user_oper import get_current_active_superuser
 from app.helper.sites import SitesHelper
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey, EventType

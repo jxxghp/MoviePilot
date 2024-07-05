@@ -9,7 +9,7 @@ from app.core.context import MediaInfo, Context, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.db.models.user import User
-from app.db.userauth import get_current_active_user
+from app.db.user_oper import get_current_active_user
 
 router = APIRouter()
 

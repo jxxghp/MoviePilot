@@ -16,7 +16,7 @@ from app.core.module import ModuleManager
 from app.core.security import verify_token
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.userauth import get_current_active_superuser
+from app.db.user_oper import get_current_active_superuser
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper

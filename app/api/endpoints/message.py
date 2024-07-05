@@ -14,7 +14,7 @@ from app.core.security import verify_token
 from app.db import get_db
 from app.db.models import User
 from app.db.models.message import Message
-from app.db.userauth import get_current_active_superuser
+from app.db.user_oper import get_current_active_superuser
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.schemas.types import MessageChannel

@@ -12,7 +12,7 @@ from app.db import get_db
 from app.db.models import User
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
-from app.db.userauth import get_current_active_superuser
+from app.db.user_oper import get_current_active_superuser
 from app.schemas.types import EventType
 
 router = APIRouter()
