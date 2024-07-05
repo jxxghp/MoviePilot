@@ -233,7 +233,7 @@ class Settings(BaseSettings):
     # 是否启用DOH解析域名
     DOH_ENABLE: bool = True
     # 使用 DOH 解析的域名列表
-    DOH_DOMAINS:str =  'api.themoviedb.org,api.tmdb.org,webservice.fanart.tv,api.github.com,github.com,raw.githubusercontent.com,api.telegram.org'
+    DOH_DOMAINS: str = 'api.themoviedb.org,api.tmdb.org,webservice.fanart.tv,api.github.com,github.com,raw.githubusercontent.com,api.telegram.org'
     # 搜索多个名称
     SEARCH_MULTIPLE_NAME: bool = False
     # 订阅数据共享
