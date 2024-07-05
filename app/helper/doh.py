@@ -15,16 +15,6 @@ from typing import Dict, Optional
 from app.core.config import settings
 from app.log import logger
 
-# 定义一个全局集合来存储注册的主机
-_registered_hosts = {
-    'api.themoviedb.org',
-    'api.tmdb.org',
-    'webservice.fanart.tv',
-    'api.github.com',
-    'github.com',
-    'raw.githubusercontent.com',
-    'api.telegram.org'
-}
 
 # 定义一个全局线程池执行器
 _executor = concurrent.futures.ThreadPoolExecutor()
@@ -46,7 +36,7 @@ def _patched_getaddrinfo(host, *args, **kwargs):
     """
     socket.getaddrinfo的补丁版本。
     """
-    if host not in _registered_hosts:
+    if host not in settings.DOH_DOMAINS.split(","):
         return _orig_getaddrinfo(host, *args, **kwargs)
 
     # 检查主机是否已解析
