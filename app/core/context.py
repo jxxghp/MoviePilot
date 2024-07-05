@@ -347,10 +347,10 @@ class MediaInfo:
                 return [], []
             directors = []
             actors = []
-            for cast in _credits.get("cast"):
+            for cast in _credits.get("cast") or []:
                 if cast.get("known_for_department") == "Acting":
                     actors.append(cast)
-            for crew in _credits.get("crew"):
+            for crew in _credits.get("crew") or []:
                 if crew.get("job") in ["Director", "Writer", "Editor", "Producer"]:
                     directors.append(crew)
             return directors, actors

@@ -414,9 +414,9 @@ class TheMovieDbModule(_ModuleBase):
         :param season:  季
         """
         season_info = self.tmdb.get_tv_season_detail(tmdbid=tmdbid, season=season)
-        if not season_info:
+        if not season_info or not season_info.get("episodes"):
             return []
-        return [schemas.TmdbEpisode(**episode) for episode in season_info.get("episodes", [])]
+        return [schemas.TmdbEpisode(**episode) for episode in season_info.get("episodes")]
 
     def scheduler_job(self) -> None:
         """
