@@ -234,6 +234,8 @@ class Settings(BaseSettings):
     DOH_ENABLE: bool = True
     # 使用 DOH 解析的域名列表
     DOH_DOMAINS: str = "api.themoviedb.org,api.tmdb.org,webservice.fanart.tv,api.github.com,github.com,raw.githubusercontent.com,api.telegram.org"
+    # DOH 解析服务器列表
+    DOH_RESOLVERS: str = "1.0.0.1,1.1.1.1,9.9.9.9,149.112.112.112"
     # 搜索多个名称
     SEARCH_MULTIPLE_NAME: bool = False
     # 订阅数据共享
