@@ -224,6 +224,8 @@ class Settings(BaseSettings):
     PLUGIN_MARKET: str = "https://github.com/jxxghp/MoviePilot-Plugins,https://github.com/thsrite/MoviePilot-Plugins,https://github.com/honue/MoviePilot-Plugins,https://github.com/InfinityPacer/MoviePilot-Plugins"
     # Github token，提高请求api限流阈值 ghp_****
     GITHUB_TOKEN: Optional[str] = None
+    # 指定的仓库Github token，多个仓库使用,分隔，格式：{user1}/{repo1}:ghp_****,{user2}/{repo2}:github_pat_****
+    GITHUB_TOKEN_FOR_REPO: Optional[str] = None
     # Github代理服务器，格式：https://mirror.ghproxy.com/
     GITHUB_PROXY: Optional[str] = ''
     # 自动检查和更新站点资源包（站点索引、认证等）
@@ -361,6 +363,37 @@ class Settings(BaseSettings):
                 "Authorization": f"Bearer {self.GITHUB_TOKEN}"
             }
         return {}
+
+    def GITHUB_HEADERS_FOR_REPO(self, repo: str = None):
+        """
+        Github指定的仓库请求头
+        :param repo: 指定的仓库名称，格式为 "user/repo"。如果为空，或者没有找到指定仓库请求头，则返回默认的请求头信息
+        :return: Github请求头
+        """
+        # 如果没有传入指定的仓库名称，或没有配置指定的仓库Token，则返回默认的请求头信息
+        if not repo or not self.GITHUB_TOKEN_FOR_REPO:
+            return self.GITHUB_HEADERS
+        headers = {}
+        # 格式：{user1}/{repo1}:ghp_****,{user2}/{repo2}:github_pat_****
+        token_pairs = self.GITHUB_TOKEN_FOR_REPO.split(",")
+        for token_pair in token_pairs:
+            try:
+                parts = token_pair.split(":")
+                if len(parts) != 2:
+                    print(f"无效的令牌格式: {token_pair}")
+                    continue
+                repo_info = parts[0].strip()
+                token = parts[1].strip()
+                if not repo_info or not token:
+                    print(f"无效的令牌或仓库信息: {token_pair}")
+                    continue
+                headers[repo_info] = {
+                    "Authorization": f"Bearer {token}"
+                }
+            except Exception as e:
+                print(f"处理令牌对 '{token_pair}' 时出错: {e}")
+        # 如果传入了指定的仓库名称，则返回该仓库的请求头信息，否则返回默认请求头
+        return headers.get(repo, self.GITHUB_HEADERS)
 
     @property
     def DEFAULT_DOWNLOADER(self):
