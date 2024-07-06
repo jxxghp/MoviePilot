@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.metainfo import MetaInfo
 from app.helper.downloader import DownloaderHelper
 from app.log import logger
-from app.modules import _ModuleBase
+from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.transmission.transmission import Transmission
 from app.schemas import TransferTorrent, DownloadingTorrent
 from app.schemas.types import TorrentStatus
@@ -18,14 +18,11 @@ from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
 
-class TransmissionModule(_ModuleBase):
-    _servers: Dict[str, Transmission] = {}
-    _default_server: Transmission = None
-    _default_server_name: str = None
+class TransmissionModule(_ModuleBase, _DownloaderBase):
 
     def init_module(self) -> None:
         # 读取下载器配置
-        self._servers = {}
+        self._servers: Dict[str, Transmission] = {}
         downloaders = DownloaderHelper().get_downloaders()
         if not downloaders:
             return
@@ -39,14 +36,6 @@ class TransmissionModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "Transmission"
-    
-    def get_server(self, name: str = None) -> Optional[Transmission]:
-        """
-        获取服务器，name为空则返回默认服务器
-        """
-        if name:
-            return self._servers.get(name)
-        return self._default_server
 
     def stop(self):
         pass
@@ -111,7 +100,7 @@ class TransmissionModule(_ModuleBase):
             return None, None, f"种子文件不存在：{content}"
 
         # 获取下载器
-        server = self.get_server(downloader)
+        server: Transmission = self.get_server(downloader)
         if not server:
             return None
 
@@ -202,7 +191,7 @@ class TransmissionModule(_ModuleBase):
         :return: 下载器中符合状态的种子列表
         """
         # 获取下载器
-        server = self.get_server(downloader)
+        server: Transmission = self.get_server(downloader)
         if not server:
             return None
         ret_torrents = []
@@ -270,7 +259,7 @@ class TransmissionModule(_ModuleBase):
         :return: None
         """
         # 获取下载器
-        server = self.get_server(downloader)
+        server: Transmission = self.get_server(downloader)
         if not server:
             return None
         # 获取原标签
@@ -302,7 +291,7 @@ class TransmissionModule(_ModuleBase):
         :return: bool
         """
         # 获取下载器
-        server = self.get_server(downloader)
+        server: Transmission = self.get_server(downloader)
         if not server:
             return None
         return server.delete_torrents(delete_file=delete_file, ids=hashs)
@@ -316,7 +305,7 @@ class TransmissionModule(_ModuleBase):
         :return: bool
         """
         # 获取下载器
-        server = self.get_server(downloader)
+        server: Transmission = self.get_server(downloader)
         if not server:
             return None
         return server.start_torrents(ids=hashs)
@@ -330,7 +319,7 @@ class TransmissionModule(_ModuleBase):
         :return: bool
         """
         # 获取下载器
-        server = self.get_server(downloader)
+        server: Transmission = self.get_server(downloader)
         if not server:
             return None
         return server.start_torrents(ids=hashs)
@@ -340,7 +329,7 @@ class TransmissionModule(_ModuleBase):
         获取种子文件列表
         """
         # 获取下载器
-        server = self.get_server(downloader)
+        server: Transmission = self.get_server(downloader)
         if not server:
             return None
         return server.get_files(tid=tid)
@@ -350,7 +339,7 @@ class TransmissionModule(_ModuleBase):
         下载器信息
         """
         if downloader:
-            server = self.get_server(downloader)
+            server: Transmission = self.get_server(downloader)
             if not server:
                 return None
             servers = [server]

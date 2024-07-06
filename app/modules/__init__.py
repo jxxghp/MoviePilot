@@ -92,3 +92,35 @@ class _MessageBase:
                 if message.mtype.value not in switchs:
                     return False
         return True
+
+
+class _DownloaderBase:
+    """
+    下载器基类
+    """
+
+    _servers: Dict[str, Any] = {}
+    _default_server: Any = None
+    _default_server_name: str = None
+
+    def get_server(self, name: str = None) -> Optional[Any]:
+        """
+        获取服务器，name为空则返回默认服务器
+        """
+        if name:
+            return self._servers.get(name)
+        return self._default_server
+
+
+class _MediaServerBase:
+    """
+    媒体服务器基类
+    """
+
+    _servers: Dict[str, Any] = {}
+
+    def get_server(self, name: str) -> Optional[Any]:
+        """
+        获取Plex服务器
+        """
+        return self._servers.get(name)

@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.metainfo import MetaInfo
 from app.helper.downloader import DownloaderHelper
 from app.log import logger
-from app.modules import _ModuleBase
+from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.schemas import TransferTorrent, DownloadingTorrent
 from app.schemas.types import TorrentStatus
@@ -18,17 +18,14 @@ from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
 
-class QbittorrentModule(_ModuleBase):
-    _servers: Dict[str, Qbittorrent] = {}
-    _default_server: Qbittorrent = None
-    _default_server_name: str = None
+class QbittorrentModule(_ModuleBase, _DownloaderBase):
 
     def init_module(self) -> None:
         """
         初始化模块
         """
         # 读取下载器配置
-        self._servers = {}
+        self._servers: Dict[str, Qbittorrent] = {}
         downloaders = DownloaderHelper().get_downloaders()
         if not downloaders:
             return
@@ -42,14 +39,6 @@ class QbittorrentModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "Qbittorrent"
-
-    def get_server(self, name: str = None) -> Optional[Qbittorrent]:
-        """
-        获取服务器，name为空则返回默认服务器
-        """
-        if name:
-            return self._servers.get(name)
-        return self._default_server
 
     def stop(self):
         pass
@@ -112,7 +101,7 @@ class QbittorrentModule(_ModuleBase):
             return None, None, f"种子文件不存在：{content}"
 
         # 获取下载器
-        server = self.get_server(downloader)
+        server: Qbittorrent = self.get_server(downloader)
         if not server:
             return None
 
@@ -210,7 +199,7 @@ class QbittorrentModule(_ModuleBase):
         :return: 下载器中符合状态的种子列表
         """
         # 获取下载器
-        server = self.get_server(downloader)
+        server: Qbittorrent = self.get_server(downloader)
         if not server:
             return None
 
@@ -282,7 +271,7 @@ class QbittorrentModule(_ModuleBase):
         :param path:  源目录
         :param downloader:  下载器
         """
-        server = self.get_server(downloader)
+        server: Qbittorrent = self.get_server(downloader)
         if not server:
             return None
         server.set_torrents_tag(ids=hashs, tags=['已整理'])
@@ -306,7 +295,7 @@ class QbittorrentModule(_ModuleBase):
         :param downloader:  下载器
         :return: bool
         """
-        server = self.get_server(downloader)
+        server: Qbittorrent = self.get_server(downloader)
         if not server:
             return None
         return server.delete_torrents(delete_file=delete_file, ids=hashs)
@@ -319,7 +308,7 @@ class QbittorrentModule(_ModuleBase):
         :param downloader:  下载器
         :return: bool
         """
-        server = self.get_server(downloader)
+        server: Qbittorrent = self.get_server(downloader)
         if not server:
             return None
         return server.start_torrents(ids=hashs)
@@ -331,7 +320,7 @@ class QbittorrentModule(_ModuleBase):
         :param downloader:  下载器
         :return: bool
         """
-        server = self.get_server(downloader)
+        server: Qbittorrent = self.get_server(downloader)
         if not server:
             return None
         return server.stop_torrents(ids=hashs)
@@ -340,7 +329,7 @@ class QbittorrentModule(_ModuleBase):
         """
         获取种子文件列表
         """
-        server = self.get_server(downloader)
+        server: Qbittorrent = self.get_server(downloader)
         if not server:
             return None
         return server.get_files(tid=tid)
@@ -350,7 +339,7 @@ class QbittorrentModule(_ModuleBase):
         下载器信息
         """
         if downloader:
-            server = self.get_server(downloader)
+            server: Qbittorrent = self.get_server(downloader)
             if not server:
                 return None
             servers = [server]
