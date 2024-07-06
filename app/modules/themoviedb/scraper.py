@@ -11,7 +11,6 @@ from app.utils.dom import DomUtils
 
 class TmdbScraper:
     tmdb = None
-    _transfer_type = settings.TRANSFER_TYPE
     _force_nfo = False
     _force_img = False
 

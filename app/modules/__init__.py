@@ -74,7 +74,7 @@ class _MessageBase:
             return None
         return self._configs.get(name)
 
-    def checkMessage(self, message: Notification, source: str) -> bool:
+    def checkMessage(self, message: Notification, source: str = None) -> bool:
         """
         检查消息渠道及消息类型，如不符合则不处理
         """

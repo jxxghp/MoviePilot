@@ -5,11 +5,11 @@ from pywebpush import webpush, WebPushException
 
 from app.core.config import global_vars, settings
 from app.log import logger
-from app.modules import _ModuleBase
-from app.schemas import MessageChannel, Notification
+from app.modules import _ModuleBase, _MessageBase
+from app.schemas import Notification
 
 
-class WebPushModule(_ModuleBase):
+class WebPushModule(_ModuleBase, _MessageBase):
     def init_module(self) -> None:
         pass
 
@@ -27,9 +27,8 @@ class WebPushModule(_ModuleBase):
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        return "MESSAGER", "webpush"
+        pass
 
-    @checkMessage(MessageChannel.WebPush)
     def post_message(self, message: Notification) -> None:
         """
         发送消息
@@ -38,6 +37,9 @@ class WebPushModule(_ModuleBase):
         """
         if not message.title and not message.text:
             logger.warn("标题和内容不能同时为空")
+            return
+        if not self.checkMessage(message):
+            logger.warn("WebPush 通道未启用")
             return
         try:
             if message.title:

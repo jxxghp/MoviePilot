@@ -2,14 +2,12 @@ from pathlib import Path
 from typing import Optional
 from xml.dom import minidom
 
-from app.core.config import settings
 from app.core.context import MediaInfo
 from app.schemas.types import MediaType
 from app.utils.dom import DomUtils
 
 
 class DoubanScraper:
-    _transfer_type = settings.TRANSFER_TYPE
     _force_nfo = False
     _force_img = False
 
