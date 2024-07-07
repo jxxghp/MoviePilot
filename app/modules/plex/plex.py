@@ -265,25 +265,59 @@ class Plex:
             season_episodes[episode.seasonNumber].append(episode.index)
         return videos.key, season_episodes
 
-    def get_remote_image_by_id(self, item_id: str, image_type: str) -> Optional[str]:
+    def get_remote_image_by_id(self, item_id: str, image_type: str, depth: int = 0) -> Optional[str]:
         """
         根据ItemId从Plex查询图片地址
-        :param item_id: 在Emby中的ID
+        :param item_id: 在Plex中的ID
         :param image_type: 图片的类型，Poster或者Backdrop等
+        :param depth: 当前递归深度，默认为0
         :return: 图片对应在TMDB中的URL
         """
-        if not self._plex:
+        if not self._plex or depth > 2 or not item_id:
             return None
         try:
-            if image_type == "Poster":
-                images = self._plex.fetchItems('/library/metadata/%s/posters' % item_id,
-                                               cls=media.Poster)
+            image_url = None
+            ekey = f"/library/metadata/{item_id}"
+            item = self._plex.fetchItem(ekey=ekey)
+            if not item:
+                return None
+            # 如果配置了外网播放地址以及Token，则默认从Plex媒体服务器获取图片，否则返回有外网地址的图片资源
+            if settings.PLEX_PLAY_HOST and settings.PLEX_TOKEN:
+                query = {"X-Plex-Token": settings.PLEX_TOKEN}
+                if image_type == "Poster":
+                    if item.thumb:
+                        image_url = RequestUtils.combine_url(host=settings.PLEX_PLAY_HOST, path=item.thumb, query=query)
+                else:
+                    # 这里对episode进行特殊处理，实际上episode的Backdrop是Poster
+                    if item.TYPE == "episode" and item.thumb:
+                        image_url = RequestUtils.combine_url(host=settings.PLEX_PLAY_HOST, path=item.thumb, query=query)
+                    # 默认使用art也就是Backdrop进行处理
+                    if not image_url and item.art:
+                        image_url = RequestUtils.combine_url(host=settings.PLEX_PLAY_HOST, path=item.art, query=query)
             else:
-                images = self._plex.fetchItems('/library/metadata/%s/arts' % item_id,
-                                               cls=media.Art)
-            for image in images:
-                if hasattr(image, 'key') and image.key.startswith('http'):
-                    return image.key
+                if image_type == "Poster":
+                    images = self._plex.fetchItems(ekey=f"{ekey}/posters",
+                                                   cls=media.Poster)
+                else:
+                    # 这里对episode进行特殊处理，实际上episode的Backdrop是Poster
+                    images = None
+                    if item.TYPE == "episode":
+                        images = self._plex.fetchItems(ekey=f"{ekey}/posters",
+                                                       cls=media.Poster)
+                    # 默认使用art也就是Backdrop进行处理
+                    if not images:
+                        images = self._plex.fetchItems(ekey=f"{ekey}/arts",
+                                                       cls=media.Art)
+                for image in images:
+                    if hasattr(image, "key") and image.key.startswith("http"):
+                        image_url = image.key
+                        break
+                # 如果最后还是找不到，则递归父级进行查找
+                if not image_url and hasattr(item, "parentRatingKey"):
+                    return self.get_remote_image_by_id(item_id=item.parentRatingKey,
+                                                       image_type=image_type,
+                                                       depth=depth + 1)
+            return image_url
         except Exception as e:
             logger.error(f"获取封面出错：" + str(e))
         return None

@@ -1,5 +1,6 @@
 import re
 import threading
+import uuid
 from pathlib import Path
 from threading import Event
 from typing import Optional, List, Dict
@@ -199,14 +200,17 @@ class Telegram:
         """
 
         if image:
-            req = RequestUtils(proxies=settings.PROXY).get_res(image)
-            if req is None:
+            res = RequestUtils(proxies=settings.PROXY).get_res(image)
+            if res is None:
                 raise Exception("获取图片失败")
-            if req.content:
-                image_file = Path(settings.TEMP_PATH) / Path(image).name
-                image_file.write_bytes(req.content)
+            if res.content:
+                # 使用随机标识构建图片文件的完整路径，并写入图片内容到文件
+                image_file = Path(settings.TEMP_PATH) / str(uuid.uuid4())
+                image_file.write_bytes(res.content)
                 photo = InputFile(image_file)
-                caption =  re.sub(r'([_`])', r'\\\1', caption)
+                # 对caption进行Markdown特殊字符转义
+                caption = re.sub(r"([_`])", r"\\\1", caption)
+                # 发送图片到Telegram
                 ret = self._bot.send_photo(chat_id=userid or self._telegram_chat_id,
                                            photo=photo,
                                            caption=caption,
