@@ -269,6 +269,7 @@ class RequestUtils:
             # 如果路径为空，则默认为 '/'
             if path is None:
                 path = '/'
+            host = RequestUtils.standardize_base_url(host)
             # 使用 urljoin 合并 host 和 path
             url = urljoin(host, path)
             # 解析当前 URL 的组成部分
