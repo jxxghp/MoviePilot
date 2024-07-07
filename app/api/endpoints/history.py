@@ -77,7 +77,7 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
                             deletesrc: bool = False,
                             deletedest: bool = False,
                             db: Session = Depends(get_db),
-                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+                            _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     删除转移历史记录
     """

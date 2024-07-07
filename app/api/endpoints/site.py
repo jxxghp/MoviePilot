@@ -26,7 +26,7 @@ router = APIRouter()
 
 @router.get("/", summary="所有站点", response_model=List[schemas.Site])
 def read_sites(db: Session = Depends(get_db),
-               _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+               _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> List[dict]:
     """
     获取站点列表
     """
@@ -38,7 +38,7 @@ def add_site(
         *,
         db: Session = Depends(get_db),
         site_in: schemas.Site,
-        _: schemas.TokenPayload = Depends(verify_token)
+        _: schemas.TokenPayload = Depends(get_current_active_superuser)
 ) -> Any:
     """
     新增站点
@@ -75,7 +75,7 @@ def update_site(
         *,
         db: Session = Depends(get_db),
         site_in: schemas.Site,
-        _: schemas.TokenPayload = Depends(verify_token)
+        _: schemas.TokenPayload = Depends(get_current_active_superuser)
 ) -> Any:
     """
     更新站点信息
@@ -96,7 +96,7 @@ def update_site(
 
 @router.get("/cookiecloud", summary="CookieCloud同步", response_model=schemas.Response)
 def cookie_cloud_sync(background_tasks: BackgroundTasks,
-                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+                      _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     运行CookieCloud同步站点信息
     """
@@ -127,7 +127,7 @@ def reset(db: Session = Depends(get_db),
 def update_sites_priority(
         priorities: List[dict],
         db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+        _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     批量更新站点优先级
     """
@@ -145,7 +145,7 @@ def update_cookie(
         password: str,
         code: str = None,
         db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+        _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     使用用户密码更新站点Cookie
     """
@@ -205,7 +205,7 @@ def site_icon(site_id: int,
 @router.get("/resource/{site_id}", summary="站点资源", response_model=List[schemas.TorrentInfo])
 def site_resource(site_id: int,
                   db: Session = Depends(get_db),
-                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+                  _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     浏览站点资源
     """
@@ -257,7 +257,8 @@ def read_site_by_domain(
 
 
 @router.get("/rss", summary="所有订阅站点", response_model=List[schemas.Site])
-def read_rss_sites(db: Session = Depends(get_db)) -> List[dict]:
+def read_rss_sites(db: Session = Depends(get_db),
+                   _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
     """
     获取站点列表
     """
@@ -278,7 +279,7 @@ def read_rss_sites(db: Session = Depends(get_db)) -> List[dict]:
 def read_site(
         site_id: int,
         db: Session = Depends(get_db),
-        _: schemas.TokenPayload = Depends(verify_token)
+        _: schemas.TokenPayload = Depends(get_current_active_superuser)
 ) -> Any:
     """
     通过ID获取站点信息

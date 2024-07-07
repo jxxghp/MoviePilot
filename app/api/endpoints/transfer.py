@@ -12,6 +12,7 @@ from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
+from app.db.user_oper import get_current_active_superuser
 from app.schemas import MediaType, FileItem
 
 router = APIRouter()
@@ -63,7 +64,7 @@ def manual_transfer(fileitem: FileItem = None,
                     min_filesize: int = 0,
                     scrape: bool = None,
                     db: Session = Depends(get_db),
-                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+                    _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     手动转移，文件或历史记录，支持自定义剧集识别格式
     :param fileitem: 文件信息

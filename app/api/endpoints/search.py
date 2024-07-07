@@ -7,6 +7,7 @@ from app.chain.media import MediaChain
 from app.chain.search import SearchChain
 from app.core.config import settings
 from app.core.security import verify_token
+from app.db.user_oper import check_user_permission
 from app.schemas.types import MediaType
 
 router = APIRouter()
@@ -25,11 +26,12 @@ def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 def search_by_id(mediaid: str,
                  mtype: str = None,
                  area: str = "title",
-                 season: str = None,
-                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+                 season: str = None) -> Any:
     """
     根据TMDBID/豆瓣ID精确搜索站点资源 tmdb:/douban:/bangumi:
     """
+    # 检查用户权限
+    check_user_permission(permission='resource.search')
     if mtype:
         mtype = MediaType(mtype)
     if season:
@@ -95,6 +97,8 @@ def search_by_title(keyword: str = None,
     """
     根据名称模糊搜索站点资源，支持分页，关键词为空是返回首页资源
     """
+    # 检查用户权限
+    check_user_permission(permission='resource.search')
     torrents = SearchChain().search_by_title(title=keyword, page=page, site=site)
     if not torrents:
         return schemas.Response(success=False, message="未搜索到任何资源")

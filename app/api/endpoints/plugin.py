@@ -6,6 +6,7 @@ from app import schemas
 from app.core.plugin import PluginManager
 from app.core.security import verify_token
 from app.db.systemconfig_oper import SystemConfigOper
+from app.db.user_oper import get_current_active_superuser
 from app.helper.plugin import PluginHelper
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey
@@ -37,7 +38,8 @@ def remove_plugin_api(plugin_id: str):
 
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
-def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "all") -> List[schemas.Plugin]:
+def all_plugins(_: schemas.TokenPayload = Depends(get_current_active_superuser),
+                state: str = "all") -> List[schemas.Plugin]:
     """
     查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
     """
@@ -83,7 +85,7 @@ def all_plugins(_: schemas.TokenPayload = Depends(verify_token), state: str = "a
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
-def installed(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def installed(_: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     查询用户已安装插件清单
     """
@@ -102,7 +104,7 @@ def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 def install(plugin_id: str,
             repo_url: str = "",
             force: bool = False,
-            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+            _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     安装插件
     """
@@ -131,7 +133,7 @@ def install(plugin_id: str,
 
 @router.get("/form/{plugin_id}", summary="获取插件表单页面")
 def plugin_form(plugin_id: str,
-                _: schemas.TokenPayload = Depends(verify_token)) -> dict:
+                _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> dict:
     """
     根据插件ID获取插件配置表单
     """
@@ -143,7 +145,7 @@ def plugin_form(plugin_id: str,
 
 
 @router.get("/page/{plugin_id}", summary="获取插件数据页面")
-def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> List[dict]:
+def plugin_page(plugin_id: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> List[dict]:
     """
     根据插件ID获取插件数据页面
     """
@@ -177,7 +179,8 @@ def plugin_dashboard(plugin_id: str, key: str, user_agent: Annotated[str | None,
 
 
 @router.get("/reset/{plugin_id}", summary="重置插件配置及数据", response_model=schemas.Response)
-def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def reset_plugin(plugin_id: str,
+                 _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     根据插件ID重置插件配置及数据
     """
@@ -198,7 +201,8 @@ def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)
 
 
 @router.get("/{plugin_id}", summary="获取插件配置")
-def plugin_config(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)) -> dict:
+def plugin_config(plugin_id: str,
+                  _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> dict:
     """
     根据插件ID获取插件配置信息
     """
@@ -207,7 +211,7 @@ def plugin_config(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token
 
 @router.put("/{plugin_id}", summary="更新插件配置", response_model=schemas.Response)
 def set_plugin_config(plugin_id: str, conf: dict,
-                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+                      _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     更新插件配置
     """
@@ -224,7 +228,7 @@ def set_plugin_config(plugin_id: str, conf: dict,
 
 @router.delete("/{plugin_id}", summary="卸载插件", response_model=schemas.Response)
 def uninstall_plugin(plugin_id: str,
-                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+                     _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     卸载插件
     """

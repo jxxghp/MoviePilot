@@ -10,6 +10,7 @@ from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token, verify_uri_token
+from app.db.user_oper import get_current_active_superuser
 from app.helper.progress import ProgressHelper
 from app.schemas.types import ProgressKey
 
@@ -41,7 +42,7 @@ def check(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 @router.post("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])
 def list(fileitem: schemas.FileItem,
          sort: str = 'updated_at',
-         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+         _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     查询当前目录下所有目录和文件
     :param fileitem: 文件项
@@ -60,7 +61,7 @@ def list(fileitem: schemas.FileItem,
 @router.post("/mkdir", summary="创建目录", response_model=schemas.Response)
 def mkdir(fileitem: schemas.FileItem,
           name: str,
-          _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+          _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     创建目录
     :param fileitem: 文件项
@@ -77,7 +78,7 @@ def mkdir(fileitem: schemas.FileItem,
 
 @router.post("/delete", summary="删除文件或目录", response_model=schemas.Response)
 def delete(fileitem: schemas.FileItem,
-           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+           _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     删除文件或目录
     :param fileitem: 文件项
@@ -109,7 +110,7 @@ def download(fileitem: schemas.FileItem,
 def rename(fileitem: schemas.FileItem,
            new_name: str,
            recursive: bool = False,
-           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+           _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     重命名文件或目录
     :param fileitem: 文件项
