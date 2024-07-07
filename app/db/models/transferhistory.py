@@ -57,6 +57,7 @@ class TransferHistory(Base):
             ).offset((page - 1) * count).limit(count).all()
         else:
             result = db.query(TransferHistory).filter(or_(
+                TransferHistory.title.like(f'%{title}%'),
                 TransferHistory.src.like(f'%{title}%'),
                 TransferHistory.dest.like(f'%{title}%'),
             )).order_by(
@@ -128,6 +129,7 @@ class TransferHistory(Base):
             return db.query(func.count(TransferHistory.id)).filter(TransferHistory.status == status).first()[0]
         else:
             return db.query(func.count(TransferHistory.id)).filter(or_(
+                TransferHistory.title.like(f'%{title}%'),
                 TransferHistory.src.like(f'%{title}%'),
                 TransferHistory.dest.like(f'%{title}%')
             )).first()[0]
