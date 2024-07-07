@@ -46,6 +46,8 @@ class Plugin(BaseModel):
     history: Optional[dict] = {}
     # 添加时间，值越小表示越靠后发布
     add_time: Optional[int] = 0
+    # 插件公钥
+    plugin_public_key: Optional[str] = None
 
 
 class PluginDashboard(Plugin):
