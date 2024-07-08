@@ -46,8 +46,6 @@ jobs:
             linux/amd64
             linux/arm64/v8
           push: true
-          build-args: |
-            MOVIEPILOT_VERSION=${{ env.app_version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha, scope=${{ github.workflow }}-docker

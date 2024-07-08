@@ -24,9 +24,9 @@ chown moviepilot:moviepilot /etc/hosts /tmp
 gosu moviepilot:moviepilot playwright install chromium
 # 启动前端nginx服务
 nginx
-# 启动haproxy
+# 启动docker http proxy nginx
 if [ -S "/var/run/docker.sock" ]; then
-    haproxy -f /app/haproxy.cfg
+    nginx -c /etc/nginx/docker_http_proxy.conf
 fi
 # 设置后端服务权限掩码
 umask "${UMASK}"
