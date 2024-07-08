@@ -288,26 +288,26 @@ class Plex:
                     if item.thumb:
                         image_url = RequestUtils.combine_url(host=settings.PLEX_PLAY_HOST, path=item.thumb, query=query)
                 else:
-                    # 这里对episode进行特殊处理，实际上episode的Backdrop是Poster
-                    if item.TYPE == "episode" and item.thumb:
-                        image_url = RequestUtils.combine_url(host=settings.PLEX_PLAY_HOST, path=item.thumb, query=query)
                     # 默认使用art也就是Backdrop进行处理
-                    if not image_url and item.art:
+                    if item.art:
                         image_url = RequestUtils.combine_url(host=settings.PLEX_PLAY_HOST, path=item.art, query=query)
+                    # 这里对episode进行特殊处理，实际上episode的Backdrop是Poster
+                    # 也有个别情况，比如机智的凡人小子episode就是Poster，因此这里把episode的优先级降低，默认还是取art
+                    if not image_url and item.TYPE == "episode" and item.thumb:
+                        image_url = RequestUtils.combine_url(host=settings.PLEX_PLAY_HOST, path=item.thumb, query=query)
             else:
                 if image_type == "Poster":
                     images = self._plex.fetchItems(ekey=f"{ekey}/posters",
                                                    cls=media.Poster)
                 else:
+                    # 默认使用art也就是Backdrop进行处理
+                    images = self._plex.fetchItems(ekey=f"{ekey}/arts",
+                                                   cls=media.Art)
                     # 这里对episode进行特殊处理，实际上episode的Backdrop是Poster
-                    images = None
-                    if item.TYPE == "episode":
+                    # 也有个别情况，比如机智的凡人小子episode就是Poster，因此这里把episode的优先级降低，默认还是取art
+                    if not images and item.TYPE == "episode":
                         images = self._plex.fetchItems(ekey=f"{ekey}/posters",
                                                        cls=media.Poster)
-                    # 默认使用art也就是Backdrop进行处理
-                    if not images:
-                        images = self._plex.fetchItems(ekey=f"{ekey}/arts",
-                                                       cls=media.Art)
                 for image in images:
                     if hasattr(image, "key") and image.key.startswith("http"):
                         image_url = image.key
