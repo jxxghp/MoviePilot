@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTasks
 
+from app.core.config import settings
 from app import schemas
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
@@ -61,6 +62,14 @@ def add_site(
     site_in.name = site_info.get("name")
     site_in.id = None
     site_in.public = 1 if site_info.get("public") else 0
+    doh_domain_list = settings.DOH_DOMAINS.split(",")
+    if site_in.doh == 0:
+        if domain in doh_domain_list:
+            doh_domain_list.remove(domain)
+            settings.DOH_DOMAINS = ",".join(doh_domain_list)
+    else:
+        if domain not in doh_domain_list:
+            settings.DOH_DOMAINS += "," + domain
     site = Site(**site_in.dict())
     site.create(db)
     # 通知站点更新
@@ -86,6 +95,15 @@ def update_site(
     # 校正地址格式
     _scheme, _netloc = StringUtils.get_url_netloc(site_in.url)
     site_in.url = f"{_scheme}://{_netloc}/"
+    domain = StringUtils.get_url_domain(site_in.url)
+    doh_domain_list = settings.DOH_DOMAINS.split(",")
+    if site_in.doh == 0:
+        if domain in doh_domain_list:
+            doh_domain_list.remove(domain)
+            settings.DOH_DOMAINS = ",".join(doh_domain_list)
+    else:
+        if domain not in doh_domain_list:
+            settings.DOH_DOMAINS += "," + domain
     site.update(db, site_in.dict())
     # 通知站点更新
     EventManager().send_event(EventType.SiteUpdated, {

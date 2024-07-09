@@ -29,6 +29,8 @@ class Site(Base):
     apikey = Column(String)
     # Token
     token = Column(String)
+    # 是否使用使用 DOH 解析域名 0-否，1-是
+    doh = Column(Integer)
     # 是否使用代理 0-否，1-是
     proxy = Column(Integer)
     # 过滤规则

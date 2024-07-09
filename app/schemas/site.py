@@ -24,6 +24,8 @@ class Site(BaseModel):
     apikey: Optional[str] = None
     # Token
     token: Optional[str] = None
+    # 是否使用使用 DOH 解析域名
+    doh = Optional[int] = 0
     # 是否使用代理
     proxy: Optional[int] = 0
     # 过滤规则
