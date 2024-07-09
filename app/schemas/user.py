@@ -1,6 +1,7 @@
+import json
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 
 
 # Shared properties
@@ -17,6 +18,22 @@ class UserBase(BaseModel):
     avatar: Optional[str] = None
     # 是否开启二次验证
     is_otp: Optional[bool] = False
+    # 权限
+    permissions: Optional[dict] = {}
+    # 个性化设置
+    settings: Optional[dict] = {}
+
+    @validator('permissions', 'settings', pre=True)
+    def parse_json_fields(cls, value):
+        if value:
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                raise ValueError(f"Invalid JSON string: {value}")
+        return {}
+
+    class Config:
+        orm_mode = True
 
 
 # Properties to receive via API on creation

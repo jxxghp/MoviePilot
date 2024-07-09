@@ -17,7 +17,7 @@ router = APIRouter()
 
 
 @router.get("/", summary="所有用户", response_model=List[schemas.User])
-def read_users(
+def list_users(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_superuser),
 ) -> Any:

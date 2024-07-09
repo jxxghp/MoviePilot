@@ -2,7 +2,7 @@ import json
 from typing import Any, Self, List
 from typing import Tuple, Optional, Generator
 
-from sqlalchemy import create_engine, QueuePool
+from sqlalchemy import create_engine, QueuePool, and_
 from sqlalchemy import inspect
 from sqlalchemy.orm import declared_attr
 from sqlalchemy.orm import sessionmaker, Session, scoped_session, as_declarative
@@ -167,7 +167,7 @@ class Base:
     @classmethod
     @db_update
     def delete(cls, db: Session, rid):
-        db.query(cls).filter(cls.id == rid).delete()
+        db.query(cls).filter(and_(cls.id == rid)).delete()
 
     @classmethod
     @db_update
