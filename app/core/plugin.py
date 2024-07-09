@@ -815,8 +815,6 @@ class PluginManager(metaclass=Singleton):
             # 将插件标识转换为大写并构建环境变量名称
             env_var_name = f"PLUGIN_{plugin_id.upper()}_PRIVATE_KEY"
             private_key = os.environ.get(env_var_name)
-            if private_key is None:
-                logger.debug(f"环境变量 {env_var_name} 未找到。")
             return private_key
         except Exception as e:
             logger.debug(f"获取插件 {plugin_id} 的私钥时发生错误：{e}")
