@@ -225,7 +225,7 @@ class Settings(BaseSettings):
     # Github token，提高请求api限流阈值 ghp_****
     GITHUB_TOKEN: Optional[str] = None
     # 指定的仓库Github token，多个仓库使用,分隔，格式：{user1}/{repo1}:ghp_****,{user2}/{repo2}:github_pat_****
-    GITHUB_TOKEN_FOR_REPO: Optional[str] = None
+    REPO_GITHUB_TOKEN: Optional[str] = None
     # Github代理服务器，格式：https://mirror.ghproxy.com/
     GITHUB_PROXY: Optional[str] = ''
     # 自动检查和更新站点资源包（站点索引、认证等）
@@ -364,18 +364,18 @@ class Settings(BaseSettings):
             }
         return {}
 
-    def GITHUB_HEADERS_FOR_REPO(self, repo: str = None):
+    def REPO_GITHUB_HEADERS(self, repo: str = None):
         """
         Github指定的仓库请求头
         :param repo: 指定的仓库名称，格式为 "user/repo"。如果为空，或者没有找到指定仓库请求头，则返回默认的请求头信息
         :return: Github请求头
         """
         # 如果没有传入指定的仓库名称，或没有配置指定的仓库Token，则返回默认的请求头信息
-        if not repo or not self.GITHUB_TOKEN_FOR_REPO:
+        if not repo or not self.REPO_GITHUB_TOKEN:
             return self.GITHUB_HEADERS
         headers = {}
         # 格式：{user1}/{repo1}:ghp_****,{user2}/{repo2}:github_pat_****
-        token_pairs = self.GITHUB_TOKEN_FOR_REPO.split(",")
+        token_pairs = self.REPO_GITHUB_TOKEN.split(",")
         for token_pair in token_pairs:
             try:
                 parts = token_pair.split(":")

@@ -52,7 +52,7 @@ class PluginHelper(metaclass=Singleton):
             return {}
         raw_url = self._base_url % (user, repo)
         res = RequestUtils(proxies=self.proxies,
-                           headers=settings.GITHUB_HEADERS_FOR_REPO(repo=f"{user}/{repo}"),
+                           headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"),
                            timeout=10).get_res(f"{raw_url}package.json")
         if res:
             try:
@@ -146,7 +146,7 @@ class PluginHelper(metaclass=Singleton):
             """
             file_api = f"https://api.github.com/repos/{user_repo}/contents/plugins/{_p}"
             r = RequestUtils(proxies=settings.PROXY,
-                             headers=settings.GITHUB_HEADERS_FOR_REPO(repo=user_repo),
+                             headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
                              timeout=30).get_res(file_api)
             if r is None:
                 return None, "连接仓库失败"
@@ -169,7 +169,7 @@ class PluginHelper(metaclass=Singleton):
                     download_url = f"{settings.GITHUB_PROXY}{item.get('download_url')}"
                     # 下载插件文件
                     res = RequestUtils(proxies=self.proxies,
-                                       headers=settings.GITHUB_HEADERS_FOR_REPO(repo=user_repo),
+                                       headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
                                        timeout=60).get_res(download_url)
                     if not res:
                         return False, f"文件 {item.get('name')} 下载失败！"
