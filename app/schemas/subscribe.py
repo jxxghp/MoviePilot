@@ -1,6 +1,7 @@
+import json
 from typing import Optional, List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 
 
 class Subscribe(BaseModel):
@@ -64,6 +65,15 @@ class Subscribe(BaseModel):
     search_imdbid: Optional[int] = 0
     # 时间
     date: Optional[str] = None
+
+    @validator('sites', pre=True)
+    def parse_json_fields(cls, value):
+        if value:
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                raise ValueError(f"Invalid JSON string: {value}")
+        return {}
 
     class Config:
         orm_mode = True

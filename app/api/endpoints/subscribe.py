@@ -1,4 +1,3 @@
-import json
 from typing import List, Any
 
 import cn2an
@@ -39,16 +38,7 @@ def read_subscribes(
     """
     查询所有订阅
     """
-    subscribes = Subscribe.list(db)
-    for subscribe in subscribes:
-        if subscribe.sites:
-            try:
-                subscribe.sites = json.loads(str(subscribe.sites))
-            except json.JSONDecodeError:
-                subscribe.sites = []
-        else:
-            subscribe.sites = []
-    return subscribes
+    return Subscribe.list(db)
 
 
 @router.get("/list", summary="查询所有订阅（API_TOKEN）", response_model=List[schemas.Subscribe])
@@ -168,11 +158,6 @@ def subscribe_mediaid(
         if season:
             meta.begin_season = season
         result = Subscribe.get_by_title(db, title=meta.name, season=meta.begin_season)
-    if result and result.sites:
-        try:
-            result.sites = json.loads(result.sites)
-        except json.JSONDecodeError:
-            result.sites = []
 
     return result if result else Subscribe()
 
@@ -341,14 +326,7 @@ def read_subscribe(
     """
     查询电影/电视剧订阅历史
     """
-    historys = SubscribeHistory.list_by_type(db, mtype=mtype, page=page, count=count)
-    for history in historys:
-        if history and history.sites:
-            try:
-                history.sites = json.loads(history.sites)
-            except json.JSONDecodeError:
-                history.sites = []
-    return historys
+    return SubscribeHistory.list_by_type(db, mtype=mtype, page=page, count=count)
 
 
 @router.delete("/history/{history_id}", summary="删除订阅历史", response_model=schemas.Response)
@@ -419,13 +397,7 @@ def read_subscribe(
     """
     if not subscribe_id:
         return Subscribe()
-    subscribe = Subscribe.get(db, subscribe_id)
-    if subscribe and subscribe.sites:
-        try:
-            subscribe.sites = json.loads(subscribe.sites)
-        except json.JSONDecodeError:
-            subscribe.sites = []
-    return subscribe
+    return Subscribe.get(db, subscribe_id)
 
 
 @router.delete("/{subscribe_id}", summary="删除订阅", response_model=schemas.Response)
