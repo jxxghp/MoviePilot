@@ -1,6 +1,7 @@
 import json
 import re
 import threading
+import time
 from datetime import datetime
 from typing import Optional, List, Dict
 
@@ -46,6 +47,12 @@ class WeChat:
 
         if self._corpid and self._appsecret and self._appid:
             self.__get_access_token()
+
+        self.last_send_time = 0    # 记录上次发送消息的时间戳
+        self.minute_send_count = 0 # 记录当前分钟内已发送消息的次数
+        self.hour_send_count = 0   # 记录当前小时内已发送消息的次数
+        self.max_per_minute = 20   # 每分钟最大发送次数限制
+        self.max_per_hour = 800    # 每小时最大发送次数限制
 
     def get_state(self):
         """
@@ -100,28 +107,75 @@ class WeChat:
         """
         message_url = self._send_msg_url % self.__get_access_token()
         if text:
-            conent = "%s\n%s" % (title, text.replace("\n\n", "\n"))
+            content = "%s\n%s" % (title, text.replace("\n\n", "\n"))
         else:
-            conent = title
+            content = title
 
         if link:
-            conent = f"{conent}\n点击查看：{link}"
+            content = f"{content}\n点击查看：{link}"
 
         if not userid:
             userid = "@all"
 
-        req_json = {
-            "touser": userid,
-            "msgtype": "text",
-            "agentid": self._appid,
-            "text": {
-                "content": conent
-            },
-            "safe": 0,
-            "enable_id_trans": 0,
-            "enable_duplicate_check": 0
-        }
-        return self.__post_request(message_url, req_json)
+        # Check if content exceeds 2048 bytes and split if necessary
+        if len(content.encode('utf-8')) > 2048:
+            content_chunks = []
+            current_chunk = ""
+            for line in content.splitlines():
+                if len(current_chunk.encode('utf-8')) + len(line.encode('utf-8')) > 2048:
+                    content_chunks.append(current_chunk.strip())
+                    current_chunk = ""
+                current_chunk += line + "\n"
+            if current_chunk:
+                content_chunks.append(current_chunk.strip())
+
+            # Send each chunk as a separate message
+            for chunk in content_chunks:
+                while self.minute_send_count >= self.max_per_minute:
+                    logger.info("即将达到微信消息发送频率限制，将等一段时间后继续发送")
+                    time.sleep(10)
+                    current_time = time.time()
+                    if current_time - self.last_send_time > 60:
+                        self.last_send_time = current_time
+                        self.minute_send_count = 0
+                    if current_time - self.last_send_time > 3600:
+                        self.hour_send_count = 0
+
+                req_json = {
+                    "touser": userid,
+                    "msgtype": "text",
+                    "agentid": self._appid,
+                    "text": {
+                        "content": chunk
+                    },
+                    "safe": 0,
+                    "enable_id_trans": 0,
+                    "enable_duplicate_check": 0
+                }
+                self.__post_request(message_url, req_json)
+                self.minute_send_count += 1
+                self.hour_send_count += 1
+                self.last_send_time = time.time()
+        else:
+            req_json = {
+                "touser": userid,
+                "msgtype": "text",
+                "agentid": self._appid,
+                "text": {
+                    "content": content
+                },
+                "safe": 0,
+                "enable_id_trans": 0,
+                "enable_duplicate_check": 0
+            }
+            result = self.__post_request(message_url, req_json)
+            if result:
+                self.minute_send_count += 1
+                self.hour_send_count += 1
+                self.last_send_time = time.time()
+            return result
+
+        return True
 
     def __send_image_message(self, title: str, text: str, image_url: str,
                              userid: str = None, link: str = None) -> Optional[bool]:
