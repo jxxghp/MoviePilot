@@ -100,28 +100,57 @@ class WeChat:
         """
         message_url = self._send_msg_url % self.__get_access_token()
         if text:
-            conent = "%s\n%s" % (title, text.replace("\n\n", "\n"))
+            content = "%s\n%s" % (title, text.replace("\n\n", "\n"))
         else:
-            conent = title
+            content = title
 
         if link:
-            conent = f"{conent}\n点击查看：{link}"
+            content = f"{content}\n点击查看：{link}"
 
         if not userid:
             userid = "@all"
 
-        req_json = {
-            "touser": userid,
-            "msgtype": "text",
-            "agentid": self._appid,
-            "text": {
-                "content": conent
-            },
-            "safe": 0,
-            "enable_id_trans": 0,
-            "enable_duplicate_check": 0
-        }
-        return self.__post_request(message_url, req_json)
+        # Check if content exceeds 2048 bytes and split if necessary
+        if len(content.encode('utf-8')) > 2048:
+            content_chunks = []
+            current_chunk = ""
+            for line in content.splitlines():
+                if len(current_chunk.encode('utf-8')) + len(line.encode('utf-8')) > 2048:
+                    content_chunks.append(current_chunk.strip())
+                    current_chunk = ""
+                current_chunk += line + "\n"
+            if current_chunk:
+                content_chunks.append(current_chunk.strip())
+
+            # Send each chunk as a separate message
+            for chunk in content_chunks:
+                req_json = {
+                    "touser": userid,
+                    "msgtype": "text",
+                    "agentid": self._appid,
+                    "text": {
+                        "content": chunk
+                    },
+                    "safe": 0,
+                    "enable_id_trans": 0,
+                    "enable_duplicate_check": 0
+                }
+                result = self.__post_request(message_url, req_json)
+        else:
+            req_json = {
+                "touser": userid,
+                "msgtype": "text",
+                "agentid": self._appid,
+                "text": {
+                    "content": content
+                },
+                "safe": 0,
+                "enable_id_trans": 0,
+                "enable_duplicate_check": 0
+            }
+            return self.__post_request(message_url, req_json)
+
+        return result
 
     def __send_image_message(self, title: str, text: str, image_url: str,
                              userid: str = None, link: str = None) -> Optional[bool]:
