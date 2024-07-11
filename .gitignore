@@ -17,3 +17,4 @@ config/sites/**
 *.log
 .vscode
 venv
+.DS_Store
