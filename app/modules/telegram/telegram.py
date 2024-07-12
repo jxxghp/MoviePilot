@@ -209,7 +209,7 @@ class Telegram:
                 image_file.write_bytes(res.content)
                 photo = InputFile(image_file)
                 # 对caption进行Markdown特殊字符转义
-                caption = re.sub(r"([_`])", r"\\\1", caption)
+                caption = re.sub(r"([_`])", r"\\\1", caption) if not re.search(r"共找到\d+条相关信息，请回复对应数字选择", caption) else caption
                 # 发送图片到Telegram
                 ret = self._bot.send_photo(chat_id=userid or self._telegram_chat_id,
                                            photo=photo,
