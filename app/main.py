@@ -20,12 +20,20 @@ if SystemUtils.is_frozen():
 
 from app.core.config import settings, global_vars
 from app.core.module import ModuleManager
+
+# SitesHelper涉及资源包拉取，提前引入并容错提示
+try:
+    from app.helper.sites import SitesHelper
+except ImportError as e:
+    error_message = f"错误: {str(e)}\n站点认证及索引相关资源导入失败，请尝试重建容器或手动拉取资源"
+    print(error_message, file=sys.stderr)
+    sys.exit(1)
+
 from app.core.plugin import PluginManager
 from app.db.init import init_db, update_db, init_super_user
 from app.helper.thread import ThreadHelper
 from app.helper.display import DisplayHelper
 from app.helper.resource import ResourceHelper
-from app.helper.sites import SitesHelper
 from app.helper.message import MessageHelper
 from app.scheduler import Scheduler
 from app.command import Command, CommandChian
