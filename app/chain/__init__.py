@@ -487,7 +487,7 @@ class ChainBase(metaclass=ABCMeta):
         self.eventmanager.send_event(etype=EventType.NoticeMessage, data=message.dict())
         # 保存消息
         self.messagehelper.put(message, role="user")
-        self.messageoper.add(**message.dict(), action=1)
+        self.messageoper.add(**message.dict())
         # 发送
         self.run_module("post_message", message=message)
 
@@ -500,7 +500,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         note_list = [media.to_dict() for media in medias]
         self.messagehelper.put(message, role="user", note=note_list)
-        self.messageoper.add(**message.dict(), action=1, note=note_list)
+        self.messageoper.add(**message.dict(), note=note_list)
         return self.run_module("post_medias_message", message=message, medias=medias)
 
     def post_torrents_message(self, message: Notification, torrents: List[Context]) -> None:
@@ -512,7 +512,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         note_list = [torrent.torrent_info.to_dict() for torrent in torrents]
         self.messagehelper.put(message, role="user", note=note_list)
-        self.messageoper.add(**message.dict(), action=1, note=note_list)
+        self.messageoper.add(**message.dict(), note=note_list)
         return self.run_module("post_torrents_message", message=message, torrents=torrents)
 
     def metadata_img(self, mediainfo: MediaInfo, season: int = None) -> Optional[dict]:

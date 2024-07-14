@@ -54,6 +54,12 @@ class MessageOper(DbOper):
             "reg_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
             "note": note
         })
+
+        # 从kwargs中去掉Message中没有的字段
+        for k in list(kwargs.keys()):
+            if k not in Message.__table__.columns.keys():
+                kwargs.pop(k)
+
         Message(**kwargs).create(self._db)
 
     def list_by_page(self, page: int = 1, count: int = 30) -> Optional[str]:
