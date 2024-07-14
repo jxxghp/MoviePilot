@@ -486,7 +486,7 @@ class ChainBase(metaclass=ABCMeta):
         # 发送事件
         self.eventmanager.send_event(etype=EventType.NoticeMessage, data=message.dict())
         # 保存消息
-        self.messagehelper.put(message, role="user")
+        self.messagehelper.put(message, role="user", title=message.title)
         self.messageoper.add(**message.dict())
         # 发送
         self.run_module("post_message", message=message)
@@ -499,7 +499,7 @@ class ChainBase(metaclass=ABCMeta):
         :return: 成功或失败
         """
         note_list = [media.to_dict() for media in medias]
-        self.messagehelper.put(message, role="user", note=note_list)
+        self.messagehelper.put(message, role="user", note=note_list, title=message.title)
         self.messageoper.add(**message.dict(), note=note_list)
         return self.run_module("post_medias_message", message=message, medias=medias)
 
@@ -511,7 +511,7 @@ class ChainBase(metaclass=ABCMeta):
         :return: 成功或失败
         """
         note_list = [torrent.torrent_info.to_dict() for torrent in torrents]
-        self.messagehelper.put(message, role="user", note=note_list)
+        self.messagehelper.put(message, role="user", note=note_list, title=message.title)
         self.messageoper.add(**message.dict(), note=note_list)
         return self.run_module("post_torrents_message", message=message, torrents=torrents)
 

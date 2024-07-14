@@ -147,6 +147,10 @@ class Base:
 
     @db_update
     def create(self, db: Session):
+        # 如果是对象，转换为json字符串
+        for key, value in self.__dict__.items():
+            if ObjectUtils.is_obj(value):
+                setattr(self, key, json.dumps(value))
         db.add(self)
 
     @classmethod
