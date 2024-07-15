@@ -76,7 +76,7 @@ class EventManager(metaclass=Singleton):
             self._disabled_handlers.remove(class_name)
         logger.debug(f"Event Enabled：{class_name}")
 
-    def send_event(self, etype: EventType, data: dict = None):
+    def send_event(self, etype: EventType, data: dict = None, callback: Function = None):
         """
         发送事件
         """
@@ -84,6 +84,7 @@ class EventManager(metaclass=Singleton):
             return
         event = Event(etype.value)
         event.event_data = data or {}
+        event.event_callback = callback
         logger.debug(f"发送事件：{etype.value} - {event.event_data}")
         self._eventQueue.put(event)
 
@@ -117,6 +118,8 @@ class Event(object):
         self.event_type = event_type
         # 字典用于保存具体的事件数据
         self.event_data = {}
+        # 事件的返回结果处理函数
+        self.event_callback = None
 
 
 # 实例引用，用于注册事件

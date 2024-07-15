@@ -186,16 +186,20 @@ class Command(metaclass=Singleton):
             event, handlers = self.eventmanager.get_event()
             if event:
                 logger.info(f"处理事件：{event.event_type} - {handlers}")
+                if(!handlers):
+                    event.event_callback()
                 for handler in handlers:
                     names = handler.__qualname__.split(".")
                     [class_name, method_name] = names
                     try:
                         if class_name in self.pluginmanager.get_plugin_ids():
                             # 插件事件
-                            self.threader.submit(
+                            result = self.threader.submit(
                                 self.pluginmanager.run_plugin_method,
                                 class_name, method_name, event
                             )
+                            if(event.event_callback):
+                                event.event_callback(result.get())
 
                         else:
                             # 检查全局变量中是否存在
