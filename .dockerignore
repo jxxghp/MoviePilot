@@ -1,3 +1,4 @@
 # Ignore git
 .github
 .git
+venv

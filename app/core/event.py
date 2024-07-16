@@ -1,3 +1,4 @@
+import threading
 from queue import Queue, Empty
 from typing import Dict, Any
 
@@ -76,7 +77,28 @@ class EventManager(metaclass=Singleton):
             self._disabled_handlers.remove(class_name)
         logger.debug(f"Event Enabled：{class_name}")
 
-    def send_event(self, etype: EventType, data: dict = None, callback: Function = None):
+    def send_event_sync(self, etype: EventType, data: dict = None):
+        """
+        发送媒体信息并获取格式化后的媒体消息
+        """
+        result: any = None
+        condition = threading.Condition()
+
+        def callback(res):
+            nonlocal result
+            result = res
+            with condition:
+                condition.notify_all()
+
+        thread = threading.Thread(target=self.send_event, args=(etype, data, callback))
+        thread.start()
+
+        with condition:
+            condition.wait_for(lambda: True)
+
+        return result
+
+    def send_event(self, etype: EventType, data: dict = None, callback=None):
         """
         发送事件
         """
