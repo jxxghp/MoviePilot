@@ -198,7 +198,7 @@ class Command(metaclass=Singleton):
                                 self.pluginmanager.run_plugin_method,
                                 class_name, method_name, event
                             )
-                            if(event.event_callback):
+                            if event.event_callback:
                                 event.event_callback(result.get())
 
                         else:
