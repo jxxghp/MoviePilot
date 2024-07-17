@@ -1,4 +1,4 @@
-FROM python:3.11.4-slim-bookworm
+FROM docker-hub.genghao2023.top/python:3.11.4-slim-bookworm
 ARG MOVIEPILOT_VERSION
 ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
@@ -16,7 +16,6 @@ ENV LANG="C.UTF-8" \
     IYUU_SIGN=""
 WORKDIR "/app"
 RUN apt-get update -y \
-    && apt-get upgrade -y \
     && apt-get -y install \
         musl-dev \
         nginx \
@@ -51,17 +50,21 @@ RUN apt-get update -y \
         /var/tmp/*
 COPY requirements.txt requirements.txt
 RUN apt-get update -y \
-    && apt-get install -y build-essential \
-    && pip install --upgrade pip \
-    && pip install Cython \
-    && pip install -r requirements.txt \
+    && apt-get install -y build-essential
+RUN pip install -i https://mirrors.aliyun.com/pypi/simple --upgrade pip \
+    && pip install -i https://mirrors.aliyun.com/pypi/simple Cython \
+#    && apt-get install -y git \
+#    && git clone https://gitee.com/jerrygeng1/cython.git \
+#    && cd cython \
+#    && python3 setup.py install \
+    && pip install -i https://mirrors.aliyun.com/pypi/simple -r requirements.txt \
     && playwright install-deps chromium \
     && apt-get remove -y build-essential \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf \
         /tmp/* \
-        /moviepilot/.cache \
+       /moviepilot/.cache \
         /var/lib/apt/lists/* \
         /var/tmp/*
 COPY . .
@@ -77,12 +80,12 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && locale-gen zh_CN.UTF-8 \
-    && FRONTEND_VERSION=$(curl -sL "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name) \
-    && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
+    && FRONTEND_VERSION=$(curl -sL "https://gitee.com/api/v5/repos/jerrygeng1/MoviePilot-Frontend/releases/latest" | jq -r .tag_name) \
+    && curl -sL "https://gitee.com/jerrygeng1/MoviePilot-Front/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
     && mv /dist /public \
-    && curl -sL "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
+    && curl -sL "https://gitee.com/jerrygeng1/MoviePilot-Plugins/repository/archive/main.zip" | busybox unzip -d /tmp - \
     && mv -f /tmp/MoviePilot-Plugins-main/plugins/* /app/app/plugins/ \
-    && curl -sL "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
+    && curl -sL "https://gitee.com/jerrygeng1/MoviePilot-Resources/repository/archive/main.zip" | busybox unzip -d /tmp - \
     && mv -f /tmp/MoviePilot-Resources-main/resources/* /app/app/helper/ \
     && rm -rf /tmp/*
 EXPOSE 3000
