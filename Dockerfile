@@ -4,6 +4,7 @@ ENV LANG="C.UTF-8" \
     HOME="/moviepilot" \
     CONFIG_DIR="/config" \
     TERM="xterm" \
+    DISPLAY=:99 \
     PUID=0 \
     PGID=0 \
     UMASK=000 \
