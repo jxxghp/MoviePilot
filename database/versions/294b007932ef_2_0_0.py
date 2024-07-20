@@ -13,7 +13,9 @@ from app.core.config import settings
 from app.core.security import get_password_hash
 from app.db import SessionFactory
 from app.db.models import *
+from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
+from app.schemas.types import SystemConfigKey
 
 # revision identifiers, used by Alembic.
 revision = '294b007932ef'
@@ -26,8 +28,8 @@ def upgrade() -> None:
     """
     v2.0.0 数据库初始化
     """
-    # 初始化超级管理员
     with SessionFactory() as db:
+        # 初始化超级管理员
         _user = User.get_by_name(db=db, name=settings.SUPERUSER)
         if not _user:
             # 定义包含数字、大小写字母的字符集合
@@ -44,6 +46,16 @@ def upgrade() -> None:
                 avatar="src/assets/images/avatars/avatar-1.png"
             )
             _user.create(db)
+        # 初始化本地存储
+        _systemconfig = SystemConfigOper()
+        if not _systemconfig.get(SystemConfigKey.Storages):
+            _systemconfig.set(SystemConfigKey.Storages, [
+                {
+                    "type": "local",
+                    "name": "本地",
+                    "config": {}
+                }
+            ])
 
 
 def downgrade() -> None:
