@@ -21,7 +21,7 @@ if SystemUtils.is_frozen():
 from app.core.config import settings, global_vars
 from app.core.module import ModuleManager
 from app.core.plugin import PluginManager
-from app.db.init import init_db, update_db, init_super_user
+from app.db.init import init_db, update_db
 from app.helper.thread import ThreadHelper
 from app.helper.display import DisplayHelper
 from app.helper.resource import ResourceHelper
@@ -210,8 +210,6 @@ def start_module():
     """
     启动模块
     """
-    # 初始化超级管理员
-    init_super_user()
     # 虚拟显示
     DisplayHelper()
     # 站点管理
