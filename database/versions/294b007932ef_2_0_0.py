@@ -41,6 +41,7 @@ def upgrade() -> None:
                 hashed_password=get_password_hash(random_password),
                 email="admin@movie-pilot.org",
                 is_superuser=True,
+                avatar="src/assets/images/avatars/avatar-1.png"
             )
             _user.create(db)
 
