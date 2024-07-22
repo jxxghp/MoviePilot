@@ -199,7 +199,7 @@ class Command(metaclass=Singleton):
                                 class_name, method_name, event
                             )
                             if event.event_callback:
-                                event.event_callback(result.get())
+                                event.event_callback(result)
 
                         else:
                             # 检查全局变量中是否存在

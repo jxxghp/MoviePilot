@@ -97,7 +97,7 @@ class VoceChat:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_medias_msg(self, title: str, medias: List[MediaInfo],
+    async def send_medias_msg(self, title: str, medias: List[MediaInfo],
                         userid: str = "", link: str = None) -> Optional[bool]:
         """
         发送列表类消息
@@ -107,7 +107,8 @@ class VoceChat:
 
         try:
             index, caption = 1, "**%s**" % title
-            notice = EventManager().send_event_sync(EventType.MediaMessage, {medias: medias})
+            notice = await EventManager().send_event_sync(EventType.MediaMessage, {"medias": medias}).result()
+
             if not notice:
                 for media in medias:
                     if media.vote_average:
