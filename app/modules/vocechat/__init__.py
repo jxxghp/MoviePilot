@@ -107,7 +107,7 @@ class VoceChatModule(_ModuleBase):
                                userid=message.userid, link=message.link)
 
     @checkMessage(MessageChannel.VoceChat)
-    async def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
+    def post_medias_message(self, message: Notification, medias: List[MediaInfo]) -> Optional[bool]:
         """
         发送媒体信息选择列表
         :param message: 消息内容
@@ -117,7 +117,7 @@ class VoceChatModule(_ModuleBase):
         # 先发送标题
         self.vocechat.send_msg(title=message.title, userid=message.userid)
         # 再发送内容
-        return await self.vocechat.send_medias_msg(title=message.title, medias=medias,
+        return self.vocechat.send_medias_msg(title=message.title, medias=medias,
                                              userid=message.userid, link=message.link)
 
     @checkMessage(MessageChannel.VoceChat)

@@ -1,3 +1,4 @@
+import asyncio
 import threading
 from queue import Queue, Empty
 from typing import Dict, Any
@@ -86,7 +87,8 @@ class EventManager(metaclass=Singleton):
 
         def callback(res):
             nonlocal result
-            result = res
+            if res:
+                result = res.result()
             with condition:
                 condition.notify_all()
 
@@ -94,7 +96,7 @@ class EventManager(metaclass=Singleton):
         thread.start()
 
         with condition:
-            condition.wait_for(lambda: True)
+            condition.wait()
 
         return result
 

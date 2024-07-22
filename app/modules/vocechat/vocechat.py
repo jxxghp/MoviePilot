@@ -1,3 +1,4 @@
+import asyncio
 import re
 import threading
 from typing import Optional, List
@@ -97,7 +98,7 @@ class VoceChat:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    async def send_medias_msg(self, title: str, medias: List[MediaInfo],
+    def send_medias_msg(self, title: str, medias: List[MediaInfo],
                         userid: str = "", link: str = None) -> Optional[bool]:
         """
         发送列表类消息
@@ -107,8 +108,7 @@ class VoceChat:
 
         try:
             index, caption = 1, "**%s**" % title
-            notice = await EventManager().send_event_sync(EventType.MediaMessage, {"medias": medias}).result()
-
+            notice = EventManager().send_event_sync(EventType.MediaMessage, {"medias": medias})
             if not notice:
                 for media in medias:
                     if media.vote_average:

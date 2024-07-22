@@ -186,7 +186,7 @@ class Command(metaclass=Singleton):
             event, handlers = self.eventmanager.get_event()
             if event:
                 logger.info(f"处理事件：{event.event_type} - {handlers}")
-                if not handlers:
+                if not handlers and event.event_callback:
                     event.event_callback()
                 for handler in handlers:
                     names = handler.__qualname__.split(".")
