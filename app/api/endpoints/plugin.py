@@ -192,10 +192,7 @@ def reset_plugin(plugin_id: str, _: schemas.TokenPayload = Depends(verify_token)
     # 删除插件所有数据
     PluginManager().delete_plugin_data(plugin_id)
     # 重新生效插件
-    PluginManager().init_plugin(plugin_id, {
-        "enabled": False,
-        "enable": False
-    })
+    PluginManager().reload_plugin(plugin_id)
     # 注册插件服务
     Scheduler().update_plugin_job(plugin_id)
     # 注册插件API
