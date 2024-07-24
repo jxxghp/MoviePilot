@@ -54,6 +54,16 @@ def upgrade() -> None:
                     "type": "local",
                     "name": "本地",
                     "config": {}
+                },
+                {
+                    "type": "alipan",
+                    "name": "阿里云盘",
+                    "config": {}
+                },
+                {
+                    "type": "u115",
+                    "name": "115网盘",
+                    "config": {}
                 }
             ])
 
