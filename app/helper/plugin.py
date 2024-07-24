@@ -223,7 +223,7 @@ class PluginHelper(metaclass=Singleton):
         requirements_file = plugin_dir / "requirements.txt"
         if requirements_file.exists():
             PIP_PROXY = f" -i {settings.PIP_PROXY} " if settings.PIP_PROXY else ""
-            SystemUtils.execute(f"pip install -r {requirements_file} -i {PIP_PROXY}  > /dev/null 2>&1")
+            SystemUtils.execute(f"pip install -r {requirements_file} {PIP_PROXY}  > /dev/null 2>&1")
         # 安装成功后统计
         self.install_reg(pid)
 
