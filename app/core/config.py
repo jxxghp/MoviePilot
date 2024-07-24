@@ -146,6 +146,8 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: Optional[str] = None
     # Github代理服务器，格式：https://mirror.ghproxy.com/
     GITHUB_PROXY: Optional[str] = ''
+    # pip镜像站点，格式：https://pypi.tuna.tsinghua.edu.cn/simple
+    PIP_PROXY: Optional[str] = ''
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
 

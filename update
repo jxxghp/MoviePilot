@@ -121,10 +121,22 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
         CURL_OPTIONS="-sL -x ${PROXY_HOST}"
         PIP_OPTIONS="--proxy=${PROXY_HOST}"
         GITHUB_PROXY=""
-        INFO "使用代理更新程序"
+        INFO "使用全局代理更新程序与环境依赖"
+    elif [[ -n "${PIP_PROXY}" ]] || [[ -n "${GITHUB_PROXY}" ]]; then
+        CURL_OPTIONS="-sL"
+        PIP_OPTIONS=${PIP_OPTIONS:+"-i ${PIP_PROXY}"} || PIP_OPTIONS=""
+        GITHUB_PROXY=${GITHUB_PROXY:+"-i ${GITHUB_PROXY}"} || GITHUB_PROXY=""
+        # 判断不同的代理组合
+        if [ -z "${PIP_OPTIONS}" ] && [ -n "${GITHUB_PROXY}" ]; then
+            INFO "不使用代理更新环境依赖，使用Github镜像代理更新程序"
+        elif [ -n "${PIP_OPTIONS}" ] && [ -z "${GITHUB_PROXY}" ]; then
+            INFO "使用Pip镜像代理更新环境依赖，不使用代理更新程序"
+        else
+            INFO "使用Pip镜像代理更新环境依赖，使用Github镜像代理更新程序"
+        fi
     else
         CURL_OPTIONS="-sL"
-        INFO "不使用代理更新程序"
+        INFO "不使用任何代理更新程序与环境依赖"
     fi
     if [ -n "${GITHUB_TOKEN}" ]; then
         CURL_HEADERS="--oauth2-bearer ${GITHUB_TOKEN}"
