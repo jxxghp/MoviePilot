@@ -64,6 +64,11 @@ def upgrade() -> None:
                     "type": "u115",
                     "name": "115网盘",
                     "config": {}
+                },
+                {
+                    "type": "rclone",
+                    "name": "Rclone网盘",
+                    "config": {}
                 }
             ])
 
