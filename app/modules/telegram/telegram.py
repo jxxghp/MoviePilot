@@ -88,6 +88,8 @@ class Telegram:
 
         try:
             if text:
+                # 对text进行Markdown特殊字符转义
+                text = re.sub(r"([_`])", r"\\\1", text)
                 caption = f"*{title}*\n{text}"
             else:
                 caption = f"*{title}*"
@@ -208,8 +210,6 @@ class Telegram:
                 image_file = Path(settings.TEMP_PATH) / str(uuid.uuid4())
                 image_file.write_bytes(res.content)
                 photo = InputFile(image_file)
-                # 对caption进行Markdown特殊字符转义
-                caption = re.sub(r"([_`])", r"\\\1", caption)
                 # 发送图片到Telegram
                 ret = self._bot.send_photo(chat_id=userid or self._telegram_chat_id,
                                            photo=photo,
