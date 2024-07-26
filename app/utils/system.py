@@ -241,7 +241,7 @@ class SystemUtils:
         return dirs
 
     @staticmethod
-    def list_sub_all(directory: Path) -> List[Path]:
+    def list_sub_file(directory: Path) -> List[Path]:
         """
         列出当前目录下的所有子目录和文件（不递归）
         """
@@ -249,13 +249,14 @@ class SystemUtils:
             return []
 
         if directory.is_file():
-            return []
+            return [directory]
 
         items = []
 
         # 遍历目录
         for path in directory.iterdir():
-            items.append(path)
+            if path.is_file():
+                items.append(path)
 
         return items
 

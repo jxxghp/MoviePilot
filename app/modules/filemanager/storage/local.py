@@ -101,7 +101,7 @@ class LocalStorage(StorageBase):
             ret_items.append(self.__get_diritem(item))
 
         # 遍历所有文件，不含子目录
-        for item in SystemUtils.list_sub_all(path_obj):
+        for item in SystemUtils.list_sub_file(path_obj):
             ret_items.append(self.__get_fileitem(item))
         return ret_items
 

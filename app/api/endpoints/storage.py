@@ -51,10 +51,11 @@ def list(fileitem: schemas.FileItem,
     :return: 所有目录和文件
     """
     file_list = StorageChain().list_files(fileitem)
-    if sort == "name":
-        file_list.sort(key=lambda x: x.name)
-    else:
-        file_list.sort(key=lambda x: x.modify_time, reverse=True)
+    if file_list:
+        if sort == "name":
+            file_list.sort(key=lambda x: x.name)
+        else:
+            file_list.sort(key=lambda x: x.modify_time, reverse=True)
     return file_list
 
 
@@ -90,7 +91,7 @@ def delete(fileitem: schemas.FileItem,
     return schemas.Response(success=False)
 
 
-@router.get("/download", summary="下载文件")
+@router.post("/download", summary="下载文件")
 def download(fileitem: schemas.FileItem,
              _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
     """

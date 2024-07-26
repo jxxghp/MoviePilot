@@ -31,11 +31,6 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             key = key.value
         # 更新内存
         self.__SYSTEMCONF[key] = value
-        # 写入数据库
-        if ObjectUtils.is_obj(value):
-            value = json.dumps(value)
-        elif value is None:
-            value = ''
         conf = SystemConfig.get_by_key(self._db, key)
         if conf:
             if value:

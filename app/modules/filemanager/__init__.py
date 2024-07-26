@@ -38,7 +38,7 @@ class FileManagerModule(_ModuleBase):
     def init_module(self) -> None:
         # 加载模块
         self._storage_schemas = ModuleHelper.load('app.modules.filemanager.storage',
-                                                  filter_func=lambda _, obj: hasattr(obj, 'schema'))
+                                                  filter_func=lambda _, obj: hasattr(obj, 'schema') and obj.schema)
 
     @staticmethod
     def get_name() -> str:
@@ -264,7 +264,7 @@ class FileManagerModule(_ModuleBase):
         获取存储操作对象
         """
         for storage_schema in self._storage_schemas:
-            if storage_schema.schema == _storage:
+            if storage_schema.schema and storage_schema.schema.value == _storage:
                 return storage_schema()
         return None
 
