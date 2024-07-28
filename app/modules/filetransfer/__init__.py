@@ -219,12 +219,13 @@ class FileTransferModule(_ModuleBase):
         """
         # 字幕正则式
         _zhcn_sub_re = r"([.\[(](((zh[-_])?(cn|ch[si]|sg|sc))|zho?" \
-                       r"|chinese|(cn|ch[si]|sg|zho?|eng)[-_&](cn|ch[si]|sg|zho?|eng)" \
+                       r"|chinese|(cn|ch[si]|sg|zho?|eng)[-_&]?(cn|ch[si]|sg|zho?|eng)" \
                        r"|简[体中]?)[.\])])" \
                        r"|([\u4e00-\u9fa5]{0,3}[中双][\u4e00-\u9fa5]{0,2}[字文语][\u4e00-\u9fa5]{0,3})" \
                        r"|简体|简中|JPSC" \
                        r"|(?<![a-z0-9])gb(?![a-z0-9])"
         _zhtw_sub_re = r"([.\[(](((zh[-_])?(hk|tw|cht|tc))" \
+                       r"|(cht|eng)[-_&]?(cht|eng)" \
                        r"|繁[体中]?)[.\])])" \
                        r"|繁体中[文字]|中[文字]繁体|繁体|JPTC" \
                        r"|(?<![a-z0-9])big5(?![a-z0-9])"
