@@ -1,3 +1,5 @@
+import asyncio
+import threading
 from queue import Queue, Empty
 from typing import Dict, Any
 
@@ -76,7 +78,29 @@ class EventManager(metaclass=Singleton):
             self._disabled_handlers.remove(class_name)
         logger.debug(f"Event Enabled：{class_name}")
 
-    def send_event(self, etype: EventType, data: dict = None):
+    def send_event_sync(self, etype: EventType, data: dict = None):
+        """
+        发送媒体信息并获取格式化后的媒体消息
+        """
+        result: any = None
+        condition = threading.Condition()
+
+        def callback(res):
+            nonlocal result
+            if res:
+                result = res.result()
+            with condition:
+                condition.notify_all()
+
+        thread = threading.Thread(target=self.send_event, args=(etype, data, callback))
+        thread.start()
+
+        with condition:
+            condition.wait()
+
+        return result
+
+    def send_event(self, etype: EventType, data: dict = None, callback=None):
         """
         发送事件
         """
@@ -84,6 +108,7 @@ class EventManager(metaclass=Singleton):
             return
         event = Event(etype.value)
         event.event_data = data or {}
+        event.event_callback = callback
         logger.debug(f"发送事件：{etype.value} - {event.event_data}")
         self._eventQueue.put(event)
 
@@ -117,6 +142,8 @@ class Event(object):
         self.event_type = event_type
         # 字典用于保存具体的事件数据
         self.event_data = {}
+        # 事件的返回结果处理函数
+        self.event_callback = None
 
 
 # 实例引用，用于注册事件

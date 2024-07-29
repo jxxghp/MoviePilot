@@ -40,6 +40,8 @@ class EventType(Enum):
     WebhookMessage = "webhook.message"
     # 发送消息通知
     NoticeMessage = "notice.message"
+    # 自定媒体消息通知内容
+    MediaMessage = "message.media"
     # 名称识别请求
     NameRecognize = "name.recognize"
     # 名称识别结果

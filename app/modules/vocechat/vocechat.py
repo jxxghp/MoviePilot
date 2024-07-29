@@ -1,11 +1,14 @@
+import asyncio
 import re
 import threading
 from typing import Optional, List
 
 from app.core.config import settings
 from app.core.context import MediaInfo, Context
+from app.core.event import EventManager
 from app.core.metainfo import MetaInfo
 from app.log import logger
+from app.schemas.types import EventType
 from app.utils.common import retry
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
@@ -105,21 +108,25 @@ class VoceChat:
 
         try:
             index, caption = 1, "**%s**" % title
-            for media in medias:
-                if media.vote_average:
-                    caption = "%s\n%s. [%s](%s)\n_%s，%s_" % (caption,
-                                                             index,
-                                                             media.title_year,
-                                                             media.detail_link,
-                                                             f"类型：{media.type.value}",
-                                                             f"评分：{media.vote_average}")
-                else:
-                    caption = "%s\n%s. [%s](%s)\n_%s_" % (caption,
-                                                          index,
-                                                          media.title_year,
-                                                          media.detail_link,
-                                                          f"类型：{media.type.value}")
-                index += 1
+            notice = EventManager().send_event_sync(EventType.MediaMessage, {"medias": medias})
+            if not notice:
+                for media in medias:
+                    if media.vote_average:
+                        caption = "%s\n%s. [%s](%s)\n_%s，%s_" % (caption,
+                                                                 index,
+                                                                 media.title_year,
+                                                                 media.detail_link,
+                                                                 f"类型：{media.type.value}",
+                                                                 f"评分：{media.vote_average}")
+                    else:
+                        caption = "%s\n%s. [%s](%s)\n_%s_" % (caption,
+                                                              index,
+                                                              media.title_year,
+                                                              media.detail_link,
+                                                              f"类型：{media.type.value}")
+                    index += 1
+            else:
+                caption = notice
 
             if link:
                 caption = f"{caption}\n[查看详情]({link})"
