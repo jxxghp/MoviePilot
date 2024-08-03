@@ -119,7 +119,7 @@ function install_backend_and_download_resources() {
 # 使用python进行URL解析，$1为PROXY_HOST
 function parse_url() {
     local result
-    result=$(./parse_url.py ${1})
+    result=$(python3 /app/parse_url.py ${1})
     # 解析结果并提取各项
     PROTOCOL=$(echo "$result" | grep "^SCHEME:" | awk '{print $2}')
     HOST=$(echo "$result" | grep "^HOST:" | awk '{print $2}')
