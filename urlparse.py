@@ -47,7 +47,7 @@ if __name__ == "__main__":
         print(f"PASSWORD:''")
         print(f"HOST:''")
         print(f"PORT:''")
-
     # 参数全，解析URL
-    PROXY_HOST = sys.argv[1]
-    parse_url(url=PROXY_HOST)
+    else:
+        PROXY_HOST = sys.argv[1]
+        parse_url(url=PROXY_HOST)
