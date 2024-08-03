@@ -222,8 +222,52 @@ class PluginHelper(metaclass=Singleton):
         # 插件目录下如有requirements.txt则安装依赖
         requirements_file = plugin_dir / "requirements.txt"
         if requirements_file.exists():
-            PIP_PROXY = f" -i {settings.PIP_PROXY} " if settings.PIP_PROXY else ""
-            SystemUtils.execute(f"pip install -r {requirements_file} {PIP_PROXY}  > /dev/null 2>&1")
+            # 初始化
+            protocol = host = port = username = password = PROXY_CHAINS = PIP_PROXY = ""
+            # 返回json格式解析结果
+            parsed_url = settings.PROXY_URLPARSE()
+            if parsed_url:
+                protocol = parsed_url.get("scheme", "").lower()
+                username = parsed_url.get("username", "")
+                password = parsed_url.get("password", "")
+                host = parsed_url.get("host", "").lower()
+                port = parsed_url.get("port", "")
+
+            # 全局优先，镜像站不存在时，使用全局代理
+            if settings.PROXY_SUPPLEMENT:
+
+                # 检查settings.PROXY_HOST的协议类型，http或https
+                if protocol in {"http", "https"}:
+                    if settings.PIP_PROXY:
+                        PIP_PROXY = f" -i {settings.PIP_PROXY} " if settings.PIP_PROXY else ""
+                    else:
+                        # 有主机名与端口号的时候
+                        if host and port:
+                            PIP_PROXY = f" --proxy={settings.PROXY_HOST} " if settings.PROXY_HOST else ""
+
+                # Todo:目前proxychains4的临时调用命令不支持socks5h和socks4a，需要生成临时配置文件才能解决，后面考虑支持一下
+                elif protocol in {"socks4", "socks4a", "socks5", "socks5h"}:
+                    # 没有主机名，端口号
+                    if not host or not port:
+                        PIP_PROXY = f" -i {settings.PIP_PROXY} " if settings.PIP_PROXY else ""
+                    # 将拓展的socks协议转换为proxychains4支持的socks4和socks5
+                    else:
+                        if protocol in {"socks5", "socks5h"}:
+                            protocol = "socks5"
+                        elif protocol in {"socks4", "socks4a"}:
+                            protocol = "socks4"
+                        # 生成配置
+                        PROXY_CHAINS = f"proxychains4 -f <( echo -e '[ProxyList]\n{protocol} {host} {port} {username} {password}')"
+
+                # 不支持的协议类型
+                else:
+                    PIP_PROXY = f" -i {settings.PIP_PROXY} " if settings.PIP_PROXY else ""
+
+            # 本地优先，镜像站不存在时，不使用全局代理
+            else:
+                PIP_PROXY = f" -i {settings.PIP_PROXY} " if settings.PIP_PROXY else ""
+
+            SystemUtils.execute(f"{PROXY_CHAINS} pip install -r {requirements_file} {PIP_PROXY}  > /dev/null 2>&1")
         # 安装成功后统计
         self.install_reg(pid)
 

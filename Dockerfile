@@ -34,6 +34,7 @@ RUN apt-get update -y \
         rsync \
         ffmpeg \
         nano \
+        proxychains4 \
     && \
     if [ "$(uname -m)" = "x86_64" ]; \
         then ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
