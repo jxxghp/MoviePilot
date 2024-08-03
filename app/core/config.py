@@ -150,8 +150,6 @@ class Settings(BaseSettings):
     GITHUB_PROXY: Optional[str] = ''
     # pip镜像站点，格式：https://pypi.tuna.tsinghua.edu.cn/simple
     PIP_PROXY: Optional[str] = ''
-    # 代理补全开关，支持 True、False, 在没有配置镜像站的时候，True 使用 PROXY_HOST 补全镜像站缺失，False 在没有配置镜像站的时候，不使用全局补全
-    PROXY_SUPPLEMENT: bool = True
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
 
@@ -231,33 +229,22 @@ class Settings(BaseSettings):
         return None
 
     @property
-    def PROXY_URLPARSE(self, url: str = PROXY_HOST):
+    def PROXY_URLPARSE(self):
         """
-        解析地址组成 - 允许其他地址调用
+        解析地址组成
         """
-        if url:
-            # 解析 URL
-            parsed_url = urlparse(url)
-            # 协议
-            protocol = parsed_url.scheme or ""
-            # 用户名
-            username = parsed_url.username or ""
-            # 密码
-            password = parsed_url.password or ""
-            # 主机
-            host = parsed_url.hostname or ""
-            # 端口:
-            port = parsed_url.port or ""
-            # 路径
-            path = parsed_url.path or ""
-            # 用户名:密码@主机:端口
-            netloc = parsed_url.netloc or ""
-            # 查询参数: ?key=value
-            query = parsed_url.query or ""
-            # 使用;分割的参数
-            params = parsed_url.params or ""
-            # 片段: #fragment
-            fragment = parsed_url.fragment or ""
+        if self.PROXY_HOST:
+            parsed_url = urlparse(self.PROXY_HOST)
+            protocol = parsed_url.scheme or ""      # 协议
+            username = parsed_url.username or ""    # 用户名
+            password = parsed_url.password or ""    # 密码
+            host = parsed_url.hostname or ""        # 主机
+            port = parsed_url.port or ""            # 端口
+            path = parsed_url.path or ""            # 路径
+            netloc = parsed_url.netloc or ""        # 用户名:密码@主机:端口
+            query = parsed_url.query or ""          # 查询参数: ?key=value
+            params = parsed_url.params or ""        # 使用;分割的参数
+            fragment = parsed_url.fragment or ""    # 片段: #fragment
 
             if not port:
                 if protocol == "https":
@@ -267,7 +254,6 @@ class Settings(BaseSettings):
                 elif protocol in {"socks5", "socks5h", "socks4", "socks4a"}:
                     port = 1080
 
-            # 返回解析结果
             return {
                 "protocol": protocol,
                 "username": username,
@@ -299,6 +285,28 @@ class Settings(BaseSettings):
                 "Authorization": f"Bearer {self.GITHUB_TOKEN}"
             }
         return {}
+
+    @property
+    def PIP_OPTIONS(self):
+        """
+        pip调用附加参数
+        """
+        protocol = host = port = ""
+        parsed_url = self.PROXY_URLPARSE
+        if parsed_url:
+            protocol = parsed_url.get("scheme", "").lower()
+            host = parsed_url.get("host", "").lower()
+            port = parsed_url.get("port", "")
+        # 优先级：镜像站 > 全局 > 不代理
+        if settings.PIP_PROXY:
+            PIP_OPTIONS = f" -i {settings.PIP_PROXY} "
+        # 全局代理地址
+        elif protocol in {"http", "https", "socks4", "socks4a", "socks5", "socks5h"} and host and port:
+            PIP_OPTIONS = f" --proxy={settings.PROXY_HOST} "
+        # 不使用代理
+        else:
+            PIP_OPTIONS = ""
+        return PIP_OPTIONS
 
     @property
     def VAPID(self):

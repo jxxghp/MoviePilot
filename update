@@ -41,8 +41,8 @@ function install_backend_and_download_resources() {
     if download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"; then
         INFO "后端程序下载成功"
         INFO "依赖安装中..."
-        ${PROXY_CHAINS} pip install ${PIP_OPTIONS} --upgrade --root-user-action pip > /dev/null
-        if ${PROXY_CHAINS} pip install ${PIP_OPTIONS} --root-user-action -r /tmp/App/requirements.txt > /dev/null; then
+        pip install ${PIP_OPTIONS} --upgrade --root-user-action pip > /dev/null
+        if pip install ${PIP_OPTIONS} --root-user-action -r /tmp/App/requirements.txt > /dev/null; then
             INFO "安装依赖成功"
             frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" ${CURL_HEADERS} | jq -r .tag_name)
             if [[ "${frontend_version}" == *v* ]]; then
@@ -80,7 +80,7 @@ function install_backend_and_download_resources() {
                         # 插件仓库
                         rsync -av --remove-source-files /tmp/Plugins/plugins/* /app/app/plugins/ > /dev/null
                         # 提前安装插件依赖
-                        find /app/app/plugins -name requirements.txt -exec ${PROXY_CHAINS} pip install --root-user-action ${PIP_OPTIONS} -r {} \; > /dev/null
+                        find /app/app/plugins -name requirements.txt -exec pip install --root-user-action ${PIP_OPTIONS} -r {} \; > /dev/null
                         # 清理临时目录
                         rm -rf /tmp/*
                         INFO "插件更新成功"
@@ -122,124 +122,50 @@ function parse_url() {
     result=$(./parse_url.py ${1})
     # 解析结果并提取各项
     PROTOCOL=$(echo "$result" | grep "^SCHEME:" | awk '{print $2}')
-    USERNAME=$(echo "$result" | grep "^USERNAME:" | awk '{print $2}')
-    PASSWORD=$(echo "$result" | grep "^PASSWORD:" | awk '{print $2}')
     HOST=$(echo "$result" | grep "^HOST:" | awk '{print $2}')
     PORT=$(echo "$result" | grep "^PORT:" | awk '{print $2}')
 }
 
 if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
-    # 默认不使用proxychains代理PIP
-    PROXY_CHAINS=""
     # 解析代理地址，判断代理合法性
     if [[ -n "${PROXY_HOST}" ]]; then
         parse_url "${PROXY_HOST}"
         INFO "检测到代理地址，开始解析..."
-        if [[ "${PROTOCOL}" =~ ^http ]]; then
+        if [[ "${PROTOCOL}" =~ ^(http|https|socks4|socks4a|socks5|socks5h)$ ]] && [[ -n "${HOST}" && -n "${PORT}" ]]; then
             PROXY_HOST_MODE="true"
-            SOCKS_MODE="false"
-        elif [[ "${PROTOCOL}" =~ ^socks ]]; then
-            PROXY_HOST_MODE="true"
-            SOCKS_MODE="true"
         else
             PROXY_HOST_MODE="false"
-            SOCKS_MODE="false"
-            WARN "【PROXY_HOST】代理地址错误，无法添加全局代理环境，开始使用其他更新方式"
+            WARN "【PROXY_HOST】代理地址不符合要求，无法使用全局代理环境，开始使用其他更新方式"
         fi
     fi
-
-    # 模式1：镜像站点代理
-    if [[ -n "${PIP_PROXY}" ]] || [[ -n "${GITHUB_PROXY}" ]]; then
-        # 通用代理参数
-        GITHUB_PROXY=${GITHUB_PROXY:-""}
-        # 模式1-1：全局代理补充本地网络代理，并修改pip支持socks代理
-        if [[ "${PROXY_SUPPLEMENT}" = "true" ]] && [[ "${PROXY_HOST_MODE}" = "true" ]]; then
-            CURL_OPTIONS="-sL -x ${PROXY_HOST}"
-            # 针对socks模式下，启用proxychains
-            if [[ "${SOCKS_MODE}" == "true" ]]; then
-                PROXY_CHAINS="proxychains4 -f <( echo -e '[ProxyList]\n${PROTOCOL} ${HOST} ${PORT} ${USERNAME} ${PASSWORD}')"
-                PIP_OPTIONS=${PIP_PROXY:+-i ${PIP_PROXY}}
-            # http/https代理，不需要启用proxychains
-            else
-                PROXY_CHAINS=""
-                # http/https代理下，优先使用-i镜像站
-                if [[ -n "${PIP_PROXY}" ]]; then
-                    PIP_OPTIONS="-i ${PIP_PROXY}"
-                else
-                    PIP_OPTIONS="--proxy=${PROXY_HOST}"
-                fi
-            fi
-            # 双镜像站，去除proxychains
-            if [[ -n "${PIP_OPTIONS}" && -n "${GITHUB_PROXY}" ]]; then
-                PROXY_CHAINS=""
-                INFO "使用Pip镜像代理更新环境依赖，使用Github镜像代理更新程序"
-            # 单Github镜像站，保留proxychains
-            elif [[ -z "${PIP_OPTIONS}" && -n "${GITHUB_PROXY}" ]];then
-                # 全局为socks代理时，优先使用-i镜像站，去除proxychains
-                if [[ -n "${PIP_OPTIONS}" ]]; then
-                    PROXY_CHAINS=""
-                fi
-                INFO "使用全局代理更新环境依赖，使用Github镜像代理更新程序"
-            # 单Pip镜像站，去除proxychains
-            elif [[ -n "${PIP_OPTIONS}" &&  -z "${GITHUB_PROXY}" ]];then
-                PROXY_CHAINS=""
-                INFO "使用Pip镜像代理更新环境依赖，使用全局代理更新程序"
-            # 没有镜像站，一般情况下不会出现，过不了第一层判断
-            else
-                INFO "使用全局代理更新程序与环境依赖"
-            fi
-
-        # 模式1-2：本地网络优先，不使用全局代理补全
-        elif [[ "${PROXY_SUPPLEMENT}" = "false" ]]; then
-            CURL_OPTIONS="-sL"
-            PIP_OPTIONS=${PIP_PROXY:+-i ${PIP_PROXY}}
-            PROXY_CHAINS=""
-            # 双镜像站
-            if [[ -n "${PIP_PROXY}" && -n "${GITHUB_PROXY}" ]]; then
-                INFO "使用Pip镜像代理更新环境依赖，使用Github镜像代理更新程序"
-            # 单Github镜像站
-            elif [[ -z "${PIP_OPTIONS}" && -n "${GITHUB_PROXY}" ]]; then
-                INFO "不使用代理更新环境依赖，使用Github镜像代理更新程序"
-            # 单Pip镜像站
-            elif [[ -n "${PIP_OPTIONS}" && -z "${GITHUB_PROXY}" ]]; then
-                INFO "使用Pip镜像代理更新环境依赖，不使用代理更新程序"
-            # 没有镜像站，一般情况下不会出现，过不了第一层判断
-            else
-                INFO "不使用任何代理更新程序与环境依赖"
-            fi
-
-        # 模式1-3：其他情况，一般不会出现
-        else
-            CURL_OPTIONS="-sL"
-            PIP_OPTIONS=""
-            GITHUB_PROXY=""
-            PROXY_CHAINS=""
-            WARN "出现了未知的情况，不使用任何代理更新程序与环境依赖"
-        fi
-
-    # 模式3：代理地址正常，则使用全局代理
+    # 初始化变量
+    PIP_PROXY=${PIP_PROXY:-""}
+    GITHUB_PROXY=${GITHUB_PROXY:-""}
+    PIP_OPTIONS=""
+    CURL_OPTIONS="-sL"
+    # 优先级：镜像站 > 全局 > 不代理
+    # pip
+    if [[ -n "${PIP_PROXY}" ]]; then
+        PIP_OPTIONS="-i ${PIP_PROXY}"
+        PIP_LOG="使用Pip镜像代理更新环境依赖"
+    elif [[ -n "${PROXY_HOST}" && "${PROXY_HOST_MODE}" = "true" ]]; then
+        PIP_OPTIONS="--proxy=${PROXY_HOST}"
+        PIP_LOG="使用全局代理更新环境依赖"
+    else
+        PIP_OPTIONS=""
+        PIP_LOG="不使用代理更新环境依赖"
+    fi
+    # GitHub
+    if [[ -n "${GITHUB_PROXY}" ]]; then
+        GITHUB_LOG="使用Github镜像代理更新程序"
     elif [[ -n "${PROXY_HOST}" && "${PROXY_HOST_MODE}" = "true" ]]; then
         CURL_OPTIONS="-sL -x ${PROXY_HOST}"
-        # 针对socks模式下，启用proxychains4
-        if [[ "${SOCKS_MODE}" == "true" ]]; then
-            PIP_OPTIONS=""
-            PROXY_CHAINS="proxychains4 -f <( echo -e '[ProxyList]\n${PROTOCOL} ${HOST} ${PORT} ${USERNAME} ${PASSWORD}')"
-        else
-            PROXY_CHAINS=""
-            PIP_OPTIONS="--proxy=${PROXY_HOST}"
-        fi
-        GITHUB_PROXY=""
-        PROXY_CHAINS=""
-        INFO "使用全局代理更新程序与环境依赖"
-
-    # 模式4：其他情况，统一不使用代理
+        GITHUB_LOG="使用全局代理更新程序"
     else
         CURL_OPTIONS="-sL"
-        PIP_OPTIONS=""
-        GITHUB_PROXY=""
-        PROXY_CHAINS=""
-        INFO "不使用任何代理更新程序与环境依赖"
+        GITHUB_LOG="不使用代理更新程序"
     fi
+    INFO "${PIP_LOG}，${GITHUB_LOG}"
     if [ -n "${GITHUB_TOKEN}" ]; then
         CURL_HEADERS="--oauth2-bearer ${GITHUB_TOKEN}"
     else
