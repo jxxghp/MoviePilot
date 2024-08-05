@@ -12,14 +12,14 @@ class CustomRule(BaseModel):
     # 名称
     name: Optional[str] = None
     # 包含
-    include: Optional[list] = []
+    include: Optional[str] = None
     # 排除
-    exclude: Optional[list] = []
-    # 大小范围
+    exclude: Optional[str] = None
+    # 大小范围（MB）
     size_range: Optional[str] = None
     # 最少做种人数
     seeders: Optional[str] = None
-    # 发送时间
+    # 发布时间
     publish_time: Optional[str] = None
 
 

@@ -87,7 +87,7 @@ class SystemConfigKey(Enum):
     # 用户自定义规则
     CustomFilterRules = "CustomFilterRules"
     # 用户规则组
-    UserRuleGroups = "UserRuleGroups"
+    UserFilterRuleGroups = "UserFilterRuleGroups"
     # 搜索默认过滤规则组
     SearchFilterRuleGroups = "SearchFilterRuleGroups"
     # 订阅默认过滤规则组

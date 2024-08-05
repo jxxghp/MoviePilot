@@ -17,7 +17,7 @@ class RuleHelper:
         """
         获取用户所有规则组
         """
-        rule_groups: List[dict] = self.systemconfig.get(SystemConfigKey.UserRuleGroups)
+        rule_groups: List[dict] = self.systemconfig.get(SystemConfigKey.UserFilterRuleGroups)
         if not rule_groups:
             return []
         return [FilterRuleGroup(**group) for group in rule_groups]
