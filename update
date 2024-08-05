@@ -152,7 +152,7 @@ function test_connectivity_github() {
     0)
         if [[ -n "${GITHUB_PROXY}" ]]; then
             if curl -sL "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot/main/README.md" > /dev/null 2>&1; then
-                PIP_LOG="使用Github镜像代理更新程序"
+                GITHUB_LOG="使用Github镜像代理更新程序"
                 return 0
             fi
         fi
