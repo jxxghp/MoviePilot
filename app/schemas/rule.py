@@ -19,6 +19,8 @@ class CustomRule(BaseModel):
     size_range: Optional[str] = None
     # 最少做种人数
     seeders: Optional[str] = None
+    # 发送时间
+    publish_time: Optional[str] = None
 
 
 class FilterRuleGroup(BaseModel):
