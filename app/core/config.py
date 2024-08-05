@@ -1,4 +1,6 @@
 import secrets
+from urllib.parse import urlparse
+
 import sys
 import threading
 from pathlib import Path
@@ -227,6 +229,46 @@ class Settings(BaseSettings):
         return None
 
     @property
+    def PROXY_URLPARSE(self):
+        """
+        解析地址组成
+        """
+        if self.PROXY_HOST:
+            parsed_url = urlparse(self.PROXY_HOST)
+            protocol = parsed_url.scheme or ""      # 协议
+            username = parsed_url.username or ""    # 用户名
+            password = parsed_url.password or ""    # 密码
+            host = parsed_url.hostname or ""        # 主机
+            port = parsed_url.port or ""            # 端口
+            path = parsed_url.path or ""            # 路径
+            netloc = parsed_url.netloc or ""        # 用户名:密码@主机:端口
+            query = parsed_url.query or ""          # 查询参数: ?key=value
+            params = parsed_url.params or ""        # 使用;分割的参数
+            fragment = parsed_url.fragment or ""    # 片段: #fragment
+
+            if not port:
+                if protocol == "https":
+                    port = 443
+                elif protocol == "http":
+                    port = 80
+                elif protocol in {"socks5", "socks5h", "socks4", "socks4a"}:
+                    port = 1080
+
+            return {
+                "protocol": protocol,
+                "username": username,
+                "password": password,
+                "host": host,
+                "port": port,
+                "path": path,
+                "netloc": netloc,
+                "query": query,
+                "params": params,
+                "fragment": fragment
+            }
+        return None
+
+    @property
     def PROXY_SERVER(self):
         if self.PROXY_HOST:
             return {
@@ -243,6 +285,28 @@ class Settings(BaseSettings):
                 "Authorization": f"Bearer {self.GITHUB_TOKEN}"
             }
         return {}
+
+    @property
+    def PIP_OPTIONS(self):
+        """
+        pip调用附加参数
+        """
+        protocol = host = port = ""
+        parsed_url = self.PROXY_URLPARSE
+        if parsed_url:
+            protocol = parsed_url.get("scheme", "").lower()
+            host = parsed_url.get("host", "").lower()
+            port = parsed_url.get("port", "")
+        # 优先级：镜像站 > 全局 > 不代理
+        if settings.PIP_PROXY:
+            PIP_OPTIONS = f" -i {settings.PIP_PROXY} "
+        # 全局代理地址
+        elif protocol in {"http", "https", "socks4", "socks4a", "socks5", "socks5h"} and host and port:
+            PIP_OPTIONS = f" --proxy={settings.PROXY_HOST} "
+        # 不使用代理
+        else:
+            PIP_OPTIONS = ""
+        return PIP_OPTIONS
 
     @property
     def VAPID(self):

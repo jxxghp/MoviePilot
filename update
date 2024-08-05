@@ -116,28 +116,56 @@ function install_backend_and_download_resources() {
     fi
 }
 
+# 使用python进行URL解析，$1为PROXY_HOST
+function parse_url() {
+    local result
+    result=$(python3 /app/parse_url.py ${1})
+    # 解析结果并提取各项
+    PROTOCOL=$(echo "$result" | grep "^SCHEME:" | awk '{print $2}')
+    HOST=$(echo "$result" | grep "^HOST:" | awk '{print $2}')
+    PORT=$(echo "$result" | grep "^PORT:" | awk '{print $2}')
+}
+
 if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
-    if [[ -n "${PIP_PROXY}" ]] || [[ -n "${GITHUB_PROXY}" ]]; then
-        CURL_OPTIONS="-sL"
-        PIP_OPTIONS=${PIP_PROXY:+-i ${PIP_PROXY}}
-        GITHUB_PROXY=${GITHUB_PROXY:-""}
-        # 判断不同的代理组合
-        if [ -z "${PIP_OPTIONS}" ] && [ -n "${GITHUB_PROXY}" ]; then
-            INFO "不使用代理更新环境依赖，使用Github镜像代理更新程序"
-        elif [ -n "${PIP_OPTIONS}" ] && [ -z "${GITHUB_PROXY}" ]; then
-            INFO "使用Pip镜像代理更新环境依赖，不使用代理更新程序"
+    # 解析代理地址，判断代理合法性
+    if [[ -n "${PROXY_HOST}" ]]; then
+        parse_url "${PROXY_HOST}"
+        INFO "检测到代理地址，开始解析..."
+        if [[ "${PROTOCOL}" =~ ^(http|https|socks4|socks4a|socks5|socks5h)$ ]] && [[ -n "${HOST}" && -n "${PORT}" ]]; then
+            PROXY_HOST_MODE="true"
         else
-            INFO "使用Pip镜像代理更新环境依赖，使用Github镜像代理更新程序"
+            PROXY_HOST_MODE="false"
+            WARN "【PROXY_HOST】代理地址不符合要求，无法使用全局代理环境，开始使用其他更新方式"
         fi
-    elif [ -n "${PROXY_HOST}" ]; then
-        CURL_OPTIONS="-sL -x ${PROXY_HOST}"
+    fi
+    # 初始化变量
+    PIP_PROXY=${PIP_PROXY:-""}
+    GITHUB_PROXY=${GITHUB_PROXY:-""}
+    PIP_OPTIONS=""
+    CURL_OPTIONS="-sL"
+    # 优先级：镜像站 > 全局 > 不代理
+    # pip
+    if [[ -n "${PIP_PROXY}" ]]; then
+        PIP_OPTIONS="-i ${PIP_PROXY}"
+        PIP_LOG="使用Pip镜像代理更新环境依赖"
+    elif [[ -n "${PROXY_HOST}" && "${PROXY_HOST_MODE}" = "true" ]]; then
         PIP_OPTIONS="--proxy=${PROXY_HOST}"
-        GITHUB_PROXY=""
-        INFO "使用全局代理更新程序与环境依赖"
+        PIP_LOG="使用全局代理更新环境依赖"
+    else
+        PIP_OPTIONS=""
+        PIP_LOG="不使用代理更新环境依赖"
+    fi
+    # GitHub
+    if [[ -n "${GITHUB_PROXY}" ]]; then
+        GITHUB_LOG="使用Github镜像代理更新程序"
+    elif [[ -n "${PROXY_HOST}" && "${PROXY_HOST_MODE}" = "true" ]]; then
+        CURL_OPTIONS="-sL -x ${PROXY_HOST}"
+        GITHUB_LOG="使用全局代理更新程序"
     else
         CURL_OPTIONS="-sL"
-        INFO "不使用任何代理更新程序与环境依赖"
+        GITHUB_LOG="不使用代理更新程序"
     fi
+    INFO "${PIP_LOG}，${GITHUB_LOG}"
     if [ -n "${GITHUB_TOKEN}" ]; then
         CURL_HEADERS="--oauth2-bearer ${GITHUB_TOKEN}"
     else

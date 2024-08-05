@@ -222,8 +222,7 @@ class PluginHelper(metaclass=Singleton):
         # 插件目录下如有requirements.txt则安装依赖
         requirements_file = plugin_dir / "requirements.txt"
         if requirements_file.exists():
-            PIP_PROXY = f" -i {settings.PIP_PROXY} " if settings.PIP_PROXY else ""
-            SystemUtils.execute(f"pip install -r {requirements_file} {PIP_PROXY}  > /dev/null 2>&1")
+            SystemUtils.execute(f"pip install -r {requirements_file} {settings.PIP_OPTIONS}  > /dev/null 2>&1")
         # 安装成功后统计
         self.install_reg(pid)
 
