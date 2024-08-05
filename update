@@ -123,7 +123,7 @@ function test_connectivity_pip() {
         if [[ -n "${PIP_PROXY}" ]]; then
             if pip install -i ${PIP_PROXY} pip-hello-world > /dev/null 2>&1; then
                 PIP_OPTIONS="-i ${PIP_PROXY}"
-                PIP_LOG="使用Pip镜像代理更新环境依赖"
+                PIP_LOG="镜像代理模式"
                 return 0
             fi
         fi
@@ -133,7 +133,7 @@ function test_connectivity_pip() {
         if [[ -n "${PROXY_HOST}" ]]; then
             if pip install --proxy=${PROXY_HOST} pip-hello-world > /dev/null 2>&1; then
                 PIP_OPTIONS="--proxy=${PROXY_HOST}"
-                PIP_LOG="使用全局代理更新环境依赖"
+                PIP_LOG="全局代理模式"
                 return 0
             fi
         fi
@@ -141,7 +141,7 @@ function test_connectivity_pip() {
         ;;
     2)
         PIP_OPTIONS=""
-        PIP_LOG="不使用代理更新环境依赖"
+        PIP_LOG="不使用代理"
         return 0
         ;;
     esac
@@ -152,7 +152,7 @@ function test_connectivity_github() {
     0)
         if [[ -n "${GITHUB_PROXY}" ]]; then
             if curl -sL "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot/main/README.md" > /dev/null 2>&1; then
-                GITHUB_LOG="使用Github镜像代理更新程序"
+                GITHUB_LOG="镜像代理模式"
                 return 0
             fi
         fi
@@ -162,7 +162,7 @@ function test_connectivity_github() {
         if [[ -n "${PROXY_HOST}" ]]; then
             if curl -sL -x ${PROXY_HOST} https://raw.githubusercontent.com/jxxghp/MoviePilot/main/README.md > /dev/null 2>&1; then
                 CURL_OPTIONS="-sL -x ${PROXY_HOST}"
-                GITHUB_LOG="使用全局代理更新程序"
+                GITHUB_LOG="全局代理模式"
                 return 0
             fi
         fi
@@ -170,7 +170,7 @@ function test_connectivity_github() {
         ;;
     2)
         CURL_OPTIONS="-sL"
-        GITHUB_LOG="不使用代理更新程序"
+        GITHUB_LOG="不使用代理"
         return 0
         ;;
     esac
@@ -196,7 +196,7 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
             retries=$((retries + 1))
         fi
     done
-    INFO "${PIP_LOG}，${GITHUB_LOG}"
+    INFO "PIP：${PIP_LOG}，Github：${GITHUB_LOG}"
     if [ -n "${GITHUB_TOKEN}" ]; then
         CURL_HEADERS="--oauth2-bearer ${GITHUB_TOKEN}"
     else
