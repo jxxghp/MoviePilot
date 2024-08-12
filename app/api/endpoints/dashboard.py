@@ -17,11 +17,11 @@ router = APIRouter()
 
 
 @router.get("/statistic", summary="媒体数量统计", response_model=schemas.Statistic)
-def statistic(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def statistic(name: str = None, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询媒体数量统计信息
     """
-    media_statistics: Optional[List[schemas.Statistic]] = DashboardChain().media_statistic()
+    media_statistics: Optional[List[schemas.Statistic]] = DashboardChain().media_statistic(name)
     if media_statistics:
         # 汇总各媒体库统计信息
         ret_statistic = schemas.Statistic()
