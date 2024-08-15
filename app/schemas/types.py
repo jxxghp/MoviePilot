@@ -131,13 +131,15 @@ class NotificationType(Enum):
     # 订阅
     Subscribe = "订阅"
     # 站点消息
-    SiteMessage = "站点消息"
+    SiteMessage = "站点"
     # 媒体服务器通知
-    MediaServer = "媒体服务器通知"
+    MediaServer = "媒体服务器"
     # 处理失败需要人工干预
-    Manual = "手动处理通知"
+    Manual = "手动处理"
     # 插件消息
-    Plugin = "插件消息"
+    Plugin = "插件"
+    # 其它消息
+    Other = "其它"
 
 
 # 消息渠道
