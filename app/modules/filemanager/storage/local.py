@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional, List
 
 from app import schemas
+from app.helper.directory import DirectoryHelper
 from app.log import logger
 from app.modules.filemanager.storage import StorageBase
 from app.schemas.types import StorageSchema
@@ -231,3 +232,14 @@ class LocalStorage(StorageBase):
             logger.error(f"移动文件失败：{message}")
             return False
         return True
+
+    def usage(self) -> Optional[schemas.StorageUsage]:
+        """
+        存储使用情况
+        """
+        library_dirs = DirectoryHelper().get_local_library_dirs()
+        total_storage, free_storage = SystemUtils.space_usage([Path(d.library_path) for d in library_dirs])
+        return schemas.StorageUsage(
+            total=total_storage,
+            available=free_storage
+        )

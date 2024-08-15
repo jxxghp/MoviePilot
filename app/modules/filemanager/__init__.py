@@ -16,7 +16,7 @@ from app.helper.module import ModuleHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storage import StorageBase
-from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem
+from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
 from app.schemas.types import MediaType
 from app.utils.system import SystemUtils
 
@@ -192,6 +192,16 @@ class FileManagerModule(_ModuleBase):
             logger.error(f"不支持 {storage} 的快照处理")
             return None
         return storage_oper.snapshot(path)
+
+    def storage_usage(self, storage: str) -> Optional[StorageUsage]:
+        """
+        存储使用情况
+        """
+        storage_oper = self.__get_storage_oper(storage)
+        if not storage_oper:
+            logger.error(f"不支持 {storage} 的存储使用情况")
+            return None
+        return storage_oper.usage()
 
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
                  transfer_type: str, target_storage: str = None, target_path: Path = None,

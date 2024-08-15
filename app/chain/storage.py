@@ -69,3 +69,9 @@ class StorageChain(ChainBase):
         快照存储
         """
         return self.run_module("snapshot_storage", storage=storage, path=path)
+
+    def storage_usage(self, storage: str) -> Optional[schemas.StorageUsage]:
+        """
+        存储使用情况
+        """
+        return self.run_module("storage_usage", storage=storage)

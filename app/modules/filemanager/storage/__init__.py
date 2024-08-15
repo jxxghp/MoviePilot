@@ -138,6 +138,13 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
+    @abstractmethod
+    def usage(self) -> Optional[schemas.StorageUsage]:
+        """
+        存储使用情况
+        """
+        pass
+
     def snapshot(self, path: Path) -> Dict[str, float]:
         """
         快照文件系统，输出所有层级文件信息（不含目录）

@@ -296,3 +296,9 @@ class Rclone(StorageBase):
 
     def softlink(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
         pass
+
+    def usage(self) -> Optional[schemas.StorageUsage]:
+        """
+        存储使用情况
+        """
+        pass

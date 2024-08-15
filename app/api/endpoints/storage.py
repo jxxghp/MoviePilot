@@ -164,3 +164,14 @@ def rename(fileitem: schemas.FileItem,
                 progress.end(ProgressKey.BatchRename)
         return schemas.Response(success=True)
     return schemas.Response(success=False)
+
+
+@router.get("/usage/{name}", summary="存储空间信息", response_model=schemas.StorageUsage)
+def usage(name: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    查询存储空间
+    """
+    ret = StorageChain().storage_usage(name)
+    if ret:
+        return ret
+    return schemas.StorageUsage()

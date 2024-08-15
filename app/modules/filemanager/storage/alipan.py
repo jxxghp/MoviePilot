@@ -744,3 +744,9 @@ class AliPan(StorageBase):
         软链接文件
         """
         pass
+
+    def usage(self) -> Optional[schemas.StorageUsage]:
+        """
+        存储使用情况
+        """
+        pass
