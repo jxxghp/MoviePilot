@@ -22,7 +22,7 @@ class VoceChat:
     # 请求对象
     _client = None
 
-    def __init__(self, host: str, apikey: str, channel_id: str, **kwargs):
+    def __init__(self, host: str = None, apikey: str = None, channel_id: str = None, **kwargs):
         """
         初始化
         """

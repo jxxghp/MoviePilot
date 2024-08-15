@@ -16,6 +16,12 @@ class StorageBase(metaclass=ABCMeta):
     def __init__(self):
         self.storagehelper = StorageHelper()
 
+    def generate_qrcode(self, *args, **kwargs) -> Optional[Dict[str, str]]:
+        pass
+
+    def check_login(self, *args, **kwargs) -> Optional[Dict[str, str]]:
+        pass
+
     def get_config(self) -> Optional[schemas.StorageConf]:
         """
         获取配置
@@ -46,7 +52,7 @@ class StorageBase(metaclass=ABCMeta):
         检查存储是否可用
         """
         pass
-    
+
     @abstractmethod
     def list(self, fileitm: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
         """
@@ -102,7 +108,7 @@ class StorageBase(metaclass=ABCMeta):
         上传文件
         """
         pass
-    
+
     @abstractmethod
     def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
@@ -168,4 +174,3 @@ class StorageBase(metaclass=ABCMeta):
         __snapshot_file(fileitem)
 
         return files_info
-    

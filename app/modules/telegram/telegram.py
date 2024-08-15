@@ -24,7 +24,7 @@ class Telegram:
     _event = Event()
     _bot: telebot.TeleBot = None
 
-    def __init__(self, token: str, chat_id: str, **kwargs):
+    def __init__(self, token: str = None, chat_id: str = None, **kwargs):
         """
         初始化参数
         """

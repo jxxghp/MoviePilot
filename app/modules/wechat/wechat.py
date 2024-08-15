@@ -37,7 +37,8 @@ class WeChat:
     # 企业微信创新菜单URL
     _create_menu_url = "/cgi-bin/menu/create?access_token=%s&agentid=%s"
 
-    def __init__(self, corpid: str, appsecret: str, appid: str, proxy: str = None, **kwargs):
+    def __init__(self, corpid: str = None, appsecret: str = None, appid: str = None,
+                 proxy: str = None, **kwargs):
         """
         初始化
         """

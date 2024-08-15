@@ -108,6 +108,28 @@ class FileManagerModule(_ModuleBase):
         )
         return str(path)
 
+        pass
+
+    def generate_qrcode(self, storage: str) -> Optional[Dict[str, str]]:
+        """
+        生成二维码
+        """
+        storage_oper = self.__get_storage_oper(storage, "generate_qrcode")
+        if not storage_oper:
+            logger.error(f"不支持 {storage} 的二维码生成")
+            return None
+        return storage_oper.generate_qrcode()
+
+    def check_login(self, storage: str, **kwargs) -> Optional[Dict[str, str]]:
+        """
+        登录确认
+        """
+        storage_oper = self.__get_storage_oper(storage, "check_login")
+        if not storage_oper:
+            logger.error(f"不支持 {storage} 的登录确认")
+            return None
+        return storage_oper.check_login(**kwargs)
+
     def list_files(self, fileitem: FileItem) -> Optional[List[FileItem]]:
         """
         浏览文件
@@ -269,12 +291,14 @@ class FileManagerModule(_ModuleBase):
                                    need_scrape=need_scrape,
                                    need_rename=need_rename)
 
-    def __get_storage_oper(self, _storage: str) -> Optional[StorageBase]:
+    def __get_storage_oper(self, _storage: str, _func: str = None) -> Optional[StorageBase]:
         """
         获取存储操作对象
         """
         for storage_schema in self._storage_schemas:
-            if storage_schema.schema and storage_schema.schema.value == _storage:
+            if storage_schema.schema \
+                    and storage_schema.schema.value == _storage \
+                    and (not _func or hasattr(storage_schema, _func)):
                 return storage_schema()
         return None
 

@@ -14,7 +14,7 @@ lock = Lock()
 
 
 class SynologyChat:
-    def __init__(self, webhook: str, token: str, **kwargs):
+    def __init__(self, webhook: str = None, token: str = None, **kwargs):
         if not webhook or not token:
             logger.error("SynologyChat配置不完整！")
             return

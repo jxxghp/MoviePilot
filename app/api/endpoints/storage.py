@@ -17,23 +17,26 @@ from app.schemas.types import ProgressKey
 router = APIRouter()
 
 
-@router.get("/qrcode", summary="生成二维码内容", response_model=schemas.Response)
-def qrcode(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.get("/qrcode/{name}", summary="生成二维码内容", response_model=schemas.Response)
+def qrcode(name: str, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     生成二维码
     """
-    qrcode_data, errmsg = StorageChain().generate_qrcode()
+    qrcode_data, errmsg = StorageChain().generate_qrcode(name)
     if qrcode_data:
         return schemas.Response(success=True, data=qrcode_data, message=errmsg)
     return schemas.Response(success=False)
 
 
-@router.get("/check", summary="二维码登录确认", response_model=schemas.Response)
-def check(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+@router.get("/check/{name}", summary="二维码登录确认", response_model=schemas.Response)
+def check(name: str, ck: str = None, t: str = None, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     二维码登录确认
     """
-    data, errmsg = StorageChain().check_login()
+    if ck or t:
+        data, errmsg = StorageChain().check_login(name, ck=ck, t=t)
+    else:
+        data, errmsg = StorageChain().check_login(name)
     if data:
         return schemas.Response(success=True, data=data)
     return schemas.Response(success=False, message=errmsg)

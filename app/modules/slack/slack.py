@@ -24,7 +24,7 @@ class Slack:
     _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
     _channel = ""
 
-    def __init__(self, oauth_token: str, app_token: str, channel: str = "", **kwargs):
+    def __init__(self, oauth_token: str = None, app_token: str = None, channel: str = "", **kwargs):
 
         if not oauth_token or not app_token:
             logger.error("Slack 配置不完整！")

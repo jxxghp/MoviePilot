@@ -10,17 +10,17 @@ class StorageChain(ChainBase):
     存储处理链
     """
 
-    def generate_qrcode(self) -> Optional[Tuple[dict, str]]:
+    def generate_qrcode(self, storage: str) -> Optional[Tuple[dict, str]]:
         """
         生成二维码
         """
-        return self.run_module("generate_qrcode",)
+        return self.run_module("generate_qrcode", storage=storage)
 
-    def check_login(self) -> Optional[Tuple[dict, str]]:
+    def check_login(self, storage: str, **kwargs) -> Optional[Tuple[dict, str]]:
         """
         登录确认
         """
-        return self.run_module("check_login",)
+        return self.run_module("check_login", storage=storage, **kwargs)
 
     def list_files(self, fileitem: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
         """
