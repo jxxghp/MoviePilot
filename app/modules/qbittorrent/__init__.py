@@ -176,14 +176,14 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
                         # 选择文件
                         server.set_files(torrent_hash=torrent_hash, file_ids=file_ids, priority=0)
                     # 开始任务
-                    if settings.QB_FORCE_RESUME:
+                    if server.is_force_resume():
                         # 强制继续
                         server.torrents_set_force_start(torrent_hash)
                     else:
                         server.start_torrents(torrent_hash)
                     return downloader or self._default_server, torrent_hash, f"添加下载成功，已选择集数：{sucess_epidised}"
                 else:
-                    if settings.QB_FORCE_RESUME:
+                    if server.is_force_resume():
                         server.torrents_set_force_start(torrent_hash)
                     return downloader or self._default_server, torrent_hash, "添加下载成功"
 

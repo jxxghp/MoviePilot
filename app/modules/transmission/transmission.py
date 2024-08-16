@@ -5,6 +5,7 @@ from transmission_rpc import Client, Torrent, File
 from transmission_rpc.session import SessionStats, Session
 
 from app.log import logger
+from app.utils.string import StringUtils
 
 
 class Transmission:
@@ -26,18 +27,13 @@ class Transmission:
         """
         若不设置参数，则创建配置文件设置的下载器
         """
-        if not host:
+        if host and port:
+            self._host, self._port = host, port
+        elif host:
+            self._host, self._port = StringUtils.get_domain_address(address=host, prefix=False)
+        else:
             logger.error("Transmission配置不完整！")
             return
-        self._host = host
-        if not port:
-            # 从host中获取端口
-            if ":" in host:
-                host, port = host.split(":")
-                self._host = host
-                self._port = int(port)
-        else:
-            self._port = port
         self._username = username
         self._password = password
         if self._host and self._port:
