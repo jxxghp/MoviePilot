@@ -56,7 +56,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         cookie_dict = self.get_config()
         if not cookie_dict:
             return None
-        return Credential.from_dict(cookie_dict.dict())
+        return Credential.from_dict(cookie_dict.dict().get("config"))
 
     def __save_credentail(self, credential: Credential):
         """
@@ -381,8 +381,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         存储使用情况
         """
-        total, used = self.storage()
-        if total:
+        info = self.storage()
+        if info:
+            total, used = info
             return schemas.StorageUsage(
                 total=total,
                 available=total - used

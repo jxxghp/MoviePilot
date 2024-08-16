@@ -65,6 +65,8 @@ class AliPan(StorageBase):
     move_file_url = "https://api.aliyundrive.com/v2/file/move"
     # 上传文件完成
     upload_file_complete_url = "https://api.aliyundrive.com/v2/file/complete"
+    # 查询存储详情
+    storage_info_url = "https://api.aliyundrive.com/adrive/v1/user/driveCapacityDetails"
 
     def __handle_error(self, res: Response, apiname: str, action: bool = True):
         """
@@ -749,4 +751,17 @@ class AliPan(StorageBase):
         """
         存储使用情况
         """
-        pass
+        params = self.__access_params
+        if not params:
+            return None
+        headers = self.__get_headers(params)
+        res = RequestUtils(headers=headers, timeout=10).post_res(self.storage_info_url, json={})
+        if res:
+            result = res.json()
+            return schemas.StorageUsage(
+                total=result.get("drive_total_size"),
+                available=result.get("drive_total_size") - result.get("drive_used_size")
+            )
+        else:
+            self.__handle_error(res, "查询存储详情")
+        return None

@@ -38,7 +38,7 @@ class Rclone(StorageBase):
         path = Path(filepath)
         if not path.parent.exists():
             path.parent.mkdir(parents=True)
-        path.write_bytes(conf.get('content'))
+        path.write_text(conf.get('content'))
 
     @staticmethod
     def __get_hidden_shell():
@@ -315,4 +315,21 @@ class Rclone(StorageBase):
         """
         存储使用情况
         """
-        pass
+        try:
+            ret = subprocess.run(
+                [
+                    'rclone', 'about',
+                    'MP:'
+                ],
+                capture_output=True,
+                startupinfo=self.__get_hidden_shell()
+            )
+            if ret.returncode == 0:
+                items = json.loads(ret.stdout)
+                return schemas.StorageUsage(
+                    total=items.get("total"),
+                    available=items.get("free")
+                )
+        except Exception as err:
+            logger.error(f"rclone获取存储使用情况失败：{err}")
+        return None

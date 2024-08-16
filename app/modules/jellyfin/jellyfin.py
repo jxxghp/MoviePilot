@@ -12,7 +12,7 @@ from app.utils.http import RequestUtils
 
 class Jellyfin:
 
-    def __init__(self, host: str, apikey: str, play_host: str = None, **kwargs):
+    def __init__(self, host: str = None, apikey: str = None, play_host: str = None, **kwargs):
         if not host or not apikey:
             logger.error("Jellyfin服务器配置不完整！！")
             return

@@ -19,7 +19,7 @@ class Plex:
     _plex = None
     _session = None
 
-    def __init__(self, host: str, token: str, play_host: str = None, **kwargs):
+    def __init__(self, host: str = None, token: str = None, play_host: str = None, **kwargs):
         if not host or not token:
             logger.error("Plex服务器配置不完整！")
             return
