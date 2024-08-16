@@ -9,7 +9,7 @@ from py115.types import LoginTarget, QrcodeSession, QrcodeStatus, Credential
 
 from app import schemas
 from app.log import logger
-from app.modules.filemanager.storage import StorageBase
+from app.modules.filemanager.storages import StorageBase
 from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
@@ -236,6 +236,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         获取文件或目录，不存在返回None
         """
+
         def __find_item(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
             """
             查找下级目录中匹配名称的目录或文件
@@ -380,4 +381,10 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         存储使用情况
         """
-        pass
+        total, used = self.storage()
+        if total:
+            return schemas.StorageUsage(
+                total=total,
+                available=total - used
+            )
+        return schemas.StorageUsage()

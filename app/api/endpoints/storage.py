@@ -42,6 +42,17 @@ def check(name: str, ck: str = None, t: str = None, _: schemas.TokenPayload = De
     return schemas.Response(success=False, message=errmsg)
 
 
+@router.post("/save/{name}", summary="保存存储配置", response_model=schemas.Response)
+def save(name: str,
+         conf: dict,
+         _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    保存存储配置
+    """
+    StorageChain().save_config(name, conf)
+    return schemas.Response(success=True)
+
+
 @router.post("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])
 def list(fileitem: schemas.FileItem,
          sort: str = 'updated_at',

@@ -11,7 +11,7 @@ from requests import Response
 from app import schemas
 from app.core.config import settings
 from app.log import logger
-from app.modules.filemanager.storage import StorageBase
+from app.modules.filemanager.storages import StorageBase
 from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils

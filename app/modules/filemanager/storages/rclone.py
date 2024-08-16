@@ -6,7 +6,7 @@ from typing import Optional, List
 
 from app import schemas
 from app.log import logger
-from app.modules.filemanager.storage import StorageBase
+from app.modules.filemanager.storages import StorageBase
 from app.schemas.types import StorageSchema
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -14,7 +14,7 @@ from app.utils.system import SystemUtils
 
 class Rclone(StorageBase):
     """
-    TODO rclone相关操作
+    rclone相关操作
     """
 
     # 存储类型
@@ -25,6 +25,20 @@ class Rclone(StorageBase):
         "move": "移动",
         "copy": "复制"
     }
+
+    def set_config(self, conf: dict):
+        """
+        设置配置
+        """
+        super().set_config(conf)
+        filepath = conf.get("filepath")
+        if not filepath:
+            logger.warn("Rclone保存配置失败：未设置配置文件路径")
+        logger.info(f"Rclone配置写入文件：{filepath}")
+        path = Path(filepath)
+        if not path.parent.exists():
+            path.parent.mkdir(parents=True)
+        path.write_bytes(conf.get('content'))
 
     @staticmethod
     def __get_hidden_shell():

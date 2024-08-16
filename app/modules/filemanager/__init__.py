@@ -15,7 +15,7 @@ from app.helper.message import MessageHelper
 from app.helper.module import ModuleHelper
 from app.log import logger
 from app.modules import _ModuleBase
-from app.modules.filemanager.storage import StorageBase
+from app.modules.filemanager.storages import StorageBase
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
 from app.schemas.types import MediaType
 from app.utils.system import SystemUtils
@@ -37,7 +37,7 @@ class FileManagerModule(_ModuleBase):
 
     def init_module(self) -> None:
         # 加载模块
-        self._storage_schemas = ModuleHelper.load('app.modules.filemanager.storage',
+        self._storage_schemas = ModuleHelper.load('app.modules.filemanager.storages',
                                                   filter_func=lambda _, obj: hasattr(obj, 'schema') and obj.schema)
 
     @staticmethod
@@ -109,6 +109,16 @@ class FileManagerModule(_ModuleBase):
         return str(path)
 
         pass
+
+    def save_config(self, storage: str, conf: Dict) -> None:
+        """
+        保存存储配置
+        """
+        storage_oper = self.__get_storage_oper(storage)
+        if not storage_oper:
+            logger.error(f"不支持 {storage} 的配置保存")
+            return
+        storage_oper.set_config(conf)
 
     def generate_qrcode(self, storage: str) -> Optional[Dict[str, str]]:
         """
