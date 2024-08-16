@@ -26,10 +26,12 @@ class UserBase(BaseModel):
     @validator('permissions', 'settings', pre=True)
     def parse_json_fields(cls, value):
         if value:
-            try:
-                return json.loads(value)
-            except json.JSONDecodeError:
-                raise ValueError(f"Invalid JSON string: {value}")
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    return {}
+            return value
         return {}
 
     class Config:
