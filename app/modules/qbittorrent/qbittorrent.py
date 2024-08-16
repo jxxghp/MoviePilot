@@ -6,7 +6,6 @@ from qbittorrentapi import TorrentDictionary, TorrentFilesList
 from qbittorrentapi.client import Client
 from qbittorrentapi.transfer import TransferInfoDictionary
 
-from app.core.config import settings
 from app.log import logger
 
 
@@ -15,17 +14,36 @@ class Qbittorrent:
     _port: int = None
     _username: str = None
     _password: str = None
+    _category: bool = False
+    _sequentail: bool = False
+    _force_resume: bool = False
 
     qbc: Client = None
 
-    def __init__(self, host: str = None, port: int = None, username: str = None, password: str = None, **kwargs):
+    def __init__(self, host: str = None, port: int = None,
+                 username: str = None, password: str = None,
+                 category: bool = False, sequentail: bool = False, force_resume: bool = False,
+                 **kwargs):
         """
         若不设置参数，则创建配置文件设置的下载器
         """
+        if not host:
+            logger.error("Qbittorrent配置不完整！")
+            return
         self._host = host
-        self._port = port
+        if not port:
+            # 从host中获取端口
+            if ":" in host:
+                host, port = host.split(":")
+                self._host = host
+                self._port = int(port)
+        else:
+            self._port = port
         self._username = username
         self._password = password
+        self._category = category
+        self._sequentail = sequentail
+        self._force_resume = force_resume
         if self._host and self._port:
             self.qbc = self.__login_qbittorrent()
 
@@ -246,7 +264,7 @@ class Qbittorrent:
             tags = None
 
         # 分类自动管理
-        if category and settings.QB_CATEGORY:
+        if category and self._category:
             is_auto = True
         else:
             is_auto = False
@@ -260,7 +278,7 @@ class Qbittorrent:
                                             is_paused=is_paused,
                                             tags=tags,
                                             use_auto_torrent_management=is_auto,
-                                            is_sequential_download=settings.QB_SEQUENTIAL,
+                                            is_sequential_download=self._sequentail,
                                             cookie=cookie,
                                             category=category,
                                             **kwargs)

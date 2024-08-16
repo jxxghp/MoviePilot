@@ -271,7 +271,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
             tags = ['已整理']
         server.set_torrent_tag(ids=hashs, tags=tags)
         # 移动模式删除种子
-        if settings.TRANSFER_TYPE in ["move", "rclone_move"]:
+        if settings.TRANSFER_TYPE in ["move"]:
             if self.remove_torrents(hashs):
                 logger.info(f"移动模式删除种子成功：{hashs} ")
             # 删除残留文件

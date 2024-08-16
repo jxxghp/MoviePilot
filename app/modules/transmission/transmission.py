@@ -22,15 +22,22 @@ class Transmission:
               "peersGettingFromUs", "peersSendingToUs", "uploadRatio", "uploadedEver", "downloadedEver", "downloadDir",
               "error", "errorString", "doneDate", "queuePosition", "activityDate", "trackers"]
 
-    def __init__(self, host: str, port: int, username: str = None, password: str = None, **kwargs):
+    def __init__(self, host: str = None, port: int = None, username: str = None, password: str = None, **kwargs):
         """
         若不设置参数，则创建配置文件设置的下载器
         """
-        if not host or not port:
+        if not host:
             logger.error("Transmission配置不完整！")
             return
         self._host = host
-        self._port = port
+        if not port:
+            # 从host中获取端口
+            if ":" in host:
+                host, port = host.split(":")
+                self._host = host
+                self._port = int(port)
+        else:
+            self._port = port
         self._username = username
         self._password = password
         if self._host and self._port:

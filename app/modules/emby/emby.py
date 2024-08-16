@@ -15,6 +15,11 @@ from app.utils.http import RequestUtils
 
 class Emby:
 
+    _host: str = None
+    _playhost: str = None
+    _apikey: str = None
+    user: Optional[Union[str, int]] = None
+
     def __init__(self, host: str = None, apikey: str = None, play_host: str = None, **kwargs):
         if not host or not apikey:
             logger.error("Emby服务器配置不完整！")
