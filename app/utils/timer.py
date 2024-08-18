@@ -1,6 +1,6 @@
+import datetime
 import random
 from typing import List
-import datetime
 
 
 class TimerUtils:
@@ -40,6 +40,35 @@ class TimerUtils:
             trigger.append(random_trigger)
 
         return trigger
+
+    @staticmethod
+    def random_even_scheduler(num_executions: int = 1,
+                              begin_hour: int = 7,
+                              end_hour: int = 23) -> List[datetime.datetime]:
+        """
+        按执行次数尽可能平均生成随机定时器
+        :param num_executions: 执行次数
+        :param begin_hour: 计划范围开始的小时数
+        :param end_hour: 计划范围结束的小时数
+        """
+        trigger_times = []
+        start_time = datetime.datetime.now().replace(hour=begin_hour, minute=0, second=0, microsecond=0)
+        end_time = datetime.datetime.now().replace(hour=end_hour, minute=0, second=0, microsecond=0)
+
+        # 计算范围内的总分钟数
+        total_minutes = int((end_time - start_time).total_seconds() / 60)
+        # 计算每个执行时间段的平均长度
+        segment_length = total_minutes // num_executions
+
+        for i in range(num_executions):
+            # 在每个段内随机选择一个点
+            start_segment = segment_length * i
+            end_segment = start_segment + segment_length
+            minute = random.randint(start_segment, end_segment - 1)
+            trigger_time = start_time + datetime.timedelta(minutes=minute)
+            trigger_times.append(trigger_time)
+
+        return trigger_times
 
     @staticmethod
     def time_difference(input_datetime: datetime) -> str:
