@@ -83,6 +83,7 @@ class ChainBase(metaclass=ABCMeta):
     def run_module(self, method: str, *args, **kwargs) -> Any:
         """
         运行包含该方法的所有模块，然后返回结果
+        当kwargs包含命名参数raise_exception时，如模块方法抛出异常且raise_exception为True，则同步抛出异常
         """
 
         def is_result_empty(ret):
@@ -121,6 +122,8 @@ class ChainBase(metaclass=ABCMeta):
                     # 中止继续执行
                     break
             except Exception as err:
+                if kwargs.get("raise_exception"):
+                    raise
                 logger.error(
                     f"运行模块 {module_id}.{method} 出错：{str(err)}\n{traceback.format_exc()}")
                 self.messagehelper.put(title=f"{module_name}发生了错误",
@@ -170,7 +173,8 @@ class ChainBase(metaclass=ABCMeta):
                                tmdbid=tmdbid, doubanid=doubanid, bangumiid=bangumiid, cache=cache)
 
     def match_doubaninfo(self, name: str, imdbid: str = None,
-                         mtype: MediaType = None, year: str = None, season: int = None) -> Optional[dict]:
+                         mtype: MediaType = None, year: str = None, season: int = None,
+                         raise_exception: bool = False) -> Optional[dict]:
         """
         搜索和匹配豆瓣信息
         :param name: 标题
@@ -178,9 +182,10 @@ class ChainBase(metaclass=ABCMeta):
         :param mtype: 类型
         :param year: 年份
         :param season: 季
+        :param raise_exception: 触发速率限制时是否抛出异常
         """
         return self.run_module("match_doubaninfo", name=name, imdbid=imdbid,
-                               mtype=mtype, year=year, season=season)
+                               mtype=mtype, year=year, season=season, raise_exception=raise_exception)
 
     def match_tmdbinfo(self, name: str, mtype: MediaType = None,
                        year: str = None, season: int = None) -> Optional[dict]:
@@ -218,14 +223,16 @@ class ChainBase(metaclass=ABCMeta):
                                image_prefix=image_prefix, image_type=image_type,
                                season=season, episode=episode)
 
-    def douban_info(self, doubanid: str, mtype: MediaType = None) -> Optional[dict]:
+    def douban_info(self, doubanid: str, mtype: MediaType = None,
+                    raise_exception: bool = False) -> Optional[dict]:
         """
         获取豆瓣信息
         :param doubanid: 豆瓣ID
         :param mtype: 媒体类型
         :return: 豆瓣信息
+        :param raise_exception: 触发速率限制时是否抛出异常
         """
-        return self.run_module("douban_info", doubanid=doubanid, mtype=mtype)
+        return self.run_module("douban_info", doubanid=doubanid, mtype=mtype, raise_exception=raise_exception)
 
     def tvdb_info(self, tvdbid: int) -> Optional[dict]:
         """

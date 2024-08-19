@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     AUTO_UPDATE_RESOURCE: bool = True
     # 是否启用DOH解析域名
     DOH_ENABLE: bool = True
+    # 使用 DOH 解析的域名列表
+    DOH_DOMAINS: str = "api.themoviedb.org,api.tmdb.org,webservice.fanart.tv,api.github.com,github.com,raw.githubusercontent.com,api.telegram.org"
+    # DOH 解析服务器列表
+    DOH_RESOLVERS: str = "1.0.0.1,1.1.1.1,9.9.9.9,149.112.112.112"
     # 支持的后缀格式
     RMT_MEDIAEXT: list = ['.mp4', '.mkv', '.ts', '.iso',
                           '.rmvb', '.avi', '.mov', '.mpeg',
@@ -150,6 +154,8 @@ class Settings(BaseSettings):
     GITHUB_PROXY: Optional[str] = ''
     # pip镜像站点，格式：https://pypi.tuna.tsinghua.edu.cn/simple
     PIP_PROXY: Optional[str] = ''
+    # 指定的仓库Github token，多个仓库使用,分隔，格式：{user1}/{repo1}:ghp_****,{user2}/{repo2}:github_pat_****
+    REPO_GITHUB_TOKEN: Optional[str] = None
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
 
@@ -307,6 +313,37 @@ class Settings(BaseSettings):
         else:
             PIP_OPTIONS = ""
         return PIP_OPTIONS
+
+    def REPO_GITHUB_HEADERS(self, repo: str = None):
+        """
+        Github指定的仓库请求头
+        :param repo: 指定的仓库名称，格式为 "user/repo"。如果为空，或者没有找到指定仓库请求头，则返回默认的请求头信息
+        :return: Github请求头
+        """
+        # 如果没有传入指定的仓库名称，或没有配置指定的仓库Token，则返回默认的请求头信息
+        if not repo or not self.REPO_GITHUB_TOKEN:
+            return self.GITHUB_HEADERS
+        headers = {}
+        # 格式：{user1}/{repo1}:ghp_****,{user2}/{repo2}:github_pat_****
+        token_pairs = self.REPO_GITHUB_TOKEN.split(",")
+        for token_pair in token_pairs:
+            try:
+                parts = token_pair.split(":")
+                if len(parts) != 2:
+                    print(f"无效的令牌格式: {token_pair}")
+                    continue
+                repo_info = parts[0].strip()
+                token = parts[1].strip()
+                if not repo_info or not token:
+                    print(f"无效的令牌或仓库信息: {token_pair}")
+                    continue
+                headers[repo_info] = {
+                    "Authorization": f"Bearer {token}"
+                }
+            except Exception as e:
+                print(f"处理令牌对 '{token_pair}' 时出错: {e}")
+        # 如果传入了指定的仓库名称，则返回该仓库的请求头信息，否则返回默认请求头
+        return headers.get(repo, self.GITHUB_HEADERS)
 
     @property
     def VAPID(self):

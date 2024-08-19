@@ -180,9 +180,9 @@ class SubscribeChain(ChainBase):
             else:
                 text = f"评分：{mediainfo.vote_average}"
             if mediainfo.type == MediaType.TV:
-                link = settings.MP_DOMAIN('#/subscribe-tv?tab=mysub')
+                link = settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
             else:
-                link = settings.MP_DOMAIN('#/subscribe-movie?tab=mysub')
+                link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
             # 订阅成功按规则发送消息
             self.post_message(Notification(mtype=NotificationType.Subscribe,
                                            title=f"{mediainfo.title_year} {metainfo.season} 已添加订阅",
@@ -899,9 +899,9 @@ class SubscribeChain(ChainBase):
         self.subscribeoper.delete(subscribe.id)
         # 发送通知
         if mediainfo.type == MediaType.TV:
-            link = settings.MP_DOMAIN('#/subscribe-tv?tab=mysub')
+            link = settings.MP_DOMAIN('#/subscribe/tv?tab=mysub')
         else:
-            link = settings.MP_DOMAIN('#/subscribe-movie?tab=mysub')
+            link = settings.MP_DOMAIN('#/subscribe/movie?tab=mysub')
         # 完成订阅按规则发送消息
         self.post_message(Notification(mtype=NotificationType.Subscribe,
                                        title=f'{mediainfo.title_year} {meta.season} 已完成{msgstr}',

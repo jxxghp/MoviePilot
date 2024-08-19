@@ -1,11 +1,13 @@
 import concurrent
 import concurrent.futures
+import importlib.util
 import inspect
+import os
 import threading
 import time
 import traceback
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Type
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -19,6 +21,7 @@ from app.helper.module import ModuleHelper
 from app.helper.plugin import PluginHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
+from app.utils.crypto import RSAUtils
 from app.schemas.types import SystemConfigKey
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
@@ -158,11 +161,12 @@ class PluginManager(metaclass=Singleton):
             if pid and plugin_id != pid:
                 continue
             try:
-                # 如果插件具有认证级别且当前认证级别不足，则不进行实例化
-                if hasattr(plugin, "auth_level"):
-                    plugin.auth_level = plugin.auth_level
-                    if self.siteshelper.auth_level < plugin.auth_level:
-                        continue
+                # 判断插件是否满足认证要求，如不满足则不进行实例化
+                if not self.__set_and_check_auth_level(plugin=plugin):
+                    # 如果是插件热更新实例，这里则进行替换
+                    if plugin_id in self._plugins:
+                        self._plugins[plugin_id] = plugin
+                    continue
                 # 存储Class
                 self._plugins[plugin_id] = plugin
                 # 未安装的不加载
@@ -220,8 +224,6 @@ class PluginManager(metaclass=Singleton):
             # 清空指定插件
             if pid in self._running_plugins:
                 self._running_plugins.pop(pid)
-            if pid in self._plugins:
-                self._plugins.pop(pid)
         else:
             # 清空
             self._plugins = {}
@@ -602,11 +604,12 @@ class PluginManager(metaclass=Singleton):
                 if plugin_obj and hasattr(plugin_obj, "get_page"):
                     if ObjectUtils.check_method(plugin_obj.get_page):
                         plugin.has_page = True
+                # 公钥
+                if plugin_info.get("key"):
+                    plugin.plugin_public_key = plugin_info.get("key")
                 # 权限
-                if plugin_info.get("level"):
-                    plugin.auth_level = plugin_info.get("level")
-                    if self.siteshelper.auth_level < plugin.auth_level:
-                        continue
+                if not self.__set_and_check_auth_level(plugin=plugin, source=plugin_info):
+                    continue
                 # 名称
                 if plugin_info.get("name"):
                     plugin.plugin_name = plugin_info.get("name")
@@ -709,11 +712,12 @@ class PluginManager(metaclass=Singleton):
                     plugin.has_page = True
                 else:
                     plugin.has_page = False
+            # 公钥
+            if hasattr(plugin_class, "plugin_public_key"):
+                plugin.plugin_public_key = plugin_class.plugin_public_key
             # 权限
-            if hasattr(plugin_class, "auth_level"):
-                plugin.auth_level = plugin_class.auth_level
-                if self.siteshelper.auth_level < plugin.auth_level:
-                    continue
+            if not self.__set_and_check_auth_level(plugin=plugin, source=plugin_class):
+                continue
             # 名称
             if hasattr(plugin_class, "plugin_name"):
                 plugin.plugin_name = plugin_class.plugin_name
@@ -748,10 +752,70 @@ class PluginManager(metaclass=Singleton):
     @staticmethod
     def is_plugin_exists(pid: str) -> bool:
         """
-        判断插件是否在本地文件系统存在
+        判断插件是否在本地包中存在
         :param pid: 插件ID
         """
         if not pid:
             return False
-        plugin_dir = settings.ROOT_PATH / "app" / "plugins" / pid.lower()
-        return plugin_dir.exists()
+        try:
+            # 构建包名
+            package_name = f"app.plugins.{pid.lower()}"
+            # 检查包是否存在
+            package_exists = importlib.util.find_spec(package_name) is not None
+            logger.debug(f"{pid} exists: {package_exists}")
+            return package_exists
+        except Exception as e:
+            logger.debug(f"获取插件是否在本地包中存在失败，{e}")
+            return False
+
+    def __set_and_check_auth_level(self, plugin: Union[schemas.Plugin, Type[Any]],
+                                   source: Optional[Union[dict, Type[Any]]] = None) -> bool:
+        """
+        设置并检查插件的认证级别
+        :param plugin: 插件对象或包含 auth_level 属性的对象
+        :param source: 可选的字典对象或类对象，可能包含 "level" 或 "auth_level" 键
+        :return: 如果插件的认证级别有效且当前环境的认证级别满足要求，返回 True，否则返回 False
+        """
+        # 检查并赋值 source 中的 level 或 auth_level
+        if source:
+            if isinstance(source, dict) and "level" in source:
+                plugin.auth_level = source.get("level")
+            elif hasattr(source, "auth_level"):
+                plugin.auth_level = source.auth_level
+        # 如果 source 为空且 plugin 本身没有 auth_level，直接返回 True
+        elif not hasattr(plugin, "auth_level"):
+            return True
+
+        # auth_level 级别说明
+        # 1 - 所有用户可见
+        # 2 - 站点认证用户可见
+        # 3 - 站点&密钥认证可见
+        # 99 - 站点&特殊密钥认证可见
+        # 如果当前站点认证级别大于 1 且插件级别为 99，并存在插件公钥，说明为特殊密钥认证，通过密钥匹配进行认证
+        if self.siteshelper.auth_level > 1 and plugin.auth_level == 99 and hasattr(plugin, "plugin_public_key"):
+            plugin_id = plugin.id if isinstance(plugin, schemas.Plugin) else plugin.__name__
+            public_key = plugin.plugin_public_key
+            if public_key:
+                private_key = PluginManager.__get_plugin_private_key(plugin_id)
+                verify = RSAUtils.verify_rsa_keys(public_key=public_key, private_key=private_key)
+                return verify
+        # 如果当前站点认证级别小于插件级别，则返回 False
+        if self.siteshelper.auth_level < plugin.auth_level:
+            return False
+        return True
+
+    @staticmethod
+    def __get_plugin_private_key(plugin_id: str) -> Optional[str]:
+        """
+        根据插件标识获取对应的私钥
+        :param plugin_id: 插件标识
+        :return: 对应的插件私钥，如果未找到则返回 None
+        """
+        try:
+            # 将插件标识转换为大写并构建环境变量名称
+            env_var_name = f"PLUGIN_{plugin_id.upper()}_PRIVATE_KEY"
+            private_key = os.environ.get(env_var_name)
+            return private_key
+        except Exception as e:
+            logger.debug(f"获取插件 {plugin_id} 的私钥时发生错误：{e}")
+            return None

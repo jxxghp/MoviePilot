@@ -1,3 +1,4 @@
+import copy
 import importlib
 import threading
 import traceback
@@ -194,7 +195,7 @@ class Command(metaclass=Singleton):
                             # 插件事件
                             self.threader.submit(
                                 self.pluginmanager.run_plugin_method,
-                                class_name, method_name, event
+                                class_name, method_name, copy.deepcopy(event)
                             )
 
                         else:
@@ -217,7 +218,7 @@ class Command(metaclass=Singleton):
                             if hasattr(class_obj, method_name):
                                 self.threader.submit(
                                     getattr(class_obj, method_name),
-                                    event
+                                    copy.deepcopy(event)
                                 )
                     except Exception as e:
                         logger.error(f"事件处理出错：{str(e)} - {traceback.format_exc()}")

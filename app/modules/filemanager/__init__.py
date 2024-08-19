@@ -487,12 +487,13 @@ class FileManagerModule(_ModuleBase):
         """
         # 字幕正则式
         _zhcn_sub_re = r"([.\[(](((zh[-_])?(cn|ch[si]|sg|sc))|zho?" \
-                       r"|chinese|(cn|ch[si]|sg|zho?|eng)[-_&](cn|ch[si]|sg|zho?|eng)" \
+                       r"|chinese|(cn|ch[si]|sg|zho?|eng)[-_&]?(cn|ch[si]|sg|zho?|eng)" \
                        r"|简[体中]?)[.\])])" \
                        r"|([\u4e00-\u9fa5]{0,3}[中双][\u4e00-\u9fa5]{0,2}[字文语][\u4e00-\u9fa5]{0,3})" \
                        r"|简体|简中|JPSC" \
                        r"|(?<![a-z0-9])gb(?![a-z0-9])"
         _zhtw_sub_re = r"([.\[(](((zh[-_])?(hk|tw|cht|tc))" \
+                       r"|(cht|eng)[-_&]?(cht|eng)" \
                        r"|繁[体中]?)[.\])])" \
                        r"|繁体中[文字]|中[文字]繁体|繁体|JPTC" \
                        r"|(?<![a-z0-9])big5(?![a-z0-9])"
@@ -987,6 +988,10 @@ class FileManagerModule(_ModuleBase):
             "en_name": meta.en_name,
             # 年份
             "year": mediainfo.year or meta.year,
+            # 季年份根据season值获取
+            "season_year": mediainfo.season_years.get(
+                int(meta.season_seq),
+                None) if (mediainfo.season_years and meta.season_seq) else None,
             # 资源类型
             "resourceType": meta.resource_type,
             # 特效

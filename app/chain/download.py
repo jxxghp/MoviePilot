@@ -76,6 +76,8 @@ class DownloadChain(ChainBase):
             msg_text = f"{msg_text}\n促销：{torrent.volume_factor}"
         if torrent.hit_and_run:
             msg_text = f"{msg_text}\nHit&Run：是"
+        if torrent.labels:
+            msg_text = f"{msg_text}\n标签：{' '.join(torrent.labels)}"
         if torrent.description:
             html_re = re.compile(r'<[^>]+>', re.S)
             description = html_re.sub('', torrent.description)

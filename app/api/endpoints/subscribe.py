@@ -387,6 +387,17 @@ def popular_subscribes(
     return []
 
 
+@router.get("/user/{username}", summary="用户订阅", response_model=List[schemas.Subscribe])
+def user_subscribes(
+        username: str,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询用户订阅
+    """
+    return Subscribe.list_by_username(db, username)
+
+
 @router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
 def read_subscribe(
         subscribe_id: int,

@@ -15,38 +15,19 @@ from typing import Dict, Optional
 from app.core.config import settings
 from app.log import logger
 
-# 定义一个全局集合来存储注册的主机
-_registered_hosts = {
-    'api.themoviedb.org',
-    'api.tmdb.org',
-    'webservice.fanart.tv',
-    'api.github.com',
-    'github.com',
-    'raw.githubusercontent.com',
-    'api.telegram.org'
-}
-
 # 定义一个全局线程池执行器
 _executor = concurrent.futures.ThreadPoolExecutor()
 
 # 定义默认的DoH配置
 _doh_timeout = 5
 _doh_cache: Dict[str, str] = {}
-_doh_resolvers = [
-    # https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https
-    "1.0.0.1",
-    "1.1.1.1",
-    # https://support.quad9.net/hc/en-us
-    "9.9.9.9",
-    "149.112.112.112"
-]
 
 
 def _patched_getaddrinfo(host, *args, **kwargs):
     """
     socket.getaddrinfo的补丁版本。
     """
-    if host not in _registered_hosts:
+    if host not in settings.DOH_DOMAINS.split(","):
         return _orig_getaddrinfo(host, *args, **kwargs)
 
     # 检查主机是否已解析
@@ -57,7 +38,7 @@ def _patched_getaddrinfo(host, *args, **kwargs):
 
     # 使用DoH解析主机
     futures = []
-    for resolver in _doh_resolvers:
+    for resolver in settings.DOH_RESOLVERS.split(","):
         futures.append(_executor.submit(_doh_query, resolver, host))
 
     for future in concurrent.futures.as_completed(futures):
