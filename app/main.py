@@ -3,6 +3,7 @@ import os
 import signal
 import sys
 import threading
+from contextlib import asynccontextmanager
 from types import FrameType
 
 import uvicorn as uvicorn
@@ -41,9 +42,21 @@ from app.command import Command, CommandChian
 from app.schemas import Notification, NotificationType
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        print("Starting up...")
+        start_module()
+        yield
+    finally:
+        print("Shutting down...")
+        shutdown_server()
+
+
 # App
 App = FastAPI(title=settings.PROJECT_NAME,
-              openapi_url=f"{settings.API_V1_STR}/openapi.json")
+              openapi_url=f"{settings.API_V1_STR}/openapi.json",
+              lifespan=lifespan)
 
 # 跨域
 App.add_middleware(
@@ -189,7 +202,6 @@ def singal_handle():
     signal.signal(signal.SIGINT, stop_event)
 
 
-@App.on_event("shutdown")
 def shutdown_server():
     """
     服务关闭
@@ -213,7 +225,6 @@ def shutdown_server():
     stop_frontend()
 
 
-@App.on_event("startup")
 def start_module():
     """
     启动模块
