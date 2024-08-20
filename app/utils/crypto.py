@@ -8,15 +8,15 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 class RSAUtils:
 
     @staticmethod
-    def generate_rsa_key_pair() -> (str, str):
+    def generate_rsa_key_pair(key_size: int = 2048) -> (str, str):
         """
-        生成RSA密钥对并返回Base64编码的公钥和私钥（DER格式）
-        :return: Tuple containing Base64 encoded public key and private key
+        生成RSA密钥对
+        :return: 私钥和公钥（Base64 编码，无标识符）
         """
         # 生成RSA密钥对
         private_key = rsa.generate_private_key(
             public_exponent=65537,
-            key_size=2048,
+            key_size=key_size,
         )
 
         public_key = private_key.public_key()
@@ -35,15 +35,16 @@ class RSAUtils:
         )
 
         # 将DER格式的密钥编码为Base64
-        private_key_b64 = base64.b64encode(private_key_der).decode('utf-8')
-        public_key_b64 = base64.b64encode(public_key_der).decode('utf-8')
+        private_key_b64 = base64.b64encode(private_key_der).decode("utf-8")
+        public_key_b64 = base64.b64encode(public_key_der).decode("utf-8")
 
         return private_key_b64, public_key_b64
 
     @staticmethod
     def verify_rsa_keys(private_key: str, public_key: str) -> bool:
         """
-        使用 RSA 验证公钥和私钥是否匹配
+        使用 RSA 验证私钥和公钥是否匹配
+
         :param private_key: 私钥字符串 (Base64 编码，无标识符)
         :param public_key: 公钥字符串 (Base64 编码，无标识符)
         :return: 如果匹配则返回 True，否则返回 False
