@@ -1,0 +1,9 @@
+security:
+  ignore-unpinned-requirements: False
+  ignore-vulnerabilities:
+    70612:
+      reason: The official statement indicates that this vulnerability is not valid because users should use sandboxing when handling untrusted templates.
+    65532:
+      reason: Legacy issue related to tvdbapi usage.
+    40100:
+      reason: Legacy issue related to tvdbapi usage.
