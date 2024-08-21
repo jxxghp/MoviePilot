@@ -8,10 +8,10 @@ from app.core.config import settings
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
+from app.utils.url import UrlUtils
 
 
 class Jellyfin:
-
     _host: str = None
     _apikey: str = None
     _playhost: str = None
@@ -23,10 +23,10 @@ class Jellyfin:
             return
         self._host = host
         if self._host:
-            self._host = RequestUtils.standardize_base_url(self._host)
+            self._host = UrlUtils.standardize_base_url(self._host)
         self._playhost = play_host
         if self._playhost:
-            self._playhost = RequestUtils.standardize_base_url(self._playhost)
+            self._playhost = UrlUtils.standardize_base_url(self._playhost)
         self._apikey = apikey
         self.user = self.get_user(settings.SUPERUSER)
         self.serverid = self.get_server_id()
