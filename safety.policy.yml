@@ -7,3 +7,9 @@ security:
       reason: Legacy issue related to tvdbapi usage.
     40100:
       reason: Legacy issue related to tvdbapi usage.
+    68094:
+      reason: This vulnerability is resolved by upgrading `python-multipart` to version 0.0.9.
+    65293:
+      reason: This vulnerability is resolved by upgrading `python-multipart` to version 0.0.9.
+    64930:
+      reason: This vulnerability is resolved by upgrading `python-multipart` to version 0.0.9.
