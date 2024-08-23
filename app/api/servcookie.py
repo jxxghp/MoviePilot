@@ -1,8 +1,6 @@
 import gzip
 import json
-from hashlib import md5
-from typing import Annotated, Callable
-from typing import Any, Dict, Optional
+from typing import Annotated, Callable, Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from fastapi.responses import PlainTextResponse
@@ -11,7 +9,7 @@ from fastapi.routing import APIRoute
 from app import schemas
 from app.core.config import settings
 from app.log import logger
-from app.utils.common import decrypt
+from app.utils.crypto import CryptoJsUtils, HashUtils
 
 
 class GzipRequest(Request):
@@ -47,7 +45,7 @@ async def verify_server_enabled():
 
 
 cookie_router = APIRouter(route_class=GzipRoute,
-                          tags=['servcookie'],
+                          tags=["servcookie"],
                           dependencies=[Depends(verify_server_enabled)])
 
 
@@ -100,15 +98,14 @@ def get_decrypted_cookie_data(uuid: str, password: str,
     """
     加载本地加密数据并解密为Cookie
     """
-    key_md5 = md5()
-    key_md5.update((uuid + '-' + password).encode('utf-8'))
-    aes_key = (key_md5.hexdigest()[:16]).encode('utf-8')
+    combined_string = f"{uuid}-{password}"
+    aes_key = HashUtils.md5(combined_string)[:16].encode("utf-8")
 
     if encrypted:
         try:
-            decrypted_data = decrypt(encrypted, aes_key).decode('utf-8')
+            decrypted_data = CryptoJsUtils.decrypt(encrypted, aes_key).decode("utf-8")
             decrypted_data = json.loads(decrypted_data)
-            if 'cookie_data' in decrypted_data:
+            if "cookie_data" in decrypted_data:
                 return decrypted_data
         except Exception as e:
             logger.error(f"解密Cookie数据失败：{str(e)}")

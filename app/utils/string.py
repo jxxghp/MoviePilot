@@ -12,7 +12,6 @@ import dateutil.parser
 
 from app.schemas.types import MediaType
 
-
 _special_domains = [
     'u2.dmhy.org',
     'pt.ecust.pp.ua',
@@ -788,3 +787,11 @@ class StringUtils:
             return f'{diff_minutes}分钟'
         else:
             return ''
+
+    @staticmethod
+    def safe_strip(value) -> Optional[str]:
+        """
+        去除字符串两端的空白字符
+        :return: 如果输入值不是 None，返回去除空白字符后的字符串，否则返回 None
+        """
+        return value.strip() if value is not None else None
