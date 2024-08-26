@@ -7,6 +7,7 @@ from requests import Session, Response
 from urllib3.exceptions import InsecureRequestWarning
 
 from app.log import logger
+from app.utils.url import UrlUtils
 
 urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -253,7 +254,7 @@ class RequestUtils:
             return None
         if endpoint.startswith(("http://", "https://")):
             return endpoint
-        host = RequestUtils.standardize_base_url(host)
+        host = UrlUtils.standardize_base_url(host)
         return urljoin(host, endpoint) if host else endpoint
 
     @staticmethod
@@ -269,7 +270,7 @@ class RequestUtils:
             # 如果路径为空，则默认为 '/'
             if path is None:
                 path = '/'
-            host = RequestUtils.standardize_base_url(host)
+            host = UrlUtils.standardize_base_url(host)
             # 使用 urljoin 合并 host 和 path
             url = urljoin(host, path)
             # 解析当前 URL 的组成部分

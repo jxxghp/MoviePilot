@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
+from app.utils.url import UrlUtils
 
 
 class Plex:
@@ -25,10 +26,10 @@ class Plex:
             return
         self._host = host
         if self._host:
-            self._host = RequestUtils.standardize_base_url(self._host)
+            self._host = UrlUtils.standardize_base_url(self._host)
         self._playhost = play_host
         if self._playhost:
-            self._playhost = RequestUtils.standardize_base_url(self._playhost)
+            self._playhost = UrlUtils.standardize_base_url(self._playhost)
         self._token = token
         if self._host and self._token:
             try:
