@@ -1,4 +1,5 @@
 FROM python:3.11.4-slim-bookworm
+ARG GITHUB_ACTIONS_ENV
 ARG MOVIEPILOT_VERSION
 ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
@@ -15,6 +16,10 @@ ENV LANG="C.UTF-8" \
     AUTH_SITE="iyuu" \
     IYUU_SIGN=""
 WORKDIR "/app"
+RUN if [ "$GITHUB_ACTIONS" != "true" ]; then \
+        sed -i '0,/http:\/\/deb.debian.org\/debian/s//https:\/\/mirrors.tuna.tsinghua.edu.cn\/debian/' /etc/apt/sources.list.d/debian.sources; \
+        pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple; \
+    fi
 RUN apt-get update -y \
     && apt-get upgrade -y \
     && apt-get -y install \
