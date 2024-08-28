@@ -30,7 +30,7 @@ router = APIRouter()
 
 
 @router.get("/img/{proxy}", summary="图片代理")
-def get_img(imgurl: str, proxy: bool = False) -> Any:
+def proxy_img(imgurl: str, proxy: bool = False) -> Any:
     """
     通过图片代理（使用代理服务器）
     """
@@ -43,6 +43,30 @@ def get_img(imgurl: str, proxy: bool = False) -> Any:
     if response:
         return Response(content=response.content, media_type="image/jpeg")
     return None
+
+
+@router.get("/cache/image", summary="图片缓存")
+def cache_img(url: str) -> Any:
+    """
+    本地缓存图片文件，可选是否使用代理服务器下载图片
+    """
+    # 获取Url中除域名外的路径
+    url_path = "/".join(url.split('/')[3:])
+    # 生成缓存文件路径
+    cache_path = settings.TEMP_PATH / url_path
+    # 如果缓存文件不存在，下载图片并保存
+    if not cache_path.exists():
+        response = RequestUtils(ua=settings.USER_AGENT).get_res(url=url)
+        if response:
+            if not cache_path.parent.exists():
+                cache_path.parent.mkdir(parents=True)
+            with open(cache_path, 'wb') as f:
+                f.write(response.content)
+            return Response(content=response.content, media_type="image/jpeg")
+        else:
+            return None
+    else:
+        return Response(content=cache_path.read_bytes(), media_type="image/jpeg")
 
 
 @router.get("/env", summary="查询系统环境变量", response_model=schemas.Response)

@@ -46,6 +46,7 @@ class Transmission:
         """
         try:
             # 登录
+            logger.info(f"正在连接 transmission：{self._host}:{self._port}")
             trt = transmission_rpc.Client(host=self._host,
                                           port=self._port,
                                           username=self._username,

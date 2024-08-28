@@ -64,6 +64,7 @@ class Qbittorrent:
         """
         try:
             # 登录
+            logger.info(f"正在连接 qbittorrent：{self._host}:{self._port}")
             qbt = qbittorrentapi.Client(host=self._host,
                                         port=self._port,
                                         username=self._username,

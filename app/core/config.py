@@ -158,6 +158,8 @@ class Settings(BaseSettings):
     REPO_GITHUB_TOKEN: Optional[str] = None
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
+    # 全局图片缓存
+    GLOBAL_IMAGE_CACHE: bool = False
 
     @validator("SUBSCRIBE_RSS_INTERVAL",
                "COOKIECLOUD_INTERVAL",
