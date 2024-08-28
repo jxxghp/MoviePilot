@@ -1,5 +1,6 @@
 from typing import List, Any
 
+import requests
 from fastapi import APIRouter, Depends, Response
 
 from app import schemas
@@ -18,13 +19,34 @@ def douban_img(imgurl: str) -> Any:
     """
     豆瓣图片代理
     """
+
+    def __download_image(url: str) -> requests.Response:
+        return RequestUtils(headers={
+            'Referer': "https://movie.douban.com/"
+        }, ua=settings.USER_AGENT).get_res(url=url)
+
     if not imgurl:
         return None
-    response = RequestUtils(headers={
-        'Referer': "https://movie.douban.com/"
-    }, ua=settings.USER_AGENT).get_res(url=imgurl)
-    if response:
-        return Response(content=response.content, media_type="image/jpeg")
+    if settings.GLOBAL_IMAGE_CACHE:
+        # 获取Url中除域名外的路径
+        url_path = "/".join(imgurl.split('/')[3:])
+        # 生成缓存文件路径
+        cache_path = settings.TEMP_PATH / url_path
+        # 如果缓存文件不存在，下载图片并保存
+        if not cache_path.exists():
+            response = __download_image(imgurl)
+            if response:
+                if not cache_path.parent.exists():
+                    cache_path.parent.mkdir(parents=True)
+                with open(cache_path, 'wb') as f:
+                    f.write(response.content)
+                return Response(content=response.content, media_type="image/jpeg")
+        else:
+            return Response(content=cache_path.read_bytes(), media_type="image/jpeg")
+    else:
+        response = __download_image(imgurl)
+        if response:
+            return Response(content=response.content, media_type="image/jpeg")
     return None
 
 
