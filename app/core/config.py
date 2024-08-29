@@ -44,14 +44,14 @@ class Settings(BaseSettings):
     DB_ECHO: bool = False
     # 是否在获取连接时进行预先 ping 操作，默认开启
     DB_POOL_PRE_PING: bool = True
-    # 数据库连接池的大小，默认 1024
-    DB_POOL_SIZE: int = 1024
+    # 数据库连接池的大小，默认 100
+    DB_POOL_SIZE: int = 100
     # 数据库连接的回收时间（秒），默认 3600 秒（1 小时）
     DB_POOL_RECYCLE: int = 3600
     # 数据库连接池获取连接的超时时间（秒），默认 180 秒
     DB_POOL_TIMEOUT: int = 180
-    # 数据库连接池最大溢出连接数，默认 10
-    DB_MAX_OVERFLOW: int = 10
+    # 数据库连接池最大溢出连接数，默认 5
+    DB_MAX_OVERFLOW: int = 5
     # SQLite 的 busy_timeout 参数，默认为 60 秒
     DB_TIMEOUT: int = 60
     # 配置文件目录
