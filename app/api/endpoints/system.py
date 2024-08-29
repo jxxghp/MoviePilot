@@ -53,7 +53,7 @@ def cache_img(url: str) -> Any:
     # 获取Url中除域名外的路径
     url_path = "/".join(url.split('/')[3:])
     # 生成缓存文件路径
-    cache_path = settings.TEMP_PATH / url_path
+    cache_path = settings.CACHE_PATH / 'images' / url_path
     # 豆瓣设置Referer
     referer = None
     if 'doubanio.com' in url:

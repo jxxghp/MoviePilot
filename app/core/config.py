@@ -158,7 +158,7 @@ class Settings(BaseSettings):
     REPO_GITHUB_TOKEN: Optional[str] = None
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
-    # 全局图片缓存
+    # 全局图片缓存，将媒体图片缓存到本地
     GLOBAL_IMAGE_CACHE: bool = False
 
     @validator("SUBSCRIBE_RSS_INTERVAL",
@@ -190,6 +190,10 @@ class Settings(BaseSettings):
     @property
     def TEMP_PATH(self):
         return self.CONFIG_PATH / "temp"
+
+    @property
+    def CACHE_PATH(self):
+        return self.CONFIG_PATH / "cache"
 
     @property
     def ROOT_PATH(self):

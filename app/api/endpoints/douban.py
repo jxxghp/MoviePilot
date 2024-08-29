@@ -31,7 +31,7 @@ def douban_img(imgurl: str) -> Any:
         # 获取Url中除域名外的路径
         url_path = "/".join(imgurl.split('/')[3:])
         # 生成缓存文件路径
-        cache_path = settings.TEMP_PATH / url_path
+        cache_path = settings.CACHE_PATH / 'images' / url_path
         # 如果缓存文件不存在，下载图片并保存
         if not cache_path.exists():
             response = __download_image(imgurl)
