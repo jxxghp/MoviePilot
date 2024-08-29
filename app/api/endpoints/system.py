@@ -32,7 +32,7 @@ router = APIRouter()
 @router.get("/img/{proxy}", summary="图片代理")
 def proxy_img(imgurl: str, proxy: bool = False) -> Any:
     """
-    通过图片代理（使用代理服务器）
+    图片代理，可选是否使用代理服务器
     """
     if not imgurl:
         return None
@@ -48,7 +48,7 @@ def proxy_img(imgurl: str, proxy: bool = False) -> Any:
 @router.get("/cache/image", summary="图片缓存")
 def cache_img(url: str) -> Any:
     """
-    本地缓存图片文件，可选是否使用代理服务器下载图片
+    本地缓存图片文件
     """
     # 获取Url中除域名外的路径
     url_path = "/".join(url.split('/')[3:])
@@ -73,13 +73,27 @@ def cache_img(url: str) -> Any:
         return Response(content=cache_path.read_bytes(), media_type="image/jpeg")
 
 
-@router.get("/env", summary="查询系统环境变量", response_model=schemas.Response)
+@router.get("/global", summary="查询非敏感系统设置", response_model=schemas.Response)
+def get_global_setting():
+    """
+    查询非敏感系统设置（无需鉴权）
+    """
+    # FIXME: 新增敏感配置项时要在此处添加排除项
+    info = settings.dict(
+        exclude={"SECRET_KEY", "API_TOKEN", "TMDB_API_KEY", "TVDB_API_KEY", "FANART_API_KEY",
+                 "COOKIECLOUD_KEY", "COOKIECLOUD_PASSWORD", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN"}
+    )
+    return schemas.Response(success=True,
+                            data=info)
+
+
+@router.get("/env", summary="查询系统配置", response_model=schemas.Response)
 def get_env_setting(_: User = Depends(get_current_active_superuser)):
     """
-    查询系统环境变量，包括当前版本号
+    查询系统环境变量，包括当前版本号（仅管理员）
     """
     info = settings.dict(
-        exclude={"SECRET_KEY", "SUPERUSER_PASSWORD"}
+        exclude={"SECRET_KEY", "API_TOKEN", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN"}
     )
     info.update({
         "VERSION": APP_VERSION,
@@ -91,11 +105,11 @@ def get_env_setting(_: User = Depends(get_current_active_superuser)):
                             data=info)
 
 
-@router.post("/env", summary="更新系统环境变量", response_model=schemas.Response)
+@router.post("/env", summary="更新系统配置", response_model=schemas.Response)
 def set_env_setting(env: dict,
                     _: User = Depends(get_current_active_superuser)):
     """
-    更新系统环境变量
+    更新系统环境变量（仅管理员）
     """
     for k, v in env.items():
         if k == "undefined":
@@ -140,7 +154,7 @@ def get_progress(process_type: str, token: str):
 def get_setting(key: str,
                 _: User = Depends(get_current_active_superuser)):
     """
-    查询系统设置
+    查询系统设置（仅管理员）
     """
     if hasattr(settings, key):
         value = getattr(settings, key)
@@ -155,7 +169,7 @@ def get_setting(key: str,
 def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
                 _: User = Depends(get_current_active_superuser)):
     """
-    更新系统设置
+    更新系统设置（仅管理员）
     """
     if hasattr(settings, key):
         if value == "None":
@@ -331,7 +345,7 @@ def moduletest(moduleid: str, _: schemas.TokenPayload = Depends(verify_token)):
 @router.get("/restart", summary="重启系统", response_model=schemas.Response)
 def restart_system(_: User = Depends(get_current_active_superuser)):
     """
-    重启系统
+    重启系统（仅管理员）
     """
     if not SystemUtils.can_restart():
         return schemas.Response(success=False, message="当前运行环境不支持重启操作！")
@@ -345,7 +359,7 @@ def restart_system(_: User = Depends(get_current_active_superuser)):
 @router.get("/reload", summary="重新加载模块", response_model=schemas.Response)
 def reload_module(_: User = Depends(get_current_active_superuser)):
     """
-    重新加载模块
+    重新加载模块（仅管理员）
     """
     ModuleManager().reload()
     Scheduler().init()
@@ -353,10 +367,10 @@ def reload_module(_: User = Depends(get_current_active_superuser)):
 
 
 @router.get("/runscheduler", summary="运行服务", response_model=schemas.Response)
-def execute_command(jobid: str,
-                    _: User = Depends(get_current_active_superuser)):
+def run_scheduler(jobid: str,
+                  _: User = Depends(get_current_active_superuser)):
     """
-    执行命令
+    执行命令（仅管理员）
     """
     if not jobid:
         return schemas.Response(success=False, message="命令不能为空！")
