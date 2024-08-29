@@ -54,9 +54,13 @@ def cache_img(url: str) -> Any:
     url_path = "/".join(url.split('/')[3:])
     # 生成缓存文件路径
     cache_path = settings.TEMP_PATH / url_path
+    # 豆瓣设置Referer
+    referer = None
+    if 'doubanio.com' in url:
+        referer = "https://movie.douban.com/"
     # 如果缓存文件不存在，下载图片并保存
     if not cache_path.exists():
-        response = RequestUtils(ua=settings.USER_AGENT).get_res(url=url)
+        response = RequestUtils(ua=settings.USER_AGENT, referer=referer).get_res(url=url)
         if response:
             if not cache_path.parent.exists():
                 cache_path.parent.mkdir(parents=True)
