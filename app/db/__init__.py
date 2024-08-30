@@ -1,25 +1,27 @@
 import json
-from typing import Any, Self, List
-from typing import Tuple, Optional, Generator
+from typing import Any, Self, List, Tuple, Optional, Generator
 
-from sqlalchemy import create_engine, QueuePool, and_
-from sqlalchemy import inspect
-from sqlalchemy.orm import declared_attr
-from sqlalchemy.orm import sessionmaker, Session, scoped_session, as_declarative
+from sqlalchemy import create_engine, QueuePool, and_, inspect
+from sqlalchemy.orm import declared_attr, sessionmaker, Session, scoped_session, as_declarative
 
 from app.core.config import settings
 from app.utils.object import ObjectUtils
 
 # 数据库引擎
-Engine = create_engine(f"sqlite:///{settings.CONFIG_PATH}/user.db",
-                       pool_pre_ping=True,
-                       echo=False,
-                       poolclass=QueuePool,
-                       pool_size=1024,
-                       pool_recycle=3600,
-                       pool_timeout=180,
-                       max_overflow=10,
-                       connect_args={"timeout": 60})
+Engine = create_engine(
+    url=f"sqlite:///{settings.CONFIG_PATH}/user.db",
+    pool_pre_ping=settings.DB_POOL_PRE_PING,
+    echo=settings.DB_ECHO,
+    poolclass=QueuePool,
+    pool_size=settings.DB_POOL_SIZE,
+    pool_recycle=settings.DB_POOL_RECYCLE,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    connect_args={
+        "timeout": settings.DB_TIMEOUT
+    }
+)
+
 # 会话工厂
 SessionFactory = sessionmaker(bind=Engine)
 
