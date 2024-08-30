@@ -363,7 +363,7 @@ class RssHelper:
                     return "", f"获取RSS链接失败：无法连接 {url} "
             # 解析HTML
             html = etree.HTML(html_text)
-            if html:
+            if StringUtils.is_valid_html_element(html):
                 rss_link = html.xpath(site_conf.get("xpath"))
                 if rss_link:
                     return str(rss_link[-1]), ""

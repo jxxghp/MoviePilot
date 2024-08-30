@@ -39,7 +39,7 @@ class IptSiteUserInfo(SiteParserBase):
 
     def _parse_user_detail_info(self, html_text: str):
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return
 
         user_levels_text = html.xpath('//tr/th[text()="Class"]/following-sibling::td[1]/text()')
@@ -53,7 +53,7 @@ class IptSiteUserInfo(SiteParserBase):
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Optional[str]:
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return
         # seeding start
         seeding_end_pos = 3

@@ -795,3 +795,13 @@ class StringUtils:
         :return: 如果输入值不是 None，返回去除空白字符后的字符串，否则返回 None
         """
         return value.strip() if value is not None else None
+
+    @staticmethod
+    def is_valid_html_element(elem) -> bool:
+        """
+        检查elem是否为有效的HTML元素。元素必须为非None并且具有非零长度。
+
+        :param elem: 要检查的HTML元素
+        :return: 如果elem有效（非None且长度大于0），返回True；否则返回False
+        """
+        return elem is not None and len(elem) > 0

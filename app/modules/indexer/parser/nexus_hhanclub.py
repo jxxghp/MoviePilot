@@ -42,7 +42,7 @@ class NexusHhanclubSiteUserInfo(NexusPhpSiteUserInfo):
         super()._parse_user_detail_info(html_text)
 
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return
         # 加入时间
         join_at_text = html.xpath('//*[@id="mainContent"]/div/div[2]/div[4]/div[3]/span[2]/text()[1]')

@@ -1,5 +1,7 @@
 from lxml import etree
 
+from app.utils.string import StringUtils
+
 
 class SiteUtils:
 
@@ -11,7 +13,7 @@ class SiteUtils:
         :return:
         """
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return False
         # 存在明显的密码输入框，说明未登录
         if html.xpath("//input[@type='password']"):
@@ -39,7 +41,7 @@ class SiteUtils:
         :return True已签到 False未签到
         """
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return False
         # 站点签到支持的识别XPATH
         xpaths = [
