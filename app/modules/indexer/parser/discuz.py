@@ -34,7 +34,7 @@ class DiscuzUserInfo(SiteParserBase):
         :return:
         """
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return None
 
         # 用户等级
@@ -77,7 +77,7 @@ class DiscuzUserInfo(SiteParserBase):
         :return: 下页地址
         """
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return None
 
         size_col = 3

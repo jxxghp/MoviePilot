@@ -67,7 +67,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
         :return: 下页地址
         """
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return None
 
         size_col = 2

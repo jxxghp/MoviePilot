@@ -205,7 +205,7 @@ class SiteChain(ChainBase):
             logger.error(f"获取站点页面失败：{url}")
             return favicon_url, None
         html = etree.HTML(html_text)
-        if html:
+        if StringUtils.is_valid_html_element(html):
             fav_link = html.xpath('//head/link[contains(@rel, "icon")]/@href')
             if fav_link:
                 favicon_url = urljoin(url, fav_link[0])

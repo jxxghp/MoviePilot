@@ -34,7 +34,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         :return:
         """
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return
 
         message_labels = html.xpath('//a[@href="messages.php"]/..')
@@ -61,7 +61,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         self._parse_message_unread(html_text)
 
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return
 
         ret = html.xpath(f'//a[contains(@href, "userdetails") and contains(@href, "{self.userid}")]//b//text()')
@@ -128,7 +128,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         :param html:
         :return:
         """
-        if html:
+        if StringUtils.is_valid_html_element(html):
             gold, silver, copper = None, None, None
 
             golds = html.xpath('//span[@class = "ucoin-symbol ucoin-gold"]//text()')
@@ -155,7 +155,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         :return: 下页地址
         """
         html = etree.HTML(str(html_text).replace(r'\/', '/'))
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return None
 
         # 首页存在扩展链接，使用扩展链接
@@ -223,7 +223,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         :return:
         """
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return
 
         self._get_user_level(html)
@@ -340,7 +340,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return None
 
         message_links = html.xpath('//tr[not(./td/img[@alt="Read"])]/td/a[contains(@href, "viewmessage")]/@href')
@@ -355,7 +355,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
     def _parse_message_content(self, html_text):
         html = etree.HTML(html_text)
-        if not html:
+        if not StringUtils.is_valid_html_element(html):
             return None, None, None
         # 标题
         message_head_text = None
