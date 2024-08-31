@@ -115,7 +115,17 @@ def manual_transfer(fileitem: FileItem = None,
             tmdbid = int(history.tmdbid) if history.tmdbid else tmdbid
             doubanid = str(history.doubanid) if history.doubanid else doubanid
             season = int(str(history.seasons).replace("S", "")) if history.seasons else season
-            episode_detail = str(history.episodes) if history.episodes else episode_detail
+            if history.episodes:
+                if "-" in str(history.episodes):
+                    # E01-E03多集合并
+                    episode_start, episode_end = str(history.episodes).split("-")
+                    episode_list: list[int] = []
+                    for i in range(int(episode_start.replace("E", "")), int(episode_end.replace("E", "")) + 1):
+                        episode_list.append(i)
+                    episode_detail = ",".join(str(e) for e in episode_list)
+                else:
+                    # E01单集
+                    episode_detail = str(history.episodes).replace("E", "")
 
     elif fileitem:
         src_fileitem = fileitem
