@@ -57,7 +57,7 @@ class DirectoryHelper:
             if to_path and download_path != to_path:
                 continue
             # 目录类型为全部的，符合条件
-            if not download_dir.media_type:
+            if not download_dir.media_type or download_dir.media_type == "全部":
                 return download_dir
             # 目录类型相等，目录类别为全部，符合条件
             if download_dir.media_type == media_type and not download_dir.category:
