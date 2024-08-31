@@ -64,6 +64,7 @@ def manual_transfer(storage: str = "local",
                     episode_offset: int = 0,
                     min_filesize: int = 0,
                     scrape: bool = None,
+                    from_history: bool = None,
                     db: Session = Depends(get_db),
                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -86,6 +87,7 @@ def manual_transfer(storage: str = "local",
     :param episode_offset: 剧集识别偏移量
     :param min_filesize: 最小文件大小(MB)
     :param scrape: 是否刮削元数据
+    :param from_history: 从历史记录中获取tmdbid、season、episode_detail等信息
     :param db: 数据库
     :param _: Token校验
     """
@@ -109,6 +111,15 @@ def manual_transfer(storage: str = "local",
             if history.dest and str(history.dest) != "None":
                 # 删除旧的已整理文件
                 transfer.delete_files(Path(history.dest))
+
+        # 从历史数据获取信息
+        if from_history:
+            type_name = history.type if history.type else type_name
+            tmdbid = int(history.tmdbid) if history.tmdbid else tmdbid
+            doubanid = str(history.doubanid) if history.doubanid else doubanid
+            season = int(str(history.seasons).replace("S", "")) if history.seasons else season
+            episode_detail = str(history.episodes) if history.episodes else episode_detail
+
     elif path:
         in_path = Path(path)
     else:
