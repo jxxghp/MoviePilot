@@ -15,7 +15,7 @@ from app.modules.douban.douban_cache import DoubanCache
 from app.modules.douban.scraper import DoubanScraper
 from app.schemas import MediaPerson, APIRateLimitException
 from app.schemas.types import MediaType
-from app.utils.common import retry
+from app.utils.common import retry, rate_limit_handler
 from app.utils.http import RequestUtils
 
 
@@ -145,6 +145,7 @@ class DoubanModule(_ModuleBase):
 
         return None
 
+    @rate_limit_handler(backoff_factor=2, source="douban_info", raise_on_limit=False)
     def douban_info(self, doubanid: str, mtype: MediaType = None, raise_exception: bool = True) -> Optional[dict]:
         """
         获取豆瓣信息
@@ -428,9 +429,7 @@ class DoubanModule(_ModuleBase):
                 if "subject_ip_rate_limit" in info.get("msg", ""):
                     msg = f"触发豆瓣IP速率限制，错误信息：{info} ..."
                     logger.warn(msg)
-                    if raise_exception:
-                        raise APIRateLimitException(msg)
-                    return None
+                    raise APIRateLimitException(msg)
                 celebrities = self.doubanapi.tv_celebrities(doubanid)
                 if celebrities:
                     info["directors"] = celebrities.get("directors")
@@ -446,9 +445,7 @@ class DoubanModule(_ModuleBase):
                 if "subject_ip_rate_limit" in info.get("msg", ""):
                     msg = f"触发豆瓣IP速率限制，错误信息：{info} ..."
                     logger.warn(msg)
-                    if raise_exception:
-                        raise APIRateLimitException(msg)
-                    return None
+                    raise APIRateLimitException(msg)
                 celebrities = self.doubanapi.movie_celebrities(doubanid)
                 if celebrities:
                     info["directors"] = celebrities.get("directors")
@@ -605,6 +602,7 @@ class DoubanModule(_ModuleBase):
         return []
 
     @retry(Exception, 5, 3, 3, logger=logger)
+    @rate_limit_handler(source="match_doubaninfo", raise_on_limit=False)
     def match_doubaninfo(self, name: str, imdbid: str = None,
                          mtype: MediaType = None, year: str = None, season: int = None,
                          raise_exception: bool = False) -> dict:
@@ -638,9 +636,7 @@ class DoubanModule(_ModuleBase):
         if "search_access_rate_limit" in result.values():
             msg = f"触发豆瓣API速率限制，错误信息：{result} ..."
             logger.warn(msg)
-            if raise_exception:
-                raise APIRateLimitException(msg)
-            return {}
+            raise APIRateLimitException(msg)
         if not result.get("items"):
             logger.warn(f"未找到 {name} 的豆瓣信息")
             return {}
