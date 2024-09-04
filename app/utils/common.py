@@ -47,12 +47,12 @@ class RateLimiter:
     通过增加等待时间逐步减少调用的频率，以避免触发限流
     """
 
-    def __init__(self, base_wait: int = 60, max_wait: int = 600, backoff_factor: int = 1, source: str = ""):
+    def __init__(self, base_wait: int = 60, max_wait: int = 600, backoff_factor: float = 2.0, source: str = ""):
         """
         初始化 RateLimiter 实例
         :param base_wait: 基础等待时间（秒），默认值为 60 秒（1 分钟）
         :param max_wait: 最大等待时间（秒），默认值为 600 秒（10 分钟）
-        :param backoff_factor: 等待时间的递增倍数，默认值为 1
+        :param backoff_factor: 等待时间的递增倍数，默认值为 2.0，表示指数退避
         :param source: 业务来源或上下文信息，默认值为 ""
         """
         self.next_allowed_time = 0
@@ -60,7 +60,7 @@ class RateLimiter:
         self.base_wait = base_wait
         self.max_wait = max_wait
         self.backoff_factor = backoff_factor
-        self.source = f"[{source}]" if source else ""
+        self.source = source
         self.lock = threading.Lock()
 
     def can_call(self) -> bool:
@@ -106,7 +106,8 @@ def rate_limit_handler(base_wait: int = 60, max_wait: int = 600, backoff_factor:
     :param base_wait: 基础等待时间（秒），默认值为 60 秒（1 分钟）
     :param max_wait: 最大等待时间（秒），默认值为 600 秒（10 分钟）
     :param backoff_factor: 等待时间的递增倍数，默认值为 1
-    :param raise_on_limit: 是否在触发限流异常时抛出异常，默认为 True
+    :param raise_on_limit: 控制默认情况下是否在限流时抛出异常，默认为 True（限流时抛出异常）。
+                           如果在函数调用时传入 `raise_exception` 参数，则以传入值为准。
     :param source: 业务来源或上下文信息，默认为 ""
     :return: 装饰器函数
     """
@@ -115,8 +116,10 @@ def rate_limit_handler(base_wait: int = 60, max_wait: int = 600, backoff_factor:
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> Optional[Any]:
+            # 动态检查是否传入了 raise_exception，否则使用默认的 raise_on_limit
+            raise_exception = kwargs.get("raise_exception", raise_on_limit)
+            message = f"{source}调用因限流被跳过，当前等待时间为 {rate_limiter.current_wait} 秒"
             if not rate_limiter.can_call():
-                message = f"{source}调用因限流被跳过，当前等待时间为 {rate_limiter.current_wait} 秒"
                 if raise_on_limit:
                     raise RateLimitExceededException(message)
                 logger.warn(message)
