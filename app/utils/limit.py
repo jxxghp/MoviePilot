@@ -261,13 +261,13 @@ class CompositeRateLimiter(BaseRateLimiter):
 
 
 # 通用装饰器：自定义限流器实例
-def rate_limit_handler(limiter: BaseRateLimiter, raise_on_limit: bool = True) -> Callable:
+def rate_limit_handler(limiter: BaseRateLimiter, raise_on_limit: bool = False) -> Callable:
     """
     通用装饰器，允许用户传递自定义的限流器实例，用于处理限流逻辑
     该装饰器可灵活支持任意继承自 BaseRateLimiter 的限流器
 
     :param limiter: 限流器实例，必须继承自 BaseRateLimiter
-    :param raise_on_limit: 控制在限流时是否抛出异常，默认为 True。如果为 False，则跳过调用，不抛出异常
+    :param raise_on_limit: 控制在限流时是否抛出异常，默认为 False
     :return: 装饰器函数
     """
 
@@ -309,7 +309,7 @@ def rate_limit_handler(limiter: BaseRateLimiter, raise_on_limit: bool = True) ->
 
 # 装饰器：指数退避限流
 def rate_limit_exponential(base_wait: int = 60, max_wait: int = 600, backoff_factor: float = 2.0,
-                           raise_on_limit: bool = True, source: str = "", enable_logging: bool = True) -> Callable:
+                           raise_on_limit: bool = False, source: str = "", enable_logging: bool = True) -> Callable:
     """
     装饰器，用于应用指数退避限流策略
     通过逐渐增加调用等待时间控制调用频率。每次触发限流时，等待时间会成倍增加，直到达到最大等待时间
@@ -317,7 +317,7 @@ def rate_limit_exponential(base_wait: int = 60, max_wait: int = 600, backoff_fac
     :param base_wait: 基础等待时间（秒），默认值为 60 秒（1 分钟）
     :param max_wait: 最大等待时间（秒），默认值为 600 秒（10 分钟）
     :param backoff_factor: 等待时间递增的倍数，默认值为 2.0，表示指数退避
-    :param raise_on_limit: 控制在限流时是否抛出异常，默认为 True。如果为 False，则跳过调用，不抛出异常
+    :param raise_on_limit: 控制在限流时是否抛出异常，默认为 False
     :param source: 业务来源或上下文信息，默认为空字符串
     :param enable_logging: 是否启用日志记录，默认为 True
     :return: 装饰器函数
@@ -330,14 +330,14 @@ def rate_limit_exponential(base_wait: int = 60, max_wait: int = 600, backoff_fac
 
 # 装饰器：时间窗口限流
 def rate_limit_window(max_calls: int, window_seconds: int,
-                      raise_on_limit: bool = True, source: str = "", enable_logging: bool = True) -> Callable:
+                      raise_on_limit: bool = False, source: str = "", enable_logging: bool = True) -> Callable:
     """
     装饰器，用于应用时间窗口限流策略
     在固定的时间窗口内限制调用次数，当调用次数超过最大值时，触发限流，直到时间窗口结束
 
     :param max_calls: 时间窗口内允许的最大调用次数
     :param window_seconds: 时间窗口的持续时间（秒）
-    :param raise_on_limit: 控制在限流时是否抛出异常，默认为 True。如果为 False，则跳过调用，不抛出异常
+    :param raise_on_limit: 控制在限流时是否抛出异常，默认为 False
     :param source: 业务来源或上下文信息，默认为空字符串
     :param enable_logging: 是否启用日志记录，默认为 True
     :return: 装饰器函数
