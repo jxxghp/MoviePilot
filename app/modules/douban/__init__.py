@@ -15,8 +15,9 @@ from app.modules.douban.douban_cache import DoubanCache
 from app.modules.douban.scraper import DoubanScraper
 from app.schemas import MediaPerson, APIRateLimitException
 from app.schemas.types import MediaType
-from app.utils.common import retry, rate_limit_handler
+from app.utils.common import retry
 from app.utils.http import RequestUtils
+from app.utils.limit import rate_limit_exponential
 
 
 class DoubanModule(_ModuleBase):
@@ -145,7 +146,7 @@ class DoubanModule(_ModuleBase):
 
         return None
 
-    @rate_limit_handler(backoff_factor=2, source="douban_info", raise_on_limit=False)
+    @rate_limit_exponential(backoff_factor=2, source="douban_info", raise_on_limit=False)
     def douban_info(self, doubanid: str, mtype: MediaType = None, raise_exception: bool = True) -> Optional[dict]:
         """
         获取豆瓣信息
@@ -602,7 +603,7 @@ class DoubanModule(_ModuleBase):
         return []
 
     @retry(Exception, 5, 3, 3, logger=logger)
-    @rate_limit_handler(source="match_doubaninfo", raise_on_limit=False)
+    @rate_limit_exponential(source="match_doubaninfo", raise_on_limit=False)
     def match_doubaninfo(self, name: str, imdbid: str = None,
                          mtype: MediaType = None, year: str = None, season: int = None,
                          raise_exception: bool = False) -> dict:
