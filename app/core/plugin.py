@@ -3,8 +3,6 @@ import concurrent.futures
 import importlib.util
 import inspect
 import os
-import threading
-import time
 import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Type
@@ -21,8 +19,9 @@ from app.helper.module import ModuleHelper
 from app.helper.plugin import PluginHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
-from app.utils.crypto import RSAUtils
 from app.schemas.types import SystemConfigKey
+from app.utils.crypto import RSAUtils
+from app.utils.limit import rate_limit_window
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
@@ -30,14 +29,6 @@ from app.utils.system import SystemUtils
 
 
 class PluginMonitorHandler(FileSystemEventHandler):
-    # 计时器
-    __reload_timer = None
-    # 防抖时间间隔
-    __debounce_interval = 0.5
-    # 最近一次修改时间
-    __last_modified = 0
-    # 修改间隔
-    __timeout = 2
 
     def on_modified(self, event):
         """
@@ -50,10 +41,6 @@ class PluginMonitorHandler(FileSystemEventHandler):
         if not event_path.name.endswith(".py") or "pycache" in event_path.parts:
             return
 
-        current_time = time.time()
-        if current_time - self.__last_modified < self.__timeout:
-            return
-        self.__last_modified = current_time
         # 读取插件根目录下的__init__.py文件，读取class XXXX(_PluginBase)的类名
         try:
             plugins_root = settings.ROOT_PATH / "app" / "plugins"
@@ -75,15 +62,12 @@ class PluginMonitorHandler(FileSystemEventHandler):
                 if line.startswith("class") and "(_PluginBase)" in line:
                     pid = line.split("class ")[1].split("(_PluginBase)")[0].strip()
             if pid:
-                # 防抖处理，通过计时器延迟加载
-                if self.__reload_timer:
-                    self.__reload_timer.cancel()
-                self.__reload_timer = threading.Timer(self.__debounce_interval, self.__reload_plugin, [pid])
-                self.__reload_timer.start()
+                self.__reload_plugin(pid)
         except Exception as e:
             logger.error(f"插件文件修改后重载出错：{str(e)}")
 
     @staticmethod
+    @rate_limit_window(max_calls=1, window_seconds=2, source="PluginMonitor", enable_logging=False)
     def __reload_plugin(pid):
         """
         重新加载插件
