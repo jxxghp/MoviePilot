@@ -63,6 +63,7 @@ def manual_transfer(fileitem: FileItem = None,
                     episode_offset: int = 0,
                     min_filesize: int = 0,
                     scrape: bool = None,
+                    from_history: bool = None,
                     db: Session = Depends(get_db),
                     _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
@@ -82,6 +83,7 @@ def manual_transfer(fileitem: FileItem = None,
     :param episode_offset: 剧集识别偏移量
     :param min_filesize: 最小文件大小(MB)
     :param scrape: 是否刮削元数据
+    :param from_history: 从历史记录中获取tmdbid、season、episode_detail等信息
     :param db: 数据库
     :param _: Token校验
     """
@@ -106,6 +108,25 @@ def manual_transfer(fileitem: FileItem = None,
                 # 删除旧的已整理文件
                 dest_fileitem = FileItem(**json.loads(history.dest_fileitem))
                 transfer.delete_files(dest_fileitem)
+
+        # 从历史数据获取信息
+        if from_history:
+            type_name = history.type if history.type else type_name
+            tmdbid = int(history.tmdbid) if history.tmdbid else tmdbid
+            doubanid = str(history.doubanid) if history.doubanid else doubanid
+            season = int(str(history.seasons).replace("S", "")) if history.seasons else season
+            if history.episodes:
+                if "-" in str(history.episodes):
+                    # E01-E03多集合并
+                    episode_start, episode_end = str(history.episodes).split("-")
+                    episode_list: list[int] = []
+                    for i in range(int(episode_start.replace("E", "")), int(episode_end.replace("E", "")) + 1):
+                        episode_list.append(i)
+                    episode_detail = ",".join(str(e) for e in episode_list)
+                else:
+                    # E01单集
+                    episode_detail = str(history.episodes).replace("E", "")
+
     elif fileitem:
         src_fileitem = fileitem
     else:
