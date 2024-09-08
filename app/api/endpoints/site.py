@@ -164,6 +164,27 @@ def update_cookie(
     return schemas.Response(success=state, message=message)
 
 
+@router.get("/userdata/{site_id}", summary="更新站点用户数据", response_model=schemas.Response)
+def refresh_userdata(
+        site_id: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    刷新站点用户数据
+    """
+    site = Site.get(db, site_id)
+    if not site:
+        raise HTTPException(
+            status_code=404,
+            detail=f"站点 {site_id} 不存在",
+        )
+    indexer = SitesHelper().get_indexer(site.domain)
+    if not indexer:
+        return schemas.Response(success=False, message="站点不支持索引或未通过用户认证！")
+    user_data = SiteChain().refresh_userdata(site=indexer) or {}
+    return schemas.Response(success=True, data=user_data)
+
+
 @router.get("/test/{site_id}", summary="连接测试", response_model=schemas.Response)
 def test_site(site_id: int,
               db: Session = Depends(get_db),

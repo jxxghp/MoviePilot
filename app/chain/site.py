@@ -398,6 +398,26 @@ class SiteChain(ChainBase):
                 logger.info(f"清理站点配置：{key}")
                 self.systemconfig.delete(key)
 
+    @eventmanager.register(EventType.SiteUpdated)
+    def cache_site_userdata(self, event: Event):
+        """
+        缓存站点用户数据
+        """
+        if not event:
+            return
+        event_data = event.event_data or {}
+        # 主域名
+        domain = event_data.get("domain")
+        if not domain:
+            return
+        if str(domain).startswith("http"):
+            domain = StringUtils.get_url_domain(domain)
+        indexer = self.siteshelper.get_indexer(domain)
+        if not indexer:
+            return
+        # 刷新站点用户数据
+        self.refresh_userdata(site=indexer) or {}
+
     def test(self, url: str) -> Tuple[bool, str]:
         """
         测试站点是否可用
