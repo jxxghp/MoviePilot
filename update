@@ -22,15 +22,27 @@ function WARN() {
 
 # 下载及解压
 function download_and_unzip() {
-    url="$1"
-    target_dir="$2"
+    local retries=0
+    local max_retries=3
+    local url="$1"
+    local target_dir="$2"
     INFO "正在下载 ${url}..."
-    if curl ${CURL_OPTIONS} "${url}" ${CURL_HEADERS} | busybox unzip -d /tmp - > /dev/null; then
-        if [ -e /tmp/MoviePilot-* ]; then
-            mv /tmp/MoviePilot-* /tmp/"${target_dir}"
+    while [ $retries -lt $max_retries ]; do
+        if curl ${CURL_OPTIONS} "${url}" ${CURL_HEADERS} | busybox unzip -d /tmp - > /dev/null; then
+            if [ -e /tmp/MoviePilot-* ]; then
+                mv /tmp/MoviePilot-* /tmp/"${target_dir}"
+            fi
+            break
+        else
+            WARN "下载 ${url} 失败，正在进行第 $((retries + 1)) 次重试..."
+            retries=$((retries + 1))
         fi
-    else
+    done
+    if [ $retries -eq $max_retries ]; then
+        ERROR "下载 ${url} 失败，已达到最大重试次数！"
         return 1
+    else
+        return 0
     fi
 }
 
