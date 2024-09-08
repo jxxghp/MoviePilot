@@ -43,12 +43,14 @@ class UserCreate(UserBase):
     name: str
     email: Optional[str] = None
     password: Optional[str] = None
+    settings: Optional[dict] = {}
 
 
 # Properties to receive via API on update
 class UserUpdate(UserBase):
     name: str
     password: Optional[str] = None
+    settings: Optional[dict] = {}
 
 
 class UserInDBBase(UserBase):

@@ -182,16 +182,16 @@ def delete_user(
     return schemas.Response(success=True)
 
 
-@router.get("/{user_id}", summary="用户详情", response_model=schemas.User)
+@router.get("/{username}", summary="用户详情", response_model=schemas.User)
 def read_user_by_id(
-        user_id: int,
+        username: str,
         current_user: User = Depends(get_current_active_user),
         db: Session = Depends(get_db),
 ) -> Any:
     """
     查询用户详情
     """
-    user = current_user.get(db, rid=user_id)
+    user = current_user.get_by_name(db, name=username)
     if not user:
         raise HTTPException(
             status_code=404,
@@ -199,7 +199,7 @@ def read_user_by_id(
         )
     if user == current_user:
         return user
-    if not user.is_superuser:
+    if not current_user.is_superuser:
         raise HTTPException(
             status_code=400,
             detail="用户权限不足"
