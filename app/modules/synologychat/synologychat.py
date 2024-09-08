@@ -90,7 +90,7 @@ class SynologyChat:
             logger.error(f"SynologyChat发送消息错误：{str(msg_e)}")
             return False
 
-    def send_meidas_msg(self, medias: List[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_medias_msg(self, medias: List[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表类消息
         """

@@ -9,12 +9,14 @@ from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
+from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
 from app.core.config import settings
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.event import eventmanager, Event, EventManager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
+from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.subscribe import Subscribe
 from app.db.site_oper import SiteOper
 from app.db.subscribe_oper import SubscribeOper
@@ -24,7 +26,7 @@ from app.helper.message import MessageHelper
 from app.helper.subscribe import SubscribeHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas import NotExistMediaInfo, Notification
+from app.schemas import NotExistMediaInfo, Notification, SubscrbieInfo, SubscribeEpisodeInfo
 from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType
 
 
@@ -36,12 +38,14 @@ class SubscribeChain(ChainBase):
     def __init__(self):
         super().__init__()
         self.downloadchain = DownloadChain()
+        self.downloadhis = DownloadHistoryOper()
         self.searchchain = SearchChain()
         self.subscribeoper = SubscribeOper()
         self.subscribehistoryoper = SubscribeHistoryOper()
         self.subscribehelper = SubscribeHelper()
         self.torrentschain = TorrentsChain()
         self.mediachain = MediaChain()
+        self.tmdbchain = TmdbChain()
         self.message = MessageHelper()
         self.systemconfig = SystemConfigOper()
         self.torrenthelper = TorrentHelper()
@@ -983,7 +987,8 @@ class SubscribeChain(ChainBase):
                                  begin_season: int,
                                  total_episode: int,
                                  start_episode: int,
-                                 downloaded_episodes: List[int] = None):
+                                 downloaded_episodes: List[int] = None
+                                 ) -> Dict[Union[int, str], Dict[int, NotExistMediaInfo]]:
         """
         根据订阅开始集数和总集数，结合TMDB信息计算当前订阅的缺失集数
         :param subscribe_name: 订阅名称
@@ -1118,7 +1123,7 @@ class SubscribeChain(ChainBase):
             })
 
     @staticmethod
-    def __get_default_subscribe_config(mtype: MediaType, default_config_key: str):
+    def __get_default_subscribe_config(mtype: MediaType, default_config_key: str) -> Optional[str]:
         """
         获取默认订阅配置
         """
@@ -1155,3 +1160,110 @@ class SubscribeChain(ChainBase):
             "min_seeders": default_rule.get("min_seeders"),
             "min_seeders_time": default_rule.get("min_seeders_time"),
         }
+
+    def subscribe_files_info(self, subscribe: Subscribe) -> Optional[SubscrbieInfo]:
+        """
+        订阅相关的下载和文件信息
+        """
+        if not subscribe:
+            return
+
+        # 返回订阅数据
+        subscribe_info = SubscrbieInfo(
+            id=subscribe.id,
+            name=subscribe.name,
+            year=subscribe.year,
+            type=subscribe.type,
+            tmdbid=subscribe.tmdbid,
+            doubanid=subscribe.doubanid,
+            season=subscribe.season,
+            poster=subscribe.poster,
+            backdrop=subscribe.backdrop,
+            vote=subscribe.vote,
+            description=subscribe.description,
+            episodes_info={}
+        )
+
+        # 所有集的数据
+        episodes_info = {}
+        if subscribe.tmdbid and subscribe.type == MediaType.TV.value:
+            # 查询TMDB中的集信息
+            tmdb_episodes = self.tmdbchain.tmdb_episodes(
+                tmdbid=subscribe.tmdb_id,
+                season=subscribe.season
+            )
+            if tmdb_episodes:
+                for episode in tmdb_episodes:
+                    episode_info = SubscribeEpisodeInfo()
+                    episodes_info.title = episode.name
+                    episodes_info.description = episode.overview
+                    episodes_info.backdrop = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/w500${episode.still_path}"
+                    episodes_info[episode.episode_number] = episode_info
+        elif subscribe.type == MediaType.TV.value:
+            # 根据开始结束集计算集信息
+            for i in range(subscribe.start_episode or 1, subscribe.total_episode + 1):
+                episode_info = SubscribeEpisodeInfo()
+                episode_info.title = f'第 {i} 集'
+                episodes_info[i] = episode_info
+        else:
+            # 电影
+            episode_info = SubscribeEpisodeInfo()
+            episode_info.title = subscribe.name
+            episodes_info[0] = episode_info
+
+        # 所有下载记录
+        download_his = self.downloadhis.get_by_mediaid(tmdbid=subscribe.tmdbid, doubanid=subscribe.doubanid)
+        if download_his:
+            for his in download_his:
+                # 种子链接
+                torrent_url = f"【{his.torrent_site}】{his.torrent_name}"
+                # 查询下载文件
+                files = self.downloadhis.get_files_by_hash(his.hash)
+                if files:
+                    for file in files:
+                        # 识别文件名
+                        file_meta = MetaInfo(file.filepath)
+                        if subscribe.type == MediaType.TV.value:
+                            episode_number = file_meta.begin_episode
+                            if episode_number and episodes_info.get(episode_number):
+                                episodes_info[episode_number].download_file = file.fullpath
+                                episodes_info[episode_number].torrent = torrent_url
+                        else:
+                            episodes_info[0].download_file = file.fullpath
+                            episodes_info[0].torrent = torrent_url
+
+        # 生成元数据
+        meta = MetaInfo(subscribe.name)
+        meta.year = subscribe.year
+        meta.begin_season = subscribe.season or None
+        try:
+            meta.type = MediaType(subscribe.type)
+        except ValueError:
+            logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
+            return subscribe_info
+        # 识别媒体信息
+        mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
+                                                    tmdbid=subscribe.tmdbid,
+                                                    doubanid=subscribe.doubanid,
+                                                    cache=False)
+        if not mediainfo:
+            logger.warn(
+                f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
+            return subscribe_info
+
+        # 所有媒体库文件记录
+        library_fileitems = self.media_files(mediainfo)
+        if library_fileitems:
+            for fileitem in library_fileitems:
+                # 识别文件名
+                file_meta = MetaInfo(fileitem.path)
+                if subscribe.type == MediaType.TV.value:
+                    episode_number = file_meta.begin_episode
+                    if episode_number and episodes_info.get(episode_number):
+                        episodes_info[episode_number].library_file = fileitem.path
+                else:
+                    episodes_info[0].library_file = fileitem.path
+
+        # 更新订阅信息
+        subscribe_info.episodes_info = episodes_info
+        return subscribe_info

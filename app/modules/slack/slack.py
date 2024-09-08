@@ -168,7 +168,7 @@ class Slack:
             logger.error(f"Slack消息发送失败: {msg_e}")
             return False, str(msg_e)
 
-    def send_meidas_msg(self, medias: List[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
+    def send_medias_msg(self, medias: List[MediaInfo], userid: str = "", title: str = "") -> Optional[bool]:
         """
         发送列表类消息
         """

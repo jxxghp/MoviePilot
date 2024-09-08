@@ -117,7 +117,7 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
                 continue
             client: SynologyChat = self.get_client(conf.name)
             if client:
-                client.send_meidas_msg(title=message.title, medias=medias,
+                client.send_medias_msg(title=message.title, medias=medias,
                                        userid=message.userid)
 
     def post_torrents_message(self, message: Notification, torrents: List[Context]) -> None:

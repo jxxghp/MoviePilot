@@ -1043,12 +1043,12 @@ class FileManagerModule(_ModuleBase):
         else:
             return Path(render_str)
 
-    def media_exists(self, mediainfo: MediaInfo, **kwargs) -> Optional[ExistMediaInfo]:
+    def media_files(self, mediainfo: MediaInfo) -> List[FileItem]:
         """
-        判断媒体文件是否存在于文件系统（网盘或本地文件），只支持标准媒体库结构
-        :param mediainfo:  识别的媒体信息
-        :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
+        获取对应媒体的媒体库文件列表
+        :param mediainfo: 媒体信息
         """
+        ret_fileitems = []
         # 检查本地媒体库
         dest_dirs = DirectoryHelper().get_library_dirs()
         # 检查每一个媒体库目录
@@ -1059,8 +1059,6 @@ class FileManagerModule(_ModuleBase):
                 continue
             # 媒体分类路径
             dir_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=dest_dir)
-            if not storage_oper.get_item(dir_path):
-                continue
             # 重命名格式
             rename_format = settings.TV_RENAME_FORMAT \
                 if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
@@ -1079,30 +1077,45 @@ class FileManagerModule(_ModuleBase):
             if not media_path.exists():
                 continue
             # 检索媒体文件
-            media_files = SystemUtils.list_files(directory=media_path, extensions=settings.RMT_MEDIAEXT)
-            if not media_files:
+            fileitem = storage_oper.get_item(media_path)
+            if not fileitem:
                 continue
-            if mediainfo.type == MediaType.MOVIE:
-                # 电影存在任何文件为存在
-                logger.info(f"{mediainfo.title_year} 在本地文件系统中找到了")
-                return ExistMediaInfo(type=MediaType.MOVIE)
-            else:
-                # 电视剧检索集数
-                seasons: Dict[int, list] = {}
-                for media_file in media_files:
-                    file_meta = MetaInfo(media_file.stem)
-                    season_index = file_meta.begin_season or 1
-                    episode_index = file_meta.begin_episode
-                    if not episode_index:
-                        continue
-                    if season_index not in seasons:
-                        seasons[season_index] = []
+            media_files = storage_oper.list(fileitem)
+            if media_files:
+                ret_fileitems.extend(media_files)
+        return ret_fileitems
+
+    def media_exists(self, mediainfo: MediaInfo, **kwargs) -> Optional[ExistMediaInfo]:
+        """
+        判断媒体文件是否存在于文件系统（网盘或本地文件），只支持标准媒体库结构
+        :param mediainfo:  识别的媒体信息
+        :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
+        """
+        # 检查媒体库
+        fileitems = self.media_files(mediainfo)
+        if not fileitems:
+            return None
+
+        if mediainfo.type == MediaType.MOVIE:
+            # 电影存在任何文件为存在
+            logger.info(f"{mediainfo.title_year} 在本地文件系统中找到了")
+            return ExistMediaInfo(type=MediaType.MOVIE)
+        else:
+            # 电视剧检索集数
+            seasons: Dict[int, list] = {}
+            for fileitem in fileitems:
+                file_meta = MetaInfo(fileitem.basename)
+                season_index = file_meta.begin_season or 1
+                episode_index = file_meta.begin_episode
+                if not episode_index:
+                    continue
+                if season_index not in seasons:
+                    seasons[season_index] = []
+                if episode_index not in seasons[season_index]:
                     seasons[season_index].append(episode_index)
-                # 返回剧集情况
-                logger.info(f"{mediainfo.title_year} 在本地文件系统中找到了这些季集：{seasons}")
-                return ExistMediaInfo(type=MediaType.TV, seasons=seasons)
-        # 不存在
-        return None
+            # 返回剧集情况
+            logger.info(f"{mediainfo.title_year} 在本地文件系统中找到了这些季集：{seasons}")
+            return ExistMediaInfo(type=MediaType.TV, seasons=seasons)
 
     def __delete_version_files(self, target_storage: str, path: Path) -> bool:
         """

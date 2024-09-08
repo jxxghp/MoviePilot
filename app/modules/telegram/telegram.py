@@ -114,7 +114,7 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             return False
 
-    def send_meidas_msg(self, medias: List[MediaInfo], userid: str = "",
+    def send_medias_msg(self, medias: List[MediaInfo], userid: str = "",
                         title: str = "", link: str = None) -> Optional[bool]:
         """
         发送媒体列表消息

@@ -398,6 +398,20 @@ def user_subscribes(
     return Subscribe.list_by_username(db, username)
 
 
+@router.get("/files/{subscribe_id}", summary="订阅相关文件信息", response_model=List[schemas.SubscrbieInfo])
+def subscribe_files(
+        subscribe_id: int,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    订阅相关文件信息
+    """
+    subscribe = Subscribe.get(db, subscribe_id)
+    if subscribe:
+        return SubscribeChain().subscribe_files_info(subscribe)
+    return schemas.SubscrbieInfo()
+
+
 @router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
 def read_subscribe(
         subscribe_id: int,

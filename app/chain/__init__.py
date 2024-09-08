@@ -459,6 +459,14 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("media_exists", mediainfo=mediainfo, itemid=itemid)
 
+    def media_files(self, mediainfo: MediaInfo) -> Optional[List[FileItem]]:
+        """
+        获取媒体文件清单
+        :param mediainfo:  识别的媒体信息
+        :return: 媒体文件列表
+        """
+        return self.run_module("media_files", mediainfo=mediainfo)
+
     def post_message(self, message: Notification) -> None:
         """
         发送消息

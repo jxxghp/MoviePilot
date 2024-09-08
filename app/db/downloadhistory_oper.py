@@ -23,6 +23,14 @@ class DownloadHistoryOper(DbOper):
         """
         return DownloadHistory.get_by_hash(self._db, download_hash)
 
+    def get_by_mediaid(self, tmdbid: int, doubanid: str) -> List[DownloadHistory]:
+        """
+        按媒体ID查询下载记录
+        :param tmdbid: tmdbid
+        :param doubanid: doubanid
+        """
+        return DownloadHistory.get_by_mediaid(self._db, tmdbid=tmdbid, doubanid=doubanid)
+
     def add(self, **kwargs):
         """
         新增下载历史

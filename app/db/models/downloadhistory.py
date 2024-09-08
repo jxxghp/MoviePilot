@@ -55,6 +55,12 @@ class DownloadHistory(Base):
 
     @staticmethod
     @db_query
+    def get_by_mediaid(db: Session, tmdbid: int, doubanid: str):
+        return db.query(DownloadHistory).filter(DownloadHistory.tmdbid == tmdbid,
+                                                DownloadHistory.doubanid == doubanid).all()
+
+    @staticmethod
+    @db_query
     def list_by_page(db: Session, page: int = 1, count: int = 30):
         result = db.query(DownloadHistory).offset((page - 1) * count).limit(count).all()
         return list(result)
