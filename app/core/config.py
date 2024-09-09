@@ -110,8 +110,24 @@ class Settings(BaseSettings):
     RMT_SUBEXT: list = ['.srt', '.ass', '.ssa', '.sup']
     # 支持的音轨文件后缀格式
     RMT_AUDIO_TRACK_EXT: list = ['.mka']
+    # 音轨文件后缀格式
+    RMT_AUDIOEXT: list = ['.aac', '.ac3', '.amr', '.caf', '.cda', '.dsf',
+                          '.dff', '.kar', '.m4a', '.mp1', '.mp2', '.mp3',
+                          '.mid', '.mod', '.mka', '.mpc', '.nsf', '.ogg',
+                          '.pcm', '.rmi', '.s3m', '.snd', '.spx', '.tak',
+                          '.tta', '.vqf', '.wav', '.wma',
+                          '.aifc', '.aiff', '.alac', '.adif', '.adts',
+                          '.flac',  '.midi', '.opus', '.sfalc']
     # 下载器临时文件后缀
     DOWNLOAD_TMPEXT: list = ['.!qB', '.part']
+    # 传输类型
+    TRANSFER_TYPE: str = ""
+    # 下载器监视
+    DOWNLOADER_MONITOR: bool = True
+    # 下载器监视间隔（小时）
+    MEDIASERVER_SYNC_INTERVAL: int = 1
+    # 下载器监视黑名单
+    MEDIASERVER_SYNC_BLACKLIST: list = []
     # 订阅模式
     SUBSCRIBE_MODE: str = "spider"
     # RSS订阅模式刷新时间间隔（分钟）
@@ -175,6 +191,21 @@ class Settings(BaseSettings):
     BIG_MEMORY_MODE: bool = False
     # 全局图片缓存，将媒体图片缓存到本地
     GLOBAL_IMAGE_CACHE: bool = False
+
+    # 微信代理
+    WECHAT_PROXY: str = ""
+    # 微信token
+    WECHAT_TOKEN: str = ""
+    # 微信encoding_aes_key
+    WECHAT_ENCODING_AESKEY: str = ""
+    # 微信corpid
+    WECHAT_CORPID: str = ""
+    # 微信管理员
+    WECHAT_ADMINS: str = ""
+    # plex地址
+    PLEX_PLAY_HOST: str = ""
+    # plex token
+    PLEX_TOKEN: str = ""
 
     @validator("SUBSCRIBE_RSS_INTERVAL",
                "COOKIECLOUD_INTERVAL",
