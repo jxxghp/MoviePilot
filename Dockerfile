@@ -77,8 +77,7 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && locale-gen zh_CN.UTF-8 \
-    && FRONTEND_VERSION=$(curl -sL "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" | jq -r .tag_name) \
-    && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" | busybox unzip -d / - \
+    && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/dev_v2.0.0-alpha/dist.zip" | busybox unzip -d / - \
     && mv /dist /public \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
     && mv -f /tmp/MoviePilot-Plugins-main/plugins/* /app/app/plugins/ \
