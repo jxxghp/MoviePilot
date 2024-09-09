@@ -22,7 +22,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
             return
         for server in mediaservers:
             if server.type == "jellyfin" and server.enabled:
-                self._servers[server.name] = Jellyfin(**server.config)
+                self._servers[server.name] = Jellyfin(**server.config, sync_libraries=server.sync_libraries)
 
     @staticmethod
     def get_name() -> str:

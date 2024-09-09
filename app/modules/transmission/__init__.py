@@ -270,7 +270,8 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
         else:
             tags = ['已整理']
         server.set_torrent_tag(ids=hashs, tags=tags)
-        # 移动模式删除种子
+        # FIXME 移动模式删除种子
+        """
         if settings.TRANSFER_TYPE in ["move"]:
             if self.remove_torrents(hashs):
                 logger.info(f"移动模式删除种子成功：{hashs} ")
@@ -280,6 +281,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
                 if not files:
                     logger.warn(f"删除残留文件夹：{path}")
                     shutil.rmtree(path, ignore_errors=True)
+        """
 
     def remove_torrents(self, hashs: Union[str, list], delete_file: bool = True,
                         downloader: str = None) -> Optional[bool]:

@@ -22,7 +22,7 @@ class EmbyModule(_ModuleBase, _MediaServerBase):
             return
         for server in mediaservers:
             if server.type == "emby" and server.enabled:
-                self._servers[server.name] = Emby(**server.config)
+                self._servers[server.name] = Emby(**server.config, sync_libraries=server.sync_libraries)
 
     @staticmethod
     def get_name() -> str:

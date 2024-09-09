@@ -15,6 +15,7 @@ from app.db import get_db
 from app.db.models import User
 from app.db.models.message import Message
 from app.db.user_oper import get_current_active_superuser
+from app.helper.notification import NotificationHelper
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.schemas.types import MessageChannel
@@ -75,26 +76,31 @@ def get_web_message(_: schemas.TokenPayload = Depends(verify_token),
     return ret_messages
 
 
-def wechat_verify(echostr: str, msg_signature: str,
-                  timestamp: Union[str, int], nonce: str) -> Any:
+def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, int], nonce: str,
+                  source: str = None) -> Any:
     """
     微信验证响应
     """
-    try:
-        wxcpt = WXBizMsgCrypt(sToken=settings.WECHAT_TOKEN,
-                              sEncodingAESKey=settings.WECHAT_ENCODING_AESKEY,
-                              sReceiveId=settings.WECHAT_CORPID)
-    except Exception as err:
-        logger.error(f"微信请求验证失败: {str(err)}")
-        return str(err)
-    ret, sEchoStr = wxcpt.VerifyURL(sMsgSignature=msg_signature,
-                                    sTimeStamp=timestamp,
-                                    sNonce=nonce,
-                                    sEchoStr=echostr)
-    if ret != 0:
-        logger.error("微信请求验证失败 VerifyURL ret: %s" % str(ret))
-    # 验证URL成功，将sEchoStr返回给企业号
-    return PlainTextResponse(sEchoStr)
+    clients = NotificationHelper().get_clients()
+    if not clients:
+        return
+    for client in clients:
+        if client.type == "wechat" and client.enabled and client.name == source:
+            try:
+                wxcpt = WXBizMsgCrypt(sToken=client.config.get('WECHAT_TOKEN'),
+                                      sEncodingAESKey=client.config.get('WECHAT_ENCODING_AESKEY'),
+                                      sReceiveId=client.config.get('WECHAT_CORPID'))
+                ret, sEchoStr = wxcpt.VerifyURL(sMsgSignature=msg_signature,
+                                                sTimeStamp=timestamp,
+                                                sNonce=nonce,
+                                                sEchoStr=echostr)
+                if ret == 0:
+                    # 验证URL成功，将sEchoStr返回给企业号
+                    return PlainTextResponse(sEchoStr)
+            except Exception as err:
+                logger.error(f"微信请求验证失败: {str(err)}")
+                return str(err)
+    return "未找到对应的消息配置"
 
 
 def vocechat_verify(token: str) -> Any:

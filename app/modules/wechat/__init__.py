@@ -1,7 +1,6 @@
 import xml.dom.minidom
 from typing import Optional, Union, List, Tuple, Any, Dict
 
-from app.core.config import settings
 from app.core.context import Context, MediaInfo
 from app.helper.notification import NotificationHelper
 from app.log import logger
@@ -66,6 +65,9 @@ class WechatModule(_ModuleBase, _MessageBase):
             client: WeChat = self.get_client(source)
             if not client:
                 return None
+            client_config = self.get_config(source)
+            if not client_config:
+                return None
             # URL参数
             sVerifyMsgSig = args.get("msg_signature")
             sVerifyTimeStamp = args.get("timestamp")
@@ -74,9 +76,9 @@ class WechatModule(_ModuleBase, _MessageBase):
                 logger.debug(f"微信请求参数错误：{args}")
                 return None
             # 解密模块
-            wxcpt = WXBizMsgCrypt(sToken=settings.WECHAT_TOKEN,
-                                  sEncodingAESKey=settings.WECHAT_ENCODING_AESKEY,
-                                  sReceiveId=settings.WECHAT_CORPID)
+            wxcpt = WXBizMsgCrypt(sToken=client_config.config.get('WECHAT_TOKEN'),
+                                  sEncodingAESKey=client_config.config.get('WECHAT_ENCODING_AESKEY'),
+                                  sReceiveId=client_config.config.get('WECHAT_CORPID'))
             # 报文数据
             if not body:
                 logger.debug(f"微信请求数据为空")
@@ -126,8 +128,8 @@ class WechatModule(_ModuleBase, _MessageBase):
             # 解析消息内容
             if msg_type == "event" and event == "click":
                 # 校验用户有权限执行交互命令
-                if settings.WECHAT_ADMINS:
-                    wechat_admins = settings.WECHAT_ADMINS.split(',')
+                if client_config.config.get('WECHAT_ADMINS'):
+                    wechat_admins = client_config.config.get('WECHAT_ADMINS').split(',')
                     if wechat_admins and not any(
                             user_id == admin_user for admin_user in wechat_admins):
                         client.send_msg(title="用户无权限执行菜单命令", userid=user_id)

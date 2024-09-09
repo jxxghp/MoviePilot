@@ -287,17 +287,16 @@ class Scheduler(metaclass=Singleton):
             )
 
         # 下载器文件转移（每5分钟）
-        if settings.DOWNLOADER_MONITOR:
-            self._scheduler.add_job(
-                self.start,
-                "interval",
-                id="transfer",
-                name="下载文件整理",
-                minutes=5,
-                kwargs={
-                    'job_id': 'transfer'
-                }
-            )
+        self._scheduler.add_job(
+            self.start,
+            "interval",
+            id="transfer",
+            name="下载文件整理",
+            minutes=5,
+            kwargs={
+                'job_id': 'transfer'
+            }
+        )
 
         # 后台刷新TMDB壁纸
         self._scheduler.add_job(

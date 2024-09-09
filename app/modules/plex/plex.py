@@ -19,8 +19,10 @@ from app.utils.url import UrlUtils
 class Plex:
     _plex = None
     _session = None
+    _sync_libraries: List[str] = []
 
-    def __init__(self, host: str = None, token: str = None, play_host: str = None, **kwargs):
+    def __init__(self, host: str = None, token: str = None, play_host: str = None,
+                 sync_libraries: list = None, **kwargs):
         if not host or not token:
             logger.error("Plex服务器配置不完整！")
             return
@@ -39,6 +41,7 @@ class Plex:
                 self._plex = None
                 logger.error(f"Plex服务器连接失败：{str(e)}")
             self._session = self.__adapt_plex_session()
+        self._sync_libraries = sync_libraries or []
 
     def is_inactive(self) -> bool:
         """
@@ -109,9 +112,8 @@ class Plex:
             logger.error(f"获取媒体服务器所有媒体库列表出错：{str(err)}")
             return []
         libraries = []
-        black_list = (settings.MEDIASERVER_SYNC_BLACKLIST or '').split(",")
         for library in self._libraries:
-            if library.title in black_list:
+            if self._sync_libraries and library.key not in self._sync_libraries:
                 continue
             match library.type:
                 case "movie":
@@ -287,18 +289,18 @@ class Plex:
                 return None
             # 如果配置了外网播放地址以及Token，则默认从Plex媒体服务器获取图片，否则返回有外网地址的图片资源
             if self._playhost and self._token:
-                query = {"X-Plex-Token": settings.PLEX_TOKEN}
+                query = {"X-Plex-Token": self._token}
                 if image_type == "Poster":
                     if item.thumb:
-                        image_url = RequestUtils.combine_url(host=settings.PLEX_PLAY_HOST, path=item.thumb, query=query)
+                        image_url = RequestUtils.combine_url(host=self._playhost, path=item.thumb, query=query)
                 else:
                     # 默认使用art也就是Backdrop进行处理
                     if item.art:
-                        image_url = RequestUtils.combine_url(host=settings.PLEX_PLAY_HOST, path=item.art, query=query)
+                        image_url = RequestUtils.combine_url(host=self._playhost, path=item.art, query=query)
                     # 这里对episode进行特殊处理，实际上episode的Backdrop是Poster
                     # 也有个别情况，比如机智的凡人小子episode就是Poster，因此这里把episode的优先级降低，默认还是取art
                     if not image_url and item.TYPE == "episode" and item.thumb:
-                        image_url = RequestUtils.combine_url(host=settings.PLEX_PLAY_HOST, path=item.thumb, query=query)
+                        image_url = RequestUtils.combine_url(host=self._playhost, path=item.thumb, query=query)
             else:
                 if image_type == "Poster":
                     images = self._plex.fetchItems(ekey=f"{ekey}/posters",
@@ -811,23 +813,21 @@ class Plex:
             logger.error(f"连接Plex出错：" + str(e))
             return None
 
-    @staticmethod
-    def __get_request_headers() -> dict:
+    def __get_request_headers(self) -> dict:
         """获取请求头"""
         return {
-            "X-Plex-Token": settings.PLEX_TOKEN,
+            "X-Plex-Token": self._token,
             "Accept": "application/json",
             "Content-Type": "application/json"
         }
 
-    @staticmethod
-    def __adapt_plex_session() -> Session:
+    def __adapt_plex_session(self) -> Session:
         """
         创建并配置一个针对Plex服务的requests.Session实例
         这个会话包括特定的头部信息，用于处理所有的Plex请求
         """
         # 设置请求头部，通常包括验证令牌和接受/内容类型头部
-        headers = Plex.__get_request_headers()
+        headers = self.__get_request_headers()
         session = Session()
         session.headers = headers
         return session

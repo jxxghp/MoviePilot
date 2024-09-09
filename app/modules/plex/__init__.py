@@ -22,7 +22,7 @@ class PlexModule(_ModuleBase, _MediaServerBase):
             return
         for server in mediaservers:
             if server.type == "plex" and server.enabled:
-                self._servers[server.name] = Plex(**server.config)
+                self._servers[server.name] = Plex(**server.config, sync_libraries=server.sync_libraries)
 
     @staticmethod
     def get_name() -> str:

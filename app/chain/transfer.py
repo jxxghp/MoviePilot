@@ -63,6 +63,16 @@ class TransferChain(ChainBase):
 
         # 全局锁，避免重复处理
         with lock:
+            # 获取下载器监控目录
+            download_dirs = self.directoryhelper.get_download_dirs()
+            # 如果没有下载器监控的目录则不处理
+            downloader_monitor = False
+            for dir_info in download_dirs:
+                if dir_info.monitor_type == "downloader":
+                    downloader_monitor = True
+                    break
+            if not downloader_monitor:
+                return True
             logger.info("开始整理下载器中已经完成下载的文件 ...")
             # 从下载器获取种子列表
             torrents: Optional[List[TransferTorrent]] = self.list_torrents(status=TorrentStatus.TRANSFER)
@@ -74,7 +84,6 @@ class TransferChain(ChainBase):
 
             # 检查是否为下载器监控目录中的文件
             need_handle = False
-            download_dirs = self.directoryhelper.get_download_dirs()
             for torrent in torrents:
                 # 文件路径
                 file_path = Path(torrent.path)
@@ -157,7 +166,7 @@ class TransferChain(ChainBase):
         返回：成功标识，错误信息
         """
         if not transfer_type:
-            transfer_type = settings.TRANSFER_TYPE
+            transfer_type = 'link'
 
         # 自定义格式
         formaterHandler = FormatParser(eformat=epformat.format,

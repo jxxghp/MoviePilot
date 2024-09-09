@@ -15,9 +15,11 @@ class Jellyfin:
     _host: str = None
     _apikey: str = None
     _playhost: str = None
+    _sync_libraries: List[str] = []
     user: Optional[Union[str, int]] = None
 
-    def __init__(self, host: str = None, apikey: str = None, play_host: str = None, **kwargs):
+    def __init__(self, host: str = None, apikey: str = None, play_host: str = None,
+                 sync_libraries: list = None, **kwargs):
         if not host or not apikey:
             logger.error("Jellyfin服务器配置不完整！！")
             return
@@ -30,6 +32,7 @@ class Jellyfin:
         self._apikey = apikey
         self.user = self.get_user(settings.SUPERUSER)
         self.serverid = self.get_server_id()
+        self._sync_libraries = sync_libraries or []
 
     def is_inactive(self) -> bool:
         """
@@ -128,9 +131,8 @@ class Jellyfin:
         if not self._host or not self._apikey:
             return []
         libraries = []
-        black_list = (settings.MEDIASERVER_SYNC_BLACKLIST or '').split(",")
         for library in self.__get_jellyfin_librarys(username) or []:
-            if library.get("Name") in black_list:
+            if self._sync_libraries and library.get("Id") not in self._sync_libraries:
                 continue
             match library.get("CollectionType"):
                 case "movies":
@@ -871,9 +873,8 @@ class Jellyfin:
         if not self._host or not self._apikey:
             return []
         library_folders = []
-        black_list = (settings.MEDIASERVER_SYNC_BLACKLIST or '').split(",")
         for library in self.get_jellyfin_virtual_folders() or []:
-            if library.get("Name") in black_list:
+            if self._sync_libraries and library.get("Id") not in self._sync_libraries:
                 continue
             library_folders += [folder for folder in library.get("Path")]
         return library_folders
