@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     """
     # 项目名称
     PROJECT_NAME = "MoviePilot"
+    # 版本标识，用来区分重大版本，为空则为v1
+    VERSION_FLAG = "v2"
     # 域名 格式；https://movie-pilot.org
     APP_DOMAIN: str = ""
     # API路径

@@ -553,6 +553,11 @@ class PluginManager(metaclass=Singleton):
             ret_plugins = []
             add_time = len(online_plugins)
             for pid, plugin_info in online_plugins.items():
+                # 版本兼容性控制
+                if hasattr(settings, 'VERSION_FLAG') \
+                        and not plugin_info.get(settings.VERSION_FLAG):
+                    # 插件当前版本不兼容
+                    continue
                 # 运行状插件
                 plugin_obj = self._running_plugins.get(pid)
                 # 非运行态插件
