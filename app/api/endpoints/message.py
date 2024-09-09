@@ -85,7 +85,7 @@ def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, int], 
     if not clients:
         return
     for client in clients:
-        if client.type == "wechat" and client.enabled and client.name == source:
+        if client.type == "wechat" and client.enabled and (not source or client.name == source):
             try:
                 wxcpt = WXBizMsgCrypt(sToken=client.config.get('WECHAT_TOKEN'),
                                       sEncodingAESKey=client.config.get('WECHAT_ENCODING_AESKEY'),
@@ -114,14 +114,14 @@ def vocechat_verify(token: str) -> Any:
 
 @router.get("/", summary="回调请求验证")
 def incoming_verify(token: str = None, echostr: str = None, msg_signature: str = None,
-                    timestamp: Union[str, int] = None, nonce: str = None) -> Any:
+                    timestamp: Union[str, int] = None, nonce: str = None, source: str = None) -> Any:
     """
     微信/VoceChat等验证响应
     """
     logger.info(f"收到验证请求: token={token}, echostr={echostr}, "
                 f"msg_signature={msg_signature}, timestamp={timestamp}, nonce={nonce}")
     if echostr and msg_signature and timestamp and nonce:
-        return wechat_verify(echostr, msg_signature, timestamp, nonce)
+        return wechat_verify(echostr, msg_signature, timestamp, nonce, source)
     return vocechat_verify(token)
 
 
