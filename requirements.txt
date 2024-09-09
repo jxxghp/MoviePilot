@@ -197,7 +197,6 @@ pyvirtualdisplay==3.0
     # via -r requirements.in
 pywebpush==2.0.0
     # via -r requirements.in
-pywin32==306
     # via docker
 qbittorrent-api==2023.5.48
     # via -r requirements.in
