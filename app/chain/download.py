@@ -886,11 +886,11 @@ class DownloadChain(ChainBase):
             link=settings.MP_DOMAIN('#/downloading')
         ))
 
-    def downloading(self) -> List[DownloadingTorrent]:
+    def downloading(self, name: str = None) -> List[DownloadingTorrent]:
         """
         查询正在下载的任务
         """
-        torrents = self.list_torrents(status=TorrentStatus.DOWNLOADING)
+        torrents = self.list_torrents(downloader=name, status=TorrentStatus.DOWNLOADING)
         if not torrents:
             return []
         ret_torrents = []
