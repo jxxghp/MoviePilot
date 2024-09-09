@@ -68,11 +68,13 @@ class TransferChain(ChainBase):
             # 如果没有下载器监控的目录则不处理
             downloader_monitor = False
             for dir_info in download_dirs:
-                if dir_info.monitor_type == "downloader":
+                # 只有下载器监控的本地目录才处理
+                if dir_info.monitor_type == "downloader" and dir_info.storage == "local":
                     downloader_monitor = True
                     break
             if not downloader_monitor:
                 return True
+
             logger.info("开始整理下载器中已经完成下载的文件 ...")
             # 从下载器获取种子列表
             torrents: Optional[List[TransferTorrent]] = self.list_torrents(status=TorrentStatus.TRANSFER)
@@ -82,8 +84,6 @@ class TransferChain(ChainBase):
 
             logger.info(f"获取到 {len(torrents)} 个已完成的下载任务")
 
-            # 检查是否为下载器监控目录中的文件
-            need_handle = False
             for torrent in torrents:
                 # 文件路径
                 file_path = Path(torrent.path)
@@ -91,15 +91,16 @@ class TransferChain(ChainBase):
                     logger.warn(f"文件不存在：{file_path}")
                     continue
                 # 检查是否为下载器监控目录中的文件
+                transfer_dirinfo = None
                 for dir_info in download_dirs:
                     if dir_info.monitor_type != "downloader":
                         continue
                     if not dir_info.download_path:
                         continue
                     if file_path.is_relative_to(Path(dir_info.download_path)):
-                        need_handle = True
+                        transfer_dirinfo = dir_info
                         break
-                if not need_handle:
+                if not transfer_dirinfo:
                     logger.info(f"文件 {file_path} 不在下载器监控目录中，不通过下载器进行整理")
                     # 设置下载任务状态
                     self.transfer_completed(hashs=torrent.hash, path=torrent.path)
@@ -137,7 +138,8 @@ class TransferChain(ChainBase):
                 )
 
                 # 设置下载任务状态
-                self.transfer_completed(hashs=torrent.hash, path=torrent.path)
+                self.transfer_completed(hashs=torrent.hash, path=torrent.path,
+                                        transfer_type=transfer_dirinfo.transfer_type)
             # 结束
             logger.info("所有下载器中下载完成的文件已整理完成")
             return True

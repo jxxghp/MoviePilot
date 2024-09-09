@@ -402,14 +402,16 @@ class ChainBase(metaclass=ABCMeta):
                                target_path=target_path, episodes_info=episodes_info, scrape=scrape)
 
     def transfer_completed(self, hashs: str, path: Path = None,
-                           downloader: str = None) -> None:
+                           downloader: str = None, transfer_type: str = None) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash
         :param path:  源目录
         :param downloader:  下载器
+        :param transfer_type:   整理方式
         """
-        return self.run_module("transfer_completed", hashs=hashs, path=path, downloader=downloader)
+        return self.run_module("transfer_completed", hashs=hashs, path=path,
+                               downloader=downloader, transfer_type=transfer_type)
 
     def remove_torrents(self, hashs: Union[str, list], delete_file: bool = True,
                         downloader: str = None) -> bool:
