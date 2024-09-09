@@ -21,6 +21,7 @@ from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
 from app.helper.sites import SitesHelper
+from app.monitor import Monitor
 from app.scheduler import Scheduler
 from app.utils.http import RequestUtils
 from app.utils.system import SystemUtils
@@ -363,6 +364,7 @@ def reload_module(_: User = Depends(get_current_active_superuser)):
     """
     ModuleManager().reload()
     Scheduler().init()
+    Monitor().init()
     return schemas.Response(success=True)
 
 

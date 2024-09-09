@@ -98,9 +98,9 @@ class Monitor(metaclass=Singleton):
         self.systemconfig = SystemConfigOper()
 
         # 启动目录监控和文件整理
-        self.start()
+        self.init()
 
-    def start(self):
+    def init(self):
         """
         启动监控
         """
