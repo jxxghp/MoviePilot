@@ -1,3 +1,5 @@
+import threading
+import typing
 from queue import Queue, Empty
 from typing import Dict, Any
 
@@ -76,16 +78,39 @@ class EventManager(metaclass=Singleton):
             self._disabled_handlers.remove(class_name)
         logger.debug(f"Event Enabled：{class_name}")
 
-    def send_event(self, etype: EventType, data: dict = None):
+    def send_event(self, etype: EventType, data: dict = None, callback: typing.Callable = None):
         """
-        发送事件
+        发送事件（异步响应）
         """
         if etype not in EventType:
             return
         event = Event(etype.value)
         event.event_data = data or {}
-        logger.debug(f"发送事件：{etype.value} - {event.event_data}")
+        event.event_callback = callback
+        logger.debug(f"发送事件：{etype.value} - data：{event.event_data}，callback：{callback}")
         self._eventQueue.put(event)
+
+    def send_event_sync(self, etype: EventType, data: dict = None):
+        """
+        发送事件（同步响应）
+        """
+        result: any = None
+        condition = threading.Condition()
+
+        def callback(res):
+            nonlocal result
+            if res:
+                result = res.result()
+            with condition:
+                condition.notify_all()
+
+        thread = threading.Thread(target=self.send_event, args=(etype, data, callback))
+        thread.start()
+
+        with condition:
+            condition.wait()
+
+        return result
 
     def register(self, etype: [EventType, list]):
         """
@@ -117,6 +142,8 @@ class Event(object):
         self.event_type = event_type
         # 字典用于保存具体的事件数据
         self.event_data = {}
+        # 事件完成后回调函数
+        self.event_callback = None
 
 
 # 实例引用，用于注册事件

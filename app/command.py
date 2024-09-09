@@ -187,17 +187,20 @@ class Command(metaclass=Singleton):
             event, handlers = self.eventmanager.get_event()
             if event:
                 logger.info(f"处理事件：{event.event_type} - {handlers}")
+                if not handlers and event.event_callback:
+                    event.event_callback()
                 for handler in handlers:
                     names = handler.__qualname__.split(".")
                     [class_name, method_name] = names
                     try:
                         if class_name in self.pluginmanager.get_plugin_ids():
                             # 插件事件
-                            self.threader.submit(
+                            result = self.threader.submit(
                                 self.pluginmanager.run_plugin_method,
                                 class_name, method_name, copy.deepcopy(event)
                             )
-
+                            if event.event_callback:
+                                event.event_callback(result)
                         else:
                             # 检查全局变量中是否存在
                             if class_name not in globals():
@@ -210,7 +213,6 @@ class Command(metaclass=Singleton):
                                 except Exception as e:
                                     logger.error(f"事件处理出错：{str(e)} - {traceback.format_exc()}")
                                     continue
-
                             else:
                                 # 通过类名创建类实例
                                 class_obj = globals()[class_name]()
