@@ -197,7 +197,10 @@ pyvirtualdisplay==3.0
     # via -r requirements.in
 pywebpush==2.0.0
     # via -r requirements.in
-    # via docker
+pywin32==306 ; platform_system == "Windows"
+    # via
+    #   -r requirements.in
+    #   docker
 qbittorrent-api==2023.5.48
     # via -r requirements.in
 regex==2023.6.3
