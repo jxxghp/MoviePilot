@@ -548,7 +548,8 @@ class PluginManager(metaclass=Singleton):
             """
             online_plugins = self.pluginhelper.get_plugins(repo_url=market, version=version) or {}
             if not online_plugins:
-                logger.warn(f"获取插件库失败：{market}")
+                if not version:
+                    logger.warn(f"获取插件库失败：{market}")
                 return
             ret_plugins = []
             add_time = len(online_plugins)
