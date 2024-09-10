@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.dashboard import DashboardChain
+from app.chain.storage import StorageChain
 from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
@@ -48,11 +49,19 @@ def storage(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询本地存储空间信息
     """
-    library_dirs = DirectoryHelper().get_local_library_dirs()
-    total_storage, free_storage = SystemUtils.space_usage([Path(d.library_path) for d in library_dirs])
+    total, available = 0, 0
+    dirs = DirectoryHelper().get_dirs()
+    if not dirs:
+        return schemas.Storage(total_storage=total, used_storage=total - available)
+    storages = set([d.library_storage for d in dirs if d.library_storage])
+    for _storage in storages:
+        _usage = StorageChain().storage_usage(_storage)
+        if _usage:
+            total += _usage.total
+            available += _usage.available
     return schemas.Storage(
-        total_storage=total_storage,
-        used_storage=total_storage - free_storage
+        total_storage=total,
+        used_storage=total - available
     )
 
 
