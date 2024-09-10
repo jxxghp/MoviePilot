@@ -48,9 +48,23 @@ pip install pip-tools
 
    `requirements.in` 文件是项目依赖项的源文件。要添加或更新依赖项，请直接编辑该文件。
 
-2. **生成 `requirements.txt` 文件**：
+2. **更新特定的依赖项**：
 
-   编辑完 `requirements.in` 文件后，运行以下命令生成或更新 `requirements.txt` 文件：
+   如果你只想更新 `requirements.in` 中的某个特定依赖包，而不影响其他依赖项，可以使用 `--upgrade-package` 选项，指定要升级的包：
+
+   ```bash
+   pip-compile --upgrade-package <package-name> requirements.in
+   ```
+
+   例如，要只升级 `requests` 这个包，你可以运行以下命令：
+
+   ```bash
+   pip-compile --upgrade-package requests requirements.in
+   ```
+   
+3. **全量更新依赖项**：
+
+   如果你想更新 `requirements.in` 中的所有依赖包，运行以下命令生成或更新 `requirements.txt` 文件：
 
    ```bash
    pip-compile requirements.in
@@ -58,7 +72,7 @@ pip install pip-tools
 
    这将根据 `requirements.in` 中指定的依赖项生成一个锁定的 `requirements.txt` 文件。
 
-3. **安装依赖项**：
+4. **安装依赖项**：
 
    使用以下命令安装 `requirements.txt` 文件中列出的依赖项：
 
