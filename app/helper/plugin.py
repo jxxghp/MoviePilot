@@ -40,10 +40,11 @@ class PluginHelper(metaclass=Singleton):
         return None if settings.GITHUB_PROXY else settings.PROXY
 
     @cached(cache=TTLCache(maxsize=1000, ttl=1800))
-    def get_plugins(self, repo_url: str) -> Dict[str, dict]:
+    def get_plugins(self, repo_url: str, version: str = None) -> Dict[str, dict]:
         """
         获取Github所有最新插件列表
         :param repo_url: Github仓库地址
+        :param version: 版本
         """
         if not repo_url:
             return {}
@@ -51,9 +52,10 @@ class PluginHelper(metaclass=Singleton):
         if not user or not repo:
             return {}
         raw_url = self._base_url % (user, repo)
+        package_url = f"{raw_url}package.{version}.json" if version else f"{raw_url}package.json"
         res = RequestUtils(proxies=self.proxies,
                            headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"),
-                           timeout=10).get_res(f"{raw_url}package.json")
+                           timeout=10).get_res(package_url)
         if res:
             try:
                 return json.loads(res.text)

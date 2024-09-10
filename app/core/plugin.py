@@ -542,11 +542,11 @@ class PluginManager(metaclass=Singleton):
         获取所有在线插件信息
         """
 
-        def __get_plugin_info(market: str) -> Optional[List[schemas.Plugin]]:
+        def __get_plugin_info(market: str, version: str = None) -> Optional[List[schemas.Plugin]]:
             """
             获取插件信息
             """
-            online_plugins = self.pluginhelper.get_plugins(market) or {}
+            online_plugins = self.pluginhelper.get_plugins(repo_url=market, version=version) or {}
             if not online_plugins:
                 logger.warn(f"获取插件库失败：{market}")
                 return
@@ -554,10 +554,11 @@ class PluginManager(metaclass=Singleton):
             add_time = len(online_plugins)
             for pid, plugin_info in online_plugins.items():
                 # 版本兼容性控制
-                if hasattr(settings, 'VERSION_FLAG') \
-                        and not plugin_info.get(settings.VERSION_FLAG):
-                    # 插件当前版本不兼容
-                    continue
+                if not version:
+                    if hasattr(settings, 'VERSION_FLAG') \
+                            and not plugin_info.get(settings.VERSION_FLAG):
+                        # 插件当前版本不兼容
+                        continue
                 # 运行状插件
                 plugin_obj = self._running_plugins.get(pid)
                 # 非运行态插件
@@ -644,7 +645,11 @@ class PluginManager(metaclass=Singleton):
             for m in settings.PLUGIN_MARKET.split(","):
                 if not m:
                     continue
-                futures.append(executor.submit(__get_plugin_info, m))
+                # v1版本插件
+                futures.append(executor.submit(__get_plugin_info, m, None))
+                # v2+版本插件
+                if settings.VERSION_FLAG:
+                    futures.append(executor.submit(__get_plugin_info, m, settings.VERSION_FLAG))
             for future in concurrent.futures.as_completed(futures):
                 plugins = future.result()
                 if plugins:
