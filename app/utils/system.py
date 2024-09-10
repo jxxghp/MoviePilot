@@ -471,3 +471,15 @@ class SystemUtils:
         if os.name == "nt":
             return src.drive == dest.drive
         return os.stat(src).st_dev == os.stat(dest).st_dev
+
+    @staticmethod
+    def get_config_path() -> Path:
+        """
+        获取配置路径
+        """
+        if SystemUtils.is_docker():
+            return Path("/config")
+        elif SystemUtils.is_frozen():
+            return Path(sys.executable).parent / "config"
+        else:
+            return Path(__file__).parents[2] / "config"
