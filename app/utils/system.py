@@ -487,3 +487,10 @@ class SystemUtils:
             return Path(sys.executable).parent / "config"
         else:
             return Path(__file__).parents[2] / "config"
+
+    @staticmethod
+    def get_env_path() -> Path:
+        """
+        获取配置路径
+        """
+        return SystemUtils.get_config_path() / "app.env"

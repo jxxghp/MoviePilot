@@ -117,7 +117,7 @@ class Settings(BaseSettings):
                           '.pcm', '.rmi', '.s3m', '.snd', '.spx', '.tak',
                           '.tta', '.vqf', '.wav', '.wma',
                           '.aifc', '.aiff', '.alac', '.adif', '.adts',
-                          '.flac',  '.midi', '.opus', '.sfalc']
+                          '.flac', '.midi', '.opus', '.sfalc']
     # 下载器临时文件后缀
     DOWNLOAD_TMPEXT: list = ['.!qB', '.part']
     # 下载器监视间隔（小时）
@@ -272,16 +272,16 @@ class Settings(BaseSettings):
         """
         if self.PROXY_HOST:
             parsed_url = urlparse(self.PROXY_HOST)
-            protocol = parsed_url.scheme or ""      # 协议
-            username = parsed_url.username or ""    # 用户名
-            password = parsed_url.password or ""    # 密码
-            host = parsed_url.hostname or ""        # 主机
-            port = parsed_url.port or ""            # 端口
-            path = parsed_url.path or ""            # 路径
-            netloc = parsed_url.netloc or ""        # 用户名:密码@主机:端口
-            query = parsed_url.query or ""          # 查询参数: ?key=value
-            params = parsed_url.params or ""        # 使用;分割的参数
-            fragment = parsed_url.fragment or ""    # 片段: #fragment
+            protocol = parsed_url.scheme or ""  # 协议
+            username = parsed_url.username or ""  # 用户名
+            password = parsed_url.password or ""  # 密码
+            host = parsed_url.hostname or ""  # 主机
+            port = parsed_url.port or ""  # 端口
+            path = parsed_url.path or ""  # 路径
+            netloc = parsed_url.netloc or ""  # 用户名:密码@主机:端口
+            query = parsed_url.query or ""  # 查询参数: ?key=value
+            params = parsed_url.params or ""  # 使用;分割的参数
+            fragment = parsed_url.fragment or ""  # 片段: #fragment
 
             if not port:
                 if protocol == "https":
@@ -414,6 +414,8 @@ class Settings(BaseSettings):
 
     class Config:
         case_sensitive = True
+        env_file = SystemUtils.get_env_path()
+        env_file_encoding = "utf-8"
 
 
 class GlobalVar(object):
@@ -451,10 +453,7 @@ class GlobalVar(object):
 
 
 # 实例化配置
-settings = Settings(
-    _env_file=Settings().CONFIG_PATH / "app.env",
-    _env_file_encoding="utf-8"
-)
+settings = Settings()
 
 # 全局标识
 global_vars = GlobalVar()

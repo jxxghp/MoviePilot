@@ -49,7 +49,7 @@ class LogSettings(BaseSettings):
 
     class Config:
         case_sensitive = True
-        env_file = SystemUtils.get_config_path() / "app.env"
+        env_file = SystemUtils.get_env_path()
         env_file_encoding = "utf-8"
 
 
