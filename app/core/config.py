@@ -5,8 +5,10 @@ from pathlib import Path
 from typing import Optional, List
 from urllib.parse import urlparse
 
+from dotenv import set_key
 from pydantic import BaseSettings, validator
 
+from app.log import logger
 from app.utils.system import SystemUtils
 
 
@@ -61,7 +63,7 @@ class Settings(BaseSettings):
     # 超级管理员
     SUPERUSER: str = "admin"
     # API密钥，需要更换
-    API_TOKEN: str = "moviepilot"
+    API_TOKEN: Optional[str] = None
     # 网络代理 IP:PORT
     PROXY_HOST: Optional[str] = None
     # 登录页面电影海报,tmdb/bing
@@ -197,6 +199,17 @@ class Settings(BaseSettings):
             return int(value)
         except (ValueError, TypeError):
             raise ValueError(f"{value} 格式错误，不是有效数字！")
+
+    @validator("API_TOKEN", pre=True, always=True)
+    def validate_api_token(cls, v):
+        if not v:
+            new_token = secrets.token_urlsafe(16)
+            logger.info(f"API_TOKEN 未设置，已随机生成新的 API_TOKEN：{new_token}")
+            set_key(str(SystemUtils.get_env_path()), "API_TOKEN", new_token)
+            return new_token
+        elif len(v) < 16:
+            logger.warning("API_TOKEN 长度不足 16 个字符，存在安全隐患，建议尽快更换为更复杂的密钥！")
+        return v
 
     @property
     def INNER_CONFIG_PATH(self):
