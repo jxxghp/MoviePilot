@@ -426,7 +426,8 @@ class PluginManager(metaclass=Singleton):
             "endpoint": self.xxx,
             "methods": ["GET", "POST"],
             "summary": "API名称",
-            "description": "API说明"
+            "description": "API说明",
+            "allow_anonymous": false
         }]
         """
         ret_apis = []
