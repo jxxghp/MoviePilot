@@ -90,7 +90,11 @@ class MediaServerChain(ChainBase):
                     logger.info(f"媒体服务器 {server_name} 的同步媒体库为空，跳过")
                     continue
                 logger.info(f"开始同步媒体服务器 {server_name} 的数据 ...")
-                for library in self.librarys(server_name):
+                libraries = self.librarys(server_name)
+                if not libraries:
+                    logger.info(f"没有获取到媒体服务器 {server_name} 的媒体库，跳过")
+                    continue
+                for library in libraries:
                     if sync_libraries and library.id not in sync_libraries:
                         logger.info(f"{library.name} 未在 {server_name} 同步媒体库列表中，跳过")
                         continue
