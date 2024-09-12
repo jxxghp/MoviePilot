@@ -147,13 +147,14 @@ class PlexModule(_ModuleBase, _MediaServerBase):
             media_statistics.append(media_statistic)
         return media_statistics
 
-    def mediaserver_librarys(self, server: str = None, **kwargs) -> Optional[List[schemas.MediaServerLibrary]]:
+    def mediaserver_librarys(self, server: str = None, hidden: bool = False,
+                             **kwargs) -> Optional[List[schemas.MediaServerLibrary]]:
         """
         媒体库列表
         """
         server: Plex = self.get_server(server)
         if server:
-            return server.get_librarys()
+            return server.get_librarys(hidden)
         return None
 
     def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator]:

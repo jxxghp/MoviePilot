@@ -100,7 +100,7 @@ class Plex:
         return [f"{self._host.rstrip('/') + url}?X-Plex-Token={self._token}" for url in
                 list(poster_urls.keys())[:total_size]]
 
-    def get_librarys(self) -> List[schemas.MediaServerLibrary]:
+    def get_librarys(self, hidden: bool = False) -> List[schemas.MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -113,6 +113,8 @@ class Plex:
             return []
         libraries = []
         for library in self._libraries:
+            if hidden and self._sync_libraries and library.key not in self._sync_libraries:
+                continue
             match library.type:
                 case "movie":
                     library_type = MediaType.MOVIE.value

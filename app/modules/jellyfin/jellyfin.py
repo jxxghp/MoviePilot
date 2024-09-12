@@ -124,7 +124,7 @@ class Jellyfin:
             logger.error(f"连接Users/Views 出错：" + str(e))
             return []
 
-    def get_librarys(self, username: str = None) -> List[schemas.MediaServerLibrary]:
+    def get_librarys(self, username: str = None, hidden: bool = False) -> List[schemas.MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库列表
         """
@@ -132,6 +132,8 @@ class Jellyfin:
             return []
         libraries = []
         for library in self.__get_jellyfin_librarys(username) or []:
+            if hidden and self._sync_libraries and library.get("Id") not in self._sync_libraries:
+                continue
             match library.get("CollectionType"):
                 case "movies":
                     library_type = MediaType.MOVIE.value

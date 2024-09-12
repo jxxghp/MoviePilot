@@ -137,8 +137,9 @@ def playing(server: str, count: int = 12,
 
 
 @router.get("/library", summary="媒体库列表", response_model=List[schemas.MediaServerLibrary])
-def library(server: str, userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
+def library(server: str, hidden: bool = False,
+            userinfo: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     获取媒体服务器媒体库列表
     """
-    return MediaServerChain().librarys(server=server, username=userinfo.username) or []
+    return MediaServerChain().librarys(server=server, username=userinfo.username, hidden=hidden) or []

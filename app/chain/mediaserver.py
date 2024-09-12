@@ -21,11 +21,11 @@ class MediaServerChain(ChainBase):
         self.dboper = MediaServerOper()
         self.mediaserverhelper = MediaServerHelper()
 
-    def librarys(self, server: str, username: str = None) -> List[schemas.MediaServerLibrary]:
+    def librarys(self, server: str, username: str = None, hidden: bool = False) -> List[schemas.MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库
         """
-        return self.run_module("mediaserver_librarys", server=server, username=username)
+        return self.run_module("mediaserver_librarys", server=server, username=username, hidden=hidden)
 
     def items(self, server: str, library_id: Union[str, int]) -> List[schemas.MediaServerItem]:
         """
@@ -85,7 +85,8 @@ class MediaServerChain(ChainBase):
                 logger.info(f"开始同步媒体库 {server_name} 的数据 ...")
                 for library in self.librarys(server_name):
                     # 同步黑名单 跳过
-                    if library.id not in sync_libraries:
+                    if sync_libraries and library.id not in sync_libraries:
+                        logger.info(f"{server_name} 未在同步媒体库列表中，跳过")
                         continue
                     logger.info(f"正在同步 {server_name} 媒体库 {library.name} ...")
                     library_count = 0
