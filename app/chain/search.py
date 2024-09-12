@@ -154,6 +154,8 @@ class SearchChain(ChainBase):
             keywords = list(dict.fromkeys([k for k in [mediainfo.title,
                                                        mediainfo.original_title,
                                                        mediainfo.en_title,
+                                                       mediainfo.hk_title,
+                                                       mediainfo.tw_title,
                                                        mediainfo.sg_title] if k]))
 
         # 执行搜索

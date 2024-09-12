@@ -653,9 +653,14 @@ class TmdbApi:
         else:
             en_title = __get_tmdb_lang_title(tmdb_info, "US")
             tmdb_info['en_title'] = en_title or org_title
+        
+        # 查找香港台湾译名
+        tmdb_info['hk_title'] = __get_tmdb_lang_title(tmdb_info, "HK")
+        tmdb_info['tw_title'] = __get_tmdb_lang_title(tmdb_info, "TW")
+
         # 查找新加坡名（用于替代中文名）
         tmdb_info['sg_title'] = __get_tmdb_lang_title(tmdb_info, "SG") or org_title
-
+                                                      
     def __get_movie_detail(self,
                            tmdbid: int,
                            append_to_response: str = "images,"
