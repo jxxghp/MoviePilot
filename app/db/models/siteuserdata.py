@@ -52,7 +52,14 @@ class SiteUserData(Base):
 
     @staticmethod
     @db_query
-    def get_by_domain(db: Session, domain: str):
+    def get_by_domain(db: Session, domain: str, workdate: str = None, worktime: str = None):
+        if workdate and worktime:
+            return db.query(SiteUserData).filter(SiteUserData.domain == domain,
+                                                 SiteUserData.updated_day == workdate,
+                                                 SiteUserData.updated_time == worktime).all()
+        elif workdate:
+            return db.query(SiteUserData).filter(SiteUserData.domain == domain,
+                                                 SiteUserData.updated_day == workdate).all()
         return db.query(SiteUserData).filter(SiteUserData.domain == domain).all()
 
     @staticmethod

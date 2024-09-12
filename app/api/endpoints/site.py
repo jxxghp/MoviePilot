@@ -14,6 +14,7 @@ from app.db.models import User
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
+from app.db.models.siteuserdata import SiteUserData
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
 from app.helper.sites import SitesHelper
@@ -164,7 +165,7 @@ def update_cookie(
     return schemas.Response(success=state, message=message)
 
 
-@router.get("/userdata/{site_id}", summary="更新站点用户数据", response_model=schemas.Response)
+@router.post("/userdata/{site_id}", summary="更新站点用户数据", response_model=schemas.Response)
 def refresh_userdata(
         site_id: int,
         db: Session = Depends(get_db),
@@ -182,6 +183,27 @@ def refresh_userdata(
     if not indexer:
         return schemas.Response(success=False, message="站点不支持索引或未通过用户认证！")
     user_data = SiteChain().refresh_userdata(site=indexer) or {}
+    return schemas.Response(success=True, data=user_data)
+
+
+@router.get("/userdata/{site_id}", summary="查询站点用户数据", response_model=schemas.Response)
+def read_userdata(
+        site_id: int,
+        workdate: str = None,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    查询站点用户数据
+    """
+    site = Site.get(db, site_id)
+    if not site:
+        raise HTTPException(
+            status_code=404,
+            detail=f"站点 {site_id} 不存在",
+        )
+    user_data = SiteUserData.get_by_domain(db, domain=site.domain, workdate=workdate)
+    if not user_data:
+        return schemas.Response(success=False, data=[])
     return schemas.Response(success=True, data=user_data)
 
 

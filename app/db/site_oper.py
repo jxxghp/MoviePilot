@@ -105,22 +105,29 @@ class SiteOper(DbOper):
         """
         更新站点用户数据
         """
-        site = Site.get_by_domain(self._db, domain)
-        if not site:
-            return False, "站点不存在"
+        # 当前系统日期
+        current_day = datetime.now().strftime('%Y-%m-%d')
+        current_time = datetime.now().strftime('%H:%M:%S')
         payload.update({
             "domain": domain,
-            "updated_day": datetime.now().strftime('%Y-%m-%d'),
-            "updated_time": datetime.now().strftime('%H:%M:%S')
+            "updated_day": current_day,
+            "updated_time": current_time
         })
-        SiteUserData.update(self._db, payload)
+        siteuserdata = SiteUserData.get_by_domain(self._db, domain=domain,
+                                                  workdate=current_day, worktime=current_time)
+        if siteuserdata:
+            # 存在则更新
+            SiteUserData.update(self._db, payload)
+        else:
+            # 不存在则插入
+            SiteUserData(**payload).create(self._db)
         return True, "更新站点用户数据成功"
 
-    def get_userdata_by_domain(self, domain: str) -> List[SiteUserData]:
+    def get_userdata_by_domain(self, domain: str, workdate: str = None) -> List[SiteUserData]:
         """
         获取站点用户数据
         """
-        return SiteUserData.get_by_domain(self._db, domain)
+        return SiteUserData.get_by_domain(self._db, domain=domain, workdate=workdate)
 
     def get_userdata_by_date(self, date: str) -> List[SiteUserData]:
         """

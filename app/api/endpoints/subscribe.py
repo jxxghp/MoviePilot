@@ -317,7 +317,7 @@ async def seerr_subscribe(request: Request, background_tasks: BackgroundTasks,
 
 
 @router.get("/history/{mtype}", summary="查询订阅历史", response_model=List[schemas.Subscribe])
-def read_subscribe(
+def subscribe_history(
         mtype: str,
         page: int = 1,
         count: int = 30,
