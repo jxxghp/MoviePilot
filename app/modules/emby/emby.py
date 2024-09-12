@@ -136,8 +136,6 @@ class Emby:
             return []
         libraries = []
         for library in self.__get_emby_librarys(username) or []:
-            if self._sync_libraries and library.get("Id") not in self._sync_libraries:
-                continue
             match library.get("CollectionType"):
                 case "movies":
                     library_type = MediaType.MOVIE.value

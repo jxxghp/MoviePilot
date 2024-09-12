@@ -113,8 +113,6 @@ class Plex:
             return []
         libraries = []
         for library in self._libraries:
-            if self._sync_libraries and library.key not in self._sync_libraries:
-                continue
             match library.type:
                 case "movie":
                     library_type = MediaType.MOVIE.value
