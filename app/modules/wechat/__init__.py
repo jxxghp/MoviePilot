@@ -34,10 +34,12 @@ class WechatModule(_ModuleBase, _MessageBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> Optional[Tuple[bool, str]]:
         """
         测试模块连接性
         """
+        if not self._clients:
+            return None
         for name, client in self._clients.items():
             state = client.get_state()
             if not state:

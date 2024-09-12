@@ -20,7 +20,7 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
         self._configs = {}
         self._clients = {}
         for client in clients:
-            if client.type == "telegram" and client.enabled:
+            if client.type == "slack" and client.enabled:
                 self._configs[client.name] = client
                 self._clients[client.name] = SynologyChat(**client.config)
 
@@ -31,10 +31,12 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> Optional[Tuple[bool, str]]:
         """
         测试模块连接性
         """
+        if not self._clients:
+            return None
         for name, client in self._clients.items():
             state = client.get_state()
             if not state:

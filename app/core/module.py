@@ -73,11 +73,14 @@ class ModuleManager(metaclass=Singleton):
         测试模块
         """
         if modleid not in self._running_modules:
-            return False, "模块未加载，请检查参数设置"
+            return False, ""
         module = self._running_modules[modleid]
         if hasattr(module, "test") \
                 and ObjectUtils.check_method(getattr(module, "test")):
-            return module.test()
+            result = module.test()
+            if not result:
+                return False, ""
+            return result
         return True, "模块不支持测试"
 
     @staticmethod

@@ -40,12 +40,12 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
     def stop(self):
         pass
 
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> Optional[Tuple[bool, str]]:
         """
         测试模块连接性
         """
         if not self._servers:
-            return False, "未配置Transmission下载器"
+            return None
         for name, server in self._servers.items():
             if server.is_inactive():
                 server.reconnect()

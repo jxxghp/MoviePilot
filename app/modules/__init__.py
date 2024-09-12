@@ -42,7 +42,7 @@ class _ModuleBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def test(self) -> Tuple[bool, str]:
+    def test(self) -> Optional[Tuple[bool, str]]:
         """
         模块测试, 返回测试结果和错误信息
         """
