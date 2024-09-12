@@ -31,5 +31,7 @@ class FilterRuleGroup(BaseModel):
     name: Optional[str] = None
     # 规则串
     rule_string: Optional[str] = None
-    # 适用类媒体类别 None-全部 电影/电视剧
+    # 适用类媒体类型 None-全部 电影/电视剧
     media_type: Optional[str] = None
+    # 适用媒体类别 None-全部 对应二级分类
+    catetory: Optional[str] = None

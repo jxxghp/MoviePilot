@@ -182,6 +182,11 @@ class FilterModule(_ModuleBase):
                 continue
             if rule_group.media_type and rule_group.media_type != mediainfo.type.value:
                 # 规则组不适用当前媒体类型
+                logger.debug(f"规则组 {group_name} 不适用于 {mediainfo.type.value}")
+                continue
+            if rule_group.catetory and mediainfo.category and mediainfo.category != rule_group.catetory:
+                # 规则组不适用于当前媒体类别
+                logger.debug(f"规则组 {group_name} 不适用于 {mediainfo.category}")
                 continue
             # 过滤种子
             torrent_list = self.__filter_torrents(
