@@ -34,4 +34,4 @@ class FilterRuleGroup(BaseModel):
     # 适用类媒体类型 None-全部 电影/电视剧
     media_type: Optional[str] = None
     # 适用媒体类别 None-全部 对应二级分类
-    catetory: Optional[str] = None
+    category: Optional[str] = None
