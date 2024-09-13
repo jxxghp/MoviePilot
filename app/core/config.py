@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     CONFIG_DIR: Optional[str] = None
     # 超级管理员
     SUPERUSER: str = "admin"
+    # 辅助认证，允许通过媒体服务器认证并创建用户
+    AUXILIARY_AUTH_ENABLE: bool = True
     # API密钥，需要更换
     API_TOKEN: Optional[str] = None
     # 网络代理 IP:PORT
