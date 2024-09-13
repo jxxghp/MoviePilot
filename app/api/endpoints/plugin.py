@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Header
 
 from app import schemas
 from app.core.plugin import PluginManager
-from app.core.security import verify_token, verify_apitoken
+from app.core.security import verify_token, verify_apikey
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
 from app.helper.plugin import PluginHelper
@@ -26,7 +26,7 @@ def register_plugin_api(plugin_id: str = None):
         # 检查是否允许匿名访问，如果不允许匿名访问，则添加 API_TOKEN 验证
         allow_anonymous = api.pop("allow_anonymous", False)
         if not allow_anonymous:
-            api.setdefault("dependencies", []).append(Depends(verify_apitoken))
+            api.setdefault("dependencies", []).append(Depends(verify_apikey))
         router.add_api_route(**api)
 
 
