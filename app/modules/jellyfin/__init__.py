@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Union, Any, List, Generator, Dict
 
 from app import schemas
+from app.core.config import settings
 from app.core.context import MediaInfo
 from app.helper.mediaserver import MediaServerHelper
 from app.log import logger
@@ -59,12 +60,14 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
 
     def user_authenticate(self, name: str, password: str) -> Optional[str]:
         """
-        使用Emby用户辅助完成用户认证
+        使用Jellyfin用户辅助完成用户认证
         :param name: 用户名
         :param password: 密码
         :return: Token or None
         """
         # Jellyfin认证
+        if not settings.JELLYFIN_AUXILIARY_AUTH:
+            return None
         for server in self._servers.values():
             result = server.authenticate(name, password)
             if result:

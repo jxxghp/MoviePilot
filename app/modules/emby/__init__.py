@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Union, Any, List, Generator, Dict
 
 from app import schemas
+from app.core.config import settings
 from app.core.context import MediaInfo
 from app.helper.mediaserver import MediaServerHelper
 from app.log import logger
@@ -64,6 +65,8 @@ class EmbyModule(_ModuleBase, _MediaServerBase):
         :param password: 密码
         :return: token or None
         """
+        if not settings.EMBY_AUXILIARY_AUTH:
+            return None
         # Emby认证
         for server in self._servers.values():
             result = server.authenticate(name, password)
