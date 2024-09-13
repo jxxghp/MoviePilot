@@ -141,6 +141,10 @@ class MediaInfo:
     title: str = None
     # 英文标题
     en_title: str = None
+    # 香港标题
+    hk_title: str = None
+    # 台湾标题
+    tw_title: str = None
     # 新加坡标题
     sg_title: str = None
     # 年份
@@ -386,6 +390,10 @@ class MediaInfo:
         self.original_language = info.get('original_language')
         # 英文标题
         self.en_title = info.get('en_title')
+        # 香港标题
+        self.hk_title = info.get('hk_title')
+        # 台湾标题
+        self.tw_title = info.get('tw_title')
         # 新加坡标题
         self.sg_title = info.get('sg_title')
         if self.type == MediaType.MOVIE:
