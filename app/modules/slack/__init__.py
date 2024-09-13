@@ -23,7 +23,7 @@ class SlackModule(_ModuleBase, _MessageBase):
         self._configs = {}
         self._clients = {}
         for client in clients:
-            if client.type == "telegram" and client.enabled:
+            if client.type == "slack" and client.enabled:
                 self._configs[client.name] = client
                 self._clients[client.name] = Slack(**client.config, name=client.name)
 

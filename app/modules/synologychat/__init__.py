@@ -20,7 +20,7 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
         self._configs = {}
         self._clients = {}
         for client in clients:
-            if client.type == "slack" and client.enabled:
+            if client.type == "synologychat" and client.enabled:
                 self._configs[client.name] = client
                 self._clients[client.name] = SynologyChat(**client.config)
 
