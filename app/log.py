@@ -2,7 +2,7 @@ import inspect
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import click
 from pydantic import BaseSettings
@@ -14,6 +14,8 @@ class LogSettings(BaseSettings):
     """
     日志设置
     """
+    # 配置文件目录
+    CONFIG_DIR: Optional[str] = None
     # 是否为调试模式
     DEBUG: bool = False
     # 日志级别（DEBUG、INFO、WARNING、ERROR等）
@@ -28,11 +30,15 @@ class LogSettings(BaseSettings):
     LOG_FILE_FORMAT: str = "【%(levelname)s】%(asctime)s - %(message)s"
 
     @property
+    def CONFIG_PATH(self):
+        return SystemUtils.get_config_path(self.CONFIG_DIR)
+
+    @property
     def LOG_PATH(self):
         """
         获取日志存储路径
         """
-        return SystemUtils.get_config_path() / "logs"
+        return self.CONFIG_PATH / "logs"
 
     @property
     def LOG_MAX_FILE_SIZE_BYTES(self):
@@ -43,7 +49,7 @@ class LogSettings(BaseSettings):
 
     class Config:
         case_sensitive = True
-        env_file = SystemUtils.get_config_path() / "app.env"
+        env_file = SystemUtils.get_env_path()
         env_file_encoding = "utf-8"
 
 

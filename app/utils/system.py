@@ -5,7 +5,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Optional
 
 import docker
 import psutil
@@ -473,13 +473,24 @@ class SystemUtils:
         return os.stat(src).st_dev == os.stat(dest).st_dev
 
     @staticmethod
-    def get_config_path() -> Path:
+    def get_config_path(config_dir: Optional[str] = None) -> Path:
         """
         获取配置路径
         """
+        if not config_dir:
+            config_dir = os.getenv("CONFIG_DIR")
+        if config_dir:
+            return Path(config_dir)
         if SystemUtils.is_docker():
             return Path("/config")
         elif SystemUtils.is_frozen():
             return Path(sys.executable).parent / "config"
         else:
             return Path(__file__).parents[2] / "config"
+
+    @staticmethod
+    def get_env_path() -> Path:
+        """
+        获取配置路径
+        """
+        return SystemUtils.get_config_path() / "app.env"

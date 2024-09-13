@@ -5,8 +5,10 @@ from pathlib import Path
 from typing import Optional, List
 from urllib.parse import urlparse
 
+from dotenv import set_key
 from pydantic import BaseSettings, validator
 
+from app.log import logger
 from app.utils.system import SystemUtils
 
 
@@ -61,7 +63,7 @@ class Settings(BaseSettings):
     # 超级管理员
     SUPERUSER: str = "admin"
     # API密钥，需要更换
-    API_TOKEN: str = "moviepilot"
+    API_TOKEN: Optional[str] = None
     # 网络代理 IP:PORT
     PROXY_HOST: Optional[str] = None
     # 登录页面电影海报,tmdb/bing
@@ -117,7 +119,7 @@ class Settings(BaseSettings):
                           '.pcm', '.rmi', '.s3m', '.snd', '.spx', '.tak',
                           '.tta', '.vqf', '.wav', '.wma',
                           '.aifc', '.aiff', '.alac', '.adif', '.adts',
-                          '.flac',  '.midi', '.opus', '.sfalc']
+                          '.flac', '.midi', '.opus', '.sfalc']
     # 下载器临时文件后缀
     DOWNLOAD_TMPEXT: list = ['.!qB', '.part']
     # 下载器监视间隔（小时）
@@ -198,6 +200,17 @@ class Settings(BaseSettings):
         except (ValueError, TypeError):
             raise ValueError(f"{value} 格式错误，不是有效数字！")
 
+    @validator("API_TOKEN", pre=True, always=True)
+    def validate_api_token(cls, v):
+        if not v:
+            new_token = secrets.token_urlsafe(16)
+            logger.info(f"API_TOKEN 未设置，已随机生成新的 API_TOKEN：{new_token}")
+            set_key(str(SystemUtils.get_env_path()), "API_TOKEN", new_token)
+            return new_token
+        elif len(v) < 16:
+            logger.warning("API_TOKEN 长度不足 16 个字符，存在安全隐患，建议尽快更换为更复杂的密钥！")
+        return v
+
     @property
     def INNER_CONFIG_PATH(self):
         return self.ROOT_PATH / "config"
@@ -272,16 +285,16 @@ class Settings(BaseSettings):
         """
         if self.PROXY_HOST:
             parsed_url = urlparse(self.PROXY_HOST)
-            protocol = parsed_url.scheme or ""      # 协议
-            username = parsed_url.username or ""    # 用户名
-            password = parsed_url.password or ""    # 密码
-            host = parsed_url.hostname or ""        # 主机
-            port = parsed_url.port or ""            # 端口
-            path = parsed_url.path or ""            # 路径
-            netloc = parsed_url.netloc or ""        # 用户名:密码@主机:端口
-            query = parsed_url.query or ""          # 查询参数: ?key=value
-            params = parsed_url.params or ""        # 使用;分割的参数
-            fragment = parsed_url.fragment or ""    # 片段: #fragment
+            protocol = parsed_url.scheme or ""  # 协议
+            username = parsed_url.username or ""  # 用户名
+            password = parsed_url.password or ""  # 密码
+            host = parsed_url.hostname or ""  # 主机
+            port = parsed_url.port or ""  # 端口
+            path = parsed_url.path or ""  # 路径
+            netloc = parsed_url.netloc or ""  # 用户名:密码@主机:端口
+            query = parsed_url.query or ""  # 查询参数: ?key=value
+            params = parsed_url.params or ""  # 使用;分割的参数
+            fragment = parsed_url.fragment or ""  # 片段: #fragment
 
             if not port:
                 if protocol == "https":
@@ -414,6 +427,8 @@ class Settings(BaseSettings):
 
     class Config:
         case_sensitive = True
+        env_file = SystemUtils.get_env_path()
+        env_file_encoding = "utf-8"
 
 
 class GlobalVar(object):
@@ -451,10 +466,7 @@ class GlobalVar(object):
 
 
 # 实例化配置
-settings = Settings(
-    _env_file=Settings().CONFIG_PATH / "app.env",
-    _env_file_encoding="utf-8"
-)
+settings = Settings()
 
 # 全局标识
 global_vars = GlobalVar()

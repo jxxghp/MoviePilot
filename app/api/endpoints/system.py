@@ -123,7 +123,7 @@ def set_env_setting(env: dict,
                 v = ''
             else:
                 v = str(v)
-            set_key(settings.CONFIG_PATH / "app.env", k, v)
+            set_key(SystemUtils.get_env_path(), k, v)
     return schemas.Response(success=True)
 
 
@@ -180,7 +180,7 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
             value = ''
         else:
             value = str(value)
-        set_key(settings.CONFIG_PATH / "app.env", key, value)
+        set_key(SystemUtils.get_env_path(), key, value)
     else:
         SystemConfigOper().set(key, value)
     return schemas.Response(success=True)
