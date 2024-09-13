@@ -80,27 +80,35 @@ class MediaServerChain(ChainBase):
             for mediaserver in mediaservers:
                 if not mediaserver:
                     continue
+                logger.info(f"正在准备同步媒体服务器 {mediaserver.name} 的数据")
+                if not mediaserver.enabled:
+                    logger.info(f"媒体服务器 {mediaserver.name} 未启用，跳过")
+                    continue
                 server_name = mediaserver.name
                 sync_libraries = mediaserver.sync_libraries or []
-                logger.info(f"开始同步媒体库 {server_name} 的数据 ...")
-                for library in self.librarys(server_name):
-                    # 同步黑名单 跳过
+                if not sync_libraries:
+                    logger.info(f"媒体服务器 {server_name} 的同步媒体库为空，跳过")
+                    continue
+                logger.info(f"开始同步媒体服务器 {server_name} 的数据 ...")
+                libraries = self.librarys(server_name)
+                if not libraries:
+                    logger.info(f"没有获取到媒体服务器 {server_name} 的媒体库，跳过")
+                    continue
+                for library in libraries:
                     if sync_libraries and library.id not in sync_libraries:
-                        logger.info(f"{server_name} 未在同步媒体库列表中，跳过")
+                        logger.info(f"{library.name} 未在 {server_name} 同步媒体库列表中，跳过")
                         continue
                     logger.info(f"正在同步 {server_name} 媒体库 {library.name} ...")
                     library_count = 0
                     for item in self.items(server_name, library.id):
-                        if not item:
-                            continue
-                        if not item.item_id:
+                        if not item or not item.item_id:
                             continue
                         logger.debug(f"正在同步 {item.title} ...")
                         # 计数
                         library_count += 1
                         seasoninfo = {}
                         # 类型
-                        item_type = "电视剧" if item.item_type in ['Series', 'show'] else "电影"
+                        item_type = "电视剧" if item.item_type in ["Series", "show"] else "电影"
                         if item_type == "电视剧":
                             # 查询剧集信息
                             espisodes_info = self.episodes(server_name, item.item_id) or []
@@ -108,10 +116,10 @@ class MediaServerChain(ChainBase):
                                 seasoninfo[episode.season] = episode.episodes
                         # 插入数据
                         item_dict = item.dict()
-                        item_dict['seasoninfo'] = json.dumps(seasoninfo)
-                        item_dict['item_type'] = item_type
+                        item_dict["seasoninfo"] = json.dumps(seasoninfo)
+                        item_dict["item_type"] = item_type
                         self.dboper.add(**item_dict)
                     logger.info(f"{server_name} 媒体库 {library.name} 同步完成，共同步数量：{library_count}")
                     # 总数累加
                     total_count += library_count
-                logger.info(f"媒体库 {server_name} 数据同步完成，同步数量：%s" % total_count)
+                logger.info(f"媒体服务器 {server_name} 数据同步完成，总同步数量：{total_count}")
