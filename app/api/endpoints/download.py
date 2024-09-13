@@ -9,7 +9,7 @@ from app.core.context import MediaInfo, Context, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.db.models.user import User
-from app.db.user_oper import get_current_active_user, check_user_permission
+from app.db.user_oper import get_current_active_user
 
 router = APIRouter()
 
@@ -100,8 +100,6 @@ def stop(hashString: str) -> Any:
     """
     暂停下载任务
     """
-    # 检查用户权限
-    check_user_permission(permission='downloading.manage')
     ret = DownloadChain().set_downloading(hashString, "stop")
     return schemas.Response(success=True if ret else False)
 
@@ -111,7 +109,5 @@ def delete(hashString: str) -> Any:
     """
     删除下载任务
     """
-    # 检查用户权限
-    check_user_permission(permission='downloading.manage')
     ret = DownloadChain().remove_downloading(hashString)
     return schemas.Response(success=True if ret else False)

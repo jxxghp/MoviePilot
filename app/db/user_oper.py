@@ -48,29 +48,6 @@ def get_current_active_superuser(
     return current_user
 
 
-def check_user_permission(
-        permission: str,
-        current_user: User = Depends(get_current_user)
-) -> User:
-    """
-    获取当前激活且有指定权限的用户
-    """
-    if not current_user.is_active:
-        raise HTTPException(status_code=403, detail="用户未激活")
-    if current_user.is_superuser:
-        return current_user
-    if not current_user.permissions:
-        raise HTTPException(status_code=400, detail="用户权限不足")
-    permission_dict = json.loads(current_user.permissions)
-    if permission_dict.get("admin"):
-        return current_user
-    for key in permission.split("."):
-        if key not in permission_dict or not permission_dict[key]:
-            raise HTTPException(status_code=400, detail="用户权限不足")
-        permission_dict = permission_dict[key]
-    return current_user
-
-
 class UserOper(DbOper):
     """
     用户管理
