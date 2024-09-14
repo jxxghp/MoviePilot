@@ -18,7 +18,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         """
         super().__init__()
         for item in SystemConfig.list(self._db):
-            if ObjectUtils.is_obj(item.value):
+            if ObjectUtils.is_objstr(item.value):
                 self.__SYSTEMCONF[item.key] = json.loads(item.value)
             else:
                 self.__SYSTEMCONF[item.key] = item.value

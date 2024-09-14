@@ -18,7 +18,7 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         """
         super().__init__()
         for item in UserConfig.list(self._db):
-            value = json.loads(item.value) if ObjectUtils.is_obj(item.value) else item.value
+            value = json.loads(item.value) if ObjectUtils.is_objstr(item.value) else item.value
             self.__set_config_cache(username=item.username, key=item.key, value=value)
 
     def set(self, username: str, key: Union[str, UserConfigKey], value: Any):

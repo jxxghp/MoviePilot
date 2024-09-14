@@ -14,11 +14,18 @@ class ObjectUtils:
         elif isinstance(obj, int) \
                 or isinstance(obj, float) \
                 or isinstance(obj, bool) \
-                or isinstance(obj, bytes):
+                or isinstance(obj, bytes) \
+                or isinstance(obj, str):
             return False
-        else:
-            return str(obj).startswith("{") \
-                or str(obj).startswith("[")
+        return True
+
+    @staticmethod
+    def is_objstr(obj: Any):
+        if not isinstance(obj, str):
+            return False
+        return str(obj).startswith("{") \
+            or str(obj).startswith("[") \
+            or str(obj).startswith("(")
 
     @staticmethod
     def arguments(func: Callable) -> int:

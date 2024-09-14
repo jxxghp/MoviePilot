@@ -36,7 +36,7 @@ class PluginDataOper(DbOper):
             data = PluginData.get_plugin_data_by_key(self._db, plugin_id, key)
             if not data:
                 return None
-            if ObjectUtils.is_obj(data.value):
+            if ObjectUtils.is_objstr(data.value):
                 return json.loads(data.value)
             return data.value
         else:
