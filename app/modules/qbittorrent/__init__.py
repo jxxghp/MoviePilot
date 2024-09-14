@@ -214,7 +214,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
                 if content_path:
                     torrent_path = Path(content_path)
                 else:
-                    torrent_path = torrent.get('save_path') / torrent.get('name')
+                    torrent_path = Path(torrent.get('save_path')) / torrent.get('name')
                 ret_torrents.append(TransferTorrent(
                     title=torrent.get('name'),
                     path=torrent_path,

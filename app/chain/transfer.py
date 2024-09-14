@@ -86,7 +86,7 @@ class TransferChain(ChainBase):
 
             for torrent in torrents:
                 # 文件路径
-                file_path = Path(torrent.path)
+                file_path = torrent.path
                 if not file_path.exists():
                     logger.warn(f"文件不存在：{file_path}")
                     continue
@@ -103,7 +103,7 @@ class TransferChain(ChainBase):
                 if not transfer_dirinfo:
                     logger.info(f"文件 {file_path} 不在下载器监控目录中，不通过下载器进行整理")
                     # 设置下载任务状态
-                    self.transfer_completed(hashs=torrent.hash, path=torrent.path)
+                    self.transfer_completed(hashs=torrent.hash, path=file_path)
                     continue
                 # 查询下载记录识别情况
                 downloadhis: DownloadHistory = self.downloadhis.get_by_hash(torrent.hash)
@@ -128,7 +128,7 @@ class TransferChain(ChainBase):
                 self.__do_transfer(
                     fileitem=FileItem(
                         storage="local",
-                        path=torrent.path,
+                        path=str(file_path),
                         type="dir" if not file_path.is_file() else "file",
                         name=file_path.name,
                         size=file_path.stat().st_size,
