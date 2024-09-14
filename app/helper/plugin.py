@@ -153,23 +153,29 @@ class PluginHelper(metaclass=Singleton):
         # 3. 查找并安装 requirements.txt 中的依赖，确保插件环境的依赖尽可能完整。依赖安装可能失败且不影响插件安装，目前只记录日志
         requirements_file_info = next((f for f in file_list if f.get("name") == "requirements.txt"), None)
         if requirements_file_info:
-            logger.info(f"发现 requirements.txt，开始下载并安装依赖")
-            download_success, download_msg = self.__download_and_install_requirements(requirements_file_info,
-                                                                                      pid.lower(), user_repo)
-            if not download_success:
-                logger.error(f"依赖预安装失败：{download_msg}")
+            logger.debug(f"{pid} 发现 requirements.txt，提前下载并预安装依赖")
+            success, message = self.__download_and_install_requirements(requirements_file_info,
+                                                                        pid, user_repo)
+            if not success:
+                logger.debug(f"{pid} 依赖预安装失败：{message}")
+            else:
+                logger.debug(f"{pid} 依赖预安装成功")
 
         # 4. 下载插件的其他文件
-        download_success, download_msg = self.__download_files(pid.lower(), file_list, user_repo,
-                                                               skip_requirements=True)
-        if not download_success:
-            return False, download_msg
+        logger.info(f"{pid} 准备开始下载插件文件")
+        success, message = self.__download_files(pid.lower(), file_list, user_repo, True)
+        if not success:
+            logger.error(f"{pid} 下载插件文件失败：{message}")
+            return False, message
+        else:
+            logger.info(f"{pid} 下载插件文件成功")
 
         # 5. 插件文件安装成功后，再次尝试安装依赖，避免因为遗漏依赖导致的插件运行问题，目前依旧只记录日志
-        logger.info(f"插件文件安装完成，尝试再次安装依赖：{pid}")
-        success, message = self.__install_dependencies_if_required(pid.lower())
+        success, message = self.__install_dependencies_if_required(pid)
         if not success:
-            logger.error(f"依赖安装失败（安装后）：{message}")
+            logger.error(f"{pid} 依赖安装失败：{message}")
+        else:
+            logger.info(f"{pid} 依赖安装成功")
 
         # 插件安装成功后，统计安装信息
         self.install_reg(pid)
@@ -271,12 +277,12 @@ class PluginHelper(metaclass=Singleton):
         requirements_txt = res.text
         if requirements_txt.strip():
             # 保存并安装依赖
-            requirements_file_path = Path(settings.ROOT_PATH) / "app" / "plugins" / pid / "requirements.txt"
+            requirements_file_path = Path(settings.ROOT_PATH) / "app" / "plugins" / pid.lower() / "requirements.txt"
             requirements_file_path.parent.mkdir(parents=True, exist_ok=True)
             with open(requirements_file_path, "w", encoding="utf-8") as f:
                 f.write(requirements_txt)
 
-            success, message = self.__pip_uninstall_and_install_with_fallback(requirements_file_path)
+            success, message = self.__pip_install_with_fallback(requirements_file_path)
             return success, message
 
         return True, ""  # 如果 requirements.txt 为空，视作成功
@@ -287,10 +293,11 @@ class PluginHelper(metaclass=Singleton):
         :param pid: 插件 ID
         :return: (是否成功, 错误信息)
         """
-        plugin_dir = Path(settings.ROOT_PATH) / "app" / "plugins" / pid
+        plugin_dir = Path(settings.ROOT_PATH) / "app" / "plugins" / pid.lower()
         requirements_file = plugin_dir / "requirements.txt"
         if requirements_file.exists():
-            return self.__pip_uninstall_and_install_with_fallback(requirements_file)
+            logger.info(f"{pid} 存在依赖项，开始尝试安装依赖")
+            return self.__pip_install_with_fallback(requirements_file)
         return True, ""
 
     @staticmethod
@@ -321,7 +328,7 @@ class PluginHelper(metaclass=Singleton):
         # 1. 先卸载所有依赖包
         for dep in dependencies:
             pip_uninstall_command = ["pip", "uninstall", "-y", dep]
-            logger.info(f"尝试卸载依赖：{dep}")
+            logger.debug(f"尝试卸载依赖：{dep}，命令：{' '.join(pip_uninstall_command)}")
             success, message = SystemUtils.execute_with_subprocess(pip_uninstall_command)
             if success:
                 logger.debug(f"依赖 {dep} 卸载成功，输出：{message}")
@@ -345,10 +352,10 @@ class PluginHelper(metaclass=Singleton):
 
         # 遍历策略进行安装
         for strategy_name, pip_command in strategies:
-            logger.info(f"PIP 尝试使用策略 {strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
+            logger.debug(f"PIP 尝试使用策略 {strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
             success, message = SystemUtils.execute_with_subprocess(pip_command)
             if success:
-                logger.info(f"PIP 策略 {strategy_name} 安装依赖成功，输出：{message}")
+                logger.debug(f"PIP 策略 {strategy_name} 安装依赖成功，输出：{message}")
                 return True, message
             else:
                 logger.error(f"PIP 策略 {strategy_name} 安装依赖失败，错误信息：{message}")
@@ -374,7 +381,7 @@ class PluginHelper(metaclass=Singleton):
 
         # 遍历策略进行安装
         for strategy_name, pip_command in strategies:
-            logger.info(f"PIP 尝试使用策略 {strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
+            logger.debug(f"PIP 尝试使用策略 {strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
             success, message = SystemUtils.execute_with_subprocess(pip_command)
             if success:
                 logger.debug(f"PIP 策略 {strategy_name} 安装依赖成功，输出：{message}")
@@ -413,11 +420,11 @@ class PluginHelper(metaclass=Singleton):
 
         # 遍历策略并尝试请求
         for strategy_name, target_url, request_params in strategies:
-            logger.info(f"GitHub 尝试使用策略 {strategy_name} 访问 {target_url}")
+            logger.debug(f"GitHub 尝试使用策略 {strategy_name} 访问 {target_url}")
 
             try:
                 res = RequestUtils(**request_params).get_res(url=target_url, raise_exception=True)
-                logger.info(f"GitHub 策略 {strategy_name} 访问成功，URL: {target_url}")
+                logger.debug(f"GitHub 策略 {strategy_name} 访问成功，URL: {target_url}")
                 return res
             except Exception as e:
                 logger.error(f"GitHub 策略 {strategy_name} 访问失败，URL: {target_url}，错误信息：{str(e)}")
