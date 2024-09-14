@@ -6,8 +6,7 @@ Create Date: 2024-07-20 08:43:40.741251
 
 """
 
-import random
-import string
+import secrets
 
 from app.core.config import settings
 from app.core.security import get_password_hash
@@ -32,10 +31,8 @@ def upgrade() -> None:
         # 初始化超级管理员
         _user = User.get_by_name(db=db, name=settings.SUPERUSER)
         if not _user:
-            # 定义包含数字、大小写字母的字符集合
-            characters = string.ascii_letters + string.digits
             # 生成随机密码
-            random_password = ''.join(random.choice(characters) for _ in range(16))
+            random_password = secrets.token_urlsafe(16)
             logger.info(
                 f"【超级管理员初始密码】{random_password} 请登录系统后在设定中修改。 注：该密码只会显示一次，请注意保存。")
             _user = User(

@@ -206,7 +206,7 @@ class Settings(BaseSettings):
     def validate_api_token(cls, v):
         if not v:
             new_token = secrets.token_urlsafe(16)
-            logger.info(f"API_TOKEN 未设置，已随机生成新的 API_TOKEN：{new_token}")
+            logger.info(f"【API_TOKEN】未设置，已随机生成新的 API_TOKEN：{new_token}")
             set_key(str(SystemUtils.get_env_path()), "API_TOKEN", new_token)
             return new_token
         elif len(v) < 16:
