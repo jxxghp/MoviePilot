@@ -8,6 +8,7 @@ from py115 import Cloud
 from py115.types import LoginTarget, QrcodeSession, QrcodeStatus, Credential
 
 from app import schemas
+from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase
 from app.schemas.types import StorageSchema
@@ -289,23 +290,24 @@ class U115Pan(StorageBase, metaclass=Singleton):
             logger.error(f"115重命名文件失败：{str(e)}")
         return False
 
-    def download(self, fileitem: schemas.FileItem, path: Path) -> bool:
+    def download(self, fileitem: schemas.FileItem) -> Optional[Path]:
         """
         获取下载链接
         """
         if not self.__init_cloud():
-            return False
+            return None
         try:
             ticket = self.cloud.storage().request_download(fileitem.pickcode)
             if ticket:
+                path = settings.TEMP_PATH / fileitem.name
                 res = RequestUtils(headers=ticket.headers).get_res(ticket.url)
                 if res:
                     with open(path, "wb") as f:
                         f.write(res.content)
-                    return True
+                    return path
         except Exception as e:
             logger.error(f"115下载失败：{str(e)}")
-        return False
+        return None
 
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """

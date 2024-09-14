@@ -177,11 +177,11 @@ class LocalStorage(StorageBase):
             return False
         return True
 
-    def download(self, fileitem: schemas.FileItem, path: Path) -> bool:
+    def download(self, fileitem: schemas.FileItem) -> Optional[Path]:
         """
         下载文件
         """
-        pass
+        return Path(fileitem.path)
 
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """

@@ -185,15 +185,15 @@ class FileManagerModule(_ModuleBase):
             return False
         return storage_oper.rename(fileitem, name)
 
-    def download_file(self, fileitem: FileItem, path: Path) -> bool:
+    def download_file(self, fileitem: FileItem) -> Optional[Path]:
         """
         下载文件
         """
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的下载处理")
-            return False
-        return storage_oper.download(fileitem, path)
+            return None
+        return storage_oper.download(fileitem)
 
     def upload_file(self, fileitem: FileItem, path: Path) -> Optional[FileItem]:
         """
@@ -414,13 +414,19 @@ class FileManagerModule(_ModuleBase):
                 # 网盘到本地
                 if transfer_type == "copy":
                     # 下载
-                    if source_oper.download(fileitem, target_file):
+                    tmp_file = source_oper.download(fileitem)
+                    if tmp_file:
+                        # 将tmp_file移动后target_file
+                        tmp_file.rename(target_file)
                         return __get_targetitem(target_file), ""
                     else:
                         return None, f"{fileitem.path} {fileitem.storage} 下载失败"
                 elif transfer_type == "move":
                     # 下载
-                    if source_oper.download(fileitem, target_file):
+                    tmp_file = source_oper.download(fileitem)
+                    if tmp_file:
+                        # 将tmp_file移动后target_file
+                        tmp_file.rename(target_file)
                         # 删除源文件
                         source_oper.delete(fileitem)
                         return __get_targetitem(target_file), ""

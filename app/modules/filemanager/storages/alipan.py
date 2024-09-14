@@ -587,13 +587,13 @@ class AliPan(StorageBase):
             self.__handle_error(res, "重命名文件")
         return False
 
-    def download(self, fileitem: schemas.FileItem, path: Path) -> bool:
+    def download(self, fileitem: schemas.FileItem) -> Optional[Path]:
         """
         下载文件，保存到本地
         """
         params = self.__access_params
         if not params:
-            return False
+            return None
         headers = self.__get_headers(params)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.download_url, json={
             "drive_id": fileitem.drive_id,
@@ -602,15 +602,16 @@ class AliPan(StorageBase):
         if res:
             download_url = res.json().get("url")
             if not download_url:
-                return False
+                return None
             res = RequestUtils().get_res(download_url)
             if res:
+                path = settings.TEMP_PATH / fileitem.name
                 with path.open("wb") as f:
                     f.write(res.content)
-                return True
+                return path
         else:
             self.__handle_error(res, "获取下载链接")
-        return False
+        return None
 
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """

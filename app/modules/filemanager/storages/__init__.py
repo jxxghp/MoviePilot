@@ -96,9 +96,9 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def download(self, fileitm: schemas.FileItem, path: Path) -> bool:
+    def download(self, fileitm: schemas.FileItem) -> Path:
         """
-        下载文件，保存到本地
+        下载文件，保存到本地，返回本地临时文件地址
         """
         pass
 

@@ -1,15 +1,16 @@
 from pathlib import Path
 from typing import Any, List
 
-from fastapi import APIRouter, Depends
-from starlette.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException
+from starlette.responses import FileResponse, Response
 
 from app import schemas
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.metainfo import MetaInfoPath
-from app.core.security import verify_token, verify_uri_token
+from app.core.security import verify_token
+from app.db.models import User
 from app.db.user_oper import get_current_active_superuser
 from app.helper.progress import ProgressHelper
 from app.schemas.types import ProgressKey
@@ -45,7 +46,7 @@ def check(name: str, ck: str = None, t: str = None, _: schemas.TokenPayload = De
 @router.post("/save/{name}", summary="保存存储配置", response_model=schemas.Response)
 def save(name: str,
          conf: dict,
-         _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+         _: User = Depends(get_current_active_superuser)) -> Any:
     """
     保存存储配置
     """
@@ -56,7 +57,7 @@ def save(name: str,
 @router.post("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])
 def list(fileitem: schemas.FileItem,
          sort: str = 'updated_at',
-         _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+         _: User = Depends(get_current_active_superuser)) -> Any:
     """
     查询当前目录下所有目录和文件
     :param fileitem: 文件项
@@ -76,7 +77,7 @@ def list(fileitem: schemas.FileItem,
 @router.post("/mkdir", summary="创建目录", response_model=schemas.Response)
 def mkdir(fileitem: schemas.FileItem,
           name: str,
-          _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+          _: User = Depends(get_current_active_superuser)) -> Any:
     """
     创建目录
     :param fileitem: 文件项
@@ -93,7 +94,7 @@ def mkdir(fileitem: schemas.FileItem,
 
 @router.post("/delete", summary="删除文件或目录", response_model=schemas.Response)
 def delete(fileitem: schemas.FileItem,
-           _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+           _: User = Depends(get_current_active_superuser)) -> Any:
     """
     删除文件或目录
     :param fileitem: 文件项
@@ -107,25 +108,39 @@ def delete(fileitem: schemas.FileItem,
 
 @router.post("/download", summary="下载文件")
 def download(fileitem: schemas.FileItem,
-             _: schemas.TokenPayload = Depends(verify_uri_token)) -> Any:
+             _: User = Depends(get_current_active_superuser)) -> Any:
     """
     下载文件或目录
     :param fileitem: 文件项
     :param _: token
     """
     # 临时目录
-    tmp_file = settings.TEMP_PATH / fileitem.name
-    status = StorageChain().download_file(fileitem, tmp_file)
-    if status:
+    tmp_file = StorageChain().download_file(fileitem)
+    if tmp_file:
         return FileResponse(path=tmp_file)
     return schemas.Response(success=False)
+
+
+@router.post("/image", summary="预览图片")
+def image(fileitem: schemas.FileItem,
+          _: User = Depends(get_current_active_superuser)) -> Any:
+    """
+    下载文件或目录
+    :param fileitem: 文件项
+    :param _: token
+    """
+    # 临时目录
+    tmp_file = StorageChain().download_file(fileitem)
+    if not tmp_file:
+        raise HTTPException(status_code=500, detail="图片读取出错")
+    return Response(content=tmp_file.read_bytes(), media_type="image/jpeg")
 
 
 @router.post("/rename", summary="重命名文件或目录", response_model=schemas.Response)
 def rename(fileitem: schemas.FileItem,
            new_name: str,
            recursive: bool = False,
-           _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+           _: User = Depends(get_current_active_superuser)) -> Any:
     """
     重命名文件或目录
     :param fileitem: 文件项
@@ -181,7 +196,7 @@ def rename(fileitem: schemas.FileItem,
 
 
 @router.get("/usage/{name}", summary="存储空间信息", response_model=schemas.StorageUsage)
-def usage(name: str, _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+def usage(name: str, _: User = Depends(get_current_active_superuser)) -> Any:
     """
     查询存储空间
     """

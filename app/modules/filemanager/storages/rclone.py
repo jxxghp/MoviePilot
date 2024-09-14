@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional, List
 
 from app import schemas
+from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase
 from app.schemas.types import StorageSchema
@@ -225,24 +226,25 @@ class Rclone(StorageBase):
             logger.error(f"rclone重命名文件失败：{err}")
         return False
 
-    def download(self, fileitm: schemas.FileItem, path: Path) -> bool:
+    def download(self, fileitem: schemas.FileItem) -> Optional[Path]:
         """
         下载文件
         """
+        path = settings.TEMP_PATH / fileitem.name
         try:
             retcode = subprocess.run(
                 [
                     'rclone', 'copyto',
-                    f'MP:{fileitm.path}',
+                    f'MP:{fileitem.path}',
                     f'{path}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode
             if retcode == 0:
-                return True
+                return path
         except Exception as err:
             logger.error(f"rclone复制文件失败：{err}")
-        return False
+        return None
 
     def upload(self, fileitm: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
