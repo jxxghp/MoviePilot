@@ -38,6 +38,10 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             else:
                 conf.delete(self._db, conf.id)
         else:
+            if ObjectUtils.is_obj(value):
+                value = json.dumps(value)
+            elif value is None:
+                value = ''
             conf = SystemConfig(key=key, value=value)
             conf.create(self._db)
 
