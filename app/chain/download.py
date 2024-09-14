@@ -896,6 +896,7 @@ class DownloadChain(ChainBase):
                 # 下载用户
                 torrent.userid = history.userid
                 torrent.username = history.username
+                torrent.sizeStr = StringUtils.str_filesize(torrent.size)
             ret_torrents.append(torrent)
         return ret_torrents
 
