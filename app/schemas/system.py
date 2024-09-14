@@ -41,7 +41,7 @@ class NotificationConf(BaseModel):
     """
     # 名称
     name: Optional[str] = None
-    # 类型 telegram/wechat/vocechat/synologychat
+    # 类型 telegram/wechat/vocechat/synologychat/slack/webpush
     type: Optional[str] = None
     # 配置
     config: Optional[dict] = {}
