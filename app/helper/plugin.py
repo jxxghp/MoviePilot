@@ -1,6 +1,5 @@
 import json
 import shutil
-import subprocess
 import traceback
 from pathlib import Path
 from typing import Dict, Tuple, Optional, List, Any
@@ -119,7 +118,15 @@ class PluginHelper(metaclass=Singleton):
 
     def install(self, pid: str, repo_url: str) -> Tuple[bool, str]:
         """
-        安装插件
+        安装插件，包括依赖安装和文件下载，相关资源支持自动降级策略
+        1. 从 GitHub 获取文件列表（包括 requirements.txt）
+        2. 删除旧的插件目录
+        3. 下载并预安装 requirements.txt 中的依赖（如果存在）
+        4. 下载并安装插件的其他文件
+        5. 再次尝试安装依赖（确保安装完整）
+        :param pid: 插件 ID
+        :param repo_url: 插件仓库地址
+        :return: (是否成功, 错误信息)
         """
         if SystemUtils.is_frozen():
             return False, "可执行文件模式下，只能安装本地插件"
@@ -128,30 +135,41 @@ class PluginHelper(metaclass=Singleton):
         if not pid or not repo_url:
             return False, "参数错误"
 
-        # 从GitHub的repo_url获取用户和项目名
+        # 从 GitHub 的 repo_url 获取用户和项目名
         user, repo = self.get_repo_info(repo_url)
         if not user or not repo:
             return False, "不支持的插件仓库地址格式"
 
         user_repo = f"{user}/{repo}"
 
-        # 获取插件文件列表
+        # 1. 获取插件文件列表（包括 requirements.txt）
         file_list, msg = self.__get_file_list(pid.lower(), user_repo)
         if not file_list:
             return False, msg
 
-        # 删除旧的插件目录
+        # 2. 删除旧的插件目录
         self.__remove_old_plugin(pid.lower())
 
-        # 下载所有插件文件
-        download_success, download_msg = self.__download_files(pid.lower(), file_list, user_repo)
+        # 3. 查找并安装 requirements.txt 中的依赖，确保插件环境的依赖尽可能完整。依赖安装可能失败且不影响插件安装，目前只记录日志
+        requirements_file_info = next((f for f in file_list if f.get("name") == "requirements.txt"), None)
+        if requirements_file_info:
+            logger.info(f"发现 requirements.txt，开始下载并安装依赖")
+            download_success, download_msg = self.__download_and_install_requirements(requirements_file_info,
+                                                                                      pid.lower(), user_repo)
+            if not download_success:
+                logger.error(f"依赖预安装失败：{download_msg}")
+
+        # 4. 下载插件的其他文件
+        download_success, download_msg = self.__download_files(pid.lower(), file_list, user_repo,
+                                                               skip_requirements=True)
         if not download_success:
             return False, download_msg
 
-        # 插件目录下如有requirements.txt则安装依赖
+        # 5. 插件文件安装成功后，再次尝试安装依赖，避免因为遗漏依赖导致的插件运行问题，目前依旧只记录日志
+        logger.info(f"插件文件安装完成，尝试再次安装依赖：{pid}")
         success, message = self.__install_dependencies_if_required(pid.lower())
         if not success:
-            return False, message
+            logger.error(f"依赖安装失败（安装后）：{message}")
 
         # 插件安装成功后，统计安装信息
         self.install_reg(pid)
@@ -160,6 +178,9 @@ class PluginHelper(metaclass=Singleton):
     def __get_file_list(self, pid: str, user_repo: str) -> Tuple[Optional[list], Optional[str]]:
         """
         获取插件的文件列表
+        :param pid: 插件 ID
+        :param user_repo: GitHub 仓库的 user/repo 路径
+        :return: (文件列表, 错误信息)
         """
         file_api = f"https://api.github.com/repos/{user_repo}/contents/plugins/{pid}"
         res = self.__request_with_fallback(file_api,
@@ -182,9 +203,15 @@ class PluginHelper(metaclass=Singleton):
             logger.error(f"插件数据解析失败：{res.text}，{e}")
             return None, "插件数据解析失败"
 
-    def __download_files(self, pid: str, file_list: List[dict], user_repo: str) -> Tuple[bool, str]:
+    def __download_files(self, pid: str, file_list: List[dict], user_repo: str, skip_requirements: bool = False) \
+            -> Tuple[bool, str]:
         """
         下载插件文件
+        :param pid: 插件 ID
+        :param file_list: 要下载的文件列表，包含文件的元数据（包括下载链接）
+        :param user_repo: GitHub 仓库的 user/repo 路径
+        :param skip_requirements: 是否跳过 requirements.txt 文件的下载
+        :return: (是否成功, 错误信息)
         """
         if not file_list:
             return False, "文件列表为空"
@@ -196,6 +223,10 @@ class PluginHelper(metaclass=Singleton):
             current_pid, current_file_list = stack.pop()
 
             for item in current_file_list:
+                # 跳过 requirements.txt 的下载
+                if skip_requirements and item.get("name") == "requirements.txt":
+                    continue
+
                 if item.get("download_url"):
                     logger.debug(f"正在下载文件：{item.get('path')}")
                     res = self.__request_with_fallback(item.get('download_url'),
@@ -203,8 +234,7 @@ class PluginHelper(metaclass=Singleton):
                     if not res:
                         return False, f"文件 {item.get('path')} 下载失败！"
                     elif res.status_code != 200:
-                        return False, f"下载文件 {item.get('path')} 失败：{res.status_code} - " \
-                                      f"{'超出速率限制，请配置GITHUB_TOKEN环境变量或稍后重试' if res.status_code == 403 else res.reason}"
+                        return False, f"下载文件 {item.get('path')} 失败：{res.status_code}"
 
                     # 创建插件文件夹并写入文件
                     file_path = Path(settings.ROOT_PATH) / "app" / item.get("path")
@@ -213,7 +243,7 @@ class PluginHelper(metaclass=Singleton):
                         f.write(res.text)
                     logger.debug(f"文件 {item.get('path')} 下载成功，保存路径：{file_path}")
                 else:
-                    # 将子目录加入栈中以便处理
+                    # 如果是子目录，则将子目录内容加入栈中继续处理
                     sub_list, msg = self.__get_file_list(f"{current_pid}/{item.get('name')}", user_repo)
                     if not sub_list:
                         return False, msg
@@ -221,62 +251,138 @@ class PluginHelper(metaclass=Singleton):
 
         return True, ""
 
+    def __download_and_install_requirements(self, requirements_file_info: dict, pid: str, user_repo: str) \
+            -> Tuple[bool, str]:
+        """
+        下载并安装 requirements.txt 文件中的依赖
+        :param requirements_file_info: requirements.txt 文件的元数据信息
+        :param pid: 插件 ID
+        :param user_repo: GitHub 仓库的 user/repo 路径
+        :return: (是否成功, 错误信息)
+        """
+        # 下载 requirements.txt
+        res = self.__request_with_fallback(requirements_file_info.get("download_url"),
+                                           headers=settings.REPO_GITHUB_HEADERS(repo=user_repo))
+        if not res:
+            return False, "requirements.txt 文件下载失败"
+        elif res.status_code != 200:
+            return False, f"下载 requirements.txt 文件失败：{res.status_code}"
+
+        requirements_txt = res.text
+        if requirements_txt.strip():
+            # 保存并安装依赖
+            requirements_file_path = Path(settings.ROOT_PATH) / "app" / "plugins" / pid / "requirements.txt"
+            requirements_file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(requirements_file_path, "w", encoding="utf-8") as f:
+                f.write(requirements_txt)
+
+            success, message = self.__pip_uninstall_and_install_with_fallback(requirements_file_path)
+            return success, message
+
+        return True, ""  # 如果 requirements.txt 为空，视作成功
+
     def __install_dependencies_if_required(self, pid: str) -> Tuple[bool, str]:
         """
-        安装插件依赖（如果有requirements.txt）
+        安装插件依赖
+        :param pid: 插件 ID
+        :return: (是否成功, 错误信息)
         """
         plugin_dir = Path(settings.ROOT_PATH) / "app" / "plugins" / pid
         requirements_file = plugin_dir / "requirements.txt"
         if requirements_file.exists():
-            return self.__pip_install_with_fallback(requirements_file)
+            return self.__pip_uninstall_and_install_with_fallback(requirements_file)
         return True, ""
 
     @staticmethod
     def __remove_old_plugin(pid: str):
         """
         删除旧插件
+        :param pid: 插件 ID
         """
         plugin_dir = Path(settings.ROOT_PATH) / "app" / "plugins" / pid
         if plugin_dir.exists():
             shutil.rmtree(plugin_dir, ignore_errors=True)
 
     @staticmethod
-    def __pip_install_with_fallback(requirements_file: Path) -> Tuple[bool, str]:
+    def __pip_uninstall_and_install_with_fallback(requirements_file: Path) -> Tuple[bool, str]:
         """
-        使用自动降级策略 PIP 安装依赖，优先级依次为镜像站、代理、直连
+        先卸载 requirements.txt 中的依赖，再按照自动降级策略重新安装，不使用 PIP 缓存
+
         :param requirements_file: 依赖的 requirements.txt 文件路径
-        :return: 依赖安装成功返回 (True, "")，失败返回 (False, 错误信息)
+        :return: (是否成功, 错误信息)
         """
-        # 构建三种不同策略下的 PIP 命令
-        pip_commands = [
-            ["pip", "install", "-r", str(requirements_file), "-i", settings.PIP_PROXY] if settings.PIP_PROXY else None,
-            # 使用镜像站
-            ["pip", "install", "-r", str(requirements_file), "--proxy",
-             settings.PROXY_HOST] if settings.PROXY_HOST else None,  # 使用代理
-            ["pip", "install", "-r", str(requirements_file)]  # 直连
-        ]
+        # 读取 requirements.txt 文件中的依赖列表
+        try:
+            with open(requirements_file, "r", encoding="utf-8") as f:
+                dependencies = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+        except Exception as e:
+            return False, f"无法读取 requirements.txt 文件：{str(e)}"
 
-        # 过滤掉 None 的命令
-        pip_commands = [cmd for cmd in pip_commands if cmd is not None]
+        # 1. 先卸载所有依赖包
+        for dep in dependencies:
+            pip_uninstall_command = ["pip", "uninstall", "-y", dep]
+            logger.info(f"尝试卸载依赖：{dep}")
+            success, message = SystemUtils.execute_with_subprocess(pip_uninstall_command)
+            if success:
+                logger.debug(f"依赖 {dep} 卸载成功，输出：{message}")
+            else:
+                error_message = f"卸载依赖 {dep} 失败，错误信息：{message}"
+                logger.error(error_message)
 
-        for pip_command in pip_commands:
-            try:
-                logger.info(f"尝试使用PIP安装依赖，命令：{' '.join(pip_command)}")
-                # 使用 subprocess.run 捕获标准输出和标准错误
-                result = subprocess.run(pip_command, check=True, text=True,
-                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                logger.info(f"依赖安装成功，输出：{result.stdout}")
-                return True, result.stdout
-            except subprocess.CalledProcessError as e:
-                error_message = f"命令：{' '.join(pip_command)}，执行失败，错误信息：{e.stderr.strip()}"
-                logger.error(error_message)
-                return False, error_message
-            except Exception as e:
-                error_message = f"未知错误，命令：{' '.join(pip_command)}，错误：{str(e)}"
-                logger.error(error_message)
-                return False, error_message
+        # 2. 重新安装所有依赖，使用自动降级策略
+        strategies = []
+
+        # 添加策略到列表中
+        if settings.PIP_PROXY:
+            strategies.append(("镜像站",
+                               ["pip", "install", "-r", str(requirements_file),
+                                "-i", settings.PIP_PROXY, "--no-cache-dir"]))
+        if settings.PROXY_HOST:
+            strategies.append(("代理",
+                               ["pip", "install", "-r", str(requirements_file),
+                                "--proxy", settings.PROXY_HOST, "--no-cache-dir"]))
+        strategies.append(("直连", ["pip", "install", "-r", str(requirements_file), "--no-cache-dir"]))
+
+        # 遍历策略进行安装
+        for strategy_name, pip_command in strategies:
+            logger.info(f"PIP 尝试使用策略 {strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
+            success, message = SystemUtils.execute_with_subprocess(pip_command)
+            if success:
+                logger.info(f"PIP 策略 {strategy_name} 安装依赖成功，输出：{message}")
+                return True, message
+            else:
+                logger.error(f"PIP 策略 {strategy_name} 安装依赖失败，错误信息：{message}")
 
         return False, "所有依赖安装方式均失败，请检查网络连接或 PIP 配置"
+
+    @staticmethod
+    def __pip_install_with_fallback(requirements_file: Path) -> Tuple[bool, str]:
+        """
+        使用自动降级策略，PIP 安装依赖，优先级依次为镜像站、代理、直连
+        :param requirements_file: 依赖的 requirements.txt 文件路径
+        :return: (是否成功, 错误信息)
+        """
+        strategies = []
+
+        # 添加策略到列表中
+        if settings.PIP_PROXY:
+            strategies.append(("镜像站", ["pip", "install", "-r", str(requirements_file), "-i", settings.PIP_PROXY]))
+        if settings.PROXY_HOST:
+            strategies.append(
+                ("代理", ["pip", "install", "-r", str(requirements_file), "--proxy", settings.PROXY_HOST]))
+        strategies.append(("直连", ["pip", "install", "-r", str(requirements_file)]))
+
+        # 遍历策略进行安装
+        for strategy_name, pip_command in strategies:
+            logger.info(f"PIP 尝试使用策略 {strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
+            success, message = SystemUtils.execute_with_subprocess(pip_command)
+            if success:
+                logger.debug(f"PIP 策略 {strategy_name} 安装依赖成功，输出：{message}")
+                return True, message
+            else:
+                logger.error(f"PIP 策略 {strategy_name} 安装依赖失败，错误信息：{message}")
+
+        return False, "所有PIP依赖安装方式均失败，请检查网络连接或 PIP 配置"
 
     @staticmethod
     def __request_with_fallback(url: str,
@@ -284,39 +390,37 @@ class PluginHelper(metaclass=Singleton):
                                 timeout: int = 60,
                                 is_api: bool = False) -> Optional[Any]:
         """
-        使用自动降级策略请求资源，优先级依次为镜像站、代理、直连
+        使用自动降级策略，请求资源，优先级依次为镜像站、代理、直连
         :param url: 目标URL
         :param headers: 请求头信息
         :param timeout: 请求超时时间
         :param is_api: 是否为GitHub API请求，API请求不走镜像站
-        :return: 请求成功则返回Response，失败返回None
+        :return: 请求成功则返回 Response，失败返回 None
         """
-        # 镜像站一般不支持API请求，因此API请求直接跳过镜像站
+        strategies = []
+
+        # 1. 尝试使用镜像站，镜像站一般不支持API请求，因此API请求直接跳过镜像站
         if not is_api and settings.GITHUB_PROXY:
             proxy_url = f"{UrlUtils.standardize_base_url(settings.GITHUB_PROXY)}{url}"
-            try:
-                res = RequestUtils(headers=headers, timeout=timeout).get_res(url=proxy_url,
-                                                                             raise_exception=True)
-                return res
-            except Exception as e:
-                logger.error(f"使用镜像站 {settings.GITHUB_PROXY} 访问 {url} 失败: {str(e)}")
+            strategies.append(("镜像站", proxy_url, {"headers": headers, "timeout": timeout}))
 
-        # 使用代理
+        # 2. 尝试使用代理
         if settings.PROXY_HOST:
-            proxies = {"http": settings.PROXY_HOST, "https": settings.PROXY_HOST}
+            strategies.append(("代理", url, {"headers": headers, "proxies": settings.PROXY, "timeout": timeout}))
+
+        # 3. 最后尝试直连
+        strategies.append(("直连", url, {"headers": headers, "timeout": timeout}))
+
+        # 遍历策略并尝试请求
+        for strategy_name, target_url, request_params in strategies:
+            logger.info(f"GitHub 尝试使用策略 {strategy_name} 访问 {target_url}")
+
             try:
-                res = RequestUtils(headers=headers, proxies=proxies, timeout=timeout).get_res(url=url,
-                                                                                              raise_exception=True)
+                res = RequestUtils(**request_params).get_res(url=target_url, raise_exception=True)
+                logger.info(f"GitHub 策略 {strategy_name} 访问成功，URL: {target_url}")
                 return res
             except Exception as e:
-                logger.error(f"使用代理 {settings.PROXY_HOST} 访问 {url} 失败: {str(e)}")
+                logger.error(f"GitHub 策略 {strategy_name} 访问失败，URL: {target_url}，错误信息：{str(e)}")
 
-        # 最后尝试直连
-        try:
-            res = RequestUtils(headers=headers, timeout=timeout).get_res(url=url,
-                                                                         raise_exception=True)
-            return res
-        except Exception as e:
-            logger.error(f"直连访问 {url} 失败: {str(e)}")
-
+        logger.error(f"所有GitHub策略访问 {url} 均失败")
         return None
