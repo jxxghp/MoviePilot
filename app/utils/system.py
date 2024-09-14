@@ -3,6 +3,7 @@ import os
 import platform
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Union, Tuple, Optional
@@ -26,6 +27,27 @@ class SystemUtils:
         except Exception as err:
             print(str(err))
             return ""
+
+    @staticmethod
+    def execute_with_subprocess(pip_command: list) -> Tuple[bool, str]:
+        """
+        执行命令并捕获标准输出和错误输出，记录日志。
+
+        :param pip_command: 要执行的命令，以列表形式提供
+        :return: (命令是否成功, 输出信息或错误信息)
+        """
+        try:
+            # 使用 subprocess.run 捕获标准输出和标准错误
+            result = subprocess.run(pip_command, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # 合并 stdout 和 stderr
+            output = result.stdout + result.stderr
+            return True, output
+        except subprocess.CalledProcessError as e:
+            error_message = f"命令：{' '.join(pip_command)}，执行失败，错误信息：{e.stderr.strip()}"
+            return False, error_message
+        except Exception as e:
+            error_message = f"未知错误，命令：{' '.join(pip_command)}，错误：{str(e)}"
+            return False, error_message
 
     @staticmethod
     def is_docker() -> bool:
