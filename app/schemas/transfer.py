@@ -36,6 +36,7 @@ class DownloadingTorrent(BaseModel):
     userid: Optional[str] = None
     username: Optional[str] = None
     left_time: Optional[str] = None
+    sizeStr: Optional[str] = None
 
 
 class TransferInfo(BaseModel):
