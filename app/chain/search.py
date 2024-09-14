@@ -1,4 +1,5 @@
 import pickle
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict
@@ -88,10 +89,14 @@ class SearchChain(ChainBase):
         获取上次搜索结果
         """
         # 读取本地文件缓存
-        results = self.load_cache(self.__result_temp_file)
-        if not results:
+        content = self.load_cache(self.__result_temp_file)
+        if not content:
             return []
-        return results
+        try:
+            return pickle.loads(content)
+        except Exception as e:
+            logger.error(f'加载搜索结果失败：{str(e)} - {traceback.format_exc()}')
+            return []
 
     def process(self, mediainfo: MediaInfo,
                 keyword: str = None,
