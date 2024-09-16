@@ -160,7 +160,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         浏览文件
         """
         if not self.__init_cloud():
-            return None
+            return []
         try:
             items = self.cloud.storage().list(dir_id=fileitem.fileid)
             return [schemas.FileItem(
