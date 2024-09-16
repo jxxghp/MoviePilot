@@ -65,10 +65,14 @@ class EmbyModule(_ModuleBase, _MediaServerBase):
         :return: token or None
         """
         # Emby认证
-        for server in self._servers.values():
-            result = server.authenticate(name, password)
-            if result:
-                return result
+        for server_name, server in self._servers.items():
+            # 辅助认证开启
+            if server.auxiliary_auth_enabled:
+                result = server.authenticate(name, password)
+                if result:
+                    return result
+            else:
+                logger.debug(f"服务器【{server_name}】未开启用户辅助认证")
         return None
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:

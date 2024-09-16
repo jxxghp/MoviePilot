@@ -17,9 +17,10 @@ class Jellyfin:
     _playhost: str = None
     _sync_libraries: List[str] = []
     user: Optional[Union[str, int]] = None
+    auxiliary_auth_enabled: bool = False
 
     def __init__(self, host: str = None, apikey: str = None, play_host: str = None,
-                 sync_libraries: list = None, **kwargs):
+                 auxiliary_auth_enabled: bool = False, sync_libraries: list = None, **kwargs):
         if not host or not apikey:
             logger.error("Jellyfin服务器配置不完整！！")
             return
@@ -33,6 +34,7 @@ class Jellyfin:
         self.user = self.get_user(settings.SUPERUSER)
         self.serverid = self.get_server_id()
         self._sync_libraries = sync_libraries or []
+        self.auxiliary_auth_enabled = auxiliary_auth_enabled
 
     def is_inactive(self) -> bool:
         """
@@ -418,7 +420,7 @@ class Jellyfin:
     def get_remote_image_by_id(self, item_id: str, image_type: str) -> Optional[str]:
         """
         根据ItemId从Jellyfin查询TMDB图片地址
-        :param item_id: 在Emby中的ID
+        :param item_id: 在Jellyfin中的ID
         :param image_type: 图片的类弄地，poster或者backdrop等
         :return: 图片对应在TMDB中的URL
         """
@@ -736,7 +738,7 @@ class Jellyfin:
     def __get_local_image_by_id(self, item_id: str) -> str:
         """
         根据ItemId从媒体服务器查询有声书图片地址
-        :param: item_id: 在Emby中的ID
+        :param: item_id: 在Jellyfin中的ID
         :param: remote 是否远程使用，TG微信等客户端调用应为True
         :param: inner 是否NT内部调用，为True是会使用NT中转
         """
@@ -747,7 +749,7 @@ class Jellyfin:
     def __get_backdrop_url(self, item_id: str, image_tag: str) -> str:
         """
         获取Backdrop图片地址
-        :param: item_id: 在Emby中的ID
+        :param: item_id: 在Jellyfin中的ID
         :param: image_tag: 图片的tag
         :param: remote 是否远程使用，TG微信等客户端调用应为True
         :param: inner 是否NT内部调用，为True是会使用NT中转
@@ -868,7 +870,7 @@ class Jellyfin:
 
     def get_user_library_folders(self):
         """
-        获取Emby媒体库文件夹列表（排除黑名单）
+        获取Jellyfin媒体库文件夹列表（排除黑名单）
         """
         if not self._host or not self._apikey:
             return []

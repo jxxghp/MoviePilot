@@ -59,16 +59,20 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
 
     def user_authenticate(self, name: str, password: str) -> Optional[str]:
         """
-        使用Emby用户辅助完成用户认证
+        使用Jellyfin用户辅助完成用户认证
         :param name: 用户名
         :param password: 密码
         :return: Token or None
         """
         # Jellyfin认证
-        for server in self._servers.values():
-            result = server.authenticate(name, password)
-            if result:
-                return result
+        for server_name, server in self._servers.items():
+            # 辅助认证开启
+            if server.auxiliary_auth_enabled:
+                result = server.authenticate(name, password)
+                if result:
+                    return result
+            else:
+                logger.debug(f"服务器【{server_name}】未开启用户辅助认证")
         return None
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
