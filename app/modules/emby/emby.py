@@ -59,9 +59,12 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return []
-        req_url = "%semby/Library/SelectableMediaFolders?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}emby/Library/SelectableMediaFolders"
+        params = {
+            'api_key': self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 return res.json()
             else:
@@ -77,9 +80,12 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return []
-        req_url = "%semby/Library/VirtualFolders/Query?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}emby/Library/VirtualFolders/Query"
+        params = {
+            'api_key': self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 library_items = res.json().get("Items")
                 librarys = []
@@ -116,9 +122,10 @@ class Emby:
             user = self.get_user(username)
         else:
             user = self.user
-        req_url = f"{self._host}emby/Users/{user}/Views?api_key={self._apikey}"
+        url = f"{self._host}emby/Users/{user}/Views"
+        params = {"api_key": self._apikey}
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 return res.json().get("Items")
             else:
@@ -166,9 +173,12 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return None
-        req_url = "%sUsers?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}Users"
+        params = {
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 users = res.json()
                 # 先查询是否有与当前用户名称匹配的
@@ -195,7 +205,7 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return None
-        req_url = "%semby/Users/AuthenticateByName" % self._host
+        url = f"{self._host}emby/Users/AuthenticateByName"
         try:
             res = RequestUtils(headers={
                 'X-Emby-Authorization': f'MediaBrowser Client="MoviePilot", '
@@ -206,7 +216,7 @@ class Emby:
                 'Content-Type': 'application/json',
                 "Accept": "application/json"
             }).post_res(
-                url=req_url,
+                url=url,
                 data=json.dumps({
                     "Username": username,
                     "Pw": password
@@ -229,9 +239,12 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return None
-        req_url = "%sSystem/Info?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}System/Info"
+        params = {
+            'api_key': self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 return res.json().get("Id")
             else:
@@ -247,9 +260,12 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return 0
-        req_url = "%semby/Users/Query?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}emby/Users/Query"
+        params = {
+            'api_key': self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 return res.json().get("TotalRecordCount")
             else:
@@ -266,9 +282,12 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return schemas.Statistic()
-        req_url = "%semby/Items/Counts?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}emby/Items/Counts"
+        params = {
+            'api_key': self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 result = res.json()
                 return schemas.Statistic(
@@ -292,18 +311,19 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return None
-        req_url = ("%semby/Items?"
-                   "IncludeItemTypes=Series"
-                   "&Fields=ProductionYear"
-                   "&StartIndex=0"
-                   "&Recursive=true"
-                   "&SearchTerm=%s"
-                   "&Limit=10"
-                   "&IncludeSearchTypes=false"
-                   "&api_key=%s") % (
-                      self._host, name, self._apikey)
+        url = f"{self._host}emby/Items"
+        params={
+            "IncludeItemTypes": "Series",
+            "Fields": "ProductionYear",
+            "StartIndex": 0,
+            "Recursive": "true",
+            "SearchTerm": name,
+            "Limit": 10,
+            "IncludeSearchTypes": "false",
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 res_items = res.json().get("Items")
                 if res_items:
@@ -329,11 +349,19 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return None
-        req_url = "%semby/Items?IncludeItemTypes=Movie&Fields=ProductionYear&StartIndex=0" \
-                  "&Recursive=true&SearchTerm=%s&Limit=10&IncludeSearchTypes=false&api_key=%s" % (
-                      self._host, title, self._apikey)
+        url = f"{self._host}emby/Items"
+        params = {
+            "IncludeItemTypes": "Movie",
+            "Fields": "ProductionYear",
+            "StartIndex": 0,
+            "Recursive": "true",
+            "SearchTerm": title,
+            "Limit": 10,
+            "IncludeSearchTypes": "false",
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 res_items = res.json().get("Items")
                 if res_items:
@@ -403,9 +431,13 @@ class Emby:
         if not season:
             season = ""
         try:
-            req_url = "%semby/Shows/%s/Episodes?Season=%s&IsMissing=false&api_key=%s" % (
-                self._host, item_id, season, self._apikey)
-            res_json = RequestUtils().get_res(req_url)
+            url = f"{self._host}emby/Shows/{item_id}/Episodes"
+            params = {
+                "Season": season,
+                "IsMissing": "false",
+                "api_key": self._apikey
+            }
+            res_json = RequestUtils().get_res(url, params)
             if res_json:
                 tv_item = res_json.json()
                 res_items = tv_item.get("Items")
@@ -438,9 +470,12 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return None
-        req_url = "%semby/Items/%s/RemoteImages?api_key=%s" % (self._host, item_id, self._apikey)
+        url = f"{self._host}emby/Items/{item_id}/RemoteImages"
+        params = {
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils(timeout=10).get_res(req_url)
+            res = RequestUtils(timeout=10).get_res(url, params)
             if res:
                 images = res.json().get("Images")
                 if images:
@@ -465,9 +500,9 @@ class Emby:
             logger.error("Emby外网播放地址未能获取或为空")
             return None
 
-        req_url = "%sItems/%s/Images/%s" % (self._playhost, item_id, image_type)
+        url = f"{self._playhost}Items/{item_id}/Images/{image_type}"
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url)
             if res and res.status_code != 404:
                 logger.info(f"影片图片链接:{res.url}")
                 return res.url
@@ -484,9 +519,13 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return False
-        req_url = "%semby/Items/%s/Refresh?Recursive=true&api_key=%s" % (self._host, item_id, self._apikey)
+        url = f"{self._host}emby/Items/{item_id}/Refresh"
+        params = {
+            "Recursive": "true",
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().post_res(req_url)
+            res = RequestUtils().post_res(url, params)
             if res:
                 return True
             else:
@@ -502,9 +541,12 @@ class Emby:
         """
         if not self._host or not self._apikey:
             return False
-        req_url = "%semby/Library/Refresh?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}emby/Library/Refresh"
+        params = {
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().post_res(req_url)
+            res = RequestUtils().post_res(url, params)
             if res:
                 return True
             else:
@@ -581,9 +623,12 @@ class Emby:
             return None
         if not self._host or not self._apikey:
             return None
-        req_url = "%semby/Users/%s/Items/%s?api_key=%s" % (self._host, self.user, itemid, self._apikey)
+        url = f"{self._host}emby/Users/{self.user}/Items/{itemid}"
+        params = {
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res and res.status_code == 200:
                 item = res.json()
                 tmdbid = item.get("ProviderIds", {}).get("Tmdb")
@@ -612,9 +657,13 @@ class Emby:
             yield None
         if not self._host or not self._apikey:
             yield None
-        req_url = "%semby/Users/%s/Items?ParentId=%s&api_key=%s" % (self._host, self.user, parent, self._apikey)
+        url = f"{self._host}emby/Users/{self.user}/Items"
+        params = {
+            "ParentId": parent,
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res and res.status_code == 200:
                 results = res.json().get("Items") or []
                 for result in results:
@@ -1033,10 +1082,15 @@ class Emby:
             user = self.get_user(username)
         else:
             user = self.user
-        req_url = (f"{self._host}Users/{user}/Items/Resume?"
-                   f"Limit=100&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear,Path")
+        url = f"{self._host}Users/{user}/Items/Resume"
+        params = {
+            "Limit": 100,
+            "MediaTypes": "Video",
+            "Fields": "ProductionYear,Path",
+            "api_key": self._apikey,
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 result = res.json().get("Items") or []
                 ret_resume = []
@@ -1096,10 +1150,15 @@ class Emby:
             user = self.get_user(username)
         else:
             user = self.user
-        req_url = (f"{self._host}Users/{user}/Items/Latest?"
-                   f"Limit=100&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear,Path")
+        url = f"{self._host}Users/{user}/Items/Latest"
+        params = {
+            "Limit": 100,
+            "MediaTypes": "Video",
+            "Fields": "ProductionYear,Path",
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 result = res.json() or []
                 ret_latest = []
