@@ -20,10 +20,9 @@ class Emby:
     _apikey: str = None
     _sync_libraries: List[str] = []
     user: Optional[Union[str, int]] = None
-    auxiliary_auth_enabled: bool = False
 
     def __init__(self, host: str = None, apikey: str = None, play_host: str = None,
-                 auxiliary_auth_enabled: bool = False, sync_libraries: list = None, **kwargs):
+                 sync_libraries: list = None, **kwargs):
         if not host or not apikey:
             logger.error("Emby服务器配置不完整！")
             return
@@ -38,7 +37,6 @@ class Emby:
         self.folders = self.get_emby_folders()
         self.serverid = self.get_server_id()
         self._sync_libraries = sync_libraries or []
-        self.auxiliary_auth_enabled = auxiliary_auth_enabled
 
     def is_inactive(self) -> bool:
         """

@@ -39,7 +39,7 @@ async def login_access_token(
     )
     if not success:
         # 认证不成功且开启了辅助认证
-        if not user:
+        if not user and settings.AUXILIARY_AUTH_ENABLE:
             # 未找到用户，请求协助认证
             logger.warn(f"登录用户 {form_data.username} 本地不存在，尝试辅助认证 ...")
             token = UserChain().user_authenticate(form_data.username, form_data.password)
