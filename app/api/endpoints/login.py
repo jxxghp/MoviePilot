@@ -39,7 +39,8 @@ async def login_access_token(
     if not success:
         # 认证不成功
         if not user:
-            if settings.EMBY_AUXILIARY_AUTH_ENABLE or settings.JELLYFIN_AUXILIARY_AUTH_ENABLE:
+            if not settings.AUXILIARY_AUTH_ENABLE:
+                logger.warn(f"用户 {form_data.username} 登录失败！")
                 raise HTTPException(status_code=401, detail="用户名、密码或二次校验码不正确")
             else:
                 # 如果找不到用户并开启了辅助认证

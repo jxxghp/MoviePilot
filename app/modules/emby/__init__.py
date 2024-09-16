@@ -51,11 +51,7 @@ class EmbyModule(_ModuleBase):
         :return: token or None
         """
         # Emby认证
-        if settings.EMBY_AUXILIARY_AUTH_ENABLE:
-            return self.emby.authenticate(name, password)
-        else:
-            logger.debug("未启用Emby辅助认证")
-            return None
+        return self.emby.authenticate(name, password)
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
         """

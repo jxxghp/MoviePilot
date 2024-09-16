@@ -51,11 +51,7 @@ class JellyfinModule(_ModuleBase):
         :return: Token or None
         """
         # Jellyfin认证
-        if settings.JELLYFIN_AUXILIARY_AUTH_ENABLE:
-            return self.jellyfin.authenticate(name, password)
-        else:
-            logger.debug("未启用Jellyfin辅助认证")
-            return None
+        return self.jellyfin.authenticate(name, password)
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
         """
