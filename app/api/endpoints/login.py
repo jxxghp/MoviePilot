@@ -1,4 +1,3 @@
-import json
 from datetime import timedelta
 from typing import Any, List
 
@@ -38,8 +37,8 @@ async def login_access_token(
         otp_password=otp_password
     )
     if not success:
-        # 认证不成功且开启了辅助认证
-        if not user and settings.AUXILIARY_AUTH_ENABLE:
+        # 认证不成功
+        if not user:
             # 未找到用户，请求协助认证
             logger.warn(f"登录用户 {form_data.username} 本地不存在，尝试辅助认证 ...")
             token = UserChain().user_authenticate(form_data.username, form_data.password)
@@ -73,8 +72,7 @@ async def login_access_token(
         super_user=user.is_superuser,
         user_name=user.name,
         avatar=user.avatar,
-        level=level,
-        permissions=json.loads(user.permissions or '{}')
+        level=level
     )
 
 
