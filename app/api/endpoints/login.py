@@ -38,20 +38,23 @@ async def login_access_token(
     )
     if not success:
         # 认证不成功
-        if not user and (settings.EMBY_AUXILIARY_AUTH_ENABLE or settings.JELLYFIN_AUXILIARY_AUTH_ENABLE):
-            # 未找到用户，请求协助认证
-            logger.warn(f"登录用户 {form_data.username} 本地不存在，尝试辅助认证 ...")
-            token = UserChain().user_authenticate(form_data.username, form_data.password)
-            if not token:
-                logger.warn(f"用户 {form_data.username} 登录失败！")
-                raise HTTPException(status_code=401, detail="用户名、密码、二次校验码不正确")
+        if not user:
+            if settings.EMBY_AUXILIARY_AUTH_ENABLE or settings.JELLYFIN_AUXILIARY_AUTH_ENABLE:
+                raise HTTPException(status_code=401, detail="用户名、密码或二次校验码不正确")
             else:
-                logger.info(f"用户 {form_data.username} 辅助认证成功，用户信息: {token}，以普通用户登录...")
-                # 加入用户信息表
-                logger.info(f"创建用户: {form_data.username}")
-                user = User(name=form_data.username, is_active=True,
-                            is_superuser=False, hashed_password=get_password_hash(token))
-                user.create(db)
+                # 如果找不到用户并开启了辅助认证
+                logger.warn(f"登录用户 {form_data.username} 本地不存在，尝试辅助认证 ...")
+                token = UserChain().user_authenticate(form_data.username, form_data.password)
+                if not token:
+                    logger.warn(f"用户 {form_data.username} 登录失败！")
+                    raise HTTPException(status_code=401, detail="用户名、密码、二次校验码不正确")
+                else:
+                    logger.info(f"用户 {form_data.username} 辅助认证成功，用户信息: {token}，以普通用户登录...")
+                    # 加入用户信息表
+                    logger.info(f"创建用户: {form_data.username}")
+                    user = User(name=form_data.username, is_active=True,
+                                is_superuser=False, hashed_password=get_password_hash(token))
+                    user.create(db)
         else:
             # 用户存在，但认证失败
             logger.warn(f"用户 {user.name} 登录失败！")
