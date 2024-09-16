@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Union, Any, List, Generator
 
 from app import schemas
+from app.core.config import settings
 from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
@@ -50,7 +51,11 @@ class EmbyModule(_ModuleBase):
         :return: token or None
         """
         # Emby认证
-        return self.emby.authenticate(name, password)
+        if settings.EMBY_AUXILIARY_AUTH_ENABLE:
+            return self.emby.authenticate(name, password)
+        else:
+            logger.debug("未启用Emby辅助认证")
+            return None
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
         """

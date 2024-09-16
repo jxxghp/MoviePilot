@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Union, Any, List, Generator
 
 from app import schemas
+from app.core.config import settings
 from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
@@ -44,13 +45,17 @@ class JellyfinModule(_ModuleBase):
 
     def user_authenticate(self, name: str, password: str) -> Optional[str]:
         """
-        使用Emby用户辅助完成用户认证
+        使用Jellyfin用户辅助完成用户认证
         :param name: 用户名
         :param password: 密码
         :return: Token or None
         """
         # Jellyfin认证
-        return self.jellyfin.authenticate(name, password)
+        if settings.JELLYFIN_AUXILIARY_AUTH_ENABLE:
+            return self.jellyfin.authenticate(name, password)
+        else:
+            logger.debug("未启用Jellyfin辅助认证")
+            return None
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
         """

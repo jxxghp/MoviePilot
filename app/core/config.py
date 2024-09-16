@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     CONFIG_DIR: Optional[str] = None
     # 超级管理员
     SUPERUSER: str = "admin"
+    # 辅助认证，允许通过Jellyfin认证并创建用户
+    JELLYFIN_AUXILIARY_AUTH_ENABLE: bool = False
+    # 辅助认证，允许通过EMBYin认证并创建用户
+    EMBY_AUXILIARY_AUTH_ENABLE: bool = False
     # API密钥，需要更换
     API_TOKEN: str = "moviepilot"
     # 登录页面电影海报,tmdb/bing
