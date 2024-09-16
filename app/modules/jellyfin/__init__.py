@@ -1,7 +1,6 @@
 from typing import Optional, Tuple, Union, Any, List, Generator
 
 from app import schemas
-from app.core.config import settings
 from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase
