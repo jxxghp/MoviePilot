@@ -34,11 +34,11 @@ class PluginHelper(metaclass=Singleton):
                     self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
 
     @cached(cache=TTLCache(maxsize=1000, ttl=1800))
-    def get_plugins(self, repo_url: str, version: str = None) -> Dict[str, dict]:
+    def get_plugins(self, repo_url: str, package_version: str = None) -> Dict[str, dict]:
         """
         获取Github所有最新插件列表
         :param repo_url: Github仓库地址
-        :param version: 版本
+        :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
         if not repo_url:
             return {}
@@ -48,7 +48,7 @@ class PluginHelper(metaclass=Singleton):
             return {}
 
         raw_url = self._base_url.format(user=user, repo=repo)
-        package_url = f"{raw_url}package.{version}.json" if version else f"{raw_url}package.json"
+        package_url = f"{raw_url}package.{package_version}.json" if package_version else f"{raw_url}package.json"
 
         res = self.__request_with_fallback(package_url, headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"))
         if res:
@@ -57,6 +57,38 @@ class PluginHelper(metaclass=Singleton):
             except json.JSONDecodeError:
                 logger.error(f"插件包数据解析失败：{res.text}")
         return {}
+
+    def get_plugin_package_version(self, pid: str, repo_url: str, package_version: str = None) -> Optional[str]:
+        """
+        检查并获取指定插件的可用版本，支持多版本优先级加载和版本兼容性检测
+        1. 如果未指定版本，则使用系统配置的默认版本（通过 settings.VERSION_FLAG 设置）
+        2. 优先检查指定版本的插件（如 `package.v2.json`）
+        3. 如果插件不存在于指定版本，检查 `package.json` 文件，查看该插件是否兼容指定版本
+        4. 如果插件不存在或不兼容指定版本，返回 `None`
+        :param pid: 插件 ID，用于在插件列表中查找
+        :param repo_url: 插件仓库的 URL，指定用于获取插件信息的 GitHub 仓库地址
+        :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
+        :return: 返回可用的插件版本号 (如 "v2"，如果指定版本不可用则返回空字符串表示 v1)，如果插件不可用则返回 None
+        """
+        # 如果没有指定版本，则使用当前系统配置的版本（如 "v2"）
+        if not package_version:
+            package_version = settings.VERSION_FLAG
+
+        # 优先检查指定版本的插件，即 package.v(x).json 文件中是否存在该插件，如果存在，返回该版本号
+        plugins = self.get_plugins(repo_url, package_version)
+        if pid in plugins:
+            return package_version
+
+        # 如果指定版本的插件不存在，检查全局 package.json 文件，查看插件是否兼容指定的版本
+        global_plugins = self.get_plugins(repo_url)
+        plugin = global_plugins.get(pid, None)
+
+        # 检查插件是否明确支持当前指定的版本（如 v2 或 v3），如果支持，返回空字符串表示使用 package.json（v1）
+        if plugin and plugin.get(package_version) is True:
+            return ""
+
+        # 如果所有版本都不存在或插件不兼容，返回 None，表示插件不可用
+        return None
 
     @staticmethod
     def get_repo_info(repo_url: str) -> Tuple[Optional[str], Optional[str]]:
@@ -116,16 +148,18 @@ class PluginHelper(metaclass=Singleton):
                                            json={"plugins": [{"plugin_id": plugin} for plugin in plugins]})
         return True if res else False
 
-    def install(self, pid: str, repo_url: str) -> Tuple[bool, str]:
+    def install(self, pid: str, repo_url: str, package_version: str = None) -> Tuple[bool, str]:
         """
         安装插件，包括依赖安装和文件下载，相关资源支持自动降级策略
-        1. 从 GitHub 获取文件列表（包括 requirements.txt）
-        2. 删除旧的插件目录
-        3. 下载并预安装 requirements.txt 中的依赖（如果存在）
-        4. 下载并安装插件的其他文件
-        5. 再次尝试安装依赖（确保安装完整）
+        1. 检查并获取插件的指定版本，确认版本兼容性。
+        2. 从 GitHub 获取文件列表（包括 requirements.txt）
+        3. 删除旧的插件目录
+        4. 下载并预安装 requirements.txt 中的依赖（如果存在）
+        5. 下载并安装插件的其他文件
+        6. 再次尝试安装依赖（确保安装完整）
         :param pid: 插件 ID
         :param repo_url: 插件仓库地址
+        :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
         :return: (是否成功, 错误信息)
         """
         if SystemUtils.is_frozen():
@@ -142,15 +176,31 @@ class PluginHelper(metaclass=Singleton):
 
         user_repo = f"{user}/{repo}"
 
-        # 1. 获取插件文件列表（包括 requirements.txt）
-        file_list, msg = self.__get_file_list(pid.lower(), user_repo)
+        if not package_version:
+            package_version = settings.VERSION_FLAG
+
+        # 1. 优先检查指定版本的插件
+        package_version = self.get_plugin_package_version(pid, repo_url, package_version)
+        # 如果 package_version 为None，说明没有找到匹配的插件
+        if package_version is None:
+            msg = f"{pid} 没有找到适用于当前版本的插件"
+            logger.debug(msg)
+            return False, msg
+        # package_version 为空，表示从 package.json 中找到插件
+        elif package_version == "":
+            logger.debug(f"{pid} 从 package.json 中找到适用于当前版本的插件")
+        else:
+            logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前版本的插件")
+
+        # 2. 获取插件文件列表（包括 requirements.txt）
+        file_list, msg = self.__get_file_list(pid.lower(), user_repo, package_version)
         if not file_list:
             return False, msg
 
-        # 2. 删除旧的插件目录
+        # 3. 删除旧的插件目录
         self.__remove_old_plugin(pid.lower())
 
-        # 3. 查找并安装 requirements.txt 中的依赖，确保插件环境的依赖尽可能完整。依赖安装可能失败且不影响插件安装，目前只记录日志
+        # 4. 查找并安装 requirements.txt 中的依赖，确保插件环境的依赖尽可能完整。依赖安装可能失败且不影响插件安装，目前只记录日志
         requirements_file_info = next((f for f in file_list if f.get("name") == "requirements.txt"), None)
         if requirements_file_info:
             logger.debug(f"{pid} 发现 requirements.txt，提前下载并预安装依赖")
@@ -161,34 +211,41 @@ class PluginHelper(metaclass=Singleton):
             else:
                 logger.debug(f"{pid} 依赖预安装成功")
 
-        # 4. 下载插件的其他文件
+        # 5. 下载插件的其他文件
         logger.info(f"{pid} 准备开始下载插件文件")
-        success, message = self.__download_files(pid.lower(), file_list, user_repo, True)
+        success, message = self.__download_files(pid.lower(), file_list, user_repo, package_version, True)
         if not success:
             logger.error(f"{pid} 下载插件文件失败：{message}")
             return False, message
         else:
             logger.info(f"{pid} 下载插件文件成功")
 
-        # 5. 插件文件安装成功后，再次尝试安装依赖，避免因为遗漏依赖导致的插件运行问题，目前依旧只记录日志
-        success, message = self.__install_dependencies_if_required(pid)
-        if not success:
-            logger.error(f"{pid} 依赖安装失败：{message}")
-        else:
-            logger.info(f"{pid} 依赖安装成功")
+        # 6. 插件文件安装成功后，再次尝试安装依赖，避免因为遗漏依赖导致的插件运行问题，目前依旧只记录日志
+        dependencies_exist, success, message = self.__install_dependencies_if_required(pid)
+        if dependencies_exist:
+            if not success:
+                logger.error(f"{pid} 依赖安装失败：{message}")
+            else:
+                logger.info(f"{pid} 依赖安装成功")
 
         # 插件安装成功后，统计安装信息
         self.install_reg(pid)
         return True, ""
 
-    def __get_file_list(self, pid: str, user_repo: str) -> Tuple[Optional[list], Optional[str]]:
+    def __get_file_list(self, pid: str, user_repo: str, package_version: str = None) -> \
+            Tuple[Optional[list], Optional[str]]:
         """
         获取插件的文件列表
         :param pid: 插件 ID
         :param user_repo: GitHub 仓库的 user/repo 路径
         :return: (文件列表, 错误信息)
         """
-        file_api = f"https://api.github.com/repos/{user_repo}/contents/plugins/{pid}"
+        file_api = f"https://api.github.com/repos/{user_repo}/contents/plugins"
+        # 如果 package_version 存在（如 "v2"），则加上版本号
+        if package_version:
+            file_api += f".{package_version}"
+        file_api += f"/{pid}"
+
         res = self.__request_with_fallback(file_api,
                                            headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
                                            is_api=True,
@@ -209,8 +266,8 @@ class PluginHelper(metaclass=Singleton):
             logger.error(f"插件数据解析失败：{res.text}，{e}")
             return None, "插件数据解析失败"
 
-    def __download_files(self, pid: str, file_list: List[dict], user_repo: str, skip_requirements: bool = False) \
-            -> Tuple[bool, str]:
+    def __download_files(self, pid: str, file_list: List[dict], user_repo: str,
+                         package_version: str = None, skip_requirements: bool = False) -> Tuple[bool, str]:
         """
         下载插件文件
         :param pid: 插件 ID
@@ -242,15 +299,21 @@ class PluginHelper(metaclass=Singleton):
                     elif res.status_code != 200:
                         return False, f"下载文件 {item.get('path')} 失败：{res.status_code}"
 
+                    # 确保文件路径不包含版本号（如 v2、v3），如果有 package_version，移除路径中的版本号
+                    relative_path = item.get("path")
+                    if package_version:
+                        relative_path = relative_path.replace(f"plugins.{package_version}", "plugins", 1)
+
                     # 创建插件文件夹并写入文件
-                    file_path = Path(settings.ROOT_PATH) / "app" / item.get("path")
+                    file_path = Path(settings.ROOT_PATH) / "app" / relative_path
                     file_path.parent.mkdir(parents=True, exist_ok=True)
                     with open(file_path, "w", encoding="utf-8") as f:
                         f.write(res.text)
                     logger.debug(f"文件 {item.get('path')} 下载成功，保存路径：{file_path}")
                 else:
                     # 如果是子目录，则将子目录内容加入栈中继续处理
-                    sub_list, msg = self.__get_file_list(f"{current_pid}/{item.get('name')}", user_repo)
+                    sub_list, msg = self.__get_file_list(f"{current_pid}/{item.get('name')}", user_repo,
+                                                         package_version)
                     if not sub_list:
                         return False, msg
                     stack.append((f"{current_pid}/{item.get('name')}", sub_list))
@@ -287,18 +350,26 @@ class PluginHelper(metaclass=Singleton):
 
         return True, ""  # 如果 requirements.txt 为空，视作成功
 
-    def __install_dependencies_if_required(self, pid: str) -> Tuple[bool, str]:
+    def __install_dependencies_if_required(self, pid: str) -> Tuple[bool, bool, str]:
         """
-        安装插件依赖
+        安装插件依赖。
         :param pid: 插件 ID
-        :return: (是否成功, 错误信息)
+        :return: (是否存在依赖，安装是否成功, 错误信息)
         """
+        # 定位插件目录和依赖文件
         plugin_dir = Path(settings.ROOT_PATH) / "app" / "plugins" / pid.lower()
         requirements_file = plugin_dir / "requirements.txt"
+
+        # 检查是否存在 requirements.txt 文件
         if requirements_file.exists():
-            logger.info(f"{pid} 存在依赖项，开始尝试安装依赖")
-            return self.__pip_install_with_fallback(requirements_file)
-        return True, ""
+            logger.info(f"{pid} 存在依赖，开始尝试安装依赖")
+            success, error_message = self.__pip_install_with_fallback(requirements_file)
+            if success:
+                return True, True, ""
+            else:
+                return True, False, error_message
+
+        return False, False, "不存在依赖"
 
     @staticmethod
     def __remove_old_plugin(pid: str):
