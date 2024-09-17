@@ -3,7 +3,6 @@ import sys
 import threading
 from pathlib import Path
 from typing import Optional, List
-from urllib.parse import urlparse
 
 from dotenv import set_key
 from pydantic import BaseSettings, validator
@@ -18,8 +17,6 @@ class Settings(BaseSettings):
     """
     # 项目名称
     PROJECT_NAME = "MoviePilot"
-    # 版本标识，用来区分重大版本，为空则为v1
-    VERSION_FLAG = "v2"
     # 域名 格式；https://movie-pilot.org
     APP_DOMAIN: str = ""
     # API路径
@@ -212,6 +209,13 @@ class Settings(BaseSettings):
         elif len(v) < 16:
             logger.warning("API_TOKEN 长度不足 16 个字符，存在安全隐患，建议尽快更换为更复杂的密钥！")
         return v
+
+    @property
+    def VERSION_FLAG(self) -> str:
+        """
+        版本标识，用来区分重大版本，为空则为v1，不允许外部修改
+        """
+        return "v2"
 
     @property
     def INNER_CONFIG_PATH(self):
