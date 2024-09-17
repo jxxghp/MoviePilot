@@ -34,11 +34,11 @@ class PluginHelper(metaclass=Singleton):
                     self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
 
     @cached(cache=TTLCache(maxsize=1000, ttl=1800))
-    def get_plugins(self, repo_url: str, version: str = None) -> Dict[str, dict]:
+    def get_plugins(self, repo_url: str, package_version: str = None) -> Dict[str, dict]:
         """
         获取Github所有最新插件列表
         :param repo_url: Github仓库地址
-        :param version: 版本
+        :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
         if not repo_url:
             return {}
@@ -48,7 +48,7 @@ class PluginHelper(metaclass=Singleton):
             return {}
 
         raw_url = self._base_url.format(user=user, repo=repo)
-        package_url = f"{raw_url}package.{version}.json" if version else f"{raw_url}package.json"
+        package_url = f"{raw_url}package.{package_version}.json" if package_version else f"{raw_url}package.json"
 
         res = self.__request_with_fallback(package_url, headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"))
         if res:
@@ -58,7 +58,7 @@ class PluginHelper(metaclass=Singleton):
                 logger.error(f"插件包数据解析失败：{res.text}")
         return {}
 
-    def get_plugin_package_version(self, pid: str, repo_url: str, version: str = None) -> Optional[str]:
+    def get_plugin_package_version(self, pid: str, repo_url: str, package_version: str = None) -> Optional[str]:
         """
         检查并获取指定插件的可用版本，支持多版本优先级加载和版本兼容性检测
         1. 如果未指定版本，则使用系统配置的默认版本（通过 settings.VERSION_FLAG 设置）
@@ -67,24 +67,24 @@ class PluginHelper(metaclass=Singleton):
         4. 如果插件不存在或不兼容指定版本，返回 `None`
         :param pid: 插件 ID，用于在插件列表中查找
         :param repo_url: 插件仓库的 URL，指定用于获取插件信息的 GitHub 仓库地址
-        :param version: 首选插件版本 (如 "v2", "v3")，如果为空则默认使用系统配置的版本
+        :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
         :return: 返回可用的插件版本号 (如 "v2"，如果指定版本不可用则返回空字符串表示 v1)，如果插件不可用则返回 None
         """
         # 如果没有指定版本，则使用当前系统配置的版本（如 "v2"）
-        if not version:
-            version = settings.VERSION_FLAG
+        if not package_version:
+            package_version = settings.VERSION_FLAG
 
         # 优先检查指定版本的插件，即 package.v(x).json 文件中是否存在该插件，如果存在，返回该版本号
-        plugins = self.get_plugins(repo_url, version)
+        plugins = self.get_plugins(repo_url, package_version)
         if pid in plugins:
-            return version
+            return package_version
 
         # 如果指定版本的插件不存在，检查全局 package.json 文件，查看插件是否兼容指定的版本
         global_plugins = self.get_plugins(repo_url)
         plugin = global_plugins.get(pid, None)
 
         # 检查插件是否明确支持当前指定的版本（如 v2 或 v3），如果支持，返回空字符串表示使用 package.json（v1）
-        if plugin and plugin.get(version) is True:
+        if plugin and plugin.get(package_version) is True:
             return ""
 
         # 如果所有版本都不存在或插件不兼容，返回 None，表示插件不可用
@@ -148,7 +148,7 @@ class PluginHelper(metaclass=Singleton):
                                            json={"plugins": [{"plugin_id": plugin} for plugin in plugins]})
         return True if res else False
 
-    def install(self, pid: str, repo_url: str, version: str = None) -> Tuple[bool, str]:
+    def install(self, pid: str, repo_url: str, package_version: str = None) -> Tuple[bool, str]:
         """
         安装插件，包括依赖安装和文件下载，相关资源支持自动降级策略
         1. 检查并获取插件的指定版本，确认版本兼容性。
@@ -159,7 +159,7 @@ class PluginHelper(metaclass=Singleton):
         6. 再次尝试安装依赖（确保安装完整）
         :param pid: 插件 ID
         :param repo_url: 插件仓库地址
-        :param version: 首选插件版本 (如 "v2", "v3")，如果为空则默认使用系统配置的版本
+        :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
         :return: (是否成功, 错误信息)
         """
         if SystemUtils.is_frozen():
@@ -176,21 +176,21 @@ class PluginHelper(metaclass=Singleton):
 
         user_repo = f"{user}/{repo}"
 
-        if not version:
-            version = settings.VERSION_FLAG
+        if not package_version:
+            package_version = settings.VERSION_FLAG
 
         # 1. 优先检查指定版本的插件
-        package_version = self.get_plugin_package_version(pid, repo_url, version)
+        package_version = self.get_plugin_package_version(pid, repo_url, package_version)
         # 如果 package_version 为None，说明没有找到匹配的插件
         if package_version is None:
-            msg = f"{pid} 没有找到适用于当前 {version} 版本的插件"
+            msg = f"{pid} 没有找到适用于当前 {package_version} 版本的插件"
             logger.debug(msg)
             return False, msg
         # package_version 为空，表示从 package.json 中找到插件
         elif package_version == "":
-            logger.debug(f"{pid} 从 package.json 中找到适用于当前 {version} 版本插件")
+            logger.debug(f"{pid} 从 package.json 中找到适用于当前 {package_version} 版本插件")
         else:
-            logger.debug(f"{pid} 从 package.{version}.json 中找到适用于当前 {version} 版本插件")
+            logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前 {package_version} 版本插件")
 
         # 2. 获取插件文件列表（包括 requirements.txt）
         file_list, msg = self.__get_file_list(pid.lower(), user_repo, package_version)
