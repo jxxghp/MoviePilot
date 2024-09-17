@@ -55,9 +55,12 @@ class Jellyfin:
         """
         if not self._host or not self._apikey:
             return []
-        req_url = "%sLibrary/SelectableMediaFolders?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}Library/SelectableMediaFolders"
+        params = {
+            'api_key': self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 return res.json()
             else:
@@ -73,9 +76,13 @@ class Jellyfin:
         """
         if not self._host or not self._apikey:
             return []
-        req_url = "%sLibrary/VirtualFolders?api_key=%s" % (self._host, self._apikey)
+
+        url = f"{self._host}Library/VirtualFolders"
+        params = {
+            'api_key': self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 library_items = res.json()
                 librarys = []
@@ -112,9 +119,10 @@ class Jellyfin:
             user = self.get_user(username)
         else:
             user = self.user
-        req_url = f"{self._host}Users/{user}/Views?api_key={self._apikey}"
+        url = f"{self._host}Users/{user}/Views"
+        params = {"api_key": self._apikey}
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 return res.json().get("Items")
             else:
@@ -165,9 +173,12 @@ class Jellyfin:
         """
         if not self._host or not self._apikey:
             return 0
-        req_url = "%sUsers?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}Users"
+        params = {
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 return len(res.json())
             else:
@@ -183,9 +194,12 @@ class Jellyfin:
         """
         if not self._host or not self._apikey:
             return None
-        req_url = "%sUsers?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}Users"
+        params = {
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 users = res.json()
                 # 先查询是否有与当前用户名称匹配的
@@ -212,7 +226,7 @@ class Jellyfin:
         """
         if not self._host or not self._apikey:
             return None
-        req_url = "%sUsers/authenticatebyname" % self._host
+        url = f"{self._host}Users/authenticatebyname"
         try:
             res = RequestUtils(headers={
                 'X-Emby-Authorization': f'MediaBrowser Client="MoviePilot", '
@@ -223,7 +237,7 @@ class Jellyfin:
                 'Content-Type': 'application/json',
                 "Accept": "application/json"
             }).post_res(
-                url=req_url,
+                url=url,
                 data=json.dumps({
                     "Username": username,
                     "Pw": password
@@ -246,9 +260,12 @@ class Jellyfin:
         """
         if not self._host or not self._apikey:
             return None
-        req_url = "%sSystem/Info?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}System/Info"
+        params = {
+            'api_key': self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 return res.json().get("Id")
             else:
@@ -264,9 +281,12 @@ class Jellyfin:
         """
         if not self._host or not self._apikey:
             return schemas.Statistic()
-        req_url = "%sItems/Counts?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}Items/Counts"
+        params = {
+            'api_key': self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 result = res.json()
                 return schemas.Statistic(
@@ -287,11 +307,16 @@ class Jellyfin:
         """
         if not self._host or not self._apikey or not self.user:
             return None
-        req_url = ("%sUsers/%s/Items?"
-                   "api_key=%s&searchTerm=%s&IncludeItemTypes=Series&Limit=10&Recursive=true") % (
-                      self._host, self.user, self._apikey, name)
+        url = f"{self._host}Users/{self.user}/Items"
+        params = {
+            "IncludeItemTypes": "Series",
+            "Recursive": "true",
+            "searchTerm": name,
+            "Limit": 10,
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 res_items = res.json().get("Items")
                 if res_items:
@@ -317,11 +342,16 @@ class Jellyfin:
         """
         if not self._host or not self._apikey or not self.user:
             return None
-        req_url = ("%sUsers/%s/Items?"
-                   "api_key=%s&searchTerm=%s&IncludeItemTypes=Movie&Limit=10&Recursive=true") % (
-                      self._host, self.user, self._apikey, title)
+        url = f"{self._host}Users/{self.user}/Items"
+        params = {
+            "IncludeItemTypes": "Movie",
+            "Recursive": "true",
+            "searchTerm": title,
+            "Limit": 10,
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 res_items = res.json().get("Items")
                 if res_items:
@@ -388,10 +418,15 @@ class Jellyfin:
                     return None, {}
         if not season:
             season = ""
+        url = f"{self._host}Shows/{item_id}/Episodes"
+        params = {
+            "season": season,
+            "userId": self.user,
+            "isMissing": "false",
+            "api_key": self._apikey
+        }
         try:
-            req_url = "%sShows/%s/Episodes?season=%s&&userId=%s&isMissing=false&api_key=%s" % (
-                self._host, item_id, season, self.user, self._apikey)
-            res_json = RequestUtils().get_res(req_url)
+            res_json = RequestUtils().get_res(url, params)
             if res_json:
                 tv_info = res_json.json()
                 res_items = tv_info.get("Items")
@@ -418,15 +453,16 @@ class Jellyfin:
     def get_remote_image_by_id(self, item_id: str, image_type: str) -> Optional[str]:
         """
         根据ItemId从Jellyfin查询TMDB图片地址
-        :param item_id: 在Emby中的ID
+        :param item_id: 在Jellyfin中的ID
         :param image_type: 图片的类弄地，poster或者backdrop等
         :return: 图片对应在TMDB中的URL
         """
         if not self._host or not self._apikey:
             return None
-        req_url = "%sItems/%s/RemoteImages?api_key=%s" % (self._host, item_id, self._apikey)
+        url = f"{self._host}Items/{item_id}/RemoteImages"
+        params = {"api_key": self._apikey}
         try:
-            res = RequestUtils(timeout=10).get_res(req_url)
+            res = RequestUtils(timeout=10).get_res(url, params)
             if res:
                 images = res.json().get("Images")
                 for image in images:
@@ -460,9 +496,9 @@ class Jellyfin:
         _host = self._host
         if host_type:
             _host = self._playhost
-        req_url = "%sItems/%s/Images/%s" % (_host, item_id, image_type)
+        url = f"{_host}Items/{item_id}/Images/{image_type}"
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url)
             if res and res.status_code != 404:
                 logger.info(f"影片图片链接:{res.url}")
                 return res.url
@@ -481,9 +517,12 @@ class Jellyfin:
         :param key: 需要得到父item中的键值对
         :return key对应类型的值
         """
-        req_url = "%sItems/%s/Ancestors?api_key=%s" % (self._host, item_id, self._apikey)
+        url = f"{self._host}Items/{item_id}/Ancestors"
+        params = {
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 return res.json()[index].get(key)
             else:
@@ -499,9 +538,12 @@ class Jellyfin:
         """
         if not self._host or not self._apikey:
             return False
-        req_url = "%sLibrary/Refresh?api_key=%s" % (self._host, self._apikey)
+        url = f"{self._host}Library/Refresh"
+        params = {
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().post_res(req_url)
+            res = RequestUtils().post_res(url, params)
             if res:
                 return True
             else:
@@ -640,10 +682,12 @@ class Jellyfin:
             return None
         if not self._host or not self._apikey:
             return None
-        req_url = "%sUsers/%s/Items/%s?api_key=%s" % (
-            self._host, self.user, itemid, self._apikey)
+        url = f"{self._host}Users/{self.user}/Items/{itemid}"
+        params = {
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res and res.status_code == 200:
                 item = res.json()
                 tmdbid = item.get("ProviderIds", {}).get("Tmdb")
@@ -672,9 +716,13 @@ class Jellyfin:
             yield None
         if not self._host or not self._apikey:
             yield None
-        req_url = "%sUsers/%s/Items?parentId=%s&api_key=%s" % (self._host, self.user, parent, self._apikey)
+        url = f"{self._host}Users/{self.user}/Items"
+        params = {
+            "parentId": parent,
+            "api_key": self._apikey
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res and res.status_code == 200:
                 results = res.json().get("Items") or []
                 for result in results:
@@ -736,7 +784,7 @@ class Jellyfin:
     def __get_local_image_by_id(self, item_id: str) -> str:
         """
         根据ItemId从媒体服务器查询有声书图片地址
-        :param: item_id: 在Emby中的ID
+        :param: item_id: 在Jellyfin中的ID
         :param: remote 是否远程使用，TG微信等客户端调用应为True
         :param: inner 是否NT内部调用，为True是会使用NT中转
         """
@@ -747,7 +795,7 @@ class Jellyfin:
     def __get_backdrop_url(self, item_id: str, image_tag: str) -> str:
         """
         获取Backdrop图片地址
-        :param: item_id: 在Emby中的ID
+        :param: item_id: 在Jellyfin中的ID
         :param: image_tag: 图片的tag
         :param: remote 是否远程使用，TG微信等客户端调用应为True
         :param: inner 是否NT内部调用，为True是会使用NT中转
@@ -769,10 +817,16 @@ class Jellyfin:
             user = self.get_user(username)
         else:
             user = self.user
-        req_url = (f"{self._host}Users/{user}/Items/Resume?"
-                   f"Limit=100&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear,Path")
+
+        url = f"{self._host}Users/{user}/Items/Resume"
+        params = {
+            "Limit": 100,
+            "MediaTypes": "Video",
+            "Fields": "ProductionYear,Path",
+            "api_key": self._apikey,
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 result = res.json().get("Items") or []
                 ret_resume = []
@@ -830,10 +884,15 @@ class Jellyfin:
             user = self.get_user(username)
         else:
             user = self.user
-        req_url = (f"{self._host}Users/{user}/Items/Latest?"
-                   f"Limit=100&MediaTypes=Video&api_key={self._apikey}&Fields=ProductionYear,Path")
+        url = f"{self._host}Users/{user}/Items/Latest"
+        params = {
+            "Limit": 100,
+            "MediaTypes": "Video",
+            "Fields": "ProductionYear,Path",
+            "api_key": self._apikey,
+        }
         try:
-            res = RequestUtils().get_res(req_url)
+            res = RequestUtils().get_res(url, params)
             if res:
                 result = res.json() or []
                 ret_latest = []
@@ -868,7 +927,7 @@ class Jellyfin:
 
     def get_user_library_folders(self):
         """
-        获取Emby媒体库文件夹列表（排除黑名单）
+        获取Jellyfin媒体库文件夹列表（排除黑名单）
         """
         if not self._host or not self._apikey:
             return []

@@ -114,7 +114,7 @@ class Rclone(StorageBase):
                 return [self.__get_rcloneitem(item) for item in items]
         except Exception as err:
             logger.error(f"rclone浏览文件失败：{err}")
-        return None
+        return []
 
     def create_folder(self, fileitm: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """
