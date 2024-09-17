@@ -183,14 +183,14 @@ class PluginHelper(metaclass=Singleton):
         package_version = self.get_plugin_package_version(pid, repo_url, package_version)
         # 如果 package_version 为None，说明没有找到匹配的插件
         if package_version is None:
-            msg = f"{pid} 没有找到适用于当前 {package_version} 版本的插件"
+            msg = f"{pid} 没有找到适用于当前版本的插件"
             logger.debug(msg)
             return False, msg
         # package_version 为空，表示从 package.json 中找到插件
         elif package_version == "":
-            logger.debug(f"{pid} 从 package.json 中找到适用于当前 {package_version} 版本插件")
+            logger.debug(f"{pid} 从 package.json 中找到适用于当前版本的插件")
         else:
-            logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前 {package_version} 版本插件")
+            logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前版本的插件")
 
         # 2. 获取插件文件列表（包括 requirements.txt）
         file_list, msg = self.__get_file_list(pid.lower(), user_repo, package_version)
