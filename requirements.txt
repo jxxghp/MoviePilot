@@ -148,7 +148,7 @@ psutil==5.9.8
     # via -r requirements.in
 py-vapid==1.9.1
     # via pywebpush
-py115==0.0.4
+py115j==0.0.6
     # via -r requirements.in
 pycparser==2.22
     # via cffi

@@ -77,7 +77,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         try:
             self.cloud = py115.connect()
-            self._session = self.cloud.qrcode_login(LoginTarget.Linux)
+            self._session = self.cloud.qrcode_login(LoginTarget.Web)
             image_bin = self._session.image_data
             if not image_bin:
                 logger.warn("115生成二维码失败：未获取到二维码数据！")
