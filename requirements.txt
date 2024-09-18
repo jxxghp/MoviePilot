@@ -58,5 +58,5 @@ pystray~=0.19.5
 pyotp~=2.9.0
 Pinyin2Hanzi~=0.1.1
 pywebpush~=2.0.0
-py115~=0.0.4
+py115j~=0.0.6
 oss2~=2.18.6
