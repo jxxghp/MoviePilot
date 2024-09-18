@@ -174,10 +174,10 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 extension=Path(item.name).suffix[1:],
                 modify_time=item.modified_time.timestamp() if item.modified_time else 0,
                 pickcode=item.pickcode
-            ) for item in items]
+            ) for item in items if item]
         except Exception as e:
             logger.error(f"115浏览文件失败：{str(e)}")
-        return None
+        return []
 
     def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """
