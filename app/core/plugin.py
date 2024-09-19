@@ -7,6 +7,7 @@ import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Type
 
+from app.helper.sites import SitesHelper
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
@@ -17,7 +18,6 @@ from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.module import ModuleHelper
 from app.helper.plugin import PluginHelper
-from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.crypto import RSAUtils
@@ -156,7 +156,7 @@ class PluginManager(metaclass=Singleton):
                 # 未安装的不加载
                 if plugin_id not in installed_plugins:
                     # 设置事件状态为不可用
-                    eventmanager.disable_events_hander(plugin_id)
+                    eventmanager.disable_event_handler(class_name=plugin_id)
                     continue
                 # 生成实例
                 plugin_obj = plugin()
@@ -167,9 +167,9 @@ class PluginManager(metaclass=Singleton):
                 logger.info(f"加载插件：{plugin_id} 版本：{plugin_obj.plugin_version}")
                 # 启用的插件才设置事件注册状态可用
                 if plugin_obj.get_state():
-                    eventmanager.enable_events_hander(plugin_id)
+                    eventmanager.enable_event_handler(class_name=plugin_id)
                 else:
-                    eventmanager.disable_events_hander(plugin_id)
+                    eventmanager.disable_event_handler(class_name=plugin_id)
             except Exception as err:
                 logger.error(f"加载插件 {plugin_id} 出错：{str(err)} - {traceback.format_exc()}")
 
@@ -184,10 +184,10 @@ class PluginManager(metaclass=Singleton):
         self._running_plugins[plugin_id].init_plugin(conf)
         if self._running_plugins[plugin_id].get_state():
             # 设置启用的插件事件注册状态可用
-            eventmanager.enable_events_hander(plugin_id)
+            eventmanager.enable_event_handler(class_name=plugin_id)
         else:
             # 设置事件状态为不可用
-            eventmanager.disable_events_hander(plugin_id)
+            eventmanager.disable_event_handler(class_name=plugin_id)
 
     def stop(self, pid: str = None):
         """
