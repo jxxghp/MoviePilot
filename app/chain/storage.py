@@ -28,11 +28,11 @@ class StorageChain(ChainBase):
         """
         return self.run_module("check_login", storage=storage, **kwargs)
 
-    def list_files(self, fileitem: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
+    def list_files(self, fileitem: schemas.FileItem, recursion: bool = False) -> Optional[List[schemas.FileItem]]:
         """
         查询当前目录下所有目录和文件
         """
-        return self.run_module("list_files", fileitem=fileitem)
+        return self.run_module("list_files", fileitem=fileitem, recursion=recursion)
 
     def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """

@@ -191,27 +191,14 @@ class TransferChain(ChainBase):
         # 跳过数量
         skip_num = 0
 
-        # 目录所有文件清单
-        transfer_files = self.storagechain.list_files(fileitem=fileitem)
-        if transfer_files:
-            # 过滤后缀和大小
-            transfer_files = [f for f in transfer_files
-                              if (f".{f.extension.lower()}" in self.all_exts
-                                  and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
-            if formaterHandler:
-                # 有集自定义格式，过滤文件
-                transfer_files = [f for f in transfer_files if formaterHandler.match(f.name)]
-        else:
-            return False, f"{fileitem.name} 没有找到可转移的媒体文件"
-
-        # 总文件数
-        total_num = len(transfer_files)
-        self.progress.update(value=0,
-                             text=f"开始转移 {fileitem.path}，共 {total_num} 个文件 ...",
-                             key=ProgressKey.FileTransfer)
-
         # 获取待转移路径清单
         trans_items = self.__get_trans_fileitems(fileitem)
+        # 总文件数
+        total_num = len(trans_items)
+        self.progress.update(value=0,
+                             text=f"开始转移 {fileitem.path}，共 {total_num} 个文件或子目录 ...",
+                             key=ProgressKey.FileTransfer)
+
         if not trans_items:
             logger.warn(f"{fileitem.path} 没有找到可转移的媒体文件")
             return False, f"{fileitem.name} 没有找到可转移的媒体文件"
@@ -231,15 +218,16 @@ class TransferChain(ChainBase):
             # 如果是目录且不是⼀蓝光原盘，获取所有文件并转移
             if (trans_item.type == "dir"
                     and not (trans_item.storage == "local" and not SystemUtils.is_bluray_dir(item_path))):
-                # 遍历获取下载目录所有文件
-                file_items = self.storagechain.list_files(trans_item)
+                # 遍历获取下载目录所有文件（递归）
+                file_items = self.storagechain.list_files(trans_item, recursion=True)
                 if not file_items:
                     continue
                 # 过滤后缀和大小
                 file_items = [f for f in file_items
-                              if (f".{f.extension.lower()}" in self.all_exts
-                                  and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
+                              if f.extension and (f".{f.extension.lower()}" in self.all_exts
+                                                  and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
             else:
+                # 文件或蓝光目录
                 file_items = [trans_item]
 
             if formaterHandler:

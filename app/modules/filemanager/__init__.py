@@ -140,17 +140,37 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.check_login(**kwargs)
 
-    def list_files(self, fileitem: FileItem) -> Optional[List[FileItem]]:
+    def list_files(self, fileitem: FileItem, recursion: bool = False) -> Optional[List[FileItem]]:
         """
         浏览文件
         :param fileitem: 源文件
-        :return: 文件列表
+        :param recursion: 是否递归，此时只浏览文件
+        :return: 文件项列表
         """
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件浏览")
             return None
-        return storage_oper.list(fileitem)
+
+        def __get_files(_item: FileItem, _r: bool = False):
+            """
+            递归处理
+            """
+            _items = storage_oper.list(_item)
+            if _items:
+                if _r:
+                    for t in _items:
+                        if t.type == "dir":
+                            __get_files(t, _r)
+                        else:
+                            result.append(t)
+                else:
+                    result.extend(_items)
+        # 返回结果
+        result = []
+        __get_files(fileitem, recursion)
+
+        return result
 
     def create_folder(self, fileitem: FileItem, name: str) -> Optional[FileItem]:
         """
