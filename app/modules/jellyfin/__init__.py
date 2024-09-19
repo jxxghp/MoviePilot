@@ -6,6 +6,7 @@ from app.helper.mediaserver import MediaServerHelper
 from app.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.jellyfin.jellyfin import Jellyfin
+from app.schemas import MediaServerConf
 from app.schemas.types import MediaType
 
 
@@ -17,11 +18,13 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         """
         # 读取媒体服务器配置
         self._servers: Dict[str, Jellyfin] = {}
+        self._configs: Dict[str, MediaServerConf] = {}
         mediaservers = MediaServerHelper().get_mediaservers()
         if not mediaservers:
             return
         for server in mediaservers:
             if server.type == "jellyfin" and server.enabled:
+                self._configs[server.name] = server
                 self._servers[server.name] = Jellyfin(**server.config, sync_libraries=server.sync_libraries)
 
     @staticmethod
@@ -81,14 +84,22 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         """
         source = args.get("source")
         if source:
+            server_config: MediaServerConf = self.get_config(source, 'jellyfin')
+            if not server_config:
+                return None
             server: Jellyfin = self.get_server(source)
             if not server:
                 return None
             return server.get_webhook_message(body)
-        for server in self._servers.values():
-            result = server.get_webhook_message(body)
-            if result:
-                return result
+
+        for conf in self._configs.values():
+            if conf.type != "jellyfin":
+                continue
+            server = self.get_server(conf.name)
+            if server:
+                result = server.get_webhook_message(body)
+                if result:
+                    return result
         return None
 
     def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[schemas.ExistMediaInfo]:

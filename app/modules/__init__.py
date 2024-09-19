@@ -1,7 +1,7 @@
 from abc import abstractmethod, ABCMeta
 from typing import Tuple, Union, Dict, Any, Optional
 
-from app.schemas import Notification, MessageChannel, NotificationConf
+from app.schemas import Notification, MessageChannel, NotificationConf, MediaServerConf
 
 
 class _ModuleBase(metaclass=ABCMeta):
@@ -66,13 +66,16 @@ class _MessageBase:
             return None
         return self._clients.get(name)
 
-    def get_config(self, name: str) -> Optional[NotificationConf]:
+    def get_config(self, name: str, ctype: str = None) -> Optional[NotificationConf]:
         """
         获取配置
         """
         if not name:
             return None
-        return self._configs.get(name)
+        conf = self._configs.get(name)
+        if not ctype:
+            return conf
+        return conf if conf.type == ctype else None
 
     def checkMessage(self, message: Notification, source: str = None) -> bool:
         """
@@ -118,9 +121,21 @@ class _MediaServerBase:
     """
 
     _servers: Dict[str, Any] = {}
+    _configs: Dict[str, MediaServerConf] = {}
 
     def get_server(self, name: str) -> Optional[Any]:
         """
         获取Plex服务器
         """
         return self._servers.get(name)
+
+    def get_config(self, name: str, mtype: str = None) -> Optional[MediaServerConf]:
+        """
+        获取配置
+        """
+        if not name:
+            return None
+        conf = self._configs.get(name)
+        if not mtype:
+            return conf
+        return conf if conf.type == mtype else None

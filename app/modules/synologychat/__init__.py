@@ -61,9 +61,10 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
         """
         try:
             # 来源
-            client: SynologyChat = self.get_client(source)
-            if not client:
+            client_config = self.get_config(source, 'synologychat')
+            if not client_config:
                 return None
+            client: SynologyChat = self.get_client(source)
             # 解析消息
             message: dict = form
             if not message:

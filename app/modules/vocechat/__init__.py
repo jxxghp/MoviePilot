@@ -78,12 +78,8 @@ class VoceChatModule(_ModuleBase, _MessageBase):
             }
             """
             # 获取渠道
-            client: VoceChat = self.get_client(source)
-            if not client:
-                return None
-            # 获取配置
-            config = self.get_config(source)
-            if not config:
+            client_config = self.get_config(source, 'vocechat')
+            if not client_config:
                 return None
             # 报文体
             msg_body = json.loads(body)
@@ -102,7 +98,7 @@ class VoceChatModule(_ModuleBase, _MessageBase):
             content = msg_body.get("detail", {}).get("content")
             # 用户ID
             gid = msg_body.get("target", {}).get("gid")
-            channel_id = config.config.get("channel_id")
+            channel_id = client_config.config.get("channel_id")
             if gid and str(gid) == str(channel_id):
                 # 来自监听频道的消息
                 userid = f"GID#{gid}"

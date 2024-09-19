@@ -64,12 +64,10 @@ class WechatModule(_ModuleBase, _MessageBase):
         """
         try:
             # 获取客户端
-            client: WeChat = self.get_client(source)
-            if not client:
-                return None
-            client_config = self.get_config(source)
+            client_config = self.get_config(source, 'wechat')
             if not client_config:
                 return None
+            client: WeChat = self.get_client(source)
             # URL参数
             sVerifyMsgSig = args.get("msg_signature")
             sVerifyTimeStamp = args.get("timestamp")

@@ -175,10 +175,9 @@ class SlackModule(_ModuleBase, _MessageBase):
           ]
         }
         """
-        # 来源
         # 获取客户端
-        client: Slack = self.get_client(source)
-        if not client:
+        client_config = self.get_config(source, 'slack')
+        if not client_config:
             return None
         # 校验token
         token = args.get("token")
