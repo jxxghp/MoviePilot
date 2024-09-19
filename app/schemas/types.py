@@ -14,7 +14,7 @@ class TorrentStatus(Enum):
     DOWNLOADING = "下载中"
 
 
-# 可监听事件
+# 异步广播事件
 class EventType(Enum):
     # 插件需要重载
     PluginReload = "plugin.reload"
@@ -54,6 +54,14 @@ class EventType(Enum):
     SystemError = "system.error"
     # 刮削元数据
     MetadataScrape = "metadata.scrape"
+
+
+# 同步链式事件
+class SyncEventType(Enum):
+    # 刮削元数据
+    MetadataScrape = "metadata.scrape"
+    # 插件动作
+    PluginAction = "plugin.action"
 
 
 # 系统配置Key字典
