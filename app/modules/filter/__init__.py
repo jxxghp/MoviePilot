@@ -178,26 +178,16 @@ class FilterModule(_ModuleBase):
             return torrent_list
         self.media = mediainfo
         # 查询规则表详情
-        for group_name in rule_groups:
-            rule_group = self.rulehelper.get_rule_group(group_name)
-            if not rule_group:
-                logger.error(f"规则组 {group_name} 不存在")
-                continue
-            if rule_group.media_type and rule_group.media_type != mediainfo.type.value:
-                # 规则组不适用当前媒体类型
-                logger.debug(f"规则组 {group_name} 不适用于 {mediainfo.type.value}")
-                continue
-            if rule_group.category and mediainfo.category and mediainfo.category != rule_group.category:
-                # 规则组不适用于当前媒体类别
-                logger.debug(f"规则组 {group_name} 不适用于 {mediainfo.category}")
-                continue
-            # 过滤种子
-            torrent_list = self.__filter_torrents(
-                rule_string=rule_group.rule_string,
-                rule_name=rule_group.name,
-                torrent_list=torrent_list,
-                season_episodes=season_episodes
-            )
+        groups = self.rulehelper.get_rule_group_by_media(media=mediainfo, group_names=rule_groups)
+        if groups:
+            for group in groups:
+                # 过滤种子
+                torrent_list = self.__filter_torrents(
+                    rule_string=group.rule_string,
+                    rule_name=group.name,
+                    torrent_list=torrent_list,
+                    season_episodes=season_episodes
+                )
         return torrent_list
 
     def __filter_torrents(self, rule_string: str, rule_name: str,

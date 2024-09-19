@@ -1,5 +1,6 @@
 from typing import List, Optional
 
+from app.core.context import MediaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.schemas import FilterRuleGroup, CustomRule
 from app.schemas.types import SystemConfigKey
@@ -31,6 +32,23 @@ class RuleHelper:
             if group.name == group_name:
                 return group
         return None
+
+    def get_rule_group_by_media(self, media: MediaInfo, group_names: list = None) -> List[FilterRuleGroup]:
+        """
+        根据媒体信息获取规则组
+        """
+        ret_groups = []
+        rule_groups = self.get_rule_groups()
+        if group_names:
+            rule_groups = [group for group in rule_groups if group.name in group_names]
+        for group in rule_groups:
+            if not group.media_type:
+                ret_groups.append(group)
+            elif not group.category and group.media_type == media.type.value:
+                ret_groups.append(group)
+            elif group.category == media.category:
+                ret_groups.append(group)
+        return ret_groups
 
     def get_custom_rules(self) -> List[CustomRule]:
         """
