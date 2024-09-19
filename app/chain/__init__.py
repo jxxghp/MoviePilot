@@ -483,7 +483,7 @@ class ChainBase(metaclass=ABCMeta):
         if not message.userid and message.mtype:
             # 没有指定用户ID时，按规则确定发送对象
             # 默认发送全体
-            to_targets = {}
+            to_targets = None
             notify_action = self.notificationhelper.get_switch(message.mtype)
             if notify_action == "admin":
                 # 仅发送管理员

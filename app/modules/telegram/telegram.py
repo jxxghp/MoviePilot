@@ -25,17 +25,17 @@ class Telegram:
     _event = Event()
     _bot: telebot.TeleBot = None
 
-    def __init__(self, token: str = None, chat_id: str = None, **kwargs):
+    def __init__(self, TELEGRAM_TOKEN: str = None, TELEGRAM_CHAT_ID: str = None, **kwargs):
         """
         初始化参数
         """
-        if not token or not chat_id:
+        if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
             logger.error("Telegram配置不完整！")
             return
         # Token
-        self._telegram_token = token
+        self._telegram_token = TELEGRAM_TOKEN
         # Chat Id
-        self._telegram_chat_id = chat_id
+        self._telegram_chat_id = TELEGRAM_CHAT_ID
         # 初始化机器人
         if self._telegram_token and self._telegram_chat_id:
             # bot

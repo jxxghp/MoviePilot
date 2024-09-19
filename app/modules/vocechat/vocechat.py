@@ -22,21 +22,21 @@ class VoceChat:
     # 请求对象
     _client = None
 
-    def __init__(self, host: str = None, apikey: str = None, channel_id: str = None, **kwargs):
+    def __init__(self, VOCECHAT_HOST: str = None, VOCECHAT_API_KEY: str = None, VOCECHAT_CHANNEL_ID: str = None, **kwargs):
         """
         初始化
         """
-        if not host or not apikey or not channel_id:
+        if not VOCECHAT_HOST or not VOCECHAT_API_KEY or not VOCECHAT_CHANNEL_ID:
             logger.error("VoceChat配置不完整！")
             return
-        self._host = host
+        self._host = VOCECHAT_HOST
         if self._host:
             if not self._host.endswith("/"):
                 self._host += "/"
             if not self._host.startswith("http"):
                 self._playhost = "http://" + self._host
-        self._apikey = apikey
-        self._channel_id = channel_id
+        self._apikey = VOCECHAT_API_KEY
+        self._channel_id = VOCECHAT_CHANNEL_ID
         if self._apikey and self._host and self._channel_id:
             self._client = RequestUtils(headers={
                 "content-type": "text/markdown",

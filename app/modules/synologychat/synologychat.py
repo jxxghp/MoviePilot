@@ -14,13 +14,13 @@ lock = Lock()
 
 
 class SynologyChat:
-    def __init__(self, webhook: str = None, token: str = None, **kwargs):
-        if not webhook or not token:
+    def __init__(self, SYNOLOGYCHAT_WEBHOOK: str = None, SYNOLOGYCHAT_TOKEN: str = None, **kwargs):
+        if not SYNOLOGYCHAT_WEBHOOK or not SYNOLOGYCHAT_TOKEN:
             logger.error("SynologyChat配置不完整！")
             return
         self._req = RequestUtils(content_type="application/x-www-form-urlencoded")
-        self._webhook_url = webhook
-        self._token = token
+        self._webhook_url = SYNOLOGYCHAT_WEBHOOK
+        self._token = SYNOLOGYCHAT_TOKEN
         if self._webhook_url:
             self._domain = StringUtils.get_base_url(self._webhook_url)
 

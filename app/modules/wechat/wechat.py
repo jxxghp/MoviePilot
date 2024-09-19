@@ -37,18 +37,18 @@ class WeChat:
     # 企业微信创新菜单URL
     _create_menu_url = "/cgi-bin/menu/create?access_token=%s&agentid=%s"
 
-    def __init__(self, corpid: str = None, appsecret: str = None, appid: str = None,
-                 proxy: str = None, **kwargs):
+    def __init__(self, WECHAT_CORPID: str = None, WECHAT_APP_SECRET: str = None, WECHAT_APP_ID: str = None,
+                 WECHAT_PROXY: str = None, **kwargs):
         """
         初始化
         """
-        if not corpid or not appsecret or not appid:
+        if not WECHAT_CORPID or not WECHAT_APP_SECRET or not WECHAT_APP_ID:
             logger.error("企业微信配置不完整！")
             return
-        self._corpid = corpid
-        self._appsecret = appsecret
-        self._appid = appid
-        self._proxy = proxy or "https://qyapi.weixin.qq.com"
+        self._corpid = WECHAT_CORPID
+        self._appsecret = WECHAT_APP_SECRET
+        self._appid = WECHAT_APP_ID
+        self._proxy = WECHAT_PROXY or "https://qyapi.weixin.qq.com"
 
         if self._corpid and self._appsecret and self._appid:
             self.__get_access_token()

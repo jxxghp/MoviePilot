@@ -113,9 +113,9 @@ class TelegramModule(_ModuleBase, _MessageBase):
             if text:
                 logger.info(f"收到来自 {source} 的Telegram消息：userid={user_id}, username={user_name}, text={text}")
                 # 检查权限
-                admin_users = config.config.get("admins")
-                user_list = config.config.get("users")
-                chat_id = config.config.get("chat_id")
+                admin_users = config.config.get("TELEGRAM_ADMINS")
+                user_list = config.config.get("TELEGRAM_USERS")
+                chat_id = config.config.get("TELEGRAM_CHAT_ID")
                 if text.startswith("/"):
                     if admin_users \
                             and str(user_id) not in admin_users.split(',') \

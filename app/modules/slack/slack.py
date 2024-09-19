@@ -24,14 +24,14 @@ class Slack:
     _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
     _channel = ""
 
-    def __init__(self, oauth_token: str = None, app_token: str = None, channel: str = "", **kwargs):
+    def __init__(self, SLACK_OAUTH_TOKEN: str = None, SLACK_APP_TOKEN: str = None, SLACK_CHANNEL: str = "", **kwargs):
 
-        if not oauth_token or not app_token:
+        if not SLACK_OAUTH_TOKEN or not SLACK_APP_TOKEN:
             logger.error("Slack 配置不完整！")
             return
 
         try:
-            slack_app = App(token=oauth_token,
+            slack_app = App(token=SLACK_OAUTH_TOKEN,
                             ssl_check_enabled=False,
                             url_verification_enabled=False)
         except Exception as err:
@@ -39,7 +39,7 @@ class Slack:
             return
 
         self._client = slack_app.client
-        self._channel = channel
+        self._channel = SLACK_CHANNEL
 
         # 标记消息来源
         if kwargs.get("name"):
@@ -79,7 +79,7 @@ class Slack:
         try:
             self._service = SocketModeHandler(
                 slack_app,
-                app_token
+                SLACK_APP_TOKEN
             )
             self._service.connect()
             logger.info("Slack消息接收服务启动")
