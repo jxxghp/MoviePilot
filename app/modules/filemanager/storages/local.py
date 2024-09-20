@@ -187,7 +187,11 @@ class LocalStorage(StorageBase):
         """
         上传文件
         """
-        file_path = path.rename(fileitem.path)
+        file_path = Path(fileitem.path)
+        code, message = SystemUtils.move(path, file_path)
+        if code != 0:
+            logger.error(f"移动文件失败：{message}")
+            return None
         return self.__get_diritem(file_path)
 
     def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
