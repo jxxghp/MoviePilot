@@ -187,7 +187,8 @@ class LocalStorage(StorageBase):
         """
         上传文件
         """
-        pass
+        file_path = path.rename(fileitem.path)
+        return self.__get_diritem(file_path)
 
     def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         """

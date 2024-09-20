@@ -364,11 +364,16 @@ class MediaChain(ChainBase, metaclass=Singleton):
             """
             tmp_file = settings.TEMP_PATH / _path.name
             tmp_file.write_bytes(_content)
-            StorageChain().upload_file(fileitem=_fileitem, path=tmp_file)
+            upload_item = copy.deepcopy(_fileitem)
+            upload_item.path = str(_path)
+            upload_item.name = _path.name
+            upload_item.basename = _path.stem
+            upload_item.extension = _path.suffix
+            StorageChain().upload_file(fileitem=upload_item, path=tmp_file)
             if tmp_file.exists():
                 tmp_file.unlink()
 
-        def __save_image(_url: str) -> Optional[bytes]:
+        def __download_image(_url: str) -> Optional[bytes]:
             """
             下载图片并保存
             """
@@ -425,7 +430,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
                             image_path = filepath / image_name
                             # 下载图片
-                            content = __save_image(_url=attr_value)
+                            content = __download_image(_url=attr_value)
                             # 写入nfo到根目录
                             __save_file(_fileitem=fileitem, _path=image_path, _content=content)
         else:
@@ -474,7 +479,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             for image_name, image_url in image_dict.items():
                                 image_path = filepath.with_name(image_name)
                                 # 下载图片
-                                content = __save_image(image_url)
+                                content = __download_image(image_url)
                                 # 保存图片文件到当前目录
                                 __save_file(_fileitem=fileitem, _path=image_path, _content=content)
                     if season_meta.name:
@@ -492,7 +497,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             for image_name, image_url in image_dict.items():
                                 image_path = filepath.parent.with_name(image_name)
                                 # 下载图片
-                                content = __save_image(image_url)
+                                content = __download_image(image_url)
                                 # 保存图片文件到当前目录
                                 __save_file(_fileitem=fileitem, _path=image_path, _content=content)
 
