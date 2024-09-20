@@ -429,7 +429,10 @@ class Monitor(metaclass=Singleton):
                     'transferinfo': transferinfo
                 })
 
-                # TODO 移动模式删除空目录
+                # 移动模式删除空目录
+                if dir_info.transfer_type in ["move"]:
+                    logger.info(f"正在删除： {file_item.storage} {file_item.path}")
+                    self.storagechain.delete_file(file_item)
 
             except Exception as e:
                 logger.error("目录监控发生错误：%s - %s" % (str(e), traceback.format_exc()))

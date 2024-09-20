@@ -152,7 +152,7 @@ class LocalStorage(StorageBase):
             return False
         path_obj = Path(fileitem.path)
         if not path_obj.exists():
-            return False
+            return True
         try:
             if path_obj.is_file():
                 path_obj.unlink()

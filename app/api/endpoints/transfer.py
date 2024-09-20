@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.media import MediaChain
+from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.core.metainfo import MetaInfoPath
 from app.core.security import verify_token, verify_apitoken
@@ -89,7 +90,6 @@ def manual_transfer(fileitem: FileItem = None,
     """
     force = False
     target_path = Path(target_path) if target_path else None
-    transfer = TransferChain()
     if logid:
         # 查询历史记录
         history: TransferHistory = TransferHistory.get(db, logid)
@@ -107,7 +107,7 @@ def manual_transfer(fileitem: FileItem = None,
             if history.dest_fileitem:
                 # 删除旧的已整理文件
                 dest_fileitem = FileItem(**json.loads(history.dest_fileitem))
-                transfer.delete_files(dest_fileitem)
+                StorageChain().delete_file(dest_fileitem)
 
         # 从历史数据获取信息
         if from_history:
@@ -144,7 +144,7 @@ def manual_transfer(fileitem: FileItem = None,
             offset=episode_offset,
         )
     # 开始转移
-    state, errormsg = transfer.manual_transfer(
+    state, errormsg = TransferChain().manual_transfer(
         fileitem=src_fileitem,
         target_storage=target_storage,
         target_path=target_path,

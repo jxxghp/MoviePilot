@@ -428,7 +428,7 @@ class TransferChain(ChainBase):
                 )
 
                 # 刮削元数据事件
-                if scrape:
+                if scrape or transferinfo.need_scrape:
                     self.eventmanager.send_event(EventType.MetadataScrape, {
                         'meta': file_meta,
                         'mediainfo': file_mediainfo,
@@ -599,7 +599,7 @@ class TransferChain(ChainBase):
         if history.dest_fileitem:
             # 解析目标文件对象
             dest_fileitem = FileItem(**json.loads(history.dest_fileitem))
-            self.delete_files(dest_fileitem)
+            self.storagechain.delete_file(dest_fileitem)
 
         # 强制转移
         if history.src_fileitem:
@@ -713,11 +713,3 @@ class TransferChain(ChainBase):
             mtype=NotificationType.Organize,
             title=msg_title, text=msg_str, image=mediainfo.get_message_image(),
             link=settings.MP_DOMAIN('#/history')))
-
-    def delete_files(self, fileitem: FileItem) -> Tuple[bool, str]:
-        """
-        TODO 删除转移后的文件以及空目录
-        :param fileitem: 文件项
-        :return: 成功标识，错误信息
-        """
-        pass

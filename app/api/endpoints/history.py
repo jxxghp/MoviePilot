@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app import schemas
-from app.chain.transfer import TransferChain
+from app.chain.storage import StorageChain
 from app.core.event import eventmanager
 from app.core.security import verify_token
 from app.db import get_db
@@ -87,15 +87,15 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
     # 册除媒体库文件
     if deletedest and history.dest_fileitem:
         dest_fileitem = schemas.FileItem(**json.loads(history.dest_fileitem))
-        state, msg = TransferChain().delete_files(dest_fileitem)
+        state = StorageChain().delete_file(dest_fileitem)
         if not state:
-            return schemas.Response(success=False, msg=msg)
+            return schemas.Response(success=False, msg=f"{dest_fileitem.path}删除失败")
     # 删除源文件
     if deletesrc and history.dest_fileitem:
         dest_fileitem = schemas.FileItem(**json.loads(history.dest_fileitem))
-        state, msg = TransferChain().delete_files(dest_fileitem)
+        state = StorageChain().delete_file(dest_fileitem)
         if not state:
-            return schemas.Response(success=False, msg=msg)
+            return schemas.Response(success=False, msg=f"{dest_fileitem.path}删除失败")
         # 发送事件
         eventmanager.send_event(
             EventType.DownloadFileDeleted,
