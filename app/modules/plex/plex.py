@@ -238,7 +238,7 @@ class Plex:
         if not self._plex:
             return None, {}
         if item_id:
-            videos = self._plex.fetchItem(item_id)
+            videos = self._plex.fetchItem(int(item_id))
         else:
             # 兼容年份为空的场景
             kwargs = {"year": year} if year else {}
@@ -392,7 +392,7 @@ class Plex:
         if not self._plex:
             return None
         try:
-            item = self._plex.fetchItem(itemid)
+            item = self._plex.fetchItem(int(itemid))
             ids = self.__get_ids(item.guids)
             path = None
             if item.locations:

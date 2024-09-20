@@ -109,7 +109,7 @@ class EmbyModule(_ModuleBase, _MediaServerBase):
         :param itemid:  媒体服务器ItemID
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
-        for name, server in self._servers.values():
+        for name, server in self._servers.items():
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
                     movie = server.get_iteminfo(itemid)
