@@ -323,30 +323,22 @@ class EventManager(metaclass=Singleton):
         """
 
         def decorator(f: Callable):
-            event_list = []
-
-            # 如果传入的是列表，处理每个事件类型
+            # 将输入的事件类型统一转换为列表格式
             if isinstance(etype, list):
-                for et in etype:
-                    if isinstance(et, (EventType, ChainEventType)):
-                        event_list.append(et)
-                    else:
-                        raise ValueError(f"列表中无效的事件类型: {et}")
-
-            # 如果传入的是 EventType 或 ChainEventType 类，提取该类中的所有成员
-            elif isinstance(etype, type) and issubclass(etype, (EventType, ChainEventType)):
-                event_list.extend(etype.__members__.values())
-
-            # 如果传入的是单个事件类型成员 (EventType.MetadataScrape 或 ChainEventType.PluginAction)
-            elif isinstance(etype, (EventType, ChainEventType)):
-                event_list.append(etype)
-
+                event_list = etype  # 传入的已经是列表，直接使用
             else:
-                raise ValueError(f"无效的事件类型: {etype}")
+                event_list = [etype]  # 不是列表则包裹成单一元素的列表
 
-            # 统一注册事件
+            # 遍历列表，处理每个事件类型
             for event in event_list:
-                self.add_event_listener(event, f)
+                if isinstance(event, (EventType, ChainEventType)):
+                    self.add_event_listener(event, f)
+                elif isinstance(event, type) and issubclass(event, (EventType, ChainEventType)):
+                    # 如果是 EventType 或 ChainEventType 类，提取该类中的所有成员
+                    for et in event.__members__.values():
+                        self.add_event_listener(et, f)
+                else:
+                    raise ValueError(f"无效的事件类型: {event}")
 
             return f
 
