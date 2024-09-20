@@ -205,6 +205,7 @@ class PluginManager(metaclass=Singleton):
         for plugin_id, plugin in self._running_plugins.items():
             if pid and plugin_id != pid:
                 continue
+            eventmanager.disable_event_handler(type(plugin))
             self.__stop_plugin(plugin)
         # 清空对像
         if pid:

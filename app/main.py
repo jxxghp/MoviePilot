@@ -238,6 +238,8 @@ def start_module():
     ResourceHelper()
     # 加载模块
     ModuleManager()
+    # 启动事件消费
+    EventManager().start()
     # 安装在线插件
     PluginManager().sync()
     # 加载插件
@@ -248,8 +250,6 @@ def start_module():
     Scheduler()
     # 加载命令
     Command()
-    # 启动事件消费
-    EventManager().start()
     # 初始化路由
     init_routers()
     # 启动前端服务
