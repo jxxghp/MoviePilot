@@ -387,6 +387,9 @@ class FileManagerModule(_ModuleBase):
         # 加锁
         with lock:
             if fileitem.storage == "local" and target_storage == "local":
+                # 创建目录
+                if not target_file.parent.exists():
+                    target_file.parent.mkdir(parents=True)
                 # 本地到本地
                 if transfer_type == "copy":
                     state = source_oper.copy(fileitem, target_file)
@@ -444,6 +447,9 @@ class FileManagerModule(_ModuleBase):
                     # 下载
                     tmp_file = source_oper.download(fileitem)
                     if tmp_file:
+                        # 创建目录
+                        if not target_file.parent.exists():
+                            target_file.parent.mkdir(parents=True)
                         # 将tmp_file移动后target_file
                         tmp_file.rename(target_file)
                         return __get_targetitem(target_file), ""
@@ -453,6 +459,8 @@ class FileManagerModule(_ModuleBase):
                     # 下载
                     tmp_file = source_oper.download(fileitem)
                     if tmp_file:
+                        if not target_file.parent.exists():
+                            target_file.parent.mkdir(parents=True)
                         # 将tmp_file移动后target_file
                         tmp_file.rename(target_file)
                         # 删除源文件
