@@ -30,6 +30,7 @@ except ImportError as e:
     print(error_message, file=sys.stderr)
     sys.exit(1)
 
+from app.core.event import EventManager
 from app.core.plugin import PluginManager
 from app.db.init import init_db, update_db
 from app.helper.thread import ThreadHelper
@@ -212,7 +213,7 @@ def shutdown_server():
     PluginManager().stop()
     PluginManager().stop_monitor()
     # 停止事件消费
-    Command().stop()
+    EventManager().stop()
     # 停止虚拟显示
     DisplayHelper().stop()
     # 停止定时服务
@@ -237,6 +238,8 @@ def start_module():
     ResourceHelper()
     # 加载模块
     ModuleManager()
+    # 启动事件消费
+    EventManager().start()
     # 安装在线插件
     PluginManager().sync()
     # 加载插件
@@ -245,7 +248,7 @@ def start_module():
     Monitor()
     # 启动定时服务
     Scheduler()
-    # 启动事件消费
+    # 加载命令
     Command()
     # 初始化路由
     init_routers()

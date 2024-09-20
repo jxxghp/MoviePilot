@@ -156,7 +156,7 @@ class PluginManager(metaclass=Singleton):
                 # 未安装的不加载
                 if plugin_id not in installed_plugins:
                     # 设置事件状态为不可用
-                    eventmanager.disable_events_hander(plugin_id)
+                    eventmanager.disable_event_handler(plugin)
                     continue
                 # 生成实例
                 plugin_obj = plugin()
@@ -167,9 +167,9 @@ class PluginManager(metaclass=Singleton):
                 logger.info(f"加载插件：{plugin_id} 版本：{plugin_obj.plugin_version}")
                 # 启用的插件才设置事件注册状态可用
                 if plugin_obj.get_state():
-                    eventmanager.enable_events_hander(plugin_id)
+                    eventmanager.enable_event_handler(plugin)
                 else:
-                    eventmanager.disable_events_hander(plugin_id)
+                    eventmanager.disable_event_handler(plugin)
             except Exception as err:
                 logger.error(f"加载插件 {plugin_id} 出错：{str(err)} - {traceback.format_exc()}")
 
@@ -179,15 +179,18 @@ class PluginManager(metaclass=Singleton):
         :param plugin_id: 插件ID
         :param conf: 插件配置
         """
-        if not self._running_plugins.get(plugin_id):
+        plugin = self._running_plugins.get(plugin_id)
+        if not plugin:
             return
-        self._running_plugins[plugin_id].init_plugin(conf)
-        if self._running_plugins[plugin_id].get_state():
-            # 设置启用的插件事件注册状态可用
-            eventmanager.enable_events_hander(plugin_id)
+        # 初始化插件
+        plugin.init_plugin(conf)
+        # 检查插件状态并启用/禁用事件处理器
+        if plugin.get_state():
+            # 启用插件类的事件处理器
+            eventmanager.enable_event_handler(type(plugin))
         else:
-            # 设置事件状态为不可用
-            eventmanager.disable_events_hander(plugin_id)
+            # 禁用插件类的事件处理器
+            eventmanager.disable_event_handler(type(plugin))
 
     def stop(self, pid: str = None):
         """
@@ -202,6 +205,7 @@ class PluginManager(metaclass=Singleton):
         for plugin_id, plugin in self._running_plugins.items():
             if pid and plugin_id != pid:
                 continue
+            eventmanager.disable_event_handler(type(plugin))
             self.__stop_plugin(plugin)
         # 清空对像
         if pid:
