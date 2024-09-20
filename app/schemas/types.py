@@ -57,11 +57,8 @@ class EventType(Enum):
 
 
 # 同步链式事件
-class SyncEventType(Enum):
-    # 刮削元数据
-    MetadataScrape = "metadata.scrape"
-    # 插件动作
-    PluginAction = "plugin.action"
+class ChainEventType(Enum):
+    pass
 
 
 # 系统配置Key字典
