@@ -180,13 +180,13 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
             return server.get_librarys(username=username, hidden=hidden)
         return None
 
-    def mediaserver_items(self, server: str, library_id: str) -> Optional[Generator]:
+    def mediaserver_items(self, server: str, library_id: str, start_index: int = 0, limit: int = 100) -> Optional[Generator]:
         """
         媒体库项目列表
         """
         server: Jellyfin = self.get_server(server)
         if server:
-            return server.get_items(library_id)
+            return server.get_items(library_id, start_index, limit)
         return None
 
     def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[schemas.MediaServerItem]:

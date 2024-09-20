@@ -72,6 +72,19 @@ class MediaServerLibrary(BaseModel):
     link: Optional[str] = None
 
 
+
+class MediaServerItemUserState(BaseModel):
+    # 已播放
+    played: Optional[bool] = None
+    # 继续播放
+    resume: Optional[bool] = None
+    # 上次播放时间 10位时间戳
+    last_played_date: Optional[str] = None
+    # 播放次数(不等于完播次数，理解为浏览次数)
+    play_count: Optional[int] = None
+    # 播放进度
+    percentage: Optional[float] = None
+
 class MediaServerItem(BaseModel):
     """
     媒体服务器媒体信息
@@ -106,6 +119,7 @@ class MediaServerItem(BaseModel):
     note: Optional[str] = None
     # 同步时间
     lst_mod_date: Optional[str] = None
+    user_state: Optional[MediaServerItemUserState] = None
 
     class Config:
         orm_mode = True

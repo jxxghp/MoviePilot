@@ -27,11 +27,17 @@ class MediaServerChain(ChainBase):
         """
         return self.run_module("mediaserver_librarys", server=server, username=username, hidden=hidden)
 
-    def items(self, server: str, library_id: Union[str, int]) -> List[schemas.MediaServerItem]:
+    def items(self, server: str, library_id: Union[str, int], start_index: int = 0, limit: int = 100) -> List[schemas.MediaServerItem]:
         """
         获取媒体服务器所有项目
         """
-        return self.run_module("mediaserver_items", server=server, library_id=library_id)
+        data = []
+        data_generator = self.run_module("mediaserver_items", server=server, library_id=library_id, start_index=start_index, limit=limit)
+        if data_generator:
+            for item in data_generator:
+                if item:
+                    data.append(item)
+        return data
 
     def iteminfo(self, server: str, item_id: Union[str, int]) -> schemas.MediaServerItem:
         """

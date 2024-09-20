@@ -446,9 +446,13 @@ class Plex:
 
         return ids
 
-    def get_items(self, parent: str) -> Generator:
+    def get_items(self, parent: str, start_index: int = 0, limit: int = 100) -> Generator:
         """
         获取媒体服务器所有媒体库列表
+        :param parent: 父媒体库ID
+        :param start_index: 开始索引，用于分页
+        :param limit: 每次请求返回的项目数量
+        :return: 生成器 schemas.MediaServerItem
         """
         if not parent:
             yield None
@@ -457,7 +461,7 @@ class Plex:
         try:
             section = self._plex.library.sectionByID(int(parent))
             if section:
-                for item in section.all():
+                for item in section.all(container_start=start_index, limit=limit):
                     try:
                         if not item:
                             continue
@@ -465,7 +469,22 @@ class Plex:
                         path = None
                         if item.locations:
                             path = item.locations[0]
+                        playback_position = item.viewOffset if hasattr(item, 'viewOffset') else 0
+                        duration = item.duration if hasattr(item, 'duration') else 0
+                        percentage = (playback_position / duration * 100) if duration > 0 else None
+                        played = item.isPlayed if hasattr(item, 'isPlayed') else False
+                        play_count = item.viewCount if hasattr(item, 'viewCount') else 0
+                        last_played_date = item.lastViewedAt if hasattr(item, 'lastViewedAt') else None
+                        user_state = schemas.MediaServerItemUserState(
+                            played=played,
+                            resume=playback_position > 0,
+                            last_played_date=last_played_date.isoformat() if last_played_date else None,
+                            play_count=play_count,
+                            percentage=percentage,
+                        )
+
                         yield schemas.MediaServerItem(
+                            id=item.ratingKey,
                             server="plex",
                             library=item.librarySectionID,
                             item_id=item.key,
@@ -477,6 +496,7 @@ class Plex:
                             imdbid=ids['imdb_id'],
                             tvdbid=ids['tvdb_id'],
                             path=path,
+                            user_state=user_state,
                         )
                     except Exception as e:
                         logger.error(f"处理媒体项目时出错：{str(e)}, 跳过此项目。")
