@@ -1,6 +1,7 @@
 import json
 import re
 import traceback
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Generator, Tuple
 
@@ -352,7 +353,7 @@ class Emby:
         url = f"{self._host}emby/Items"
         params = {
             "IncludeItemTypes": "Movie",
-            "Fields": "ProductionYear",
+            "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,UserDataLastPlayedDate,ParentId",
             "StartIndex": 0,
             "Recursive": "true",
             "SearchTerm": title,
@@ -366,30 +367,15 @@ class Emby:
                 res_items = res.json().get("Items")
                 if res_items:
                     ret_movies = []
-                    for res_item in res_items:
-                        item_tmdbid = res_item.get("ProviderIds", {}).get("Tmdb")
-                        mediaserver_item = schemas.MediaServerItem(
-                            server="emby",
-                            library=res_item.get("ParentId"),
-                            item_id=res_item.get("Id"),
-                            item_type=res_item.get("Type"),
-                            title=res_item.get("Name"),
-                            original_title=res_item.get("OriginalTitle"),
-                            year=res_item.get("ProductionYear"),
-                            tmdbid=int(item_tmdbid) if item_tmdbid else None,
-                            imdbid=res_item.get("ProviderIds", {}).get("Imdb"),
-                            tvdbid=res_item.get("ProviderIds", {}).get("Tvdb"),
-                            path=res_item.get("Path")
-                        )
-                        if tmdb_id and item_tmdbid:
-                            if str(item_tmdbid) != str(tmdb_id):
-                                continue
-                            else:
+                    for item in res_items:
+                        if not item:
+                            continue
+                        mediaserver_item = self.__format_item_info(item)
+                        if mediaserver_item:
+                            if (not tmdb_id or mediaserver_item.tmdbid == tmdb_id) and \
+                                    mediaserver_item.title == title and \
+                                    (not year or str(mediaserver_item.year) == str(year)):
                                 ret_movies.append(mediaserver_item)
-                                continue
-                        if (mediaserver_item.title == title
-                                and (not year or str(mediaserver_item.year) == str(year))):
-                            ret_movies.append(mediaserver_item)
                     return ret_movies
         except Exception as e:
             logger.error(f"连接Items出错：" + str(e))
@@ -615,6 +601,48 @@ class Emby:
         # 刷新根目录
         return "/"
 
+    def __format_item_info(self, item) -> Optional[schemas.MediaServerItem]:
+        """
+        格式化item
+        """
+        try:
+            user_data = item.get("UserData", {})
+            if not user_data:
+                user_state = None
+            else:
+                resume = item.get("UserData", {}).get("PlaybackPositionTicks") and item.get("UserData", {}).get("PlaybackPositionTicks") > 0
+                last_played_date = item.get("UserData", {}).get("LastPlayedDate")
+                if last_played_date is not None and "." in last_played_date:
+                    last_played_date = last_played_date.split(".")[0]
+                user_state = schemas.MediaServerItemUserState(
+                    played=item.get("UserData", {}).get("Played"),
+                    resume=resume,
+                    last_played_date=datetime.strptime(last_played_date, "%Y-%m-%dT%H:%M:%S").strftime(
+                        "%Y-%m-%d %H:%M:%S") if last_played_date else None,
+                    play_count=item.get("UserData", {}).get("PlayCount"),
+                    percentage=item.get("UserData", {}).get("PlayedPercentage"),
+                )
+            tmdbid = item.get("ProviderIds", {}).get("Tmdb")
+            return schemas.MediaServerItem(
+                id=item.get("Id"),
+                server="emby",
+                library=item.get("ParentId"),
+                item_id=item.get("Id"),
+                item_type=item.get("Type"),
+                title=item.get("Name"),
+                original_title=item.get("OriginalTitle"),
+                year=item.get("ProductionYear"),
+                tmdbid=int(tmdbid) if tmdbid else None,
+                imdbid=item.get("ProviderIds", {}).get("Imdb"),
+                tvdbid=item.get("ProviderIds", {}).get("Tvdb"),
+                path=item.get("Path"),
+                user_state=user_state
+
+            )
+        except Exception as e:
+            logger.error(e)
+        return None
+
     def get_iteminfo(self, itemid: str) -> Optional[schemas.MediaServerItem]:
         """
         获取单个项目详情
@@ -630,28 +658,19 @@ class Emby:
         try:
             res = RequestUtils().get_res(url, params)
             if res and res.status_code == 200:
-                item = res.json()
-                tmdbid = item.get("ProviderIds", {}).get("Tmdb")
-                return schemas.MediaServerItem(
-                    server="emby",
-                    library=item.get("ParentId"),
-                    item_id=item.get("Id"),
-                    item_type=item.get("Type"),
-                    title=item.get("Name"),
-                    original_title=item.get("OriginalTitle"),
-                    year=item.get("ProductionYear"),
-                    tmdbid=int(tmdbid) if tmdbid else None,
-                    imdbid=item.get("ProviderIds", {}).get("Imdb"),
-                    tvdbid=item.get("ProviderIds", {}).get("Tvdb"),
-                    path=item.get("Path")
-                )
+                iteminfo = self.__format_item_info(res.json())
+                return iteminfo
         except Exception as e:
-            logger.error(f"连接Items/Id出错：" + str(e))
+            logger.error(f"连接/Users/{self.user}/Items/{itemid}出错：" + str(e))
         return None
 
-    def get_items(self, parent: str) -> Generator:
+    def get_items(self, parent: str, start_index: int = 0, limit: int = 100) -> Generator:
         """
         获取媒体服务器所有媒体库列表
+        :param parent: 父媒体库ID
+        :param start_index: 开始索引，用于分页
+        :param limit: 每次请求返回的项目数量
+        :return: 生成器 schemas.MediaServerItem
         """
         if not parent:
             yield None
@@ -660,20 +679,25 @@ class Emby:
         url = f"{self._host}emby/Users/{self.user}/Items"
         params = {
             "ParentId": parent,
-            "api_key": self._apikey
+            "api_key": self._apikey,
+            "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,UserDataLastPlayedDate,ParentId",
+            "StartIndex": start_index,
+            "Limit": limit
         }
         try:
             res = RequestUtils().get_res(url, params)
-            if res and res.status_code == 200:
-                results = res.json().get("Items") or []
-                for result in results:
-                    if not result:
-                        continue
-                    if result.get("Type") in ["Movie", "Series"]:
-                        yield self.get_iteminfo(result.get("Id"))
-                    elif "Folder" in result.get("Type"):
-                        for item in self.get_items(parent=result.get('Id')):
-                            yield item
+            if not res or res.status_code != 200:
+                yield None
+            items = res.json().get("Items") or []
+            for item in items:
+                if not item:
+                    continue
+                if "Folder" in item.get("Type"):
+                    for items in self.get_items(parent=item.get('Id')):
+                        yield items
+                elif item.get("Type") in ["Movie", "Series"]:
+                    yield self.__format_item_info(item)
+
         except Exception as e:
             logger.error(f"连接Users/Items出错：" + str(e))
         yield None
