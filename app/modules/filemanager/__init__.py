@@ -271,6 +271,11 @@ class FileManagerModule(_ModuleBase):
         :param scrape: 是否刮削元数据
         :return: {path, target_path, message}
         """
+        # 检查目录路径
+        if fileitem.storage == "local" and not Path(fileitem.path).exists():
+            return TransferInfo(success=False,
+                                fileitem=fileitem,
+                                message=f"{fileitem.path} 不存在")
         # 目标路径不能是文件
         if target_path and target_path.is_file():
             logger.error(f"整理目标路径 {target_path} 是一个文件")
@@ -284,6 +289,9 @@ class FileManagerModule(_ModuleBase):
         else:
             dir_info = directoryhelper.get_dir(mediainfo)
         if dir_info:
+            # 目标存储类型
+            if not target_storage:
+                target_storage = dir_info.library_storage
             # 是否需要刮削
             if scrape is None:
                 need_scrape = dir_info.scraping
@@ -661,7 +669,7 @@ class FileManagerModule(_ModuleBase):
         # 获取目标目录
         target_oper: StorageBase = self.__get_storage_oper(target_storage)
         if not target_oper:
-            logger.error(f"不支持 {target_storage} 的文件整理")
+            logger.error(f"不支持到 {target_storage} 的文件整理")
             return None, f"不支持的文件存储：{target_storage}"
 
         logger.info(f"正在{transfer_type}目录：{fileitem.path} 到 {target_path}")
@@ -814,18 +822,6 @@ class FileManagerModule(_ModuleBase):
                 extension=_path.suffix.lstrip('.'),
                 modify_time=_path.stat().st_mtime
             )
-
-        # 检查目录路径
-        if fileitem.storage == "local" and not Path(fileitem.path).exists():
-            return TransferInfo(success=False,
-                                fileitem=fileitem,
-                                message=f"{fileitem.path} 不存在")
-
-        if target_storage == "local":
-            # 检查目标路径
-            if not target_path.exists():
-                logger.info(f"目标路径不存在，正在创建：{target_path} ...")
-                target_path.mkdir(parents=True, exist_ok=True)
 
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \

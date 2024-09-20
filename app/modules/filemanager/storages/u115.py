@@ -247,7 +247,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     return sub_file
             return None
 
-        # 逐级查找和创建目录
+        # 逐级查找
         fileitem = schemas.FileItem(fileid="0")
         for part in path.parts:
             if part == "/":
