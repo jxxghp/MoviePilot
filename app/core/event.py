@@ -105,6 +105,16 @@ class EventManager(metaclass=Singleton):
         except Exception as e:
             logger.error(f"停止事件处理线程出错：{str(e)} - {traceback.format_exc()}")
 
+    def check(self, etype: EventType):
+        """
+        检查事件是否存在响应，去除掉被禁用的事件响应
+        """
+        if etype not in self.__broadcast_subscribers:
+            return False
+        handlers = self.__broadcast_subscribers[etype]
+        return any([handler for handler in handlers.values()
+                    if handler.__qualname__.split(".")[0] not in self.__disabled_handlers])
+
     def send_event(self, etype: Union[EventType, ChainEventType], data: Optional[Dict] = None,
                    priority: int = DEFAULT_EVENT_PRIORITY) -> Optional[Event]:
         """
