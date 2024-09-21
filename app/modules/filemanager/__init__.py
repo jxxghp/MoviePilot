@@ -447,7 +447,7 @@ class FileManagerModule(_ModuleBase):
                     logger.warn(f"文件已存在：{target_file}")
                     return __get_targetitem(target_file), ""
                 # 网盘到本地
-                if transfer_type == "copy":
+                if transfer_type in ["copy", "move"]:
                     # 下载
                     tmp_file = source_oper.download(fileitem)
                     if tmp_file:
@@ -455,20 +455,10 @@ class FileManagerModule(_ModuleBase):
                         if not target_file.parent.exists():
                             target_file.parent.mkdir(parents=True)
                         # 将tmp_file移动后target_file
-                        tmp_file.rename(target_file)
-                        return __get_targetitem(target_file), ""
-                    else:
-                        return None, f"{fileitem.path} {fileitem.storage} 下载失败"
-                elif transfer_type == "move":
-                    # 下载
-                    tmp_file = source_oper.download(fileitem)
-                    if tmp_file:
-                        if not target_file.parent.exists():
-                            target_file.parent.mkdir(parents=True)
-                        # 将tmp_file移动后target_file
-                        tmp_file.rename(target_file)
-                        # 删除源文件
-                        source_oper.delete(fileitem)
+                        SystemUtils.move(tmp_file, target_file)
+                        if transfer_type == "move":
+                            # 删除源文件
+                            source_oper.delete(fileitem)
                         return __get_targetitem(target_file), ""
                     else:
                         return None, f"{fileitem.path} {fileitem.storage} 下载失败"
