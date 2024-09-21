@@ -602,6 +602,7 @@ class AliPan(StorageBase):
         if res:
             download_url = res.json().get("url")
             if not download_url:
+                logger.warn(f"{fileitem.path} 未获取到下载链接")
                 return None
             res = RequestUtils().get_res(download_url)
             if res:

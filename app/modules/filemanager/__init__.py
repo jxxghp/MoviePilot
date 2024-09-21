@@ -485,8 +485,10 @@ class FileManagerModule(_ModuleBase):
                             return None, f"{fileitem.path} {target_storage} 重命名文件失败"
                     else:
                         return None, f"{target_file.parent} {target_storage} 目录获取失败"
+                else:
+                    return None, f"网盘内只支持移动操作"
 
-        return None, "不支持的整理操作"
+        return None, "未知错误"
 
     def __transfer_other_files(self, fileitem: FileItem, target_storage: str, target_file: Path,
                                transfer_type: str) -> Tuple[bool, str]:
@@ -747,7 +749,7 @@ class FileManagerModule(_ModuleBase):
             else:
                 logger.info(f"正在删除已存在的文件：{target_file}")
                 target_file.unlink()
-        logger.info(f"正在整理文件：{fileitem.path} 到 {target_file}")
+        logger.info(f"正在整理文件：【{fileitem.storage}】{fileitem.path} 到 【{target_storage}】{target_file}")
         new_item, errmsg = self.__transfer_command(fileitem=fileitem,
                                                    target_storage=target_storage,
                                                    target_file=target_file,
