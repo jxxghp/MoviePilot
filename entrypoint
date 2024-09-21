@@ -21,7 +21,7 @@ chown -R moviepilot:moviepilot \
     /var/log/nginx
 chown moviepilot:moviepilot /etc/hosts /tmp
 # 下载浏览器内核
-gosu moviepilot:moviepilot playwright install chromium
+HTTPS_PROXY="${HTTPS_PROXY:-${https_proxy:-$PROXY_HOST}}" gosu moviepilot:moviepilot playwright install chromium
 # 启动前端nginx服务
 nginx
 # 启动docker http proxy nginx
