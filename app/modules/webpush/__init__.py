@@ -48,9 +48,10 @@ class WebPushModule(_ModuleBase, _MessageBase):
         for conf in self._configs.values():
             if not self.checkMessage(message, conf.name):
                 continue
-            webpush_users = conf.config.get("WEBPUSH_USERNAME")
+            webpush_users = conf.config.get("WEBPUSH_USERNAME") or ""
             if webpush_users:
-                if message.username and message.username != message.userid:
+                # 设定了接收用户时，非该用户的消息不接收
+                if not message.userid or message.userid not in webpush_users.split(","):
                     continue
             if not message.title and not message.text:
                 logger.warn("标题和内容不能同时为空")

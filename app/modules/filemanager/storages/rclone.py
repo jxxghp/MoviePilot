@@ -96,15 +96,17 @@ class Rclone(StorageBase):
             logger.error(f"rclone存储检查失败：{err}")
         return False
 
-    def list(self, fileitm: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
+    def list(self, fileitem: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
         """
         浏览文件
         """
+        if fileitem.type == "file":
+            return [fileitem]
         try:
             ret = subprocess.run(
                 [
                     'rclone', 'lsjson',
-                    f'MP:{fileitm.path}'
+                    f'MP:{fileitem.path}'
                 ],
                 capture_output=True,
                 startupinfo=self.__get_hidden_shell()

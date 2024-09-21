@@ -361,7 +361,8 @@ class AliPan(StorageBase):
                     parent_fileid="root",
                     type="dir",
                     path="/资源库/",
-                    name="资源库"
+                    name="资源库",
+                    basename="资源库"
                 ),
                 schemas.FileItem(
                     storage=self.schema.value,
@@ -370,9 +371,13 @@ class AliPan(StorageBase):
                     parent_fileid="root",
                     type="dir",
                     path="/备份盘/",
-                    name="备份盘"
+                    name="备份盘",
+                    basename="备份盘"
                 )
             ]
+        # 如果本身是文件
+        if fileitem.type == "file":
+            return [fileitem]
         # 返回数据
         ret_items = []
         # 分页获取
@@ -413,6 +418,7 @@ class AliPan(StorageBase):
             type="dir" if fileinfo.get("type") == "folder" else "file",
             path=f"{fileitem.path}{fileinfo.get('name')}" + ("/" if fileinfo.get("type") == "folder" else ""),
             name=fileinfo.get("name"),
+            basename=Path(fileinfo.get("name")).stem,
             size=fileinfo.get("size"),
             extension=fileinfo.get("file_extension"),
             modify_time=StringUtils.str_to_timestamp(fileinfo.get("updated_at")),
@@ -604,7 +610,14 @@ class AliPan(StorageBase):
             if not download_url:
                 logger.warn(f"{fileitem.path} 未获取到下载链接")
                 return None
-            res = RequestUtils().get_res(download_url)
+            res = RequestUtils(headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Referer": "https://www.alipan.com/",
+                "Sec-Fetch-Dest": "iframe",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "cross-site",
+                "User-Agent": settings.USER_AGENT
+            }).get_res(download_url)
             if res:
                 path = settings.TEMP_PATH / fileitem.name
                 with path.open("wb") as f:

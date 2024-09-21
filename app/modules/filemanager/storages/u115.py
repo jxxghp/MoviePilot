@@ -162,6 +162,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not self.__init_cloud():
             return []
         try:
+            if fileitem.type == "file":
+                return [fileitem]
             items = self.cloud.storage().list(dir_id=fileitem.fileid)
             return [schemas.FileItem(
                 storage=self.schema.value,
