@@ -160,7 +160,7 @@ class TransferHistoryOper(DbOper):
                 src_fileitem=json.dumps(fileitem.dict()),
                 dest=transferinfo.target_item.path if transferinfo.target_item else None,
                 dest_storage=transferinfo.target_item.storage if transferinfo.target_item else None,
-                dest_fileitem=json.dumps(transferinfo.target_item.dict()),
+                dest_fileitem=json.dumps(transferinfo.target_item.dict()) if transferinfo.target_item else None,
                 mode=mode,
                 type=mediainfo.type.value,
                 category=mediainfo.category,

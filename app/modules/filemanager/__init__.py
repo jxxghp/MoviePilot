@@ -166,6 +166,7 @@ class FileManagerModule(_ModuleBase):
                             result.append(t)
                 else:
                     result.extend(_items)
+
         # 返回结果
         result = []
         __get_files(fileitem, recursion)
@@ -292,6 +293,9 @@ class FileManagerModule(_ModuleBase):
             # 目标存储类型
             if not target_storage:
                 target_storage = dir_info.library_storage
+            # 整理方式
+            if not transfer_type:
+                transfer_type = dir_info.transfer_type
             # 是否需要刮削
             if scrape is None:
                 need_scrape = dir_info.scraping
@@ -692,10 +696,11 @@ class FileManagerModule(_ModuleBase):
                                                      transfer_type=transfer_type)
         if new_item:
             logger.info(f"文件 {fileitem.path} {transfer_type}完成")
+            return new_item, errmsg
         else:
             logger.error(f"文件{fileitem.path} {transfer_type}失败：{errmsg}")
 
-        return target_item, errmsg
+        return None, errmsg
 
     def __transfer_dir_files(self, fileitem: FileItem, transfer_type: str,
                              target_storage: str, target_path: Path) -> Tuple[Optional[FileItem], str]:
@@ -733,7 +738,7 @@ class FileManagerModule(_ModuleBase):
                 if not new_item:
                     return None, errmsg
         # 返回成功
-        return FileItem(), ""
+        return storage_oper.get_item(target_path), ""
 
     def __transfer_file(self, fileitem: FileItem, target_storage: str, target_file: Path,
                         transfer_type: str, over_flag: bool = False) -> Tuple[Optional[FileItem], str]:
@@ -857,15 +862,17 @@ class FileManagerModule(_ModuleBase):
                 return TransferInfo(success=False,
                                     message=errmsg,
                                     fileitem=fileitem,
-                                    target_path=new_path)
+                                    target_path=new_path,
+                                    transfer_type=transfer_type)
 
             logger.info(f"文件夹 {fileitem.path} 整理成功")
             # 返回整理后的路径
             return TransferInfo(success=True,
                                 fileitem=fileitem,
-                                target_fileitem=new_item,
+                                target_item=new_item,
                                 total_size=fileitem.size,
-                                need_scrape=need_scrape)
+                                need_scrape=need_scrape,
+                                transfer_type=transfer_type)
         else:
             # 整理单个文件
             if mediainfo.type == MediaType.TV:
@@ -875,7 +882,8 @@ class FileManagerModule(_ModuleBase):
                     return TransferInfo(success=False,
                                         message=f"未识别到文件集数",
                                         fileitem=fileitem,
-                                        fail_list=[fileitem.path])
+                                        fail_list=[fileitem.path],
+                                        transfer_type=transfer_type)
 
                 # 文件结束季为空
                 in_meta.end_season = None
@@ -930,15 +938,17 @@ class FileManagerModule(_ModuleBase):
                                 return TransferInfo(success=False,
                                                     message=f"媒体库存在同名文件，且质量更好",
                                                     fileitem=fileitem,
-                                                    target_fileitem=__get_targetitem(target_file),
-                                                    fail_list=[fileitem.path])
+                                                    target_item=__get_targetitem(target_file),
+                                                    fail_list=[fileitem.path],
+                                                    transfer_type=transfer_type)
                         case 'never':
                             # 存在不覆盖
                             return TransferInfo(success=False,
                                                 message=f"媒体库存在同名文件，当前覆盖模式为不覆盖",
                                                 fileitem=fileitem,
-                                                target_fileitem=__get_targetitem(target_file),
-                                                fail_list=[fileitem.path])
+                                                target_item=__get_targetitem(target_file),
+                                                fail_list=[fileitem.path],
+                                                transfer_type=transfer_type)
                         case 'latest':
                             # 仅保留最新版本
                             logger.info(f"当前整理覆盖模式设置为仅保留最新版本，将覆盖：{new_file}")
@@ -959,7 +969,8 @@ class FileManagerModule(_ModuleBase):
                 return TransferInfo(success=False,
                                     message=err_msg,
                                     fileitem=fileitem,
-                                    fail_list=[fileitem.path])
+                                    fail_list=[fileitem.path],
+                                    transfer_type=transfer_type)
 
             logger.info(f"文件 {fileitem.path} 整理成功")
             return TransferInfo(success=True,
@@ -969,7 +980,8 @@ class FileManagerModule(_ModuleBase):
                                 total_size=fileitem.size,
                                 file_list=[fileitem.path],
                                 file_list_new=[new_item.path],
-                                need_scrape=need_scrape)
+                                need_scrape=need_scrape,
+                                transfer_type=transfer_type)
 
     @staticmethod
     def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None,

@@ -48,6 +48,8 @@ class TransferInfo(BaseModel):
     fileitem: Optional[FileItem] = None
     # 转移后路径
     target_item: Optional[FileItem] = None
+    # 整理方式
+    transfer_type: Optional[str] = None
     # 处理文件数
     file_count: Optional[int] = 0
     # 处理文件清单

@@ -97,6 +97,8 @@ class Monitor(metaclass=Singleton):
         self.systemmessage = MessageHelper()
         self.systemconfig = SystemConfigOper()
 
+        self.all_exts = settings.RMT_MEDIAEXT
+
         # 启动目录监控和文件整理
         self.init()
 
@@ -269,7 +271,7 @@ class Monitor(metaclass=Singleton):
                     return
 
                 # 不是媒体文件不处理
-                if event_path.suffix not in settings.RMT_MEDIAEXT:
+                if event_path.suffix.lower() not in self.all_exts:
                     logger.debug(f"{event_path} 不是媒体文件")
                     return
 

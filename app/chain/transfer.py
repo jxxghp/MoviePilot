@@ -32,7 +32,7 @@ lock = threading.Lock()
 
 class TransferChain(ChainBase):
     """
-    文件转移处理链
+    文件整理处理链
     """
 
     def __init__(self):
@@ -45,7 +45,7 @@ class TransferChain(ChainBase):
         self.storagechain = StorageChain()
         self.systemconfig = SystemConfigOper()
         self.directoryhelper = DirectoryHelper()
-        self.all_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIO_TRACK_EXT
+        self.all_exts = settings.RMT_MEDIAEXT
 
     def recommend_name(self, meta: MetaBase, mediainfo: MediaInfo) -> Optional[str]:
         """
@@ -58,7 +58,7 @@ class TransferChain(ChainBase):
 
     def process(self) -> bool:
         """
-        获取下载器中的种子列表，并执行转移
+        获取下载器中的种子列表，并执行整理
         """
 
         # 全局锁，避免重复处理
@@ -122,7 +122,7 @@ class TransferChain(ChainBase):
                     # 非MoviePilot下载的任务，按文件识别
                     mediainfo = None
 
-                # 执行转移
+                # 执行整理
                 self.__do_transfer(
                     fileitem=FileItem(
                         storage="local",
@@ -152,23 +152,21 @@ class TransferChain(ChainBase):
                       min_filesize: int = 0, scrape: bool = None,
                       force: bool = False) -> Tuple[bool, str]:
         """
-        执行一个复杂目录的转移操作
+        执行一个复杂目录的整理操作
         :param fileitem: 文件项
         :param meta: 元数据
         :param mediainfo: 媒体信息
         :param download_hash: 下载记录hash
         :param target_storage: 目标存储器
         :param target_path: 目标路径
-        :param transfer_type: 转移类型
+        :param transfer_type: 整理类型
         :param season: 季
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
         :param scrape: 是否刮削元数据
-        :param force: 是否强制转移
+        :param force: 是否强制整理
         返回：成功标识，错误信息
         """
-        if not transfer_type:
-            transfer_type = 'link'
 
         # 自定义格式
         formaterHandler = FormatParser(eformat=epformat.format,
@@ -191,19 +189,19 @@ class TransferChain(ChainBase):
         # 跳过数量
         skip_num = 0
 
-        # 获取待转移路径清单
+        # 获取待整理路径清单
         trans_items = self.__get_trans_fileitems(fileitem)
         # 总文件数
         total_num = len(trans_items)
         self.progress.update(value=0,
-                             text=f"开始转移 {fileitem.path}，共 {total_num} 个文件或子目录 ...",
+                             text=f"开始 {fileitem.path}，共 {total_num} 个文件或子目录 ...",
                              key=ProgressKey.FileTransfer)
 
         if not trans_items:
-            logger.warn(f"{fileitem.path} 没有找到可转移的媒体文件")
-            return False, f"{fileitem.name} 没有找到可转移的媒体文件"
+            logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
+            return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
-        # 处理所有待转移目录或文件，默认一个转移路径或文件只有一个媒体信息
+        # 处理所有待整理目录或文件，默认一个整理路径或文件只有一个媒体信息
         for trans_item in trans_items:
             # 汇总季集清单
             season_episodes: Dict[Tuple, List[int]] = {}
@@ -211,21 +209,17 @@ class TransferChain(ChainBase):
             metas: Dict[Tuple, MetaBase] = {}
             # 汇总媒体信息
             medias: Dict[Tuple, MediaInfo] = {}
-            # 汇总转移信息
+            # 汇总整理信息
             transfers: Dict[Tuple, TransferInfo] = {}
 
             item_path = Path(trans_item.path)
-            # 如果是目录且不是⼀蓝光原盘，获取所有文件并转移
+            # 如果是目录且不是⼀蓝光原盘，获取所有文件并整理
             if (trans_item.type == "dir"
-                    and not (trans_item.storage == "local" and not SystemUtils.is_bluray_dir(item_path))):
+                    and not (trans_item.storage == "local" and SystemUtils.is_bluray_dir(item_path))):
                 # 遍历获取下载目录所有文件（递归）
                 file_items = self.storagechain.list_files(trans_item, recursion=True)
                 if not file_items:
                     continue
-                # 过滤后缀和大小
-                file_items = [f for f in file_items
-                              if f.extension and (f".{f.extension.lower()}" in self.all_exts
-                                                  and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
             else:
                 # 文件或蓝光目录
                 file_items = [trans_item]
@@ -234,7 +228,18 @@ class TransferChain(ChainBase):
                 # 有集自定义格式，过滤文件
                 file_items = [f for f in file_items if formaterHandler.match(f.name)]
 
-            # 转移所有文件
+            # 过滤后缀和大小
+            file_items = [f for f in file_items
+                          if f.extension and (f".{f.extension.lower()}" in self.all_exts
+                                              and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
+
+            if not file_items:
+                logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
+                return False, f"{fileitem.name} 没有找到可整理的媒体文件"
+            
+            logger.info(f"正在整理 {len(file_items)} 个文件...")
+
+            # 整理所有文件
             for file_item in file_items:
                 file_path = Path(file_item.path)
                 # 回收站及隐藏的文件不处理
@@ -265,11 +270,11 @@ class TransferChain(ChainBase):
                     skip_num += 1
                     continue
 
-                # 转移成功的不再处理
+                # 整理成功的不再处理
                 if not force:
                     transferd = self.transferhis.get_by_src(file_item.path)
                     if transferd and transferd.status:
-                        logger.info(f"{file_item.path} 已成功转移过，如需重新处理，请删除历史记录。")
+                        logger.info(f"{file_item.path} 已成功整理过，如需重新处理，请删除历史记录。")
                         # 计数
                         processed_num += 1
                         skip_num += 1
@@ -277,7 +282,7 @@ class TransferChain(ChainBase):
 
                 # 更新进度
                 self.progress.update(value=processed_num / total_num * 100,
-                                     text=f"正在转移 （{processed_num + 1}/{total_num}）{file_item.name} ...",
+                                     text=f"正在整理 （{processed_num + 1}/{total_num}）{file_item.name} ...",
                                      key=ProgressKey.FileTransfer)
 
                 if not meta:
@@ -316,7 +321,7 @@ class TransferChain(ChainBase):
 
                 if not file_mediainfo:
                     logger.warn(f'{file_path} 未识别到媒体信息')
-                    # 新增转移失败历史记录
+                    # 新增整理失败历史记录
                     his = self.transferhis.add_fail(
                         fileitem=file_item,
                         mode=transfer_type,
@@ -326,7 +331,7 @@ class TransferChain(ChainBase):
                     self.post_message(Notification(
                         mtype=NotificationType.Manual,
                         title=f"{file_path.name} 未识别到媒体信息，无法入库！",
-                        text=f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别转移。",
+                        text=f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别整理。",
                         link=settings.MP_DOMAIN('#/history')
                     ))
                     # 计数
@@ -361,7 +366,7 @@ class TransferChain(ChainBase):
                     if download_file:
                         download_hash = download_file.download_hash
 
-                # 执行转移
+                # 执行整理
                 transferinfo: TransferInfo = self.transfer(fileitem=file_item,
                                                            meta=file_meta,
                                                            mediainfo=file_mediainfo,
@@ -371,13 +376,13 @@ class TransferChain(ChainBase):
                                                            episodes_info=episodes_info,
                                                            scrape=scrape)
                 if not transferinfo:
-                    logger.error("文件转移模块运行失败")
-                    return False, "文件转移模块运行失败"
+                    logger.error("文件整理模块运行失败")
+                    return False, "文件整理模块运行失败"
                 if not transferinfo.success:
-                    # 转移失败
+                    # 整理失败
                     logger.warn(f"{file_path.name} 入库失败：{transferinfo.message}")
                     err_msgs.append(f"{file_path.name} {transferinfo.message}")
-                    # 新增转移失败历史记录
+                    # 新增整理失败历史记录
                     self.transferhis.add_fail(
                         fileitem=file_item,
                         mode=transfer_type,
@@ -410,17 +415,17 @@ class TransferChain(ChainBase):
                 else:
                     # 合并季集清单
                     season_episodes[mkey] = list(set(season_episodes[mkey] + file_meta.episode_list))
-                    # 合并转移数据
+                    # 合并整理数据
                     transfers[mkey].file_count += transferinfo.file_count
                     transfers[mkey].total_size += transferinfo.total_size
                     transfers[mkey].file_list.extend(transferinfo.file_list)
                     transfers[mkey].file_list_new.extend(transferinfo.file_list_new)
                     transfers[mkey].fail_list.extend(transferinfo.fail_list)
 
-                # 新增转移成功历史记录
+                # 新增整理成功历史记录
                 self.transferhis.add_success(
                     fileitem=file_item,
-                    mode=transfer_type,
+                    mode=transfer_type or transferinfo.transfer_type,
                     download_hash=download_hash,
                     meta=file_meta,
                     mediainfo=file_mediainfo,
@@ -438,11 +443,11 @@ class TransferChain(ChainBase):
                 # 更新进度
                 processed_num += 1
                 self.progress.update(value=processed_num / total_num * 100,
-                                     text=f"{file_path.name} 转移完成",
+                                     text=f"{file_path.name} 整理完成",
                                      key=ProgressKey.FileTransfer)
 
-            # 目录或文件转移完成
-            self.progress.update(text=f"{trans_item.path} 转移完成，正在执行后续处理 ...",
+            # 目录或文件整理完成
+            self.progress.update(text=f"{trans_item.path} 整理完成，正在执行后续处理 ...",
                                  key=ProgressKey.FileTransfer)
 
             # 执行后续处理
@@ -464,11 +469,11 @@ class TransferChain(ChainBase):
                     'transferinfo': transfer_info
                 })
         # 结束进度
-        logger.info(f"{fileitem.path} 转移完成，共 {total_num} 个文件，"
+        logger.info(f"{fileitem.path} 整理完成，共 {total_num} 个文件，"
                     f"失败 {fail_num} 个，跳过 {skip_num} 个")
 
         self.progress.update(value=100,
-                             text=f"{fileitem.path} 转移完成，共 {total_num} 个文件，"
+                             text=f"{fileitem.path} 整理完成，共 {total_num} 个文件，"
                                   f"失败 {fail_num} 个，跳过 {skip_num} 个",
                              key=ProgressKey.FileTransfer)
         # 结速进度
@@ -478,7 +483,7 @@ class TransferChain(ChainBase):
 
     def __get_trans_fileitems(self, fileitem: FileItem):
         """
-        获取转移目录列表
+        获取整理目录或文件列表
         """
 
         file_path = Path(fileitem.path)
@@ -495,7 +500,7 @@ class TransferChain(ChainBase):
         if fileitem.storage == "local" and SystemUtils.is_bluray_dir(file_path):
             return [fileitem]
 
-        # 需要转移的文件项列表
+        # 需要整理的文件项列表
         trans_items = []
 
         # 先检查当前目录的下级目录，以支持合集的情况
@@ -511,13 +516,13 @@ class TransferChain(ChainBase):
                 trans_items.append(sub_dir)
 
         if not trans_items:
-            # 没有有效子目录，直接转移当前目录
+            # 没有有效子目录，直接整理当前目录
             trans_items.append(fileitem)
         else:
-            # 有子目录时，把当前目录的文件添加到转移任务中
+            # 有子目录时，把当前目录的文件添加到整理任务中
             sub_items = self.storagechain.list_files(fileitem)
             if sub_items:
-                sub_files = [f for f in sub_items if f.type == "file" and f".{f.extension.lower()}" in self.all_exts]
+                sub_files = [f for f in sub_items if f.type == "file"]
                 if sub_files:
                     trans_items.extend(sub_files)
 
@@ -525,7 +530,7 @@ class TransferChain(ChainBase):
 
     def remote_transfer(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
         """
-        远程重新转移，参数 历史记录ID TMDBID|类型
+        远程重新整理，参数 历史记录ID TMDBID|类型
         """
 
         def args_error():
@@ -567,7 +572,7 @@ class TransferChain(ChainBase):
     def __re_transfer(self, logid: int, mtype: MediaType = None,
                       mediaid: str = None) -> Tuple[bool, str]:
         """
-        根据历史记录，重新识别转移，只支持简单条件
+        根据历史记录，重新识别整理，只支持简单条件
         :param logid: 历史记录ID
         :param mtype: 媒体类型
         :param mediaid: TMDB ID/豆瓣ID
@@ -577,7 +582,7 @@ class TransferChain(ChainBase):
         if not history:
             logger.error(f"历史记录不存在，ID：{logid}")
             return False, "历史记录不存在"
-        # 按源目录路径重新转移
+        # 按源目录路径重新整理
         src_path = Path(history.src)
         if not src_path.exists():
             return False, f"源目录不存在：{src_path}"
@@ -592,7 +597,7 @@ class TransferChain(ChainBase):
             mediainfo = self.mediachain.recognize_by_path(str(src_path))
         if not mediainfo:
             return False, f"未识别到媒体信息，类型：{mtype.value}，id：{mediaid}"
-        # 重新执行转移
+        # 重新执行整理
         logger.info(f"{src_path.name} 识别为：{mediainfo.title_year}")
 
         # 删除旧的已整理文件
@@ -601,7 +606,7 @@ class TransferChain(ChainBase):
             dest_fileitem = FileItem(**json.loads(history.dest_fileitem))
             self.storagechain.delete_file(dest_fileitem)
 
-        # 强制转移
+        # 强制整理
         if history.src_fileitem:
             # 解析源文件对象
             fileitem = FileItem(**json.loads(history.src_fileitem))
@@ -628,7 +633,7 @@ class TransferChain(ChainBase):
                         scrape: bool = None,
                         force: bool = False) -> Tuple[bool, Union[str, list]]:
         """
-        手动转移，支持复杂条件，带进度显示
+        手动整理，支持复杂条件，带进度显示
         :param fileitem: 文件项
         :param target_storage: 目标存储
         :param target_path: 目标路径
@@ -636,13 +641,13 @@ class TransferChain(ChainBase):
         :param doubanid: 豆瓣ID
         :param mtype: 媒体类型
         :param season: 季度
-        :param transfer_type: 转移类型
+        :param transfer_type: 整理类型
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
         :param scrape: 是否刮削元数据
-        :param force: 是否强制转移
+        :param force: 是否强制整理
         """
-        logger.info(f"手动转移：{fileitem.path} ...")
+        logger.info(f"手动整理：{fileitem.path} ...")
 
         if tmdbid or doubanid:
             # 有输入TMDBID时单个识别
@@ -656,9 +661,9 @@ class TransferChain(ChainBase):
             # 开始进度
             self.progress.start(ProgressKey.FileTransfer)
             self.progress.update(value=0,
-                                 text=f"开始转移 {fileitem.path} ...",
+                                 text=f"开始整理 {fileitem.path} ...",
                                  key=ProgressKey.FileTransfer)
-            # 开始转移
+            # 开始整理
             state, errmsg = self.__do_transfer(
                 fileitem=fileitem,
                 target_storage=target_storage,
@@ -675,7 +680,7 @@ class TransferChain(ChainBase):
                 return False, errmsg
 
             self.progress.end(ProgressKey.FileTransfer)
-            logger.info(f"{fileitem.path} 转移完成")
+            logger.info(f"{fileitem.path} 整理完成")
             return True, ""
         else:
             # 没有输入TMDBID时，按文件识别
