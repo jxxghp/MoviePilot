@@ -97,7 +97,7 @@ class ExponentialBackoffRateLimiter(BaseRateLimiter):
     每次触发限流时，等待时间会成倍增加，直到达到最大等待时间
     """
 
-    def __init__(self, base_wait: int = 60, max_wait: int = 600, backoff_factor: float = 2.0,
+    def __init__(self, base_wait: float = 60.0, max_wait: float = 600.0, backoff_factor: float = 2.0,
                  source: str = "", enable_logging: bool = True):
         """
         初始化 ExponentialBackoffRateLimiter 实例
@@ -108,7 +108,7 @@ class ExponentialBackoffRateLimiter(BaseRateLimiter):
         :param enable_logging: 是否启用日志记录，默认为 True
         """
         super().__init__(source, enable_logging)
-        self.next_allowed_time = 0
+        self.next_allowed_time = 0.0
         self.current_wait = base_wait
         self.base_wait = base_wait
         self.max_wait = max_wait
@@ -144,7 +144,7 @@ class ExponentialBackoffRateLimiter(BaseRateLimiter):
         with self.lock:
             if self.next_allowed_time != 0 or self.current_wait > self.base_wait:
                 self.log_info(f"调用成功，重置限流等待时间为 {self.base_wait} 秒")
-            self.next_allowed_time = 0
+            self.next_allowed_time = 0.0
             self.current_wait = self.base_wait
 
     def trigger_limit(self):
@@ -155,8 +155,8 @@ class ExponentialBackoffRateLimiter(BaseRateLimiter):
         current_time = time.time()
         with self.lock:
             self.next_allowed_time = current_time + self.current_wait
-            self.log_warning(f"触发限流，将在 {self.current_wait} 秒后允许继续调用")
             self.current_wait = min(self.current_wait * self.backoff_factor, self.max_wait)
+            self.log_warning(f"触发限流，将在 {self.current_wait} 秒后允许继续调用")
 
 
 # 时间窗口限流器
@@ -166,7 +166,7 @@ class WindowRateLimiter(BaseRateLimiter):
     如果超过允许的最大调用次数，则限流直到窗口期结束
     """
 
-    def __init__(self, max_calls: int, window_seconds: int,
+    def __init__(self, max_calls: int, window_seconds: float,
                  source: str = "", enable_logging: bool = True):
         """
         初始化 WindowRateLimiter 实例
@@ -308,7 +308,7 @@ def rate_limit_handler(limiter: BaseRateLimiter, raise_on_limit: bool = False) -
 
 
 # 装饰器：指数退避限流
-def rate_limit_exponential(base_wait: int = 60, max_wait: int = 600, backoff_factor: float = 2.0,
+def rate_limit_exponential(base_wait: float = 60.0, max_wait: float = 600.0, backoff_factor: float = 2.0,
                            raise_on_limit: bool = False, source: str = "", enable_logging: bool = True) -> Callable:
     """
     装饰器，用于应用指数退避限流策略
@@ -329,7 +329,7 @@ def rate_limit_exponential(base_wait: int = 60, max_wait: int = 600, backoff_fac
 
 
 # 装饰器：时间窗口限流
-def rate_limit_window(max_calls: int, window_seconds: int,
+def rate_limit_window(max_calls: int, window_seconds: float,
                       raise_on_limit: bool = False, source: str = "", enable_logging: bool = True) -> Callable:
     """
     装饰器，用于应用时间窗口限流策略
