@@ -67,6 +67,8 @@ class AliPan(StorageBase):
     upload_file_complete_url = "https://api.aliyundrive.com/v2/file/complete"
     # 查询存储详情
     storage_info_url = "https://api.aliyundrive.com/adrive/v1/user/driveCapacityDetails"
+    # 播放地址
+    play_info_url = 'https://api.aliyundrive.com/v2/file/get_video_preview_play_info'
 
     def __handle_error(self, res: Response, apiname: str, action: bool = True):
         """
@@ -601,15 +603,44 @@ class AliPan(StorageBase):
         if not params:
             return None
         headers = self.__get_headers(params)
+
+        def __get_play_url():
+            """
+            获取播放地址
+            """
+            play_res = RequestUtils(headers=headers, timeout=10).post_res(self.play_info_url, json={
+                "drive_id": fileitem.drive_id,
+                "file_id": fileitem.fileid
+            })
+            if play_res:
+                play_dict = {}
+                play_info = play_res.json()
+                if play_info.get('video_preview_play_info'):
+                    for i in play_info['video_preview_play_info'].get('live_transcoding_task_list') or []:
+                        if i.get('url'):
+                            try:
+                                play_dict[i['template_id']] = i['url']
+                            except KeyError:
+                                pass
+                if play_dict:
+                    return list(play_dict.values())[-1]
+            return None
+
         res = RequestUtils(headers=headers, timeout=10).post_res(self.download_url, json={
             "drive_id": fileitem.drive_id,
             "file_id": fileitem.fileid
         })
         if res:
-            download_url = res.json().get("url")
+            result = res.json()
+            download_url = result.get("url")
             if not download_url:
-                logger.warn(f"{fileitem.path} 未获取到下载链接")
-                return None
+                download_url = __get_play_url()
+                if not download_url:
+                    if result.get("internal_url"):
+                        download_url = result.get("internal_url")
+                        if not download_url:
+                            logger.warn(f"{fileitem.path} 未获取到下载链接")
+                            return None
             res = RequestUtils(headers={
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Referer": "https://www.alipan.com/",

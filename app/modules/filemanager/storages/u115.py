@@ -307,6 +307,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     with open(path, "wb") as f:
                         f.write(res.content)
                     return path
+            else:
+                logger.warn(f"{fileitem.path} 未获取到下载链接")
         except Exception as e:
             logger.error(f"115下载失败：{str(e)}")
         return None
