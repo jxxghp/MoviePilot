@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import sys
+from glob import glob
 from pathlib import Path
 from typing import List, Union, Tuple, Optional
 
@@ -162,9 +163,14 @@ class SystemUtils:
             return -1, str(err)
 
     @staticmethod
-    def list_files(directory: Path, extensions: list, min_filesize: int = 0) -> List[Path]:
+    def list_files(directory: Path, extensions: list, min_filesize: int = 0, recursive: bool = True) -> List[Path]:
         """
         获取目录下所有指定扩展名的文件（包括子目录）
+        :param directory: 指定的父目录
+        :param extensions: 需要包含的扩展名列表，例如 ['mkv', 'mp4']
+        :param min_filesize: 文件最低大小，单位 MB
+        :param recursive: 是否递归查找，可选参数，默认 True
+        :return: 文件 Path 列表
         """
 
         if not min_filesize:
@@ -183,7 +189,8 @@ class SystemUtils:
         pattern = r".*(" + "|".join(extensions) + ")$"
 
         # 遍历目录及子目录
-        for path in directory.rglob('**/*'):
+        for matched_glob in glob(str(directory / '**'), recursive=recursive, include_hidden=True):
+            path = Path(matched_glob)
             if path.is_file() \
                     and re.match(pattern, path.name, re.IGNORECASE) \
                     and path.stat().st_size >= min_filesize * 1024 * 1024:
@@ -192,10 +199,15 @@ class SystemUtils:
         return files
 
     @staticmethod
-    def exits_files(directory: Path, extensions: list, min_filesize: int = 0) -> bool:
+    def exits_files(directory: Path, extensions: list, min_filesize: int = 0, recursive: bool = True) -> bool:
         """
         判断目录下是否存在指定扩展名的文件
-        :return True存在 False不存在
+
+        :param directory: 指定的父目录
+        :param extensions: 需要包含的扩展名列表，例如 ['mkv', 'mp4']
+        :param min_filesize: 文件最低大小，单位 MB
+        :param recursive: 是否递归查找，可选参数，默认 True
+        :return: True存在 False不存在
         """
 
         if not min_filesize:
@@ -213,7 +225,8 @@ class SystemUtils:
         pattern = r".*(" + "|".join(extensions) + ")$"
 
         # 遍历目录及子目录
-        for path in directory.rglob('**/*'):
+        for matched_glob in glob(str(directory / '**'), recursive=recursive, include_hidden=True):
+            path = Path(matched_glob)
             if path.is_file() \
                     and re.match(pattern, path.name, re.IGNORECASE) \
                     and path.stat().st_size >= min_filesize * 1024 * 1024:
