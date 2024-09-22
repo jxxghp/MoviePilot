@@ -1,6 +1,7 @@
 import copy
 import importlib
 import inspect
+import random
 import threading
 import time
 import traceback
@@ -12,11 +13,13 @@ from app.helper.message import MessageHelper
 from app.helper.thread import ThreadHelper
 from app.log import logger
 from app.schemas.types import EventType, ChainEventType
+from app.utils.limit import ExponentialBackoffRateLimiter
 from app.utils.singleton import Singleton
 
 DEFAULT_EVENT_PRIORITY = 10  # 事件的默认优先级
 MIN_EVENT_CONSUMER_THREADS = 1  # 最小事件消费者线程数
-EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 30  # 事件队列空闲时的超时时间（秒）
+INITIAL_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 1  # 事件队列空闲时的初始超时时间（秒）
+MAX_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 60  # 事件队列空闲时的最大超时时间（秒）
 
 
 class Event:
@@ -78,7 +81,6 @@ class EventManager(metaclass=Singleton):
         self.__disabled_handlers = set()  # 禁用的事件处理器集合
         self.__disabled_classes = set()  # 禁用的事件处理器类集合
         self.__lock = threading.Lock()  # 线程锁
-        self.__condition = threading.Condition(self.__lock)  # 条件变量
 
     def start(self):
         """
@@ -87,7 +89,7 @@ class EventManager(metaclass=Singleton):
         # 启动消费者线程用于处理广播事件
         self.__event.set()
         for _ in range(MIN_EVENT_CONSUMER_THREADS):
-            thread = threading.Thread(target=self.__fixed_broadcast_consumer, daemon=True)
+            thread = threading.Thread(target=self.__broadcast_consumer_loop, daemon=True)
             thread.start()
             self.__consumer_threads.append(thread)  # 将线程对象保存到列表中
 
@@ -105,15 +107,24 @@ class EventManager(metaclass=Singleton):
         except Exception as e:
             logger.error(f"停止事件处理线程出错：{str(e)} - {traceback.format_exc()}")
 
-    def check(self, etype: EventType):
+    def check(self, etype: Union[EventType, ChainEventType]) -> bool:
         """
-        检查事件是否存在响应，去除掉被禁用的事件响应
+        检查是否有启用的事件处理器可以响应某个事件类型
+        :param etype: 事件类型 (EventType 或 ChainEventType)
+        :return: 返回是否存在可用的处理器
         """
-        if etype not in self.__broadcast_subscribers:
-            return False
-        handlers = self.__broadcast_subscribers[etype]
-        return any([handler for handler in handlers.values()
-                    if handler.__qualname__.split(".")[0] not in self.__disabled_handlers])
+        if isinstance(etype, ChainEventType):
+            handlers = self.__chain_subscribers.get(etype, [])
+            return any(
+                self.__is_handler_enabled(handler)
+                for _, handler in handlers
+            )
+        else:
+            handlers = self.__broadcast_subscribers.get(etype, [])
+            return any(
+                self.__is_handler_enabled(handler)
+                for handler in handlers
+            )
 
     def send_event(self, etype: Union[EventType, ChainEventType], data: Optional[Dict] = None,
                    priority: int = DEFAULT_EVENT_PRIORITY) -> Optional[Event]:
@@ -127,8 +138,6 @@ class EventManager(metaclass=Singleton):
         event = Event(etype, data, priority)
         if isinstance(etype, EventType):
             self.__trigger_broadcast_event(event)
-            with self.__condition:
-                self.__condition.notify()
         elif isinstance(etype, ChainEventType):
             return self.__trigger_chain_event(event)
         else:
@@ -390,20 +399,24 @@ class EventManager(metaclass=Singleton):
 
         return class_obj
 
-    def __fixed_broadcast_consumer(self):
+    def __broadcast_consumer_loop(self):
         """
-        固定的后台广播消费者线程，持续从队列中提取事件
+        持续从队列中提取事件的后台广播消费者线程
         """
+        jitter_factor = 0.1
+        rate_limiter = ExponentialBackoffRateLimiter(base_wait=INITIAL_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS,
+                                                     max_wait=MAX_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS,
+                                                     backoff_factor=2.0,
+                                                     source="BroadcastConsumer",
+                                                     enable_logging=False)
         while self.__event.is_set():
-            # 使用 Condition 优化队列的等待机制，避免频繁触发超时
-            with self.__condition:
-                # 阻塞等待，直到有事件插入
-                self.__condition.wait()
-                try:
-                    priority, event = self.__event_queue.get(timeout=EVENT_QUEUE_IDLE_TIMEOUT_SECONDS)
-                    self.__dispatch_broadcast_event(event)
-                except Empty:
-                    logger.debug("Queue is empty, waiting for new events")
+            try:
+                priority, event = self.__event_queue.get(timeout=rate_limiter.current_wait)
+                rate_limiter.reset()
+                self.__dispatch_broadcast_event(event)
+            except Empty:
+                rate_limiter.current_wait = rate_limiter.current_wait * random.uniform(1, 1 + jitter_factor)
+                rate_limiter.trigger_limit()
 
     @staticmethod
     def __log_event_lifecycle(event: Event, stage: str):
