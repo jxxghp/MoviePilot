@@ -199,6 +199,14 @@ class Settings(BaseSettings):
         except (ValueError, TypeError):
             raise ValueError(f"{value} 格式错误，不是有效数字！")
 
+    @validator("COOKIECLOUD_ENABLE_LOCAL",
+               "SUBSCRIBE_SEARCH",
+               pre=True, always=True)
+    def convert_boolean(cls, value):
+        if not value:
+            return False
+        return True
+
     @validator("API_TOKEN", pre=True, always=True)
     def validate_api_token(cls, v):
         if not v:

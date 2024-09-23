@@ -19,6 +19,8 @@ class MediaServerOper(DbOper):
         """
         新增媒体服务器数据
         """
+        # MediaServerItem中没有的属性剔除
+        kwargs = {k: v for k, v in kwargs.items() if hasattr(MediaServerItem, k)}
         item = MediaServerItem(**kwargs)
         if not item.get_by_itemid(self._db, kwargs.get("item_id")):
             item.create(self._db)
