@@ -206,7 +206,8 @@ class DownloadChain(ChainBase):
                         channel: MessageChannel = None, source: str = None,
                         save_path: str = None,
                         userid: Union[str, int] = None,
-                        username: str = None) -> Optional[str]:
+                        username: str = None,
+                        downloader: str = None) -> Optional[str]:
         """
         下载及发送通知
         :param context: 资源上下文
@@ -217,6 +218,7 @@ class DownloadChain(ChainBase):
         :param save_path: 保存路径
         :param userid: 用户ID
         :param username: 调用下载的用户名/插件名
+        :param downloader: 下载器
         """
         _torrent = context.torrent_info
         _media = context.media_info
@@ -282,7 +284,8 @@ class DownloadChain(ChainBase):
                                                 cookie=_torrent.site_cookie,
                                                 episodes=episodes,
                                                 download_dir=download_dir,
-                                                category=_media.category)
+                                                category=_media.category,
+                                                downloader=downloader)
         if result:
             _downloader, _hash, error_msg = result
         else:

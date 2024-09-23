@@ -28,6 +28,7 @@ def list(
 def download(
         media_in: schemas.MediaInfo,
         torrent_in: schemas.TorrentInfo,
+        downloader: str = None,
         current_user: User = Depends(get_current_active_user)) -> Any:
     """
     添加下载任务（含媒体信息）
@@ -46,7 +47,7 @@ def download(
         media_info=mediainfo,
         torrent_info=torrentinfo
     )
-    did = DownloadChain().download_single(context=context, username=current_user.name)
+    did = DownloadChain().download_single(context=context, username=current_user.name, downloader=downloader)
     if not did:
         return schemas.Response(success=False, message="任务添加失败")
     return schemas.Response(success=True, data={
@@ -57,6 +58,7 @@ def download(
 @router.post("/add", summary="添加下载（不含媒体信息）", response_model=schemas.Response)
 def add(
         torrent_in: schemas.TorrentInfo,
+        downloader: str = None,
         current_user: User = Depends(get_current_active_user)) -> Any:
     """
     添加下载任务（不含媒体信息）
@@ -76,7 +78,7 @@ def add(
         media_info=mediainfo,
         torrent_info=torrentinfo
     )
-    did = DownloadChain().download_single(context=context, username=current_user.name)
+    did = DownloadChain().download_single(context=context, username=current_user.name, downloader=downloader)
     if not did:
         return schemas.Response(success=False, message="任务添加失败")
     return schemas.Response(success=True, data={
