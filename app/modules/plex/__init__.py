@@ -7,7 +7,7 @@ from app.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.plex.plex import Plex
 from app.schemas import MediaServerConf
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, MediaServerType
 
 
 class PlexModule(_ModuleBase, _MediaServerBase):
@@ -23,9 +23,9 @@ class PlexModule(_ModuleBase, _MediaServerBase):
         if not mediaservers:
             return
         for server in mediaservers:
-            if server.type == "plex" and server.enabled:
+            if server.type == MediaServerType.Plex and server.enabled:
                 self._configs[server.name] = server
-                self._servers[server.name] = Plex(**server.config, sync_libraries=server.sync_libraries)
+                self._servers[server.name] = Plex(**server.config, server_name=server.name, sync_libraries=server.sync_libraries)
 
     @staticmethod
     def get_name() -> str:
@@ -70,7 +70,7 @@ class PlexModule(_ModuleBase, _MediaServerBase):
         """
         source = args.get("source")
         if source:
-            server_config: MediaServerConf = self.get_config(source, 'plex')
+            server_config: MediaServerConf = self.get_config(source, MediaServerType.Plex)
             if not server_config:
                 return None
             server: Plex = self.get_server(source)
@@ -79,7 +79,7 @@ class PlexModule(_ModuleBase, _MediaServerBase):
             return server.get_webhook_message(body)
 
         for conf in self._configs.values():
-            if conf.type != "plex":
+            if conf.type != MediaServerType.Plex:
                 continue
             server = self.get_server(conf.name)
             if server:

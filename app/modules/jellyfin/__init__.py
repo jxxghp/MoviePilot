@@ -7,7 +7,7 @@ from app.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.jellyfin.jellyfin import Jellyfin
 from app.schemas import MediaServerConf
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, MediaServerType
 
 
 class JellyfinModule(_ModuleBase, _MediaServerBase):
@@ -23,9 +23,9 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         if not mediaservers:
             return
         for server in mediaservers:
-            if server.type == "jellyfin" and server.enabled:
+            if server.type is MediaServerType.Jellyfin and server.enabled:
                 self._configs[server.name] = server
-                self._servers[server.name] = Jellyfin(**server.config, sync_libraries=server.sync_libraries)
+                self._servers[server.name] = Jellyfin(**server.config, server_name=server.name, sync_libraries=server.sync_libraries)
 
     @staticmethod
     def get_name() -> str:
@@ -84,7 +84,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         """
         source = args.get("source")
         if source:
-            server_config: MediaServerConf = self.get_config(source, 'jellyfin')
+            server_config: MediaServerConf = self.get_config(source, MediaServerType.Jellyfin)
             if not server_config:
                 return None
             server: Jellyfin = self.get_server(source)
@@ -93,7 +93,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
             return server.get_webhook_message(body)
 
         for conf in self._configs.values():
-            if conf.type != "jellyfin":
+            if conf.type is not MediaServerType.Jellyfin:
                 continue
             server = self.get_server(conf.name)
             if server:

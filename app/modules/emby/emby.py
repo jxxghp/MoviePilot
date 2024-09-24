@@ -10,7 +10,7 @@ from requests import Response
 from app import schemas
 from app.core.config import settings
 from app.log import logger
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, MediaServerType
 from app.utils.http import RequestUtils
 from app.utils.url import UrlUtils
 
@@ -21,12 +21,14 @@ class Emby:
     _apikey: str = None
     _sync_libraries: List[str] = []
     user: Optional[Union[str, int]] = None
+    server_name: str = None
 
-    def __init__(self, host: str = None, apikey: str = None, play_host: str = None,
+    def __init__(self, server_name: str = None, host: str = None, apikey: str = None, play_host: str = None,
                  sync_libraries: list = None, **kwargs):
         if not host or not apikey:
             logger.error("Emby服务器配置不完整！")
             return
+        self.server_name = server_name
         self._host = host
         if self._host:
             self._host = UrlUtils.standardize_base_url(self._host)
@@ -156,7 +158,8 @@ class Emby:
             image = self.__get_local_image_by_id(library.get("Id"))
             libraries.append(
                 schemas.MediaServerLibrary(
-                    server="emby",
+                    server=MediaServerType.Emby,
+                    server_name=self.server_name,
                     id=library.get("Id"),
                     name=library.get("Name"),
                     path=library.get("Path"),
@@ -625,7 +628,8 @@ class Emby:
             tmdbid = item.get("ProviderIds", {}).get("Tmdb")
             return schemas.MediaServerItem(
                 id=item.get("Id"),
-                server="emby",
+                server=MediaServerType.Emby,
+                server_name=self.server_name,
                 library=item.get("ParentId"),
                 item_id=item.get("Id"),
                 item_type=item.get("Type"),
@@ -955,7 +959,7 @@ class Emby:
         if not eventType:
             return None
         logger.debug(f"接收到emby webhook：{message}")
-        eventItem = schemas.WebhookEventInfo(event=eventType, channel="emby")
+        eventItem = schemas.WebhookEventInfo(event=eventType, channel=MediaServerType.Emby)
         if message.get('Item'):
             eventItem.media_type = message.get('Item', {}).get('Type')
             if message.get('Item', {}).get('Type') == 'Episode' \

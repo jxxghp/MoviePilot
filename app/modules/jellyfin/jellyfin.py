@@ -7,7 +7,7 @@ from requests import Response
 from app import schemas
 from app.core.config import settings
 from app.log import logger
-from app.schemas import MediaType
+from app.schemas import MediaType, MediaServerType
 from app.utils.http import RequestUtils
 from app.utils.url import UrlUtils
 
@@ -17,13 +17,15 @@ class Jellyfin:
     _apikey: str = None
     _playhost: str = None
     _sync_libraries: List[str] = []
+    server_name: str = None
     user: Optional[Union[str, int]] = None
 
-    def __init__(self, host: str = None, apikey: str = None, play_host: str = None,
+    def __init__(self, server_name: str = None, host: str = None, apikey: str = None, play_host: str = None,
                  sync_libraries: list = None, **kwargs):
         if not host or not apikey:
             logger.error("Jellyfin服务器配置不完整！！")
             return
+        self.server_name = server_name
         self._host = host
         if self._host:
             self._host = UrlUtils.standardize_base_url(self._host)
@@ -158,7 +160,8 @@ class Jellyfin:
                      f"/tv.html?topParentId={library.get('Id')}"
             libraries.append(
                 schemas.MediaServerLibrary(
-                    server="jellyfin",
+                    server_name=self.server_name,
+                    server=MediaServerType.Jellyfin,
                     id=library.get("Id"),
                     name=library.get("Name"),
                     path=library.get("Path"),
@@ -616,10 +619,7 @@ class Jellyfin:
         eventType = message.get('NotificationType')
         if not eventType:
             return None
-        eventItem = schemas.WebhookEventInfo(
-            event=eventType,
-            channel="jellyfin"
-        )
+        eventItem = schemas.WebhookEventInfo(event=eventType, channel=MediaServerType.Jellyfin)
         eventItem.item_id = message.get('ItemId')
         eventItem.tmdb_id = message.get('Provider_tmdb')
         eventItem.overview = message.get('Overview')
@@ -686,7 +686,8 @@ class Jellyfin:
                 )
             tmdbid = item.get("ProviderIds", {}).get("Tmdb")
             return schemas.MediaServerItem(
-                server="jellyfin",
+                server_name=self.server_name,
+                server=MediaServerType.Jellyfin,
                 id=item.get("Id"),
                 library=item.get("ParentId"),
                 item_id=item.get("Id"),

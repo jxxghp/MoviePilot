@@ -11,7 +11,7 @@ from requests import Response, Session
 from app import schemas
 from app.core.config import settings
 from app.log import logger
-from app.schemas import MediaType
+from app.schemas import MediaType, MediaServerType
 from app.utils.http import RequestUtils
 from app.utils.url import UrlUtils
 
@@ -20,12 +20,14 @@ class Plex:
     _plex = None
     _session = None
     _sync_libraries: List[str] = []
+    server_name = None
 
-    def __init__(self, host: str = None, token: str = None, play_host: str = None,
+    def __init__(self, server_name: str = None, host: str = None, token: str = None, play_host: str = None,
                  sync_libraries: list = None, **kwargs):
         if not host or not token:
             logger.error("Plex服务器配置不完整！")
             return
+        self.server_name = server_name
         self._host = host
         if self._host:
             self._host = UrlUtils.standardize_base_url(self._host)
@@ -203,7 +205,8 @@ class Plex:
                 path = item.locations[0]
             ret_movies.append(
                 schemas.MediaServerItem(
-                    server="plex",
+                    server=MediaServerType.Plex,
+                    server_name=self.server_name,
                     library=item.librarySectionID,
                     item_id=item.key,
                     item_type=item.type,
@@ -398,7 +401,8 @@ class Plex:
             if item.locations:
                 path = item.locations[0]
             return schemas.MediaServerItem(
-                server="plex",
+                server=MediaServerType.Plex,
+                server_name=self.server_name,
                 library=item.librarySectionID,
                 item_id=item.key,
                 item_type=item.type,
@@ -485,7 +489,8 @@ class Plex:
 
                         yield schemas.MediaServerItem(
                             id=item.ratingKey,
-                            server="plex",
+                            server=MediaServerType.Plex,
+                            server_name=self.server_name,
                             library=item.librarySectionID,
                             item_id=item.key,
                             item_type=item.type,
@@ -623,7 +628,7 @@ class Plex:
         if not eventType:
             return None
         logger.debug(f"接收到plex webhook：{message}")
-        eventItem = schemas.WebhookEventInfo(event=eventType, channel="plex")
+        eventItem = schemas.WebhookEventInfo(event=eventType, channel=MediaServerType.Plex)
         if message.get('Metadata'):
             if message.get('Metadata', {}).get('type') == 'episode':
                 eventItem.item_type = "TV"

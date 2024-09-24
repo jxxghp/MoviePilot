@@ -1,9 +1,8 @@
 from pathlib import Path
-from typing import Optional, Dict, Union, List
+from typing import Optional, Dict, Union, List, Any
 
 from pydantic import BaseModel
-
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, MediaServerType
 
 
 class ExistMediaInfo(BaseModel):
@@ -54,8 +53,10 @@ class MediaServerLibrary(BaseModel):
     """
     媒体服务器媒体库信息
     """
-    # 服务器
-    server: Optional[str] = None
+    # 服务器名称
+    server_name: Optional[str] = None
+    # 服务器类型
+    server: Optional[MediaServerType] = None
     # ID
     id: Optional[Union[str, int]] = None
     # 名称
@@ -91,8 +92,10 @@ class MediaServerItem(BaseModel):
     """
     # ID
     id: Optional[Union[str, int]] = None
-    # 服务器
-    server: Optional[str] = None
+    # 服务器名称
+    server_name: Optional[str] = None
+    # 服务器类型
+    server: Optional[MediaServerType] = None
     # 媒体库ID
     library: Optional[Union[str, int]] = None
     # ID
@@ -138,7 +141,7 @@ class WebhookEventInfo(BaseModel):
     Webhook事件信息
     """
     event: Optional[str] = None
-    channel: Optional[str] = None
+    channel: Optional[MediaServerType] = None
     item_type: Optional[str] = None
     item_name: Optional[str] = None
     item_id: Optional[str] = None

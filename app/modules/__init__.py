@@ -1,7 +1,7 @@
 from abc import abstractmethod, ABCMeta
 from typing import Tuple, Union, Dict, Any, Optional
 
-from app.schemas import Notification, MessageChannel, NotificationConf, MediaServerConf
+from app.schemas import Notification, MessageChannel, NotificationConf, MediaServerConf, MediaServerType
 
 
 class _ModuleBase(metaclass=ABCMeta):
@@ -125,11 +125,11 @@ class _MediaServerBase:
 
     def get_server(self, name: str) -> Optional[Any]:
         """
-        获取Plex服务器
+        获取媒体服务器
         """
         return self._servers.get(name)
 
-    def get_config(self, name: str, mtype: str = None) -> Optional[MediaServerConf]:
+    def get_config(self, name: str, mtype: MediaServerType = None) -> Optional[MediaServerConf]:
         """
         获取配置
         """

@@ -7,7 +7,7 @@ from app.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.emby.emby import Emby
 from app.schemas import MediaServerConf
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, MediaServerType
 
 
 class EmbyModule(_ModuleBase, _MediaServerBase):
@@ -23,9 +23,9 @@ class EmbyModule(_ModuleBase, _MediaServerBase):
         if not mediaservers:
             return
         for server in mediaservers:
-            if server.type == "emby" and server.enabled:
+            if server.type == MediaServerType.Emby and server.enabled:
                 self._configs[server.name] = server
-                self._servers[server.name] = Emby(**server.config, sync_libraries=server.sync_libraries)
+                self._servers[server.name] = Emby(**server.config, server_name=server.name, sync_libraries=server.sync_libraries)
 
     @staticmethod
     def get_name() -> str:
@@ -84,7 +84,7 @@ class EmbyModule(_ModuleBase, _MediaServerBase):
         """
         source = args.get("source")
         if source:
-            server_config: MediaServerConf = self.get_config(source, 'emby')
+            server_config: MediaServerConf = self.get_config(source, MediaServerType.Emby)
             if not server_config:
                 return None
             server: Emby = self.get_server(source)
@@ -93,7 +93,7 @@ class EmbyModule(_ModuleBase, _MediaServerBase):
             return server.get_webhook_message(form, args)
 
         for conf in self._configs.values():
-            if conf.type != "emby":
+            if conf.type != MediaServerType.Emby:
                 continue
             server = self.get_server(conf.name)
             if server:

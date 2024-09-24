@@ -7,6 +7,10 @@ class MediaType(Enum):
     TV = '电视剧'
     UNKNOWN = '未知'
 
+class MediaServerType(str, Enum):
+    Jellyfin = "jellyfin"
+    Emby = "emby"
+    Plex = "plex"
 
 # 种子状态
 class TorrentStatus(Enum):

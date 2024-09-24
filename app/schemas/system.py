@@ -2,6 +2,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from app.schemas.types import MediaServerType
+
 
 class MediaServerConf(BaseModel):
     """
@@ -10,7 +12,7 @@ class MediaServerConf(BaseModel):
     # 名称
     name: Optional[str] = None
     # 类型 emby/jellyfin/plex
-    type: Optional[str] = None
+    type: Optional[MediaServerType] = None
     # 配置
     config: Optional[dict] = {}
     # 是否启用
