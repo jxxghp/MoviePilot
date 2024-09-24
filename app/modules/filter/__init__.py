@@ -296,11 +296,13 @@ class FilterModule(_ModuleBase):
         """
         if not self.rule_set.get(rule_name):
             # 规则不存在
+            logger.debug(f"规则 {rule_name} 不存在")
             return False
         # TMDB规则
         tmdb = self.rule_set[rule_name].get("tmdb")
         # 符合TMDB规则的直接返回True，即不过滤
         if tmdb and self.__match_tmdb(tmdb):
+            logger.debug(f"种子 {torrent.site_name} - {torrent.title} 符合 {rule_name} 的TMDB规则，匹配成功")
             return True
         # 匹配项：标题、副标题、标签
         content = f"{torrent.title} {torrent.description} {' '.join(torrent.labels or [])}"
@@ -333,22 +335,27 @@ class FilterModule(_ModuleBase):
         for include in includes:
             if not re.search(r"%s" % include, content, re.IGNORECASE):
                 # 未发现包含项
+                logger.debug(f"种子 {torrent.site_name} - {torrent.title} 不包含 {include}，匹配失败")
                 return False
         for exclude in excludes:
             if re.search(r"%s" % exclude, content, re.IGNORECASE):
                 # 发现排除项
+                logger.debug(f"种子 {torrent.site_name} - {torrent.title} 包含 {exclude}，匹配失败")
                 return False
         if size_range:
             if not self.__match_size(torrent, size_range):
                 # 大小范围不匹配
+                logger.debug(f"种子 {torrent.site_name} - {torrent.title} 大小 {torrent.size} 不在范围 {size_range}，匹配失败")
                 return False
         if seeders:
             if torrent.seeders < int(seeders):
                 # 做种人数不匹配
+                logger.debug(f"种子 {torrent.site_name} - {torrent.title} 做种人数 {torrent.seeders} 小于 {seeders}，匹配失败")
                 return False
         if downloadvolumefactor is not None:
             if torrent.downloadvolumefactor != downloadvolumefactor:
                 # FREE规则不匹配
+                logger.debug(f"种子 {torrent.site_name} - {torrent.title} FREE值 {torrent.downloadvolumefactor} 不是 {downloadvolumefactor}，匹配失败")
                 return False
         return True
 
