@@ -7,6 +7,7 @@ from app.helper.rule import RuleHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filter.RuleParser import RuleParser
+from app.utils.string import StringUtils
 
 
 class FilterModule(_ModuleBase):
@@ -345,7 +346,8 @@ class FilterModule(_ModuleBase):
         if size_range:
             if not self.__match_size(torrent, size_range):
                 # 大小范围不匹配
-                logger.debug(f"种子 {torrent.site_name} - {torrent.title} 大小 {torrent.size} 不在范围 {size_range}，匹配失败")
+                logger.debug(f"种子 {torrent.site_name} - {torrent.title} 大小 "
+                             f"{StringUtils.str_filesize(torrent.size)} 不在范围 {size_range}MB，匹配失败")
                 return False
         if seeders:
             if torrent.seeders < int(seeders):
