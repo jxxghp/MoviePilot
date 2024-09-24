@@ -49,32 +49,46 @@ class TmdbScraper:
 
         return None
 
-    def get_metadata_img(self, mediainfo: MediaInfo, season: int = None) -> dict:
+    def get_metadata_img(self, mediainfo: MediaInfo, season: int = None, episode: int = None) -> dict:
         """
         获取图片名称和url
         :param mediainfo: 媒体信息
         :param season: 季号
+        :param episode: 集号
         """
         images = {}
         if season:
             # 只需要季的图片
-            seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
-            if seasoninfo:
-                # TMDB季poster图片
-                poster_name, poster_url = self.get_season_poster(seasoninfo, season)
-                if poster_name and poster_url:
-                    images[poster_name] = poster_url
+            if episode:
+                # 季的图片
+                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
+                if seasoninfo:
+                    episodeinfo = self.__get_episode_detail(seasoninfo, episode)
+                    if episodeinfo:
+                        # TMDB集still图片
+                        still_name = f"{episode}"
+                        still_url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{episodeinfo.get('still_path')}"
+                        images[still_name] = still_url
+            else:
+                # 集的图片
+                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
+                if seasoninfo:
+                    # TMDB季poster图片
+                    poster_name, poster_url = self.get_season_poster(seasoninfo, season)
+                    if poster_name and poster_url:
+                        images[poster_name] = poster_url
             return images
-        # 主媒体图片
-        for attr_name, attr_value in vars(mediainfo).items():
-            if attr_value \
-                    and attr_name.endswith("_path") \
-                    and attr_value \
-                    and isinstance(attr_value, str) \
-                    and attr_value.startswith("http"):
-                image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
-                images[image_name] = attr_value
-        return images
+        else:
+            # 主媒体图片
+            for attr_name, attr_value in vars(mediainfo).items():
+                if attr_value \
+                        and attr_name.endswith("_path") \
+                        and attr_value \
+                        and isinstance(attr_value, str) \
+                        and attr_value.startswith("http"):
+                    image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
+                    images[image_name] = attr_value
+            return images
 
     @staticmethod
     def get_season_poster(seasoninfo: dict, season: int) -> Tuple[str, str]:

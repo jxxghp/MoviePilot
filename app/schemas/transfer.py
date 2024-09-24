@@ -46,6 +46,8 @@ class TransferInfo(BaseModel):
     success: bool = True
     # 整理⼁路径
     fileitem: Optional[FileItem] = None
+    # 转移后的目录项
+    target_diritem: Optional[FileItem] = None
     # 转移后路径
     target_item: Optional[FileItem] = None
     # 整理方式

@@ -432,14 +432,6 @@ class TransferChain(ChainBase):
                     transferinfo=transferinfo
                 )
 
-                # 刮削元数据事件
-                if scrape or transferinfo.need_scrape:
-                    self.eventmanager.send_event(EventType.MetadataScrape, {
-                        'meta': file_meta,
-                        'mediainfo': file_mediainfo,
-                        'fileitem': transferinfo.target_item
-                    })
-
                 # 更新进度
                 processed_num += 1
                 self.progress.update(value=processed_num / total_num * 100,
@@ -462,12 +454,20 @@ class TransferChain(ChainBase):
                                            mediainfo=media,
                                            transferinfo=transfer_info,
                                            season_episode=se_str)
+                # 刮削事件
+                if scrape or transfer_info.need_scrape:
+                    self.eventmanager.send_event(EventType.MetadataScrape, {
+                        'meta': transfer_meta,
+                        'mediainfo': media,
+                        'fileitem': transfer_info.target_diritem
+                    })
                 # 整理完成事件
                 self.eventmanager.send_event(EventType.TransferComplete, {
                     'meta': transfer_meta,
                     'mediainfo': media,
                     'transferinfo': transfer_info
                 })
+
         # 结束进度
         logger.info(f"{fileitem.path} 整理完成，共 {total_num} 个文件，"
                     f"失败 {fail_num} 个，跳过 {skip_num} 个")

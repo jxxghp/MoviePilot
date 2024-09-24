@@ -684,15 +684,16 @@ class DoubanModule(_ModuleBase):
             return None
         return self.scraper.get_metadata_nfo(mediainfo=mediainfo, season=season)
 
-    def metadata_img(self, mediainfo: MediaInfo, season: int = None) -> Optional[dict]:
+    def metadata_img(self, mediainfo: MediaInfo, season: int = None, episode: int = None) -> Optional[dict]:
         """
         获取图片名称和url
         :param mediainfo: 媒体信息
         :param season: 季号
+        :param episode: 集号
         """
         if settings.SCRAP_SOURCE != "douban":
             return None
-        return self.scraper.get_metadata_img(mediainfo=mediainfo, season=season)
+        return self.scraper.get_metadata_img(mediainfo=mediainfo, season=season, episode=episode)
 
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """

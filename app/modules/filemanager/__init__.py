@@ -682,20 +682,19 @@ class FileManagerModule(_ModuleBase):
             logger.info(f"获取目标目录失败：{target_path}")
             return None, f"获取目标目录失败：{target_path}"
         # 处理所有文件
-        new_item, errmsg = self.__transfer_dir_files(fileitem=fileitem,
-                                                     target_storage=target_storage,
-                                                     target_path=target_path,
-                                                     transfer_type=transfer_type)
-        if new_item:
+        state, errmsg = self.__transfer_dir_files(fileitem=fileitem,
+                                                  target_storage=target_storage,
+                                                  target_path=target_path,
+                                                  transfer_type=transfer_type)
+        if state:
             logger.info(f"文件 {fileitem.path} {transfer_type}完成")
-            return new_item, errmsg
+            return target_item, errmsg
         else:
             logger.error(f"文件{fileitem.path} {transfer_type}失败：{errmsg}")
-
-        return None, errmsg
+            return None, errmsg
 
     def __transfer_dir_files(self, fileitem: FileItem, transfer_type: str,
-                             target_storage: str, target_path: Path) -> Tuple[Optional[FileItem], str]:
+                             target_storage: str, target_path: Path) -> Tuple[bool, str]:
         """
         按目录结构整理目录下所有文件
         :param fileitem: 源文件
@@ -707,19 +706,19 @@ class FileManagerModule(_ModuleBase):
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件整理")
-            return None, f"不支持的文件存储：{fileitem.storage}"
+            return False, f"不支持的文件存储：{fileitem.storage}"
         file_list: List[FileItem] = storage_oper.list(fileitem)
         # 整理文件
         for item in file_list:
             if item.type == "dir":
                 # 递归整理目录
                 new_path = target_path / item.name
-                new_item, errmsg = self.__transfer_dir_files(fileitem=item,
-                                                             transfer_type=transfer_type,
-                                                             target_storage=target_storage,
-                                                             target_path=new_path)
-                if not new_item:
-                    return None, errmsg
+                state, errmsg = self.__transfer_dir_files(fileitem=item,
+                                                          transfer_type=transfer_type,
+                                                          target_storage=target_storage,
+                                                          target_path=new_path)
+                if not state:
+                    return False, errmsg
             else:
                 # 整理文件
                 new_file = target_path / item.name
@@ -728,9 +727,9 @@ class FileManagerModule(_ModuleBase):
                                                            target_file=new_file,
                                                            transfer_type=transfer_type)
                 if not new_item:
-                    return None, errmsg
+                    return False, errmsg
         # 返回成功
-        return storage_oper.get_item(target_path), ""
+        return True, ""
 
     def __transfer_file(self, fileitem: FileItem, target_storage: str, target_file: Path,
                         transfer_type: str, over_flag: bool = False) -> Tuple[Optional[FileItem], str]:
@@ -813,21 +812,6 @@ class FileManagerModule(_ModuleBase):
         :return: TransferInfo、错误信息
         """
 
-        def __get_targetitem(_path: Path) -> FileItem:
-            """
-            获取文件信息
-            """
-            return FileItem(
-                storage=target_storage,
-                path=str(_path).replace("\\", "/"),
-                name=_path.name,
-                basename=_path.stem,
-                type="file",
-                size=_path.stat().st_size,
-                extension=_path.suffix.lstrip('.'),
-                modify_time=_path.stat().st_mtime
-            )
-
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \
             if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
@@ -845,23 +829,23 @@ class FileManagerModule(_ModuleBase):
             else:
                 new_path = target_path / fileitem.name
             # 整理目录
-            new_item, errmsg = self.__transfer_dir(fileitem=fileitem,
-                                                   target_storage=target_storage,
-                                                   target_path=new_path,
-                                                   transfer_type=transfer_type)
-            if not new_item:
+            new_diritem, errmsg = self.__transfer_dir(fileitem=fileitem,
+                                                      target_storage=target_storage,
+                                                      target_path=new_path,
+                                                      transfer_type=transfer_type)
+            if not new_diritem:
                 logger.error(f"文件夹 {fileitem.path} 整理失败：{errmsg}")
                 return TransferInfo(success=False,
                                     message=errmsg,
                                     fileitem=fileitem,
-                                    target_path=new_path,
                                     transfer_type=transfer_type)
 
             logger.info(f"文件夹 {fileitem.path} 整理成功")
             # 返回整理后的路径
             return TransferInfo(success=True,
                                 fileitem=fileitem,
-                                target_item=new_item,
+                                target_item=new_diritem,
+                                target_diritem=new_diritem,
                                 total_size=fileitem.size,
                                 need_scrape=need_scrape,
                                 transfer_type=transfer_type)
@@ -906,6 +890,9 @@ class FileManagerModule(_ModuleBase):
             overflag = False
             # 目的操作对象
             target_oper: StorageBase = self.__get_storage_oper(target_storage)
+            # 目标目录
+            target_diritem = target_oper.get_folder(new_file.parent)
+            # 目标文件
             target_item = target_oper.get_item(new_file)
             if target_item:
                 # 目标文件已存在
@@ -930,7 +917,8 @@ class FileManagerModule(_ModuleBase):
                                 return TransferInfo(success=False,
                                                     message=f"媒体库存在同名文件，且质量更好",
                                                     fileitem=fileitem,
-                                                    target_item=__get_targetitem(target_file),
+                                                    target_item=target_item,
+                                                    target_diritem=target_diritem,
                                                     fail_list=[fileitem.path],
                                                     transfer_type=transfer_type)
                         case 'never':
@@ -938,7 +926,8 @@ class FileManagerModule(_ModuleBase):
                             return TransferInfo(success=False,
                                                 message=f"媒体库存在同名文件，当前覆盖模式为不覆盖",
                                                 fileitem=fileitem,
-                                                target_item=__get_targetitem(target_file),
+                                                target_item=target_item,
+                                                target_diritem=target_diritem,
                                                 fail_list=[fileitem.path],
                                                 transfer_type=transfer_type)
                         case 'latest':
@@ -968,6 +957,7 @@ class FileManagerModule(_ModuleBase):
             return TransferInfo(success=True,
                                 fileitem=fileitem,
                                 target_item=new_item,
+                                target_diritem=target_diritem,
                                 file_count=1,
                                 total_size=fileitem.size,
                                 file_list=[fileitem.path],

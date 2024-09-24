@@ -33,15 +33,19 @@ class DoubanScraper:
         return None
 
     @staticmethod
-    def get_metadata_img(mediainfo: MediaInfo, season: int = None) -> Optional[dict]:
+    def get_metadata_img(mediainfo: MediaInfo, season: int = None, episode: int = None) -> Optional[dict]:
         """
         获取图片内容
         :param mediainfo: 媒体信息
         :param season: 季号
+        :param episode: 集号
         """
         ret_dict = {}
         if season:
             # 豆瓣无季图片
+            return {}
+        if episode:
+            # 豆瓣无集图片
             return {}
         if mediainfo.poster_path:
             ret_dict[f"poster{Path(mediainfo.poster_path).suffix}"] = mediainfo.poster_path

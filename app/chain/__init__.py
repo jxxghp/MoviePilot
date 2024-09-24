@@ -532,13 +532,14 @@ class ChainBase(metaclass=ABCMeta):
         self.messageoper.add(**message.dict(), note=note_list)
         return self.run_module("post_torrents_message", message=message, torrents=torrents)
 
-    def metadata_img(self, mediainfo: MediaInfo, season: int = None) -> Optional[dict]:
+    def metadata_img(self, mediainfo: MediaInfo, season: int = None, episode: int = None) -> Optional[dict]:
         """
         获取图片名称和url
         :param mediainfo: 媒体信息
         :param season: 季号
+        :param episode: 集号
         """
-        return self.run_module("metadata_img", mediainfo=mediainfo, season=season)
+        return self.run_module("metadata_img", mediainfo=mediainfo, season=season, episode=episode)
 
     def media_category(self) -> Optional[Dict[str, list]]:
         """

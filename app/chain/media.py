@@ -358,10 +358,17 @@ class MediaChain(ChainBase, metaclass=Singleton):
             """
             return StorageChain().list_files(fileitem=_fileitem)
 
-        def __save_file(_fileitem: schemas.FileItem, _path: Path, _content: Union[bytes, str]):
+        def __save_file(_fileitem: schemas.FileItem, _path: Path, _content: Union[bytes, str],
+                        overwrite: bool = False):
             """
             保存或上传文件
+            :param _fileitem: 关联的媒体文件项
+            :param _path: 元数据文件路径
+            :param _content: 文件内容
+            :param overwrite: 是否覆盖
             """
+            if not overwrite and _path.exists():
+                return
             tmp_file = settings.TEMP_PATH / _path.name
             tmp_file.write_bytes(_content)
             upload_item = copy.deepcopy(_fileitem)
@@ -369,6 +376,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             upload_item.name = _path.name
             upload_item.basename = _path.stem
             upload_item.extension = _path.suffix
+            logger.info(f"保存文件：{_path}")
             StorageChain().upload_file(fileitem=upload_item, path=tmp_file)
             if tmp_file.exists():
                 tmp_file.unlink()
@@ -431,7 +439,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             image_path = filepath / image_name
                             # 下载图片
                             content = __download_image(_url=attr_value)
-                            # 写入nfo到根目录
+                            # 写入图片到根目录
                             __save_file(_fileitem=fileitem, _path=image_path, _content=content)
         else:
             # 电视剧
@@ -453,6 +461,17 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     return
                 # 保存或上传nfo文件
                 __save_file(_fileitem=fileitem, _path=filepath.with_suffix(".nfo"), _content=episode_nfo)
+                # 获取集的图片
+                image_dict = self.metadata_img(mediainfo=file_mediainfo,
+                                               season=file_meta.begin_season, episode=file_meta.begin_episode)
+                if image_dict:
+                    for episode, image_url in image_dict.items():
+                        image_path = filepath.with_suffix(Path(image_url).suffix)
+                        # 下载图片
+                        content = __download_image(image_url)
+                        # 保存图片文件到当前目录
+                        __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+
             else:
                 # 当前为目录，处理目录内的文件
                 files = __list_files(_fileitem=fileitem)
@@ -495,7 +514,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                         image_dict = self.metadata_img(mediainfo=mediainfo)
                         if image_dict:
                             for image_name, image_url in image_dict.items():
-                                image_path = filepath.parent.with_name(image_name)
+                                image_path = filepath / image_name
                                 # 下载图片
                                 content = __download_image(image_url)
                                 # 保存图片文件到当前目录
