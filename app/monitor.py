@@ -8,13 +8,14 @@ from threading import Lock
 from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import FileSystemEventHandler, FileSystemMovedEvent, FileSystemEvent
 from watchdog.observers.polling import PollingObserver
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.tmdb import TmdbChain
+from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.context import MediaInfo
 from app.core.event import EventManager
@@ -47,13 +48,13 @@ class FileMonitorHandler(FileSystemEventHandler):
         self._watch_path = mon_path
         self.callback = callback
 
-    def on_created(self, event):
+    def on_created(self, event: FileSystemEvent):
         self.callback.event_handler(event=event, text="创建",
                                     mon_path=self._watch_path, event_path=Path(event.src_path))
 
-    def on_moved(self, event):
+    def on_moved(self, event: FileSystemMovedEvent):
         self.callback.event_handler(event=event, text="移动",
-                                    mon_path=self._watch_path, event_path=Path(event.src_path))
+                                    mon_path=self._watch_path, event_path=Path(event.dest_path))
 
 
 class Monitor(metaclass=Singleton):
@@ -89,6 +90,7 @@ class Monitor(metaclass=Singleton):
         super().__init__()
         self.chain = MonitorChain()
         self.transferhis = TransferHistoryOper()
+        self.transferchain = TransferChain()
         self.downloadhis = DownloadHistoryOper()
         self.mediaChain = MediaChain()
         self.tmdbchain = TmdbChain()
@@ -109,11 +111,9 @@ class Monitor(metaclass=Singleton):
         # 停止现有任务
         self.stop()
 
-        # 启动定时服务进程
-        self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-
         # 启动文件整理线程
         self._transfer_thread = threading.Thread(target=self.__start_transfer)
+        self._transfer_thread.start()
 
         # 读取目录配置
         monitor_dirs = self.directoryhelper.get_download_dirs()
@@ -158,6 +158,8 @@ class Monitor(metaclass=Singleton):
                         logger.error(f"{mon_path} 启动目录监控失败：{err_msg}")
                     self.systemmessage.put(f"{mon_path} 启动目录监控失败：{err_msg}", title="目录监控")
             else:
+                # 启动定时服务进程
+                self._scheduler = BackgroundScheduler(timezone=settings.TZ)
                 # 远程目录监控
                 self._scheduler.add_job(self.polling_observer, 'interval', minutes=self._snapshot_interval,
                                         kwargs={
@@ -240,6 +242,8 @@ class Monitor(metaclass=Singleton):
                     self.__handle_file(storage=item.get("storage"),
                                        event_path=item.get("filepath"),
                                        mon_path=item.get("mon_path"))
+            except TimeoutError:
+                continue
             except Exception as e:
                 logger.error(f"整理队列处理出现错误：{e}")
 
@@ -407,7 +411,7 @@ class Monitor(metaclass=Singleton):
                         mediainfo=mediainfo,
                         transferinfo=transferinfo
                     )
-                    # TODO 汇总发送消息
+                    # 发送失败消息
                     self.chain.post_message(Notification(
                         mtype=NotificationType.Manual,
                         title=f"{mediainfo.title_year} {file_meta.season_episode} 入库失败！",
@@ -417,9 +421,9 @@ class Monitor(metaclass=Singleton):
                     ))
                     return
 
-                # 刮削单个文件
+                # TODO 汇总刮削
                 if dir_info.scraping:
-                    self.mediaChain.scrape_metadata(fileitem=transferinfo.target_item,
+                    self.mediaChain.scrape_metadata(fileitem=transferinfo.target_diritem,
                                                     meta=file_meta,
                                                     mediainfo=mediainfo)
 
@@ -430,6 +434,11 @@ class Monitor(metaclass=Singleton):
                     'mediainfo': mediainfo,
                     'transferinfo': transferinfo
                 })
+
+                # TODO 汇总发送成功消息
+                self.transferchain.send_transfer_message(meta=file_meta,
+                                                         mediainfo=mediainfo,
+                                                         transferinfo=transferinfo)
 
                 # 移动模式删除空目录
                 if dir_info.transfer_type in ["move"]:
