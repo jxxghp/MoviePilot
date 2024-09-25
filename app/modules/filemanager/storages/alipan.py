@@ -569,7 +569,8 @@ class AliPan(StorageBase):
                 extension=result.get("file_extension"),
                 modify_time=StringUtils.str_to_timestamp(result.get("updated_at")),
                 thumbnail=result.get("thumbnail"),
-                path=f"{fileitem.path}{result.get('name')}"
+                path=f"{fileitem.path}{result.get('name')}",
+                url=result.get("download_url") or result.get("url")
             )
         else:
             self.__handle_error(res, "获取文件详情")
@@ -626,34 +627,49 @@ class AliPan(StorageBase):
                     return list(play_dict.values())[-1]
             return None
 
-        res = RequestUtils(headers=headers, timeout=10).post_res(self.download_url, json={
-            "drive_id": fileitem.drive_id,
-            "file_id": fileitem.fileid
-        })
-        if res:
-            result = res.json()
-            download_url = result.get("url")
-            if not download_url:
-                download_url = __get_play_url()
-                if not download_url:
-                    if result.get("internal_url"):
-                        download_url = result.get("internal_url")
-                        if not download_url:
-                            logger.warn(f"{fileitem.path} 未获取到下载链接")
-                            return None
-            res = RequestUtils(headers={
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Referer": "https://www.alipan.com/",
-                "Sec-Fetch-Dest": "iframe",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "cross-site",
-                "User-Agent": settings.USER_AGENT
-            }).get_res(download_url)
+        # 先获取文件详情
+        fileinfo = self.detail(fileitem)
+        if not fileinfo:
+            logger.warn(f"{fileitem.path} 文件不存在")
+            return None
+
+        # 文件下载链接
+        download_url = None
+        if fileinfo.url:
+            # 使用文件详情中的链接
+            download_url = fileinfo.url
+        else:
+            # 查询文件下载链接
+            res = RequestUtils(headers=headers, timeout=10).post_res(self.download_url, json={
+                "drive_id": fileitem.drive_id,
+                "file_id": fileitem.fileid,
+                "file_name": fileitem.name,
+            })
             if res:
-                path = settings.TEMP_PATH / fileitem.name
-                with path.open("wb") as f:
-                    f.write(res.content)
-                return path
+                result = res.json()
+                download_url = result.get("url") or result.get("internal_url")
+
+        if not download_url:
+            # 查询播放链接
+            download_url = __get_play_url()
+
+        if not download_url:
+            logger.warn(f"{fileitem.path} 未获取到下载链接")
+            return None
+        # 下载文件到本地
+        res = RequestUtils(headers={
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": "https://www.alipan.com/",
+            "Sec-Fetch-Dest": "iframe",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "cross-site",
+            "User-Agent": settings.USER_AGENT
+        }).get_res(download_url)
+        if res:
+            path = settings.TEMP_PATH / fileitem.name
+            with path.open("wb") as f:
+                f.write(res.content)
+            return path
         else:
             self.__handle_error(res, "获取下载链接")
         return None
@@ -662,6 +678,8 @@ class AliPan(StorageBase):
         """
         上传文件，并标记完成
         """
+
+        __UPLOAD_CHUNK_SIZE: int = 10485760  # 10 MB
 
         def __sha1(_path: Path):
             """
@@ -680,6 +698,7 @@ class AliPan(StorageBase):
         if not params:
             return None
         headers = self.__get_headers(params)
+
         # 计算sha1
         sha1 = __sha1(path)
         res = RequestUtils(headers=headers, timeout=10).post_res(self.create_folder_file_url, json={

@@ -52,7 +52,8 @@ COPY requirements.txt requirements.txt
 RUN apt-get update -y \
     && apt-get install -y build-essential \
     && pip install --upgrade pip \
-    && pip install Cython \
+    && pip install Cython pip-tools \
+    && pip-compile requirements.in \
     && pip install -r requirements.txt \
     && playwright install-deps chromium \
     && apt-get remove -y build-essential \

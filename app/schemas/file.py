@@ -32,6 +32,8 @@ class FileItem(BaseModel):
     pickcode: Optional[str] = None
     # drive_id
     drive_id: Optional[str] = None
+    # url
+    url: Optional[str] = None
 
 
 class StorageUsage(BaseModel):
