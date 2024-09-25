@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple, List
 
+from aligo.response import CreateFileResponse
+
 from app import schemas
 from app.core.config import settings
 from app.log import logger
@@ -267,6 +269,8 @@ class AliPan(StorageBase):
             return None
         item = self.aligo.create_folder(name=name, parent_file_id=fileitem.fileid, drive_id=fileitem.drive_id)
         if item:
+            if isinstance(item, CreateFileResponse):
+                item = self.aligo.get_file(file_id=item.file_id, drive_id=item.drive_id)
             return self.__get_fileitem(item)
         return None
 
@@ -276,8 +280,10 @@ class AliPan(StorageBase):
         """
         if not self.aligo:
             return None
-        item = self.aligo.get_folder_by_path(path=str(Path), create_folder=True)
+        item = self.aligo.get_folder_by_path(path=str(path), create_folder=True)
         if item:
+            if isinstance(item, CreateFileResponse):
+                item = self.aligo.get_file(file_id=item.file_id, drive_id=item.drive_id)
             return self.__get_fileitem(item)
         return None
 

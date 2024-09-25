@@ -299,7 +299,7 @@ class Monitor(metaclass=Singleton):
                     logger.info(f"{event_path} 是蓝光原盘目录，更正文件路径为：{event_path}")
 
                 # 查询历史记录，已转移的不处理
-                if self.transferhis.get_by_src(str(event_path)):
+                if self.transferhis.get_by_src(str(event_path), storage=storage):
                     logger.info(f"{event_path} 已经整理过了")
                     return
 

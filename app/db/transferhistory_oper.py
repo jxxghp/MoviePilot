@@ -28,12 +28,13 @@ class TransferHistoryOper(DbOper):
         """
         return TransferHistory.list_by_title(self._db, title)
 
-    def get_by_src(self, src: str) -> TransferHistory:
+    def get_by_src(self, src: str, storage: str = None) -> TransferHistory:
         """
         按源查询转移记录
         :param src: 数据key
+        :param storage: 存储类型
         """
-        return TransferHistory.get_by_src(self._db, src)
+        return TransferHistory.get_by_src(self._db, src, storage)
 
     def get_by_dest(self, dest: str) -> TransferHistory:
         """

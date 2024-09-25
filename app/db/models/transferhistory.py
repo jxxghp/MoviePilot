@@ -95,8 +95,12 @@ class TransferHistory(Base):
 
     @staticmethod
     @db_query
-    def get_by_src(db: Session, src: str):
-        return db.query(TransferHistory).filter(TransferHistory.src == src).first()
+    def get_by_src(db: Session, src: str, storage: str = None):
+        if storage:
+            return db.query(TransferHistory).filter(TransferHistory.src == src,
+                                                    TransferHistory.src_storage == storage).first()
+        else:
+            return db.query(TransferHistory).filter(TransferHistory.src == src).first()
 
     @staticmethod
     @db_query

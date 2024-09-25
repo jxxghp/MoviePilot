@@ -272,7 +272,7 @@ class TransferChain(ChainBase):
 
                 # 整理成功的不再处理
                 if not force:
-                    transferd = self.transferhis.get_by_src(file_item.path)
+                    transferd = self.transferhis.get_by_src(file_item.path, storage=file_item.storage)
                     if transferd and transferd.status:
                         logger.info(f"{file_item.path} 已成功整理过，如需重新处理，请删除历史记录。")
                         # 计数

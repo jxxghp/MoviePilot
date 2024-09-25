@@ -66,20 +66,32 @@ class Rclone(StorageBase):
             modify_time=path.stat().st_mtime,
         )
 
-    def __get_rcloneitem(self, item: dict):
+    def __get_rcloneitem(self, item: dict, parent: str = "/") -> schemas.FileItem:
         """
         获取rclone文件项
         """
-        return schemas.FileItem(
-            storage=self.schema.value,
-            type="dir" if item.get("IsDir") else "file",
-            path=item.get("Path"),
-            name=item.get("Name"),
-            basename=Path(item.get("Name")).stem,
-            extension=Path(item.get("Name")).suffix[1:],
-            size=item.get("Size"),
-            modify_time=StringUtils.str_to_timestamp(item.get("ModTime"))
-        )
+        if not item:
+            return schemas.FileItem()
+        if item.get("IsDir"):
+            return schemas.FileItem(
+                storage=self.schema.value,
+                type="dir",
+                path=f"{parent}{item.get('Name')}",
+                name=item.get("Name"),
+                basename=item.get("Name"),
+                modify_time=StringUtils.str_to_timestamp(item.get("ModTime"))
+            )
+        else:
+            return schemas.FileItem(
+                storage=self.schema.value,
+                type="file",
+                path=f"{parent}{item.get('Name')}",
+                name=item.get("Name"),
+                basename=Path(item.get("Name")).stem,
+                extension=Path(item.get("Name")).suffix[1:],
+                size=item.get("Size"),
+                modify_time=StringUtils.str_to_timestamp(item.get("ModTime"))
+            )
 
     def check(self) -> bool:
         """
@@ -113,7 +125,7 @@ class Rclone(StorageBase):
             )
             if ret.returncode == 0:
                 items = json.loads(ret.stdout)
-                return [self.__get_rcloneitem(item) for item in items]
+                return [self.__get_rcloneitem(item, parent=fileitem.path) for item in items]
         except Exception as err:
             logger.error(f"rclone浏览文件失败：{err}")
         return []
@@ -164,7 +176,7 @@ class Rclone(StorageBase):
             if dir_file:
                 fileitem = dir_file
             else:
-                dir_file = self.create_folder(dir_file, part)
+                dir_file = self.create_folder(fileitem, part)
                 if not dir_file:
                     logger.warn(f"rclone创建目录 {fileitem.path}{part} 失败！")
                     return None
@@ -256,8 +268,8 @@ class Rclone(StorageBase):
             retcode = subprocess.run(
                 [
                     'rclone', 'copyto',
-                    fileitem.path,
-                    f'MP:{path}'
+                    str(path),
+                    f'MP:{Path(fileitem.path) / path.name}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode

@@ -750,7 +750,7 @@ class FileManagerModule(_ModuleBase):
                                                    target_file=target_file,
                                                    transfer_type=transfer_type)
         if new_item:
-            logger.info(f"文件 {fileitem.path} {transfer_type}完成")
+            logger.debug(f"文件 {fileitem.path} {transfer_type}完成")
             # 处理其他相关文件
             self.__transfer_other_files(fileitem=fileitem,
                                         target_storage=target_storage,

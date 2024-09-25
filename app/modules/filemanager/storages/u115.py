@@ -202,17 +202,18 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not self.__init_cloud():
             return None
         try:
-            result = self.cloud.storage().make_dir(fileitem.parent_fileid, name)
-            return schemas.FileItem(
-                storage=self.schema.value,
-                fileid=result.file_id,
-                parent_fileid=result.parent_id,
-                type="dir",
-                path=f"{fileitem.path}{name}/",
-                name=name,
-                modify_time=result.modified_time.timestamp() if result.modified_time else 0,
-                pickcode=result.pickcode
-            )
+            result = self.cloud.storage().make_dir(fileitem.fileid, name)
+            if result:
+                return schemas.FileItem(
+                    storage=self.schema.value,
+                    fileid=result.file_id,
+                    parent_fileid=result.parent_id,
+                    type="dir",
+                    path=f"{fileitem.path}{name}/",
+                    name=name,
+                    modify_time=result.modified_time.timestamp() if result.modified_time else 0,
+                    pickcode=result.pickcode
+                )
         except Exception as e:
             logger.error(f"115创建目录失败：{str(e)}")
         return None
@@ -242,12 +243,12 @@ class U115Pan(StorageBase, metaclass=Singleton):
             if dir_file:
                 fileitem = dir_file
             else:
-                dir_file = self.create_folder(dir_file, part)
+                dir_file = self.create_folder(fileitem, part)
                 if not dir_file:
                     logger.warn(f"115创建目录 {fileitem.path}{part} 失败!")
                     return None
                 fileitem = dir_file
-        return fileitem
+        return fileitem if fileitem.fileid != "0" else None
 
     def get_item(self, path: Path) -> Optional[schemas.FileItem]:
         """
