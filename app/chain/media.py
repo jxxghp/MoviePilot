@@ -347,7 +347,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
         self.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
 
     def scrape_metadata(self, fileitem: schemas.FileItem,
-                        meta: MetaBase = None, mediainfo: MediaInfo = None, init_folder: bool = True):
+                        meta: MetaBase = None, mediainfo: MediaInfo = None,
+                        init_folder: bool = True, parent: schemas.FileItem = None):
         """
         手动刮削媒体信息
         """
@@ -376,7 +377,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             upload_item.name = _path.name
             upload_item.basename = _path.stem
             upload_item.extension = _path.suffix
-            logger.info(f"保存文件：{_path}")
+            logger.info(f"保存文件：【{_fileitem.storage}】{_path}")
             StorageChain().upload_file(fileitem=upload_item, path=tmp_file)
             if tmp_file.exists():
                 tmp_file.unlink()
@@ -417,15 +418,15 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 if not movie_nfo:
                     logger.warn(f"{filepath.name} nfo文件生成失败！")
                     return
-                # 保存或上传nfo文件
-                __save_file(_fileitem=fileitem, _path=filepath.with_suffix(".nfo"), _content=movie_nfo)
+                # 保存或上传nfo文件到上级目录
+                __save_file(_fileitem=parent, _path=filepath.with_suffix(".nfo"), _content=movie_nfo)
             else:
                 # 电影目录
                 files = __list_files(_fileitem=fileitem)
                 for file in files:
                     self.scrape_metadata(fileitem=file,
                                          meta=meta, mediainfo=mediainfo,
-                                         init_folder=False)
+                                         init_folder=False, parent=fileitem)
                 # 生成目录内图片文件
                 if init_folder:
                     # 图片
@@ -439,7 +440,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             image_path = filepath / image_name
                             # 下载图片
                             content = __download_image(_url=attr_value)
-                            # 写入图片到根目录
+                            # 写入图片到当前目录
                             __save_file(_fileitem=fileitem, _path=image_path, _content=content)
         else:
             # 电视剧
@@ -459,8 +460,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 if not episode_nfo:
                     logger.warn(f"{filepath.name} nfo生成失败！")
                     return
-                # 保存或上传nfo文件
-                __save_file(_fileitem=fileitem, _path=filepath.with_suffix(".nfo"), _content=episode_nfo)
+                # 保存或上传nfo文件到上级目录
+                __save_file(_fileitem=parent, _path=filepath.with_suffix(".nfo"), _content=episode_nfo)
                 # 获取集的图片
                 image_dict = self.metadata_img(mediainfo=file_mediainfo,
                                                season=file_meta.begin_season, episode=file_meta.begin_episode)
@@ -478,6 +479,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 for file in files:
                     self.scrape_metadata(fileitem=file,
                                          meta=meta, mediainfo=mediainfo,
+                                         parent=fileitem if file.type == "file" else None,
                                          init_folder=True if file.type == "dir" else False)
                 # 生成目录的nfo和图片
                 if init_folder:

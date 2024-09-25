@@ -99,6 +99,9 @@ class StorageBase(metaclass=ABCMeta):
     def download(self, fileitem: schemas.FileItem, path: Path = None) -> Path:
         """
         下载文件，保存到本地，返回本地临时文件地址
+        :param fileitem: 文件项
+        :param path: 文件保存路径
+
         """
         pass
 
@@ -106,6 +109,8 @@ class StorageBase(metaclass=ABCMeta):
     def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件
+        :param fileitem: 上传目录项
+        :param path: 本地文件路径
         """
         pass
 

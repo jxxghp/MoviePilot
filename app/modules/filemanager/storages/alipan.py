@@ -256,7 +256,7 @@ class AliPan(StorageBase):
         else:
             items = self.aligo.get_file_list(parent_file_id=fileitem.fileid, drive_id=fileitem.drive_id)
             if items:
-                return [self.__get_fileitem(item) for item in items]
+                return [self.__get_fileitem(item, parent=fileitem.path) for item in items]
         return []
 
     def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
@@ -341,10 +341,14 @@ class AliPan(StorageBase):
         """
         if not self.aligo:
             return None
-        item = self.aligo.upload_file(file_path=str(path.parent), parent_file_id=fileitem.fileid,
-                                      drive_id=fileitem.drive_id, name=path.name)
-        if item:
-            return self.__get_fileitem(item)
+        # 上传文件
+        result = self.aligo.upload_file(file_path=str(path), parent_file_id=fileitem.fileid,
+                                        drive_id=fileitem.drive_id, name=path.name,
+                                        check_name_mode="refuse")
+        if result:
+            item = self.aligo.get_file(file_id=result.file_id, drive_id=result.drive_id)
+            if item:
+                return self.__get_fileitem(item)
         return None
 
     def move(self, fileitem: schemas.FileItem, target: schemas.FileItem) -> bool:

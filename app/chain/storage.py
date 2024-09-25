@@ -43,12 +43,16 @@ class StorageChain(ChainBase):
     def download_file(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
         """
         下载文件
+        :param fileitem: 文件项
+        :param path: 本地保存路径
         """
         return self.run_module("download_file", fileitem=fileitem, path=path)
 
     def upload_file(self, fileitem: schemas.FileItem, path: Path) -> Optional[bool]:
         """
         上传文件
+        :param fileitem: 保存目录项
+        :param path: 本地文件路径
         """
         return self.run_module("upload_file", fileitem=fileitem, path=path)
 
