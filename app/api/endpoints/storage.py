@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from typing import Any, List
 
@@ -68,9 +69,9 @@ def list(fileitem: schemas.FileItem,
     file_list = StorageChain().list_files(fileitem)
     if file_list:
         if sort == "name":
-            file_list.sort(key=lambda x: x.name)
+            file_list.sort(key=lambda x: x.name or "")
         else:
-            file_list.sort(key=lambda x: x.modify_time, reverse=True)
+            file_list.sort(key=lambda x: x.modify_time or datetime.min, reverse=True)
     return file_list
 
 
