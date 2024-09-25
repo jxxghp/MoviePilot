@@ -48,7 +48,7 @@ RUN apt-get update -y \
         /moviepilot/.cache \
         /var/lib/apt/lists/* \
         /var/tmp/*
-COPY requirements.txt requirements.txt
+COPY requirements.in requirements.in
 RUN apt-get update -y \
     && apt-get install -y build-essential \
     && pip install --upgrade pip \
