@@ -1,4 +1,5 @@
 import platform
+import queue
 import re
 import threading
 import traceback
@@ -242,7 +243,7 @@ class Monitor(metaclass=Singleton):
                     self.__handle_file(storage=item.get("storage"),
                                        event_path=item.get("filepath"),
                                        mon_path=item.get("mon_path"))
-            except TimeoutError:
+            except queue.Empty:
                 continue
             except Exception as e:
                 logger.error(f"整理队列处理出现错误：{e}")
