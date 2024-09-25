@@ -1,44 +1,93 @@
-from typing import Any, List, Annotated
+from typing import Any, List, Annotated, Optional
 
 from fastapi import APIRouter, Depends, Header
 
 from app import schemas
+from app.factory import app
+from app.core.config import settings
 from app.core.plugin import PluginManager
 from app.core.security import verify_token, verify_apikey
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
 from app.helper.plugin import PluginHelper
+from app.log import logger
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey
+
+PROTECTED_ROUTES = {"/api/v1/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+
+PLUGIN_PREFIX = f"{settings.API_V1_STR}/plugin"
 
 router = APIRouter()
 
 
-def register_plugin_api(plugin_id: str = None):
+def register_plugin_api(plugin_id: Optional[str] = None):
     """
-    注册插件API（先删除后新增）
+    动态注册插件 API
+    :param plugin_id: 插件 ID，如果为 None，则注册所有插件
     """
-    for api in PluginManager().get_plugin_apis(plugin_id):
-        for r in router.routes:
-            if r.path == api.get("path"):
-                router.routes.remove(r)
-                break
-        # 检查是否允许匿名访问，如果不允许匿名访问，则添加 API_TOKEN 验证
-        allow_anonymous = api.pop("allow_anonymous", False)
-        if not allow_anonymous:
-            api.setdefault("dependencies", []).append(Depends(verify_apikey))
-        router.add_api_route(**api)
+    _update_plugin_api_routes(plugin_id, action="add")
 
 
 def remove_plugin_api(plugin_id: str):
     """
-    移除插件API
+    动态移除插件 API
+    :param plugin_id: 插件 ID
     """
-    for api in PluginManager().get_plugin_apis(plugin_id):
-        for r in router.routes:
-            if r.path == api.get("path"):
-                router.routes.remove(r)
-                break
+    _update_plugin_api_routes(plugin_id, action="remove")
+
+
+def _update_plugin_api_routes(plugin_id: Optional[str], action: str):
+    """
+    插件 API 路由注册和移除
+    :param plugin_id: 插件 ID，如果为 None，则处理所有插件
+    :param action: 'add' 或 'remove'，决定是添加还是移除路由
+    """
+    if action not in {"add", "remove"}:
+        raise ValueError("Action must be 'add' or 'remove'")
+
+    is_modified = False
+    existing_paths = {route.path: route for route in app.routes}
+    plugin_apis = PluginManager().get_plugin_apis(plugin_id)
+
+    for api in plugin_apis:
+        api_path = f"{PLUGIN_PREFIX}{api.get('path', '')}"
+        try:
+            existing_route = existing_paths.get(api_path)
+            if existing_route:
+                app.routes.remove(existing_route)
+                is_modified = True
+
+            if action == "add":
+                api["path"] = api_path
+                allow_anonymous = api.pop("allow_anonymous", False)
+                dependencies = api.setdefault("dependencies", [])
+                if not allow_anonymous and Depends(verify_apikey) not in dependencies:
+                    dependencies.append(Depends(verify_apikey))
+                app.add_api_route(**api, tags=["plugin"])
+                is_modified = True
+
+        except Exception as e:
+            logger.error(f"Error {action}ing route {api_path}: {str(e)}")
+
+    if is_modified:
+        _clean_protected_routes(existing_paths)
+        app.openapi_schema = None
+        app.setup()
+
+
+def _clean_protected_routes(existing_paths: dict):
+    """
+    清理受保护的路由，防止在插件操作中被删除或重复添加
+    :param existing_paths: 当前应用的路由路径映射
+    """
+    for protected_route in PROTECTED_ROUTES:
+        try:
+            existing_route = existing_paths.get(protected_route)
+            if existing_route:
+                app.routes.remove(existing_route)
+        except Exception as e:
+            logger.error(f"Error removing protected route {protected_route}: {str(e)}")
 
 
 @router.get("/", summary="所有插件", response_model=List[schemas.Plugin])
@@ -247,12 +296,12 @@ def uninstall_plugin(plugin_id: str,
             break
     # 保存
     SystemConfigOper().set(SystemConfigKey.UserInstalledPlugins, install_plugins)
-    # 移除插件
-    PluginManager().remove_plugin(plugin_id)
-    # 移除插件服务
-    Scheduler().remove_plugin_job(plugin_id)
     # 移除插件API
     remove_plugin_api(plugin_id)
+    # 移除插件服务
+    Scheduler().remove_plugin_job(plugin_id)
+    # 移除插件
+    PluginManager().remove_plugin(plugin_id)
     return schemas.Response(success=True)
 
 
