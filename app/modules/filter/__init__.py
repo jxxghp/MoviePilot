@@ -128,7 +128,7 @@ class FilterModule(_ModuleBase):
         },
         # 60FPS
         "60FPS": {
-            "include": [r'60fps'],
+            "include": [r'60fps|60帧'],
             "exclude": []
         },
         # 3D
