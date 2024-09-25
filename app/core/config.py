@@ -205,6 +205,8 @@ class Settings(BaseSettings):
     def convert_boolean(cls, value):
         if not value:
             return False
+        if str(value).upper() == "FALSE":
+            return False
         return True
 
     @validator("API_TOKEN", pre=True, always=True)
