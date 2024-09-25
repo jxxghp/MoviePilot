@@ -206,7 +206,7 @@ class FileManagerModule(_ModuleBase):
             return False
         return storage_oper.rename(fileitem, name)
 
-    def download_file(self, fileitem: FileItem) -> Optional[Path]:
+    def download_file(self, fileitem: FileItem, path: Path = None) -> Optional[Path]:
         """
         下载文件
         """
@@ -214,7 +214,7 @@ class FileManagerModule(_ModuleBase):
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的下载处理")
             return None
-        return storage_oper.download(fileitem)
+        return storage_oper.download(fileitem, path=path)
 
     def upload_file(self, fileitem: FileItem, path: Path) -> Optional[FileItem]:
         """
@@ -449,7 +449,7 @@ class FileManagerModule(_ModuleBase):
                 # 网盘到本地
                 if transfer_type in ["copy", "move"]:
                     # 下载
-                    tmp_file = source_oper.download(fileitem)
+                    tmp_file = source_oper.download(fileitem=fileitem, path=target_file.parent)
                     if tmp_file:
                         # 创建目录
                         if not target_file.parent.exists():
@@ -464,29 +464,25 @@ class FileManagerModule(_ModuleBase):
                         return None, f"{fileitem.path} {fileitem.storage} 下载失败"
             elif fileitem.storage == target_storage:
                 # 同一网盘
-                if transfer_type == "move":
-                    # 移动
-                    # 根据目的路径获取文件夹
-                    target_diritem = target_oper.get_folder(target_file.parent)
-                    if target_diritem:
-                        # 重命名文件
-                        if target_oper.rename(fileitem, target_file.name):
-                            # 移动文件到新目录
-                            if source_oper.move(fileitem, target_diritem):
-                                ret_fileitem = copy.deepcopy(fileitem)
-                                ret_fileitem.path = target_diritem.path + "/" + target_file.name
-                                ret_fileitem.name = target_file.name
-                                ret_fileitem.basename = target_file.stem
-                                ret_fileitem.parent_fileid = target_diritem.fileid
-                                return ret_fileitem, ""
-                            else:
-                                return None, f"{fileitem.path} {target_storage} 移动文件失败"
+                # 根据目的路径获取文件夹
+                target_diritem = target_oper.get_folder(target_file.parent)
+                if target_diritem:
+                    # 重命名文件
+                    if target_oper.rename(fileitem, target_file.name):
+                        # 移动文件到新目录
+                        if source_oper.move(fileitem, target_diritem):
+                            ret_fileitem = copy.deepcopy(fileitem)
+                            ret_fileitem.path = target_diritem.path + "/" + target_file.name
+                            ret_fileitem.name = target_file.name
+                            ret_fileitem.basename = target_file.stem
+                            ret_fileitem.parent_fileid = target_diritem.fileid
+                            return ret_fileitem, ""
                         else:
-                            return None, f"{fileitem.path} {target_storage} 重命名文件失败"
+                            return None, f"{fileitem.path} {target_storage} 移动文件失败"
                     else:
-                        return None, f"{target_file.parent} {target_storage} 目录获取失败"
+                        return None, f"{fileitem.path} {target_storage} 重命名文件失败"
                 else:
-                    return None, f"网盘内只支持移动操作"
+                    return None, f"{target_file.parent} {target_storage} 目录获取失败"
 
         return None, "未知错误"
 

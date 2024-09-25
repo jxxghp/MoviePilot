@@ -54,14 +54,14 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def list(self, fileitm: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
+    def list(self, fileitem: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
         """
         浏览文件
         """
         pass
 
     @abstractmethod
-    def create_folder(self, fileitm: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
+    def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """
         创建目录
         """
@@ -82,63 +82,63 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def delete(self, fileitm: schemas.FileItem) -> bool:
+    def delete(self, fileitem: schemas.FileItem) -> bool:
         """
         删除文件
         """
         pass
 
     @abstractmethod
-    def rename(self, fileitm: schemas.FileItem, name: str) -> bool:
+    def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
         """
         重命名文件
         """
         pass
 
     @abstractmethod
-    def download(self, fileitm: schemas.FileItem) -> Path:
+    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Path:
         """
         下载文件，保存到本地，返回本地临时文件地址
         """
         pass
 
     @abstractmethod
-    def upload(self, fileitm: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
         """
         上传文件
         """
         pass
 
     @abstractmethod
-    def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         获取文件详情
         """
         pass
 
     @abstractmethod
-    def copy(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+    def copy(self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]) -> bool:
         """
         复制文件
         """
         pass
 
     @abstractmethod
-    def move(self, fileitm: schemas.FileItem, target: Union[schemas.FileItem, Path]) -> bool:
+    def move(self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]) -> bool:
         """
         移动文件
         """
         pass
 
     @abstractmethod
-    def link(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+    def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         """
         硬链接文件
         """
         pass
 
     @abstractmethod
-    def softlink(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+    def softlink(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         """
         软链接文件
         """

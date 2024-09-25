@@ -40,11 +40,11 @@ class StorageChain(ChainBase):
         """
         return self.run_module("create_folder", fileitem=fileitem, name=name)
 
-    def download_file(self, fileitem: schemas.FileItem) -> Optional[Path]:
+    def download_file(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
         """
         下载文件
         """
-        return self.run_module("download_file", fileitem=fileitem)
+        return self.run_module("download_file", fileitem=fileitem, path=path)
 
     def upload_file(self, fileitem: schemas.FileItem, path: Path) -> Optional[bool]:
         """

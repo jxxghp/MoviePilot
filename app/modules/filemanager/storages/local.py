@@ -135,11 +135,11 @@ class LocalStorage(StorageBase):
             return self.__get_fileitem(path)
         return self.__get_diritem(path)
 
-    def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         获取文件详情
         """
-        path_obj = Path(fileitm.path)
+        path_obj = Path(fileitem.path)
         if not path_obj.exists():
             return None
         return self.__get_fileitem(path_obj)
@@ -177,7 +177,7 @@ class LocalStorage(StorageBase):
             return False
         return True
 
-    def download(self, fileitem: schemas.FileItem) -> Optional[Path]:
+    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
         """
         下载文件
         """

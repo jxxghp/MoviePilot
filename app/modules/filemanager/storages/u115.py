@@ -1,4 +1,5 @@
 import base64
+import subprocess
 from pathlib import Path
 from typing import Optional, Tuple, List
 
@@ -31,6 +32,19 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
     cloud: Optional[Cloud] = None
     _session: QrcodeSession = None
+
+    # 是否有aria2c
+    _has_aria2c: bool = False
+
+    def __init__(self):
+        super().__init__()
+        try:
+            subprocess.run(['aria2c', '-h'], capture_output=True)
+            self._has_aria2c = True
+            logger.debug('发现 aria2c, 将使用 aria2c 下载文件')
+        except FileNotFoundError:
+            logger.debug('未发现 aria2c')
+            self._has_aria2c = False
 
     def __init_cloud(self) -> bool:
         """
@@ -260,7 +274,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             fileitem = item
         return fileitem
 
-    def detail(self, fileitm: schemas.FileItem) -> Optional[schemas.FileItem]:
+    def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         获取文件详情
         """
@@ -292,7 +306,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             logger.error(f"115重命名文件失败：{str(e)}")
         return False
 
-    def download(self, fileitem: schemas.FileItem) -> Optional[Path]:
+    def download(self, fileitem: schemas.FileItem, path: Path = None) -> Optional[Path]:
         """
         获取下载链接
         """
@@ -301,7 +315,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
         try:
             ticket = self.cloud.storage().request_download(fileitem.pickcode)
             if ticket:
-                path = settings.TEMP_PATH / fileitem.name
+                path = (path or settings.TEMP_PATH) / fileitem.name
                 res = RequestUtils(headers=ticket.headers).get_res(ticket.url)
                 if res:
                     with open(path, "wb") as f:
@@ -374,13 +388,13 @@ class U115Pan(StorageBase, metaclass=Singleton):
             logger.error(f"115移动文件失败：{str(e)}")
         return False
 
-    def copy(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+    def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         pass
 
-    def link(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+    def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         pass
 
-    def softlink(self, fileitm: schemas.FileItem, target_file: Path) -> bool:
+    def softlink(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         pass
 
     def usage(self) -> Optional[schemas.StorageUsage]:
