@@ -21,11 +21,11 @@ class WechatModule(_ModuleBase, _MessageBase):
         if not clients:
             return
         self._configs = {}
-        self._clients = {}
+        self._instances = {}
         for client in clients:
             if client.type == "wechat" and client.enabled:
                 self._configs[client.name] = client
-                self._clients[client.name] = WeChat(**client.config)
+                self._instances[client.name] = WeChat(**client.config)
 
     @staticmethod
     def get_name() -> str:
@@ -38,9 +38,9 @@ class WechatModule(_ModuleBase, _MessageBase):
         """
         测试模块连接性
         """
-        if not self._clients:
+        if not self._instances:
             return None
-        for name, client in self._clients.items():
+        for name, client in self._instances.items():
             state = client.get_state()
             if not state:
                 return False, f"企业微信 {name} 未就续"
@@ -67,7 +67,7 @@ class WechatModule(_ModuleBase, _MessageBase):
             client_config = self.get_config(source, 'wechat')
             if not client_config:
                 return None
-            client: WeChat = self.get_client(source)
+            client: WeChat = self.get_instance(source)
             # URL参数
             sVerifyMsgSig = args.get("msg_signature")
             sVerifyTimeStamp = args.get("timestamp")
@@ -159,7 +159,7 @@ class WechatModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
             targets = message.targets
             userid = message.userid
@@ -168,7 +168,7 @@ class WechatModule(_ModuleBase, _MessageBase):
                 if not userid:
                     logger.warn(f"用户没有指定 微信用户ID，消息无法发送")
                     return
-            client: WeChat = self.get_client(conf.name)
+            client: WeChat = self.get_instance(conf.name)
             if client:
                 client.send_msg(title=message.title, text=message.text,
                                 image=message.image, userid=userid, link=message.link)
@@ -181,9 +181,9 @@ class WechatModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
-            client: WeChat = self.get_client(conf.name)
+            client: WeChat = self.get_instance(conf.name)
             if client:
                 # 先发送标题
                 client.send_msg(title=message.title, userid=message.userid, link=message.link)
@@ -198,9 +198,9 @@ class WechatModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
-            client: WeChat = self.get_client(conf.name)
+            client: WeChat = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(title=message.title, torrents=torrents,
                                          userid=message.userid, link=message.link)
@@ -210,5 +210,5 @@ class WechatModule(_ModuleBase, _MessageBase):
         注册命令，实现这个函数接收系统可用的命令菜单
         :param commands: 命令字典
         """
-        for client in self._clients.values():
+        for client in self._instances.values():
             client.create_menus(commands)

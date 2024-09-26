@@ -17,7 +17,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         初始化模块
         """
         # 读取媒体服务器配置
-        self._servers: Dict[str, Jellyfin] = {}
+        self._instances: Dict[str, Jellyfin] = {}
         self._configs: Dict[str, MediaServerConf] = {}
         mediaservers = MediaServerHelper().get_mediaservers()
         if not mediaservers:
@@ -25,7 +25,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         for server in mediaservers:
             if server.type == "jellyfin" and server.enabled:
                 self._configs[server.name] = server
-                self._servers[server.name] = Jellyfin(**server.config, sync_libraries=server.sync_libraries)
+                self._instances[server.name] = Jellyfin(**server.config, sync_libraries=server.sync_libraries)
 
     @staticmethod
     def get_name() -> str:
@@ -39,7 +39,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         定时任务，每10分钟调用一次
         """
         # 定时重连
-        for name, server in self._servers.items():
+        for name, server in self._instances.items():
             if server.is_inactive():
                 logger.info(f"Jellyfin {name} 服务器连接断开，尝试重连 ...")
                 server.reconnect()
@@ -51,9 +51,9 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         """
         测试模块连接性
         """
-        if not self._servers:
+        if not self._instances:
             return None
-        for name, server in self._servers.items():
+        for name, server in self._instances.items():
             if server.is_inactive():
                 server.reconnect()
             if not server.get_user():
@@ -68,7 +68,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         :return: Token or None
         """
         # Jellyfin认证
-        for server in self._servers.values():
+        for server in self._instances.values():
             result = server.authenticate(name, password)
             if result:
                 return result
@@ -87,7 +87,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
             server_config: MediaServerConf = self.get_config(source, 'jellyfin')
             if not server_config:
                 return None
-            server: Jellyfin = self.get_server(source)
+            server: Jellyfin = self.get_instance(source)
             if not server:
                 return None
             return server.get_webhook_message(body)
@@ -95,7 +95,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         for conf in self._configs.values():
             if conf.type != "jellyfin":
                 continue
-            server = self.get_server(conf.name)
+            server = self.get_instance(conf.name)
             if server:
                 result = server.get_webhook_message(body)
                 if result:
@@ -109,7 +109,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         :param itemid:  媒体服务器ItemID
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
-        for name, server in self._servers.items():
+        for name, server in self._instances.items():
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
                     movie = server.get_iteminfo(itemid)
@@ -154,12 +154,12 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         媒体数量统计
         """
         if server:
-            server: Jellyfin = self.get_server(server)
+            server: Jellyfin = self.get_instance(server)
             if not server:
                 return None
             servers = [server]
         else:
-            servers = self._servers.values()
+            servers = self._instances.values()
         media_statistics = []
         for server in servers:
             media_statistic = server.get_medias_count()
@@ -175,16 +175,17 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         """
         媒体库列表
         """
-        server: Jellyfin = self.get_server(server)
+        server: Jellyfin = self.get_instance(server)
         if server:
             return server.get_librarys(username=username, hidden=hidden)
         return None
 
-    def mediaserver_items(self, server: str, library_id: str, start_index: int = 0, limit: int = 100) -> Optional[Generator]:
+    def mediaserver_items(self, server: str, library_id: str, start_index: int = 0, limit: int = 100) -> Optional[
+        Generator]:
         """
         媒体库项目列表
         """
-        server: Jellyfin = self.get_server(server)
+        server: Jellyfin = self.get_instance(server)
         if server:
             return server.get_items(library_id, start_index, limit)
         return None
@@ -193,7 +194,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         """
         媒体库项目详情
         """
-        server: Jellyfin = self.get_server(server)
+        server: Jellyfin = self.get_instance(server)
         if server:
             return server.get_iteminfo(item_id)
         return None
@@ -203,7 +204,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         """
         获取剧集信息
         """
-        server: Jellyfin = self.get_server(server)
+        server: Jellyfin = self.get_instance(server)
         if not server:
             return None
         _, seasoninfo = server.get_tv_episodes(item_id=item_id)
@@ -219,7 +220,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         """
         获取媒体服务器正在播放信息
         """
-        server: Jellyfin = self.get_server(server)
+        server: Jellyfin = self.get_instance(server)
         if not server:
             return []
         return server.get_resume(num=count, username=username)
@@ -228,7 +229,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         """
         获取媒体库播放地址
         """
-        server: Jellyfin = self.get_server(server)
+        server: Jellyfin = self.get_instance(server)
         if not server:
             return None
         return server.get_play_url(item_id)
@@ -238,7 +239,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
         """
         获取媒体服务器最新入库条目
         """
-        server: Jellyfin = self.get_server(server)
+        server: Jellyfin = self.get_instance(server)
         if not server:
             return []
         return server.get_latest(num=count, username=username)

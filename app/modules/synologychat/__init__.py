@@ -18,11 +18,11 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
         if not clients:
             return
         self._configs = {}
-        self._clients = {}
+        self._instances = {}
         for client in clients:
             if client.type == "synologychat" and client.enabled:
                 self._configs[client.name] = client
-                self._clients[client.name] = SynologyChat(**client.config)
+                self._instances[client.name] = SynologyChat(**client.config)
 
     @staticmethod
     def get_name() -> str:
@@ -35,9 +35,9 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
         """
         测试模块连接性
         """
-        if not self._clients:
+        if not self._instances:
             return None
-        for name, client in self._clients.items():
+        for name, client in self._instances.items():
             state = client.get_state()
             if not state:
                 return False, f"Synology Chat {name} 未就续"
@@ -64,7 +64,7 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
             client_config = self.get_config(source, 'synologychat')
             if not client_config:
                 return None
-            client: SynologyChat = self.get_client(source)
+            client: SynologyChat = self.get_instance(source)
             # 解析消息
             message: dict = form
             if not message:
@@ -94,7 +94,7 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
             targets = message.targets
             userid = message.userid
@@ -103,7 +103,7 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
                 if not userid:
                     logger.warn(f"用户没有指定 SynologyChat用户ID，消息无法发送")
                     return
-            client: SynologyChat = self.get_client(conf.name)
+            client: SynologyChat = self.get_instance(conf.name)
             if client:
                 client.send_msg(title=message.title, text=message.text,
                                 image=message.image, userid=userid, link=message.link)
@@ -116,9 +116,9 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
-            client: SynologyChat = self.get_client(conf.name)
+            client: SynologyChat = self.get_instance(conf.name)
             if client:
                 client.send_medias_msg(title=message.title, medias=medias,
                                        userid=message.userid)
@@ -131,9 +131,9 @@ class SynologyChatModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
-            client: SynologyChat = self.get_client(conf.name)
+            client: SynologyChat = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(title=message.title, torrents=torrents,
                                          userid=message.userid, link=message.link)

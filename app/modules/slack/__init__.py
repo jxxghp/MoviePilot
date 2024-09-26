@@ -21,11 +21,11 @@ class SlackModule(_ModuleBase, _MessageBase):
         if not clients:
             return
         self._configs = {}
-        self._clients = {}
+        self._instances = {}
         for client in clients:
             if client.type == "slack" and client.enabled:
                 self._configs[client.name] = client
-                self._clients[client.name] = Slack(**client.config, name=client.name)
+                self._instances[client.name] = Slack(**client.config, name=client.name)
 
     @staticmethod
     def get_name() -> str:
@@ -35,16 +35,16 @@ class SlackModule(_ModuleBase, _MessageBase):
         """
         停止模块
         """
-        for client in self._clients.values():
+        for client in self._instances.values():
             client.stop()
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """
         测试模块连接性
         """
-        if not self._clients:
+        if not self._instances:
             return None
-        for name, client in self._clients.items():
+        for name, client in self._instances.items():
             state = client.get_state()
             if not state:
                 return False, f"Slack {name} 未就续"
@@ -223,7 +223,7 @@ class SlackModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
             targets = message.targets
             userid = message.userid
@@ -232,7 +232,7 @@ class SlackModule(_ModuleBase, _MessageBase):
                 if not userid:
                     logger.warn(f"用户没有指定 Slack用户ID，消息无法发送")
                     return
-            client: Slack = self.get_client(conf.name)
+            client: Slack = self.get_instance(conf.name)
             if client:
                 client.send_msg(title=message.title, text=message.text,
                                 image=message.image, userid=userid, link=message.link)
@@ -245,9 +245,9 @@ class SlackModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
-            client: Slack = self.get_client(conf.name)
+            client: Slack = self.get_instance(conf.name)
             if client:
                 client.send_medias_msg(title=message.title, medias=medias, userid=message.userid)
 
@@ -259,9 +259,9 @@ class SlackModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
-            client: Slack = self.get_client(conf.name)
+            client: Slack = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(title=message.title, torrents=torrents,
                                          userid=message.userid)

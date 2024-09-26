@@ -20,11 +20,11 @@ class VoceChatModule(_ModuleBase, _MessageBase):
         if not clients:
             return
         self._configs = {}
-        self._clients = {}
+        self._instances = {}
         for client in clients:
             if client.type == "vocechat" and client.enabled:
                 self._configs[client.name] = client
-                self._clients[client.name] = VoceChat(**client.config)
+                self._instances[client.name] = VoceChat(**client.config)
 
     @staticmethod
     def get_name() -> str:
@@ -37,9 +37,9 @@ class VoceChatModule(_ModuleBase, _MessageBase):
         """
         测试模块连接性
         """
-        if not self._clients:
+        if not self._instances:
             return None
-        for name, client in self._clients.items():
+        for name, client in self._instances.items():
             state = client.get_state()
             if not state:
                 return False, f"VoceChat {name} 未就续"
@@ -122,13 +122,13 @@ class VoceChatModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
             targets = message.targets
             userid = message.userid
             if not message.userid and targets:
                 userid = targets.get('telegram_userid')
-            client: VoceChat = self.get_client(conf.name)
+            client: VoceChat = self.get_instance(conf.name)
             if client:
                 client.send_msg(title=message.title, text=message.text,
                                 userid=userid, link=message.link)
@@ -141,9 +141,9 @@ class VoceChatModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
-            client: VoceChat = self.get_client(conf.name)
+            client: VoceChat = self.get_instance(conf.name)
             if client:
                 client.send_msg(title=message.title, userid=message.userid)
                 client.send_medias_msg(title=message.title, medias=medias,
@@ -157,7 +157,7 @@ class VoceChatModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
             targets = message.targets
             userid = message.userid
@@ -166,7 +166,7 @@ class VoceChatModule(_ModuleBase, _MessageBase):
                 if not userid:
                     logger.warn(f"用户没有指定 VoceChat用户ID，消息无法发送")
                     return
-            client: VoceChat = self.get_client(conf.name)
+            client: VoceChat = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(title=message.title, torrents=torrents,
                                          userid=userid, link=message.link)
