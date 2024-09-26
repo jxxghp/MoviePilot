@@ -73,7 +73,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             return None
         return Credential.from_dict(cookie_dict.dict().get("config"))
 
-    def __save_credentail(self, credential: Credential):
+    def __save_credential(self, credential: Credential):
         """
         设置115认证参数
         """
@@ -117,7 +117,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             status = self.cloud.qrcode_poll(self._session)
             if status == QrcodeStatus.Done:
                 # 确认完成，保存认证信息
-                self.__save_credentail(self.cloud.export_credentail())
+                self.__save_credential(self.cloud.export_credentail())
                 result = {
                     "status": 1,
                     "tip": "登录成功！"
