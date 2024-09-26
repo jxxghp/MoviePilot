@@ -212,13 +212,7 @@ def transtype(name: str, _: User = Depends(get_current_active_superuser)) -> Any
     """
     查询支持的整理方式
     """
-    ret = {}
-    try:
-        ret = StorageChain().support_transtype(name)
-        if ret:
-            return schemas.StorageTransType(transtype=ret)
-        return schemas.StorageTransType()
-    except Exception as e:
-        pass
-    finally:
-        print(schemas.StorageTransType(transtype=ret if ret else []))
+    ret = StorageChain().support_transtype(name)
+    if ret:
+        return schemas.StorageTransType(transtype=ret)
+    return schemas.StorageTransType()
