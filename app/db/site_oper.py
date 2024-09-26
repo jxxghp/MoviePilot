@@ -3,7 +3,9 @@ from datetime import datetime
 from typing import Tuple, List
 
 from app.db import DbOper
+from app.db.models import SiteIcon
 from app.db.models.site import Site
+from app.db.models.sitestatistic import SiteStatistic
 from app.db.models.siteuserdata import SiteUserData
 from app.utils.object import ObjectUtils
 
@@ -139,3 +141,83 @@ class SiteOper(DbOper):
         获取站点用户数据
         """
         return SiteUserData.get_by_date(self._db, date)
+
+    def get_icon_by_domain(self, domain: str) -> SiteIcon:
+        """
+        按域名获取站点图标
+        """
+        return SiteIcon.get_by_domain(self._db, domain)
+
+    def update_icon(self, name: str, domain: str, icon_url: str, icon_base64: str) -> bool:
+        """
+        更新站点图标
+        """
+        icon_base64 = f"data:image/ico;base64,{icon_base64}" if icon_base64 else ""
+        siteicon = self.get_by_domain(domain)
+        if not siteicon:
+            SiteIcon(name=name, domain=domain, url=icon_url, base64=icon_base64).create(self._db)
+        elif icon_base64:
+            siteicon.update(self._db, {
+                "url": icon_url,
+                "base64": icon_base64
+            })
+        return True
+
+    def success(self, domain: str, seconds: int = None):
+        """
+        站点访问成功
+        """
+        lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        sta = SiteStatistic.get_by_domain(self._db, domain)
+        if sta:
+            avg_seconds, note = None, {}
+            if seconds is not None:
+                note: dict = json.loads(sta.note or "{}")
+                note[lst_date] = seconds or 1
+                avg_times = len(note.keys())
+                if avg_times > 10:
+                    note = dict(sorted(note.items(), key=lambda x: x[0], reverse=True)[:10])
+                avg_seconds = sum([v for v in note.values()]) // avg_times
+            sta.update(self._db, {
+                "success": sta.success + 1,
+                "seconds": avg_seconds or sta.seconds,
+                "lst_state": 0,
+                "lst_mod_date": lst_date,
+                "note": note or sta.note
+            })
+        else:
+            note = {}
+            if seconds is not None:
+                note = {
+                    lst_date: seconds or 1
+                }
+            SiteStatistic(
+                domain=domain,
+                success=1,
+                fail=0,
+                seconds=seconds or 1,
+                lst_state=0,
+                lst_mod_date=lst_date,
+                note=json.dumps(note)
+            ).create(self._db)
+
+    def fail(self, domain: str):
+        """
+        站点访问失败
+        """
+        lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        sta = SiteStatistic.get_by_domain(self._db, domain)
+        if sta:
+            sta.update(self._db, {
+                "fail": sta.fail + 1,
+                "lst_state": 1,
+                "lst_mod_date": lst_date
+            })
+        else:
+            SiteStatistic(
+                domain=domain,
+                success=0,
+                fail=1,
+                lst_state=1,
+                lst_mod_date=lst_date
+            ).create(self._db)

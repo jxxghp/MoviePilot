@@ -4,6 +4,7 @@ from typing import Tuple, List
 from app.core.context import MediaInfo
 from app.db import DbOper
 from app.db.models.subscribe import Subscribe
+from app.db.models.subscribehistory import SubscribeHistory
 
 
 class SubscribeOper(DbOper):
@@ -102,3 +103,18 @@ class SubscribeOper(DbOper):
         获取指定类型的订阅
         """
         return Subscribe.list_by_type(self._db, mtype=mtype, days=days)
+
+    def add_history(self, **kwargs):
+        """
+        新增订阅
+        """
+        # 去除kwargs中 SubscribeHistory 没有的字段
+        kwargs = {k: v for k, v in kwargs.items() if hasattr(SubscribeHistory, k)}
+        # 更新完成订阅时间
+        kwargs.update({"date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())})
+        # 去掉主键
+        if "id" in kwargs:
+            kwargs.pop("id")
+        subscribe = SubscribeHistory(**kwargs)
+        subscribe.create(self._db)
+

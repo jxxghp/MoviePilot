@@ -13,9 +13,7 @@ from app.core.config import settings
 from app.core.event import eventmanager, Event, EventManager
 from app.db.models.site import Site
 from app.db.site_oper import SiteOper
-from app.db.siteicon_oper import SiteIconOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.sitestatistic_oper import SiteStatisticOper
 from app.helper.browser import PlaywrightHelper
 from app.helper.cloudflare import under_challenge
 from app.helper.cookie import CookieHelper
@@ -39,14 +37,12 @@ class SiteChain(ChainBase):
     def __init__(self):
         super().__init__()
         self.siteoper = SiteOper()
-        self.siteiconoper = SiteIconOper()
         self.siteshelper = SitesHelper()
         self.rsshelper = RssHelper()
         self.cookiehelper = CookieHelper()
         self.message = MessageHelper()
         self.cookiecloud = CookieCloudHelper()
         self.systemconfig = SystemConfigOper()
-        self.sitestatistic = SiteStatisticOper()
 
         # 特殊站点登录验证
         self.special_site_test = {
@@ -362,17 +358,17 @@ class SiteChain(ChainBase):
             logger.warn(f"站点 {domain} 索引器不存在！")
             return
         # 查询站点图标
-        site_icon = self.siteiconoper.get_by_domain(domain)
+        site_icon = self.siteoper.get_icon_by_domain(domain)
         if not site_icon or not site_icon.base64:
             logger.info(f"开始缓存站点 {indexer.get('name')} 图标 ...")
             icon_url, icon_base64 = self.__parse_favicon(url=indexer.get("domain"),
                                                          cookie=cookie,
                                                          ua=settings.USER_AGENT)
             if icon_url:
-                self.siteiconoper.update_icon(name=indexer.get("name"),
-                                              domain=domain,
-                                              icon_url=icon_url,
-                                              icon_base64=icon_base64)
+                self.siteoper.update_icon(name=indexer.get("name"),
+                                          domain=domain,
+                                          icon_url=icon_url,
+                                          icon_base64=icon_base64)
                 logger.info(f"缓存站点 {indexer.get('name')} 图标成功")
             else:
                 logger.warn(f"缓存站点 {indexer.get('name')} 图标失败")
@@ -443,9 +439,9 @@ class SiteChain(ChainBase):
             # 统计
             seconds = (datetime.now() - start_time).seconds
             if state:
-                self.sitestatistic.success(domain=domain, seconds=seconds)
+                self.siteoper.success(domain=domain, seconds=seconds)
             else:
-                self.sitestatistic.fail(domain)
+                self.siteoper.fail(domain)
             return state, message
         except Exception as e:
             return False, f"{str(e)}！"

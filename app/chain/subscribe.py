@@ -20,7 +20,6 @@ from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.subscribe import Subscribe
 from app.db.site_oper import SiteOper
 from app.db.subscribe_oper import SubscribeOper
-from app.db.subscribehistory_oper import SubscribeHistoryOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.message import MessageHelper
 from app.helper.subscribe import SubscribeHelper
@@ -41,7 +40,6 @@ class SubscribeChain(ChainBase):
         self.downloadhis = DownloadHistoryOper()
         self.searchchain = SearchChain()
         self.subscribeoper = SubscribeOper()
-        self.subscribehistoryoper = SubscribeHistoryOper()
         self.subscribehelper = SubscribeHelper()
         self.torrentschain = TorrentsChain()
         self.mediachain = MediaChain()
@@ -898,7 +896,7 @@ class SubscribeChain(ChainBase):
             msgstr = "洗版"
         logger.info(f'{mediainfo.title_year} 完成{msgstr}')
         # 新增订阅历史
-        self.subscribehistoryoper.add(**subscribe.to_dict())
+        self.subscribeoper.add_history(**subscribe.to_dict())
         # 删除订阅
         self.subscribeoper.delete(subscribe.id)
         # 发送通知

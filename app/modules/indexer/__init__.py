@@ -5,7 +5,7 @@ from ruamel.yaml import CommentedMap
 
 from app.core.config import settings
 from app.core.context import TorrentInfo
-from app.db.sitestatistic_oper import SiteStatisticOper
+from app.db.site_oper import SiteOper
 from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
@@ -160,9 +160,9 @@ class IndexerModule(_ModuleBase):
         # 统计索引情况
         domain = StringUtils.get_url_domain(site.get("domain"))
         if error_flag:
-            SiteStatisticOper().fail(domain)
+            SiteOper().fail(domain)
         else:
-            SiteStatisticOper().success(domain=domain, seconds=seconds)
+            SiteOper().success(domain=domain, seconds=seconds)
 
         # 返回结果
         if not result_array or len(result_array) == 0:
