@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import List, Optional, Dict, Tuple, Generator, Any
+from typing import List, Optional, Dict, Tuple, Generator, Any, Union
 from urllib.parse import quote_plus
 
 from cachetools import TTLCache, cached
@@ -9,7 +9,6 @@ from plexapi.server import PlexServer
 from requests import Response, Session
 
 from app import schemas
-from app.core.config import settings
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
@@ -238,7 +237,7 @@ class Plex:
         if not self._plex:
             return None, {}
         if item_id:
-            videos = self._plex.fetchItem(int(item_id))
+            videos = self.__fetch_item(item_id)
         else:
             # 兼容年份为空的场景
             kwargs = {"year": year} if year else {}
@@ -274,7 +273,7 @@ class Plex:
     def get_remote_image_by_id(self, item_id: str, image_type: str, depth: int = 0) -> Optional[str]:
         """
         根据ItemId从Plex查询图片地址
-        :param item_id: 在Emby中的ID
+        :param item_id: 在Plex中的ID
         :param image_type: 图片的类型，Poster或者Backdrop等
         :param depth: 当前递归深度，默认为0
         :return: 图片对应在TMDB中的URL
@@ -392,7 +391,7 @@ class Plex:
         if not self._plex:
             return None
         try:
-            item = self._plex.fetchItem(int(itemid))
+            item = self.__fetch_item(itemid)
             ids = self.__get_ids(item.guids)
             path = None
             if item.locations:
@@ -445,6 +444,15 @@ class Plex:
                     break
 
         return ids
+
+    def __fetch_item(self, item_id: Union[int, str]):
+        """
+        根据给定的item_id获取媒体项
+        :param item_id: 媒体项的ID，可以是整数或字符串，如果是字符串且表示为数字，将会被转换为整数
+        """
+        if isinstance(item_id, str) and item_id.isdigit():
+            item_id = int(item_id)
+        return self._plex.fetchItem(item_id)
 
     def get_items(self, parent: str, start_index: int = 0, limit: int = 100) -> Generator:
         """
