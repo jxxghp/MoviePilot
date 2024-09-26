@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from typing import Set, Tuple, Optional, Union, List, Dict
+from typing import Set, Tuple, Optional, Union, List
 
 from qbittorrentapi import TorrentFilesList
 from torrentool.torrent import Torrent
@@ -8,7 +8,6 @@ from torrentool.torrent import Torrent
 from app import schemas
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
-from app.helper.downloader import DownloaderHelper
 from app.log import logger
 from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
@@ -18,23 +17,14 @@ from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
 
-class QbittorrentModule(_ModuleBase, _DownloaderBase):
+class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
 
     def init_module(self) -> None:
         """
         初始化模块
         """
-        # 读取下载器配置
-        self._instances: Dict[str, Qbittorrent] = {}
-        configs = DownloaderHelper().get_downloader_conf()
-        if not configs:
-            return
-        for conf in configs:
-            if conf.type == "qbittorrent" and conf.enabled:
-                self._instances[conf.name] = Qbittorrent(**conf.config)
-                if conf.default:
-                    self._default_server_name = conf.name
-                    self._default_server = self._instances[conf.name]
+        super().init_service(service_name=Qbittorrent.__name__.lower(),
+                             service_type=Qbittorrent)
 
     @staticmethod
     def get_name() -> str:

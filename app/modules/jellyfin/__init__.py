@@ -1,8 +1,7 @@
-from typing import Optional, Tuple, Union, Any, List, Generator, Dict
+from typing import Optional, Tuple, Union, Any, List, Generator
 
 from app import schemas
 from app.core.context import MediaInfo
-from app.helper.mediaserver import MediaServerHelper
 from app.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.jellyfin.jellyfin import Jellyfin
@@ -10,22 +9,14 @@ from app.schemas import MediaServerConf
 from app.schemas.types import MediaType
 
 
-class JellyfinModule(_ModuleBase, _MediaServerBase):
+class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
 
     def init_module(self) -> None:
         """
         初始化模块
         """
-        # 读取媒体服务器配置
-        self._instances: Dict[str, Jellyfin] = {}
-        self._configs: Dict[str, MediaServerConf] = {}
-        mediaservers = MediaServerHelper().get_mediaservers()
-        if not mediaservers:
-            return
-        for server in mediaservers:
-            if server.type == "jellyfin" and server.enabled:
-                self._configs[server.name] = server
-                self._instances[server.name] = Jellyfin(**server.config, sync_libraries=server.sync_libraries)
+        super().init_service(service_name=Jellyfin.__name__.lower(),
+                             service_type=lambda conf: Jellyfin(**conf.config, sync_libraries=conf.sync_libraries))
 
     @staticmethod
     def get_name() -> str:
@@ -180,8 +171,8 @@ class JellyfinModule(_ModuleBase, _MediaServerBase):
             return server.get_librarys(username=username, hidden=hidden)
         return None
 
-    def mediaserver_items(self, server: str, library_id: str, start_index: int = 0, limit: int = 100) -> Optional[
-        Generator]:
+    def mediaserver_items(self, server: str, library_id: str, start_index: int = 0, limit: int = 100) \
+            -> Optional[Generator]:
         """
         媒体库项目列表
         """

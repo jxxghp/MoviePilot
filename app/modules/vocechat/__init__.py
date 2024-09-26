@@ -3,28 +3,20 @@ from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.core.config import settings
 from app.core.context import Context, MediaInfo
-from app.helper.notification import NotificationHelper
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.vocechat.vocechat import VoceChat
 from app.schemas import MessageChannel, CommingMessage, Notification
 
 
-class VoceChatModule(_ModuleBase, _MessageBase):
+class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
 
     def init_module(self) -> None:
         """
         初始化模块
         """
-        clients = NotificationHelper().get_clients()
-        if not clients:
-            return
-        self._configs = {}
-        self._instances = {}
-        for client in clients:
-            if client.type == "vocechat" and client.enabled:
-                self._configs[client.name] = client
-                self._instances[client.name] = VoceChat(**client.config)
+        super().init_service(service_name=VoceChat.__name__.lower(),
+                             service_type=VoceChat)
 
     @staticmethod
     def get_name() -> str:

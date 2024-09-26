@@ -4,28 +4,20 @@ from typing import Optional, Union, List, Tuple, Any
 
 from app.core.config import settings
 from app.core.context import MediaInfo, Context
-from app.helper.notification import NotificationHelper
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.slack.slack import Slack
 from app.schemas import MessageChannel, CommingMessage, Notification
 
 
-class SlackModule(_ModuleBase, _MessageBase):
+class SlackModule(_ModuleBase, _MessageBase[Slack]):
 
     def init_module(self) -> None:
         """
         初始化模块
         """
-        clients = NotificationHelper().get_clients()
-        if not clients:
-            return
-        self._configs = {}
-        self._instances = {}
-        for client in clients:
-            if client.type == "slack" and client.enabled:
-                self._configs[client.name] = client
-                self._instances[client.name] = Slack(**client.config, name=client.name)
+        super().init_service(service_name=Slack.__name__.lower(),
+                             service_type=Slack)
 
     @staticmethod
     def get_name() -> str:

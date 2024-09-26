@@ -1,28 +1,20 @@
 from typing import Optional, Union, List, Tuple, Any
 
 from app.core.context import MediaInfo, Context
-from app.helper.notification import NotificationHelper
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.synologychat.synologychat import SynologyChat
 from app.schemas import MessageChannel, CommingMessage, Notification
 
 
-class SynologyChatModule(_ModuleBase, _MessageBase):
+class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
 
     def init_module(self) -> None:
         """
         初始化模块
         """
-        clients = NotificationHelper().get_clients()
-        if not clients:
-            return
-        self._configs = {}
-        self._instances = {}
-        for client in clients:
-            if client.type == "synologychat" and client.enabled:
-                self._configs[client.name] = client
-                self._instances[client.name] = SynologyChat(**client.config)
+        super().init_service(service_name=SynologyChat.__name__.lower(),
+                             service_type=SynologyChat)
 
     @staticmethod
     def get_name() -> str:

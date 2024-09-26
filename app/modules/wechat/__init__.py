@@ -2,7 +2,6 @@ import xml.dom.minidom
 from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.core.context import Context, MediaInfo
-from app.helper.notification import NotificationHelper
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
@@ -11,21 +10,14 @@ from app.schemas import MessageChannel, CommingMessage, Notification
 from app.utils.dom import DomUtils
 
 
-class WechatModule(_ModuleBase, _MessageBase):
+class WechatModule(_ModuleBase, _MessageBase[WeChat]):
 
     def init_module(self) -> None:
         """
         初始化模块
         """
-        clients = NotificationHelper().get_clients()
-        if not clients:
-            return
-        self._configs = {}
-        self._instances = {}
-        for client in clients:
-            if client.type == "wechat" and client.enabled:
-                self._configs[client.name] = client
-                self._instances[client.name] = WeChat(**client.config)
+        super().init_service(service_name=WeChat.__name__.lower(),
+                             service_type=WeChat)
 
     @staticmethod
     def get_name() -> str:
