@@ -89,6 +89,16 @@ class FileManagerModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
+    def support_transtype(self, storage: str) -> Optional[Dict[str, str]]:
+        """
+        支持的整理方式
+        """
+        storage_oper = self.__get_storage_oper(storage)
+        if not storage_oper:
+            logger.error(f"不支持 {storage} 的整理方式获取")
+            return None
+        return storage_oper.support_transtype()
+
     def recommend_name(self, meta: MetaBase, mediainfo: MediaInfo) -> Optional[str]:
         """
         获取重命名后的名称
