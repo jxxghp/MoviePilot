@@ -206,7 +206,7 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
         :return: 返回指定名称的实例，若 name 为 None 则返回默认实例
         """
         if name:
-            return self.get_instance(name)
+            return self._instances.get(name)
         return self._default_server
 
     def get_configs(self) -> List[DownloaderConf]:
