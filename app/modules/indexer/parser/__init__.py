@@ -36,7 +36,7 @@ class SiteSchema(Enum):
 
 class SiteParserBase(metaclass=ABCMeta):
     # 站点模版
-    schema = SiteSchema.NexusPhp
+    schema = None
     # 请求模式 cookie/apikey
     request_mode = "cookie"
 
@@ -45,7 +45,6 @@ class SiteParserBase(metaclass=ABCMeta):
                  site_cookie: str,
                  apikey: str,
                  token: str,
-                 index_html: str,
                  session: Session = None,
                  ua: str = None,
                  emulate: bool = False,
@@ -61,12 +60,11 @@ class SiteParserBase(metaclass=ABCMeta):
         self._site_domain = __split_url.netloc
         self._base_url = f"{__split_url.scheme}://{__split_url.netloc}"
         self._site_cookie = site_cookie
-        self._index_html = index_html
         self._session = session if session else None
         self._ua = ua
         self._emulate = emulate
         self._proxy = proxy
-
+        self._index_html = ""
         # 用户信息
         self.username = None
         self.userid = None
@@ -156,6 +154,8 @@ class SiteParserBase(metaclass=ABCMeta):
         解析站点信息
         :return:
         """
+        # 获取站点首页html
+        self._index_html = self._get_page_content(url=self._site_url)
         # 检查是否已经登录
         if not self._parse_logged_in(self._index_html):
             return
@@ -194,7 +194,6 @@ class SiteParserBase(metaclass=ABCMeta):
             )
         # 解析用户做种信息
         self._parse_seeding_pages()
-        self.seeding_info = json.dumps(self.seeding_info)
 
     def _pase_unread_msgs(self):
         """

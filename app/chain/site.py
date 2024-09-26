@@ -65,10 +65,10 @@ class SiteChain(ChainBase):
         :param site:  站点
         :return: 用户数据
         """
-        userdata = self.run_module("refresh_userdata", site=site)
+        userdata: SiteUserData = self.run_module("refresh_userdata", site=site)
         if userdata:
             self.siteoper.update_userdata(domain=StringUtils.get_url_domain(site.get("domain")),
-                                          payload=userdata)
+                                          payload=userdata.dict())
         return userdata
 
     def refresh_userdatas(self) -> None:

@@ -1,9 +1,11 @@
+import json
 from datetime import datetime
 from typing import Tuple, List
 
 from app.db import DbOper
 from app.db.models.site import Site
 from app.db.models.siteuserdata import SiteUserData
+from app.utils.object import ObjectUtils
 
 
 class SiteOper(DbOper):
@@ -120,6 +122,9 @@ class SiteOper(DbOper):
             SiteUserData.update(self._db, payload)
         else:
             # 不存在则插入
+            for key, value in payload.items():
+                if ObjectUtils.is_obj(value):
+                    payload[key] = json.dumps(value)
             SiteUserData(**payload).create(self._db)
         return True, "更新站点用户数据成功"
 

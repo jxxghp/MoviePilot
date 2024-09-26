@@ -10,6 +10,7 @@ from app.helper.module import ModuleHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.modules import _ModuleBase
+from app.modules.indexer.parser import SiteParserBase
 from app.modules.indexer.spider import TorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
@@ -30,8 +31,10 @@ class IndexerModule(_ModuleBase):
 
     def init_module(self) -> None:
         # 加载模块
-        self._site_schemas = ModuleHelper.load('app.modules.indexer.parser',
-                                               filter_func=lambda _, obj: hasattr(obj, 'schema'))
+        self._site_schemas = ModuleHelper.load(
+            'app.modules.indexer.parser',
+            filter_func=lambda _, obj: hasattr(obj, 'schema') and getattr(obj, 'schema') is not None)
+        pass
 
     @staticmethod
     def get_name() -> str:
@@ -214,12 +217,12 @@ class IndexerModule(_ModuleBase):
         :return: 用户数据
         """
 
-        def __get_site_obj():
+        def __get_site_obj() -> Optional[SiteParserBase]:
             """
             获取站点解析器
             """
             for site_schema in self._site_schemas:
-                if site_schema.schema == site.get("schema"):
+                if site_schema.schema.value == site.get("schema"):
                     return site_schema(
                         site_name=site.get("name"),
                         url=site.get("url"),
@@ -232,13 +235,14 @@ class IndexerModule(_ModuleBase):
 
         site_obj = __get_site_obj()
         if not site_obj:
-            logger.warn(f"站点  {site.get('name')} 未找到站点解析器: {site.get('schema')}")
+            if not site.get("public"):
+                logger.warn(f"站点  {site.get('name')} 未找到站点解析器，schema：{site.get('schema')}")
             return None
 
         # 获取用户数据
-        logger.debug(f"站点 {site.get('name')} 开始以 {site.get('schema')} 模型解析")
+        logger.info(f"站点 {site.get('name')} 开始以 {site.get('schema')} 模型解析数据...")
         site_obj.parse()
-        logger.debug(f"站点 {site.get('name')} 解析完成")
+        logger.debug(f"站点 {site.get('name')} 数据解析完成")
         return SiteUserData(
             domain=StringUtils.get_url_domain(site.get("url")),
             userid=site_obj.userid,
@@ -251,11 +255,11 @@ class IndexerModule(_ModuleBase):
             bonus=site_obj.bonus,
             seeding=site_obj.seeding,
             seeding_size=site_obj.seeding_size,
-            seeding_info=site_obj.seeding_info,
+            seeding_info=site_obj.seeding_info or [],
             leeching=site_obj.leeching,
             leeching_size=site_obj.leeching_size,
             message_unread=site_obj.message_unread,
-            message_unread_contents=site_obj.message_unread_contents,
+            message_unread_contents=site_obj.message_unread_contents or [],
             updated_at=datetime.now().strftime('%Y-%m-%d'),
             err_msg=site_obj.err_msg
         )
