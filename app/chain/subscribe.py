@@ -333,7 +333,7 @@ class SubscribeChain(ChainBase):
 
             # 优先级过滤规则
             if subscribe.best_version:
-                rule_groups = self.systemconfig.get(SystemConfigKey.BeseVersionFilterRuleGroups)
+                rule_groups = self.systemconfig.get(SystemConfigKey.BestVersionFilterRuleGroups)
             else:
                 rule_groups = self.systemconfig.get(SystemConfigKey.SubscribeFilterRuleGroups)
 
@@ -659,7 +659,7 @@ class SubscribeChain(ChainBase):
 
                     # 过滤规则
                     if subscribe.best_version:
-                        rule_groups = self.systemconfig.get(SystemConfigKey.BeseVersionFilterRuleGroups)
+                        rule_groups = self.systemconfig.get(SystemConfigKey.BestVersionFilterRuleGroups)
                     else:
                         rule_groups = self.systemconfig.get(SystemConfigKey.SubscribeFilterRuleGroups)
                     result: List[TorrentInfo] = self.filter_torrents(

@@ -100,7 +100,7 @@ class SystemConfigKey(Enum):
     # 订阅默认参数
     SubscribeDefaultParams = "SubscribeDefaultParams"
     # 洗版默认过滤规则组
-    BeseVersionFilterRuleGroups = "BeseVersionFilterRuleGroups"
+    BestVersionFilterRuleGroups = "BestVersionFilterRuleGroups"
     # 订阅统计
     SubscribeReport = "SubscribeReport"
     # 用户自定义CSS
