@@ -85,3 +85,9 @@ class StorageChain(ChainBase):
         存储使用情况
         """
         return self.run_module("storage_usage", storage=storage)
+
+    def support_transtype(self, storage: str) -> Optional[str]:
+        """
+        获取支持的整理方式
+        """
+        return self.run_module("support_transtype", storage=storage)

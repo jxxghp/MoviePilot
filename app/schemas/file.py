@@ -41,3 +41,8 @@ class StorageUsage(BaseModel):
     total: float = 0.0
     # 剩余空间
     available: float = 0.0
+
+
+class StorageTransType(BaseModel):
+    # 传输类型
+    transtype: Optional[dict] = {}

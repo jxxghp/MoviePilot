@@ -205,3 +205,14 @@ def usage(name: str, _: User = Depends(get_current_active_superuser)) -> Any:
     if ret:
         return ret
     return schemas.StorageUsage()
+
+
+@router.get("/transtype/{name}", summary="支持的整理方式获取", response_model=schemas.StorageTransType)
+def transtype(name: str, _: User = Depends(get_current_active_superuser)) -> Any:
+    """
+    查询支持的整理方式
+    """
+    ret = StorageChain().support_transtype(name)
+    if ret:
+        return schemas.StorageTransType(transtype=ret)
+    return schemas.StorageTransType()
