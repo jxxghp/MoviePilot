@@ -320,7 +320,7 @@ class FileManagerModule(_ModuleBase):
                                 fileitem=fileitem,
                                 message="未找到有效的媒体库目录")
 
-        logger.info(f"获取整理目标路径：{target_path}")
+        logger.info(f"获取整理目标路径：【{target_storage}】{target_path}")
         # 整理
         return self.transfer_media(fileitem=fileitem,
                                    in_meta=meta,
@@ -377,7 +377,6 @@ class FileManagerModule(_ModuleBase):
 
         if (fileitem.storage != target_storage
                 and fileitem.storage != "local" and target_storage != "local"):
-            logger.error(f"不支持 {fileitem.storage} 到 {target_storage} 的文件整理")
             return None, f"不支持 {fileitem.storage} 到 {target_storage} 的文件整理"
 
         # 源操作对象
@@ -385,7 +384,6 @@ class FileManagerModule(_ModuleBase):
         # 目的操作对象
         target_oper: StorageBase = self.__get_storage_oper(target_storage)
         if not source_oper or not target_oper:
-            logger.error(f"不支持的存储类型：{fileitem.storage} 或 {target_storage}")
             return None, f"不支持的存储类型：{fileitem.storage} 或 {target_storage}"
 
         # 加锁
@@ -406,12 +404,11 @@ class FileManagerModule(_ModuleBase):
                 if state:
                     return __get_targetitem(target_file), ""
                 else:
-                    return None, f"{fileitem.path} {transfer_type}失败"
+                    return None, f"{fileitem.path} {transfer_type} 失败"
             elif fileitem.storage == "local" and target_storage != "local":
                 # 本地到网盘
                 filepath = Path(fileitem.path)
                 if not filepath.exists():
-                    logger.error(f"文件 {filepath} 不存在")
                     return None, f"文件 {filepath} 不存在"
                 if transfer_type == "copy":
                     # 复制
@@ -606,10 +603,10 @@ class FileManagerModule(_ModuleBase):
                                                                        target_file=new_file,
                                                                        transfer_type=transfer_type)
                             if new_item:
-                                logger.info(f"字幕 {sub_item.name} {transfer_type}完成")
+                                logger.info(f"字幕 {sub_item.name} 整理完成")
                                 break
                             else:
-                                logger.error(f"字幕 {sub_item.name} {transfer_type}失败：{errmsg}")
+                                logger.error(f"字幕 {sub_item.name} 整理失败：{errmsg}")
                                 return False, errmsg
                         except Exception as error:
                             logger.info(f"字幕 {new_file} 出错了,原因: {str(error)}")
@@ -637,7 +634,6 @@ class FileManagerModule(_ModuleBase):
         pending_file_list: List[FileItem] = [file for file in file_list if Path(file.name).stem == org_path.name
                                              and f".{file.extension.lower()}" in settings.RMT_AUDIOEXT]
         if len(pending_file_list) == 0:
-            logger.debug(f"{dir_name} 目录下没有找到匹配的音轨文件")
             return True, f"{dir_name} 目录下没有找到匹配的音轨文件"
         logger.debug("音轨文件清单：" + str(pending_file_list))
         for track_file in pending_file_list:
@@ -650,11 +646,11 @@ class FileManagerModule(_ModuleBase):
                                                            target_file=new_track_file,
                                                            transfer_type=transfer_type)
                 if new_item:
-                    logger.info(f"音轨文件 {file_name} {transfer_type}完成")
+                    logger.info(f"音轨文件 {file_name} 整理完成")
                 else:
-                    logger.error(f"音轨文件 {file_name} {transfer_type}失败：{errmsg}")
+                    logger.error(f"音轨文件 {file_name} 整理失败：{errmsg}")
             except Exception as error:
-                logger.error(f"音轨文件 {file_name} {transfer_type}失败：{str(error)}")
+                logger.error(f"音轨文件 {file_name} 整理失败：{str(error)}")
         return True, ""
 
     def __transfer_dir(self, fileitem: FileItem, transfer_type: str,
@@ -669,13 +665,11 @@ class FileManagerModule(_ModuleBase):
         # 获取目标目录
         target_oper: StorageBase = self.__get_storage_oper(target_storage)
         if not target_oper:
-            logger.error(f"不支持到 {target_storage} 的文件整理")
             return None, f"不支持的文件存储：{target_storage}"
 
-        logger.info(f"正在{transfer_type}目录：{fileitem.path} 到 {target_path}")
+        logger.info(f"正在整理目录：{fileitem.path} 到 {target_path}")
         target_item = target_oper.get_folder(target_path)
         if not target_item:
-            logger.info(f"获取目标目录失败：{target_path}")
             return None, f"获取目标目录失败：{target_path}"
         # 处理所有文件
         state, errmsg = self.__transfer_dir_files(fileitem=fileitem,
@@ -683,10 +677,8 @@ class FileManagerModule(_ModuleBase):
                                                   target_path=target_path,
                                                   transfer_type=transfer_type)
         if state:
-            logger.info(f"文件 {fileitem.path} {transfer_type}完成")
             return target_item, errmsg
         else:
-            logger.error(f"文件{fileitem.path} {transfer_type}失败：{errmsg}")
             return None, errmsg
 
     def __transfer_dir_files(self, fileitem: FileItem, transfer_type: str,
@@ -750,7 +742,6 @@ class FileManagerModule(_ModuleBase):
                                                    target_file=target_file,
                                                    transfer_type=transfer_type)
         if new_item:
-            logger.debug(f"文件 {fileitem.path} {transfer_type}完成")
             # 处理其他相关文件
             self.__transfer_other_files(fileitem=fileitem,
                                         target_storage=target_storage,
@@ -758,7 +749,6 @@ class FileManagerModule(_ModuleBase):
                                         transfer_type=transfer_type)
             return new_item, errmsg
 
-        logger.error(f"文件 {fileitem.path} {transfer_type}失败：{errmsg}")
         return None, errmsg
 
     @staticmethod

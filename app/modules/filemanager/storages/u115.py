@@ -340,10 +340,11 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 logger.warn(f"115请求上传出错")
                 return None
             elif ticket.is_done:
-                logger.warn(f"115请求上传失败：文件已存在")
-                return None
+                file_path = Path(fileitem.path) / path.name
+                logger.warn(f"115上传：{file_path} 文件已存在")
+                return self.get_item(file_path)
             else:
-                auth = oss2.Auth(**ticket.oss_token)
+                auth = oss2.StsAuth(**ticket.oss_token)
                 bucket = oss2.Bucket(
                     auth=auth,
                     endpoint=ticket.oss_endpoint,
@@ -356,18 +357,19 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 )
                 result = por.resp.response.json()
                 if result:
-                    fileitem = result.get('data')
-                    logger.info(f"115上传文件成功：{fileitem}")
+                    result_data = result.get('data')
+                    logger.info(f"115上传文件成功：{result_data.get('file_name')}")
                     return schemas.FileItem(
                         storage=self.schema.value,
-                        fileid=fileitem.get('file_id'),
+                        fileid=result_data.get('file_id'),
                         parent_fileid=fileitem.fileid,
                         type="file",
-                        name=fileitem.get('file_name'),
-                        path=f"{fileitem.path}{fileitem.get('file_name')}",
-                        size=fileitem.get('file_size'),
-                        extension=Path(fileitem.get('file_name')).suffix[1:],
-                        pickcode=fileitem.get('pickcode')
+                        name=result_data.get('file_name'),
+                        basename=Path(result_data.get('file_name')).stem,
+                        path=f"{fileitem.path}{result_data.get('file_name')}",
+                        size=result_data.get('file_size'),
+                        extension=Path(result_data.get('file_name')).suffix[1:],
+                        pickcode=result_data.get('pickcode')
                     )
                 else:
                     logger.warn(f"115上传文件失败：{por.resp.response.text}")
