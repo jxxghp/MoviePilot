@@ -144,7 +144,12 @@ class FilterModule(_ModuleBase):
 
     def init_module(self) -> None:
         self.parser = RuleParser()
-        # 加载用户自定义规则，如跟内置规则冲突，以用户自定义规则为准
+        self.__init_custom_rules()
+
+    def __init_custom_rules(self):
+        """
+        加载用户自定义规则，如跟内置规则冲突，以用户自定义规则为准
+        """
         custom_rules = self.rulehelper.get_custom_rules()
         for rule in custom_rules:
             logger.info(f"加载自定义规则 {rule.id} - {rule.name}")
@@ -178,6 +183,8 @@ class FilterModule(_ModuleBase):
         if not rule_groups:
             return torrent_list
         self.media = mediainfo
+        # 重新加载自定义规则
+        self.__init_custom_rules()
         # 查询规则表详情
         groups = self.rulehelper.get_rule_group_by_media(media=mediainfo, group_names=rule_groups)
         if groups:
@@ -357,7 +364,8 @@ class FilterModule(_ModuleBase):
         if downloadvolumefactor is not None:
             if torrent.downloadvolumefactor != downloadvolumefactor:
                 # FREE规则不匹配
-                logger.debug(f"种子 {torrent.site_name} - {torrent.title} FREE值 {torrent.downloadvolumefactor} 不是 {downloadvolumefactor}")
+                logger.debug(
+                    f"种子 {torrent.site_name} - {torrent.title} FREE值 {torrent.downloadvolumefactor} 不是 {downloadvolumefactor}")
                 return False
         return True
 
