@@ -50,14 +50,14 @@ class WeChat:
         self._appid = WECHAT_APP_ID
         self._proxy = WECHAT_PROXY or "https://qyapi.weixin.qq.com"
 
-        if self._corpid and self._appsecret and self._appid:
-            self.__get_access_token()
-
         if self._proxy:
             self._proxy = self._proxy.rstrip("/")
             self._send_msg_url = f"{self._proxy}/{self._send_msg_url}"
             self._token_url = f"{self._proxy}/{self._token_url}"
             self._create_menu_url = f"{self._proxy}/{self._create_menu_url}"
+
+        if self._corpid and self._appsecret and self._appid:
+            self.__get_access_token()
 
     def get_state(self):
         """
