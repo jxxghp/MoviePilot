@@ -662,8 +662,8 @@ class Jellyfin:
 
         return eventItem
 
-
-    def __format_item_info(self, item) -> Optional[schemas.MediaServerItem]:
+    @staticmethod
+    def __format_item_info(item) -> Optional[schemas.MediaServerItem]:
         """
         格式化item
         """
@@ -672,7 +672,8 @@ class Jellyfin:
             if not user_data:
                 user_state = None
             else:
-                resume = item.get("UserData", {}).get("PlaybackPositionTicks") and item.get("UserData", {}).get("PlaybackPositionTicks") > 0
+                resume = item.get("UserData", {}).get("PlaybackPositionTicks") and item.get("UserData", {}).get(
+                    "PlaybackPositionTicks") > 0
                 last_played_date = item.get("UserData", {}).get("LastPlayedDate")
                 if last_played_date is not None and "." in last_played_date:
                     last_played_date = last_played_date.split(".")[0]
@@ -687,7 +688,6 @@ class Jellyfin:
             tmdbid = item.get("ProviderIds", {}).get("Tmdb")
             return schemas.MediaServerItem(
                 server="jellyfin",
-                id=item.get("Id"),
                 library=item.get("ParentId"),
                 item_id=item.get("Id"),
                 item_type=item.get("Type"),
@@ -725,26 +725,30 @@ class Jellyfin:
             logger.error(f"连接Users/{self.user}/Items/{itemid}：" + str(e))
         return None
 
-    def get_items(self, parent: str, start_index: int = 0, limit: int = 100) -> Generator:
+    def get_items(self, parent: Union[str, int], start_index: int = 0, limit: Optional[int] = -1) \
+            -> Optional[Generator]:
         """
-        获取媒体服务器所有媒体库列表
-        :param parent: 父媒体库ID
-        :param start_index: 开始索引，用于分页
-        :param limit: 每次请求返回的项目数量
-        :return: 生成器 schemas.MediaServerItem
+        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+
+        :param parent: 媒体库ID，用于标识要获取的媒体库
+        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
+        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
+
+        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
         """
-        if not parent:
-            yield None
-        if not self._host or not self._apikey:
-            yield None
+        if not parent or not self._host or not self._apikey:
+            return None
         url = f"{self._host}Users/{self.user}/Items"
         params = {
-            "parentId": parent,
+            "ParentId": parent,
             "api_key": self._apikey,
             "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,UserDataLastPlayedDate,ParentId",
-            "StartIndex": start_index,
-            "Limit": limit,
         }
+        if limit is not None and limit != -1:
+            params.update({
+                "StartIndex": start_index,
+                "Limit": limit
+            })
         try:
             res = RequestUtils().get_res(url, params)
             if not res or res.status_code != 200:
@@ -760,7 +764,6 @@ class Jellyfin:
                     yield self.__format_item_info(item)
         except Exception as e:
             logger.error(f"连接Users/Items出错：" + str(e))
-        yield None
 
     def get_data(self, url: str) -> Optional[Response]:
         """

@@ -465,7 +465,6 @@ class Plex:
         )
 
         return schemas.MediaServerItem(
-            id=item.ratingKey,
             server="plex",
             library=item.librarySectionID,
             item_id=item.key,
@@ -480,22 +479,27 @@ class Plex:
             user_state=user_state,
         )
 
-    def get_items(self, parent: str, start_index: int = 0, limit: int = 100) -> Generator:
+    def get_items(self, parent: Union[str, int], start_index: int = 0, limit: Optional[int] = -1) \
+            -> Optional[Generator]:
         """
-        获取媒体服务器所有媒体库列表
-        :param parent: 父媒体库ID
-        :param start_index: 开始索引，用于分页
-        :param limit: 每次请求返回的项目数量
-        :return: 生成器 schemas.MediaServerItem
+        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+
+        :param parent: 媒体库ID，用于标识要获取的媒体库
+        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
+        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
+
+        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
         """
-        if not parent:
-            yield None
-        if not self._plex:
-            yield None
+        if not parent or not self._plex:
+            return None
         try:
             section = self._plex.library.sectionByID(int(parent))
             if section:
-                for item in section.all(container_start=start_index, limit=limit):
+                if limit is None or limit == -1:
+                    items = section.all()
+                else:
+                    items = section.all(container_start=start_index, container_size=limit, maxresults=limit)
+                for item in items:
                     try:
                         if not item:
                             continue
@@ -505,7 +509,6 @@ class Plex:
                         continue
         except Exception as err:
             logger.error(f"获取媒体库列表出错：{str(err)}")
-        yield None
 
     def get_webhook_message(self, form: any) -> Optional[schemas.WebhookEventInfo]:
         """

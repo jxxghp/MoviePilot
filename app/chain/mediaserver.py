@@ -1,6 +1,6 @@
 import json
 import threading
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Generator
 
 from app import schemas
 from app.chain import ChainBase
@@ -26,19 +26,47 @@ class MediaServerChain(ChainBase):
         """
         return self.run_module("mediaserver_librarys", server=server, username=username, hidden=hidden)
 
-    def items(self, server: str, library_id: Union[str, int], start_index: int = 0, limit: int = 100) \
-            -> List[schemas.MediaServerItem]:
+    def items(self, server: str, library_id: Union[str, int], start_index: int = 0, limit: Optional[int] = -1) \
+            -> Optional[Generator]:
         """
-        获取媒体服务器所有项目
+        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+
+        :param server: 媒体服务器名称
+        :param library_id: 媒体库ID，用于标识要获取的媒体库
+        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
+        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
+
+        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
+
+        说明：
+        - 特别注意的是，这里使用yield from返回迭代器，避免同时使用return与yield导致Python生成器解析异常
+        - 如果 `limit` 为 None 或 -1 时，表示一次性获取所有数据，分页处理将不再生效
+        - 在这种情况下，内存消耗可能会较大，特别是在数据量非常大的场景下
+        - 如果未来评估结果显示，不分页场景下的内存消耗远大于分页处理时的网络请求开销，可以考虑在此方法中实现自分页的处理
+        - 即通过 `while` 循环在上层进行分页控制，逐步获取所有数据，避免内存爆炸，当前该逻辑由具体实例来实现不分页的处理
+        - Plex 实际上已默认支持内部分页处理，Jellyfin 与 Emby 获取数据时存在内部过滤场景，如排除合集等，分页数据可能是错误的
+        if limit is not None and limit != -1:
+            yield from self.run_module("mediaserver_items", server=server, library_id=library_id,
+                                   start_index=start_index, limit=limit)
+        else:
+            # 自分页逻辑，通过循环逐步获取所有数据
+            page_size = 10
+            while True:
+                data_generator = self.run_module("mediaserver_items", server=server, library_id=library_id,
+                                                 start_index=start_index, limit=page_size)
+                if not data_generator:
+                    break
+                count = 0
+                for item in data_generator:
+                    if item:
+                        count += 1
+                        yield item
+                if count < page_size:
+                    break
+                start_index += page_size
         """
-        data = []
-        data_generator = self.run_module("mediaserver_items", server=server, library_id=library_id,
-                                         start_index=start_index, limit=limit)
-        if data_generator:
-            for item in data_generator:
-                if item:
-                    data.append(item)
-        return data
+        yield from self.run_module("mediaserver_items", server=server, library_id=library_id,
+                                   start_index=start_index, limit=limit)
 
     def iteminfo(self, server: str, item_id: Union[str, int]) -> schemas.MediaServerItem:
         """
@@ -107,7 +135,7 @@ class MediaServerChain(ChainBase):
                         continue
                     logger.info(f"正在同步 {server_name} 媒体库 {library.name} ...")
                     library_count = 0
-                    for item in self.items(server_name, library.id):
+                    for item in self.items(server=server_name, library_id=library.id):
                         if not item or not item.item_id:
                             continue
                         logger.debug(f"正在同步 {item.title} ...")
