@@ -34,7 +34,6 @@ RUN apt-get update -y \
         rsync \
         ffmpeg \
         nano \
-        aria2 \
     && \
     if [ "$(uname -m)" = "x86_64" ]; \
         then ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
@@ -42,6 +41,7 @@ RUN apt-get update -y \
         then ln -s /usr/lib/aarch64-linux-musl/libc.so /lib/libc.musl-aarch64.so.1; \
     fi \
     && curl https://rclone.org/install.sh | bash \
+    && curl --insecure -fsSL https://raw.githubusercontent.com/DDS-Derek/Aria2-Pro-Core/master/aria2-install.sh | bash \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf \
