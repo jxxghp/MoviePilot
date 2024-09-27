@@ -423,15 +423,15 @@ class PluginHelper(metaclass=Singleton):
 
         # 遍历策略进行安装
         for strategy_name, pip_command in strategies:
-            logger.debug(f"PIP 尝试使用策略 {strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
+            logger.debug(f"[PIP] 尝试使用策略：{strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
             success, message = SystemUtils.execute_with_subprocess(pip_command)
             if success:
-                logger.debug(f"PIP 策略 {strategy_name} 安装依赖成功，输出：{message}")
+                logger.debug(f"[PIP] 策略：{strategy_name} 安装依赖成功，输出：{message}")
                 return True, message
             else:
-                logger.error(f"PIP 策略 {strategy_name} 安装依赖失败，错误信息：{message}")
+                logger.error(f"[PIP] 策略：{strategy_name} 安装依赖失败，错误信息：{message}")
 
-        return False, "所有依赖安装方式均失败，请检查网络连接或 PIP 配置"
+        return False, "[PIP] 所有策略均安装依赖失败，请检查网络连接或 PIP 配置"
 
     @staticmethod
     def __pip_install_with_fallback(requirements_file: Path) -> Tuple[bool, str]:
@@ -452,15 +452,15 @@ class PluginHelper(metaclass=Singleton):
 
         # 遍历策略进行安装
         for strategy_name, pip_command in strategies:
-            logger.debug(f"PIP 尝试使用策略 {strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
+            logger.debug(f"[PIP] 尝试使用策略：{strategy_name} 安装依赖，命令：{' '.join(pip_command)}")
             success, message = SystemUtils.execute_with_subprocess(pip_command)
             if success:
-                logger.debug(f"PIP 策略 {strategy_name} 安装依赖成功，输出：{message}")
+                logger.debug(f"[PIP] 策略：{strategy_name} 安装依赖成功，输出：{message}")
                 return True, message
             else:
-                logger.error(f"PIP 策略 {strategy_name} 安装依赖失败，错误信息：{message}")
+                logger.error(f"[PIP] 策略：{strategy_name} 安装依赖失败，错误信息：{message}")
 
-        return False, "所有PIP依赖安装方式均失败，请检查网络连接或 PIP 配置"
+        return False, "[PIP] 所有策略均安装依赖失败，请检查网络连接或 PIP 配置"
 
     @staticmethod
     def __request_with_fallback(url: str,
@@ -491,14 +491,14 @@ class PluginHelper(metaclass=Singleton):
 
         # 遍历策略并尝试请求
         for strategy_name, target_url, request_params in strategies:
-            logger.debug(f"GitHub 尝试使用策略 {strategy_name} 访问 {target_url}")
+            logger.debug(f"[GitHub] 尝试使用策略：{strategy_name} 请求 URL：{target_url}")
 
             try:
                 res = RequestUtils(**request_params).get_res(url=target_url, raise_exception=True)
-                logger.debug(f"GitHub 策略 {strategy_name} 访问成功，URL: {target_url}")
+                logger.debug(f"[GitHub] 请求成功，策略：{strategy_name}, URL: {target_url}")
                 return res
             except Exception as e:
-                logger.error(f"GitHub 策略 {strategy_name} 访问失败，URL: {target_url}，错误信息：{str(e)}")
+                logger.error(f"[GitHub] 请求失败，策略：{strategy_name}, URL: {target_url}，错误：{str(e)}")
 
-        logger.error(f"所有GitHub策略访问 {url} 均失败")
+        logger.error(f"[GitHub] 所有策略均请求失败，URL: {url}，请检查网络连接或 GitHub 配置")
         return None
