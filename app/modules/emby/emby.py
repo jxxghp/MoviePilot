@@ -692,7 +692,7 @@ class Emby:
         try:
             res = RequestUtils().get_res(url, params)
             if not res or res.status_code != 200:
-                yield None
+                return None
             items = res.json().get("Items") or []
             for item in items:
                 if not item:
