@@ -173,14 +173,21 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
             return server.get_librarys(username=username, hidden=hidden)
         return None
 
-    def mediaserver_items(self, server: str, library_id: str, start_index: int = 0, limit: int = 100) \
-            -> Optional[Generator]:
+    def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: int = 0,
+                          limit: Optional[int] = -1) -> Optional[Generator]:
         """
-        媒体库项目列表
+        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+
+        :param server: 媒体服务器名称
+        :param library_id: 媒体库ID，用于标识要获取的媒体库
+        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
+        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
+
+        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
         """
         server: Emby = self.get_instance(server)
         if server:
-            return server.get_items(library_id, start_index, limit)
+            yield from server.get_items(library_id, start_index, limit)
         return None
 
     def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[schemas.MediaServerItem]:

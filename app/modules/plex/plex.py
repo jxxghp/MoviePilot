@@ -392,23 +392,7 @@ class Plex:
             return None
         try:
             item = self.__fetch_item(itemid)
-            ids = self.__get_ids(item.guids)
-            path = None
-            if item.locations:
-                path = item.locations[0]
-            return schemas.MediaServerItem(
-                server="plex",
-                library=item.librarySectionID,
-                item_id=item.key,
-                item_type=item.type,
-                title=item.title,
-                original_title=item.originalTitle,
-                year=item.year,
-                tmdbid=ids['tmdb_id'],
-                imdbid=ids['imdb_id'],
-                tvdbid=ids['tvdb_id'],
-                path=path,
-            )
+            return self.__build_media_server_item(item)
         except Exception as err:
             logger.error(f"获取项目详情出错：{str(err)}")
         return None
@@ -454,64 +438,77 @@ class Plex:
             item_id = int(item_id)
         return self._plex.fetchItem(item_id)
 
-    def get_items(self, parent: str, start_index: int = 0, limit: int = 100) -> Generator:
+    def __build_media_server_item(self, item) -> Optional[schemas.MediaServerItem]:
         """
-        获取媒体服务器所有媒体库列表
-        :param parent: 父媒体库ID
-        :param start_index: 开始索引，用于分页
-        :param limit: 每次请求返回的项目数量
-        :return: 生成器 schemas.MediaServerItem
+        构造MediaServerItem
+        :param item: Plex媒体项目
+        :return: MediaServerItem
         """
-        if not parent:
-            yield None
-        if not self._plex:
-            yield None
+        if not item:
+            return None
+        ids = self.__get_ids(item.guids)
+        path = item.locations[0] if item.locations else None
+        playback_position = getattr(item, "viewOffset", None) or 0
+        duration = getattr(item, "duration", None) or 0
+        percentage = (playback_position / duration * 100) if duration > 0 else None
+        played = getattr(item, "isPlayed", None) or False
+        play_count = getattr(item, "viewCount", None) or 0
+        last_played_date = getattr(item, "lastViewedAt", None)
+
+        user_state = schemas.MediaServerItemUserState(
+            played=played,
+            resume=playback_position > 0,
+            last_played_date=last_played_date.isoformat() if last_played_date and hasattr(last_played_date,
+                                                                                          'isoformat') else None,
+            play_count=play_count,
+            percentage=percentage,
+        )
+
+        return schemas.MediaServerItem(
+            server="plex",
+            library=item.librarySectionID,
+            item_id=item.key,
+            item_type=item.type,
+            title=item.title,
+            original_title=item.originalTitle,
+            year=item.year,
+            tmdbid=ids.get("tmdb_id"),
+            imdbid=ids.get("imdb_id"),
+            tvdbid=ids.get("tvdb_id"),
+            path=path,
+            user_state=user_state,
+        )
+
+    def get_items(self, parent: Union[str, int], start_index: int = 0, limit: Optional[int] = -1) \
+            -> Optional[Generator]:
+        """
+        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+
+        :param parent: 媒体库ID，用于标识要获取的媒体库
+        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
+        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
+
+        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
+        """
+        if not parent or not self._plex:
+            return None
         try:
             section = self._plex.library.sectionByID(int(parent))
             if section:
-                for item in section.all(container_start=start_index, limit=limit):
+                if limit is None or limit == -1:
+                    items = section.all()
+                else:
+                    items = section.all(container_start=start_index, container_size=limit, maxresults=limit)
+                for item in items:
                     try:
                         if not item:
                             continue
-                        ids = self.__get_ids(item.guids)
-                        path = None
-                        if item.locations:
-                            path = item.locations[0]
-                        playback_position = item.viewOffset if hasattr(item, 'viewOffset') else 0
-                        duration = item.duration if hasattr(item, 'duration') else 0
-                        percentage = (playback_position / duration * 100) if duration > 0 else None
-                        played = item.isPlayed if hasattr(item, 'isPlayed') else False
-                        play_count = item.viewCount if hasattr(item, 'viewCount') else 0
-                        last_played_date = item.lastViewedAt if hasattr(item, 'lastViewedAt') else None
-                        user_state = schemas.MediaServerItemUserState(
-                            played=played,
-                            resume=playback_position > 0,
-                            last_played_date=last_played_date.isoformat() if last_played_date else None,
-                            play_count=play_count,
-                            percentage=percentage,
-                        )
-
-                        yield schemas.MediaServerItem(
-                            id=item.ratingKey,
-                            server="plex",
-                            library=item.librarySectionID,
-                            item_id=item.key,
-                            item_type=item.type,
-                            title=item.title,
-                            original_title=item.originalTitle,
-                            year=item.year,
-                            tmdbid=ids['tmdb_id'],
-                            imdbid=ids['imdb_id'],
-                            tvdbid=ids['tvdb_id'],
-                            path=path,
-                            user_state=user_state,
-                        )
+                        yield self.__build_media_server_item(item)
                     except Exception as e:
-                        logger.error(f"处理媒体项目时出错：{str(e)}, 跳过此项目。")
+                        logger.error(f"处理媒体项目时出错：{str(e)}, 跳过此项目")
                         continue
         except Exception as err:
             logger.error(f"获取媒体库列表出错：{str(err)}")
-        yield None
 
     def get_webhook_message(self, form: any) -> Optional[schemas.WebhookEventInfo]:
         """

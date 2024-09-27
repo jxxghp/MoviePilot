@@ -72,7 +72,6 @@ class MediaServerLibrary(BaseModel):
     link: Optional[str] = None
 
 
-
 class MediaServerItemUserState(BaseModel):
     # 已播放
     played: Optional[bool] = None
@@ -84,6 +83,7 @@ class MediaServerItemUserState(BaseModel):
     play_count: Optional[int] = None
     # 播放进度
     percentage: Optional[float] = None
+
 
 class MediaServerItem(BaseModel):
     """
