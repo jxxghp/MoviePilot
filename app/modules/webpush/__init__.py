@@ -4,24 +4,18 @@ from typing import Union, Tuple
 from pywebpush import webpush, WebPushException
 
 from app.core.config import global_vars, settings
-from app.helper.notification import NotificationHelper
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas import Notification
 
 
 class WebPushModule(_ModuleBase, _MessageBase):
+
     def init_module(self) -> None:
         """
         初始化模块
         """
-        clients = NotificationHelper().get_clients()
-        if not clients:
-            return
-        self._configs = {}
-        for client in clients:
-            if client.type == "webpush" and client.enabled:
-                self._configs[client.name] = client
+        super().init_service(service_name=self.get_name().lower())
 
     @staticmethod
     def get_name() -> str:
@@ -46,7 +40,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
         :return: 成功或失败
         """
         for conf in self._configs.values():
-            if not self.checkMessage(message, conf.name):
+            if not self.check_message(message, conf.name):
                 continue
             webpush_users = conf.config.get("WEBPUSH_USERNAME") or ""
             if webpush_users:

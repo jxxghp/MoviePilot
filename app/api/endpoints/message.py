@@ -1,8 +1,7 @@
 import json
 from typing import Union, Any, List
 
-from fastapi import APIRouter, BackgroundTasks, Depends
-from fastapi import Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pywebpush import WebPushException, webpush
 from sqlalchemy.orm import Session
 from starlette.responses import PlainTextResponse
@@ -15,7 +14,7 @@ from app.db import get_db
 from app.db.models import User
 from app.db.models.message import Message
 from app.db.user_oper import get_current_active_superuser
-from app.helper.notification import NotificationHelper
+from app.helper.serviceconfig import ServiceConfigHelper
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.schemas.types import MessageChannel
@@ -81,7 +80,7 @@ def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, int], 
     """
     微信验证响应
     """
-    clients = NotificationHelper().get_clients()
+    clients = ServiceConfigHelper.get_notification_configs()
     if not clients:
         return
     for client in clients:

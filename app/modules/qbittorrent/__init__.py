@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from typing import Set, Tuple, Optional, Union, List, Dict
+from typing import Set, Tuple, Optional, Union, List
 
 from qbittorrentapi import TorrentFilesList
 from torrentool.torrent import Torrent
@@ -8,7 +8,6 @@ from torrentool.torrent import Torrent
 from app import schemas
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
-from app.helper.downloader import DownloaderHelper
 from app.log import logger
 from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
@@ -18,23 +17,14 @@ from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
 
-class QbittorrentModule(_ModuleBase, _DownloaderBase):
+class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
 
     def init_module(self) -> None:
         """
         初始化模块
         """
-        # 读取下载器配置
-        self._servers: Dict[str, Qbittorrent] = {}
-        downloaders = DownloaderHelper().get_downloaders()
-        if not downloaders:
-            return
-        for server in downloaders:
-            if server.type == "qbittorrent" and server.enabled:
-                self._servers[server.name] = Qbittorrent(**server.config)
-                if server.default:
-                    self._default_server_name = server.name
-                    self._default_server = self._servers[server.name]
+        super().init_service(service_name=Qbittorrent.__name__.lower(),
+                             service_type=Qbittorrent)
 
     @staticmethod
     def get_name() -> str:
@@ -47,9 +37,9 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
         """
         测试模块连接性
         """
-        if not self._servers:
+        if not self._instances:
             return None
-        for name, server in self._servers.items():
+        for name, server in self._instances.items():
             if server.is_inactive():
                 server.reconnect()
             if not server.transfer_info():
@@ -63,7 +53,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
         """
         定时任务，每10分钟调用一次
         """
-        for name, server in self._servers.items():
+        for name, server in self._instances.items():
             if server.is_inactive():
                 logger.info(f"Qbittorrent下载器 {name} 连接断开，尝试重连 ...")
                 server.reconnect()
@@ -103,7 +93,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
             return None, None, f"种子文件不存在：{content}"
 
         # 获取下载器
-        server: Qbittorrent = self.get_server(downloader)
+        server: Qbittorrent = self.get_instance(downloader)
         if not server:
             return None
 
@@ -201,7 +191,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
         :return: 下载器中符合状态的种子列表
         """
         # 获取下载器
-        server: Qbittorrent = self.get_server(downloader)
+        server: Qbittorrent = self.get_instance(downloader)
         if not server:
             return None
 
@@ -274,7 +264,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
         :param downloader:  下载器
         :param transfer_type:   整理方式
         """
-        server: Qbittorrent = self.get_server(downloader)
+        server: Qbittorrent = self.get_instance(downloader)
         if not server:
             return None
         server.set_torrents_tag(ids=hashs, tags=['已整理'])
@@ -298,7 +288,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
         :param downloader:  下载器
         :return: bool
         """
-        server: Qbittorrent = self.get_server(downloader)
+        server: Qbittorrent = self.get_instance(downloader)
         if not server:
             return None
         return server.delete_torrents(delete_file=delete_file, ids=hashs)
@@ -311,7 +301,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
         :param downloader:  下载器
         :return: bool
         """
-        server: Qbittorrent = self.get_server(downloader)
+        server: Qbittorrent = self.get_instance(downloader)
         if not server:
             return None
         return server.start_torrents(ids=hashs)
@@ -323,7 +313,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
         :param downloader:  下载器
         :return: bool
         """
-        server: Qbittorrent = self.get_server(downloader)
+        server: Qbittorrent = self.get_instance(downloader)
         if not server:
             return None
         return server.stop_torrents(ids=hashs)
@@ -332,7 +322,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
         """
         获取种子文件列表
         """
-        server: Qbittorrent = self.get_server(downloader)
+        server: Qbittorrent = self.get_instance(downloader)
         if not server:
             return None
         return server.get_files(tid=tid)
@@ -342,12 +332,12 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase):
         下载器信息
         """
         if downloader:
-            server: Qbittorrent = self.get_server(downloader)
+            server: Qbittorrent = self.get_instance(downloader)
             if not server:
                 return None
             servers = [server]
         else:
-            servers = self._servers.values()
+            servers = self._instances.values()
         # 调用Qbittorrent API查询实时信息
         ret_info = []
         for server in servers:

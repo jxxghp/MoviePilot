@@ -5,7 +5,7 @@ from typing import List, Union, Optional
 from app import schemas
 from app.chain import ChainBase
 from app.db.mediaserver_oper import MediaServerOper
-from app.helper.mediaserver import MediaServerHelper
+from app.helper.serviceconfig import ServiceConfigHelper
 from app.log import logger
 
 lock = threading.Lock()
@@ -19,7 +19,6 @@ class MediaServerChain(ChainBase):
     def __init__(self):
         super().__init__()
         self.dboper = MediaServerOper()
-        self.mediaserverhelper = MediaServerHelper()
 
     def librarys(self, server: str, username: str = None, hidden: bool = False) -> List[schemas.MediaServerLibrary]:
         """
@@ -27,12 +26,14 @@ class MediaServerChain(ChainBase):
         """
         return self.run_module("mediaserver_librarys", server=server, username=username, hidden=hidden)
 
-    def items(self, server: str, library_id: Union[str, int], start_index: int = 0, limit: int = 100) -> List[schemas.MediaServerItem]:
+    def items(self, server: str, library_id: Union[str, int], start_index: int = 0, limit: int = 100) \
+            -> List[schemas.MediaServerItem]:
         """
         获取媒体服务器所有项目
         """
         data = []
-        data_generator = self.run_module("mediaserver_items", server=server, library_id=library_id, start_index=start_index, limit=limit)
+        data_generator = self.run_module("mediaserver_items", server=server, library_id=library_id,
+                                         start_index=start_index, limit=limit)
         if data_generator:
             for item in data_generator:
                 if item:
@@ -74,7 +75,7 @@ class MediaServerChain(ChainBase):
         同步媒体库所有数据到本地数据库
         """
         # 设置的媒体服务器
-        mediaservers = self.mediaserverhelper.get_mediaservers()
+        mediaservers = ServiceConfigHelper.get_mediaserver_configs()
         if not mediaservers:
             return
         with lock:

@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from typing import Set, Tuple, Optional, Union, List, Dict
+from typing import Set, Tuple, Optional, Union, List
 
 from torrentool.torrent import Torrent
 from transmission_rpc import File
@@ -8,7 +8,6 @@ from transmission_rpc import File
 from app import schemas
 from app.core.config import settings
 from app.core.metainfo import MetaInfo
-from app.helper.downloader import DownloaderHelper
 from app.log import logger
 from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.transmission.transmission import Transmission
@@ -18,20 +17,14 @@ from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
 
-class TransmissionModule(_ModuleBase, _DownloaderBase):
+class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
 
     def init_module(self) -> None:
-        # 读取下载器配置
-        self._servers: Dict[str, Transmission] = {}
-        downloaders = DownloaderHelper().get_downloaders()
-        if not downloaders:
-            return
-        for server in downloaders:
-            if server.type == "transmission" and server.enabled:
-                self._servers[server.name] = Transmission(**server.config)
-                if server.default:
-                    self._default_server_name = server.name
-                    self._default_server = self._servers[server.name]
+        """
+        初始化模块
+        """
+        super().init_service(service_name=Transmission.__name__.lower(),
+                             service_type=Transmission)
 
     @staticmethod
     def get_name() -> str:
@@ -44,9 +37,9 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
         """
         测试模块连接性
         """
-        if not self._servers:
+        if not self._instances:
             return None
-        for name, server in self._servers.items():
+        for name, server in self._instances.items():
             if server.is_inactive():
                 server.reconnect()
             if not server.transfer_info():
@@ -61,7 +54,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
         定时任务，每10分钟调用一次
         """
         # 定时重连
-        for name, server in self._servers.items():
+        for name, server in self._instances.items():
             if server.is_inactive():
                 logger.info(f"Transmission下载器 {name} 连接断开，尝试重连 ...")
                 server.reconnect()
@@ -100,7 +93,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
             return None, None, f"种子文件不存在：{content}"
 
         # 获取下载器
-        server: Transmission = self.get_server(downloader)
+        server: Transmission = self.get_instance(downloader)
         if not server:
             return None
 
@@ -191,7 +184,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
         :return: 下载器中符合状态的种子列表
         """
         # 获取下载器
-        server: Transmission = self.get_server(downloader)
+        server: Transmission = self.get_instance(downloader)
         if not server:
             return None
         ret_torrents = []
@@ -259,7 +252,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
         :param transfer_type:   整理方式
         """
         # 获取下载器
-        server: Transmission = self.get_server(downloader)
+        server: Transmission = self.get_instance(downloader)
         if not server:
             return None
         # 获取原标签
@@ -291,7 +284,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
         :return: bool
         """
         # 获取下载器
-        server: Transmission = self.get_server(downloader)
+        server: Transmission = self.get_instance(downloader)
         if not server:
             return None
         return server.delete_torrents(delete_file=delete_file, ids=hashs)
@@ -305,7 +298,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
         :return: bool
         """
         # 获取下载器
-        server: Transmission = self.get_server(downloader)
+        server: Transmission = self.get_instance(downloader)
         if not server:
             return None
         return server.start_torrents(ids=hashs)
@@ -319,7 +312,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
         :return: bool
         """
         # 获取下载器
-        server: Transmission = self.get_server(downloader)
+        server: Transmission = self.get_instance(downloader)
         if not server:
             return None
         return server.start_torrents(ids=hashs)
@@ -329,7 +322,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
         获取种子文件列表
         """
         # 获取下载器
-        server: Transmission = self.get_server(downloader)
+        server: Transmission = self.get_instance(downloader)
         if not server:
             return None
         return server.get_files(tid=tid)
@@ -339,12 +332,12 @@ class TransmissionModule(_ModuleBase, _DownloaderBase):
         下载器信息
         """
         if downloader:
-            server: Transmission = self.get_server(downloader)
+            server: Transmission = self.get_instance(downloader)
             if not server:
                 return None
             servers = [server]
         else:
-            servers = self._servers.values()
+            servers = self._instances.values()
         # 调用Qbittorrent API查询实时信息
         ret_info = []
         for server in servers:

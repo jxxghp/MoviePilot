@@ -10,15 +10,14 @@ from ruamel.yaml import CommentedMap
 from transmission_rpc import File
 
 from app.core.config import settings
-from app.core.context import Context
-from app.core.context import MediaInfo, TorrentInfo
+from app.core.context import Context, MediaInfo, TorrentInfo
 from app.core.event import EventManager
 from app.core.meta import MetaBase
 from app.core.module import ModuleManager
 from app.db.message_oper import MessageOper
 from app.db.user_oper import UserOper
 from app.helper.message import MessageHelper
-from app.helper.notification import NotificationHelper
+from app.helper.serviceconfig import ServiceConfigHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
     WebhookEventInfo, TmdbEpisode, MediaPerson, FileItem
@@ -39,7 +38,6 @@ class ChainBase(metaclass=ABCMeta):
         self.eventmanager = EventManager()
         self.messageoper = MessageOper()
         self.messagehelper = MessageHelper()
-        self.notificationhelper = NotificationHelper()
         self.useroper = UserOper()
 
     @staticmethod
@@ -484,7 +482,7 @@ class ChainBase(metaclass=ABCMeta):
             # 没有指定用户ID时，按规则确定发送对象
             # 默认发送全体
             to_targets = None
-            notify_action = self.notificationhelper.get_switch(message.mtype)
+            notify_action = ServiceConfigHelper.get_notification_switch(message.mtype)
             if notify_action == "admin":
                 # 仅发送管理员
                 logger.info(f"已设置 {message.mtype} 的消息只发送给管理员")
