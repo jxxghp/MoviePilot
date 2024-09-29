@@ -56,7 +56,7 @@ class ServiceConfigHelper:
     @staticmethod
     def get_notification_switch(mtype: NotificationType) -> Optional[str]:
         """
-        获取消息通知场景开关
+        获取指定类型的消息通知场景的开关
         """
         switchs = ServiceConfigHelper.get_notification_switches()
         for switch in switchs:

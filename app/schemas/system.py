@@ -1,6 +1,24 @@
-from typing import Optional
+from dataclasses import dataclass
+from typing import Optional, Any
 
 from pydantic import BaseModel
+
+
+@dataclass
+class ServiceInfo:
+    """
+    封装服务相关信息的数据类
+    """
+    # 名称
+    name: Optional[str] = None
+    # 实例
+    instance: Optional[Any] = None
+    # 模块
+    module: Optional[Any] = None
+    # 类型
+    type: Optional[str] = None
+    # 配置
+    config: Optional[Any] = None
 
 
 class MediaServerConf(BaseModel):
