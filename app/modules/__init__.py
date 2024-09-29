@@ -90,6 +90,14 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
                         # 如果传入的是工厂函数，直接调用工厂函数
                         self._instances[conf.name] = service_type(conf)
 
+    def get_instances(self) -> Dict[str, TService]:
+        """
+        获取服务实例列表
+
+        :return: 返回服务实例列表
+        """
+        return self._instances
+
     def get_instance(self, name: str) -> Optional[TService]:
         """
         获取服务实例
