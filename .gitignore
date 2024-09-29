@@ -14,7 +14,9 @@ app/plugins/**
 config/cookies/**
 config/user.db
 config/sites/**
-config/logs
+config/logs/
+config/temp/
+config/cache/
 *.pyc
 *.log
 .vscode
