@@ -153,7 +153,7 @@ class SiteOper(DbOper):
         更新站点图标
         """
         icon_base64 = f"data:image/ico;base64,{icon_base64}" if icon_base64 else ""
-        siteicon = self.get_by_domain(domain)
+        siteicon = self.get_icon_by_domain(domain)
         if not siteicon:
             SiteIcon(name=name, domain=domain, url=icon_url, base64=icon_base64).create(self._db)
         elif icon_base64:
