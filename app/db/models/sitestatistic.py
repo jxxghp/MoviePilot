@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Sequence
+from sqlalchemy import Column, Integer, String, Sequence, JSON
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, Base
@@ -24,7 +24,7 @@ class SiteStatistic(Base):
     # 最后访问时间
     lst_mod_date = Column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     # 耗时记录 Json
-    note = Column(String)
+    note = Column(JSON)
 
     @staticmethod
     @db_query

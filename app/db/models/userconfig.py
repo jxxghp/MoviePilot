@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Sequence, UniqueConstraint, Index
+from sqlalchemy import Column, Integer, String, Sequence, UniqueConstraint, Index, JSON
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, Base
@@ -14,7 +14,7 @@ class UserConfig(Base):
     # 配置键
     key = Column(String)
     # 值
-    value = Column(String, nullable=True)
+    value = Column(JSON, nullable=True)
 
     __table_args__ = (
         # 用户名和配置键联合唯一

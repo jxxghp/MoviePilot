@@ -7,7 +7,6 @@ from app.db.models import SiteIcon
 from app.db.models.site import Site
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.models.siteuserdata import SiteUserData
-from app.utils.object import ObjectUtils
 
 
 class SiteOper(DbOper):
@@ -125,9 +124,7 @@ class SiteOper(DbOper):
         else:
             # 不存在则插入
             for key, value in payload.items():
-                if ObjectUtils.is_obj(value):
-                    payload[key] = json.dumps(value)
-            SiteUserData(**payload).create(self._db)
+                SiteUserData(**payload).create(self._db)
         return True, "更新站点用户数据成功"
 
     def get_userdata_by_domain(self, domain: str, workdate: str = None) -> List[SiteUserData]:
@@ -153,7 +150,7 @@ class SiteOper(DbOper):
         更新站点图标
         """
         icon_base64 = f"data:image/ico;base64,{icon_base64}" if icon_base64 else ""
-        siteicon = self.get_by_domain(domain)
+        siteicon = self.get_icon_by_domain(domain)
         if not siteicon:
             SiteIcon(name=name, domain=domain, url=icon_url, base64=icon_base64).create(self._db)
         elif icon_base64:
@@ -172,7 +169,7 @@ class SiteOper(DbOper):
         if sta:
             avg_seconds, note = None, {}
             if seconds is not None:
-                note: dict = json.loads(sta.note or "{}")
+                note: dict = sta.note or {}
                 note[lst_date] = seconds or 1
                 avg_times = len(note.keys())
                 if avg_times > 10:

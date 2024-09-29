@@ -1,6 +1,6 @@
 from typing import Tuple, Any
 
-from sqlalchemy import Boolean, Column, Integer, String, Sequence
+from sqlalchemy import Boolean, Column, Integer, String, Sequence, JSON
 from sqlalchemy.orm import Session
 
 from app.core.security import verify_password
@@ -31,9 +31,9 @@ class User(Base):
     # otp秘钥
     otp_secret = Column(String, default=None)
     # 用户权限 json
-    permissions = Column(String, default='')
+    permissions = Column(JSON, default='')
     # 用户个性化设置 json
-    settings = Column(String, default='')
+    settings = Column(JSON, default='')
 
     @staticmethod
     @db_query
