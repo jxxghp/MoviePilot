@@ -30,6 +30,10 @@ class MediaChain(ChainBase, metaclass=Singleton):
     # 临时识别结果 {title, name, year, season, episode}
     recognize_temp: Optional[dict] = None
 
+    def __init__(self):
+        super().__init__()
+        self.storagechain = StorageChain()
+
     def metadata_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
                      season: int = None, episode: int = None) -> Optional[str]:
         """
@@ -348,37 +352,35 @@ class MediaChain(ChainBase, metaclass=Singleton):
 
     def scrape_metadata(self, fileitem: schemas.FileItem,
                         meta: MetaBase = None, mediainfo: MediaInfo = None,
-                        init_folder: bool = True, parent: schemas.FileItem = None):
+                        init_folder: bool = True, parent: schemas.FileItem = None,
+                        overwrite: bool = False):
         """
         手动刮削媒体信息
+        :param fileitem: 刮削目录或文件
+        :param meta: 元数据
+        :param mediainfo: 媒体信息
+        :param init_folder: 是否刮削根目录
+        :param parent: 上级目录
+        :param overwrite: 是否覆盖已有文件
         """
 
         def __list_files(_fileitem: schemas.FileItem):
             """
             列出下级文件
             """
-            return StorageChain().list_files(fileitem=_fileitem)
+            return self.storagechain.list_files(fileitem=_fileitem)
 
-        def __save_file(_fileitem: schemas.FileItem, _path: Path, _content: Union[bytes, str],
-                        overwrite: bool = False):
+        def __save_file(_fileitem: schemas.FileItem, _path: Path, _content: Union[bytes, str]):
             """
             保存或上传文件
             :param _fileitem: 关联的媒体文件项
             :param _path: 元数据文件路径
             :param _content: 文件内容
-            :param overwrite: 是否覆盖
             """
-            if not overwrite and _path.exists():
-                return
             tmp_file = settings.TEMP_PATH / _path.name
             tmp_file.write_bytes(_content)
-            upload_item = copy.deepcopy(_fileitem)
-            upload_item.path = str(_path)
-            upload_item.name = _path.name
-            upload_item.basename = _path.stem
-            upload_item.extension = _path.suffix
             logger.info(f"保存文件：【{_fileitem.storage}】{_path}")
-            StorageChain().upload_file(fileitem=upload_item, path=tmp_file)
+            self.storagechain.upload_file(fileitem=_fileitem, path=tmp_file)
             if tmp_file.exists():
                 tmp_file.unlink()
 
@@ -419,7 +421,11 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     logger.warn(f"{filepath.name} nfo文件生成失败！")
                     return
                 # 保存或上传nfo文件到上级目录
-                __save_file(_fileitem=parent, _path=filepath.with_suffix(".nfo"), _content=movie_nfo)
+                nfo_path = filepath.with_suffix(".nfo")
+                if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
+                    logger.info(f"已存在nfo文件：{nfo_path}")
+                    return
+                __save_file(_fileitem=parent, _path=nfo_path, _content=movie_nfo)
             else:
                 # 电影目录
                 files = __list_files(_fileitem=fileitem)
@@ -438,6 +444,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                 and attr_value.startswith("http"):
                             image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
                             image_path = filepath / image_name
+                            if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=image_path):
+                                logger.info(f"已存在图片文件：{image_path}")
+                                continue
                             # 下载图片
                             content = __download_image(_url=attr_value)
                             # 写入图片到当前目录
@@ -461,17 +470,24 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     logger.warn(f"{filepath.name} nfo生成失败！")
                     return
                 # 保存或上传nfo文件到上级目录
-                __save_file(_fileitem=parent, _path=filepath.with_suffix(".nfo"), _content=episode_nfo)
+                nfo_path = filepath.with_suffix(".nfo")
+                if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
+                    logger.info(f"已存在nfo文件：{nfo_path}")
+                    return
+                __save_file(_fileitem=parent, _path=nfo_path, _content=episode_nfo)
                 # 获取集的图片
                 image_dict = self.metadata_img(mediainfo=file_mediainfo,
                                                season=file_meta.begin_season, episode=file_meta.begin_episode)
                 if image_dict:
                     for episode, image_url in image_dict.items():
                         image_path = filepath.with_suffix(Path(image_url).suffix)
+                        if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=image_path):
+                            logger.info(f"已存在图片文件：{image_path}")
+                            continue
                         # 下载图片
                         content = __download_image(image_url)
                         # 保存图片文件到当前目录
-                        __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+                        __save_file(_fileitem=parent, _path=image_path, _content=content)
 
             else:
                 # 当前为目录，处理目录内的文件
@@ -493,12 +509,18 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             return
                         # 写入nfo到根目录
                         nfo_path = filepath / "season.nfo"
+                        if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
+                            logger.info(f"已存在nfo文件：{nfo_path}")
+                            return
                         __save_file(_fileitem=fileitem, _path=nfo_path, _content=season_nfo)
                         # TMDB季poster图片
                         image_dict = self.metadata_img(mediainfo=mediainfo, season=season_meta.begin_season)
                         if image_dict:
                             for image_name, image_url in image_dict.items():
                                 image_path = filepath.with_name(image_name)
+                                if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=image_path):
+                                    logger.info(f"已存在图片文件：{image_path}")
+                                    continue
                                 # 下载图片
                                 content = __download_image(image_url)
                                 # 保存图片文件到当前目录
@@ -511,12 +533,18 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             return
                         # 写入tvshow nfo到根目录
                         nfo_path = filepath / "tvshow.nfo"
+                        if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
+                            logger.info(f"已存在nfo文件：{nfo_path}")
+                            return
                         __save_file(_fileitem=fileitem, _path=nfo_path, _content=tv_nfo)
                         # 生成目录图片
                         image_dict = self.metadata_img(mediainfo=mediainfo)
                         if image_dict:
                             for image_name, image_url in image_dict.items():
                                 image_path = filepath / image_name
+                                if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=image_path):
+                                    logger.info(f"已存在图片文件：{image_path}")
+                                    continue
                                 # 下载图片
                                 content = __download_image(image_url)
                                 # 保存图片文件到当前目录
