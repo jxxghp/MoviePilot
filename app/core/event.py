@@ -114,16 +114,16 @@ class EventManager(metaclass=Singleton):
         :return: 返回是否存在可用的处理器
         """
         if isinstance(etype, ChainEventType):
-            handlers = self.__chain_subscribers.get(etype, [])
+            handlers = self.__chain_subscribers.get(etype, {})
             return any(
                 self.__is_handler_enabled(handler)
-                for _, handler in handlers
+                for _, handler in handlers.values()
             )
         else:
-            handlers = self.__broadcast_subscribers.get(etype, [])
+            handlers = self.__broadcast_subscribers.get(etype, {})
             return any(
                 self.__is_handler_enabled(handler)
-                for handler in handlers
+                for handler in handlers.values()
             )
 
     def send_event(self, etype: Union[EventType, ChainEventType], data: Optional[Dict] = None,
