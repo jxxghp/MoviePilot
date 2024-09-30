@@ -480,7 +480,7 @@ class SubscribeChain(ChainBase):
             return default_sites
         try:
             # 尝试解析订阅中的站点数据
-            user_sites = json.loads(subscribe.sites)
+            user_sites = subscribe.sites
             # 计算 user_sites 和 default_sites 的交集
             intersection_sites = [site for site in user_sites if site in default_sites]
             # 如果交集与原始订阅不一致，更新数据库
@@ -542,7 +542,7 @@ class SubscribeChain(ChainBase):
             domains = []
             if subscribe.sites:
                 try:
-                    siteids = json.loads(subscribe.sites)
+                    siteids = subscribe.sites
                     if siteids:
                         domains = self.siteoper.get_domains_by_ids(siteids)
                 except JSONDecodeError:
@@ -812,10 +812,7 @@ class SubscribeChain(ChainBase):
             return
         note = []
         if subscribe.note:
-            try:
-                note = json.loads(subscribe.note)
-            except JSONDecodeError:
-                note = []
+            note = subscribe.note or []
         for context in downloads:
             meta = context.meta_info
             mediainfo = context.media_info
@@ -846,13 +843,9 @@ class SubscribeChain(ChainBase):
             return []
         if subscribe.type != MediaType.TV.value:
             return []
-        try:
-            episodes = json.loads(subscribe.note)
-            logger.info(f'订阅 {subscribe.name} 第{subscribe.season}季 已下载集数：{episodes}')
-            return episodes
-        except JSONDecodeError:
-            logger.warn(f'订阅 {subscribe.name} note字段解析失败')
-        return []
+        episodes = subscribe.note or []
+        logger.info(f'订阅 {subscribe.name} 第{subscribe.season}季 已下载集数：{episodes}')
+        return episodes
 
     def __update_lack_episodes(self, lefts: Dict[Union[int, str], Dict[int, NotExistMediaInfo]],
                                subscribe: Subscribe,
@@ -1110,10 +1103,7 @@ class SubscribeChain(ChainBase):
         for subscribe in self.subscribeoper.list():
             if not subscribe.sites:
                 continue
-            try:
-                sites = json.loads(subscribe.sites)
-            except JSONDecodeError:
-                sites = []
+            sites = subscribe.sites or []
             if site_id not in sites:
                 continue
             sites.remove(site_id)

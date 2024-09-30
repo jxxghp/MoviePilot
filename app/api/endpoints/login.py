@@ -78,7 +78,7 @@ async def login_access_token(
         user_name=user.name,
         avatar=user.avatar,
         level=level,
-        permissions=json.loads(user.permissions or '{}')
+        permissions=user.permissions or {}
     )
 
 

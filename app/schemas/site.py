@@ -63,7 +63,7 @@ class SiteStatistic(BaseModel):
     # 最后修改时间
     lst_mod_date: Optional[str]
     # 备注
-    note: Optional[str] = None
+    note: Optional[dict] = None
 
     class Config:
         orm_mode = True

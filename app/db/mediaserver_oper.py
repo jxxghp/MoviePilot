@@ -54,7 +54,7 @@ class MediaServerOper(DbOper):
             # 判断季是否存在
             if not item.seasoninfo:
                 return None
-            seasoninfo = json.loads(item.seasoninfo) or {}
+            seasoninfo = item.seasoninfo or {}
             if kwargs.get("season") not in seasoninfo.keys():
                 return None
         return item

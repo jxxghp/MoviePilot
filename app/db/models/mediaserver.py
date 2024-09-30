@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Sequence
+from sqlalchemy import Column, Integer, String, Sequence, JSON
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, Base
@@ -35,9 +35,9 @@ class MediaServerItem(Base):
     # 路径
     path = Column(String)
     # 季集
-    seasoninfo = Column(String)
+    seasoninfo = Column(JSON, default=dict)
     # 备注
-    note = Column(String)
+    note = Column(JSON)
     # 同步时间
     lst_mod_date = Column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 

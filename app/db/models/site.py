@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Integer, String, Sequence
+from sqlalchemy import Boolean, Column, Integer, String, Sequence, JSON
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, Base
@@ -38,7 +38,7 @@ class Site(Base):
     # 是否公开站点
     public = Column(Integer)
     # 附加信息
-    note = Column(String)
+    note = Column(JSON)
     # 流控单位周期
     limit_interval = Column(Integer, default=0)
     # 流控次数

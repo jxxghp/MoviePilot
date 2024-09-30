@@ -116,7 +116,7 @@ class MediaServerItem(BaseModel):
     # 季集
     seasoninfo: Optional[Dict[int, list]] = None
     # 备注
-    note: Optional[str] = None
+    note: Optional[dict] = None
     # 同步时间
     lst_mod_date: Optional[str] = None
     user_state: Optional[MediaServerItemUserState] = None

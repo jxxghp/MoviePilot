@@ -1,6 +1,6 @@
 import time
 
-from sqlalchemy import Column, Integer, String, Sequence
+from sqlalchemy import Column, Integer, String, Sequence, JSON
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, Base
@@ -46,7 +46,7 @@ class DownloadHistory(Base):
     # 创建时间
     date = Column(String)
     # 附加信息
-    note = Column(String)
+    note = Column(JSON)
 
     @staticmethod
     @db_query

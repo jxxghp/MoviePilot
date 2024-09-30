@@ -18,10 +18,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         """
         super().__init__()
         for item in SystemConfig.list(self._db):
-            if ObjectUtils.is_objstr(item.value):
-                self.__SYSTEMCONF[item.key] = json.loads(item.value)
-            else:
-                self.__SYSTEMCONF[item.key] = item.value
+            self.__SYSTEMCONF[item.key] = item.value
 
     def set(self, key: Union[str, SystemConfigKey], value: Any):
         """
@@ -38,10 +35,6 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             else:
                 conf.delete(self._db, conf.id)
         else:
-            if ObjectUtils.is_obj(value):
-                value = json.dumps(value)
-            elif value is None:
-                value = ''
             conf = SystemConfig(key=key, value=value)
             conf.create(self._db)
 
