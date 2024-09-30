@@ -2,8 +2,10 @@ import traceback
 from typing import Generator, Optional, Tuple, Any
 
 from app.core.config import settings
+from app.core.event import eventmanager
 from app.helper.module import ModuleHelper
 from app.log import logger
+from app.schemas.types import EventType
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
 
@@ -67,6 +69,7 @@ class ModuleManager(metaclass=Singleton):
         """
         self.stop()
         self.load_modules()
+        eventmanager.send_event(etype=EventType.ModuleReload, data={})
 
     def test(self, modleid: str) -> Tuple[bool, str]:
         """
