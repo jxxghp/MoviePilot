@@ -398,7 +398,7 @@ def user_subscribes(
     return Subscribe.list_by_username(db, username)
 
 
-@router.get("/files/{subscribe_id}", summary="订阅相关文件信息", response_model=List[schemas.SubscrbieInfo])
+@router.get("/files/{subscribe_id}", summary="订阅相关文件信息", response_model=schemas.SubscrbieInfo)
 def subscribe_files(
         subscribe_id: int,
         db: Session = Depends(get_db),
