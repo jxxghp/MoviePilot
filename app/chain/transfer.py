@@ -603,13 +603,13 @@ class TransferChain(ChainBase):
         # 删除旧的已整理文件
         if history.dest_fileitem:
             # 解析目标文件对象
-            dest_fileitem = FileItem(**json.loads(history.dest_fileitem))
+            dest_fileitem = FileItem(**history.dest_fileitem)
             self.storagechain.delete_file(dest_fileitem)
 
         # 强制整理
         if history.src_fileitem:
             # 解析源文件对象
-            fileitem = FileItem(**json.loads(history.src_fileitem))
+            fileitem = FileItem(**history.src_fileitem)
             state, errmsg = self.__do_transfer(fileitem=fileitem,
                                                mediainfo=mediainfo,
                                                download_hash=history.download_hash,

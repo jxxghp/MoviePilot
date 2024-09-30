@@ -128,10 +128,10 @@ class TransferHistoryOper(DbOper):
         self.add_force(
             src=fileitem.path,
             src_storage=fileitem.storage,
-            src_fileitem=json.dumps(fileitem.dict()),
+            src_fileitem=fileitem.dict(),
             dest=transferinfo.target_item.path if transferinfo.target_item else None,
             dest_storage=transferinfo.target_item.storage if transferinfo.target_item else None,
-            dest_fileitem=json.dumps(transferinfo.target_item.dict()) if transferinfo.target_item else None,
+            dest_fileitem=transferinfo.target_item.dict() if transferinfo.target_item else None,
             mode=mode,
             type=mediainfo.type.value,
             category=mediainfo.category,
@@ -146,7 +146,7 @@ class TransferHistoryOper(DbOper):
             image=mediainfo.get_poster_image(),
             download_hash=download_hash,
             status=1,
-            files=json.dumps(transferinfo.file_list)
+            files=transferinfo.file_list
         )
 
     def add_fail(self, fileitem: FileItem, mode: str, meta: MetaBase, mediainfo: MediaInfo = None,
@@ -158,10 +158,10 @@ class TransferHistoryOper(DbOper):
             his = self.add_force(
                 src=fileitem.path,
                 src_storage=fileitem.storage,
-                src_fileitem=json.dumps(fileitem.dict()),
+                src_fileitem=fileitem.dict(),
                 dest=transferinfo.target_item.path if transferinfo.target_item else None,
                 dest_storage=transferinfo.target_item.storage if transferinfo.target_item else None,
-                dest_fileitem=json.dumps(transferinfo.target_item.dict()) if transferinfo.target_item else None,
+                dest_fileitem=transferinfo.target_item.dict() if transferinfo.target_item else None,
                 mode=mode,
                 type=mediainfo.type.value,
                 category=mediainfo.category,
@@ -177,7 +177,7 @@ class TransferHistoryOper(DbOper):
                 download_hash=download_hash,
                 status=0,
                 errmsg=transferinfo.message or '未知错误',
-                files=json.dumps(transferinfo.file_list)
+                files=transferinfo.file_list
             )
         else:
             his = self.add_force(
@@ -185,7 +185,7 @@ class TransferHistoryOper(DbOper):
                 year=meta.year,
                 src=fileitem.path,
                 src_storage=fileitem.storage,
-                src_fileitem=json.dumps(fileitem.dict()),
+                src_fileitem=fileitem.dict(),
                 mode=mode,
                 seasons=meta.season,
                 episodes=meta.episode,

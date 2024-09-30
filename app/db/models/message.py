@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Sequence
+from sqlalchemy import Column, Integer, String, Sequence, JSON
 from sqlalchemy.orm import Session
 
 from app.db import db_query, Base
@@ -30,7 +30,7 @@ class Message(Base):
     # 消息方向：0-接收息，1-发送消息
     action = Column(Integer)
     # 附件json
-    note = Column(String)
+    note = Column(JSON)
 
     @staticmethod
     @db_query

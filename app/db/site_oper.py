@@ -202,7 +202,7 @@ class SiteOper(DbOper):
                 seconds=seconds or 1,
                 lst_state=0,
                 lst_mod_date=lst_date,
-                note=json.dumps(note)
+                note=note
             ).create(self._db)
 
     def fail(self, domain: str):

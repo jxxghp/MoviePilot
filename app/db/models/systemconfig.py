@@ -12,7 +12,7 @@ class SystemConfig(Base):
     # 主键
     key = Column(String, index=True)
     # 值
-    value = Column(JSON, nullable=True)
+    value = Column(JSON)
 
     @staticmethod
     @db_query

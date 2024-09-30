@@ -40,11 +40,11 @@ class SiteUserData(Base):
     # 下载体积
     leeching_size = Column(Float, default=0)
     # 做种人数, 种子大小 JSON
-    seeding_info = Column(JSON)
+    seeding_info = Column(JSON, default=dict)
     # 未读消息
     message_unread = Column(Integer, default=0)
     # 未读消息内容 JSON
-    message_unread_contents = Column(JSON)
+    message_unread_contents = Column(JSON, default=list)
     # 错误信息
     err_msg = Column(String)
     # 更新日期

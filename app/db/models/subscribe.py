@@ -1,6 +1,6 @@
 import time
 
-from sqlalchemy import Column, Integer, String, Sequence, Float
+from sqlalchemy import Column, Integer, String, Sequence, Float, JSON
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, Base
@@ -53,7 +53,7 @@ class Subscribe(Base):
     # 缺失集数
     lack_episode = Column(Integer)
     # 附加信息
-    note = Column(String)
+    note = Column(JSON)
     # 状态：N-新建， R-订阅中
     state = Column(String, nullable=False, index=True, default='N')
     # 最后更新时间
@@ -63,7 +63,7 @@ class Subscribe(Base):
     # 订阅用户
     username = Column(String)
     # 订阅站点
-    sites = Column(String)
+    sites = Column(JSON, default=list)
     # 是否洗版
     best_version = Column(Integer, default=0)
     # 当前优先级

@@ -86,13 +86,13 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
         return schemas.Response(success=False, msg="记录不存在")
     # 册除媒体库文件
     if deletedest and history.dest_fileitem:
-        dest_fileitem = schemas.FileItem(**json.loads(history.dest_fileitem))
+        dest_fileitem = schemas.FileItem(**history.dest_fileitem)
         state = StorageChain().delete_file(dest_fileitem)
         if not state:
             return schemas.Response(success=False, msg=f"{dest_fileitem.path}删除失败")
     # 删除源文件
     if deletesrc and history.dest_fileitem:
-        dest_fileitem = schemas.FileItem(**json.loads(history.dest_fileitem))
+        dest_fileitem = schemas.FileItem(**history.dest_fileitem)
         state = StorageChain().delete_file(dest_fileitem)
         if not state:
             return schemas.Response(success=False, msg=f"{dest_fileitem.path}删除失败")

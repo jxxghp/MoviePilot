@@ -1,6 +1,6 @@
 import time
 
-from sqlalchemy import Column, Integer, String, Sequence, Boolean, func, or_
+from sqlalchemy import Column, Integer, String, Sequence, Boolean, func, or_, JSON
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, Base
@@ -16,13 +16,13 @@ class TransferHistory(Base):
     # 源存储
     src_storage = Column(String)
     # 源文件项
-    src_fileitem = Column(String)
+    src_fileitem = Column(JSON, default=dict)
     # 目标路径
     dest = Column(String)
     # 目标存储
     dest_storage = Column(String)
     # 目标文件项
-    dest_fileitem = Column(String)
+    dest_fileitem = Column(JSON, default=dict)
     # 转移模式 move/copy/link...
     mode = Column(String)
     # 类型 电影/电视剧
@@ -52,7 +52,7 @@ class TransferHistory(Base):
     # 时间
     date = Column(String, index=True)
     # 文件清单，以JSON存储
-    files = Column(String)
+    files = Column(JSON, default=list)
 
     @staticmethod
     @db_query

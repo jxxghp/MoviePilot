@@ -80,10 +80,7 @@ class UserOper(DbOper):
         """
         user = User.get_by_name(self._db, name)
         if user:
-            try:
-                return json.loads(user.permissions)
-            except json.JSONDecodeError:
-                return {}
+            return user.permissions or {}
         return {}
 
     def get_settings(self, name: str) -> Optional[dict]:
@@ -92,12 +89,7 @@ class UserOper(DbOper):
         """
         user = User.get_by_name(self._db, name)
         if user:
-            try:
-                if user.settings:
-                    return json.loads(user.settings)
-                return {}
-            except json.JSONDecodeError:
-                return {}
+            return user.settings or {}
         return None
 
     def get_setting(self, name: str, key: str) -> Optional[str]:

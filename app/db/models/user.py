@@ -31,9 +31,9 @@ class User(Base):
     # otp秘钥
     otp_secret = Column(String, default=None)
     # 用户权限 json
-    permissions = Column(JSON, default='')
+    permissions = Column(JSON, default=dict)
     # 用户个性化设置 json
-    settings = Column(JSON, default='')
+    settings = Column(JSON, default=dict)
 
     @staticmethod
     @db_query

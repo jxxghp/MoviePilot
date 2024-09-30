@@ -501,7 +501,7 @@ class MessageChain(ChainBase):
                 # 获取已下载剧集
                 downloaded = [download.meta_info.begin_episode for download in downloads
                               if download.meta_info.begin_episode]
-                note = json.dumps(downloaded)
+                note = downloaded
             else:
                 note = None
             # 添加订阅，状态为R

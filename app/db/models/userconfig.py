@@ -14,7 +14,7 @@ class UserConfig(Base):
     # 配置键
     key = Column(String)
     # 值
-    value = Column(JSON, nullable=True)
+    value = Column(JSON)
 
     __table_args__ = (
         # 用户名和配置键联合唯一

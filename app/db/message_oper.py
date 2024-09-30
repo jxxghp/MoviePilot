@@ -52,7 +52,7 @@ class MessageOper(DbOper):
             "userid": userid,
             "action": action,
             "reg_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-            "note": note
+            "note": note or {}
         })
 
         # 从kwargs中去掉Message中没有的字段

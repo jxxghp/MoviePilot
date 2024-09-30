@@ -151,7 +151,7 @@ class MediaServerChain(ChainBase):
                                 seasoninfo[episode.season] = episode.episodes
                         # 插入数据
                         item_dict = item.dict()
-                        item_dict["seasoninfo"] = json.dumps(seasoninfo)
+                        item_dict["seasoninfo"] = seasoninfo
                         item_dict["item_type"] = item_type
                         self.dboper.add(**item_dict)
                     logger.info(f"{server_name} 媒体库 {library.name} 同步完成，共同步数量：{library_count}")
