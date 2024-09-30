@@ -1093,9 +1093,6 @@ class FileManagerModule(_ModuleBase):
                 media_path = dir_path / rel_path.parts[0]
             else:
                 continue
-            # 检查媒体文件夹是否存在
-            if not media_path.exists():
-                continue
             # 检索媒体文件
             fileitem = storage_oper.get_item(media_path)
             if not fileitem:

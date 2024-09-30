@@ -13,6 +13,8 @@ class SiteUserData(Base):
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
     # 站点域名
     domain = Column(String, index=True)
+    # 站点名称
+    name = Column(String)
     # 用户名
     username = Column(String)
     # 用户ID

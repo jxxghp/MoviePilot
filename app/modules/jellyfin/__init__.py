@@ -185,7 +185,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         """
         server: Jellyfin = self.get_instance(server)
         if server:
-            yield from server.get_items(library_id, start_index, limit)
+            return server.get_items(library_id, start_index, limit)
         return None
 
     def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[schemas.MediaServerItem]:

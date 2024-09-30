@@ -104,7 +104,7 @@ class SiteOper(DbOper):
         })
         return True, "更新站点RSS地址成功"
 
-    def update_userdata(self, domain: str, payload: dict) -> Tuple[bool, str]:
+    def update_userdata(self, domain: str, name: str, payload: dict) -> Tuple[bool, str]:
         """
         更新站点用户数据
         """
@@ -113,6 +113,7 @@ class SiteOper(DbOper):
         current_time = datetime.now().strftime('%H:%M:%S')
         payload.update({
             "domain": domain,
+            "name": name,
             "updated_day": current_day,
             "updated_time": current_time
         })
@@ -126,6 +127,12 @@ class SiteOper(DbOper):
             for key, value in payload.items():
                 SiteUserData(**payload).create(self._db)
         return True, "更新站点用户数据成功"
+
+    def get_userdata(self) -> List[SiteUserData]:
+        """
+        获取站点用户数据
+        """
+        return SiteUserData.list(self._db)
 
     def get_userdata_by_domain(self, domain: str, workdate: str = None) -> List[SiteUserData]:
         """

@@ -64,6 +64,7 @@ class SiteChain(ChainBase):
         userdata: SiteUserData = self.run_module("refresh_userdata", site=site)
         if userdata:
             self.siteoper.update_userdata(domain=StringUtils.get_url_domain(site.get("domain")),
+                                          name=site.get("name"),
                                           payload=userdata.dict())
         return userdata
 
