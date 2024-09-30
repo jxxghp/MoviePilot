@@ -18,8 +18,10 @@ class TorrentStatus(Enum):
 class EventType(Enum):
     # 插件需要重载
     PluginReload = "plugin.reload"
-    # 插件动作
+    # 触发插件动作
     PluginAction = "plugin.action"
+    # 插件触发事件
+    PluginTriggered = "plugin.triggered"
     # 执行命令
     CommandExcute = "command.excute"
     # 站点已删除
