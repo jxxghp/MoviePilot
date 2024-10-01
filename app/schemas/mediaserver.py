@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Dict, Union, List
+from typing import Optional, Dict, Union, List, Any
 
 from pydantic import BaseModel
 
@@ -116,7 +116,7 @@ class MediaServerItem(BaseModel):
     # 季集
     seasoninfo: Optional[Dict[int, list]] = None
     # 备注
-    note: Optional[dict] = None
+    note: Optional[Any] = None
     # 同步时间
     lst_mod_date: Optional[str] = None
     user_state: Optional[MediaServerItemUserState] = None
