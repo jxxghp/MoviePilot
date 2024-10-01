@@ -23,7 +23,8 @@ class Qbittorrent:
 
     def __init__(self, host: str = None, port: int = None,
                  username: str = None, password: str = None,
-                 category: bool = False, sequentail: bool = False, force_resume: bool = False,
+                 category: bool = False, sequentail: bool = False,
+                 force_resume: bool = False, first_last_piece=False,
                  **kwargs):
         """
         若不设置参数，则创建配置文件设置的下载器
@@ -40,6 +41,7 @@ class Qbittorrent:
         self._category = category
         self._sequentail = sequentail
         self._force_resume = force_resume
+        self._first_last_piece = first_last_piece
         if self._host and self._port:
             self.qbc = self.__login_qbittorrent()
 
@@ -284,6 +286,7 @@ class Qbittorrent:
                                             tags=tags,
                                             use_auto_torrent_management=is_auto,
                                             is_sequential_download=self._sequentail,
+                                            is_first_last_piece_priority=self._first_last_piece,
                                             cookie=cookie,
                                             category=category,
                                             **kwargs)
