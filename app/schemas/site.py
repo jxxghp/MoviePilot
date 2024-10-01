@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Any
 
 from pydantic import BaseModel
 
@@ -33,7 +33,7 @@ class Site(BaseModel):
     # 是否公开站点
     public: Optional[int] = 0
     # 备注
-    note: Optional[str] = None
+    note: Optional[Any] = None
     # 超时时间
     timeout: Optional[int] = 0
     # 流控单位周期
@@ -63,7 +63,7 @@ class SiteStatistic(BaseModel):
     # 最后修改时间
     lst_mod_date: Optional[str]
     # 备注
-    note: Optional[dict] = None
+    note: Optional[Any] = None
 
     class Config:
         orm_mode = True

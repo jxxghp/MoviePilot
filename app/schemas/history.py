@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Any
 
 from pydantic import BaseModel
 
@@ -45,7 +45,7 @@ class DownloadHistory(BaseModel):
     # 创建时间
     date: Optional[str] = None
     # 备注
-    note: Optional[str] = None
+    note: Optional[Any] = None
 
     class Config:
         orm_mode = True

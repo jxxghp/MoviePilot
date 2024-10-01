@@ -1,5 +1,5 @@
 import json
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 from pydantic import BaseModel, validator
 
@@ -46,7 +46,7 @@ class Subscribe(BaseModel):
     # 缺失集数
     lack_episode: Optional[int] = 0
     # 附加信息
-    note: Optional[str] = None
+    note: Optional[Any] = None
     # 状态：N-新建， R-订阅中
     state: Optional[str] = None
     # 最后更新时间
