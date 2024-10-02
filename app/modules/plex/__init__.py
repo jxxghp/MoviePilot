@@ -144,8 +144,9 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         media_statistics = []
         for server in servers:
             media_statistic = server.get_medias_count()
-            if not media_statistics:
+            if not media_statistic:
                 continue
+            media_statistic.user_count = 1
             media_statistics.append(media_statistic)
         return media_statistics
 
