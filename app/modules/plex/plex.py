@@ -112,7 +112,7 @@ class Plex:
             return []
         libraries = []
         for library in self._libraries:
-            if hidden and self._sync_libraries and library.key not in self._sync_libraries:
+            if hidden and self._sync_libraries and str(library.key) not in self._sync_libraries:
                 continue
             match library.type:
                 case "movie":
@@ -146,7 +146,7 @@ class Plex:
         sections = self._plex.library.sections()
         MovieCount = SeriesCount = EpisodeCount = 0
         # 媒体库白名单
-        allow_library = [lib.id for lib in self.get_librarys()]
+        allow_library = [lib.id for lib in self.get_librarys(hidden=True)]
         for sec in sections:
             if str(sec.key) not in allow_library:
                 continue
@@ -693,7 +693,7 @@ class Plex:
         if not self._plex:
             return []
         # 媒体库白名单
-        allow_library = ",".join([lib.id for lib in self.get_librarys()])
+        allow_library = ",".join([lib.id for lib in self.get_librarys(hidden=True)])
         params = {"contentDirectoryID": allow_library}
         items = self._plex.fetchItems("/hubs/continueWatching/items",
                                       container_start=0,
@@ -729,7 +729,7 @@ class Plex:
         if not self._plex:
             return None
         # 请求参数（除黑名单）
-        allow_library = ",".join([lib.id for lib in self.get_librarys()])
+        allow_library = ",".join([lib.id for lib in self.get_librarys(hidden=True)])
         params = {
             "contentDirectoryID": allow_library,
             "count": num,
