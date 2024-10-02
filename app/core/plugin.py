@@ -19,7 +19,7 @@ from app.helper.module import ModuleHelper
 from app.helper.plugin import PluginHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey, EventType
 from app.utils.crypto import RSAUtils
 from app.utils.limit import rate_limit_window
 from app.utils.object import ObjectUtils
@@ -268,6 +268,8 @@ class PluginManager(metaclass=Singleton):
         self.stop(plugin_id)
         # 重新加载
         self.start(plugin_id)
+        # 广播事件
+        eventmanager.send_event(EventType.PluginReload, data={"plugin_id": plugin_id})
 
     def sync(self):
         """
