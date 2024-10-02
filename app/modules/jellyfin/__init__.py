@@ -154,7 +154,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         media_statistics = []
         for server in servers:
             media_statistic = server.get_medias_count()
-            if not media_statistics:
+            if not media_statistic:
                 continue
             media_statistic.user_count = server.get_user_count()
             media_statistics.append(media_statistic)
