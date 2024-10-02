@@ -88,6 +88,7 @@ class Jellyfin:
                 library_items = res.json()
                 librarys = []
                 for library_item in library_items:
+                    library_id = library_item.get('ItemId')
                     library_name = library_item.get('Name')
                     pathInfos = library_item.get('LibraryOptions', {}).get('PathInfos')
                     library_paths = []
@@ -99,6 +100,7 @@ class Jellyfin:
 
                     if library_name and library_paths:
                         librarys.append({
+                            'Id': library_id,
                             'Name': library_name,
                             'Path': library_paths
                         })
