@@ -218,15 +218,16 @@ class Settings(BaseSettings, ConfigModel):
                 SystemUtils.copy(self.INNER_CONFIG_PATH / "app.env", app_env_path)
 
     @validator("API_TOKEN", pre=True, always=True)
-    def validate_api_token(cls, v):
-        if not v:
+    def validate_api_token(cls, value: Any, field):
+        if not value or len(value) < 16:
             new_token = secrets.token_urlsafe(16)
-            logger.info(f"'API_TOKEN' 未设置，已随机生成新的 API_TOKEN：{new_token}")
-            set_key(str(SystemUtils.get_env_path()), "API_TOKEN", new_token)
+            if not value:
+                logger.info(f"'API_TOKEN' 未设置，已随机生成新的 API_TOKEN：{new_token}")
+            else:
+                logger.warning(f"'API_TOKEN' 长度不足 16 个字符，存在安全隐患，已生成新的更复杂的 API_TOKEN：{new_token}")
+            cls.update_env_config(field, original_value=value or "", converted_value=new_token)
             return new_token
-        elif len(v) < 16:
-            logger.warning("'API_TOKEN' 长度不足 16 个字符，存在安全隐患，建议尽快更换为更复杂的密钥！")
-        return v
+        return value
 
     @staticmethod
     def generic_type_converter(value: Any, original_value: Any, expected_type: Type, default: Any, field_name: str,
@@ -302,13 +303,13 @@ class Settings(BaseSettings, ConfigModel):
         return converted_value
 
     @staticmethod
-    def update_env_config(field: Any, value: Any, converted_value: Any) -> Tuple[bool, str]:
+    def update_env_config(field: Any, original_value: Any, converted_value: Any) -> Tuple[bool, str]:
         """
         更新 env 配置
         """
-        is_converted = value is not None and value != converted_value
+        is_converted = original_value is not None and original_value != converted_value
         if is_converted:
-            logger.warning(f"配置项 '{field.name}' 的值 '{value}' 无效，已替换为 '{converted_value}'")
+            logger.warning(f"配置项 '{field.name}' 的值 '{original_value}' 无效，已替换为 '{converted_value}'")
 
         if field.name in os.environ:
             if is_converted:
@@ -319,7 +320,7 @@ class Settings(BaseSettings, ConfigModel):
         else:
             set_key(SystemUtils.get_env_path(), field.name, str(converted_value) if converted_value is not None else "")
             if is_converted:
-                logger.info(f"配置项 '{field.name}' 已自动修正并写入到 'app.env' 文件中")
+                logger.info(f"配置项 '{field.name}' 已自动修正并写入到 'app.env' 文件")
             return True, ""
 
     def update_setting(self, key: str, value: Any) -> Tuple[bool, str]:
