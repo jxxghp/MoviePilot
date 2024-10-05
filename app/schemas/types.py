@@ -113,6 +113,10 @@ class SystemConfigKey(Enum):
     UserInstalledPlugins = "UserInstalledPlugins"
     # 插件安装统计
     PluginInstallReport = "PluginInstallReport"
+    # 默认电影订阅规则
+    DefaultMovieSubscribeConfig = "DefaultMovieSubscribeConfig"
+    # 默认电视剧订阅规则
+    DefaultTvSubscribeConfig = "DefaultTvSubscribeConfig"
 
 
 # 处理进度Key字典
