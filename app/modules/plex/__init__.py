@@ -67,14 +67,14 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             server: Plex = self.get_instance(source)
             if not server:
                 return None
-            return server.get_webhook_message(body)
+            return server.get_webhook_message(form)
 
         for conf in self._configs.values():
             if conf.type != "plex":
                 continue
             server = self.get_instance(conf.name)
             if server:
-                result = server.get_webhook_message(body)
+                result = server.get_webhook_message(form)
                 if result:
                     return result
         return None
