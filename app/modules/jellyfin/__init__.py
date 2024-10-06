@@ -30,7 +30,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         定时任务，每10分钟调用一次
         """
         # 定时重连
-        for name, server in self._instances.items():
+        for name, server in self.get_instances().items():
             if server.is_inactive():
                 logger.info(f"Jellyfin {name} 服务器连接断开，尝试重连 ...")
                 server.reconnect()
@@ -42,9 +42,9 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         """
         测试模块连接性
         """
-        if not self._instances:
+        if not self.get_instances():
             return None
-        for name, server in self._instances.items():
+        for name, server in self.get_instances().items():
             if server.is_inactive():
                 server.reconnect()
             if not server.get_user():
@@ -59,7 +59,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         :return: Token or None
         """
         # Jellyfin认证
-        for server in self._instances.values():
+        for server in self.get_instances().values():
             result = server.authenticate(name, password)
             if result:
                 return result
@@ -75,18 +75,12 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         """
         source = args.get("source")
         if source:
-            server_config: MediaServerConf = self.get_config(source, 'jellyfin')
-            if not server_config:
-                return None
             server: Jellyfin = self.get_instance(source)
             if not server:
                 return None
             return server.get_webhook_message(body)
 
-        for conf in self._configs.values():
-            if conf.type != "jellyfin":
-                continue
-            server = self.get_instance(conf.name)
+        for server in self.get_instances().values():
             if server:
                 result = server.get_webhook_message(body)
                 if result:
@@ -100,7 +94,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         :param itemid:  媒体服务器ItemID
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
-        for name, server in self._instances.items():
+        for name, server in self.get_instances().items():
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
                     movie = server.get_iteminfo(itemid)
@@ -150,7 +144,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
                 return None
             servers = [server]
         else:
-            servers = self._instances.values()
+            servers = self.get_instances().values()
         media_statistics = []
         for server in servers:
             media_statistic = server.get_medias_count()

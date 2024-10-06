@@ -37,9 +37,9 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
         """
         测试模块连接性
         """
-        if not self._instances:
+        if not self.get_instances():
             return None
-        for name, server in self._instances.items():
+        for name, server in self.get_instances().items():
             if server.is_inactive():
                 server.reconnect()
             if not server.transfer_info():
@@ -53,7 +53,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
         """
         定时任务，每10分钟调用一次
         """
-        for name, server in self._instances.items():
+        for name, server in self.get_instances().items():
             if server.is_inactive():
                 logger.info(f"Qbittorrent下载器 {name} 连接断开，尝试重连 ...")
                 server.reconnect()
@@ -337,7 +337,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                 return None
             servers = [server]
         else:
-            servers = self._instances.values()
+            servers = self.get_instances().values()
         # 调用Qbittorrent API查询实时信息
         ret_info = []
         for server in servers:

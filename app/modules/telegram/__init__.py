@@ -26,16 +26,16 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         """
         停止模块
         """
-        for client in self._instances.values():
+        for client in self.get_instances().values():
             client.stop()
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """
         测试模块连接性
         """
-        if not self._instances:
+        if not self.get_instances():
             return None
-        for name, client in self._instances.items():
+        for name, client in self.get_instances().items():
             state = client.get_state()
             if not state:
                 return False, f"Telegram {name} 未就续"
@@ -81,7 +81,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             }
         """
         # 获取渠道
-        client_config = self.get_config(source, 'telegram')
+        client_config = self.get_config(source)
         if not client_config:
             return None
         client: Telegram = self.get_instance(source)
@@ -127,7 +127,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         :param message: 消息体
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             targets = message.targets
@@ -149,7 +149,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         :param medias: 媒体列表
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             client: Telegram = self.get_instance(conf.name)
@@ -164,7 +164,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         :param torrents: 种子列表
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             client: Telegram = self.get_instance(conf.name)
@@ -177,5 +177,5 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         注册命令，实现这个函数接收系统可用的命令菜单
         :param commands: 命令字典
         """
-        for client in self._instances.values():
+        for client in self.get_instances().values():
             client.register_commands(commands)

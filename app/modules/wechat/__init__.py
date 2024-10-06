@@ -30,9 +30,9 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         """
         测试模块连接性
         """
-        if not self._instances:
+        if not self.get_instances():
             return None
-        for name, client in self._instances.items():
+        for name, client in self.get_instances().items():
             state = client.get_state()
             if not state:
                 return False, f"企业微信 {name} 未就续"
@@ -56,7 +56,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         """
         try:
             # 获取客户端
-            client_config = self.get_config(source, 'wechat')
+            client_config = self.get_config(source)
             if not client_config:
                 return None
             client: WeChat = self.get_instance(source)
@@ -150,7 +150,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         :param message: 消息内容
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             targets = message.targets
@@ -172,7 +172,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         :param medias: 媒体列表
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             client: WeChat = self.get_instance(conf.name)
@@ -189,7 +189,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         :param torrents: 种子列表
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             client: WeChat = self.get_instance(conf.name)
@@ -202,5 +202,5 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         注册命令，实现这个函数接收系统可用的命令菜单
         :param commands: 命令字典
         """
-        for client in self._instances.values():
+        for client in self.get_instances().values():
             client.create_menus(commands)
