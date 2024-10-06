@@ -1,9 +1,10 @@
 import os
+import re
 import secrets
 import sys
 import threading
 from pathlib import Path
-from typing import Optional, List, Any, Type, Tuple
+from typing import Optional, List, Any, Type, Tuple, Dict
 
 from dotenv import set_key
 from pydantic import BaseSettings, validator, BaseModel
@@ -217,24 +218,26 @@ class Settings(BaseSettings, ConfigModel):
                 SystemUtils.copy(self.INNER_CONFIG_PATH / "app.env", app_env_path)
 
     @validator("API_TOKEN", pre=True, always=True)
-    def validate_api_token(cls, v):
-        if not v:
+    def validate_api_token(cls, value: Any, field):
+        if not value or len(value) < 16:
             new_token = secrets.token_urlsafe(16)
-            logger.info(f"'API_TOKEN' 未设置，已随机生成新的 API_TOKEN：{new_token}")
-            set_key(str(SystemUtils.get_env_path()), "API_TOKEN", new_token)
+            if not value:
+                logger.info(f"'API_TOKEN' 未设置，已随机生成新的 API_TOKEN：{new_token}")
+            else:
+                logger.warning(f"'API_TOKEN' 长度不足 16 个字符，存在安全隐患，已生成新的更复杂的 API_TOKEN：{new_token}")
+            cls.update_env_config(field, original_value=value or "", converted_value=new_token)
             return new_token
-        elif len(v) < 16:
-            logger.warning("'API_TOKEN' 长度不足 16 个字符，存在安全隐患，建议尽快更换为更复杂的密钥！")
-        return v
+        return value
 
     @staticmethod
-    def generic_type_converter(value: Any, expected_type: Type, default: Any, field_name: str) -> Tuple[Any, bool]:
+    def generic_type_converter(value: Any, original_value: Any, expected_type: Type, default: Any, field_name: str,
+                               raise_exception: bool = False) -> Tuple[Any, bool]:
         """
-        通用类型转换函数，根据预期类型转换值。如果转换失败，返回默认值        """
+        通用类型转换函数，根据预期类型转换值。如果转换失败，返回默认值
+        """
         if value is None:
             return default, False
 
-        original_value = value
         if isinstance(value, str):
             value = value.strip()
 
@@ -266,6 +269,10 @@ class Settings(BaseSettings, ConfigModel):
                     converted = float(value)
                     return converted, value != original_value
             elif expected_type is str:
+                # 清理 value 中所有空白字符的字段
+                fields_not_keep_spaces = {"AUTO_DOWNLOAD_USER", "REPO_GITHUB_TOKEN", "PLUGIN_MARKET"}
+                if field_name in fields_not_keep_spaces:
+                    value = re.sub(r"\s+", "", value)
                 return value, value != original_value
             # # 后续考虑支持 list 类型的处理
             # elif expected_type is list:
@@ -277,24 +284,70 @@ class Settings(BaseSettings, ConfigModel):
             # 可根据需要添加更多类型处理
             else:
                 return value, False
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            if raise_exception:
+                raise ValueError(f"配置项 '{field_name}' 的值 '{value}' 无法转换成正确的类型") from e
+            logger.error(
+                f"配置项 '{field_name}' 的值 '{value}' 无法转换成正确的类型，使用默认值 '{default}'，错误信息: {e}")
             return default, True
 
     @validator('*', pre=True, always=True)
     def generic_type_validator(cls, value: Any, field):
         """
-        通用校验器
+        通用校验器，尝试将配置值转换为期望的类型
         """
-        converted_value, needs_update = cls.generic_type_converter(value, field.type_, field.default, field.name)
+        converted_value, needs_update = cls.generic_type_converter(value, value, field.type_, field.default,
+                                                                   field.name)
         if needs_update:
-            logger.error(f"字段 '{field.name}' 的值 '{value}' 无效，已使用 '{converted_value}' 进行替换")
-            if field.name in os.environ:
-                logger.warning(f"字段 '{field.name}' 已存在于环境变量中，请手动修改")
-            else:
-                set_key(SystemUtils.get_env_path(), field.name,
-                        str(converted_value) if converted_value is not None else "")
-                logger.info(f"字段 '{field.name}' 已由应用修改并写入到 app.env 中")
+            cls.update_env_config(field, value, converted_value)
         return converted_value
+
+    @staticmethod
+    def update_env_config(field: Any, original_value: Any, converted_value: Any) -> Tuple[bool, str]:
+        """
+        更新 env 配置
+        """
+        is_converted = original_value is not None and original_value != converted_value
+        if is_converted:
+            logger.warning(f"配置项 '{field.name}' 的值 '{original_value}' 无效，已替换为 '{converted_value}'")
+
+        if field.name in os.environ:
+            if is_converted:
+                message = f"配置项 '{field.name}' 已在环境变量中设置，请手动更新以保持一致性"
+                logger.warning(message)
+                return False, message
+            return True, ""
+        else:
+            set_key(SystemUtils.get_env_path(), field.name, str(converted_value) if converted_value is not None else "")
+            if is_converted:
+                logger.info(f"配置项 '{field.name}' 已自动修正并写入到 'app.env' 文件")
+            return True, ""
+
+    def update_setting(self, key: str, value: Any) -> Tuple[bool, str]:
+        """
+        更新单个配置项
+        """
+        if not hasattr(self, key):
+            return False, f"配置项 '{key}' 不存在"
+
+        try:
+            field = self.__fields__[key]
+            converted_value, _ = self.generic_type_converter(value, getattr(self, key), field.type_,
+                                                             field.default, key)
+            # 如果没有抛出异常，则统一使用 converted_value 进行更新
+            setattr(self, key, converted_value)
+            return self.update_env_config(field, value, converted_value)
+        except Exception as e:
+            return False, str(e)
+
+    def update_settings(self, env: Dict[str, Any]) -> Dict[str, Tuple[bool, str]]:
+        """
+        更新多个配置项
+        """
+        results = {}
+        for k, v in env.items():
+            results[k] = self.update_setting(k, v)
+        return results
 
     @property
     def VERSION_FLAG(self) -> str:

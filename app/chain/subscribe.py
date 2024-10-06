@@ -1118,9 +1118,9 @@ class SubscribeChain(ChainBase):
         """
         default_subscribe_key = None
         if mtype == MediaType.TV:
-            default_subscribe_key = "DefaultTvSubscribeConfig"
+            default_subscribe_key = SystemConfigKey.DefaultTvSubscribeConfig.value
         if mtype == MediaType.MOVIE:
-            default_subscribe_key = "DefaultMovieSubscribeConfig"
+            default_subscribe_key = SystemConfigKey.DefaultMovieSubscribeConfig.value
 
         # 默认订阅规则
         if hasattr(settings, default_subscribe_key):

@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Union, Any
 
 import tailer
-from dotenv import set_key
 from fastapi import APIRouter, HTTPException, Depends, Response
 from fastapi.responses import StreamingResponse
 
@@ -23,6 +22,7 @@ from app.helper.rule import RuleHelper
 from app.helper.sites import SitesHelper
 from app.monitor import Monitor
 from app.scheduler import Scheduler
+from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
 from app.utils.system import SystemUtils
 from version import APP_VERSION
@@ -112,19 +112,28 @@ def set_env_setting(env: dict,
     """
     更新系统环境变量（仅管理员）
     """
-    for k, v in env.items():
-        if k == "undefined":
-            continue
-        if hasattr(settings, k):
-            if v == "None":
-                v = None
-            setattr(settings, k, v)
-            if v is None:
-                v = ''
-            else:
-                v = str(v)
-            set_key(SystemUtils.get_env_path(), k, v)
-    return schemas.Response(success=True)
+    result = settings.update_settings(env=env)
+    # 统计成功和失败的结果
+    success_updates = {k: v for k, v in result.items() if v[0]}
+    failed_updates = {k: v for k, v in result.items() if not v[0]}
+
+    if failed_updates:
+        return schemas.Response(
+            success=False,
+            message="部分配置项更新失败",
+            data={
+                "success_updates": success_updates,
+                "failed_updates": failed_updates
+            }
+        )
+
+    return schemas.Response(
+        success=True,
+        message="所有配置项更新成功",
+        data={
+            "success_updates": success_updates
+        }
+    )
 
 
 @router.get("/progress/{process_type}", summary="实时进度")
@@ -173,17 +182,13 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
     更新系统设置（仅管理员）
     """
     if hasattr(settings, key):
-        if value == "None":
-            value = None
-        setattr(settings, key, value)
-        if value is None:
-            value = ''
-        else:
-            value = str(value)
-        set_key(SystemUtils.get_env_path(), key, value)
-    else:
+        success, message = settings.update_setting(key=key, value=value)
+        return schemas.Response(success=success, message=message)
+    elif key in {item.value for item in SystemConfigKey}:
         SystemConfigOper().set(key, value)
-    return schemas.Response(success=True)
+        return schemas.Response(success=True)
+    else:
+        return schemas.Response(success=False, message=f"配置项 '{key}' 不存在")
 
 
 @router.get("/message", summary="实时消息")
