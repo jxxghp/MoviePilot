@@ -27,9 +27,9 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
         """
         测试模块连接性
         """
-        if not self._instances:
+        if not self.get_instances():
             return None
-        for name, client in self._instances.items():
+        for name, client in self.get_instances().items():
             state = client.get_state()
             if not state:
                 return False, f"Synology Chat {name} 未就续"
@@ -53,10 +53,12 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
         """
         try:
             # 来源
-            client_config = self.get_config(source, 'synologychat')
+            client_config = self.get_config(source)
             if not client_config:
                 return None
             client: SynologyChat = self.get_instance(source)
+            if not client:
+                return None
             # 解析消息
             message: dict = form
             if not message:
@@ -85,7 +87,7 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
         :param message: 消息体
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             targets = message.targets
@@ -107,7 +109,7 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
         :param medias: 媒体列表
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             client: SynologyChat = self.get_instance(conf.name)
@@ -122,7 +124,7 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
         :param torrents: 种子列表
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             client: SynologyChat = self.get_instance(conf.name)

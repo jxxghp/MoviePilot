@@ -29,9 +29,9 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
         """
         测试模块连接性
         """
-        if not self._instances:
+        if not self.get_instances():
             return None
-        for name, client in self._instances.items():
+        for name, client in self.get_instances().items():
             state = client.get_state()
             if not state:
                 return False, f"VoceChat {name} 未就续"
@@ -70,7 +70,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
             }
             """
             # 获取渠道
-            client_config = self.get_config(source, 'vocechat')
+            client_config = self.get_config(source)
             if not client_config:
                 return None
             # 报文体
@@ -113,7 +113,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
         :param message: 消息内容
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             targets = message.targets
@@ -132,7 +132,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
         :param medias: 媒体列表
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             client: VoceChat = self.get_instance(conf.name)
@@ -148,7 +148,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
         :param torrents: 种子列表
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             targets = message.targets

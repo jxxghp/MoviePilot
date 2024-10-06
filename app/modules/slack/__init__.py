@@ -27,16 +27,16 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         """
         停止模块
         """
-        for client in self._instances.values():
+        for client in self.get_instances().values():
             client.stop()
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """
         测试模块连接性
         """
-        if not self._instances:
+        if not self.get_instances():
             return None
-        for name, client in self._instances.items():
+        for name, client in self.get_instances().items():
             state = client.get_state()
             if not state:
                 return False, f"Slack {name} 未就续"
@@ -168,7 +168,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         }
         """
         # 获取客户端
-        client_config = self.get_config(source, 'slack')
+        client_config = self.get_config(source)
         if not client_config:
             return None
         # 校验token
@@ -214,7 +214,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         :param message: 消息
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             targets = message.targets
@@ -236,7 +236,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         :param medias: 媒体信息
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             client: Slack = self.get_instance(conf.name)
@@ -250,7 +250,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         :param torrents: 种子信息
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             client: Slack = self.get_instance(conf.name)

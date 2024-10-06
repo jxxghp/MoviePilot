@@ -39,7 +39,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
         :param message: 消息内容
         :return: 成功或失败
         """
-        for conf in self._configs.values():
+        for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             webpush_users = conf.config.get("WEBPUSH_USERNAME") or ""
