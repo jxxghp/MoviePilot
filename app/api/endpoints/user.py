@@ -139,7 +139,7 @@ def otp_disable(
 def otp_enable(userid: str, db: Session = Depends(get_db)) -> Any:
     user: User = User.get_by_name(db, userid)
     if not user:
-        return schemas.Response(success=False, message="用户不存在")
+        return schemas.Response(success=False)
     return schemas.Response(success=user.is_otp)
 
 
