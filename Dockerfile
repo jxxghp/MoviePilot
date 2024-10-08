@@ -82,7 +82,7 @@ RUN cp -f /app/nginx.conf /etc/nginx/nginx.template.conf \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/dev_v2.0.0-alpha/dist.zip" | busybox unzip -d / - \
     && mv /dist /public \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
-    && mv -f /tmp/MoviePilot-Plugins-main/plugins/* /app/app/plugins/ \
+    && mv -f /tmp/MoviePilot-Plugins-main/plugins.v2/* /app/app/plugins/ \
     && curl -sL "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip" | busybox unzip -d /tmp - \
     && mv -f /tmp/MoviePilot-Resources-main/resources/* /app/app/helper/ \
     && rm -rf /tmp/*
