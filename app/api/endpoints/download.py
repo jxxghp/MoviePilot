@@ -1,6 +1,6 @@
 from typing import Any, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Body
 
 from app import schemas
 from app.chain.download import DownloadChain
@@ -28,8 +28,8 @@ def list(
 def download(
         media_in: schemas.MediaInfo,
         torrent_in: schemas.TorrentInfo,
-        downloader: str = None,
-        save_path: str = None,
+        downloader: str = Body(None),
+        save_path: str = Body(None),
         current_user: User = Depends(get_current_active_user)) -> Any:
     """
     添加下载任务（含媒体信息）
@@ -60,8 +60,8 @@ def download(
 @router.post("/add", summary="添加下载（不含媒体信息）", response_model=schemas.Response)
 def add(
         torrent_in: schemas.TorrentInfo,
-        downloader: str = None,
-        save_path: str = None,
+        downloader: str = Body(None),
+        save_path: str = Body(None),
         current_user: User = Depends(get_current_active_user)) -> Any:
     """
     添加下载任务（不含媒体信息）
