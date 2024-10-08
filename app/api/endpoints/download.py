@@ -102,7 +102,8 @@ def start(
 
 
 @router.get("/stop/{hashString}", summary="暂停任务", response_model=schemas.Response)
-def stop(hashString: str) -> Any:
+def stop(hashString: str,
+         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     暂停下载任务
     """
@@ -111,7 +112,8 @@ def stop(hashString: str) -> Any:
 
 
 @router.delete("/{hashString}", summary="删除下载任务", response_model=schemas.Response)
-def delete(hashString: str) -> Any:
+def delete(hashString: str,
+           _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     删除下载任务
     """
