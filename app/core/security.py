@@ -81,7 +81,7 @@ def create_access_token(
 def __verify_token(token: str) -> schemas.TokenPayload:
     """
        使用 JWT Token 进行身份认证并解析 Token 的内容
-       :param token: JWT 令牌，从请求的 Authorization 头部获取
+       :param token: JWT 令牌
        :return: 包含用户身份信息的 Token 负载数据
        :raises HTTPException: 如果令牌无效或解码失败，抛出 403 错误
        """
@@ -110,7 +110,7 @@ def verify_token(token: str = Security(oauth2_scheme)) -> schemas.TokenPayload:
 def verify_uri_token(token: str = Security(jwt_token_query)) -> schemas.TokenPayload:
     """
     使用 JWT Token 进行身份认证并解析 Token 的内容
-    :param token: JWT 令牌，从请求的 Authorization 头部获取
+    :param token: JWT 令牌，从 URL 中的 `token` 查询参数获取
     :return: 包含用户身份信息的 Token 负载数据
     :raises HTTPException: 如果令牌无效或解码失败，抛出 403 错误
     """
