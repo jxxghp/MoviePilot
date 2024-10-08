@@ -354,7 +354,8 @@ class DownloadChain(ChainBase):
             self.eventmanager.send_event(EventType.DownloadAdded, {
                 "hash": _hash,
                 "context": context,
-                "username": username
+                "username": username,
+                "downloader": _downloader
             })
         else:
             # 下载失败

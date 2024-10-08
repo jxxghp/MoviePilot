@@ -67,17 +67,23 @@ class ServiceBaseHelper(Generic[TConf]):
                 )
                 yield service_info
 
-    def get_services(self, type_filter: Optional[str] = None) -> Dict[str, ServiceInfo]:
+    def get_services(self, type_filter: Optional[str] = None, name_filters: Optional[List[str]] = None) \
+            -> Dict[str, ServiceInfo]:
         """
-        获取服务信息列表，并根据类型过滤
+        获取服务信息列表，并根据类型和名称列表进行过滤
 
         :param type_filter: 需要过滤的服务类型
+        :param name_filters: 需要过滤的服务名称列表
         :return: 过滤后的服务信息字典
         """
+        name_filters_set = set(name_filters) if name_filters else None
+
         return {
             service_info.name: service_info
             for service_info in self.iterate_module_instances()
-            if service_info.config and (type_filter is None or service_info.type == type_filter)
+            if service_info.config and
+               (type_filter is None or service_info.type == type_filter) and
+               (name_filters_set is None or service_info.name in name_filters_set)
         }
 
     def get_service(self, name: str, type_filter: Optional[str] = None) -> Optional[ServiceInfo]:
