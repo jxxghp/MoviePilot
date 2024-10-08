@@ -85,10 +85,6 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         if not client_config:
             return None
         client: Telegram = self.get_instance(source)
-        # 校验token
-        token = args.get("token")
-        if not token or token != settings.API_TOKEN:
-            return None
         try:
             message: dict = json.loads(body)
         except Exception as err:

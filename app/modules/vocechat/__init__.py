@@ -81,11 +81,6 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
                 # 非新消息
                 return None
             logger.debug(f"收到VoceChat请求：{msg_body}")
-            # token校验
-            token = args.get("token")
-            if not token or token != settings.API_TOKEN:
-                logger.warn(f"VoceChat请求token校验失败：{token}")
-                return None
             # 文本内容
             content = msg_body.get("detail", {}).get("content")
             # 用户ID
