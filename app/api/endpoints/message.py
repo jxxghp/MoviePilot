@@ -9,7 +9,7 @@ from starlette.responses import PlainTextResponse
 from app import schemas
 from app.chain.message import MessageChain
 from app.core.config import settings, global_vars
-from app.core.security import verify_token
+from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
 from app.db.models import User
 from app.db.models.message import Message
@@ -30,7 +30,8 @@ def start_message_chain(body: Any, form: Any, args: Any):
 
 
 @router.post("/", summary="接收用户消息", response_model=schemas.Response)
-async def user_message(background_tasks: BackgroundTasks, request: Request):
+async def user_message(background_tasks: BackgroundTasks, request: Request,
+                       _: schemas.TokenPayload = Depends(verify_apitoken)):
     """
     用户消息响应，配置请求中需要添加参数：token=API_TOKEN&source=消息配置名
     """
@@ -102,18 +103,17 @@ def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, int], 
     return "未找到对应的消息配置"
 
 
-def vocechat_verify(token: str) -> Any:
+def vocechat_verify() -> Any:
     """
     VoceChat验证响应
     """
-    if token == settings.API_TOKEN:
-        return {"status": "OK"}
-    return {"status": "API_TOKEN ERROR"}
+    return {"status": "OK"}
 
 
 @router.get("/", summary="回调请求验证")
 def incoming_verify(token: str = None, echostr: str = None, msg_signature: str = None,
-                    timestamp: Union[str, int] = None, nonce: str = None, source: str = None) -> Any:
+                    timestamp: Union[str, int] = None, nonce: str = None, source: str = None,
+                    _: schemas.TokenPayload = Depends(verify_apitoken)) -> Any:
     """
     微信/VoceChat等验证响应
     """
@@ -121,7 +121,7 @@ def incoming_verify(token: str = None, echostr: str = None, msg_signature: str =
                 f"msg_signature={msg_signature}, timestamp={timestamp}, nonce={nonce}")
     if echostr and msg_signature and timestamp and nonce:
         return wechat_verify(echostr, msg_signature, timestamp, nonce, source)
-    return vocechat_verify(token)
+    return vocechat_verify()
 
 
 @router.post("/webpush/subscribe", summary="客户端webpush通知订阅", response_model=schemas.Response)

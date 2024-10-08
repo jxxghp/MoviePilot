@@ -12,7 +12,7 @@ from app.chain.search import SearchChain
 from app.chain.system import SystemChain
 from app.core.config import settings, global_vars
 from app.core.module import ModuleManager
-from app.core.security import verify_token
+from app.core.security import verify_token, verify_uri_token
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
@@ -137,16 +137,10 @@ def set_env_setting(env: dict,
 
 
 @router.get("/progress/{process_type}", summary="实时进度")
-def get_progress(process_type: str, token: str):
+def get_progress(process_type: str, _: schemas.TokenPayload = Depends(verify_token)):
     """
     实时获取处理进度，返回格式为SSE
     """
-    if not token or not verify_token(token):
-        raise HTTPException(
-            status_code=403,
-            detail="认证失败！",
-        )
-
     progress = ProgressHelper()
 
     def event_generator():
@@ -192,16 +186,10 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
 
 
 @router.get("/message", summary="实时消息")
-def get_message(token: str, role: str = "system"):
+def get_message(role: str = "system", _: schemas.TokenPayload = Depends(verify_uri_token)):
     """
     实时获取系统消息，返回格式为SSE
     """
-    if not token or not verify_token(token):
-        raise HTTPException(
-            status_code=403,
-            detail="认证失败！",
-        )
-
     message = MessageHelper()
 
     def event_generator():
@@ -216,18 +204,12 @@ def get_message(token: str, role: str = "system"):
 
 
 @router.get("/logging", summary="实时日志")
-def get_logging(token: str, length: int = 50, logfile: str = "moviepilot.log"):
+def get_logging(length: int = 50, logfile: str = "moviepilot.log", _: schemas.TokenPayload = Depends(verify_uri_token)):
     """
     实时获取系统日志
     length = -1 时, 返回text/plain
     否则 返回格式SSE
     """
-    if not token or not verify_token(token):
-        raise HTTPException(
-            status_code=403,
-            detail="认证失败！",
-        )
-
     log_path = settings.LOG_PATH / logfile
 
     def log_generator():

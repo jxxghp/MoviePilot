@@ -171,10 +171,6 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         client_config = self.get_config(source)
         if not client_config:
             return None
-        # 校验token
-        token = args.get("token")
-        if not token or token != settings.API_TOKEN:
-            return None
         try:
             msg_json: dict = json.loads(body)
         except Exception as err:
