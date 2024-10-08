@@ -12,7 +12,7 @@ from app.chain.search import SearchChain
 from app.chain.system import SystemChain
 from app.core.config import settings, global_vars
 from app.core.module import ModuleManager
-from app.core.security import verify_token, verify_uri_token
+from app.core.security import verify_token, verify_uri_token, verify_apitoken
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
@@ -363,5 +363,17 @@ def run_scheduler(jobid: str,
     """
     if not jobid:
         return schemas.Response(success=False, message="命令不能为空！")
+    Scheduler().start(jobid)
+    return schemas.Response(success=True)
+
+@router.get("/runscheduler2", summary="运行服务（API_TOKEN）", response_model=schemas.Response)
+def run_scheduler2(jobid: str,
+                    _: str = Depends(verify_apitoken)):
+    """
+    执行命令（API_TOKEN认证）
+    """
+    if not jobid:
+        return schemas.Response(success=False, message="命令不能为空！")
+
     Scheduler().start(jobid)
     return schemas.Response(success=True)
