@@ -27,6 +27,9 @@ oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
 )
 
+# JWT TOKEN 通过 QUERY 认证
+jwt_token_query = APIKeyQuery(name="token", auto_error=False, scheme_name="jwt_token_query")
+
 # API TOKEN 通过 QUERY 认证
 api_token_query = APIKeyQuery(name="token", auto_error=False, scheme_name="api_token_query")
 
@@ -75,13 +78,13 @@ def create_access_token(
     return encoded_jwt
 
 
-def verify_token(token: str = Security(oauth2_scheme)) -> schemas.TokenPayload:
+def __verify_token(token: str) -> schemas.TokenPayload:
     """
-    使用 JWT Token 进行身份认证并解析 Token 的内容
-    :param token: JWT 令牌，从请求的 Authorization 头部获取
-    :return: 包含用户身份信息的 Token 负载数据
-    :raises HTTPException: 如果令牌无效或解码失败，抛出 403 错误
-    """
+       使用 JWT Token 进行身份认证并解析 Token 的内容
+       :param token: JWT 令牌，从请求的 Authorization 头部获取
+       :return: 包含用户身份信息的 Token 负载数据
+       :raises HTTPException: 如果令牌无效或解码失败，抛出 403 错误
+       """
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[ALGORITHM]
@@ -92,6 +95,26 @@ def verify_token(token: str = Security(oauth2_scheme)) -> schemas.TokenPayload:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="token校验不通过",
         )
+
+
+def verify_token(token: str = Security(oauth2_scheme)) -> schemas.TokenPayload:
+    """
+    使用 JWT Token 进行身份认证并解析 Token 的内容
+    :param token: JWT 令牌，从请求的 Authorization 头部获取
+    :return: 包含用户身份信息的 Token 负载数据
+    :raises HTTPException: 如果令牌无效或解码失败，抛出 403 错误
+    """
+    return __verify_token(token)
+
+
+def verify_uri_token(token: str = Security(jwt_token_query)) -> schemas.TokenPayload:
+    """
+    使用 JWT Token 进行身份认证并解析 Token 的内容
+    :param token: JWT 令牌，从请求的 Authorization 头部获取
+    :return: 包含用户身份信息的 Token 负载数据
+    :raises HTTPException: 如果令牌无效或解码失败，抛出 403 错误
+    """
+    return __verify_token(token)
 
 
 def __get_api_token(
@@ -151,15 +174,6 @@ def verify_apikey(apikey: str = Security(__get_api_key)) -> str:
     :return: 返回校验通过的 API Key
     """
     return __verify_key(apikey, settings.API_TOKEN, "API_KEY")
-
-
-def verify_uri_token(token: str = Security(__get_api_token)) -> str:
-    """
-    使用 API Token 进行身份认证
-    :param token: API Token，从 URL 查询参数中获取
-    :return: 返回校验通过的 API Token
-    """
-    return __verify_key(token, settings.API_TOKEN, "API_TOKEN")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
