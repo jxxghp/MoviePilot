@@ -366,9 +366,10 @@ def run_scheduler(jobid: str,
     Scheduler().start(jobid)
     return schemas.Response(success=True)
 
+
 @router.get("/runscheduler2", summary="运行服务（API_TOKEN）", response_model=schemas.Response)
 def run_scheduler2(jobid: str,
-                    _: str = Depends(verify_apitoken)):
+                   _: str = Depends(verify_apitoken)):
     """
     执行命令（API_TOKEN认证）
     """
