@@ -117,4 +117,3 @@ class SubscribeOper(DbOper):
             kwargs.pop("id")
         subscribe = SubscribeHistory(**kwargs)
         subscribe.create(self._db)
-

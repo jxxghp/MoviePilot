@@ -1,5 +1,5 @@
 from threading import Thread
-from typing import List
+from typing import List, Tuple
 
 from cachetools import TTLCache, cached
 
@@ -13,7 +13,7 @@ from app.utils.singleton import Singleton
 
 class SubscribeHelper(metaclass=Singleton):
     """
-    订阅数据统计
+    订阅数据统计/订阅分享等
     """
 
     _sub_reg = f"{settings.MP_SERVER_HOST}/subscribe/add"
@@ -23,6 +23,10 @@ class SubscribeHelper(metaclass=Singleton):
     _sub_report = f"{settings.MP_SERVER_HOST}/subscribe/report"
 
     _sub_statistic = f"{settings.MP_SERVER_HOST}/subscribe/statistic"
+
+    _sub_share = f"{settings.MP_SERVER_HOST}/subscribe/share"
+
+    _sub_fork = f"{settings.MP_SERVER_HOST}/subscribe/fork/%s"
 
     def __init__(self):
         self.systemconfig = SystemConfigOper()
@@ -120,3 +124,64 @@ class SubscribeHelper(metaclass=Singleton):
                                                 ]
                                             })
         return True if res else False
+
+    def sub_share(self, subscribe_id: int,
+                  share_title: str, share_comment: str, share_user: str) -> Tuple[bool, str]:
+        """
+        分享订阅
+        """
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return False, "当前没有开启订阅数据共享功能"
+        subscribe = SubscribeOper().get(subscribe_id)
+        if not subscribe:
+            return False, "订阅不存在"
+        res = RequestUtils(content_type="application/json",
+                           timeout=10).post(self._sub_share,
+                                            json={
+                                                "share_title": share_title,
+                                                "share_comment": share_comment,
+                                                "share_user": share_user,
+                                                "name": subscribe.name,
+                                                "year": subscribe.year,
+                                                "type": subscribe.type,
+                                                "tmdbid": subscribe.tmdbid,
+                                                "imdbid": subscribe.imdbid,
+                                                "tvdbid": subscribe.tvdbid,
+                                                "doubanid": subscribe.doubanid,
+                                                "bangumiid": subscribe.bangumiid,
+                                                "season": subscribe.season,
+                                                "poster": subscribe.poster,
+                                                "backdrop": subscribe.backdrop,
+                                                "vote": subscribe.vote,
+                                                "description": subscribe.description,
+                                                "include": subscribe.include,
+                                                "exclude": subscribe.include,
+                                                "quality": subscribe.include,
+                                                "resolution": subscribe.include,
+                                                "effect": subscribe.include,
+                                                "total_episode": subscribe.include,
+                                                "custom_words": subscribe.include,
+                                                "media_category": subscribe.include,
+                                            })
+        if res is None:
+            return False, "连接MoviePilot服务器失败"
+        if res.ok:
+            return True, ""
+        else:
+            return False, res.json().get("message")
+
+    def sub_fork(self, share_id: int) -> Tuple[bool, str]:
+        """
+        复用分享的订阅
+        """
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return False, "当前没有开启订阅数据共享功能"
+        res = RequestUtils(timeout=5, headers={
+            "Content-Type": "application/json"
+        }).get_res(self._sub_fork % share_id)
+        if res is None:
+            return False, "连接MoviePilot服务器失败"
+        if res.ok:
+            return True, ""
+        else:
+            return False, res.json().get("message")

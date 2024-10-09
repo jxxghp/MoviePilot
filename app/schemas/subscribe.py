@@ -75,6 +75,58 @@ class Subscribe(BaseModel):
         orm_mode = True
 
 
+class SubscribeShare(BaseModel):
+    # 分享ID
+    share_id: Optional[int] = None
+    # 订阅ID
+    subscribe_id: Optional[int] = None
+    # 分享标题
+    share_title: Optional[str] = None
+    # 分享说明
+    share_comment: Optional[str] = None
+    # 分享人
+    share_user: Optional[str] = None
+    # 订阅名称
+    name: Optional[str] = None
+    # 订阅年份
+    year: Optional[str] = None
+    # 订阅类型 电影/电视剧
+    type: Optional[str] = None
+    # 搜索关键字
+    keyword: Optional[str] = None
+    tmdbid: Optional[int] = None
+    doubanid: Optional[str] = None
+    bangumiid: Optional[int] = None
+    # 季号
+    season: Optional[int] = None
+    # 海报
+    poster: Optional[str] = None
+    # 背景图
+    backdrop: Optional[str] = None
+    # 评分
+    vote: Optional[int] = 0
+    # 描述
+    description: Optional[str] = None
+    # 包含
+    include: Optional[str] = None
+    # 排除
+    exclude: Optional[str] = None
+    # 质量
+    quality: Optional[str] = None
+    # 分辨率
+    resolution: Optional[str] = None
+    # 特效
+    effect: Optional[str] = None
+    # 总集数
+    total_episode: Optional[int] = 0
+    # 时间
+    date: Optional[str] = None
+    # 自定义识别词
+    custom_words: Optional[str] = None
+    # 自定义媒体类别
+    media_category: Optional[str] = None
+
+
 class SubscribeDownloadFileInfo(BaseModel):
     # 种子名称
     torrent_title: Optional[str] = None

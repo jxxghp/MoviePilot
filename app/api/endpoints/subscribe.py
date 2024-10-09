@@ -54,7 +54,7 @@ def create_subscribe(
         *,
         subscribe_in: schemas.Subscribe,
         current_user: User = Depends(get_current_active_user),
-) -> Any:
+) -> schemas.Response:
     """
     新增订阅
     """
@@ -84,6 +84,9 @@ def create_subscribe(
                                         best_version=subscribe_in.best_version,
                                         save_path=subscribe_in.save_path,
                                         search_imdbid=subscribe_in.search_imdbid,
+                                        custom_words=subscribe_in.custom_words,
+                                        media_category=subscribe_in.media_category,
+                                        filter_groups=subscribe_in.filter_groups,
                                         exist_ok=True)
     return schemas.Response(
         success=bool(sid), message=message, data={"id": sid}
@@ -410,6 +413,37 @@ def subscribe_files(
     if subscribe:
         return SubscribeChain().subscribe_files_info(subscribe)
     return schemas.SubscrbieInfo()
+
+
+@router.post("/share", summary="分享订阅", response_model=schemas.Response)
+def subscribe_share(
+        sub: schemas.SubscribeShare,
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    分享订阅
+    """
+    state, errmsg = SubscribeHelper().sub_share(subscribe_id=sub.subscribe_id,
+                                                share_title=sub.share_title,
+                                                share_comment=sub.share_comment,
+                                                share_user=sub.share_user)
+    return schemas.Response(success=state, message=errmsg)
+
+
+@router.post("/fork", summary="复用订阅", response_model=schemas.Response)
+def subscribe_fork(
+        sub: schemas.SubscribeShare,
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    复用订阅
+    """
+    sub_dict = sub.dict()
+    for key in sub_dict.keys():
+        if not hasattr(schemas.Subscribe, key):
+            sub_dict.pop(key)
+    result = create_subscribe(subscribe_in=schemas.Subscribe(**sub_dict))
+    if result.success:
+        SubscribeHelper().sub_fork(share_id=sub.share_id)
+    return result
 
 
 @router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
