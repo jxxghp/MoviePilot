@@ -23,7 +23,7 @@ class SearchChain(ChainBase):
     """
     站点资源搜索处理链
     """
-    
+
     __result_temp_file = "__search_result__"
 
     def __init__(self):
@@ -103,7 +103,8 @@ class SearchChain(ChainBase):
                 no_exists: Dict[int, Dict[int, NotExistMediaInfo]] = None,
                 sites: List[int] = None,
                 rule_groups: List[str] = None,
-                area: str = "title") -> List[Context]:
+                area: str = "title",
+                custom_words: List[str] = None) -> List[Context]:
         """
         根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
         :param mediainfo: 媒体信息
@@ -112,6 +113,7 @@ class SearchChain(ChainBase):
         :param sites: 站点ID列表，为空时搜索所有站点
         :param rule_groups: 过滤规则组名称列表
         :param area: 搜索范围，title or imdbid
+        :param custom_words: 自定义识别词列表
         """
 
         def __do_filter(torrent_list: List[TorrentInfo]) -> List[TorrentInfo]:
@@ -177,51 +179,8 @@ class SearchChain(ChainBase):
         # 开始新进度
         self.progress.start(ProgressKey.Search)
 
-        # 开始匹配
-        _match_torrents = []
-        # 总数
-        _total = len(torrents)
-        # 已处理数
-        _count = 0
-        if mediainfo:
-            # 英文标题应该在别名/原标题中，不需要再匹配
-            logger.info(f"开始匹配结果 标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
-            self.progress.update(value=0, text=f'开始匹配，总 {_total} 个资源 ...', key=ProgressKey.Search)
-            for torrent in torrents:
-                _count += 1
-                self.progress.update(value=(_count / _total) * 96,
-                                     text=f'正在匹配 {torrent.site_name}，已完成 {_count} / {_total} ...',
-                                     key=ProgressKey.Search)
-                if not torrent.title:
-                    continue
-                # 比对IMDBID
-                if torrent.imdbid \
-                        and mediainfo.imdb_id \
-                        and torrent.imdbid == mediainfo.imdb_id:
-                    logger.info(f'{mediainfo.title} 通过IMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
-                    _match_torrents.append(torrent)
-                    continue
-                # 识别
-                torrent_meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
-                if torrent.title != torrent_meta.org_string:
-                    logger.info(f"种子名称应用识别词后发生改变：{torrent.title} => {torrent_meta.org_string}")
-                # 比对种子
-                if self.torrenthelper.match_torrent(mediainfo=mediainfo,
-                                                    torrent_meta=torrent_meta,
-                                                    torrent=torrent):
-                    # 匹配成功
-                    _match_torrents.append(torrent)
-                    continue
-            # 匹配完成
-            logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
-            self.progress.update(value=97,
-                                 text=f'匹配完成，共匹配到 {len(_match_torrents)} 个资源',
-                                 key=ProgressKey.Search)
-        else:
-            _match_torrents = torrents
-
         # 开始过滤
-        self.progress.update(value=98, text=f'开始过滤，总 {len(_match_torrents)} 个资源，请稍候...',
+        self.progress.update(value=0, text=f'开始过滤，总 {len(torrents)} 个资源，请稍候...',
                              key=ProgressKey.Search)
 
         # 开始过滤规则过滤
@@ -230,21 +189,67 @@ class SearchChain(ChainBase):
             rule_groups: List[str] = self.systemconfig.get(SystemConfigKey.SearchFilterRuleGroups)
         if rule_groups:
             logger.info(f'开始过滤规则/剧集过滤，使用规则组：{rule_groups} ...')
-            _match_torrents = __do_filter(_match_torrents)
-            if not _match_torrents:
+            torrents = __do_filter(torrents)
+            if not torrents:
                 logger.warn(f'{keyword or mediainfo.title} 没有符合过滤规则的资源')
                 return []
-            logger.info(f"过滤规则/剧集过滤完成，剩余 {len(_match_torrents)} 个资源")
+            logger.info(f"过滤规则/剧集过滤完成，剩余 {len(torrents)} 个资源")
+
+        # 过滤完成
+        self.progress.update(value=50, text=f'过滤完成，剩余 {len(torrents)} 个资源', key=ProgressKey.Search)
+
+        # 开始匹配
+        _match_torrents = []
+        # 总数
+        _total = len(torrents)
+        # 已处理数
+        _count = 0
+
+        if mediainfo:
+            # 英文标题应该在别名/原标题中，不需要再匹配
+            logger.info(f"开始匹配结果 标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
+            self.progress.update(value=51, text=f'开始匹配，总 {_total} 个资源 ...', key=ProgressKey.Search)
+            for torrent in torrents:
+                _count += 1
+                self.progress.update(value=(_count / _total) * 96,
+                                     text=f'正在匹配 {torrent.site_name}，已完成 {_count} / {_total} ...',
+                                     key=ProgressKey.Search)
+                if not torrent.title:
+                    continue
+                # 识别元数据
+                torrent_meta = MetaInfo(title=torrent.title, subtitle=torrent.description,
+                                        custom_words=custom_words)
+                if torrent.title != torrent_meta.org_string:
+                    logger.info(f"种子名称应用识别词后发生改变：{torrent.title} => {torrent_meta.org_string}")
+                # 比对IMDBID
+                if torrent.imdbid \
+                        and mediainfo.imdb_id \
+                        and torrent.imdbid == mediainfo.imdb_id:
+                    logger.info(f'{mediainfo.title} 通过IMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
+                    _match_torrents.append((torrent, torrent_meta))
+                    continue
+                # 比对种子
+                if self.torrenthelper.match_torrent(mediainfo=mediainfo,
+                                                    torrent_meta=torrent_meta,
+                                                    torrent=torrent):
+                    # 匹配成功
+                    _match_torrents.append((torrent, torrent_meta))
+                    continue
+            # 匹配完成
+            logger.info(f"匹配完成，共匹配到 {len(_match_torrents)} 个资源")
+            self.progress.update(value=97,
+                                 text=f'匹配完成，共匹配到 {len(_match_torrents)} 个资源',
+                                 key=ProgressKey.Search)
+        else:
+            _match_torrents = [(t, MetaInfo(title=t.title, subtitle=t.description)) for t in torrents]
 
         # 去掉mediainfo中多余的数据
         mediainfo.clear()
 
         # 组装上下文
-        contexts = [Context(meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+        contexts = [Context(torrent_info=t[0],
                             media_info=mediainfo,
-                            torrent_info=torrent) for torrent in _match_torrents]
-
-        self.progress.update(value=99, text=f'过滤完成，剩余 {len(contexts)} 个资源', key=ProgressKey.Search)
+                            meta_info=t[1]) for t in _match_torrents]
 
         # 排序
         self.progress.update(value=99,
@@ -253,10 +258,10 @@ class SearchChain(ChainBase):
         contexts = self.torrenthelper.sort_torrents(contexts)
 
         # 结束进度
+        logger.info(f'搜索完成，共 {len(contexts)} 个资源')
         self.progress.update(value=100,
                              text=f'搜索完成，共 {len(contexts)} 个资源',
                              key=ProgressKey.Search)
-        logger.info(f'搜索完成，共 {len(contexts)} 个资源')
         self.progress.end(ProgressKey.Search)
 
         # 返回
