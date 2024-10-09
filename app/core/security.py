@@ -105,9 +105,10 @@ def __set_or_refresh_resource_token_cookie(request: Request, response: Response,
                 # 如果剩余时间少于 2 分钟，刷新令牌
                 if remaining_time < timedelta(minutes=2):
                     raise jwt.ExpiredSignatureError
-        except jwt.ExpiredSignatureError:
-            # 如果令牌过期或即将过期，刷新令牌
-            pass
+        except jwt.PyJWTError:
+            logger.debug(f"Token error occurred. refreshing token")
+        except Exception as e:
+            logger.debug(f"Unexpected error occurred while decoding token: {e}")
         else:
             # 如果令牌有效且没有即将过期，则不需要刷新
             return
