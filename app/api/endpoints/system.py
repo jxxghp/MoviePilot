@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Union, Any
 
 import tailer
-from fastapi import APIRouter, HTTPException, Depends, Response
+from fastapi import APIRouter, Depends, Response
 from fastapi.responses import StreamingResponse
 
 from app import schemas
@@ -12,7 +12,7 @@ from app.chain.search import SearchChain
 from app.chain.system import SystemChain
 from app.core.config import settings, global_vars
 from app.core.module import ModuleManager
-from app.core.security import verify_token, verify_uri_token, verify_apitoken
+from app.core.security import verify_token, verify_apitoken, verify_resource_token
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
@@ -31,7 +31,8 @@ router = APIRouter()
 
 
 @router.get("/img/{proxy}", summary="图片代理")
-def proxy_img(imgurl: str, proxy: bool = False) -> Any:
+def proxy_img(imgurl: str, proxy: bool = False,
+              _: schemas.TokenPayload = Depends(verify_resource_token)) -> Any:
     """
     图片代理，可选是否使用代理服务器
     """
@@ -47,7 +48,7 @@ def proxy_img(imgurl: str, proxy: bool = False) -> Any:
 
 
 @router.get("/cache/image", summary="图片缓存")
-def cache_img(url: str) -> Any:
+def cache_img(url: str, _: schemas.TokenPayload = Depends(verify_resource_token)) -> Any:
     """
     本地缓存图片文件
     """
@@ -81,7 +82,7 @@ def get_global_setting():
     """
     # FIXME: 新增敏感配置项时要在此处添加排除项
     info = settings.dict(
-        exclude={"SECRET_KEY", "API_TOKEN", "TMDB_API_KEY", "TVDB_API_KEY", "FANART_API_KEY",
+        exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY", "API_TOKEN", "TMDB_API_KEY", "TVDB_API_KEY", "FANART_API_KEY",
                  "COOKIECLOUD_KEY", "COOKIECLOUD_PASSWORD", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN"}
     )
     return schemas.Response(success=True,
@@ -94,7 +95,7 @@ def get_env_setting(_: User = Depends(get_current_active_superuser)):
     查询系统环境变量，包括当前版本号（仅管理员）
     """
     info = settings.dict(
-        exclude={"SECRET_KEY", "API_TOKEN", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN"}
+        exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY", "API_TOKEN", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN"}
     )
     info.update({
         "VERSION": APP_VERSION,
@@ -186,7 +187,7 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
 
 
 @router.get("/message", summary="实时消息")
-def get_message(role: str = "system", _: schemas.TokenPayload = Depends(verify_uri_token)):
+def get_message(role: str = "system", _: schemas.TokenPayload = Depends(verify_resource_token)):
     """
     实时获取系统消息，返回格式为SSE
     """
@@ -204,7 +205,8 @@ def get_message(role: str = "system", _: schemas.TokenPayload = Depends(verify_u
 
 
 @router.get("/logging", summary="实时日志")
-def get_logging(length: int = 50, logfile: str = "moviepilot.log", _: schemas.TokenPayload = Depends(verify_uri_token)):
+def get_logging(length: int = 50, logfile: str = "moviepilot.log",
+                _: schemas.TokenPayload = Depends(verify_resource_token)):
     """
     实时获取系统日志
     length = -1 时, 返回text/plain

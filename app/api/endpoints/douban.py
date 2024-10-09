@@ -7,7 +7,7 @@ from app import schemas
 from app.chain.douban import DoubanChain
 from app.core.config import settings
 from app.core.context import MediaInfo
-from app.core.security import verify_token
+from app.core.security import verify_token, verify_resource_token
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
 
@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.get("/img", summary="豆瓣图片代理")
-def douban_img(imgurl: str) -> Any:
+def douban_img(imgurl: str, _: schemas.TokenPayload = Depends(verify_resource_token)) -> Any:
     """
     豆瓣图片代理
     """
