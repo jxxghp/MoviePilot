@@ -47,6 +47,8 @@ class DownloadHistory(Base):
     date = Column(String)
     # 附加信息
     note = Column(JSON)
+    # 自定义媒体类别
+    media_category = Column(String)
 
     @staticmethod
     @db_query

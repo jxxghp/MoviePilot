@@ -326,10 +326,16 @@ class Monitor(metaclass=Singleton):
                     download_hash = download_history.download_hash
 
                 # 识别媒体信息
-                if download_history and download_history.tmdbid:
+                if download_history and (download_history.tmdbid or download_history.doubanid):
+                    # 下载记录中已存在识别信息
                     mediainfo: MediaInfo = self.mediaChain.recognize_media(mtype=MediaType(download_history.type),
                                                                            tmdbid=download_history.tmdbid,
                                                                            doubanid=download_history.doubanid)
+                    if mediainfo:
+                        # 更新自定义媒体类别
+                        if download_history.media_category:
+                            mediainfo.category = download_history.media_category
+
                 else:
                     mediainfo: MediaInfo = self.mediaChain.recognize_by_meta(file_meta)
                 if not mediainfo:

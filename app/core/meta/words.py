@@ -14,7 +14,7 @@ class WordsMatcher(metaclass=Singleton):
     def __init__(self):
         self.systemconfig = SystemConfigOper()
 
-    def prepare(self, title: str) -> Tuple[str, List[str]]:
+    def prepare(self, title: str, custom_words: List[str] = None) -> Tuple[str, List[str]]:
         """
         预处理标题，支持三种格式
         1：屏蔽词
@@ -23,7 +23,7 @@ class WordsMatcher(metaclass=Singleton):
         """
         appley_words = []
         # 读取自定义识别词
-        words: List[str] = self.systemconfig.get(SystemConfigKey.CustomIdentifiers) or []
+        words: List[str] = custom_words or self.systemconfig.get(SystemConfigKey.CustomIdentifiers) or []
         for word in words:
             if not word or word.startswith("#"):
                 continue

@@ -1,11 +1,9 @@
-import json
 from typing import Any, Self, List, Tuple, Optional, Generator
 
 from sqlalchemy import create_engine, QueuePool, and_, inspect
 from sqlalchemy.orm import declared_attr, sessionmaker, Session, scoped_session, as_declarative
 
 from app.core.config import settings
-from app.utils.object import ObjectUtils
 
 # 数据库引擎
 Engine = create_engine(

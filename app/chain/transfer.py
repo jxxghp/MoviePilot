@@ -1,4 +1,3 @@
-import json
 import re
 import threading
 from pathlib import Path
@@ -118,6 +117,9 @@ class TransferChain(ChainBase):
                     if mediainfo:
                         # 补充图片
                         self.obtain_images(mediainfo)
+                        # 更新自定义媒体类别
+                        if downloadhis.media_category:
+                            mediainfo.category = downloadhis.media_category
                 else:
                     # 非MoviePilot下载的任务，按文件识别
                     mediainfo = None

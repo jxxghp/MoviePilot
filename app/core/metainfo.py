@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, List
 
 import regex as re
 
@@ -10,17 +10,18 @@ from app.log import logger
 from app.schemas.types import MediaType
 
 
-def MetaInfo(title: str, subtitle: str = None) -> MetaBase:
+def MetaInfo(title: str, subtitle: str = None, custom_words: List[str] = None) -> MetaBase:
     """
     根据标题和副标题识别元数据
     :param title: 标题、种子名、文件名
     :param subtitle: 副标题、描述
+    :param custom_words: 自定义识别词列表
     :return: MetaAnime、MetaVideo
     """
     # 原标题
     org_title = title
     # 预处理标题
-    title, apply_words = WordsMatcher().prepare(title)
+    title, apply_words = WordsMatcher().prepare(title, custom_words=custom_words)
     # 获取标题中媒体信息
     title, metainfo = find_metainfo(title)
     # 判断是否处理文件

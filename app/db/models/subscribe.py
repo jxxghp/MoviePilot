@@ -74,6 +74,12 @@ class Subscribe(Base):
     search_imdbid = Column(Integer, default=0)
     # 是否手动修改过总集数 0否 1是
     manual_total_episode = Column(Integer, default=0)
+    # 自定义识别词
+    custom_words = Column(String)
+    # 自定义媒体类别
+    media_category = Column(String)
+    # 过滤规则组
+    filter_groups = Column(JSON, default=list)
 
     @staticmethod
     @db_query
