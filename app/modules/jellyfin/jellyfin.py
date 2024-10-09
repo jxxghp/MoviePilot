@@ -533,7 +533,7 @@ class Jellyfin:
             "api_key": self._apikey
         }
         try:
-            res = RequestUtils().post_res(url, params)
+            res = RequestUtils().post_res(url, params=params)
             if res:
                 return True
             else:
