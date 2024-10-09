@@ -77,7 +77,7 @@ class Subscribe(BaseModel):
 
 class SubscribeShare(BaseModel):
     # 分享ID
-    share_id: Optional[int] = None
+    id: Optional[int] = None
     # 订阅ID
     subscribe_id: Optional[int] = None
     # 分享标题

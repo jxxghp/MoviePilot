@@ -26,6 +26,8 @@ class SubscribeHelper(metaclass=Singleton):
 
     _sub_share = f"{settings.MP_SERVER_HOST}/subscribe/share"
 
+    _sub_shares = f"{settings.MP_SERVER_HOST}/subscribe/shares"
+
     _sub_fork = f"{settings.MP_SERVER_HOST}/subscribe/fork/%s"
 
     def __init__(self):
@@ -106,21 +108,7 @@ class SubscribeHelper(metaclass=Singleton):
                            timeout=10).post(self._sub_report,
                                             json={
                                                 "subscribes": [
-                                                    {
-                                                        "name": sub.name,
-                                                        "year": sub.year,
-                                                        "type": sub.type,
-                                                        "tmdbid": sub.tmdbid,
-                                                        "imdbid": sub.imdbid,
-                                                        "tvdbid": sub.tvdbid,
-                                                        "doubanid": sub.doubanid,
-                                                        "bangumiid": sub.bangumiid,
-                                                        "season": sub.season,
-                                                        "poster": sub.poster,
-                                                        "backdrop": sub.backdrop,
-                                                        "vote": sub.vote,
-                                                        "description": sub.description
-                                                    } for sub in subscribes
+                                                    sub.to_dict() for sub in subscribes
                                                 ]
                                             })
         return True if res else False
@@ -135,33 +123,15 @@ class SubscribeHelper(metaclass=Singleton):
         subscribe = SubscribeOper().get(subscribe_id)
         if not subscribe:
             return False, "订阅不存在"
+        subscribe_dict = subscribe.to_dict()
+        subscribe_dict.pop("id")
         res = RequestUtils(content_type="application/json",
                            timeout=10).post(self._sub_share,
                                             json={
                                                 "share_title": share_title,
                                                 "share_comment": share_comment,
                                                 "share_user": share_user,
-                                                "name": subscribe.name,
-                                                "year": subscribe.year,
-                                                "type": subscribe.type,
-                                                "tmdbid": subscribe.tmdbid,
-                                                "imdbid": subscribe.imdbid,
-                                                "tvdbid": subscribe.tvdbid,
-                                                "doubanid": subscribe.doubanid,
-                                                "bangumiid": subscribe.bangumiid,
-                                                "season": subscribe.season,
-                                                "poster": subscribe.poster,
-                                                "backdrop": subscribe.backdrop,
-                                                "vote": subscribe.vote,
-                                                "description": subscribe.description,
-                                                "include": subscribe.include,
-                                                "exclude": subscribe.include,
-                                                "quality": subscribe.include,
-                                                "resolution": subscribe.include,
-                                                "effect": subscribe.include,
-                                                "total_episode": subscribe.include,
-                                                "custom_words": subscribe.include,
-                                                "media_category": subscribe.include,
+                                                **subscribe_dict
                                             })
         if res is None:
             return False, "连接MoviePilot服务器失败"
@@ -185,3 +155,19 @@ class SubscribeHelper(metaclass=Singleton):
             return True, ""
         else:
             return False, res.json().get("message")
+
+    @cached(cache=TTLCache(maxsize=20, ttl=1800))
+    def get_shares(self, name: str, page: int = 1, count: int = 30) -> List[dict]:
+        """
+        获取订阅分享数据
+        """
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return []
+        res = RequestUtils(timeout=15).get_res(self._sub_shares, params={
+            "name": name,
+            "page": page,
+            "count": count
+        })
+        if res and res.status_code == 200:
+            return res.json()
+        return []

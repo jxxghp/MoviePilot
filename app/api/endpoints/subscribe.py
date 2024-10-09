@@ -432,18 +432,32 @@ def subscribe_share(
 @router.post("/fork", summary="复用订阅", response_model=schemas.Response)
 def subscribe_fork(
         sub: schemas.SubscribeShare,
-        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+        current_user: User = Depends(get_current_active_user)) -> Any:
     """
     复用订阅
     """
     sub_dict = sub.dict()
-    for key in sub_dict.keys():
-        if not hasattr(schemas.Subscribe, key):
+    sub_dict.pop("id")
+    for key in list(sub_dict.keys()):
+        if not hasattr(schemas.Subscribe(), key):
             sub_dict.pop(key)
-    result = create_subscribe(subscribe_in=schemas.Subscribe(**sub_dict))
+    result = create_subscribe(subscribe_in=schemas.Subscribe(**sub_dict),
+                              current_user=current_user)
     if result.success:
-        SubscribeHelper().sub_fork(share_id=sub.share_id)
+        SubscribeHelper().sub_fork(share_id=sub.id)
     return result
+
+
+@router.get("/shares", summary="查询分享的订阅", response_model=List[schemas.SubscribeShare])
+def popular_subscribes(
+        name: str = None,
+        page: int = 1,
+        count: int = 30,
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询分享的订阅
+    """
+    return SubscribeHelper().get_shares(name=name, page=page, count=count)
 
 
 @router.get("/{subscribe_id}", summary="订阅详情", response_model=schemas.Subscribe)
