@@ -44,10 +44,6 @@ class EventType(Enum):
     WebhookMessage = "webhook.message"
     # 发送消息通知
     NoticeMessage = "notice.message"
-    # 名称识别请求
-    NameRecognize = "name.recognize"
-    # 名称识别结果
-    NameRecognizeResult = "name.recognize.result"
     # 订阅已添加
     SubscribeAdded = "subscribe.added"
     # 订阅已完成
@@ -62,7 +58,8 @@ class EventType(Enum):
 
 # 同步链式事件
 class ChainEventType(Enum):
-    pass
+    # 名称识别请求
+    NameRecognize = "name.recognize"
 
 
 # 系统配置Key字典
