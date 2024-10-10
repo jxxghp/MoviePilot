@@ -130,8 +130,8 @@ def __set_or_refresh_resource_token_cookie(request: Request, response: Response,
         key=settings.PROJECT_NAME,
         value=resource_token,
         httponly=True,
-        secure=request.url.scheme == "https",
-        samesite="strict"
+        secure=request.url.scheme == "https",  # 根据当前请求的协议设置 secure 属性
+        samesite="lax"  # 不同浏览器对 "Strict" 的处理可能不同，设置 SameSite 为 "Lax"，以平衡安全性和兼容性
     )
 
 
