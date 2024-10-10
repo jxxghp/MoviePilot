@@ -47,12 +47,12 @@ class MetaAnime(MetaBase):
                     if name.find("/") != -1:
                         names = name.split("/")
                         if StringUtils.is_chinese(names[0]):
-                            self.cn_name = names[0]
+                            self.origin_cn_name = names[0]
                             if len(names) > 1:
                                 self.en_name = names[1]
                             _split_flag = False
                         elif StringUtils.is_chinese(names[-1]):
-                            self.cn_name = names[-1]
+                            self.origin_cn_name = names[-1]
                             if len(names) > 1:
                                 self.en_name = names[0]
                             _split_flag = False
@@ -68,20 +68,20 @@ class MetaAnime(MetaBase):
                                 word = word[:-1]
                             if word.isdigit():
                                 if lastword_type == "cn":
-                                    self.cn_name = "%s %s" % (self.cn_name or "", word)
+                                    self.origin_cn_name = "%s %s" % (self.origin_cn_name or "", word)
                                 elif lastword_type == "en":
                                     self.en_name = "%s %s" % (self.en_name or "", word)
                             elif StringUtils.is_chinese(word):
-                                self.cn_name = "%s %s" % (self.cn_name or "", word)
+                                self.origin_cn_name = "%s %s" % (self.origin_cn_name or "", word)
                                 lastword_type = "cn"
                             else:
                                 self.en_name = "%s %s" % (self.en_name or "", word)
                                 lastword_type = "en"
-                if self.cn_name:
-                    _, self.cn_name, _, _, _, _ = StringUtils.get_keyword(self.cn_name)
-                    if self.cn_name:
-                        self.cn_name = re.sub(r'%s' % self._name_nostring_re, '', self.cn_name, flags=re.IGNORECASE).strip()
-                        self.cn_name = zhconv.convert(self.cn_name, "zh-hans")
+                if self.origin_cn_name:
+                    _, self.origin_cn_name, _, _, _, _ = StringUtils.get_keyword(self.origin_cn_name)
+                    if self.origin_cn_name:
+                        self.origin_cn_name = re.sub(r'%s' % self._name_nostring_re, '', self.origin_cn_name, flags=re.IGNORECASE).strip()
+                        self.cn_name = zhconv.convert(self.origin_cn_name, "zh-hans")
                 if self.en_name:
                     self.en_name = re.sub(r'%s' % self._name_nostring_re, '', self.en_name, flags=re.IGNORECASE).strip().title()
                     self._name = StringUtils.str_title(self.en_name)

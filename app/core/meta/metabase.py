@@ -25,7 +25,9 @@ class MetaBase(object):
     subtitle: Optional[str] = None
     # 类型 电影、电视剧
     type: MediaType = MediaType.UNKNOWN
-    # 识别的中文名
+    # 原始中文名
+    origin_cn_name: Optional[str] = None
+    # 识别的中文名（简体）
     cn_name: Optional[str] = None
     # 识别的英文名
     en_name: Optional[str] = None
