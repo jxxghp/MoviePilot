@@ -78,7 +78,10 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
             server: Emby = self.get_instance(source)
             if not server:
                 return None
-            return server.get_webhook_message(form, args)
+            result = server.get_webhook_message(form, args)
+            if result:
+                result.server_name = source
+            return result
 
         for server in self.get_instances().values():
             if server:

@@ -78,7 +78,10 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
             server: Jellyfin = self.get_instance(source)
             if not server:
                 return None
-            return server.get_webhook_message(body)
+            result = server.get_webhook_message(body)
+            if result:
+                result.server_name = source
+            return result
 
         for server in self.get_instances().values():
             if server:
