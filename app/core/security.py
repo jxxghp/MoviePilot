@@ -75,6 +75,7 @@ def create_access_token(
 
     to_encode = {
         "exp": expire,
+        "iat": datetime.utcnow(),
         "sub": str(userid),
         "username": username,
         "super_user": super_user,
@@ -102,8 +103,8 @@ def __set_or_refresh_resource_token_cookie(request: Request, response: Response,
             exp = decoded_token.get("exp")
             if exp:
                 remaining_time = datetime.utcfromtimestamp(exp) - datetime.utcnow()
-                # 如果剩余时间少于 2 分钟，刷新令牌
-                if remaining_time < timedelta(minutes=2):
+                # 根据剩余时长提前刷新令牌
+                if remaining_time < timedelta(seconds=(settings.RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS / 3)):
                     raise jwt.ExpiredSignatureError
         except jwt.PyJWTError:
             logger.debug(f"Token error occurred. refreshing token")
