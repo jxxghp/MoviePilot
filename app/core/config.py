@@ -39,7 +39,7 @@ class ConfigModel(BaseModel):
     # TOKEN过期时间
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     # RESOURCE_TOKEN过期时间
-    RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS: int = 60 * 10
+    RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS: int = 60 * 30
     # 时区
     TZ: str = "Asia/Shanghai"
     # API监听地址

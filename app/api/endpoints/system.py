@@ -138,7 +138,7 @@ def set_env_setting(env: dict,
 
 
 @router.get("/progress/{process_type}", summary="实时进度")
-def get_progress(process_type: str, _: schemas.TokenPayload = Depends(verify_token)):
+def get_progress(process_type: str, _: schemas.TokenPayload = Depends(verify_resource_token)):
     """
     实时获取处理进度，返回格式为SSE
     """
