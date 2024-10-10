@@ -581,7 +581,7 @@ class TmdbApi:
         更新TMDB信息中的中文名称
         """
 
-        def __get_tmdb_chinese_title(tmdbinfo):
+        def __get_tmdb_chinese_title(tmdbinfo) -> Optional[str]:
             """
             从别名中获取中文标题
             """
@@ -628,7 +628,7 @@ class TmdbApi:
         更新TMDB信息中的其它语种名称
         """
 
-        def __get_tmdb_lang_title(tmdbinfo: dict, lang: str = "US"):
+        def __get_tmdb_lang_title(tmdbinfo: dict, lang: str = "US") -> Optional[str]:
             """
             从译名中获取其它语种标题
             """
@@ -1030,7 +1030,7 @@ class TmdbApi:
             print(str(e))
             return {}
 
-    def get_tv_episode_detail(self, tmdbid: int, season: int, episode: int):
+    def get_tv_episode_detail(self, tmdbid: int, season: int, episode: int) -> dict:
         """
         获取电视剧集的详情
         :param tmdbid: TMDB ID
@@ -1047,7 +1047,7 @@ class TmdbApi:
             print(str(e))
             return {}
 
-    def discover_movies(self, **kwargs):
+    def discover_movies(self, **kwargs) -> List[dict]:
         """
         发现电影
         :param kwargs:
@@ -1067,7 +1067,7 @@ class TmdbApi:
             print(str(e))
             return []
 
-    def discover_tvs(self, **kwargs):
+    def discover_tvs(self, **kwargs) -> List[dict]:
         """
         发现电视剧
         :param kwargs:
@@ -1083,6 +1083,19 @@ class TmdbApi:
                 for info in tmdbinfo:
                     info['media_type'] = MediaType.TV
             return tmdbinfo or []
+        except Exception as e:
+            print(str(e))
+            return []
+
+    def discover_trending(self, page: int = 1) -> List[dict]:
+        """
+        流行趋势
+        """
+        if not self.trending:
+            return []
+        try:
+            logger.debug(f"正在获取流行趋势：page={page} ...")
+            return self.trending.all_week(page=page)
         except Exception as e:
             print(str(e))
             return []
@@ -1259,7 +1272,7 @@ class TmdbApi:
         """
         self.tmdb.cache_clear()
 
-    def get_tv_episode_years(self, tv_id: int):
+    def get_tv_episode_years(self, tv_id: int) -> dict:
         """
         查询剧集组年份
         """

@@ -343,7 +343,7 @@ class TheMovieDbModule(_ModuleBase):
         :param page: 第几页
         :return: TMDB信息列表
         """
-        trending = self.tmdb.trending.all_week(page=page)
+        trending = self.tmdb.discover_trending(page=page)
         if trending:
             return [MediaInfo(tmdb_info=info) for info in trending]
         return []
