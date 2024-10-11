@@ -23,7 +23,7 @@ APScheduler~=3.10.1
 cryptography~=43.0.0
 pytz~=2023.3
 pycryptodome~=3.20.0
-qbittorrent-api==2023.5.48
+qbittorrent-api==2024.9.67
 plexapi~=4.15.16
 transmission-rpc~=4.3.0
 Jinja2~=3.1.4
