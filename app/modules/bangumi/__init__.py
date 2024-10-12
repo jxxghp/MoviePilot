@@ -36,7 +36,7 @@ class BangumiModule(_ModuleBase):
 
     @staticmethod
     def get_name() -> str:
-        return "Bangumi"@staticmethod
+        return "Bangumi"
 
     @staticmethod
     def get_type() -> ModuleType:
