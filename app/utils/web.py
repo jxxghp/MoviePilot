@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from cachetools import TTLCache, cached
 
@@ -94,7 +94,7 @@ class WebUtils:
 
     @staticmethod
     @cached(cache=TTLCache(maxsize=1, ttl=3600))
-    def get_bing_wallpapers(num: int = 7) -> Optional[str]:
+    def get_bing_wallpapers(num: int = 7) -> List[str]:
         """
         获取7天的Bing每日壁纸
         """
@@ -107,4 +107,4 @@ class WebUtils:
                     return [f"https://cn.bing.com{image.get('url')}" for image in result.get('images') or []]
             except Exception as err:
                 print(str(err))
-        return None
+        return []
