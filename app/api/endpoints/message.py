@@ -14,7 +14,7 @@ from app.db import get_db
 from app.db.models import User
 from app.db.models.message import Message
 from app.db.user_oper import get_current_active_superuser
-from app.helper.serviceconfig import ServiceConfigHelper
+from app.helper.service import ServiceConfigHelper
 from app.log import logger
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.schemas.types import MessageChannel

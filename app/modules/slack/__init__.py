@@ -2,7 +2,6 @@ import json
 import re
 from typing import Optional, Union, List, Tuple, Any
 
-from app.core.config import settings
 from app.core.context import MediaInfo, Context
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase

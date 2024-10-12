@@ -1,7 +1,7 @@
 from abc import abstractmethod, ABCMeta
 from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable, Any
 
-from app.helper.serviceconfig import ServiceConfigHelper
+from app.helper.service import ServiceConfigHelper
 from app.schemas import Notification, MessageChannel, NotificationConf, MediaServerConf, DownloaderConf
 from app.schemas.types import ModuleType
 

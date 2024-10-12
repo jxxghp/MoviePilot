@@ -1,7 +1,6 @@
 import json
 from typing import Optional, Union, List, Tuple, Any, Dict
 
-from app.core.config import settings
 from app.core.context import Context, MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase

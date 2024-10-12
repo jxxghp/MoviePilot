@@ -1,6 +1,6 @@
 from typing import Optional
 
-from app.helper.servicebase import ServiceBaseHelper
+from app.helper.service import ServiceBaseHelper
 from app.schemas import MediaServerConf, ServiceInfo
 from app.schemas.types import SystemConfigKey, ModuleType
 

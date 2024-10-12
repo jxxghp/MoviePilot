@@ -1,9 +1,7 @@
-import json
 from typing import Any
 
 from app.db import DbOper
 from app.db.models.plugindata import PluginData
-from app.utils.object import ObjectUtils
 
 
 class PluginDataOper(DbOper):
