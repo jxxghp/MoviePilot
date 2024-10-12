@@ -82,9 +82,9 @@ class Qbittorrent:
             logger.error(f"qbittorrent 连接出错：{str(err)}")
             return None
 
-    def get_torrents(self, ids: Union[str, list] = None,
-                     status: Union[str, list] = None,
-                     tags: Union[str, list] = None) -> Tuple[List[TorrentDictionary], bool]:
+    def get_torrents(self, ids: Optional[Union[str, list]] = None,
+                     status: Optional[str] = None,
+                     tags: Optional[Union[str, list]] = None) -> Tuple[List[TorrentDictionary], bool]:
         """
         获取种子列表
         return: 种子列表, 是否发生异常
@@ -117,7 +117,7 @@ class Qbittorrent:
         if not self.qbc:
             return None
         # completed会包含移动状态 改为获取seeding状态 包含活动上传, 正在做种, 及强制做种
-        torrents, error = self.get_torrents(status=["seeding"], ids=ids, tags=tags)
+        torrents, error = self.get_torrents(status="seeding", ids=ids, tags=tags)
         return None if error else torrents or []
 
     def get_downloading_torrents(self, ids: Union[str, list] = None,
@@ -129,7 +129,7 @@ class Qbittorrent:
         if not self.qbc:
             return None
         torrents, error = self.get_torrents(ids=ids,
-                                            status=["downloading"],
+                                            status="downloading",
                                             tags=tags)
         return None if error else torrents or []
 
@@ -195,7 +195,7 @@ class Qbittorrent:
             logger.error(f"设置强制作种出错：{str(err)}")
 
     def __get_last_add_torrentid_by_tag(self, tags: Union[str, list],
-                                        status: Union[str, list] = None) -> Optional[str]:
+                                        status: Optional[str] = None) -> Optional[str]:
         """
         根据种子的下载链接获取下载中或暂停的钟子的ID
         :return: 种子ID
@@ -211,7 +211,7 @@ class Qbittorrent:
             return None
 
     def get_torrent_id_by_tag(self, tags: Union[str, list],
-                              status: Union[str, list] = None) -> Optional[str]:
+                              status: Optional[str] = None) -> Optional[str]:
         """
         通过标签多次尝试获取刚添加的种子ID，并移除标签
         """
