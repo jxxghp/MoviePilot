@@ -7,6 +7,7 @@ from app.helper.rule import RuleHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filter.RuleParser import RuleParser
+from app.schemas.types import ModuleType
 from app.utils.string import StringUtils
 
 
@@ -158,6 +159,13 @@ class FilterModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "过滤器"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.Other
 
     def stop(self):
         pass

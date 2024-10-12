@@ -5,6 +5,7 @@ from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.synologychat.synologychat import SynologyChat
 from app.schemas import MessageChannel, CommingMessage, Notification
+from app.schemas.types import ModuleType
 
 
 class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
@@ -19,6 +20,13 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
     @staticmethod
     def get_name() -> str:
         return "Synology Chat"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.Notification
 
     def stop(self):
         pass

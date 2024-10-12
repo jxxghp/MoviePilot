@@ -5,8 +5,7 @@ from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.jellyfin.jellyfin import Jellyfin
-from app.schemas import MediaServerConf
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, ModuleType
 
 
 class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
@@ -21,6 +20,13 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
     @staticmethod
     def get_name() -> str:
         return "Jellyfin"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.MediaServer
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
@@ -78,7 +84,10 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
             server: Jellyfin = self.get_instance(source)
             if not server:
                 return None
-            return server.get_webhook_message(body)
+            result = server.get_webhook_message(body)
+            if result:
+                result.server_name = source
+            return result
 
         for server in self.get_instances().values():
             if server:

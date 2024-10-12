@@ -139,6 +139,7 @@ class WebhookEventInfo(BaseModel):
     """
     event: Optional[str] = None
     channel: Optional[str] = None
+    server_name: Optional[str] = None
     item_type: Optional[str] = None
     item_name: Optional[str] = None
     item_id: Optional[str] = None

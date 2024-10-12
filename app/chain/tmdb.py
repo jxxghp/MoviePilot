@@ -127,11 +127,11 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         return None
 
     @cached(cache=TTLCache(maxsize=1, ttl=3600))
-    def get_trending_wallpapers(self, num: int = 10) -> Optional[List[str]]:
+    def get_trending_wallpapers(self, num: int = 10) -> List[str]:
         """
         获取所有流行壁纸
         """
         infos = self.tmdb_trending()
         if infos:
             return [info.backdrop_path for info in infos if info and info.backdrop_path][:num]
-        return None
+        return []

@@ -770,7 +770,7 @@ class TmdbApi:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('title')}")
             return tmdbinfo or {}
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return None
 
     def __get_tv_detail(self,
@@ -953,7 +953,7 @@ class TmdbApi:
                 logger.debug(f"{tmdbid} 查询结果：{tmdbinfo.get('name')}")
             return tmdbinfo or {}
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return None
 
     def get_tv_season_detail(self, tmdbid: int, season: int):
@@ -1027,7 +1027,7 @@ class TmdbApi:
             tmdbinfo = self.season.details(tv_id=tmdbid, season_num=season)
             return tmdbinfo or {}
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return {}
 
     def get_tv_episode_detail(self, tmdbid: int, season: int, episode: int) -> dict:
@@ -1044,7 +1044,7 @@ class TmdbApi:
             tmdbinfo = self.episode.details(tv_id=tmdbid, season_num=season, episode_num=episode)
             return tmdbinfo or {}
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return {}
 
     def discover_movies(self, **kwargs) -> List[dict]:
@@ -1064,7 +1064,7 @@ class TmdbApi:
                     info['media_type'] = MediaType.MOVIE
             return tmdbinfo or []
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return []
 
     def discover_tvs(self, **kwargs) -> List[dict]:
@@ -1084,7 +1084,7 @@ class TmdbApi:
                     info['media_type'] = MediaType.TV
             return tmdbinfo or []
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return []
 
     def discover_trending(self, page: int = 1) -> List[dict]:
@@ -1097,7 +1097,7 @@ class TmdbApi:
             logger.debug(f"正在获取流行趋势：page={page} ...")
             return self.trending.all_week(page=page)
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return []
 
     def get_movie_images(self, tmdbid: int) -> dict:
@@ -1110,7 +1110,7 @@ class TmdbApi:
             logger.debug(f"正在获取电影图片：{tmdbid}...")
             return self.movie.images(movie_id=tmdbid) or {}
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return {}
 
     def get_tv_images(self, tmdbid: int) -> dict:
@@ -1123,7 +1123,7 @@ class TmdbApi:
             logger.debug(f"正在获取电视剧图片：{tmdbid}...")
             return self.tv.images(tv_id=tmdbid) or {}
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return {}
 
     def get_movie_similar(self, tmdbid: int) -> List[dict]:
@@ -1136,7 +1136,7 @@ class TmdbApi:
             logger.debug(f"正在获取相似电影：{tmdbid}...")
             return self.movie.similar(movie_id=tmdbid) or []
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return []
 
     def get_tv_similar(self, tmdbid: int) -> List[dict]:
@@ -1149,7 +1149,7 @@ class TmdbApi:
             logger.debug(f"正在获取相似电视剧：{tmdbid}...")
             return self.tv.similar(tv_id=tmdbid) or []
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return []
 
     def get_movie_recommend(self, tmdbid: int) -> List[dict]:
@@ -1162,7 +1162,7 @@ class TmdbApi:
             logger.debug(f"正在获取推荐电影：{tmdbid}...")
             return self.movie.recommendations(movie_id=tmdbid) or []
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return []
 
     def get_tv_recommend(self, tmdbid: int) -> List[dict]:
@@ -1175,7 +1175,7 @@ class TmdbApi:
             logger.debug(f"正在获取推荐电视剧：{tmdbid}...")
             return self.tv.recommendations(tv_id=tmdbid) or []
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return []
 
     def get_movie_credits(self, tmdbid: int, page: int = 1, count: int = 24) -> List[dict]:
@@ -1192,7 +1192,7 @@ class TmdbApi:
                 return cast[(page - 1) * count: page * count]
             return []
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return []
 
     def get_tv_credits(self, tmdbid: int, page: int = 1, count: int = 24) -> List[dict]:
@@ -1209,7 +1209,7 @@ class TmdbApi:
                 return cast[(page - 1) * count: page * count]
             return []
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return []
 
     def get_person_detail(self, person_id: int) -> dict:
@@ -1242,7 +1242,7 @@ class TmdbApi:
             logger.debug(f"正在获取人物详情：{person_id}...")
             return self.person.details(person_id=person_id) or {}
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return {}
 
     def get_person_credits(self, person_id: int, page: int = 1, count: int = 24) -> List[dict]:
@@ -1263,7 +1263,7 @@ class TmdbApi:
                 return cast[(page - 1) * count: page * count]
             return []
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return []
 
     def clear_cache(self):
@@ -1301,7 +1301,7 @@ class TmdbApi:
                     episode_years[order] = str(first_date).split("-")[0]
             return episode_years
         except Exception as e:
-            print(str(e))
+            logger.error(str(e))
             return {}
 
     def close(self):

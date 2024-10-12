@@ -17,7 +17,7 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, ModuleType
 from app.utils.system import SystemUtils
 
 lock = Lock()
@@ -43,6 +43,13 @@ class FileManagerModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "文件整理"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.Other
 
     def stop(self):
         pass

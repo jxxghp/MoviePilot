@@ -192,6 +192,46 @@ function test_connectivity_github() {
     esac
 }
 
+function compare_versions() {
+    local v1="$1"
+    local v2="$2"
+    local parts1=()
+    local parts2=()
+    IFS='.-' read -ra parts1 <<< "$v1"
+    IFS='.-' read -ra parts2 <<< "$v2"
+    local i
+    for ((i = 0; i < ${#parts1[@]} || i < ${#parts2[@]}; i++)); do
+        local part1="${parts1[i]:-0}"
+        local part2="${parts2[i]:-0}"
+        if [[ $part1 =~ ^[0-9]+$ && $part2 =~ ^[0-9]+$ ]]; then
+            if ((part1 > part2)); then
+                return 1
+            elif ((part1 < part2)); then
+                return 2
+            fi
+        else
+            # 定义一个非数字的排序顺序的优先级，特殊后缀版本比较
+            local order=(alpha beta rc stable)
+            local index1=-1
+            local index2=-1
+            for ((j = 0; j < ${#order[@]}; j++)); do
+                if [[ $part1 = "${order[j]}" ]]; then
+                    index1=$j
+                fi
+                if [[ $part2 = "${order[j]}" ]]; then
+                    index2=$j
+                fi
+            done
+            if ((index1 > index2)); then
+                return 1
+            elif ((index1 < index2)); then
+                return 2
+            fi
+        fi
+    done
+    return 0
+}
+
 if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
     # 优先级：镜像站 > 全局 > 不代理
     # pip
@@ -231,11 +271,14 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
             if [[ "${new_version}" == *v* ]]; then
                 release_version=${new_version}
                 INFO "最新版本号：${release_version}"
-                if [ "${current_version}" != "${release_version}" ]; then
+                # 使用版本号比较函数进行比较
+                if compare_versions "${current_version}" "${release_version}"; then
+                    WARN "当前版本已是最新版本，跳过更新步骤..."
+                elif [ $? -eq 2 ]; then
                     INFO "发现新版本，开始自动升级..."
                     install_backend_and_download_resources "tags/${release_version}.zip"
                 else
-                    INFO "未发现新版本，跳过更新步骤..."
+                    WARN "当前版本高于远程版本，跳过更新步骤..."
                 fi
             else
                 WARN "最新版本号获取失败，继续启动..."

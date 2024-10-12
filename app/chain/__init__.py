@@ -17,7 +17,7 @@ from app.core.module import ModuleManager
 from app.db.message_oper import MessageOper
 from app.db.user_oper import UserOper
 from app.helper.message import MessageHelper
-from app.helper.serviceconfig import ServiceConfigHelper
+from app.helper.service import ServiceConfigHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
     WebhookEventInfo, TmdbEpisode, MediaPerson, FileItem
@@ -101,7 +101,7 @@ class ChainBase(metaclass=ABCMeta):
             try:
                 module_name = module.get_name()
             except Exception as err:
-                logger.error(f"获取模块名称出错：{str(err)}")
+                logger.debug(f"获取模块名称出错：{str(err)}")
                 module_name = module_id
             try:
                 func = getattr(module, method)

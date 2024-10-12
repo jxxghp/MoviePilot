@@ -2,12 +2,12 @@ import json
 import re
 from typing import Optional, Union, List, Tuple, Any
 
-from app.core.config import settings
 from app.core.context import MediaInfo, Context
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.slack.slack import Slack
 from app.schemas import MessageChannel, CommingMessage, Notification
+from app.schemas.types import ModuleType
 
 
 class SlackModule(_ModuleBase, _MessageBase[Slack]):
@@ -22,6 +22,13 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
     @staticmethod
     def get_name() -> str:
         return "Slack"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.Notification
 
     def stop(self):
         """

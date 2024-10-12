@@ -12,7 +12,7 @@ from app.log import logger
 from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.schemas import TransferTorrent, DownloadingTorrent
-from app.schemas.types import TorrentStatus
+from app.schemas.types import TorrentStatus, ModuleType
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
@@ -29,6 +29,13 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
     @staticmethod
     def get_name() -> str:
         return "Qbittorrent"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.Downloader
 
     def stop(self):
         pass

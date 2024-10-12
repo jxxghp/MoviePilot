@@ -13,7 +13,7 @@ from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.schemas import MediaPerson
-from app.schemas.types import MediaType, MediaImageType
+from app.schemas.types import MediaType, MediaImageType, ModuleType
 from app.utils.http import RequestUtils
 
 
@@ -40,6 +40,13 @@ class TheMovieDbModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "TheMovieDb"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.MediaRecognize
 
     def stop(self):
         self.cache.save()

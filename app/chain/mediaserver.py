@@ -1,11 +1,10 @@
-import json
 import threading
 from typing import List, Union, Optional, Generator
 
 from app import schemas
 from app.chain import ChainBase
 from app.db.mediaserver_oper import MediaServerOper
-from app.helper.serviceconfig import ServiceConfigHelper
+from app.helper.service import ServiceConfigHelper
 from app.log import logger
 
 lock = threading.Lock()

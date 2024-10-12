@@ -1,12 +1,12 @@
 import json
 from typing import Optional, Union, List, Tuple, Any, Dict
 
-from app.core.config import settings
 from app.core.context import Context, MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.vocechat.vocechat import VoceChat
 from app.schemas import MessageChannel, CommingMessage, Notification
+from app.schemas.types import ModuleType
 
 
 class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
@@ -21,6 +21,13 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
     @staticmethod
     def get_name() -> str:
         return "VoceChat"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.Notification
 
     def stop(self):
         pass

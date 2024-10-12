@@ -179,3 +179,19 @@ class StorageSchema(Enum):
     Alipan = "alipan"
     U115 = "u115"
     Rclone = "rclone"
+
+
+# 模块类型
+class ModuleType(Enum):
+    # 下载器
+    Downloader = "downloader"
+    # 媒体服务器
+    MediaServer = "mediaserver"
+    # 消息服务
+    Notification = "notification"
+    # 媒体识别
+    MediaRecognize = "mediarecognize"
+    # 站点索引
+    Indexer = "indexer"
+    # 其它
+    Other = "other"

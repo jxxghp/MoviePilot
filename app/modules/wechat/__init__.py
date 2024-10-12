@@ -7,6 +7,7 @@ from app.modules import _ModuleBase, _MessageBase
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.modules.wechat.wechat import WeChat
 from app.schemas import MessageChannel, CommingMessage, Notification
+from app.schemas.types import ModuleType
 from app.utils.dom import DomUtils
 
 
@@ -22,6 +23,13 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
     @staticmethod
     def get_name() -> str:
         return "微信"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.Notification
 
     def stop(self):
         pass

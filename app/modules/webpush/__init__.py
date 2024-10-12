@@ -7,6 +7,7 @@ from app.core.config import global_vars, settings
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas import Notification
+from app.schemas.types import ModuleType
 
 
 class WebPushModule(_ModuleBase, _MessageBase):
@@ -20,6 +21,13 @@ class WebPushModule(_ModuleBase, _MessageBase):
     @staticmethod
     def get_name() -> str:
         return "WebPush"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.Notification
 
     def stop(self):
         pass
