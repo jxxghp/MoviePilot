@@ -3,6 +3,7 @@ from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callabl
 
 from app.helper.serviceconfig import ServiceConfigHelper
 from app.schemas import Notification, MessageChannel, NotificationConf, MediaServerConf, DownloaderConf
+from app.schemas.types import ModuleType
 
 
 class _ModuleBase(metaclass=ABCMeta):
@@ -31,6 +32,14 @@ class _ModuleBase(metaclass=ABCMeta):
     def get_name() -> str:
         """
         获取模块名称
+        """
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
         """
         pass
 

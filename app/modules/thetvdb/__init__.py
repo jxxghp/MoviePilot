@@ -4,6 +4,7 @@ from app.core.config import settings
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.thetvdb import tvdbapi
+from app.schemas.types import ModuleType
 from app.utils.http import RequestUtils
 
 
@@ -19,6 +20,13 @@ class TheTvDbModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "TheTvDb"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.MediaRecognize
 
     def stop(self):
         self.tvdb.close()

@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Type, TypeVar, Generic, Iterator
 from app.core.module import ModuleManager
 from app.helper.serviceconfig import ServiceConfigHelper
 from app.schemas import ServiceInfo
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey, ModuleType
 
 TConf = TypeVar("TConf")
 
@@ -13,11 +13,11 @@ class ServiceBaseHelper(Generic[TConf]):
     通用服务帮助类，抽象获取配置和服务实例的通用逻辑
     """
 
-    def __init__(self, config_key: SystemConfigKey, conf_type: Type[TConf], modules: List[str]):
+    def __init__(self, config_key: SystemConfigKey, conf_type: Type[TConf], module_type: ModuleType):
         self.modulemanager = ModuleManager()
         self.config_key = config_key
         self.conf_type = conf_type
-        self.modules = modules
+        self.module_type = module_type
 
     def get_configs(self, include_disabled: bool = False) -> Dict[str, TConf]:
         """
@@ -47,8 +47,8 @@ class ServiceBaseHelper(Generic[TConf]):
         迭代所有模块的实例及其对应的配置，返回 ServiceInfo 实例
         """
         configs = self.get_configs()
-        for module_name in self.modules:
-            module = self.modulemanager.get_running_module(module_name)
+        modules = self.modulemanager.get_running_type_modules(self.module_type)
+        for module in modules:
             if not module:
                 continue
             module_instances = module.get_instances()
@@ -81,9 +81,10 @@ class ServiceBaseHelper(Generic[TConf]):
         return {
             service_info.name: service_info
             for service_info in self.iterate_module_instances()
-            if service_info.config and
-               (type_filter is None or service_info.type == type_filter) and
-               (name_filters_set is None or service_info.name in name_filters_set)
+            if service_info.config and (
+                    type_filter is None or service_info.type == type_filter
+            ) and (
+                    name_filters_set is None or service_info.name in name_filters_set)
         }
 
     def get_service(self, name: str, type_filter: Optional[str] = None) -> Optional[ServiceInfo]:

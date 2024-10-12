@@ -2,7 +2,7 @@ from typing import Optional
 
 from app.helper.servicebase import ServiceBaseHelper
 from app.schemas import DownloaderConf, ServiceInfo
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey, ModuleType
 
 
 class DownloaderHelper(ServiceBaseHelper[DownloaderConf]):
@@ -14,29 +14,24 @@ class DownloaderHelper(ServiceBaseHelper[DownloaderConf]):
         super().__init__(
             config_key=SystemConfigKey.Downloaders,
             conf_type=DownloaderConf,
-            modules=["QbittorrentModule", "TransmissionModule"]
+            module_type=ModuleType.Downloader
         )
 
-    def is_qbittorrent(self, service: Optional[ServiceInfo] = None, name: Optional[str] = None) -> bool:
+    def is_downloader(
+            self,
+            service_type: Optional[str] = None,
+            service: Optional[ServiceInfo] = None,
+            name: Optional[str] = None,
+    ) -> bool:
         """
-        判断指定的下载器是否为 qbittorrent 类型，需要传入 `service` 或 `name` 中的任一参数
-
+        通用的下载器类型判断方法
+        :param service_type: 下载器的类型名称（如 'qbittorrent', 'transmission'）
         :param service: 要判断的服务信息
         :param name: 服务的名称
-        :return: 如果服务类型为 qbittorrent，返回 True；否则返回 False。
+        :return: 如果服务类型或实例为指定类型，返回 True；否则返回 False
         """
-        if not service:
-            service = self.get_service(name=name)
-        return service.type == "qbittorrent" if service else False
+        # 如果未提供 service 则通过 name 获取服务
+        service = service or self.get_service(name=name)
 
-    def is_transmission(self, service: Optional[ServiceInfo] = None, name: Optional[str] = None) -> bool:
-        """
-        判断指定的下载器是否为 transmission 类型，需要传入 `service` 或 `name` 中的任一参数
-
-        :param service: 要判断的服务信息
-        :param name: 服务的名称
-        :return: 如果服务类型为 transmission，返回 True；否则返回 False。
-        """
-        if not service:
-            service = self.get_service(name=name)
-        return service.type == "transmission" if service else False
+        # 判断服务类型是否为指定类型
+        return bool(service and service.type == service_type)

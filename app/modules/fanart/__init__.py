@@ -6,7 +6,7 @@ from app.core.context import MediaInfo, settings
 from app.log import logger
 from app.modules import _ModuleBase
 from app.utils.http import RequestUtils
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, ModuleType
 
 
 class FanartModule(_ModuleBase):
@@ -334,6 +334,13 @@ class FanartModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "Fanart"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.Other
 
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """

@@ -7,6 +7,7 @@ from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.telegram.telegram import Telegram
 from app.schemas import MessageChannel, CommingMessage, Notification
+from app.schemas.types import ModuleType
 
 
 class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
@@ -21,6 +22,13 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
     @staticmethod
     def get_name() -> str:
         return "Telegram"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.Notification
 
     def stop(self):
         """

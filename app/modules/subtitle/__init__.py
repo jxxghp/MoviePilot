@@ -10,6 +10,7 @@ from app.core.context import Context
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.modules import _ModuleBase
+from app.schemas.types import ModuleType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -31,6 +32,13 @@ class SubtitleModule(_ModuleBase):
     @staticmethod
     def get_name() -> str:
         return "站点字幕"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.Other
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass

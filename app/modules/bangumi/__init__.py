@@ -7,6 +7,7 @@ from app.core.meta import MetaBase
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.bangumi.bangumi import BangumiApi
+from app.schemas.types import ModuleType
 from app.utils.http import RequestUtils
 
 
@@ -35,7 +36,14 @@ class BangumiModule(_ModuleBase):
 
     @staticmethod
     def get_name() -> str:
-        return "Bangumi"
+        return "Bangumi"@staticmethod
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.MediaRecognize
 
     def recognize_media(self, bangumiid: int = None,
                         **kwargs) -> Optional[MediaInfo]:

@@ -5,7 +5,6 @@ from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.emby.emby import Emby
-from app.schemas import MediaServerConf
 from app.schemas.types import MediaType
 
 
@@ -21,6 +20,10 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
     @staticmethod
     def get_name() -> str:
         return "Emby"
+
+    @staticmethod
+    def get_type() -> str:
+        return "mediaserver"
 
     def stop(self):
         pass

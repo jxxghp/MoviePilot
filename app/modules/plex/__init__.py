@@ -5,8 +5,7 @@ from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.plex.plex import Plex
-from app.schemas import MediaServerConf
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, ModuleType
 
 
 class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
@@ -21,6 +20,13 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
     @staticmethod
     def get_name() -> str:
         return "Plex"
+
+    @staticmethod
+    def get_type() -> ModuleType:
+        """
+        获取模块类型
+        """
+        return ModuleType.MediaServer
 
     def stop(self):
         pass

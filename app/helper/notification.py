@@ -2,7 +2,7 @@ from typing import Optional
 
 from app.helper.servicebase import ServiceBaseHelper
 from app.schemas import NotificationConf, ServiceInfo
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import SystemConfigKey, ModuleType
 
 
 class NotificationHelper(ServiceBaseHelper[NotificationConf]):
@@ -14,84 +14,25 @@ class NotificationHelper(ServiceBaseHelper[NotificationConf]):
         super().__init__(
             config_key=SystemConfigKey.Notifications,
             conf_type=NotificationConf,
-            modules=[
-                "WechatModule",
-                "WebPushModule",
-                "VoceChatModule",
-                "TelegramModule",
-                "SynologyChatModule",
-                "SlackModule"
-            ]
+            module_type=ModuleType.Notification
         )
 
-    def is_wechat(self, service: Optional[ServiceInfo] = None, name: Optional[str] = None) -> bool:
+    def is_notification(
+            self,
+            service_type: Optional[str] = None,
+            service: Optional[ServiceInfo] = None,
+            name: Optional[str] = None,
+    ) -> bool:
         """
-        判断指定的消息通知服务是否为 Wechat 类型，需要传入 `service` 或 `name` 中的任一参数
+        通用的消息通知服务类型判断方法
 
+        :param service_type: 消息通知服务的类型名称（如 'wechat', 'voicechat', 'telegram', 等）
         :param service: 要判断的服务信息
         :param name: 服务的名称
-        :return: 如果服务类型为 wechat，返回 True；否则返回 False。
+        :return: 如果服务类型或实例为指定类型，返回 True；否则返回 False
         """
-        if not service:
-            service = self.get_service(name=name)
-        return service.type == "wechat" if service else False
+        # 如果未提供 service 则通过 name 获取服务
+        service = service or self.get_service(name=name)
 
-    def is_webpush(self, service: Optional[ServiceInfo] = None, name: Optional[str] = None) -> bool:
-        """
-        判断指定的消息通知服务是否为 WebPush 类型，需要传入 `service` 或 `name` 中的任一参数
-
-        :param service: 要判断的服务信息
-        :param name: 服务的名称
-        :return: 如果服务类型为 webpush，返回 True；否则返回 False。
-        """
-        if not service:
-            service = self.get_service(name=name)
-        return service.type == "webpush" if service else False
-
-    def is_voicechat(self, service: Optional[ServiceInfo] = None, name: Optional[str] = None) -> bool:
-        """
-        判断指定的消息通知服务是否为 VoiceChat 类型，需要传入 `service` 或 `name` 中的任一参数
-
-        :param service: 要判断的服务信息
-        :param name: 服务的名称
-        :return: 如果服务类型为 voicechat，返回 True；否则返回 False。
-        """
-        if not service:
-            service = self.get_service(name=name)
-        return service.type == "voicechat" if service else False
-
-    def is_telegram(self, service: Optional[ServiceInfo] = None, name: Optional[str] = None) -> bool:
-        """
-        判断指定的消息通知服务是否为 Telegram 类型，需要传入 `service` 或 `name` 中的任一参数
-
-        :param service: 要判断的服务信息
-        :param name: 服务的名称
-        :return: 如果服务类型为 telegram，返回 True；否则返回 False。
-        """
-        if not service:
-            service = self.get_service(name=name)
-        return service.type == "telegram" if service else False
-
-    def is_synologychat(self, service: Optional[ServiceInfo] = None, name: Optional[str] = None) -> bool:
-        """
-        判断指定的消息通知服务是否为 SynologyChat 类型，需要传入 `service` 或 `name` 中的任一参数
-
-        :param service: 要判断的服务信息
-        :param name: 服务的名称
-        :return: 如果服务类型为 synologychat，返回 True；否则返回 False。
-        """
-        if not service:
-            service = self.get_service(name=name)
-        return service.type == "synologychat" if service else False
-
-    def is_slack(self, service: Optional[ServiceInfo] = None, name: Optional[str] = None) -> bool:
-        """
-        判断指定的消息通知服务是否为 Slack 类型，需要传入 `service` 或 `name` 中的任一参数
-
-        :param service: 要判断的服务信息
-        :param name: 服务的名称
-        :return: 如果服务类型为 slack，返回 True；否则返回 False。
-        """
-        if not service:
-            service = self.get_service(name=name)
-        return service.type == "slack" if service else False
+        # 判断服务类型是否为指定类型
+        return bool(service and service.type == service_type)
