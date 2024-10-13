@@ -1,18 +1,18 @@
 import json
 import time
 from datetime import datetime
-from typing import Union, Any
+from typing import Any, Union
 
 import tailer
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 
 from app import schemas
 from app.chain.search import SearchChain
 from app.chain.system import SystemChain
-from app.core.config import settings, global_vars
+from app.core.config import global_vars, settings
 from app.core.module import ModuleManager
-from app.core.security import verify_token, verify_apitoken, verify_resource_token
+from app.core.security import verify_apitoken, verify_resource_token, verify_token
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
@@ -24,6 +24,7 @@ from app.monitor import Monitor
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
+from app.utils.security import SecurityUtils
 from app.utils.system import SystemUtils
 from version import APP_VERSION
 
@@ -213,6 +214,12 @@ def get_logging(length: int = 50, logfile: str = "moviepilot.log",
     否则 返回格式SSE
     """
     log_path = settings.LOG_PATH / logfile
+
+    if not SecurityUtils.is_safe_path(settings.LOG_PATH, log_path, allowed_suffixes={".log"}):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    if not log_path.exists() or not log_path.is_file():
+        raise HTTPException(status_code=404, detail="Not Found")
 
     def log_generator():
         # 读取文件末尾50行，不使用tailer模块
