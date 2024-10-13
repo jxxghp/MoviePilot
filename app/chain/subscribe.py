@@ -1209,7 +1209,7 @@ class SubscribeChain(ChainBase):
         if download_his:
             for his in download_his:
                 # 查询下载文件
-                files = self.downloadhis.get_files_by_hash(his.hash)
+                files = self.downloadhis.get_files_by_hash(his.download_hash)
                 if files:
                     for file in files:
                         # 识别文件名
