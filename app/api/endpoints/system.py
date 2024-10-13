@@ -70,7 +70,7 @@ def proxy_img(imgurl: str, proxy: bool = False,
         Image.open(io.BytesIO(response.content)).verify()
     except Exception as e:
         logger.debug(f"Invalid image format for URL {imgurl}: {e}")
-        raise HTTPException(status_code=400, detail="Invalid image format.")
+        raise HTTPException(status_code=502, detail="Invalid image format.")
 
     # 获取 MIME 类型
     mime_type = response.headers.get("Content-Type") or UrlUtils.get_mime_type(imgurl, mime_type)
@@ -118,6 +118,13 @@ def cache_img(url: str, _: schemas.TokenPayload = Depends(verify_resource_token)
     if not response:
         raise HTTPException(status_code=502, detail="Failed to fetch the image from the remote server")
 
+    # 验证下载的内容是否为有效图片
+    try:
+        Image.open(io.BytesIO(response.content)).verify()
+    except Exception as e:
+        logger.debug(f"Invalid image format for URL {url}: {e}")
+        raise HTTPException(status_code=502, detail="Invalid image format")
+
     # 创建父目录并保存图片
     if not cache_path.parent.exists():
         cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -129,14 +136,6 @@ def cache_img(url: str, _: schemas.TokenPayload = Depends(verify_resource_token)
         temp_path.rename(cache_path)
     except Exception as e:
         logger.debug(f"Failed to write cache file {cache_path}: {e}")
-        raise HTTPException(status_code=400, detail="Internal Server Error")
-
-    # 验证下载的内容是否为有效图片
-    try:
-        Image.open(io.BytesIO(response.content)).verify()
-    except Exception as e:
-        logger.debug(f"Invalid image format for URL {url}: {e}")
-        raise HTTPException(status_code=400, detail="Invalid image format")
 
     media_type = response.headers.get("Content-Type") or UrlUtils.get_mime_type(url, mime_type)
     return Response(content=response.content, media_type=media_type)
