@@ -291,15 +291,15 @@ class Plex:
                 query = {"X-Plex-Token": self._token}
                 if image_type == "Poster":
                     if item.thumb:
-                        image_url = RequestUtils.combine_url(host=self._playhost, path=item.thumb, query=query)
+                        image_url = UrlUtils.combine_url(host=self._playhost, path=item.thumb, query=query)
                 else:
                     # 默认使用art也就是Backdrop进行处理
                     if item.art:
-                        image_url = RequestUtils.combine_url(host=self._playhost, path=item.art, query=query)
+                        image_url = UrlUtils.combine_url(host=self._playhost, path=item.art, query=query)
                     # 这里对episode进行特殊处理，实际上episode的Backdrop是Poster
                     # 也有个别情况，比如机智的凡人小子episode就是Poster，因此这里把episode的优先级降低，默认还是取art
                     if not image_url and item.TYPE == "episode" and item.thumb:
-                        image_url = RequestUtils.combine_url(host=self._playhost, path=item.thumb, query=query)
+                        image_url = UrlUtils.combine_url(host=self._playhost, path=item.thumb, query=query)
             else:
                 if image_type == "Poster":
                     images = self._plex.fetchItems(ekey=f"{ekey}/posters",
@@ -825,7 +825,7 @@ class Plex:
         if not self._session:
             return
         try:
-            url = RequestUtils.adapt_request_url(host=self._host, endpoint=endpoint)
+            url = UrlUtils.adapt_request_url(host=self._host, endpoint=endpoint)
             kwargs.setdefault("headers", self.__get_request_headers())
             kwargs.setdefault("raise_exception", True)
             request_method = getattr(RequestUtils(session=self._session), f"{method}_res", None)

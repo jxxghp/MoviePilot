@@ -1,5 +1,7 @@
-from typing import Optional
-from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
+import mimetypes
+from pathlib import Path
+from typing import Optional, Union
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 from app.log import logger
 
@@ -69,3 +71,27 @@ class UrlUtils:
         except Exception as e:
             logger.debug(f"Error combining URL: {e}")
             return None
+
+    @staticmethod
+    def get_mime_type(path_or_url: Union[str, Path], default_type: str = "application/octet-stream") -> str:
+        """
+        根据文件路径或 URL 获取 MIME 类型，如果无法获取则返回默认类型
+
+        :param path_or_url: 文件路径 (Path) 或 URL (str)
+        :param default_type: 无法获取类型时返回的默认 MIME 类型
+        :return: 获取到的 MIME 类型或默认类型
+        """
+        try:
+            # 如果是 Path 类型，转换为字符串
+            if isinstance(path_or_url, Path):
+                path_or_url = str(path_or_url)
+
+            # 尝试根据路径或 URL 获取 MIME 类型
+            mime_type, _ = mimetypes.guess_type(path_or_url)
+            # 如果无法推测到类型，返回默认类型
+            if not mime_type:
+                return default_type
+            return mime_type
+        except Exception as e:
+            logger.debug(f"Error get_mime_type: {e}")
+            return default_type

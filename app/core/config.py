@@ -4,10 +4,10 @@ import secrets
 import sys
 import threading
 from pathlib import Path
-from typing import Optional, List, Any, Type, Tuple, Dict
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from dotenv import set_key
-from pydantic import BaseSettings, validator, BaseModel
+from pydantic import BaseModel, BaseSettings, validator
 
 from app.log import logger
 from app.utils.system import SystemUtils
@@ -197,6 +197,11 @@ class ConfigModel(BaseModel):
     BIG_MEMORY_MODE: bool = False
     # 全局图片缓存，将媒体图片缓存到本地
     GLOBAL_IMAGE_CACHE: bool = False
+    # 允许的图片缓存域名
+    SECURITY_IMAGE_DOMAINS: List[str] = ["image.tmdb.org", "static-mdb.v.geilijiasu.com", "doubanio.com", "lain.bgm.tv",
+                                         "raw.githubusercontent.com", "github.com"]
+    # 允许的图片文件后缀格式
+    SECURITY_IMAGE_SUFFIXES: List[str] = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"]
 
 
 class Settings(BaseSettings, ConfigModel):

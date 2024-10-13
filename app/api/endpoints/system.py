@@ -1,30 +1,38 @@
+import io
 import json
+import tempfile
 import time
 from datetime import datetime
-from typing import Union, Any
+from pathlib import Path
+from typing import Any, Union
 
 import tailer
-from fastapi import APIRouter, Depends, Response
+from PIL import Image
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 
 from app import schemas
 from app.chain.search import SearchChain
 from app.chain.system import SystemChain
-from app.core.config import settings, global_vars
+from app.core.config import global_vars, settings
 from app.core.module import ModuleManager
-from app.core.security import verify_token, verify_apitoken, verify_resource_token
+from app.core.security import verify_apitoken, verify_resource_token, verify_token
 from app.db.models import User
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
+from app.helper.mediaserver import MediaServerHelper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
 from app.helper.rule import RuleHelper
 from app.helper.sites import SitesHelper
+from app.log import logger
 from app.monitor import Monitor
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
+from app.utils.security import SecurityUtils
 from app.utils.system import SystemUtils
+from app.utils.url import UrlUtils
 from version import APP_VERSION
 
 router = APIRouter()
@@ -37,14 +45,36 @@ def proxy_img(imgurl: str, proxy: bool = False,
     图片代理，可选是否使用代理服务器
     """
     if not imgurl:
-        return None
-    if proxy:
-        response = RequestUtils(ua=settings.USER_AGENT, proxies=settings.PROXY).get_res(url=imgurl)
-    else:
-        response = RequestUtils(ua=settings.USER_AGENT).get_res(url=imgurl)
-    if response:
-        return Response(content=response.content, media_type="image/jpeg")
-    return None
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    # 媒体服务器添加图片代理支持
+    hosts = [config.config.get("host") for config in MediaServerHelper().get_configs().values() if
+             config and config.config and config.config.get("host")]
+    allowed_domains = set(settings.SECURITY_IMAGE_DOMAINS) | set(hosts)
+
+    # 验证URL安全性
+    if not SecurityUtils.is_safe_url(imgurl, allowed_domains, strict=True):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    referer = "https://movie.douban.com/" if "doubanio.com" in imgurl else None
+    proxies = settings.PROXY if proxy else None
+    mime_type = "image/jpeg"
+
+    response = RequestUtils(ua=settings.USER_AGENT, proxies=proxies, referer=referer).get_res(url=imgurl)
+    if not response:
+        logger.debug(f"Failed to fetch image from URL: {imgurl}")
+        raise HTTPException(status_code=502, detail="Failed to fetch the image from the remote server.")
+
+    # 验证下载的内容是否为有效图片
+    try:
+        Image.open(io.BytesIO(response.content)).verify()
+    except Exception as e:
+        logger.debug(f"Invalid image format for URL {imgurl}: {e}")
+        raise HTTPException(status_code=502, detail="Invalid image format.")
+
+    # 获取 MIME 类型
+    mime_type = response.headers.get("Content-Type") or UrlUtils.get_mime_type(imgurl, mime_type)
+    return Response(content=response.content, media_type=mime_type)
 
 
 @router.get("/cache/image", summary="图片缓存")
@@ -52,27 +82,63 @@ def cache_img(url: str, _: schemas.TokenPayload = Depends(verify_resource_token)
     """
     本地缓存图片文件
     """
-    # 获取Url中除域名外的路径
-    url_path = "/".join(url.split('/')[3:])
-    # 生成缓存文件路径
-    cache_path = settings.CACHE_PATH / 'images' / url_path
-    # 豆瓣设置Referer
-    referer = None
-    if 'doubanio.com' in url:
-        referer = "https://movie.douban.com/"
-    # 如果缓存文件不存在，下载图片并保存
-    if not cache_path.exists():
-        response = RequestUtils(ua=settings.USER_AGENT, referer=referer).get_res(url=url)
-        if response:
-            if not cache_path.parent.exists():
-                cache_path.parent.mkdir(parents=True)
-            with open(cache_path, 'wb') as f:
-                f.write(response.content)
-            return Response(content=response.content, media_type="image/jpeg")
-        else:
-            return None
-    else:
-        return Response(content=cache_path.read_bytes(), media_type="image/jpeg")
+    # 如果没有启用全局图片缓存，则默认使用图片代理的方案
+    if not settings.GLOBAL_IMAGE_CACHE:
+        return proxy_img(imgurl=url)
+
+    if not url:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    # 验证URL安全性
+    if not SecurityUtils.is_safe_url(url, settings.SECURITY_IMAGE_DOMAINS):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    # 生成缓存路径
+    url_path = SecurityUtils.sanitize_url_path(url)
+    cache_path = settings.CACHE_PATH / "images" / url_path
+
+    # 确保缓存路径和文件类型合法
+    if not SecurityUtils.is_safe_path(settings.CACHE_PATH, cache_path, settings.SECURITY_IMAGE_SUFFIXES):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    referer = "https://movie.douban.com/" if "doubanio.com" in url else None
+    mime_type = "image/jpeg"
+
+    # 如果缓存文件已存在，直接读取并返回
+    if cache_path.exists():
+        try:
+            content = cache_path.read_bytes()
+            return Response(content=content, media_type=UrlUtils.get_mime_type(cache_path, mime_type))
+        except Exception as e:
+            logger.debug(f"Failed to read cache file {cache_path}: {e}")
+            raise HTTPException(status_code=400, detail="Internal Server Error")
+
+    # 请求远程图片
+    response = RequestUtils(ua=settings.USER_AGENT, referer=referer).get_res(url=url)
+    if not response:
+        raise HTTPException(status_code=502, detail="Failed to fetch the image from the remote server")
+
+    # 验证下载的内容是否为有效图片
+    try:
+        Image.open(io.BytesIO(response.content)).verify()
+    except Exception as e:
+        logger.debug(f"Invalid image format for URL {url}: {e}")
+        raise HTTPException(status_code=502, detail="Invalid image format")
+
+    # 创建父目录并保存图片
+    if not cache_path.parent.exists():
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with tempfile.NamedTemporaryFile(dir=cache_path.parent, delete=False) as tmp_file:
+            tmp_file.write(response.content)
+            temp_path = Path(tmp_file.name)
+        temp_path.rename(cache_path)
+    except Exception as e:
+        logger.debug(f"Failed to write cache file {cache_path}: {e}")
+
+    media_type = response.headers.get("Content-Type") or UrlUtils.get_mime_type(url, mime_type)
+    return Response(content=response.content, media_type=media_type)
 
 
 @router.get("/global", summary="查询非敏感系统设置", response_model=schemas.Response)
@@ -213,6 +279,12 @@ def get_logging(length: int = 50, logfile: str = "moviepilot.log",
     否则 返回格式SSE
     """
     log_path = settings.LOG_PATH / logfile
+
+    if not SecurityUtils.is_safe_path(settings.LOG_PATH, log_path, allowed_suffixes={".log"}):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    if not log_path.exists() or not log_path.is_file():
+        raise HTTPException(status_code=404, detail="Not Found")
 
     def log_generator():
         # 读取文件末尾50行，不使用tailer模块
