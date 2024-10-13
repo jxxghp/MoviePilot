@@ -1104,7 +1104,7 @@ class FileManagerModule(_ModuleBase):
             fileitem = storage_oper.get_item(media_path)
             if not fileitem:
                 continue
-            media_files = storage_oper.list(fileitem)
+            media_files = self.list_files(fileitem, True)
             if media_files:
                 ret_fileitems.extend(media_files)
         return ret_fileitems
