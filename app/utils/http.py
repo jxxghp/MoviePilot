@@ -224,3 +224,52 @@ class RequestUtils:
         if array:
             return [{"name": k, "value": v} for k, v in cookie_dict.items()]
         return cookie_dict
+
+    @staticmethod
+    def parse_cache_control(header: str) -> (str, int):
+        """
+        解析 Cache-Control 头，返回 cache_directive 和 max_age
+        :param header: Cache-Control 头部的字符串
+        :return: cache_directive 和 max_age
+        """
+        cache_directive = ""
+        max_age = None
+
+        if not header:
+            return cache_directive, max_age
+
+        directives = [directive.strip() for directive in header.split(",")]
+        for directive in directives:
+            if directive.startswith("max-age"):
+                try:
+                    max_age = int(directive.split("=")[1])
+                except Exception as e:
+                    logger.debug(f"Invalid max-age directive in Cache-Control header: {directive}, {e}")
+            elif directive in {"no-cache", "private", "public", "no-store", "must-revalidate"}:
+                cache_directive = directive
+
+        return cache_directive, max_age
+
+    @staticmethod
+    def generate_cache_headers(etag: Optional[str], cache_control: Optional[str] = "public",
+                               max_age: Optional[int] = 86400) -> dict:
+        """
+        生成 HTTP 响应的 ETag 和 Cache-Control 头
+        :param etag: 响应的 ETag 值。如果为 None，则不添加 ETag 头部。
+        :param cache_control: Cache-Control 指令，例如 "public"、"private" 等。默认为 "public"
+        :param max_age: Cache-Control 的 max-age 值（秒）。默认为 86400 秒（1天）
+        :return: HTTP 头部的字典
+        """
+        cache_headers = {}
+
+        if etag:
+            cache_headers["ETag"] = etag
+
+        if cache_control and max_age is not None:
+            cache_headers["Cache-Control"] = f"{cache_control}, max-age={max_age}"
+        elif cache_control:
+            cache_headers["Cache-Control"] = cache_control
+        elif max_age is not None:
+            cache_headers["Cache-Control"] = f"max-age={max_age}"
+
+        return cache_headers
