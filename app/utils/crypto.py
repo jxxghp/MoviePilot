@@ -6,8 +6,8 @@ from typing import Union
 from Crypto import Random
 from Crypto.Cipher import AES
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import rsa, padding as asym_padding
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding as asym_padding, rsa
 
 
 class RSAUtils:
@@ -97,7 +97,7 @@ class RSAUtils:
 
 class HashUtils:
     @staticmethod
-    def md5(data: str, encoding: str = "utf-8") -> str:
+    def md5(data: Union[str, bytes], encoding: str = "utf-8") -> str:
         """
         生成数据的MD5哈希值，并以字符串形式返回
 
@@ -105,11 +105,12 @@ class HashUtils:
         :param encoding: 字符串编码类型，默认使用UTF-8
         :return: 生成的MD5哈希字符串
         """
-        encoded_data = data.encode(encoding)
-        return hashlib.md5(encoded_data).hexdigest()
+        if isinstance(data, str):
+            data = data.encode(encoding)
+        return hashlib.md5(data).hexdigest()
 
     @staticmethod
-    def md5_bytes(data: str, encoding: str = "utf-8") -> bytes:
+    def md5_bytes(data: Union[str, bytes], encoding: str = "utf-8") -> bytes:
         """
         生成数据的MD5哈希值，并以字节形式返回
 
@@ -117,8 +118,9 @@ class HashUtils:
         :param encoding: 字符串编码类型，默认使用UTF-8
         :return: 生成的MD5哈希二进制数据
         """
-        encoded_data = data.encode(encoding)
-        return hashlib.md5(encoded_data).digest()
+        if isinstance(data, str):
+            data = data.encode(encoding)
+        return hashlib.md5(data).digest()
 
 
 class CryptoJsUtils:

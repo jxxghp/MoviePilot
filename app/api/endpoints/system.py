@@ -4,11 +4,11 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Union
+from typing import Optional, Union
 
 import tailer
 from PIL import Image
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Header, Response
 from fastapi.responses import StreamingResponse
 
 from app import schemas
@@ -29,6 +29,7 @@ from app.log import logger
 from app.monitor import Monitor
 from app.scheduler import Scheduler
 from app.schemas.types import SystemConfigKey
+from app.utils.crypto import HashUtils
 from app.utils.http import RequestUtils
 from app.utils.security import SecurityUtils
 from app.utils.system import SystemUtils
@@ -38,83 +39,54 @@ from version import APP_VERSION
 router = APIRouter()
 
 
-@router.get("/img/{proxy}", summary="图片代理")
-def proxy_img(imgurl: str, proxy: bool = False,
-              _: schemas.TokenPayload = Depends(verify_resource_token)) -> Any:
+def fetch_image(
+        url: str,
+        proxy: bool = False,
+        use_disk_cache: bool = False,
+        if_none_match: Optional[str] = None,
+        allowed_domains: Optional[set[str]] = None) -> Response:
     """
-    图片代理，可选是否使用代理服务器
+    处理图片缓存逻辑，支持HTTP缓存和磁盘缓存
     """
-    if not imgurl:
-        raise HTTPException(status_code=404, detail="Not Found")
-
-    # 媒体服务器添加图片代理支持
-    hosts = [config.config.get("host") for config in MediaServerHelper().get_configs().values() if
-             config and config.config and config.config.get("host")]
-    allowed_domains = set(settings.SECURITY_IMAGE_DOMAINS) | set(hosts)
-
-    # 验证URL安全性
-    if not SecurityUtils.is_safe_url(imgurl, allowed_domains, strict=True):
-        raise HTTPException(status_code=404, detail="Not Found")
-
-    referer = "https://movie.douban.com/" if "doubanio.com" in imgurl else None
-    proxies = settings.PROXY if proxy else None
-    mime_type = "image/jpeg"
-
-    response = RequestUtils(ua=settings.USER_AGENT, proxies=proxies, referer=referer).get_res(url=imgurl)
-    if not response:
-        logger.debug(f"Failed to fetch image from URL: {imgurl}")
-        raise HTTPException(status_code=502, detail="Failed to fetch the image from the remote server.")
-
-    # 验证下载的内容是否为有效图片
-    try:
-        Image.open(io.BytesIO(response.content)).verify()
-    except Exception as e:
-        logger.debug(f"Invalid image format for URL {imgurl}: {e}")
-        raise HTTPException(status_code=502, detail="Invalid image format.")
-
-    # 获取 MIME 类型
-    mime_type = response.headers.get("Content-Type") or UrlUtils.get_mime_type(imgurl, mime_type)
-    return Response(content=response.content, media_type=mime_type)
-
-
-@router.get("/cache/image", summary="图片缓存")
-def cache_img(url: str, _: schemas.TokenPayload = Depends(verify_resource_token)) -> Any:
-    """
-    本地缓存图片文件
-    """
-    # 如果没有启用全局图片缓存，则默认使用图片代理的方案
-    if not settings.GLOBAL_IMAGE_CACHE:
-        return proxy_img(imgurl=url)
 
     if not url:
-        raise HTTPException(status_code=404, detail="Not Found")
+        raise HTTPException(status_code=404, detail="URL not provided")
+
+    if allowed_domains is None:
+        allowed_domains = set(settings.SECURITY_IMAGE_DOMAINS)
 
     # 验证URL安全性
-    if not SecurityUtils.is_safe_url(url, settings.SECURITY_IMAGE_DOMAINS):
-        raise HTTPException(status_code=404, detail="Not Found")
+    if not SecurityUtils.is_safe_url(url, allowed_domains):
+        raise HTTPException(status_code=404, detail="Unsafe URL")
 
-    # 生成缓存路径
-    url_path = SecurityUtils.sanitize_url_path(url)
-    cache_path = settings.CACHE_PATH / "images" / url_path
+    # 后续观察系统性能表现，如果发现磁盘缓存和HTTP缓存无法满足高并发情况下的响应速度需求，可以考虑重新引入内存缓存
+    cache_path = None
+    if use_disk_cache:
+        # 生成缓存路径
+        sanitized_path = SecurityUtils.sanitize_url_path(url)
+        cache_path = settings.CACHE_PATH / "images" / sanitized_path
 
-    # 确保缓存路径和文件类型合法
-    if not SecurityUtils.is_safe_path(settings.CACHE_PATH, cache_path, settings.SECURITY_IMAGE_SUFFIXES):
-        raise HTTPException(status_code=404, detail="Not Found")
+        # 确保缓存路径和文件类型合法
+        if not SecurityUtils.is_safe_path(settings.CACHE_PATH, cache_path, settings.SECURITY_IMAGE_SUFFIXES):
+            raise HTTPException(status_code=400, detail="Invalid cache path or file type")
 
-    referer = "https://movie.douban.com/" if "doubanio.com" in url else None
-    mime_type = "image/jpeg"
-
-    # 如果缓存文件已存在，直接读取并返回
-    if cache_path.exists():
-        try:
-            content = cache_path.read_bytes()
-            return Response(content=content, media_type=UrlUtils.get_mime_type(cache_path, mime_type))
-        except Exception as e:
-            logger.debug(f"Failed to read cache file {cache_path}: {e}")
-            raise HTTPException(status_code=400, detail="Internal Server Error")
+        # 目前暂不考虑磁盘缓存文件是否过期，后续通过缓存清理机制处理
+        if cache_path.exists():
+            try:
+                content = cache_path.read_bytes()
+                etag = HashUtils.md5(content)
+                headers = RequestUtils.generate_cache_headers(etag)
+                if if_none_match == etag:
+                    return Response(status_code=304, headers=headers)
+                return Response(content=content, media_type="image/jpeg", headers=headers)
+            except Exception as e:
+                # 如果读取磁盘缓存发生异常，这里仅记录日志，尝试再次请求远端进行处理
+                logger.debug(f"Failed to read cache file {cache_path}: {e}")
 
     # 请求远程图片
-    response = RequestUtils(ua=settings.USER_AGENT, referer=referer).get_res(url=url)
+    referer = "https://movie.douban.com/" if "doubanio.com" in url else None
+    proxies = settings.PROXY if proxy else None
+    response = RequestUtils(ua=settings.USER_AGENT, proxies=proxies, referer=referer).get_res(url=url)
     if not response:
         raise HTTPException(status_code=502, detail="Failed to fetch the image from the remote server")
 
@@ -125,20 +97,68 @@ def cache_img(url: str, _: schemas.TokenPayload = Depends(verify_resource_token)
         logger.debug(f"Invalid image format for URL {url}: {e}")
         raise HTTPException(status_code=502, detail="Invalid image format")
 
-    # 创建父目录并保存图片
-    if not cache_path.parent.exists():
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
+    content = response.content
+    response_headers = response.headers
 
-    try:
-        with tempfile.NamedTemporaryFile(dir=cache_path.parent, delete=False) as tmp_file:
-            tmp_file.write(response.content)
-            temp_path = Path(tmp_file.name)
-        temp_path.rename(cache_path)
-    except Exception as e:
-        logger.debug(f"Failed to write cache file {cache_path}: {e}")
+    cache_control_header = response_headers.get("Cache-Control", "")
+    cache_directive, max_age = RequestUtils.parse_cache_control(cache_control_header)
 
-    media_type = response.headers.get("Content-Type") or UrlUtils.get_mime_type(url, mime_type)
-    return Response(content=response.content, media_type=media_type)
+    # 如果需要使用磁盘缓存，则保存到磁盘
+    if use_disk_cache and cache_path:
+        try:
+            if not cache_path.parent.exists():
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=cache_path.parent, delete=False) as tmp_file:
+                tmp_file.write(content)
+                temp_path = Path(tmp_file.name)
+            temp_path.replace(cache_path)
+        except Exception as e:
+            logger.debug(f"Failed to write cache file {cache_path}: {e}")
+
+    # 检查 If-None-Match
+    etag = HashUtils.md5(content)
+    if if_none_match == etag:
+        headers = RequestUtils.generate_cache_headers(etag, cache_directive, max_age)
+        return Response(status_code=304, headers=headers)
+
+    headers = RequestUtils.generate_cache_headers(etag, cache_directive, max_age)
+
+    return Response(
+        content=content,
+        media_type=response_headers.get("Content-Type") or UrlUtils.get_mime_type(url, "image/jpeg"),
+        headers=headers
+    )
+
+
+@router.get("/img/{proxy}", summary="图片代理")
+def proxy_img(
+        imgurl: str,
+        proxy: bool = False,
+        if_none_match: Optional[str] = Header(None),
+        _: schemas.TokenPayload = Depends(verify_resource_token)
+) -> Response:
+    """
+    图片代理，可选是否使用代理服务器，支持 HTTP 缓存
+    """
+    # 媒体服务器添加图片代理支持
+    hosts = [config.config.get("host") for config in MediaServerHelper().get_configs().values() if
+             config and config.config and config.config.get("host")]
+    allowed_domains = set(settings.SECURITY_IMAGE_DOMAINS) | set(hosts)
+    return fetch_image(url=imgurl, proxy=proxy, use_disk_cache=False,
+                       if_none_match=if_none_match, allowed_domains=allowed_domains)
+
+
+@router.get("/cache/image", summary="图片缓存")
+def cache_img(
+        url: str,
+        if_none_match: Optional[str] = Header(None),
+        _: schemas.TokenPayload = Depends(verify_resource_token)
+) -> Response:
+    """
+    本地缓存图片文件，支持 HTTP 缓存，如果启用全局图片缓存，则使用磁盘缓存
+    """
+    # 如果没有启用全局图片缓存，则不使用磁盘缓存
+    return fetch_image(url=url, proxy=False, use_disk_cache=settings.GLOBAL_IMAGE_CACHE, if_none_match=if_none_match)
 
 
 @router.get("/global", summary="查询非敏感系统设置", response_model=schemas.Response)
