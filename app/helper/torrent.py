@@ -10,6 +10,7 @@ from torrentool.api import Torrent
 from app.core.config import settings
 from app.core.context import Context, TorrentInfo, MediaInfo
 from app.core.metainfo import MetaInfo
+from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.schemas.types import MediaType, SystemConfigKey
@@ -28,6 +29,7 @@ class TorrentHelper(metaclass=Singleton):
 
     def __init__(self):
         self.system_config = SystemConfigOper()
+        self.site_oper = SiteOper()
 
     def download_torrent(self, url: str,
                          cookie: str = None,
@@ -196,14 +198,17 @@ class TorrentHelper(metaclass=Singleton):
         if not torrent_list:
             return []
 
-        def get_sort_str(_context):
+        # 优先规则
+        priority = self.system_config.get(SystemConfigKey.TorrentsPriority)
+
+        def get_sort_str(_context, _sitedatas: Dict[str, float] = None):
             """
-            排序函数，值越大越优先
+            排序函数
             """
             _meta = _context.meta_info
             _torrent = _context.torrent_info
             _media = _context.media_info
-            # 站点优先级
+            # 站点优先级，越大越优先
             _site_order = 999 - (_torrent.site_order or 0)
             # 季数
             _season_len = str(len(_meta.season_list)).rjust(2, '0')
@@ -214,25 +219,42 @@ class TorrentHelper(metaclass=Singleton):
             else:
                 # 集数越多的排越前面
                 _episode_len = str(len(_meta.episode_list)).rjust(4, '0')
-            # 优先规则
-            priority = self.system_config.get(SystemConfigKey.TorrentsPriority)
-            if priority != "site":
-                # 排序：标题、资源类型、做种、季集
+            if priority == "seeder":
+                # 做种数优先：标题、资源优先级、做种数、季集
                 return "%s%s%s%s" % (str(_media.title).ljust(100, ' '),
                                      str(_torrent.pri_order).rjust(3, '0'),
                                      str(_torrent.seeders).rjust(10, '0'),
                                      "%s%s" % (_season_len, _episode_len))
+            elif priority == "upload":
+                # 站点上传量优先：标题、资源优先级、站点、季集
+                # 上传量，越大越优先
+                if not _sitedatas:
+                    _site_upload = 0
+                else:
+                    _site_upload = _sitedatas.get(_torrent.site_name) or 0
+                return "%s%s%s%s" % (str(_media.title).ljust(100, ' '),
+                                     str(_torrent.pri_order).rjust(3, '0'),
+                                     str(_site_upload).rjust(30, '0'),
+                                     "%s%s" % (_season_len, _episode_len))
             else:
-                # 排序：标题、资源类型、站点、做种、季集
+                # 站点优先：标题、资源优先级、站点、做种、季集
                 return "%s%s%s%s%s" % (str(_media.title).ljust(100, ' '),
                                        str(_torrent.pri_order).rjust(3, '0'),
                                        str(_site_order).rjust(3, '0'),
                                        str(_torrent.seeders).rjust(10, '0'),
                                        "%s%s" % (_season_len, _episode_len))
 
-        # 匹配的资源中排序分组选最好的一个下载
-        # 按站点顺序、资源匹配顺序、做种人数下载数逆序排序
-        torrent_list = sorted(torrent_list, key=lambda x: get_sort_str(x), reverse=True)
+        # 获取站点数据
+        if priority == "upload":
+            torrent_list = sorted(torrent_list,
+                                  key=lambda x: get_sort_str(
+                                      x,
+                                      {
+                                          site.name: site.upload for site in self.site_oper.get_userdata_latest()
+                                      }
+                                  ), reverse=True)
+        else:
+            torrent_list = sorted(torrent_list, key=lambda x: get_sort_str(x), reverse=True)
 
         return torrent_list
 

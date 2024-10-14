@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Sequence, Float, JSON
+from sqlalchemy import Column, Integer, String, Sequence, Float, JSON, func
 from sqlalchemy.orm import Session
 
 from app.db import db_query, Base
@@ -68,3 +68,25 @@ class SiteUserData(Base):
     @db_query
     def get_by_date(db: Session, date: str):
         return db.query(SiteUserData).filter(SiteUserData.updated_day == date).all()
+
+    @staticmethod
+    @db_query
+    def get_latest(db: Session):
+        """
+        获取各站点最新一天的数据
+        """
+        subquery = (
+            db.query(
+                SiteUserData.domain,
+                func.max(SiteUserData.updated_day).label('latest_update_day')
+            )
+            .group_by(SiteUserData.domain)
+            .subquery()
+        )
+
+        # 主查询：按 domain 和 updated_day 获取最新的记录
+        return db.query(SiteUserData).join(
+            subquery,
+            (SiteUserData.domain == subquery.c.domain) &
+            (SiteUserData.updated_day == subquery.c.latest_update_day)
+        ).order_by(SiteUserData.updated_time.desc()).all()

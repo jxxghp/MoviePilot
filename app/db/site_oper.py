@@ -116,15 +116,14 @@ class SiteOper(DbOper):
             "updated_day": current_day,
             "updated_time": current_time
         })
-        siteuserdata = SiteUserData.get_by_domain(self._db, domain=domain,
-                                                  workdate=current_day, worktime=current_time)
+        # 按站点+天判断是否存在数据
+        siteuserdata = SiteUserData.get_by_domain(self._db, domain=domain, workdate=current_day)
         if siteuserdata:
             # 存在则更新
             SiteUserData.update(self._db, payload)
         else:
             # 不存在则插入
-            for key, value in payload.items():
-                SiteUserData(**payload).create(self._db)
+            SiteUserData(**payload).create(self._db)
         return True, "更新站点用户数据成功"
 
     def get_userdata(self) -> List[SiteUserData]:
@@ -144,6 +143,12 @@ class SiteOper(DbOper):
         获取站点用户数据
         """
         return SiteUserData.get_by_date(self._db, date)
+
+    def get_userdata_latest(self) -> List[SiteUserData]:
+        """
+        获取站点最新数据
+        """
+        return SiteUserData.get_latest(self._db)
 
     def get_icon_by_domain(self, domain: str) -> SiteIcon:
         """
