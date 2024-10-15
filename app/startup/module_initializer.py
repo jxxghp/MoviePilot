@@ -129,6 +129,8 @@ def shutdown_modules(_: FastAPI):
     close_database()
     # 停止前端服务
     stop_frontend()
+    # 清理临时文件
+    clear_temp()
 
 
 def start_modules(_: FastAPI):
