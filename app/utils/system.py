@@ -163,7 +163,8 @@ class SystemUtils:
             return -1, str(err)
 
     @staticmethod
-    def list_files(directory: Path, extensions: list, min_filesize: int = 0, recursive: bool = True) -> List[Path]:
+    def list_files(directory: Path, extensions: list = None,
+                   min_filesize: int = 0, recursive: bool = True) -> List[Path]:
         """
         获取目录下所有指定扩展名的文件（包括子目录）
         :param directory: 指定的父目录
@@ -186,7 +187,10 @@ class SystemUtils:
             min_filesize = 0
 
         files = []
-        pattern = r".*(" + "|".join(extensions) + ")$"
+        if extensions:
+            pattern = r".*(" + "|".join(extensions) + ")$"
+        else:
+            pattern = r".*"
 
         # 遍历目录及子目录
         for matched_glob in glob(str(directory / '**'), recursive=recursive, include_hidden=True):
@@ -529,3 +533,15 @@ class SystemUtils:
         获取配置路径
         """
         return SystemUtils.get_config_path() / "app.env"
+
+    @staticmethod
+    def clear(temp_path: Path, days: int):
+        """
+        清理临时目录中指定天数前的文件
+        """
+        if not temp_path.exists():
+            return
+        for file in temp_path.glob('*'):
+            if file.is_file() \
+                    and (datetime.datetime.now() - datetime.datetime.fromtimestamp(file.stat().st_mtime)).days > days:
+                file.unlink()

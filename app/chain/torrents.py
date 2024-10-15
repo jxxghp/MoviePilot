@@ -6,7 +6,7 @@ from cachetools import cached, TTLCache
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
@@ -158,6 +158,8 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
         domains = []
         # 遍历站点缓存资源
         for indexer in indexers:
+            if global_vars.is_system_stopped:
+                break
             # 未开启的站点不刷新
             if sites and indexer.get("id") not in sites:
                 continue
@@ -185,6 +187,8 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                     logger.info(f'{indexer.get("name")} 没有新种子')
                     continue
                 for torrent in torrents:
+                    if global_vars.is_system_stopped:
+                        break
                     logger.info(f'处理资源：{torrent.title} ...')
                     # 识别
                     meta = MetaInfo(title=torrent.title, subtitle=torrent.description)

@@ -9,7 +9,7 @@ from lxml import etree
 from ruamel.yaml import CommentedMap
 
 from app.chain import ChainBase
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.core.event import eventmanager, Event, EventManager
 from app.db.models.site import Site
 from app.db.site_oper import SiteOper
@@ -74,6 +74,8 @@ class SiteChain(ChainBase):
         """
         sites = self.siteshelper.get_indexers()
         for site in sites:
+            if global_vars.is_system_stopped:
+                break
             if site.get("is_active"):
                 self.refresh_userdata(site)
 

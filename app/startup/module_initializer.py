@@ -26,6 +26,7 @@ from app.scheduler import Scheduler
 from app.monitor import Monitor
 from app.command import Command, CommandChian
 from app.schemas import Notification, NotificationType
+from app.db import close_database
 
 
 def start_frontend():
@@ -63,6 +64,14 @@ def stop_frontend():
     subprocess.Popen(f"taskkill /f /im nginx.exe", shell=True)
 
 
+def clear_temp():
+    """
+    清理临时目录中3天前的文件
+    """
+    # 清理3天前的文件
+    SystemUtils.clear(settings.TEMP_PATH, days=3)
+
+
 def check_auth():
     """
     检查认证状态
@@ -97,7 +106,7 @@ def singal_handle():
     signal.signal(signal.SIGINT, stop_event)
 
 
-def shutdown_modules(app: FastAPI):
+def shutdown_modules(_: FastAPI):
     """
     服务关闭
     """
@@ -116,11 +125,13 @@ def shutdown_modules(app: FastAPI):
     Monitor().stop()
     # 停止线程池
     ThreadHelper().shutdown()
+    # 停止数据库连接
+    close_database()
     # 停止前端服务
     stop_frontend()
 
 
-def start_modules(app: FastAPI):
+def start_modules(_: FastAPI):
     """
     启动模块
     """

@@ -6,6 +6,7 @@ from typing import Dict
 from typing import List, Optional
 
 from app.chain import ChainBase
+from app.core.config import global_vars
 from app.core.context import Context
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.event import eventmanager, Event
@@ -210,6 +211,8 @@ class SearchChain(ChainBase):
             logger.info(f"开始匹配结果 标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
             self.progress.update(value=51, text=f'开始匹配，总 {_total} 个资源 ...', key=ProgressKey.Search)
             for torrent in torrents:
+                if global_vars.is_system_stopped:
+                    break
                 _count += 1
                 self.progress.update(value=(_count / _total) * 96,
                                      text=f'正在匹配 {torrent.site_name}，已完成 {_count} / {_total} ...',
@@ -333,6 +336,8 @@ class SearchChain(ChainBase):
         # 结果集
         results = []
         for future in as_completed(all_task):
+            if global_vars.is_system_stopped:
+                break
             finish_count += 1
             result = future.result()
             if result:

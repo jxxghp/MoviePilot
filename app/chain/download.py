@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple, Set, Dict, Union
 
 from app import schemas
 from app.chain import ChainBase
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.core.context import MediaInfo, TorrentInfo, Context
 from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
@@ -463,6 +463,8 @@ class DownloadChain(ChainBase):
 
         # 如果是电影，直接下载
         for context in contexts:
+            if global_vars.is_system_stopped:
+                break
             if context.media_info.type == MediaType.MOVIE:
                 logger.info(f"开始下载电影 {context.torrent_info.title} ...")
                 if self.download_single(context, save_path=save_path, channel=channel,
@@ -491,6 +493,8 @@ class DownloadChain(ChainBase):
             for need_mid, need_season in need_seasons.items():
                 # 循环种子
                 for context in contexts:
+                    if global_vars.is_system_stopped:
+                        break
                     # 媒体信息
                     media = context.media_info
                     # 识别元数据
@@ -598,6 +602,8 @@ class DownloadChain(ChainBase):
                         need_episodes = list(range(start_episode, total_episode + 1))
                     # 循环种子
                     for context in contexts:
+                        if global_vars.is_system_stopped:
+                            break
                         # 媒体信息
                         media = context.media_info
                         # 识别元数据
@@ -664,6 +670,8 @@ class DownloadChain(ChainBase):
                         continue
                     # 循环种子
                     for context in contexts:
+                        if global_vars.is_system_stopped:
+                            break
                         # 媒体信息
                         media = context.media_info
                         # 识别元数据

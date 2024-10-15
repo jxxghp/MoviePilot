@@ -232,7 +232,7 @@ def get_progress(process_type: str, _: schemas.TokenPayload = Depends(verify_res
 
     def event_generator():
         while True:
-            if global_vars.is_system_stopped():
+            if global_vars.is_system_stopped:
                 break
             detail = progress.get(process_type)
             yield 'data: %s\n\n' % json.dumps(detail)
@@ -281,7 +281,7 @@ def get_message(role: str = "system", _: schemas.TokenPayload = Depends(verify_r
 
     def event_generator():
         while True:
-            if global_vars.is_system_stopped():
+            if global_vars.is_system_stopped:
                 break
             detail = message.get(role)
             yield 'data: %s\n\n' % (detail or '')
@@ -312,7 +312,7 @@ def get_logging(length: int = 50, logfile: str = "moviepilot.log",
             for line in f.readlines()[-max(length, 50):]:
                 yield 'data: %s\n\n' % line
         while True:
-            if global_vars.is_system_stopped():
+            if global_vars.is_system_stopped:
                 break
             for t in tailer.follow(open(log_path, 'r', encoding='utf-8')):
                 yield 'data: %s\n\n' % (t or '')

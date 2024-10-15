@@ -7,7 +7,7 @@ from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.tmdb import TmdbChain
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfoPath
@@ -84,6 +84,8 @@ class TransferChain(ChainBase):
             logger.info(f"获取到 {len(torrents)} 个已完成的下载任务")
 
             for torrent in torrents:
+                if global_vars.is_system_stopped:
+                    break
                 # 文件路径
                 file_path = torrent.path
                 if not file_path.exists():
@@ -243,6 +245,8 @@ class TransferChain(ChainBase):
 
             # 整理所有文件
             for file_item in file_items:
+                if global_vars.is_system_stopped:
+                    break
                 file_path = Path(file_item.path)
                 # 回收站及隐藏的文件不处理
                 if file_item.path.find('/@Recycle/') != -1 \

@@ -463,8 +463,10 @@ class Monitor(metaclass=Singleton):
         if self._observers:
             for observer in self._observers:
                 try:
+                    logger.info(f"正在停止目录监控服务：{observer}...")
                     observer.stop()
                     observer.join()
+                    logger.info(f"{observer} 目录监控已停止")
                 except Exception as e:
                     logger.error(f"停止目录监控服务出现了错误：{e}")
             self._observers = []

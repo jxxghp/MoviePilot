@@ -41,6 +41,13 @@ def get_db() -> Generator:
             db.close()
 
 
+def close_database():
+    """
+    关闭所有数据库连接
+    """
+    Engine.dispose()
+
+
 def get_args_db(args: tuple, kwargs: dict) -> Optional[Session]:
     """
     从参数中获取数据库Session对象

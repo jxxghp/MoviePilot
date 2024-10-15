@@ -61,7 +61,7 @@ class ModuleManager(metaclass=Singleton):
                     logger.info(f"Moudle Stoped：{module_id}")
                 except Exception as err:
                     logger.error(f"Stop Moudle Error：{module_id}，{str(err)} - {traceback.format_exc()}", exc_info=True)
-        logger.info("模块停止完成")
+        logger.info("所有模块停止完成")
 
     def reload(self):
         """

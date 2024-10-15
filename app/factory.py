@@ -9,14 +9,14 @@ def create_app() -> FastAPI:
     """
     创建并配置 FastAPI 应用实例。
     """
-    app = FastAPI(
+    _app = FastAPI(
         title=settings.PROJECT_NAME,
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
         lifespan=lifespan
     )
 
     # 配置 CORS 中间件
-    app.add_middleware(
+    _app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_HOSTS,
         allow_credentials=True,
@@ -24,7 +24,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    return app
+    return _app
 
 
 # 创建 FastAPI 应用实例

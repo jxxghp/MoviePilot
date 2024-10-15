@@ -10,7 +10,7 @@ from app.chain.media import MediaChain
 from app.chain.search import SearchChain
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.core.context import TorrentInfo, Context, MediaInfo
 from app.core.event import eventmanager, Event, EventManager
 from app.core.meta import MetaBase
@@ -242,6 +242,8 @@ class SubscribeChain(ChainBase):
             subscribes = self.subscribeoper.list(state)
         # 遍历订阅
         for subscribe in subscribes:
+            if global_vars.is_system_stopped:
+                break
             mediakey = subscribe.tmdbid or subscribe.doubanid
             custom_word_list = subscribe.custom_words.split("\n") if subscribe.custom_words else None
             # 校验当前时间减订阅创建时间是否大于1分钟，否则跳过先，留出编辑订阅的时间
@@ -530,6 +532,8 @@ class SubscribeChain(ChainBase):
         subscribes = self.subscribeoper.list('R')
         # 遍历订阅
         for subscribe in subscribes:
+            if global_vars.is_system_stopped:
+                break
             logger.info(f'开始匹配订阅，标题：{subscribe.name} ...')
             mediakey = subscribe.tmdbid or subscribe.doubanid
             # 生成元数据
@@ -606,6 +610,8 @@ class SubscribeChain(ChainBase):
             # 遍历缓存种子
             _match_context = []
             for domain, contexts in torrents.items():
+                if global_vars.is_system_stopped:
+                    break
                 if domains and domain not in domains:
                     continue
                 logger.debug(f'开始匹配站点：{domain}，共缓存了 {len(contexts)} 个种子...')
@@ -776,6 +782,8 @@ class SubscribeChain(ChainBase):
             return
         # 遍历订阅
         for subscribe in subscribes:
+            if global_vars.is_system_stopped:
+                break
             logger.info(f'开始更新订阅元数据：{subscribe.name} ...')
             # 生成元数据
             meta = MetaInfo(subscribe.name)

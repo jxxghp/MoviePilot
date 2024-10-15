@@ -510,6 +510,7 @@ class GlobalVar(object):
         """
         self.STOP_EVENT.set()
 
+    @property
     def is_system_stopped(self):
         """
         是否停止
