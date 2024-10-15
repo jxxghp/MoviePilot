@@ -409,18 +409,29 @@ class EventManager(metaclass=Singleton):
         """
         # 检查类是否在全局变量中
         if class_name in globals():
-            class_obj = globals()[class_name]()
-        else:
-            # 如果类不在全局变量中，尝试动态导入模块并创建实例
-            # 导入模块，除了插件和Command，只有chain能响应事件
             try:
-                module = importlib.import_module(f"app.chain.{class_name[:-5].lower()}")
-                class_obj = getattr(module, class_name)()
+                class_obj = globals()[class_name]()
+                return class_obj
             except Exception as e:
-                logger.error(f"事件处理出错：{str(e)} - {traceback.format_exc()}")
+                logger.error(f"事件处理出错：创建全局类实例出错：{str(e)} - {traceback.format_exc()}")
                 return None
 
-        return class_obj
+        # 如果类不在全局变量中，尝试动态导入模块并创建实例
+        try:
+            # 导入模块，除了插件和Command，只有chain能响应事件
+            if not class_name.endswith("Chain"):
+                logger.debug(f"事件处理出错：无效的 Chain 类名: {class_name}，类名必须以 'Chain' 结尾")
+                return None
+            module_name = f"app.chain.{class_name[:-5].lower()}"
+            module = importlib.import_module(module_name)
+            if hasattr(module, class_name):
+                class_obj = getattr(module, class_name)()
+                return class_obj
+            else:
+                logger.debug(f"事件处理出错：模块 {module_name} 中没有找到类 {class_name}")
+        except Exception as e:
+            logger.error(f"事件处理出错：{str(e)} - {traceback.format_exc()}")
+        return None
 
     def __broadcast_consumer_loop(self):
         """
