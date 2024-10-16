@@ -231,9 +231,9 @@ class Settings(BaseSettings, ConfigModel):
         if not value or len(value) < 16:
             new_token = secrets.token_urlsafe(16)
             if not value:
-                logger.info(f"'API_TOKEN' 未设置，已随机生成新的 API_TOKEN：{new_token}")
+                logger.info(f"'API_TOKEN' 未设置，已随机生成新的【API_TOKEN】{new_token}")
             else:
-                logger.warning(f"'API_TOKEN' 长度不足 16 个字符，存在安全隐患，已生成新的更复杂的 API_TOKEN：{new_token}")
+                logger.warning(f"'API_TOKEN' 长度不足 16 个字符，存在安全隐患，已随机生成新的【API_TOKEN】{new_token}")
             cls.update_env_config(field, original_value=value or "", converted_value=new_token)
             return new_token
         return value
