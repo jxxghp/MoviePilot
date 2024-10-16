@@ -2,6 +2,7 @@ import json
 from typing import Any, Dict, Tuple, Optional
 
 from app.core.config import settings
+from app.log import logger
 from app.utils.crypto import CryptoJsUtils, HashUtils
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
@@ -122,6 +123,7 @@ class CookieCloudHelper:
         file_path = self._local_path / f"{uuid}.json"
         # 检查文件是否存在
         if not file_path.exists():
+            logger.warn(f"本地CookieCloud文件不存在：{file_path}")
             return {}
 
         # 读取文件
