@@ -2,7 +2,7 @@ import json
 import shutil
 import traceback
 from pathlib import Path
-from typing import Dict, Tuple, Optional, List, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from cachetools import TTLCache, cached
 
@@ -151,7 +151,7 @@ class PluginHelper(metaclass=Singleton):
     def install(self, pid: str, repo_url: str, package_version: str = None) -> Tuple[bool, str]:
         """
         安装插件，包括依赖安装和文件下载，相关资源支持自动降级策略
-        1. 检查并获取插件的指定版本，确认版本兼容性。
+        1. 检查并获取插件的指定版本，确认版本兼容性
         2. 从 GitHub 获取文件列表（包括 requirements.txt）
         3. 删除旧的插件目录
         4. 下载并预安装 requirements.txt 中的依赖（如果存在）
@@ -215,7 +215,9 @@ class PluginHelper(metaclass=Singleton):
         logger.info(f"{pid} 准备开始下载插件文件")
         success, message = self.__download_files(pid.lower(), file_list, user_repo, package_version, True)
         if not success:
+            self.__remove_old_plugin(pid.lower())
             logger.error(f"{pid} 下载插件文件失败：{message}")
+            logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
             return False, message
         else:
             logger.info(f"{pid} 下载插件文件成功")
@@ -224,7 +226,9 @@ class PluginHelper(metaclass=Singleton):
         dependencies_exist, success, message = self.__install_dependencies_if_required(pid)
         if dependencies_exist:
             if not success:
+                self.__remove_old_plugin(pid.lower())
                 logger.error(f"{pid} 依赖安装失败：{message}")
+                logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
             else:
                 logger.info(f"{pid} 依赖安装成功")
 

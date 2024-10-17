@@ -277,6 +277,7 @@ class PluginManager(metaclass=Singleton):
         """
         安装本地不存在的在线插件
         """
+
         def install_plugin(plugin):
             start_time = time.time()
             state, msg = self.pluginhelper.install(pid=plugin.id, repo_url=plugin.repo_url)
@@ -719,7 +720,8 @@ class PluginManager(metaclass=Singleton):
             # 构建包名
             package_name = f"app.plugins.{pid.lower()}"
             # 检查包是否存在
-            package_exists = importlib.util.find_spec(package_name) is not None
+            spec = importlib.util.find_spec(package_name)
+            package_exists = spec is not None and spec.origin is not None
             logger.debug(f"{pid} exists: {package_exists}")
             return package_exists
         except Exception as e:
