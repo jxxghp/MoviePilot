@@ -1,14 +1,14 @@
-from typing import Any, List, Annotated, Optional
+from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, Header
 
 from app import schemas
-from app.factory import app
 from app.core.config import settings
 from app.core.plugin import PluginManager
-from app.core.security import verify_token, verify_apikey
+from app.core.security import verify_apikey, verify_token
 from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_superuser
+from app.factory import app
 from app.helper.plugin import PluginHelper
 from app.log import logger
 from app.scheduler import Scheduler

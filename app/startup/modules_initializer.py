@@ -147,8 +147,6 @@ def start_modules(_: FastAPI):
     ModuleManager()
     # 启动事件消费
     EventManager().start()
-    # 安装在线插件
-    PluginManager().sync()
     # 加载插件
     PluginManager().start()
     # 启动监控任务

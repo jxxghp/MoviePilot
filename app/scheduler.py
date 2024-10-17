@@ -359,9 +359,7 @@ class Scheduler(metaclass=Singleton):
             }
         )
 
-        # 注册插件公共服务
-        for pid in PluginManager().get_running_plugin_ids():
-            self.update_plugin_job(pid)
+        self.init_plugin_jobs()
 
         # 打印服务
         logger.debug(self._scheduler.print_jobs())
@@ -409,6 +407,13 @@ class Scheduler(metaclass=Singleton):
                 self._jobs[job_id]["running"] = False
             except KeyError:
                 pass
+
+    def init_plugin_jobs(self):
+        """
+        注册插件公共服务
+        """
+        for pid in PluginManager().get_running_plugin_ids():
+            self.update_plugin_job(pid)
 
     def update_plugin_job(self, pid: str):
         """
