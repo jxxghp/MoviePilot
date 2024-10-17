@@ -280,7 +280,7 @@ class PluginManager(metaclass=Singleton):
 
         def install_plugin(plugin):
             start_time = time.time()
-            state, msg = self.pluginhelper.install(pid=plugin.id, repo_url=plugin.repo_url)
+            state, msg = self.pluginhelper.install(pid=plugin.id, repo_url=plugin.repo_url, force_install=True)
             elapsed_time = time.time() - start_time
             if state:
                 logger.info(
