@@ -113,7 +113,7 @@ class Monitor(metaclass=Singleton):
         self.stop()
 
         # 启动文件整理线程
-        self._transfer_thread = threading.Thread(target=self.__start_transfer)
+        self._transfer_thread = threading.Thread(target=self.__start_transfer, daemon=True)
         self._transfer_thread.start()
 
         # 读取目录配置

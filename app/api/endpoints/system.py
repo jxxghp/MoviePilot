@@ -1,14 +1,15 @@
+import asyncio
 import io
 import json
 import tempfile
-import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
-import tailer
+import aiofiles
 from PIL import Image
-from fastapi import APIRouter, Depends, HTTPException, Header, Response
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app import schemas
@@ -224,19 +225,22 @@ def set_env_setting(env: dict,
 
 
 @router.get("/progress/{process_type}", summary="实时进度")
-def get_progress(process_type: str, _: schemas.TokenPayload = Depends(verify_resource_token)):
+async def get_progress(request: Request, process_type: str, _: schemas.TokenPayload = Depends(verify_resource_token)):
     """
     实时获取处理进度，返回格式为SSE
     """
     progress = ProgressHelper()
 
-    def event_generator():
-        while True:
-            if global_vars.is_system_stopped:
-                break
-            detail = progress.get(process_type)
-            yield 'data: %s\n\n' % json.dumps(detail)
-            time.sleep(0.2)
+    async def event_generator():
+        try:
+            while not global_vars.is_system_stopped:
+                if await request.is_disconnected():
+                    break
+                detail = progress.get(process_type)
+                yield f"data: {json.dumps(detail)}\n\n"
+                await asyncio.sleep(0.2)
+        except asyncio.CancelledError:
+            return
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -273,26 +277,29 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
 
 
 @router.get("/message", summary="实时消息")
-def get_message(role: str = "system", _: schemas.TokenPayload = Depends(verify_resource_token)):
+async def get_message(request: Request, role: str = "system", _: schemas.TokenPayload = Depends(verify_resource_token)):
     """
     实时获取系统消息，返回格式为SSE
     """
     message = MessageHelper()
 
-    def event_generator():
-        while True:
-            if global_vars.is_system_stopped:
-                break
-            detail = message.get(role)
-            yield 'data: %s\n\n' % (detail or '')
-            time.sleep(3)
+    async def event_generator():
+        try:
+            while not global_vars.is_system_stopped:
+                if await request.is_disconnected():
+                    break
+                detail = message.get(role)
+                yield f"data: {detail or ''}\n\n"
+                await asyncio.sleep(3)
+        except asyncio.CancelledError:
+            return
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.get("/logging", summary="实时日志")
-def get_logging(length: int = 50, logfile: str = "moviepilot.log",
-                _: schemas.TokenPayload = Depends(verify_resource_token)):
+async def get_logging(request: Request, length: int = 50, logfile: str = "moviepilot.log",
+                      _: schemas.TokenPayload = Depends(verify_resource_token)):
     """
     实时获取系统日志
     length = -1 时, 返回text/plain
@@ -306,27 +313,40 @@ def get_logging(length: int = 50, logfile: str = "moviepilot.log",
     if not log_path.exists() or not log_path.is_file():
         raise HTTPException(status_code=404, detail="Not Found")
 
-    def log_generator():
-        # 读取文件末尾50行，不使用tailer模块
-        with open(log_path, 'r', encoding='utf-8') as f:
-            for line in f.readlines()[-max(length, 50):]:
-                yield 'data: %s\n\n' % line
-        while True:
-            if global_vars.is_system_stopped:
-                break
-            for t in tailer.follow(open(log_path, 'r', encoding='utf-8')):
-                yield 'data: %s\n\n' % (t or '')
-            time.sleep(1)
+    async def log_generator():
+        try:
+            # 使用固定大小的双向队列来限制内存使用
+            lines_queue = deque(maxlen=max(length, 50))
+            # 使用 aiofiles 异步读取文件
+            async with aiofiles.open(log_path, mode="r", encoding="utf-8") as f:
+                # 逐行读取文件，将每一行存入队列
+                file_content = await f.read()
+                for line in file_content.splitlines():
+                    lines_queue.append(line)
+                for line in lines_queue:
+                    yield f"data: {line}\n\n"
+                # 移动文件指针到文件末尾，继续监听新增内容
+                await f.seek(0, 2)
+                while not global_vars.is_system_stopped:
+                    if await request.is_disconnected():
+                        break
+                    line = await f.readline()
+                    if not line:
+                        await asyncio.sleep(0.5)
+                        continue
+                    yield f"data: {line}\n\n"
+        except asyncio.CancelledError:
+            return
 
     # 根据length参数返回不同的响应
     if length == -1:
         # 返回全部日志作为文本响应
         if not log_path.exists():
             return Response(content="日志文件不存在！", media_type="text/plain")
-        with open(log_path, 'r', encoding='utf-8') as file:
+        with open(log_path, "r", encoding='utf-8') as file:
             text = file.read()
         # 倒序输出
-        text = '\n'.join(text.split('\n')[::-1])
+        text = "\n".join(text.split("\n")[::-1])
         return Response(content=text, media_type="text/plain")
     else:
         # 返回SSE流响应

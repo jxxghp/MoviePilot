@@ -3,6 +3,7 @@ from typing import List, Union, Optional, Generator
 
 from app import schemas
 from app.chain import ChainBase
+from app.core.config import global_vars
 from app.db.mediaserver_oper import MediaServerOper
 from app.helper.service import ServiceConfigHelper
 from app.log import logger
@@ -134,6 +135,8 @@ class MediaServerChain(ChainBase):
                     logger.info(f"正在同步 {server_name} 媒体库 {library.name} ...")
                     library_count = 0
                     for item in self.items(server=server_name, library_id=library.id):
+                        if global_vars.is_system_stopped:
+                            return
                         if not item or not item.item_id:
                             continue
                         logger.debug(f"正在同步 {item.title} ...")
