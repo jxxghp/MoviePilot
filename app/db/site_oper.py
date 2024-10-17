@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Tuple, List
+from typing import List, Tuple
 
 from app.db import DbOper
 from app.db.models import SiteIcon
@@ -117,10 +117,10 @@ class SiteOper(DbOper):
             "updated_time": current_time
         })
         # 按站点+天判断是否存在数据
-        siteuserdata = SiteUserData.get_by_domain(self._db, domain=domain, workdate=current_day)
-        if siteuserdata:
+        siteuserdatas = SiteUserData.get_by_domain(self._db, domain=domain, workdate=current_day)
+        if siteuserdatas:
             # 存在则更新
-            SiteUserData.update(self._db, payload)
+            siteuserdatas[0].update(self._db, payload)
         else:
             # 不存在则插入
             SiteUserData(**payload).create(self._db)
