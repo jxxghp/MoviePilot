@@ -64,7 +64,7 @@ class Telegram:
                     logger.error(f"Telegram消息接收服务异常：{str(err)}")
 
             # 启动线程来运行 infinity_polling
-            self._polling_thread = threading.Thread(target=run_polling)
+            self._polling_thread = threading.Thread(target=run_polling, daemon=True)
             self._polling_thread.start()
             logger.info("Telegram消息接收服务启动")
 
