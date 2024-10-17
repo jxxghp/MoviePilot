@@ -104,3 +104,7 @@ class SiteUserData(BaseModel):
     message_unread_contents: Optional[list] = []
     # 错误信息
     err_msg: Optional[str] = None
+    # 更新日期
+    updated_day: Optional[str] = None
+    # 更新时间
+    updated_time: Optional[str] = None
