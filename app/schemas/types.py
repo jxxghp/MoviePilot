@@ -28,6 +28,8 @@ class EventType(Enum):
     SiteDeleted = "site.deleted"
     # 站点已更新
     SiteUpdated = "site.updated"
+    # 站点已刷新
+    SiteRefreshed = "site.refreshed"
     # 转移完成
     TransferComplete = "transfer.complete"
     # 下载已添加

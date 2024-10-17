@@ -1,16 +1,15 @@
 import base64
 import re
 from datetime import datetime
-from typing import Tuple, Optional
-from typing import Union
+from typing import Optional, Tuple, Union
 from urllib.parse import urljoin
 
 from lxml import etree
 from ruamel.yaml import CommentedMap
 
 from app.chain import ChainBase
-from app.core.config import settings, global_vars
-from app.core.event import eventmanager, Event, EventManager
+from app.core.config import global_vars, settings
+from app.core.event import Event, EventManager, eventmanager
 from app.db.models.site import Site
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -66,6 +65,9 @@ class SiteChain(ChainBase):
             self.siteoper.update_userdata(domain=StringUtils.get_url_domain(site.get("domain")),
                                           name=site.get("name"),
                                           payload=userdata.dict())
+            EventManager().send_event(EventType.SiteRefreshed, {
+                "site_id": site.get("id")
+            })
         return userdata
 
     def refresh_userdatas(self) -> None:
@@ -73,11 +75,18 @@ class SiteChain(ChainBase):
         刷新所有站点的用户数据
         """
         sites = self.siteshelper.get_indexers()
+        any_site_updated = False
         for site in sites:
             if global_vars.is_system_stopped:
-                break
+                return
             if site.get("is_active"):
-                self.refresh_userdata(site)
+                userdata = self.refresh_userdata(site)
+                if userdata:
+                    any_site_updated = True
+        if any_site_updated:
+            EventManager().send_event(EventType.SiteRefreshed, {
+                "site_id": "*"
+            })
 
     def is_special_site(self, domain: str) -> bool:
         """
