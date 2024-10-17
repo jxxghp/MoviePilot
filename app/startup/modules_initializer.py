@@ -1,10 +1,8 @@
-import signal
 import sys
-from types import FrameType
 
 from fastapi import FastAPI
 
-from app.core.config import settings, global_vars
+from app.core.config import global_vars, settings
 from app.core.module import ModuleManager
 from app.utils.system import SystemUtils
 
@@ -89,27 +87,12 @@ def check_auth():
         )
 
 
-def singal_handle():
-    """
-    监听停止信号
-    """
-
-    def stop_event(signum: int, _: FrameType):
-        """
-        SIGTERM信号处理
-        """
-        print(f"接收到停止信号：{signum}，正在停止系统...")
-        global_vars.stop_system()
-
-    # 设置信号处理程序
-    signal.signal(signal.SIGTERM, stop_event)
-    signal.signal(signal.SIGINT, stop_event)
-
-
 def shutdown_modules(_: FastAPI):
     """
     服务关闭
     """
+    # 停止信号
+    global_vars.stop_system()
     # 停止模块
     ModuleManager().stop()
     # 停止插件
@@ -159,5 +142,3 @@ def start_modules(_: FastAPI):
     start_frontend()
     # 检查认证状态
     check_auth()
-    # 监听停止信号
-    singal_handle()

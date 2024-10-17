@@ -20,7 +20,8 @@ from app.db.init import init_db, update_db
 
 # uvicorn服务
 Server = uvicorn.Server(Config(app, host=settings.HOST, port=settings.PORT,
-                               reload=settings.DEV, workers=multiprocessing.cpu_count()))
+                               reload=settings.DEV, workers=multiprocessing.cpu_count(),
+                               timeout_graceful_shutdown=5))
 
 
 def start_tray():
