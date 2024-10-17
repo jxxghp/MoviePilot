@@ -2,7 +2,7 @@ import json
 import shutil
 import traceback
 from pathlib import Path
-from typing import Dict, Tuple, Optional, List, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from cachetools import TTLCache, cached
 
@@ -148,18 +148,20 @@ class PluginHelper(metaclass=Singleton):
                                            json={"plugins": [{"plugin_id": plugin} for plugin in plugins]})
         return True if res else False
 
-    def install(self, pid: str, repo_url: str, package_version: str = None) -> Tuple[bool, str]:
+    def install(self, pid: str, repo_url: str, package_version: str = None, force_install: bool = False) \
+            -> Tuple[bool, str]:
         """
         安装插件，包括依赖安装和文件下载，相关资源支持自动降级策略
-        1. 检查并获取插件的指定版本，确认版本兼容性。
+        1. 检查并获取插件的指定版本，确认版本兼容性
         2. 从 GitHub 获取文件列表（包括 requirements.txt）
-        3. 删除旧的插件目录
+        3. 删除旧的插件目录（如非强制安装则进行备份）
         4. 下载并预安装 requirements.txt 中的依赖（如果存在）
         5. 下载并安装插件的其他文件
         6. 再次尝试安装依赖（确保安装完整）
         :param pid: 插件 ID
         :param repo_url: 插件仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
+        :param force_install: 是否强制安装插件，默认不启用，启用时不进行备份和恢复操作
         :return: (是否成功, 错误信息)
         """
         if SystemUtils.is_frozen():
@@ -197,7 +199,11 @@ class PluginHelper(metaclass=Singleton):
         if not file_list:
             return False, msg
 
-        # 3. 删除旧的插件目录
+        # 3. 删除旧的插件目录，如果不强制安装则备份
+        backup_dir = None
+        if not force_install:
+            backup_dir = self.__backup_plugin(pid.lower())
+
         self.__remove_old_plugin(pid.lower())
 
         # 4. 查找并安装 requirements.txt 中的依赖，确保插件环境的依赖尽可能完整。依赖安装可能失败且不影响插件安装，目前只记录日志
@@ -216,6 +222,13 @@ class PluginHelper(metaclass=Singleton):
         success, message = self.__download_files(pid.lower(), file_list, user_repo, package_version, True)
         if not success:
             logger.error(f"{pid} 下载插件文件失败：{message}")
+            if backup_dir:
+                self.__restore_plugin(pid.lower(), backup_dir)
+                logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+            else:
+                self.__remove_old_plugin(pid.lower())
+                logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
+
             return False, message
         else:
             logger.info(f"{pid} 下载插件文件成功")
@@ -225,6 +238,12 @@ class PluginHelper(metaclass=Singleton):
         if dependencies_exist:
             if not success:
                 logger.error(f"{pid} 依赖安装失败：{message}")
+                if backup_dir:
+                    self.__restore_plugin(pid.lower(), backup_dir)
+                    logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+                else:
+                    self.__remove_old_plugin(pid.lower())
+                    logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
             else:
                 logger.info(f"{pid} 依赖安装成功")
 
@@ -370,6 +389,45 @@ class PluginHelper(metaclass=Singleton):
                 return True, False, error_message
 
         return False, False, "不存在依赖"
+
+    @staticmethod
+    def __backup_plugin(pid: str) -> str:
+        """
+        备份旧插件目录
+        :param pid: 插件 ID
+        :return: 备份目录路径
+        """
+        plugin_dir = Path(settings.ROOT_PATH) / "app" / "plugins" / pid
+        backup_dir = Path(settings.TEMP_PATH) / "plugins_backup" / pid
+
+        if plugin_dir.exists():
+            # 备份时清理已有的备份目录，防止残留文件影响
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir, ignore_errors=True)
+                logger.debug(f"{pid} 旧的备份目录已清理 {backup_dir}")
+
+            shutil.copytree(plugin_dir, backup_dir, dirs_exist_ok=True)
+            logger.debug(f"{pid} 插件已备份到 {backup_dir}")
+
+        return str(backup_dir) if backup_dir.exists() else None
+
+    @staticmethod
+    def __restore_plugin(pid: str, backup_dir: str):
+        """
+        还原旧插件目录
+        :param pid: 插件 ID
+        :param backup_dir: 备份目录路径
+        """
+        plugin_dir = Path(settings.ROOT_PATH) / "app" / "plugins" / pid
+        if plugin_dir.exists():
+            shutil.rmtree(plugin_dir, ignore_errors=True)
+            logger.debug(f"{pid} 已清理插件目录 {plugin_dir}")
+
+        if Path(backup_dir).exists():
+            shutil.copytree(backup_dir, plugin_dir, dirs_exist_ok=True)
+            logger.debug(f"{pid} 已还原插件目录 {plugin_dir}")
+            shutil.rmtree(backup_dir, ignore_errors=True)
+            logger.debug(f"{pid} 已删除备份目录 {backup_dir}")
 
     @staticmethod
     def __remove_old_plugin(pid: str):

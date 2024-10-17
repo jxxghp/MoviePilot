@@ -3,9 +3,11 @@ import concurrent.futures
 import importlib.util
 import inspect
 import os
+import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -19,7 +21,7 @@ from app.helper.module import ModuleHelper
 from app.helper.plugin import PluginHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
-from app.schemas.types import SystemConfigKey, EventType
+from app.schemas.types import EventType, SystemConfigKey
 from app.utils.crypto import RSAUtils
 from app.utils.limit import rate_limit_window
 from app.utils.object import ObjectUtils
@@ -271,34 +273,63 @@ class PluginManager(metaclass=Singleton):
         # 广播事件
         eventmanager.send_event(EventType.PluginReload, data={"plugin_id": plugin_id})
 
-    def sync(self):
+    def sync(self) -> List[str]:
         """
         安装本地不存在的在线插件
         """
+
+        def install_plugin(plugin):
+            start_time = time.time()
+            state, msg = self.pluginhelper.install(pid=plugin.id, repo_url=plugin.repo_url, force_install=True)
+            elapsed_time = time.time() - start_time
+            if state:
+                logger.info(
+                    f"插件 {plugin.plugin_name} 安装成功，版本：{plugin.plugin_version}，耗时：{elapsed_time:.2f} 秒")
+                sync_plugins.append(plugin.id)
+            else:
+                logger.error(
+                    f"插件 {plugin.plugin_name} v{plugin.plugin_version} 安装失败：{msg}，耗时：{elapsed_time:.2f} 秒")
+                failed_plugins.append(plugin.id)
+
         if SystemUtils.is_frozen():
-            return
-        logger.info("开始安装第三方插件...")
-        # 已安装插件
+            return []
+
+        # 获取已安装插件列表
         install_plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins) or []
-        # 在线插件
+        # 获取在线插件列表
         online_plugins = self.get_online_plugins()
-        if not online_plugins:
-            logger.error("未获取到第三方插件")
-            return
-        # 支持更新的插件自动更新
-        for plugin in online_plugins:
-            # 只处理已安装的插件
-            if plugin.id in install_plugins and not self.is_plugin_exists(plugin.id):
-                # 下载安装
-                state, msg = self.pluginhelper.install(pid=plugin.id,
-                                                       repo_url=plugin.repo_url)
-                # 安装失败
-                if not state:
-                    logger.error(
-                        f"插件 {plugin.plugin_name} v{plugin.plugin_version} 安装失败：{msg}")
-                    continue
-                logger.info(f"插件 {plugin.plugin_name} 安装成功，版本：{plugin.plugin_version}")
-        logger.info("第三方插件安装完成")
+        # 确定需要安装的插件
+        plugins_to_install = [
+            plugin for plugin in online_plugins
+            if plugin.id in install_plugins and not self.is_plugin_exists(plugin.id)
+        ]
+
+        if not plugins_to_install:
+            return []
+        logger.info("开始安装第三方插件...")
+        sync_plugins = []
+        failed_plugins = []
+
+        # 使用 ThreadPoolExecutor 进行并发安装
+        total_start_time = time.time()
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {
+                executor.submit(install_plugin, plugin): plugin
+                for plugin in plugins_to_install
+            }
+            for future in as_completed(futures):
+                plugin = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    logger.error(f"插件 {plugin.plugin_name} 安装过程中出现异常: {exc}")
+
+        total_elapsed_time = time.time() - total_start_time
+        logger.info(
+            f"第三方插件安装完成，成功：{len(sync_plugins)} 个，"
+            f"失败：{len(failed_plugins)} 个，总耗时：{total_elapsed_time:.2f} 秒"
+        )
+        return sync_plugins
 
     def get_plugin_config(self, pid: str) -> dict:
         """
@@ -689,7 +720,8 @@ class PluginManager(metaclass=Singleton):
             # 构建包名
             package_name = f"app.plugins.{pid.lower()}"
             # 检查包是否存在
-            package_exists = importlib.util.find_spec(package_name) is not None
+            spec = importlib.util.find_spec(package_name)
+            package_exists = spec is not None and spec.origin is not None
             logger.debug(f"{pid} exists: {package_exists}")
             return package_exists
         except Exception as e:
