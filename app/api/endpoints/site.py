@@ -186,7 +186,20 @@ def refresh_userdata(
     return schemas.Response(success=True, data=user_data)
 
 
-@router.get("/userdata/{site_id}", summary="查询站点用户数据", response_model=schemas.Response)
+@router.get("/userdata/latest", summary="查询所有站点最新用户数据", response_model=List[schemas.SiteUserData])
+def read_userdata_latest(
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
+    """
+    查询所有站点最新用户数据
+    """
+    user_datas = SiteUserData.get_latest(db)
+    if not user_datas:
+        return []
+    return [user_data.to_dict() for user_data in user_datas]
+
+
+@router.get("/userdata/{site_id}", summary="查询某站点用户数据", response_model=schemas.Response)
 def read_userdata(
         site_id: int,
         workdate: str = None,

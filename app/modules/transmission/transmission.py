@@ -110,7 +110,7 @@ class Transmission:
         if not self.trc:
             return None
         try:
-            torrents, error = self.get_torrents(status=["seeding", "seed_pending"], ids=ids, tags=tags)
+            torrents, error = self.get_torrents(status=["", "seed_pending"], ids=ids, tags=tags)
             return None if error else torrents or []
         except Exception as err:
             logger.error(f"获取已完成的种子列表出错：{str(err)}")
