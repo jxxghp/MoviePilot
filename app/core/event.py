@@ -20,7 +20,7 @@ from app.utils.singleton import Singleton
 DEFAULT_EVENT_PRIORITY = 10  # 事件的默认优先级
 MIN_EVENT_CONSUMER_THREADS = 1  # 最小事件消费者线程数
 INITIAL_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 1  # 事件队列空闲时的初始超时时间（秒）
-MAX_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 60  # 事件队列空闲时的最大超时时间（秒）
+MAX_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 5  # 事件队列空闲时的最大超时时间（秒）
 
 
 class Event:
