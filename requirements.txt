@@ -4,6 +4,8 @@
 #
 #    pip-compile requirements.in
 #
+aiofiles==24.1.0
+    # via -r requirements.in
 aiohappyeyeballs==2.4.0
     # via aiohttp
 aiohttp==3.10.5
@@ -63,6 +65,11 @@ click==8.1.7
     #   uvicorn
 cn2an==0.5.22
     # via -r requirements.in
+colorama==0.4.6
+    # via
+    #   click
+    #   qrcode
+    #   tqdm
 coloredlogs==15.0.1
     # via aligo
 crcmod==1.7
@@ -95,7 +102,9 @@ frozenlist==1.4.1
 func-timeout==4.3.5
     # via -r requirements.in
 greenlet==2.0.2
-    # via playwright
+    # via
+    #   playwright
+    #   sqlalchemy
 h11==0.14.0
     # via
     #   httpcore
@@ -139,7 +148,9 @@ openai==0.27.10
 oss2==2.18.6
     # via -r requirements.in
 packaging==24.1
-    # via docker
+    # via
+    #   docker
+    #   qbittorrent-api
 parse==1.19.1
     # via -r requirements.in
 passlib==1.7.4
@@ -181,14 +192,6 @@ pyee==9.0.4
     # via playwright
 pyjwt==2.7.0
     # via -r requirements.in
-pyobjc-core==10.3.1
-    # via
-    #   pyobjc-framework-cocoa
-    #   pyobjc-framework-quartz
-pyobjc-framework-cocoa==10.3.1
-    # via pyobjc-framework-quartz
-pyobjc-framework-quartz==10.3.1
-    # via pystray
 pyotp==2.9.0
     # via -r requirements.in
 pyparsing==3.0.9
@@ -197,6 +200,8 @@ pypng==0.20220715.0
     # via qrcode
 pyquery==2.0.0
     # via -r requirements.in
+pyreadline3==3.5.4
+    # via humanfriendly
 pysocks==1.7.1
     # via requests
 pystray==0.19.5
@@ -223,7 +228,7 @@ pyvirtualdisplay==3.0
     # via -r requirements.in
 pywebpush==2.0.0
     # via -r requirements.in
-qbittorrent-api==2023.5.48
+qbittorrent-api==2024.9.67
     # via -r requirements.in
 qrcode[pil]==7.4.2
     # via
@@ -262,7 +267,6 @@ six==1.16.0
     #   pystray
     #   python-dateutil
     #   pywebpush
-    #   qbittorrent-api
 slack-bolt==1.18.0
     # via -r requirements.in
 slack-sdk==3.21.3
@@ -283,8 +287,6 @@ starlette==0.27.0
     # via
     #   -r requirements.in
     #   fastapi
-tailer==0.4.1
-    # via -r requirements.in
 torrentool==1.2.0
     # via -r requirements.in
 tqdm==4.66.5
@@ -301,6 +303,8 @@ typing-extensions==4.12.2
     #   qrcode
     #   sqlalchemy
     #   transmission-rpc
+tzdata==2024.2
+    # via tzlocal
 tzlocal==5.2
     # via
     #   apscheduler
