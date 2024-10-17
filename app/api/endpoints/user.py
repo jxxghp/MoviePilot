@@ -54,7 +54,7 @@ def create_user(
 def update_user(
         *,
         db: Session = Depends(get_db),
-        user_in: schemas.UserCreate,
+        user_in: schemas.UserUpdate,
         _: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
@@ -69,7 +69,15 @@ def update_user(
                                     message="密码需要同时包含字母、数字、特殊字符中的至少两项，且长度大于6位")
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
-    user = User.get_by_name(db, name=user_info["name"])
+    user = User.get_by_id(db, user_id=user_info["id"])
+    user_name = user_info.get("name")
+    if not user_name:
+        return schemas.Response(success=False, message="用户名不能为空")
+    # 新用户名去重
+    users = User.list(db)
+    for u in users:
+        if u.name == user_name and u.id != user_info["id"]:
+            return schemas.Response(success=False, message="用户名已被使用")
     if not user:
         return schemas.Response(success=False, message="用户不存在")
     user.update(db, user_info)
@@ -165,15 +173,32 @@ def set_config(key: str, value: Union[list, dict, bool, int, str] = None,
     return schemas.Response(success=True)
 
 
-@router.delete("/{user_name}", summary="删除用户", response_model=schemas.Response)
-def delete_user(
+@router.delete("/id/{user_id}", summary="删除用户", response_model=schemas.Response)
+def delete_user_from_user_id(
+        *,
+        db: Session = Depends(get_db),
+        user_id: int,
+        current_user: User = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    通过唯一ID删除用户
+    """
+    user = current_user.get_by_id(db, user_id=user_id)
+    if not user:
+        return schemas.Response(success=False, message="用户不存在")
+    user.delete_by_id(db, user_id)
+    return schemas.Response(success=True)
+
+
+@router.delete("/name/{user_name}", summary="删除用户", response_model=schemas.Response)
+def delete_user_from_user_id(
         *,
         db: Session = Depends(get_db),
         user_name: str,
         current_user: User = Depends(get_current_active_superuser),
 ) -> Any:
     """
-    删除用户
+    通过用户名删除用户
     """
     user = current_user.get_by_name(db, name=user_name)
     if not user:

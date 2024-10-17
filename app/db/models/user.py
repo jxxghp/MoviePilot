@@ -54,9 +54,21 @@ class User(Base):
     def get_by_name(db: Session, name: str):
         return db.query(User).filter(User.name == name).first()
 
+    @staticmethod
+    @db_query
+    def get_by_id(db: Session, user_id: int):
+        return db.query(User).filter(User.id == user_id).first()
+
     @db_update
     def delete_by_name(self, db: Session, name: str):
         user = self.get_by_name(db, name)
+        if user:
+            user.delete(db, user.id)
+        return True
+
+    @db_update
+    def delete_by_id(self, db: Session, user_id: int):
+        user = self.get_by_id(db, user_id)
         if user:
             user.delete(db, user.id)
         return True
