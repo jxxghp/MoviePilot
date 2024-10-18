@@ -1,7 +1,8 @@
+import secrets
 from datetime import timedelta
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -45,16 +46,16 @@ async def login_access_token(
             else:
                 # 如果找不到用户并开启了辅助认证
                 logger.warn(f"登录用户 {form_data.username} 本地不存在，尝试辅助认证 ...")
-                token = UserChain().user_authenticate(form_data.username, form_data.password)
-                if not token:
+                success = UserChain().user_authenticate(form_data.username, form_data.password)
+                if not success:
                     logger.warn(f"用户 {form_data.username} 登录失败！")
                     raise HTTPException(status_code=401, detail="用户名、密码、二次校验码不正确")
                 else:
-                    logger.info(f"用户 {form_data.username} 辅助认证成功，用户信息: {token}，以普通用户登录...")
+                    logger.info(f"用户 {form_data.username} 辅助认证成功，以普通用户登录...")
                     # 加入用户信息表
                     logger.info(f"创建用户: {form_data.username}")
                     user = User(name=form_data.username, is_active=True,
-                                is_superuser=False, hashed_password=get_password_hash(token))
+                                is_superuser=False, hashed_password=get_password_hash(secrets.token_urlsafe(16)))
                     user.create(db)
         else:
             # 用户存在，但认证失败
