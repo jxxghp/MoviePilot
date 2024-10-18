@@ -17,6 +17,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
         """
         super().init_service(service_name=VoceChat.__name__.lower(),
                              service_type=VoceChat)
+        self._channel = MessageChannel.VoceChat
 
     @staticmethod
     def get_name() -> str:

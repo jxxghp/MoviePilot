@@ -18,6 +18,7 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         """
         super().init_service(service_name=Slack.__name__.lower(),
                              service_type=Slack)
+        self._channel = MessageChannel.Slack
 
     @staticmethod
     def get_name() -> str:

@@ -16,6 +16,7 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
         """
         super().init_service(service_name=SynologyChat.__name__.lower(),
                              service_type=SynologyChat)
+        self._channel = MessageChannel.SynologyChat
 
     @staticmethod
     def get_name() -> str:

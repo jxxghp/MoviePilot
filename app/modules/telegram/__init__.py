@@ -17,6 +17,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         """
         super().init_service(service_name=Telegram.__name__.lower(),
                              service_type=Telegram)
+        self._channel = MessageChannel.Telegram
 
     @staticmethod
     def get_name() -> str:

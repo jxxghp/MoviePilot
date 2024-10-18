@@ -7,7 +7,7 @@ from app.core.config import global_vars, settings
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas import Notification
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, MessageChannel
 
 
 class WebPushModule(_ModuleBase, _MessageBase):
@@ -17,6 +17,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
         初始化模块
         """
         super().init_service(service_name=self.get_name().lower())
+        self._channel = MessageChannel.WebPush
 
     @staticmethod
     def get_name() -> str:

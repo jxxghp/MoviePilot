@@ -19,6 +19,7 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         """
         super().init_service(service_name=WeChat.__name__.lower(),
                              service_type=WeChat)
+        self._channel = MessageChannel.Wechat
 
     @staticmethod
     def get_name() -> str:
