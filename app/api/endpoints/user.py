@@ -174,7 +174,7 @@ def set_config(key: str, value: Union[list, dict, bool, int, str] = None,
 
 
 @router.delete("/id/{user_id}", summary="删除用户", response_model=schemas.Response)
-def delete_user_from_user_id(
+def delete_user_by_id(
         *,
         db: Session = Depends(get_db),
         user_id: int,
@@ -191,7 +191,7 @@ def delete_user_from_user_id(
 
 
 @router.delete("/name/{user_name}", summary="删除用户", response_model=schemas.Response)
-def delete_user_from_user_id(
+def delete_user_by_name(
         *,
         db: Session = Depends(get_db),
         user_name: str,
@@ -208,7 +208,7 @@ def delete_user_from_user_id(
 
 
 @router.get("/{username}", summary="用户详情", response_model=schemas.User)
-def read_user_by_id(
+def read_user_by_name(
         username: str,
         current_user: User = Depends(get_current_active_user),
         db: Session = Depends(get_db),
