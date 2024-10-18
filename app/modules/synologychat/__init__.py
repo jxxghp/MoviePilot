@@ -61,10 +61,16 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
         """
         try:
             # 来源
-            client_config = self.get_config(source)
+            client_config = None
+            if source:
+                client_config = self.get_config(source)
+            else:
+                client_configs = self.get_configs()
+                if client_configs:
+                    client_config = list(client_configs.values())[0]
             if not client_config:
                 return None
-            client: SynologyChat = self.get_instance(source)
+            client: SynologyChat = self.get_instance(client_config.name)
             if not client:
                 return None
             # 解析消息
@@ -82,8 +88,9 @@ class SynologyChatModule(_ModuleBase, _MessageBase[SynologyChat]):
             # 获取用户名
             user_name = message.get("username")
             if text and user_id:
-                logger.info(f"收到SynologyChat消息：userid={user_id}, username={user_name}, text={text}")
-                return CommingMessage(channel=MessageChannel.SynologyChat,
+                logger.info(f"收到来自 {client_config.name} 的SynologyChat消息："
+                            f"userid={user_id}, username={user_name}, text={text}")
+                return CommingMessage(channel=MessageChannel.SynologyChat, source=client_config.name,
                                       userid=user_id, username=user_name, text=text)
         except Exception as err:
             logger.debug(f"解析SynologyChat消息失败：{str(err)}")

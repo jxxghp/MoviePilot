@@ -64,10 +64,16 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         """
         try:
             # 获取客户端
-            client_config = self.get_config(source)
+            client_config = None
+            if source:
+                client_config = self.get_config(source)
+            else:
+                client_configs = self.get_configs()
+                if client_configs:
+                    client_config = list(client_configs.values())[0]
             if not client_config:
                 return None
-            client: WeChat = self.get_instance(source)
+            client: WeChat = self.get_instance(client_config.name)
             # URL参数
             sVerifyMsgSig = args.get("msg_signature")
             sVerifyTimeStamp = args.get("timestamp")
@@ -136,17 +142,17 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
                         return None
                 # 根据EventKey执行命令
                 content = DomUtils.tag_value(root_node, "EventKey")
-                logger.info(f"收到微信事件：userid={user_id}, event={content}")
+                logger.info(f"收到来自 {client_config.name} 的微信事件：userid={user_id}, event={content}")
             elif msg_type == "text":
                 # 文本消息
                 content = DomUtils.tag_value(root_node, "Content", default="")
-                logger.info(f"收到微信消息：userid={user_id}, text={content}")
+                logger.info(f"收到来自 {client_config.name} 的微信消息：userid={user_id}, text={content}")
             else:
                 return None
 
             if content:
                 # 处理消息内容
-                return CommingMessage(channel=MessageChannel.Wechat, source=source,
+                return CommingMessage(channel=MessageChannel.Wechat, source=client_config.name,
                                       userid=user_id, username=user_id, text=content)
         except Exception as err:
             logger.error(f"微信消息处理发生错误：{str(err)}")

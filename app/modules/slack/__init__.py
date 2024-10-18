@@ -175,7 +175,13 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         }
         """
         # 获取客户端
-        client_config = self.get_config(source)
+        client_config = None
+        if source:
+            client_config = self.get_config(source)
+        else:
+            client_configs = self.get_configs()
+            if client_configs:
+                client_config = list(client_configs.values())[0]
         if not client_config:
             return None
         try:
@@ -206,8 +212,8 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
                 username = msg_json.get("user_name")
             else:
                 return None
-            logger.info(f"收到来自 {source} 的Slack消息：userid={userid}, username={username}, text={text}")
-            return CommingMessage(channel=MessageChannel.Slack, source=source,
+            logger.info(f"收到来自 {client_config.name} 的Slack消息：userid={userid}, username={username}, text={text}")
+            return CommingMessage(channel=MessageChannel.Slack, source=client_config.name,
                                   userid=userid, username=username, text=text)
         return None
 

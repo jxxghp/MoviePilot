@@ -88,10 +88,16 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             }
         """
         # 获取渠道
-        client_config = self.get_config(source)
+        client_config = None
+        if source:
+            client_config = self.get_config(source)
+        else:
+            client_configs = self.get_configs()
+            if client_configs:
+                client_config = list(client_configs.values())[0]
         if not client_config:
             return None
-        client: Telegram = self.get_instance(source)
+        client: Telegram = self.get_instance(client_config.name)
         try:
             message: dict = json.loads(body)
         except Exception as err:
@@ -103,7 +109,8 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
             # 获取用户名
             user_name = message.get("from", {}).get("username")
             if text:
-                logger.info(f"收到来自 {source} 的Telegram消息：userid={user_id}, username={user_name}, text={text}")
+                logger.info(f"收到来自 {client_config.name} 的Telegram消息："
+                            f"userid={user_id}, username={user_name}, text={text}")
                 # 检查权限
                 admin_users = client_config.config.get("TELEGRAM_ADMINS")
                 user_list = client_config.config.get("TELEGRAM_USERS")
@@ -120,7 +127,7 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                         logger.info(f"用户{user_id}不在用户白名单中，无法使用此机器人")
                         client.send_msg(title="你不在用户白名单中，无法使用此机器人", userid=user_id)
                         return None
-                return CommingMessage(channel=MessageChannel.Telegram, source=source,
+                return CommingMessage(channel=MessageChannel.Telegram, source=client_config.name,
                                       userid=user_id, username=user_name, text=text)
         return None
 
