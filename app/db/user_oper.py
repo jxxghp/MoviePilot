@@ -5,8 +5,7 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.core.security import verify_token
-from app.db import DbOper
-from app.db import get_db
+from app.db import DbOper, get_db
 from app.db.models.user import User
 
 
@@ -51,6 +50,19 @@ class UserOper(DbOper):
     """
     用户管理
     """
+
+    def add(self, **kwargs):
+        """
+        新增用户
+        """
+        user = User(**kwargs)
+        user.create(self._db)
+
+    def get_by_name(self, name: str) -> User:
+        """
+        根据用户名获取用户
+        """
+        return User.get_by_name(self._db, name)
 
     def get_permissions(self, name: str) -> dict:
         """
