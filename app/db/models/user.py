@@ -1,6 +1,6 @@
 from typing import Tuple, Any
 
-from sqlalchemy import Boolean, Column, Integer, String, Sequence, JSON
+from sqlalchemy import Boolean, Column, Integer, String, Sequence, JSON, inspect
 from sqlalchemy.orm import Session
 
 from app.core.security import verify_password

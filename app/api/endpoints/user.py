@@ -46,8 +46,8 @@ def create_user(
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
     user = User(**user_info)
-    user.create(db)
-    return schemas.Response(success=True)
+    success = user.create(db)
+    return schemas.Response(success=True if success else False, message="创建成功" if success else "创建失败")
 
 
 @router.put("/", summary="更新用户", response_model=schemas.Response)
@@ -69,19 +69,43 @@ def update_user(
                                     message="密码需要同时包含字母、数字、特殊字符中的至少两项，且长度大于6位")
         user_info["hashed_password"] = get_password_hash(user_info["password"])
         user_info.pop("password")
-    user = User.get_by_id(db, user_id=user_info["id"])
-    user_name = user_info.get("name")
-    if not user_name:
-        return schemas.Response(success=False, message="用户名不能为空")
-    # 新用户名去重
-    users = User.list(db)
-    for u in users:
-        if u.name == user_name and u.id != user_info["id"]:
-            return schemas.Response(success=False, message="用户名已被使用")
+    # 提取用户唯一id
+    user_id = user_info.get("id")
+    if not user_id:
+        return schemas.Response(success=False, message="没有获取到id，无法更新")
+    # 查询用户
+    user = User.get_by_id(db, user_id=user_id)
     if not user:
-        return schemas.Response(success=False, message="用户不存在")
-    user.update(db, user_info)
-    return schemas.Response(success=True)
+        return schemas.Response(success=False, message="用户不存在，无法更新")
+
+    old_user_name = user.name
+    new_user_name = user_info.get("name")
+
+    # 新用户名去重
+    if old_user_name != new_user_name:
+        users = User.list(db)
+        for u in users:
+            if u.name == new_user_name and u.id != user_id:
+                return schemas.Response(success=False, message="用户名已被使用，无法更新")
+    else:
+        # 用户名未修改，删除用户名字段
+        user_info.pop("name", None)
+
+    if old_user_name != new_user_name:
+        relation_info = {
+            "exclude_tables": ["alembic_version" "user", "site", "siteuserdata", "siteicon", "sitestatistic"],
+            "field": {
+                "username": {
+                    "old_value": old_user_name,
+                    "new_value": new_user_name,
+                },
+            }
+        }
+        success = user.relevancy_update(db, user_info, relation_info)
+    else:
+        success = user.update(db, user_info)
+
+    return schemas.Response(success=True if success else False, message="更新成功" if success else "更新失败")
 
 
 @router.get("/current", summary="当前登录用户信息", response_model=schemas.User)
@@ -106,10 +130,10 @@ def upload_avatar(user_id: int, db: Session = Depends(get_db), file: UploadFile 
     user = User.get(db, user_id)
     if not user:
         return schemas.Response(success=False, message="用户不存在")
-    user.update(db, {
+    success = user.update(db, {
         "avatar": f"data:image/ico;base64,{file_base64}"
     })
-    return schemas.Response(success=True, message=file.filename)
+    return schemas.Response(success=True if success else False, message=file.filename if success else "上传失败")
 
 
 @router.post('/otp/generate', summary='生成otp验证uri', response_model=schemas.Response)
@@ -186,8 +210,8 @@ def delete_user_from_user_id(
     user = current_user.get_by_id(db, user_id=user_id)
     if not user:
         return schemas.Response(success=False, message="用户不存在")
-    user.delete_by_id(db, user_id)
-    return schemas.Response(success=True)
+    success = user.delete_by_id(db, user_id)
+    return schemas.Response(success=True if success else False, message="删除成功" if success else "删除失败")
 
 
 @router.delete("/name/{user_name}", summary="删除用户", response_model=schemas.Response)
@@ -203,8 +227,8 @@ def delete_user_from_user_id(
     user = current_user.get_by_name(db, name=user_name)
     if not user:
         return schemas.Response(success=False, message="用户不存在")
-    user.delete_by_name(db, user_name)
-    return schemas.Response(success=True)
+    success = user.delete_by_name(db, user_name)
+    return schemas.Response(success=True if success else False, message="删除成功" if success else "删除失败")
 
 
 @router.get("/{username}", summary="用户详情", response_model=schemas.User)

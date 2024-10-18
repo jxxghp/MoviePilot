@@ -75,6 +75,7 @@ async def login_access_token(
         ),
         token_type="bearer",
         super_user=user.is_superuser,
+        user_id=user.id,
         user_name=user.name,
         avatar=user.avatar,
         level=level
