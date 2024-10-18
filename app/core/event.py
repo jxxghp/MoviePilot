@@ -13,6 +13,7 @@ from typing import Callable, Dict, List, Optional, Union
 from app.helper.message import MessageHelper
 from app.helper.thread import ThreadHelper
 from app.log import logger
+from app.schemas.event import ChainEventData
 from app.schemas.types import ChainEventType, EventType
 from app.utils.limit import ExponentialBackoffRateLimiter
 from app.utils.singleton import Singleton
@@ -28,7 +29,8 @@ class Event:
     事件类，封装事件的基本信息
     """
 
-    def __init__(self, event_type: Union[EventType, ChainEventType], event_data: Optional[Dict] = None,
+    def __init__(self, event_type: Union[EventType, ChainEventType],
+                 event_data: Optional[Union[Dict, ChainEventData]] = None,
                  priority: int = DEFAULT_EVENT_PRIORITY):
         """
         :param event_type: 事件的类型，支持 EventType 或 ChainEventType
@@ -314,13 +316,13 @@ class EventManager(metaclass=Singleton):
 
         return True
 
-    def __trigger_chain_event(self, event: Event) -> Event:
+    def __trigger_chain_event(self, event: Event) -> Optional[Event]:
         """
         触发链式事件，按顺序调用订阅的处理器，并记录处理耗时
         """
         logger.debug(f"Triggering synchronous chain event: {event}")
-        self.__dispatch_chain_event(event)
-        return event
+        dispatch = self.__dispatch_chain_event(event)
+        return event if dispatch else None
 
     def __trigger_broadcast_event(self, event: Event):
         """
@@ -330,23 +332,25 @@ class EventManager(metaclass=Singleton):
         logger.debug(f"Triggering broadcast event: {event}")
         self.__event_queue.put((event.priority, event))
 
-    def __dispatch_chain_event(self, event: Event):
+    def __dispatch_chain_event(self, event: Event) -> bool:
         """
         同步方式调度链式事件，按优先级顺序逐个调用事件处理器，并记录每个处理器的处理时间
         :param event: 要调度的事件对象
         """
         handlers = self.__chain_subscribers.get(event.event_type, {})
         if not handlers:
-            return
-        self.__log_event_lifecycle(event, "started")
+            logger.debug(f"No handlers found for chain event: {event}")
+            return False
+        self.__log_event_lifecycle(event, "Started")
         for handler_id, (priority, handler) in handlers.items():
             start_time = time.time()
             self.__safe_invoke_handler(handler, event)
             logger.debug(
-                f"Handler {self.__get_handler_identifier(handler)} (Priority: {priority}) ,"
-                f" completed in {time.time() - start_time:.3f}s"
+                f"{self.__get_handler_identifier(handler)} (Priority: {priority}), "
+                f"completed in {time.time() - start_time:.3f}s for event: {event}"
             )
-        self.__log_event_lifecycle(event, "completed")
+        self.__log_event_lifecycle(event, "Completed")
+        return True
 
     def __dispatch_broadcast_event(self, event: Event):
         """
@@ -355,6 +359,7 @@ class EventManager(metaclass=Singleton):
         """
         handlers = self.__broadcast_subscribers.get(event.event_type, {})
         if not handlers:
+            logger.debug(f"No handlers found for broadcast event: {event}")
             return
         for handler_id, handler in handlers.items():
             self.__executor.submit(self.__safe_invoke_handler, handler, event)

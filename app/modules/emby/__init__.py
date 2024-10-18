@@ -1,10 +1,11 @@
-from typing import Optional, Tuple, Union, Any, List, Generator
+from typing import Any, Generator, List, Optional, Tuple, Union
 
 from app import schemas
 from app.core.context import MediaInfo
 from app.log import logger
-from app.modules import _ModuleBase, _MediaServerBase
+from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.emby.emby import Emby
+from app.schemas.event import AuthVerificationData
 from app.schemas.types import MediaType, ModuleType
 
 
@@ -57,18 +58,22 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
                 logger.info(f"Emby服务器 {name} 连接断开，尝试重连 ...")
                 server.reconnect()
 
-    def user_authenticate(self, name: str, password: str) -> Optional[str]:
+    def user_authenticate(self, auth_data: AuthVerificationData) -> Optional[AuthVerificationData]:
         """
         使用Emby用户辅助完成用户认证
-        :param name: 用户名
-        :param password: 密码
-        :return: token or None
+        :param auth_data: 认证数据
+        :return: 认证数据
         """
         # Emby认证
-        for server in self.get_instances().values():
-            result = server.authenticate(name, password)
-            if result:
-                return result
+        if not auth_data:
+            return None
+        for name, server in self.get_instances().items():
+            token = server.authenticate(auth_data.name, auth_data.password)
+            if token:
+                auth_data.channel = self.get_name()
+                auth_data.service = name
+                auth_data.token = token
+                return auth_data
         return None
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
