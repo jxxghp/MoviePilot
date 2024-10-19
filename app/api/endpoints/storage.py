@@ -56,9 +56,9 @@ def save(name: str,
 
 
 @router.post("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])
-def list(fileitem: schemas.FileItem,
-         sort: str = 'updated_at',
-         _: User = Depends(get_current_active_superuser)) -> Any:
+def list_files(fileitem: schemas.FileItem,
+               sort: str = 'updated_at',
+               _: User = Depends(get_current_active_superuser)) -> Any:
     """
     查询当前目录下所有目录和文件
     :param fileitem: 文件项
