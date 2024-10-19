@@ -5,7 +5,7 @@ from app.core.context import MediaInfo
 from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.jellyfin.jellyfin import Jellyfin
-from app.schemas.event import AuthVerificationData
+from app.schemas.event import AuthCredentials
 from app.schemas.types import MediaType, ModuleType
 
 
@@ -58,22 +58,22 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
                 return False, f"无法连接Jellyfin服务器：{name}"
         return True, ""
 
-    def user_authenticate(self, auth_data: AuthVerificationData) -> Optional[AuthVerificationData]:
+    def user_authenticate(self, credentials: AuthCredentials) -> Optional[AuthCredentials]:
         """
         使用Jellyfin用户辅助完成用户认证
-        :param auth_data: 认证数据
+        :param credentials: 认证数据
         :return: 认证数据
         """
         # Jellyfin认证
-        if not auth_data:
+        if not credentials or credentials.grant_type != "password":
             return None
         for name, server in self.get_instances().items():
-            token = server.authenticate(auth_data.name, auth_data.password)
+            token = server.authenticate(credentials.username, credentials.password)
             if token:
-                auth_data.channel = self.get_name()
-                auth_data.service = name
-                auth_data.token = token
-                return auth_data
+                credentials.channel = self.get_name()
+                credentials.service = name
+                credentials.token = token
+                return credentials
         return None
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
