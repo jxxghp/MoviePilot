@@ -158,7 +158,7 @@ class UserChain(ChainBase, metaclass=Singleton):
             return True, self.user_oper.get_by_name(credentials.username)
         else:
             logger.warning(f"用户 {credentials.username} 辅助认证未通过")
-            return False, "用户名或密码或二次校验码不正确"
+            return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
 
     @staticmethod
     def _verify_mfa(user: User, mfa_code: Optional[str]) -> bool:
@@ -189,16 +189,14 @@ class UserChain(ChainBase, metaclass=Singleton):
             - 如果认证成功并且用户存在或已创建，返回 User 对象
             - 如果认证被拦截或失败，返回 None
         """
-        token, channel, service = credentials.token, credentials.channel, credentials.service
+        if not username:
+            logger.debug(f"未能获取到对应的用户信息， {credentials.grant_type} 认证不通过")
+            return False
 
+        token, channel, service = credentials.token, credentials.channel, credentials.service
         if not all([token, channel, service]):
             logger.debug(f"用户 {username} 未通过 {credentials.grant_type} 认证，必要信息不足")
             return False
-
-        anonymized_token = f"{token[:len(token) // 2]}********"
-        logger.info(
-            f"认证类型：{credentials.grant_type}，用户：{username}，渠道：{channel}，"
-            f"服务：{service} 认证成功，token：{anonymized_token}")
 
         # 触发认证通过的拦截事件
         intercept_event = self.eventmanager.send_event(
@@ -213,12 +211,22 @@ class UserChain(ChainBase, metaclass=Singleton):
                     f"认证被拦截，用户：{username}，渠道：{channel}，服务：{service}，拦截源：{intercept_data.source}")
                 return False
 
-        # 检查用户是否存在，如果不存在则创建新用户
+        # 检查用户是否存在，如果不存在且当前为密码认证时则创建新用户
         user = self.user_oper.get_by_name(name=username)
         if user:
-            return True
-
-        logger.info(f"用户 {username} 不存在，已通过 {credentials.grant_type} 认证并已创建普通用户")
-        self.user_oper.add(name=username, is_active=True, is_superuser=False,
-                           hashed_password=get_password_hash(secrets.token_urlsafe(16)))
-        return True
+            anonymized_token = f"{token[:len(token) // 2]}********"
+            logger.info(
+                f"认证类型：{credentials.grant_type}，用户：{username}，渠道：{channel}，"
+                f"服务：{service} 认证成功，token：{anonymized_token}")
+            return False
+        else:
+            if credentials.grant_type == "password":
+                self.user_oper.add(name=username, is_active=True, is_superuser=False,
+                                   hashed_password=get_password_hash(secrets.token_urlsafe(16)))
+                logger.info(f"用户 {username} 不存在，已通过 {credentials.grant_type} 认证并已创建普通用户")
+                return True
+            else:
+                logger.warning(
+                    f"认证类型：{credentials.grant_type}，用户：{username}，渠道：{channel}，"
+                    f"服务：{service} 认证不通过，未能在本地找到对应的用户信息")
+                return False
