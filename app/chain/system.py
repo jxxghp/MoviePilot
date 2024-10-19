@@ -19,20 +19,25 @@ class SystemChain(ChainBase, metaclass=Singleton):
 
     _restart_file = "__system_restart__"
 
-    def remote_clear_cache(self, channel: MessageChannel, userid: Union[int, str]):
+    def __init__(self):
+        super().__init__()
+        # 重启完成检测
+        self.restart_finish()
+
+    def remote_clear_cache(self, channel: MessageChannel, userid: Union[int, str], source: str = None):
         """
         清理系统缓存
         """
         self.clear_cache()
-        self.post_message(Notification(channel=channel,
+        self.post_message(Notification(channel=channel, source=source,
                                        title=f"缓存清理完成！", userid=userid))
 
-    def restart(self, channel: MessageChannel, userid: Union[int, str]):
+    def restart(self, channel: MessageChannel, userid: Union[int, str], source: str = None):
         """
         重启系统
         """
         if channel and userid:
-            self.post_message(Notification(channel=channel,
+            self.post_message(Notification(channel=channel, source=source,
                                            title="系统正在重启，请耐心等候！", userid=userid))
             # 保存重启信息
             self.save_cache({
@@ -59,11 +64,11 @@ class SystemChain(ChainBase, metaclass=Singleton):
             title += f"当前前端版本：{front_local_version}，远程版本：{front_release_version}"
         return title
 
-    def version(self, channel: MessageChannel, userid: Union[int, str]):
+    def version(self, channel: MessageChannel, userid: Union[int, str], source: str = None):
         """
         查看当前版本、远程版本
         """
-        self.post_message(Notification(channel=channel,
+        self.post_message(Notification(channel=channel, source=source,
                                        title=self.__get_version_message(),
                                        userid=userid))
 

@@ -874,7 +874,7 @@ class DownloadChain(ChainBase):
             # 全部存在
             return True, no_exists
 
-    def remote_downloading(self, channel: MessageChannel, source: str, userid: Union[str, int] = None):
+    def remote_downloading(self, channel: MessageChannel, userid: Union[str, int] = None, source: str = None):
         """
         查询正在下载的任务，并发送消息
         """

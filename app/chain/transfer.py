@@ -534,13 +534,14 @@ class TransferChain(ChainBase):
 
         return trans_items
 
-    def remote_transfer(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_transfer(self, arg_str: str, channel: MessageChannel,
+                        userid: Union[str, int] = None, source: str = None):
         """
         远程重新整理，参数 历史记录ID TMDBID|类型
         """
 
         def args_error():
-            self.post_message(Notification(channel=channel,
+            self.post_message(Notification(channel=channel, source=source,
                                            title="请输入正确的命令格式：/redo [id] [tmdbid/豆瓣id]|[类型]，"
                                                  "[id]历史记录编号", userid=userid))
 
@@ -571,7 +572,7 @@ class TransferChain(ChainBase):
                                            mtype=MediaType(type_str),
                                            mediaid=media_id)
         if not state:
-            self.post_message(Notification(channel=channel, title="手动整理失败",
+            self.post_message(Notification(channel=channel, title="手动整理失败", source=source,
                                            text=errmsg, userid=userid, link=settings.MP_DOMAIN('#/history')))
             return
 

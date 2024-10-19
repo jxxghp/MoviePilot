@@ -22,9 +22,9 @@ from app.helper.resource import ResourceHelper
 from app.helper.message import MessageHelper
 from app.scheduler import Scheduler
 from app.monitor import Monitor
-from app.command import Command, CommandChian
 from app.schemas import Notification, NotificationType
 from app.db import close_database
+from app.chain.command import CommandChain
 
 
 def start_frontend():
@@ -79,7 +79,7 @@ def check_auth():
     if SitesHelper().auth_level < 2:
         err_msg = "用户认证失败，站点相关功能将无法使用！"
         MessageHelper().put(f"注意：{err_msg}", title="用户认证", role="system")
-        CommandChian().post_message(
+        CommandChain().post_message(
             Notification(
                 mtype=NotificationType.Manual,
                 title="MoviePilot用户认证",
@@ -139,7 +139,7 @@ def start_modules(_: FastAPI):
     # 启动定时服务
     Scheduler()
     # 加载命令
-    Command()
+    CommandChain()
     # 启动前端服务
     start_frontend()
     # 检查认证状态

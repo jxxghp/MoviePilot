@@ -19,16 +19,7 @@ from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
 
 
-class CommandChian(ChainBase):
-    """
-    插件处理链
-    """
-
-    def process(self, *args, **kwargs):
-        pass
-
-
-class Command(metaclass=Singleton):
+class CommandChain(ChainBase, metaclass=Singleton):
     """
     全局命令管理，消费事件
     """
@@ -37,14 +28,14 @@ class Command(metaclass=Singleton):
 
     def __init__(self):
         # 插件管理器
+        super().__init__()
         self.pluginmanager = PluginManager()
-        # 处理链
-        self.chain = CommandChian()
         # 定时服务管理
         self.scheduler = Scheduler()
         # 消息管理器
         self.messagehelper = MessageHelper()
-        # 内置命令
+        # 内置命令：标准参数 arg_str: str, channel: MessageChannel, userid: Union[str, int] = None, source: str = None
+        # 其中 arg_str 为用户输入的参数，channel 为消息渠道，userid 为用户ID，source 为消息来源，arg_str 可选
         self._commands = {
             "/cookiecloud": {
                 "id": "cookiecloud",
@@ -148,7 +139,7 @@ class Command(metaclass=Singleton):
         for command in plugin_commands:
             self.register(
                 cmd=command.get('cmd'),
-                func=Command.send_plugin_event,
+                func=self.send_plugin_event,
                 desc=command.get('desc'),
                 category=command.get('category'),
                 data={
@@ -158,9 +149,7 @@ class Command(metaclass=Singleton):
             )
         # 广播注册命令菜单
         if not settings.DEV:
-            self.chain.register_commands(commands=self.get_commands())
-        # 重启msg
-        SystemChain().restart_finish()
+            self.register_commands(commands=self.get_commands())
 
     def __run_command(self, command: Dict[str, any], data_str: str = "",
                       channel: MessageChannel = None, source: str = None, userid: Union[str, int] = None):
@@ -170,7 +159,7 @@ class Command(metaclass=Singleton):
         if command.get("type") == "scheduler":
             # 定时服务
             if userid:
-                self.chain.post_message(
+                self.post_message(
                     Notification(
                         channel=channel,
                         source=source,
@@ -183,7 +172,7 @@ class Command(metaclass=Singleton):
             self.scheduler.start(job_id=command.get("id"))
 
             if userid:
-                self.chain.post_message(
+                self.post_message(
                     Notification(
                         channel=channel,
                         source=source,
@@ -203,15 +192,15 @@ class Command(metaclass=Singleton):
                     data['source'] = source
                     data['user'] = userid
                     if data_str:
-                        data['args'] = data_str
+                        data['arg_str'] = data_str
                     cmd_data['data'] = data
                     command['func'](**cmd_data)
                 elif args_num == 3:
-                    # 没有输入参数，只输入渠道来源、和用户ID
-                    command['func'](channel, source, userid)
+                    # 没有输入参数，只输入渠道来源、用户ID和消息来源
+                    command['func'](channel, userid, source)
                 elif args_num > 3:
                     # 多个输入参数：用户输入、用户ID
-                    command['func'](data_str, channel, source, userid)
+                    command['func'](data_str, channel, userid, source)
             else:
                 # 没有参数
                 command['func']()
@@ -295,4 +284,5 @@ class Command(metaclass=Singleton):
             cmd = event_str.split()[0]
             args = " ".join(event_str.split()[1:])
             if self.get(cmd):
-                self.execute(cmd, args, event_channel, event_source, event_user)
+                self.execute(cmd=cmd, data_str=args,
+                             channel=event_channel, source=event_source, userid=event_user)

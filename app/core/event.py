@@ -423,7 +423,7 @@ class EventManager(metaclass=Singleton):
 
         # 如果类不在全局变量中，尝试动态导入模块并创建实例
         try:
-            # 导入模块，除了插件和Command，只有chain能响应事件
+            # 导入模块，除了插件，只有chain能响应事件
             if not class_name.endswith("Chain"):
                 logger.debug(f"事件处理出错：无效的 Chain 类名: {class_name}，类名必须以 'Chain' 结尾")
                 return None

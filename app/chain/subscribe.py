@@ -941,13 +941,15 @@ class SubscribeChain(ChainBase):
             "doubanid": mediainfo.douban_id
         })
 
-    def remote_list(self, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_list(self, channel: MessageChannel,
+                    userid: Union[str, int] = None, source: str = None):
         """
         查询订阅并发送消息
         """
         subscribes = self.subscribeoper.list()
         if not subscribes:
             self.post_message(Notification(channel=channel,
+                                           source=source,
                                            title='没有任何订阅！', userid=userid))
             return
         title = f"共有 {len(subscribes)} 个订阅，回复对应指令操作： " \
@@ -964,15 +966,16 @@ class SubscribeChain(ChainBase):
                                 f"[{subscribe.total_episode - (subscribe.lack_episode or subscribe.total_episode)}"
                                 f"/{subscribe.total_episode}]")
         # 发送列表
-        self.post_message(Notification(channel=channel,
+        self.post_message(Notification(channel=channel, source=source,
                                        title=title, text='\n'.join(messages), userid=userid))
 
-    def remote_delete(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_delete(self, arg_str: str, channel: MessageChannel,
+                      userid: Union[str, int] = None, source: str = None):
         """
         删除订阅
         """
         if not arg_str:
-            self.post_message(Notification(channel=channel,
+            self.post_message(Notification(channel=channel, source=source,
                                            title="请输入正确的命令格式：/subscribe_delete [id]，"
                                                  "[id]为订阅编号", userid=userid))
             return
@@ -984,7 +987,7 @@ class SubscribeChain(ChainBase):
             subscribe_id = int(arg_str)
             subscribe = self.subscribeoper.get(subscribe_id)
             if not subscribe:
-                self.post_message(Notification(channel=channel,
+                self.post_message(Notification(channel=channel, source=source,
                                                title=f"订阅编号 {subscribe_id} 不存在！", userid=userid))
                 return
             # 删除订阅
@@ -995,7 +998,7 @@ class SubscribeChain(ChainBase):
                 "doubanid": subscribe.doubanid
             })
         # 重新发送消息
-        self.remote_list(channel, userid)
+        self.remote_list(channel=channel, userid=userid, source=source)
 
     @staticmethod
     def __get_subscribe_no_exits(subscribe_name: str,

@@ -504,7 +504,8 @@ class SiteChain(ChainBase):
                 return False, f"无法打开网站！"
         return True, "连接成功"
 
-    def remote_list(self, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_list(self, channel: MessageChannel,
+                    userid: Union[str, int] = None, source: str = None):
         """
         查询所有站点，发送消息
         """
@@ -532,10 +533,13 @@ class SiteChain(ChainBase):
         # 发送列表
         self.post_message(Notification(
             channel=channel,
+            source=source,
             title=title, text="\n".join(messages), userid=userid,
-            link=settings.MP_DOMAIN('#/site')))
+            link=settings.MP_DOMAIN('#/site'))
+        )
 
-    def remote_disable(self, arg_str, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_disable(self, arg_str: str, channel: MessageChannel,
+                       userid: Union[str, int] = None, source: str = None):
         """
         禁用站点
         """
@@ -557,9 +561,10 @@ class SiteChain(ChainBase):
             "is_active": False
         })
         # 重新发送消息
-        self.remote_list(channel, userid)
+        self.remote_list(channel=channel, userid=userid, source=source)
 
-    def remote_enable(self, arg_str, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_enable(self, arg_str: str, channel: MessageChannel,
+                      userid: Union[str, int] = None, source: str = None):
         """
         启用站点
         """
@@ -582,7 +587,7 @@ class SiteChain(ChainBase):
                 "is_active": True
             })
         # 重新发送消息
-        self.remote_list(channel, userid)
+        self.remote_list(channel=channel, userid=userid, source=source)
 
     def update_cookie(self, site_info: Site,
                       username: str, password: str, two_step_code: str = None) -> Tuple[bool, str]:
@@ -613,7 +618,8 @@ class SiteChain(ChainBase):
             return True, msg
         return False, "未知错误"
 
-    def remote_cookie(self, arg_str: str, channel: MessageChannel, userid: Union[str, int] = None):
+    def remote_cookie(self, arg_str: str, channel: MessageChannel,
+                      userid: Union[str, int] = None, source: str = None):
         """
         使用用户名密码更新站点Cookie
         """
@@ -622,6 +628,7 @@ class SiteChain(ChainBase):
         if not arg_str:
             self.post_message(Notification(
                 channel=channel,
+                source=source,
                 title=err_title, userid=userid))
             return
         arg_str = str(arg_str).strip()
@@ -633,12 +640,14 @@ class SiteChain(ChainBase):
         elif len(args) != 3:
             self.post_message(Notification(
                 channel=channel,
+                source=source,
                 title=err_title, userid=userid))
             return
         site_id = args[0]
         if not site_id.isdigit():
             self.post_message(Notification(
                 channel=channel,
+                source=source,
                 title=err_title, userid=userid))
             return
         # 站点ID
@@ -648,10 +657,12 @@ class SiteChain(ChainBase):
         if not site_info:
             self.post_message(Notification(
                 channel=channel,
+                source=source,
                 title=f"站点编号 {site_id} 不存在！", userid=userid))
             return
         self.post_message(Notification(
             channel=channel,
+            source=source,
             title=f"开始更新【{site_info.name}】Cookie&UA ...", userid=userid))
         # 用户名
         username = args[1]
@@ -666,11 +677,13 @@ class SiteChain(ChainBase):
             logger.error(msg)
             self.post_message(Notification(
                 channel=channel,
+                source=source,
                 title=f"【{site_info.name}】 Cookie&UA更新失败！",
                 text=f"错误原因：{msg}",
                 userid=userid))
         else:
             self.post_message(Notification(
                 channel=channel,
+                source=source,
                 title=f"【{site_info.name}】 Cookie&UA更新成功",
                 userid=userid))
