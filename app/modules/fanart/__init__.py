@@ -342,6 +342,13 @@ class FanartModule(_ModuleBase):
         """
         return ModuleType.Other
 
+    @staticmethod
+    def get_priority() -> int:
+        """
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        """
+        return 0
+
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """
         获取图片

@@ -96,6 +96,8 @@ class ChainBase(metaclass=ABCMeta):
         logger.debug(f"请求模块执行：{method} ...")
         result = None
         modules = self.modulemanager.get_running_modules(method)
+        # 按优先级排序
+        modules = sorted(modules, key=lambda x: x.get_priority())
         for module in modules:
             module_id = module.__class__.__name__
             try:

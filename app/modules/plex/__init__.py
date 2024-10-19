@@ -28,6 +28,13 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         """
         return ModuleType.MediaServer
 
+    @staticmethod
+    def get_priority() -> int:
+        """
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        """
+        return 3
+
     def stop(self):
         pass
 

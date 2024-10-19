@@ -42,6 +42,14 @@ class _ModuleBase(metaclass=ABCMeta):
         获取模块类型
         """
         pass
+    
+    @staticmethod
+    @abstractmethod
+    def get_priority() -> int:
+        """
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        """
+        pass
 
     @abstractmethod
     def stop(self) -> None:

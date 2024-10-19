@@ -30,6 +30,13 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         """
         return ModuleType.Notification
 
+    @staticmethod
+    def get_priority() -> int:
+        """
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        """
+        return 0
+
     def stop(self):
         """
         停止模块
