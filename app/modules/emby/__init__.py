@@ -124,6 +124,7 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
                         logger.info(f"媒体库 {name} 中找到了 {movie}")
                         return schemas.ExistMediaInfo(
                             type=MediaType.MOVIE,
+                            server_type="emby",
                             server=name,
                             itemid=movie.item_id
                         )
@@ -137,6 +138,7 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
                     logger.info(f"媒体库 {name} 中找到了 {movies}")
                     return schemas.ExistMediaInfo(
                         type=MediaType.MOVIE,
+                        server_type="emby",
                         server=name,
                         itemid=movies[0].item_id
                     )
@@ -153,6 +155,7 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
                     return schemas.ExistMediaInfo(
                         type=MediaType.TV,
                         seasons=tvs,
+                        server_type="emby",
                         server=name,
                         itemid=itemid
                     )

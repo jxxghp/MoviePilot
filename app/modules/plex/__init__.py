@@ -105,6 +105,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
                         logger.info(f"媒体库 {name} 中找到了 {movie}")
                         return schemas.ExistMediaInfo(
                             type=MediaType.MOVIE,
+                            server_type="plex",
                             server=name,
                             itemid=movie.item_id
                         )
@@ -119,6 +120,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
                     logger.info(f"媒体库 {name} 中找到了 {movies}")
                     return schemas.ExistMediaInfo(
                         type=MediaType.MOVIE,
+                        server_type="plex",
                         server=name,
                         itemid=movies[0].item_id
                     )
@@ -136,6 +138,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
                     return schemas.ExistMediaInfo(
                         type=MediaType.TV,
                         seasons=tvs,
+                        server_type="plex",
                         server=name,
                         itemid=item_id
                     )

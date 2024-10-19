@@ -14,7 +14,9 @@ class ExistMediaInfo(BaseModel):
     type: Optional[MediaType]
     # 季
     seasons: Optional[Dict[int, list]] = {}
-    # 媒体服务器
+    # 媒体服务器类型：plex、jellyfin、emby
+    server_type: Optional[str] = None
+    # 媒体服务器名称
     server: Optional[str] = None
     # 媒体ID
     itemid: Optional[Union[str, int]] = None
