@@ -76,7 +76,7 @@ def fetch_image(
             try:
                 content = cache_path.read_bytes()
                 etag = HashUtils.md5(content)
-                headers = RequestUtils.generate_cache_headers(etag)
+                headers = RequestUtils.generate_cache_headers(etag, max_age=86400 * 7)
                 if if_none_match == etag:
                     return Response(status_code=304, headers=headers)
                 return Response(content=content, media_type="image/jpeg", headers=headers)

@@ -64,10 +64,12 @@ def stop_frontend():
 
 def clear_temp():
     """
-    清理临时目录中3天前的文件
+    清理临时文件和图片缓存
     """
-    # 清理3天前的文件
+    # 清理临时目录中3天前的文件
     SystemUtils.clear(settings.TEMP_PATH, days=3)
+    # 清理图片缓存目录中7天前的文件
+    SystemUtils.clear(settings.CACHE_PATH / "images", days=7)
 
 
 def check_auth():
