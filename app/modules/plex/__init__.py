@@ -82,14 +82,22 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
                     return result
         return None
 
-    def media_exists(self, mediainfo: MediaInfo, itemid: str = None) -> Optional[schemas.ExistMediaInfo]:
+    def media_exists(self, mediainfo: MediaInfo, itemid: str = None,
+                     server: str = None) -> Optional[schemas.ExistMediaInfo]:
         """
         判断媒体文件是否存在
         :param mediainfo:  识别的媒体信息
         :param itemid:  媒体服务器ItemID
+        :param server:  媒体服务器名称
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
-        for name, server in self.get_instances().items():
+        if server:
+            servers = [(server, self.get_instance(server))]
+        else:
+            servers = self.get_instances().items()
+        for name, server in servers:
+            if not server:
+                continue
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
                     movie = server.get_iteminfo(itemid)
