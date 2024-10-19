@@ -94,7 +94,7 @@ class UserChain(ChainBase, metaclass=Singleton):
                     return False, "认证失败"
             else:
                 logger.debug(f"辅助认证未启用，认证类型 {grant_type} 未实现")
-                return False, "未实现的认证类型"
+                return False, "不支持的认证类型"
 
     def password_authenticate(self, credentials: AuthCredentials) -> Tuple[bool, Union[User, str]]:
         """
@@ -202,7 +202,7 @@ class UserChain(ChainBase, metaclass=Singleton):
 
         # 触发认证通过的拦截事件
         intercept_event = self.eventmanager.send_event(
-            etype=ChainEventType.AuthPassedIntercept,
+            etype=ChainEventType.AuthIntercept,
             data=AuthInterceptCredentials(username=username, channel=channel, service=service, token=token)
         )
 

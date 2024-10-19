@@ -64,8 +64,8 @@ class ChainEventType(Enum):
     NameRecognize = "name.recognize"
     # 认证验证请求
     AuthVerification = "auth.verification"
-    # 认证通过拦截
-    AuthPassedIntercept = "auth.passed.intercept"
+    # 认证拦截请求
+    AuthIntercept = "auth.intercept"
 
 
 # 系统配置Key字典
