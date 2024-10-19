@@ -10,6 +10,8 @@ class Token(BaseModel):
     token_type: str
     # 超级用户
     super_user: bool
+    # 用户ID
+    user_id: int
     # 用户名
     user_name: str
     # 头像

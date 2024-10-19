@@ -159,6 +159,7 @@ class AliPan(StorageBase):
                             "updateTime": time.time(),
                         })
                         self.__update_params(data)
+                        self.__update_drives()
                         self.__init_aligo()
                 except Exception as e:
                     return {}, f"bizExt 解码失败：{str(e)}"
@@ -180,6 +181,17 @@ class AliPan(StorageBase):
         获取用户信息（drive_id等）
         """
         return self.aligo.get_user()
+
+    def __update_drives(self):
+        """
+        更新用户存储根目录
+        """
+        drivers = self.aligo.list_my_drives()
+        for driver in drivers:
+            if driver.category == "resource":
+                self.__update_params({"resourceDriveId": driver.drive_id})
+            elif driver.category == "backup":
+                self.__update_params({"backDriveId": driver.drive_id})
 
     def __get_fileitem(self, fileinfo: BaseFile, parent: str = "/") -> schemas.FileItem:
         """
@@ -231,7 +243,7 @@ class AliPan(StorageBase):
             return [
                 schemas.FileItem(
                     storage=self.schema.value,
-                    fileid=fileitem.fileid,
+                    fileid="root",
                     drive_id=self.__auth_params.get("resourceDriveId"),
                     parent_fileid="root",
                     type="dir",
@@ -241,7 +253,7 @@ class AliPan(StorageBase):
                 ),
                 schemas.FileItem(
                     storage=self.schema.value,
-                    fileid=fileitem.fileid,
+                    fileid="root",
                     drive_id=self.__auth_params.get("backDriveId"),
                     parent_fileid="root",
                     type="dir",

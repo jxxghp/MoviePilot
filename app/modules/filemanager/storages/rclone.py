@@ -335,7 +335,7 @@ class Rclone(StorageBase):
             ret = subprocess.run(
                 [
                     'rclone', 'about',
-                    'MP:/', '--json'
+                    '/', '--json'
                 ],
                 capture_output=True,
                 startupinfo=self.__get_hidden_shell()
