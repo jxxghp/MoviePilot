@@ -90,11 +90,11 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
         if not state:
             return schemas.Response(success=False, msg=f"{dest_fileitem.path}删除失败")
     # 删除源文件
-    if deletesrc and history.dest_fileitem:
-        dest_fileitem = schemas.FileItem(**history.dest_fileitem)
-        state = StorageChain().delete_file(dest_fileitem)
+    if deletesrc and history.src_fileitem:
+        src_fileitem = schemas.FileItem(**history.src_fileitem)
+        state = StorageChain().delete_file(src_fileitem)
         if not state:
-            return schemas.Response(success=False, msg=f"{dest_fileitem.path}删除失败")
+            return schemas.Response(success=False, msg=f"{src_fileitem.path}删除失败")
         # 发送事件
         eventmanager.send_event(
             EventType.DownloadFileDeleted,
