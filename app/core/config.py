@@ -132,8 +132,8 @@ class ConfigModel(BaseModel):
                           '.flac', '.midi', '.opus', '.sfalc']
     # 下载器临时文件后缀
     DOWNLOAD_TMPEXT: list = ['.!qB', '.part']
-    # 下载器监视间隔（小时）
-    MEDIASERVER_SYNC_INTERVAL: int = 1
+    # 媒体服务器同步间隔（小时）
+    MEDIASERVER_SYNC_INTERVAL: int = 6
     # 订阅模式
     SUBSCRIBE_MODE: str = "spider"
     # RSS订阅模式刷新时间间隔（分钟）
