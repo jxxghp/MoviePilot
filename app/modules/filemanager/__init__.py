@@ -1106,7 +1106,9 @@ class FileManagerModule(_ModuleBase):
                 continue
             media_files = self.list_files(fileitem, True)
             if media_files:
-                ret_fileitems.extend(media_files)
+                for media_file in media_files:
+                    if f".{media_file.extension.lower()}" in settings.RMT_MEDIAEXT:
+                        ret_fileitems.append(media_file)
         return ret_fileitems
 
     def media_exists(self, mediainfo: MediaInfo, **kwargs) -> Optional[ExistMediaInfo]:
