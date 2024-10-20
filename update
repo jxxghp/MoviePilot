@@ -192,44 +192,73 @@ function test_connectivity_github() {
     esac
 }
 
+# 版本号比较
 function compare_versions() {
     local v1="$1"
     local v2="$2"
-    local parts1=()
-    local parts2=()
-    IFS='.-' read -ra parts1 <<< "$v1"
-    IFS='.-' read -ra parts2 <<< "$v2"
+    # 去掉开头的 v 或 V
+    v1="${v1#[vV]}"
+    v2="${v2#[vV]}"
+    local current_ver_parts=()
+    local release_ver_parts=()
+    IFS='.-' read -ra current_ver_parts <<< "$v1"
+    IFS='.-' read -ra release_ver_parts <<< "$v2"
     local i
-    for ((i = 0; i < ${#parts1[@]} || i < ${#parts2[@]}; i++)); do
-        local part1="${parts1[i]:-0}"
-        local part2="${parts2[i]:-0}"
-        if [[ $part1 =~ ^[0-9]+$ && $part2 =~ ^[0-9]+$ ]]; then
-            if ((part1 > part2)); then
-                return 1
-            elif ((part1 < part2)); then
-                return 2
-            fi
+    local current_ver
+    local release_ver
+
+    for ((i = 0; i < ${#current_ver_parts[@]} || i < ${#release_ver_parts[@]}; i++)); do
+        # 版本号不足位补 0
+        local current_ver_part="${current_ver_parts[i]:-0}"
+        local release_ver_part="${release_ver_parts[i]:-0}"
+        current_ver=$(get_priority "$current_ver_part")
+        release_ver=$(get_priority "$release_ver_part")
+
+        # 任意一个为-5，不在合法版本号内，无法比较
+        if (( current_ver == -5 || release_ver == -5 )); then
+            ERROR "存在不合法版本号，无法判断，跳过更新步骤..."
+            return 1
         else
-            # 定义一个非数字的排序顺序的优先级，特殊后缀版本比较
-            local order=(alpha beta rc stable)
-            local index1=-1
-            local index2=-1
-            for ((j = 0; j < ${#order[@]}; j++)); do
-                if [[ $part1 = "${order[j]}" ]]; then
-                    index1=$j
-                fi
-                if [[ $part2 = "${order[j]}" ]]; then
-                    index2=$j
-                fi
-            done
-            if ((index1 > index2)); then
+            if (( current_ver > release_ver )); then
+                WARN "当前版本高于远程版本，跳过更新步骤..."
                 return 1
-            elif ((index1 < index2)); then
-                return 2
+            elif (( current_ver < release_ver )); then
+                INFO "发现新版本，开始自动升级..."
+                install_backend_and_download_resources "tags/${release_ver}.zip"
+                return 0
+            else
+                WARN "当前版本已是最新版本，跳过更新步骤..."
+                return 1
             fi
         fi
     done
-    return 0
+}
+
+# 优先级转换
+function get_priority() {
+    local version="$1"
+    if [[ $version =~ ^[0-9]+$ ]]; then
+        echo $version
+    else
+        case $version in
+            "stable")
+                echo -1
+                ;;
+            "rc")
+                echo -2
+                ;;
+            "beta")
+                echo -3
+                ;;
+            "alpha")
+                echo -4
+                ;;
+            # 非数字的不合法版本号
+            *)
+                echo -5
+                ;;
+        esac
+    fi
 }
 
 if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
@@ -263,23 +292,16 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
         install_backend_and_download_resources "heads/main.zip"
     else
         INFO "Release 更新模式"
-        old_version=$(cat /app/version.py)
+        old_version=$(grep -m -1 "^\s*APP_VERSION\s*=\s*" /app/version.py | tr -d '\r\n' | awk -F'#' '{print $1}' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         if [[ "${old_version}" == *APP_VERSION* ]]; then
-            current_version=v$(echo "${old_version}" | sed -ne "s/APP_VERSION\s=\s'v\(.*\)'/\1/gp")
+            current_version=$(echo "${old_version}" | sed -rn "s/APP_VERSION\s*=\s*['\"](.*)['\"]/\1/gp")
             INFO "当前版本号：${current_version}"
-            new_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" ${CURL_HEADERS} | jq -r .tag_name)
+            new_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" ${CURL_HEADERS} | jq -r .tag_name | tr -d '\r\n')
             if [[ "${new_version}" == *v* ]]; then
                 release_version=${new_version}
                 INFO "最新版本号：${release_version}"
                 # 使用版本号比较函数进行比较
-                if compare_versions "${current_version}" "${release_version}"; then
-                    WARN "当前版本已是最新版本，跳过更新步骤..."
-                elif [ $? -eq 2 ]; then
-                    INFO "发现新版本，开始自动升级..."
-                    install_backend_and_download_resources "tags/${release_version}.zip"
-                else
-                    WARN "当前版本高于远程版本，跳过更新步骤..."
-                fi
+                compare_versions "${current_version}" "${release_version}"
             else
                 WARN "最新版本号获取失败，继续启动..."
             fi
