@@ -1,5 +1,5 @@
 from abc import abstractmethod, ABCMeta
-from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable, Any
+from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
 
 from app.helper.service import ServiceConfigHelper
 from app.schemas import Notification, MessageChannel, NotificationConf, MediaServerConf, DownloaderConf
@@ -42,7 +42,7 @@ class _ModuleBase(metaclass=ABCMeta):
         获取模块类型
         """
         pass
-    
+
     @staticmethod
     @abstractmethod
     def get_priority() -> int:
@@ -120,16 +120,19 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         """
         return self._instances or {}
 
-    def get_instance(self, name: str) -> Optional[TService]:
+    def get_instance(self, name: Optional[str] = None) -> Optional[TService]:
         """
-        获取服务实例
+        获取指定名称的服务实例
 
-        :param name: 实例名称
-        :return: 返回对应名称的服务实例，若不存在则返回 None
+        :param name: 实例名称，可选。如果为 None，则返回默认实例
+        :return: 返回符合条件的服务实例，若不存在则返回 None
         """
-        if not name or not self._instances:
+        if not self._instances:
             return None
-        return self._instances.get(name)
+        if name:
+            return self._instances.get(name)
+        name = self.get_default_config_name()
+        return self._instances.get(name) if name else None
 
     @abstractmethod
     def get_configs(self) -> Dict[str, TConf]:
@@ -140,16 +143,33 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         """
         pass
 
-    def get_config(self, name: str) -> Optional[TConf]:
+    def get_config(self, name: Optional[str] = None) -> Optional[TConf]:
         """
-        获取配置，支持类型过滤
+        获取指定名称的服务配置
 
-        :param name: 配置名称
+        :param name: 配置名称，可选。如果为 None，则返回默认服务配置
         :return: 返回符合条件的配置，若不存在则返回 None
         """
-        if not name or not self._configs:
+        if not self._configs:
             return None
-        return self._configs.get(name)
+        if name:
+            return self._configs.get(name)
+        name = self.get_default_config_name()
+        return self._configs.get(name) if name else None
+
+    def get_default_config_name(self) -> Optional[str]:
+        """
+        获取默认服务配置的名称
+
+        :return: 返回第一个设置为默认的配置名称；如果没有默认配置，则返回第一个配置的名称；如果没有配置，返回 None
+        """
+        # 优先查找默认配置
+        for conf in self._configs.values():
+            if getattr(conf, "default", False):
+                return conf.name
+        # 如果没有默认配置，返回第一个配置的名称
+        first_conf = next(iter(self._configs.values()), None)
+        return first_conf.name if first_conf else None
 
 
 class _MessageBase(ServiceBase[TService, NotificationConf]):
@@ -205,40 +225,6 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
     """
     下载器基类
     """
-
-    def __init__(self):
-        """
-        初始化下载器基类，并设置默认服务器
-        """
-        super().__init__()
-        self._default_server: Any = None
-        self._default_server_name: Optional[str] = None
-
-    def init_service(self, service_name: str,
-                     service_type: Optional[Union[Type[TService], Callable[..., TService]]] = None):
-        """
-        初始化服务，获取配置并实例化对应服务
-
-        :param service_name: 服务名称，作为配置匹配的依据
-        :param service_type: 服务的类型，可以是类类型（Type[TService]）或工厂函数（Callable），用于创建服务实例
-        """
-        super().init_service(service_name=service_name, service_type=service_type)
-        if self._configs:
-            for conf in self._configs.values():
-                if conf.default:
-                    self._default_server_name = conf.name
-                    self._default_server = self.get_instance(conf.name)
-
-    def get_instance(self, name: str = None) -> Optional[Any]:
-        """
-        获取实例，name为空时，返回默认实例
-
-        :param name: 实例名称，可选，默认为 None
-        :return: 返回指定名称的实例，若 name 为 None 则返回默认实例
-        """
-        if name:
-            return self._instances.get(name)
-        return self._default_server
 
     def get_configs(self) -> Dict[str, DownloaderConf]:
         """
