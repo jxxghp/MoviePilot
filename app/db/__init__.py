@@ -1,24 +1,32 @@
-from typing import Any, Self, List, Tuple, Optional, Generator
+from typing import Any, Generator, List, Optional, Self, Tuple
 
-from sqlalchemy import create_engine, QueuePool, and_, inspect
-from sqlalchemy.orm import declared_attr, sessionmaker, Session, scoped_session, as_declarative
+from sqlalchemy import NullPool, QueuePool, and_, create_engine, inspect
+from sqlalchemy.orm import Session, as_declarative, declared_attr, scoped_session, sessionmaker
 
 from app.core.config import settings
 
-# 数据库引擎
-Engine = create_engine(
-    url=f"sqlite:///{settings.CONFIG_PATH}/user.db",
-    pool_pre_ping=settings.DB_POOL_PRE_PING,
-    echo=settings.DB_ECHO,
-    poolclass=QueuePool,
-    pool_size=settings.DB_POOL_SIZE,
-    pool_recycle=settings.DB_POOL_RECYCLE,
-    pool_timeout=settings.DB_POOL_TIMEOUT,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-    connect_args={
+# 根据池类型设置 poolclass 和相关参数
+pool_class = NullPool if settings.DB_POOL_TYPE == "NullPool" else QueuePool
+kwargs = {
+    "url": f"sqlite:///{settings.CONFIG_PATH}/user.db",
+    "pool_pre_ping": settings.DB_POOL_PRE_PING,
+    "echo": settings.DB_ECHO,
+    "poolclass": pool_class,
+    "pool_recycle": settings.DB_POOL_RECYCLE,
+    "connect_args": {
+        # "check_same_thread": False,
         "timeout": settings.DB_TIMEOUT
     }
-)
+}
+# 当使用 QueuePool 时，添加 QueuePool 特有的参数
+if pool_class == QueuePool:
+    kwargs.update({
+        "pool_size": settings.DB_POOL_SIZE,
+        "pool_timeout": settings.DB_POOL_TIMEOUT,
+        "max_overflow": settings.DB_MAX_OVERFLOW
+    })
+# 创建数据库引擎
+Engine = create_engine(**kwargs)
 
 # 会话工厂
 SessionFactory = sessionmaker(bind=Engine)
