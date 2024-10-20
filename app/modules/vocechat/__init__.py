@@ -84,14 +84,8 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
               "target": { "gid": 2 } //发送给谁，gid代表是发送给频道，uid代表是发送给个人，此时的数据结构举例：{"uid":1}
             }
             """
-            # 获取渠道
-            client_config = None
-            if source:
-                client_config = self.get_config(source)
-            else:
-                client_configs = self.get_configs()
-                if client_configs:
-                    client_config = list(client_configs.values())[0]
+            # 获取服务配置
+            client_config = self.get_config(source)
             if not client_config:
                 return None
             # 报文体

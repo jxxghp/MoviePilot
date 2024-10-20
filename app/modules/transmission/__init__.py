@@ -153,7 +153,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                             if settings.TORRENT_TAG and settings.TORRENT_TAG not in labels:
                                 labels.append(settings.TORRENT_TAG)
                                 server.set_torrent_tag(ids=torrent_hash, tags=labels)
-                        return downloader or self._default_server_name, torrent_hash, f"下载任务已存在"
+                        return downloader or self.get_default_config_name(), torrent_hash, f"下载任务已存在"
             return None, None, f"添加种子任务失败：{content}"
         else:
             torrent_hash = torrent.hashString
@@ -161,7 +161,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                 # 选择文件
                 torrent_files = server.get_files(torrent_hash)
                 if not torrent_files:
-                    return downloader or self._default_server_name, torrent_hash, "获取种子文件失败，下载任务可能在暂停状态"
+                    return downloader or self.get_default_config_name(), torrent_hash, "获取种子文件失败，下载任务可能在暂停状态"
                 # 需要的文件信息
                 file_ids = []
                 unwanted_file_ids = []
@@ -182,9 +182,9 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                 server.set_unwanted_files(torrent_hash, unwanted_file_ids)
                 # 开始任务
                 server.start_torrents(torrent_hash)
-                return downloader or self._default_server_name, torrent_hash, "添加下载任务成功"
+                return downloader or self.get_default_config_name(), torrent_hash, "添加下载任务成功"
             else:
-                return downloader or self._default_server_name, torrent_hash, "添加下载任务成功"
+                return downloader or self.get_default_config_name(), torrent_hash, "添加下载任务成功"
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,

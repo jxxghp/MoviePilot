@@ -95,14 +95,8 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
                 }
             }
         """
-        # 获取渠道
-        client_config = None
-        if source:
-            client_config = self.get_config(source)
-        else:
-            client_configs = self.get_configs()
-            if client_configs:
-                client_config = list(client_configs.values())[0]
+        # 获取服务配置
+        client_config = self.get_config(source)
         if not client_config:
             return None
         client: Telegram = self.get_instance(client_config.name)
