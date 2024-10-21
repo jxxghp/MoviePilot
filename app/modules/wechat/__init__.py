@@ -218,5 +218,11 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
         注册命令，实现这个函数接收系统可用的命令菜单
         :param commands: 命令字典
         """
-        for client in self.get_instances().values():
-            client.create_menus(commands)
+        for client_config in self.get_configs().values():
+            # 如果没有配置消息解密相关参数，则也没有必要进行菜单初始化
+            if not client_config.config.get("WECHAT_ENCODING_AESKEY") or not client_config.config.get("WECHAT_TOKEN"):
+                logger.debug(f"{client_config.name} 缺少消息解密参数，跳过后续菜单初始化")
+            else:
+                client = self.get_instance(client_config.name)
+                if client:
+                    client.create_menus(commands)
