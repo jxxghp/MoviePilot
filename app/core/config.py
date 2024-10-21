@@ -230,7 +230,10 @@ class Settings(BaseSettings, ConfigModel):
 
     @staticmethod
     def validate_api_token(original_value: Any) -> Tuple[Any, bool]:
-        value = original_value.strip()
+        """
+        校验 API_TOKEN
+        """
+        value = original_value.strip() if isinstance(original_value, str) else None
         if not value or len(value) < 16:
             new_token = secrets.token_urlsafe(16)
             if not value:
@@ -246,8 +249,9 @@ class Settings(BaseSettings, ConfigModel):
         """
         通用类型转换函数，根据预期类型转换值。如果转换失败，返回默认值
         """
+        # 如果 value 是 None，仍需要检查与 original_value 是否不一致
         if value is None:
-            return default, False
+            return default, str(value) != str(original_value)
 
         if isinstance(value, str):
             value = value.strip()
@@ -255,7 +259,7 @@ class Settings(BaseSettings, ConfigModel):
         try:
             if expected_type is bool:
                 if isinstance(value, bool):
-                    return value, False
+                    return value, str(value).lower() != str(original_value).lower()
                 if isinstance(value, str):
                     value_clean = value.lower()
                     bool_map = {
@@ -263,28 +267,30 @@ class Settings(BaseSettings, ConfigModel):
                         "true": True, "yes": True, "1": True, "on": True
                     }
                     if value_clean in bool_map:
-                        return bool_map[value_clean], value_clean != str(original_value).lower()
+                        converted = bool_map[value_clean]
+                        return converted, str(converted).lower() != str(original_value).lower()
                 elif isinstance(value, (int, float)):
-                    return bool(value), False
-                return default, False
+                    converted = bool(value)
+                    return converted, str(converted).lower() != str(original_value).lower()
+                return default, True
             elif expected_type is int:
                 if isinstance(value, int):
-                    return value, False
+                    return value, str(value) != str(original_value)
                 if isinstance(value, str):
                     converted = int(value)
-                    return converted, value != original_value
+                    return converted, str(converted) != str(original_value)
             elif expected_type is float:
                 if isinstance(value, float):
-                    return value, False
+                    return value, str(value) != str(original_value)
                 if isinstance(value, str):
                     converted = float(value)
-                    return converted, value != original_value
+                    return converted, str(converted) != str(original_value)
             elif expected_type is str:
                 # 清理 value 中所有空白字符的字段
                 fields_not_keep_spaces = {"AUTO_DOWNLOAD_USER", "REPO_GITHUB_TOKEN", "PLUGIN_MARKET"}
                 if field_name in fields_not_keep_spaces:
                     value = re.sub(r"\s+", "", value)
-                return value, value != original_value
+                return value, str(value) != str(original_value)
             # # 后续考虑支持 list 类型的处理
             # elif expected_type is list:
             #     if isinstance(value, list):
@@ -294,7 +300,7 @@ class Settings(BaseSettings, ConfigModel):
             #         return items, items != original_value.split(",")
             # 可根据需要添加更多类型处理
             else:
-                return value, False
+                return value, str(value) != str(original_value)
         except (ValueError, TypeError) as e:
             if raise_exception:
                 raise ValueError(f"配置项 '{field_name}' 的值 '{value}' 无法转换成正确的类型") from e
