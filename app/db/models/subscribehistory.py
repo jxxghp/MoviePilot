@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Sequence, Float
+from sqlalchemy import Column, Integer, String, Sequence, Float, JSON
 from sqlalchemy.orm import Session
 
 from app.db import db_query, Base
@@ -53,13 +53,19 @@ class SubscribeHistory(Base):
     # 订阅用户
     username = Column(String)
     # 订阅站点
-    sites = Column(String)
+    sites = Column(JSON)
     # 是否洗版
     best_version = Column(Integer, default=0)
     # 保存路径
     save_path = Column(String)
     # 是否使用 imdbid 搜索
     search_imdbid = Column(Integer, default=0)
+    # 自定义识别词
+    custom_words = Column(String)
+    # 自定义媒体类别
+    media_category = Column(String)
+    # 过滤规则组
+    filter_groups = Column(JSON, default=list)
 
     @staticmethod
     @db_query

@@ -58,12 +58,12 @@ class ConfigModel(BaseModel):
     DB_POOL_TYPE: str = "QueuePool"
     # 是否在获取连接时进行预先 ping 操作，默认关闭
     DB_POOL_PRE_PING: bool = False
-    # 数据库连接池的大小，默认 20
-    DB_POOL_SIZE: int = 20
+    # 数据库连接池的大小，默认 100
+    DB_POOL_SIZE: int = 100
     # 数据库连接的回收时间（秒），默认 1800 秒
     DB_POOL_RECYCLE: int = 1800
-    # 数据库连接池获取连接的超时时间（秒），默认 30 秒
-    DB_POOL_TIMEOUT: int = 30
+    # 数据库连接池获取连接的超时时间（秒），默认 60 秒
+    DB_POOL_TIMEOUT: int = 60
     # 数据库连接池最大溢出连接数，默认 10
     DB_MAX_OVERFLOW: int = 10
     # SQLite 的 busy_timeout 参数，默认为 60 秒
