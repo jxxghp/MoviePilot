@@ -95,8 +95,7 @@ class Scheduler(metaclass=Singleton):
                     )
                 )
                 PluginManager().init_config()
-                for plugin_id in PluginManager().get_running_plugin_ids():
-                    self.update_plugin_job(plugin_id)
+                self.init_plugin_jobs()
 
             else:
                 self._auth_count += 1
@@ -410,7 +409,7 @@ class Scheduler(metaclass=Singleton):
 
     def init_plugin_jobs(self):
         """
-        注册插件公共服务
+        初始化插件定时服务
         """
         for pid in PluginManager().get_running_plugin_ids():
             self.update_plugin_job(pid)
@@ -419,14 +418,14 @@ class Scheduler(metaclass=Singleton):
         """
         更新插件定时服务
         """
-        if not self._scheduler:
+        if not self._scheduler or not pid:
             return
         # 移除该插件的全部服务
         self.remove_plugin_job(pid)
         # 获取插件服务列表
         with self._lock:
             try:
-                plugin_services = PluginManager().run_plugin_method(pid, "get_service") or []
+                plugin_services = PluginManager().get_plugin_services(pid=pid)
             except Exception as e:
                 logger.error(f"运行插件 {pid} 服务失败：{str(e)} - {traceback.format_exc()}")
                 return
@@ -451,9 +450,7 @@ class Scheduler(metaclass=Singleton):
                             id=sid,
                             name=service["name"],
                             **service["kwargs"],
-                            kwargs={
-                                'job_id': job_id
-                            }
+                            kwargs={"job_id": job_id}
                         )
                         logger.info(f"注册插件{plugin_name}服务：{service['name']} - {service['trigger']}")
                 except Exception as e:
