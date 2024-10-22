@@ -66,6 +66,8 @@ class ChainEventType(Enum):
     AuthVerification = "auth.verification"
     # 认证拦截请求
     AuthIntercept = "auth.intercept"
+    # 命令注册请求
+    CommandRegister = "command.register"
 
 
 # 系统配置Key字典

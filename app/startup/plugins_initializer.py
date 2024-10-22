@@ -1,5 +1,6 @@
 import asyncio
 
+from app.chain.command import CommandChain
 from app.core.plugin import PluginManager
 from app.log import logger
 from app.scheduler import Scheduler
@@ -13,6 +14,7 @@ async def init_plugins_async():
         loop = asyncio.get_event_loop()
         plugin_manager = PluginManager()
         scheduler = Scheduler()
+        command = CommandChain()
         sync_plugins = await loop.run_in_executor(None, plugin_manager.sync)
         if not sync_plugins:
             return
@@ -22,6 +24,8 @@ async def init_plugins_async():
         plugin_manager.init_config()
         # 插件启动后注册后台任务
         scheduler.init_plugin_jobs()
+        # 插件启动后注册菜单命令
+        command.init_commands()
         # 插件启动后注册插件API
         register_plugin_api()
         logger.info("所有插件初始化完成")
