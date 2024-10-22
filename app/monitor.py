@@ -128,6 +128,10 @@ class Monitor(metaclass=Singleton):
         monitor_dirs = self.directoryhelper.get_download_dirs()
         if not monitor_dirs:
             return
+
+        # 启动定时服务进程
+        self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+
         for mon_dir in monitor_dirs:
             if not mon_dir.library_path:
                 continue
@@ -140,9 +144,6 @@ class Monitor(metaclass=Singleton):
                 logger.warn(f"{target_path} 是监控目录 {mon_path} 的子目录，无法监控！")
                 self.systemmessage.put(f"{target_path} 是监控目录 {mon_path} 的子目录，无法监控", title="目录监控")
                 continue
-
-            # 启动定时服务进程
-            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
 
             # 启动监控
             if mon_dir.storage == "local":
@@ -177,8 +178,12 @@ class Monitor(metaclass=Singleton):
                                             'mon_path': mon_path
                                         })
 
-            # 追加入库消息统一发送服务
-            self._scheduler.add_job(self.__send_msg, trigger='interval', seconds=15)
+        # 追加入库消息统一发送服务
+        self._scheduler.add_job(self.__send_msg, trigger='interval', seconds=15)
+        # 启动定时服务
+        if self._scheduler.get_jobs():
+            self._scheduler.print_jobs()
+            self._scheduler.start()
 
     @staticmethod
     def __choose_observer() -> Any:
@@ -439,6 +444,18 @@ class Monitor(metaclass=Singleton):
                         link=settings.MP_DOMAIN('#/history')
                     ))
                     return
+                else:
+                    # 转移成功
+                    logger.info(f"{event_path.name} 入库成功：{transferinfo.target_diritem.path}")
+                    # 新增转移成功历史记录
+                    self.transferhis.add_success(
+                        fileitem=file_item,
+                        mode=dir_info.transfer_type,
+                        download_hash=download_hash,
+                        meta=file_meta,
+                        mediainfo=mediainfo,
+                        transferinfo=transferinfo
+                    )
 
                 # TODO 汇总刮削
                 if dir_info.scraping:
@@ -475,12 +492,12 @@ class Monitor(metaclass=Singleton):
             if media_files:
                 file_exists = False
                 for file in media_files:
-                    if str(file_meta.path) == file.get("path"):
+                    if str(transferinfo.fileitem.path) == file.get("path"):
                         file_exists = True
                         break
                 if not file_exists:
                     media_files.append({
-                        "path": str(file_meta.path),
+                        "path": str(transferinfo.fileitem.path),
                         "mediainfo": mediainfo,
                         "file_meta": file_meta,
                         "transferinfo": transferinfo
@@ -488,7 +505,7 @@ class Monitor(metaclass=Singleton):
             else:
                 media_files = [
                     {
-                        "path": str(file_meta.path),
+                        "path": str(transferinfo.fileitem.path),
                         "mediainfo": mediainfo,
                         "file_meta": file_meta,
                         "transferinfo": transferinfo
@@ -502,7 +519,7 @@ class Monitor(metaclass=Singleton):
             media_list = {
                 "files": [
                     {
-                        "path": str(file_meta.path),
+                        "path": str(transferinfo.fileitem.path),
                         "mediainfo": mediainfo,
                         "file_meta": file_meta,
                         "transferinfo": transferinfo
