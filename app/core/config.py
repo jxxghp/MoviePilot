@@ -241,7 +241,7 @@ class Settings(BaseSettings, ConfigModel):
             else:
                 logger.warning(f"'API_TOKEN' 长度不足 16 个字符，存在安全隐患，已随机生成新的【API_TOKEN】{new_token}")
             return new_token, True
-        return value, value != original_value
+        return value, True
 
     @staticmethod
     def generic_type_converter(value: Any, original_value: Any, expected_type: Type, default: Any, field_name: str,
@@ -422,6 +422,10 @@ class Settings(BaseSettings, ConfigModel):
 
     @property
     def CACHE_CONF(self):
+        if isinstance(self.META_CACHE_EXPIRE, int) and self.META_CACHE_EXPIRE > 0:
+            META_CACHE_EXPIRE = self.META_CACHE_EXPIRE
+        else:
+            META_CACHE_EXPIRE = 0
         if self.BIG_MEMORY_MODE:
             return {
                 "tmdb": 1024,
@@ -429,7 +433,7 @@ class Settings(BaseSettings, ConfigModel):
                 "torrents": 100,
                 "douban": 512,
                 "fanart": 512,
-                "meta": (self.META_CACHE_EXPIRE or 168) * 3600
+                "meta": (META_CACHE_EXPIRE or 168) * 3600
             }
         return {
             "tmdb": 256,
@@ -437,7 +441,7 @@ class Settings(BaseSettings, ConfigModel):
             "torrents": 50,
             "douban": 256,
             "fanart": 128,
-            "meta": (self.META_CACHE_EXPIRE or 72) * 3600
+            "meta": (META_CACHE_EXPIRE or 72) * 3600
         }
 
     @property
