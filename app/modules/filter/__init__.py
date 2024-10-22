@@ -347,8 +347,12 @@ class FilterModule(_ModuleBase):
             content = " ".join(match_content)
         # 包含规则项
         includes = self.rule_set[rule_name].get("include") or []
+        if isinstance(includes, str):
+            includes = includes.split("|")
         # 排除规则项
         excludes = self.rule_set[rule_name].get("exclude") or []
+        if isinstance(excludes, str):
+            excludes = excludes.split("|")
         # 大小范围规则项
         size_range = self.rule_set[rule_name].get("size_range")
         # 做种人数规则项
