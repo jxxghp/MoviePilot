@@ -129,7 +129,7 @@ class EventManager(metaclass=Singleton):
                 for handler in handlers.values()
             )
 
-    def send_event(self, etype: Union[EventType, ChainEventType], data: Optional[Dict] = None,
+    def send_event(self, etype: Union[EventType, ChainEventType], data: Optional[Union[Dict, ChainEventData]] = None,
                    priority: int = DEFAULT_EVENT_PRIORITY) -> Optional[Event]:
         """
         发送事件，根据事件类型决定是广播事件还是链式事件
