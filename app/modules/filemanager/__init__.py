@@ -901,7 +901,9 @@ class FileManagerModule(_ModuleBase):
             # 目的操作对象
             target_oper: StorageBase = self.__get_storage_oper(target_storage)
             # 目标目录
-            target_diritem = target_oper.get_folder(new_file.parent)
+            target_diritem = target_oper.get_folder(
+                new_file.parent) if mediainfo.type == MediaType.MOVIE else target_oper.get_folder(
+                new_file.parent.parent)
             # 目标文件
             target_item = target_oper.get_item(new_file)
             if target_item:
