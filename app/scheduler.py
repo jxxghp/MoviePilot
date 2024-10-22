@@ -202,14 +202,17 @@ class Scheduler(metaclass=Singleton):
             )
 
         # 媒体服务器同步
-        if settings.MEDIASERVER_SYNC_INTERVAL \
-                and str(settings.MEDIASERVER_SYNC_INTERVAL).isdigit():
+        if settings.MEDIASERVER_SYNC_INTERVAL and str(settings.MEDIASERVER_SYNC_INTERVAL).isdigit():
+            if isinstance(settings.MEDIASERVER_SYNC_INTERVAL, int) and settings.MEDIASERVER_SYNC_INTERVAL > 0:
+                MEDIASERVER_SYNC_INTERVAL = int(settings.MEDIASERVER_SYNC_INTERVAL)
+            else:
+                MEDIASERVER_SYNC_INTERVAL = 6
             self._scheduler.add_job(
                 self.start,
                 "interval",
                 id="mediaserver_sync",
                 name="同步媒体服务器",
-                hours=int(settings.MEDIASERVER_SYNC_INTERVAL),
+                hours=MEDIASERVER_SYNC_INTERVAL,
                 next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=5),
                 kwargs={
                     'job_id': 'mediaserver_sync'
