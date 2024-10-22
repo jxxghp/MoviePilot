@@ -31,6 +31,7 @@ jobs:
           images: ${{ secrets.DOCKER_USERNAME }}/moviepilot-v2
           tags: |
             type=raw,value=${{ env.app_version }}
+            type=raw,value=latest
 
       - name: Set Up QEMU
         uses: docker/setup-qemu-action@v3
