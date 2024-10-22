@@ -786,12 +786,18 @@ class FileManagerModule(_ModuleBase):
         if not target_dir.media_type and target_dir.library_type_folder:
             # 一级自动分类
             library_dir = Path(target_dir.library_path) / mediainfo.type.value
+        elif target_dir.media_type and target_dir.library_type_folder:
+            # 一级手动分类
+            library_dir = Path(target_dir.library_path) / target_dir.media_type
         else:
             library_dir = Path(target_dir.library_path)
 
         if not target_dir.media_category and target_dir.library_category_folder and mediainfo.category:
             # 二级自动分类
             library_dir = library_dir / mediainfo.category
+        elif target_dir.media_category and target_dir.library_category_folder:
+            # 二级手动分类
+            library_dir = library_dir / target_dir.media_category
 
         return library_dir
 

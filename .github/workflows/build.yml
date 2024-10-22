@@ -1,9 +1,14 @@
-name: MoviePilot Builder
+name: MoviePilot Builder v2
 on:
   workflow_dispatch:
   push:
     branches:
-      - dev
+      - v2
+    paths:
+      - '.github/workflows/build.yml'
+      - 'Dockerfile'
+      - 'version.py'
+      - 'requirements.in'
 
 jobs:
   Docker-build:
@@ -23,9 +28,10 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/moviepilot
+          images: ${{ secrets.DOCKER_USERNAME }}/moviepilot-v2
           tags: |
             type=raw,value=${{ env.app_version }}
+            type=raw,value=latest
 
       - name: Set Up QEMU
         uses: docker/setup-qemu-action@v3
@@ -52,3 +58,21 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha, scope=${{ github.workflow }}-docker
           cache-to: type=gha, scope=${{ github.workflow }}-docker
+
+      - name: Delete Release
+        uses: dev-drprasad/delete-tag-and-release@v1.1
+        with:
+          tag_name: ${{ env.app_version }}
+          delete_release: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.app_version }}
+          name: ${{ env.app_version }}
+          draft: false
+          prerelease: false
+          make_latest: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
