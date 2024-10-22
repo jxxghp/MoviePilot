@@ -486,6 +486,10 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                 content = __download_image(image_url)
                                 # 保存图片文件到当前目录
                                 __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+                        # 季文件夹刮完，判断你上级是不是剧集根目录
+                        season_meta = MetaInfo(filepath.parent.name)
+                        filepath = filepath.parent
+                    # 判断当前目录是不是剧集根目录
                     if season_meta.name:
                         # 当前目录有名称，生成tvshow nfo 和 tv图片
                         tv_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo)
