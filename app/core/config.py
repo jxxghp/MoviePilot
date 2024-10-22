@@ -1,3 +1,4 @@
+import copy
 import os
 import re
 import secrets
@@ -229,11 +230,13 @@ class Settings(BaseSettings, ConfigModel):
                 SystemUtils.copy(self.INNER_CONFIG_PATH / "app.env", app_env_path)
 
     @staticmethod
-    def validate_api_token(original_value: Any) -> Tuple[Any, bool]:
+    def validate_api_token(value: Any, original_value: Any) -> Tuple[Any, bool]:
         """
         校验 API_TOKEN
         """
-        value = original_value.strip() if isinstance(original_value, str) else None
+        if isinstance(value, (list, dict, set)):
+            value = copy.deepcopy(value)
+        value = value.strip() if isinstance(value, str) else None
         if not value or len(value) < 16:
             new_token = secrets.token_urlsafe(16)
             if not value:
@@ -249,6 +252,8 @@ class Settings(BaseSettings, ConfigModel):
         """
         通用类型转换函数，根据预期类型转换值。如果转换失败，返回默认值
         """
+        if isinstance(value, (list, dict, set)):
+            value = copy.deepcopy(value)
         # 如果 value 是 None，仍需要检查与 original_value 是否不一致
         if value is None:
             return default, str(value) != str(original_value)
@@ -314,7 +319,7 @@ class Settings(BaseSettings, ConfigModel):
         通用校验器，尝试将配置值转换为期望的类型
         """
         if field.name == "API_TOKEN":
-            converted_value, needs_update = cls.validate_api_token(value)
+            converted_value, needs_update = cls.validate_api_token(value, value)
         else:
             converted_value, needs_update = cls.generic_type_converter(value, value, field.type_, field.default,
                                                                        field.name)
@@ -354,12 +359,12 @@ class Settings(BaseSettings, ConfigModel):
         try:
             field = self.__fields__[key]
             if field.name == "API_TOKEN":
-                converted_value, needs_update = self.validate_api_token(value)
+                converted_value, needs_update = self.validate_api_token(value, getattr(self, key))
             else:
                 converted_value, needs_update = self.generic_type_converter(value, getattr(self, key), field.type_,
                                                                             field.default, key)
-            # 如果没有抛出异常且需要更新，则统一使用 converted_value 进行更新
-            if needs_update:
+            # 如果没有抛出异常，则统一使用 converted_value 进行更新
+            if needs_update or str(value) != str(converted_value):
                 setattr(self, key, converted_value)
                 return self.update_env_config(field, value, converted_value)
             return True, ""

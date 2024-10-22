@@ -435,27 +435,42 @@ class PluginManager(metaclass=Singleton):
                 )
         return None
 
-    def get_plugin_commands(self) -> List[Dict[str, Any]]:
+    def get_plugin_state(self, pid: str) -> bool:
+        """
+        获取插件状态
+        :param pid: 插件ID
+        """
+        plugin = self._running_plugins.get(pid)
+        return plugin.get_state() if plugin else False
+
+    def get_plugin_commands(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取插件命令
         [{
             "cmd": "/xx",
             "event": EventType.xx,
             "desc": "xxxx",
-            "data": {}
+            "data": {},
+            "pid": "",
         }]
         """
         ret_commands = []
-        for _, plugin in self._running_plugins.items():
-            if hasattr(plugin, "get_command") \
-                    and ObjectUtils.check_method(plugin.get_command):
+        for plugin_id, plugin in self._running_plugins.items():
+            if pid and pid != plugin_id:
+                continue
+            if hasattr(plugin, "get_command") and ObjectUtils.check_method(plugin.get_command):
                 try:
-                    ret_commands += plugin.get_command() or []
+                    if not plugin.get_state():
+                        continue
+                    commands = plugin.get_command() or []
+                    for command in commands:
+                        command["pid"] = plugin_id
+                    ret_commands.extend(commands)
                 except Exception as e:
                     logger.error(f"获取插件命令出错：{str(e)}")
         return ret_commands
 
-    def get_plugin_apis(self, plugin_id: str = None) -> List[Dict[str, Any]]:
+    def get_plugin_apis(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取插件API
         [{
@@ -468,21 +483,22 @@ class PluginManager(metaclass=Singleton):
         }]
         """
         ret_apis = []
-        for pid, plugin in self._running_plugins.items():
-            if plugin_id and pid != plugin_id:
+        for plugin_id, plugin in self._running_plugins.items():
+            if pid and pid != plugin_id:
                 continue
-            if hasattr(plugin, "get_api") \
-                    and ObjectUtils.check_method(plugin.get_api):
+            if hasattr(plugin, "get_api") and ObjectUtils.check_method(plugin.get_api):
                 try:
+                    if not plugin.get_state():
+                        continue
                     apis = plugin.get_api() or []
                     for api in apis:
-                        api["path"] = f"/{pid}{api['path']}"
+                        api["path"] = f"/{plugin_id}{api['path']}"
                     ret_apis.extend(apis)
                 except Exception as e:
-                    logger.error(f"获取插件 {pid} API出错：{str(e)}")
+                    logger.error(f"获取插件 {plugin_id} API出错：{str(e)}")
         return ret_apis
 
-    def get_plugin_services(self) -> List[Dict[str, Any]]:
+    def get_plugin_services(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取插件服务
         [{
@@ -490,19 +506,21 @@ class PluginManager(metaclass=Singleton):
             "name": "服务名称",
             "trigger": "触发器：cron、interval、date、CronTrigger.from_crontab()",
             "func": self.xxx,
-            "kwagrs": {} # 定时器参数
+            "kwargs": {} # 定时器参数
         }]
         """
         ret_services = []
-        for pid, plugin in self._running_plugins.items():
-            if hasattr(plugin, "get_service") \
-                    and ObjectUtils.check_method(plugin.get_service):
+        for plugin_id, plugin in self._running_plugins.items():
+            if pid and pid != plugin_id:
+                continue
+            if hasattr(plugin, "get_service") and ObjectUtils.check_method(plugin.get_service):
                 try:
-                    services = plugin.get_service()
-                    if services:
-                        ret_services.extend(services)
+                    if not plugin.get_state():
+                        continue
+                    services = plugin.get_service() or []
+                    ret_services.extend(services)
                 except Exception as e:
-                    logger.error(f"获取插件 {pid} 服务出错：{str(e)}")
+                    logger.error(f"获取插件 {plugin_id} 服务出错：{str(e)}")
         return ret_services
 
     def get_plugin_dashboard_meta(self):

@@ -338,6 +338,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             tmp_file = settings.TEMP_PATH / _path.name
             tmp_file.write_bytes(_content)
             logger.info(f"保存文件：【{_fileitem.storage}】{_path}")
+            _fileitem.path = str(_path.parent)
             self.storagechain.upload_file(fileitem=_fileitem, path=tmp_file)
             if tmp_file.exists():
                 tmp_file.unlink()
@@ -402,7 +403,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                 and attr_value.startswith("http"):
                             image_name = attr_name.replace("_path", "") + Path(attr_value).suffix
                             image_path = filepath / image_name
-                            if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=image_path):
+                            if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage,
+                                                                                 path=image_path):
                                 logger.info(f"已存在图片文件：{image_path}")
                                 continue
                             # 下载图片
@@ -476,13 +478,15 @@ class MediaChain(ChainBase, metaclass=Singleton):
                         if image_dict:
                             for image_name, image_url in image_dict.items():
                                 image_path = filepath.with_name(image_name)
-                                if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=image_path):
+                                if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage,
+                                                                                     path=image_path):
                                     logger.info(f"已存在图片文件：{image_path}")
                                     continue
                                 # 下载图片
                                 content = __download_image(image_url)
                                 # 保存图片文件到当前目录
                                 __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+                    # 判断当前目录是不是剧集根目录
                     if season_meta.name:
                         # 当前目录有名称，生成tvshow nfo 和 tv图片
                         tv_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo)
@@ -500,7 +504,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                         if image_dict:
                             for image_name, image_url in image_dict.items():
                                 image_path = filepath / image_name
-                                if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=image_path):
+                                if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage,
+                                                                                     path=image_path):
                                     logger.info(f"已存在图片文件：{image_path}")
                                     continue
                                 # 下载图片

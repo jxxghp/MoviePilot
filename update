@@ -65,7 +65,8 @@ function install_backend_and_download_resources() {
         return 1
     fi
     INFO "安装依赖成功"
-    frontend_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest" ${CURL_HEADERS} | jq -r .tag_name)
+    # 从后端文件中读取前端版本号
+    frontend_version=$(grep -oP "(?<=FRONTEND_VERSION\s*=\s*')[^']+" /tm/App/version.py)
     if [[ "${frontend_version}" != *v* ]]; then
         WARN "前端最新版本号获取失败，继续启动..."
         return 1
@@ -289,21 +290,23 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
     fi
     if [ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]; then
         INFO "Dev 更新模式"
-        install_backend_and_download_resources "heads/main.zip"
+        install_backend_and_download_resources "heads/v2.zip"
     else
         INFO "Release 更新模式"
         old_version=$(grep -m -1 "^\s*APP_VERSION\s*=\s*" /app/version.py | tr -d '\r\n' | awk -F'#' '{print $1}' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         if [[ "${old_version}" == *APP_VERSION* ]]; then
             current_version=$(echo "${old_version}" | sed -rn "s/APP_VERSION\s*=\s*['\"](.*)['\"]/\1/gp")
             INFO "当前版本号：${current_version}"
-            new_version=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest" ${CURL_HEADERS} | jq -r .tag_name | tr -d '\r\n')
-            if [[ "${new_version}" == *v* ]]; then
-                release_version=${new_version}
-                INFO "最新版本号：${release_version}"
-                # 使用版本号比较函数进行比较
-                compare_versions "${current_version}" "${release_version}"
+            # 获取所有发布的版本列表，并筛选出以v2开头的版本号
+            releases=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot/releases" ${CURL_HEADERS} | jq -r '.[].tag_name' | grep "^v2\.")
+            if [ -z "$releases" ]; then
+                WARN "未找到任何v2.x版本，继续启动..."
             else
-                WARN "最新版本号获取失败，继续启动..."
+                # 找到最新的v2版本
+                latest_v2=$(echo "$releases" | sort -V | tail -n 1)
+                INFO "最新的v2.x版本号：${latest_v2}"
+                # 使用版本号比较函数进行比较，并下载最新版本
+                compare_versions "${current_version}" "${latest_v2}"
             fi
         else
             WARN "当前版本号获取失败，继续启动..."
