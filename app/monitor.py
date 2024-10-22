@@ -298,7 +298,7 @@ class Monitor(metaclass=Singleton):
                     for keyword in transfer_exclude_words:
                         if not keyword:
                             continue
-                        if keyword and re.search(r"%s" % keyword, event_path, re.IGNORECASE):
+                        if keyword and re.search(r"%s" % keyword, str(event_path), re.IGNORECASE):
                             logger.info(f"{event_path} 命中整理屏蔽词 {keyword}，不处理")
                             return
 
