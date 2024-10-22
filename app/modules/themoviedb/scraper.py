@@ -58,19 +58,19 @@ class TmdbScraper:
         """
         images = {}
         if season:
-            # 只需要季的图片
+            # 只需要集的图片
             if episode:
-                # 季的图片
+                # 集的图片
                 seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
                 if seasoninfo:
                     episodeinfo = self.__get_episode_detail(seasoninfo, episode)
-                    if episodeinfo:
+                    if episodeinfo and episodeinfo.get("still_path"):
                         # TMDB集still图片
                         still_name = f"{episode}"
                         still_url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{episodeinfo.get('still_path')}"
                         images[still_name] = still_url
             else:
-                # 集的图片
+                # 季的图片
                 seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
                 if seasoninfo:
                     # TMDB季poster图片
