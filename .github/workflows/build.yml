@@ -1,9 +1,14 @@
-name: MoviePilot Builder
+name: MoviePilot Builder v2
 on:
   workflow_dispatch:
   push:
     branches:
-      - dev
+      - v2
+    paths:
+      - '.github/workflows/build.yml'
+      - 'Dockerfile'
+      - 'version.py'
+      - 'requirements.in'
 
 jobs:
   Docker-build:
@@ -23,7 +28,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/moviepilot
+          images: ${{ secrets.DOCKER_USERNAME }}/moviepilot-v2
           tags: |
             type=raw,value=${{ env.app_version }}
 
