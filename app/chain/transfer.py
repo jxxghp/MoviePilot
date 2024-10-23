@@ -205,6 +205,15 @@ class TransferChain(ChainBase):
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
+        # 检查目录是否发送通知
+        transfer_dirinfo = None
+        for dir_info in self.directoryhelper.get_download_dirs():
+            if not dir_info.download_path:
+                continue
+            if fileitem.path.is_relative_to(Path(dir_info.download_path)):
+                transfer_dirinfo = dir_info
+                break
+
         # 处理所有待整理目录或文件，默认一个整理路径或文件只有一个媒体信息
         for trans_item in trans_items:
             # 汇总季集清单
@@ -240,7 +249,7 @@ class TransferChain(ChainBase):
             if not file_items:
                 logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
                 return False, f"{fileitem.name} 没有找到可整理的媒体文件"
-            
+
             logger.info(f"正在整理 {len(file_items)} 个文件...")
 
             # 整理所有文件
@@ -453,13 +462,14 @@ class TransferChain(ChainBase):
                 transfer_meta = metas[mkey]
                 transfer_info = transfers[mkey]
                 # 发送通知
-                se_str = None
-                if media.type == MediaType.TV:
-                    se_str = f"{transfer_meta.season} {StringUtils.format_ep(season_episodes[mkey])}"
-                self.send_transfer_message(meta=transfer_meta,
-                                           mediainfo=media,
-                                           transferinfo=transfer_info,
-                                           season_episode=se_str)
+                if transfer_dirinfo and transfer_dirinfo.notify:
+                    se_str = None
+                    if media.type == MediaType.TV:
+                        se_str = f"{transfer_meta.season} {StringUtils.format_ep(season_episodes[mkey])}"
+                    self.send_transfer_message(meta=transfer_meta,
+                                               mediainfo=media,
+                                               transferinfo=transfer_info,
+                                               season_episode=se_str)
                 # 刮削事件
                 if scrape or transfer_info.need_scrape:
                     self.eventmanager.send_event(EventType.MetadataScrape, {

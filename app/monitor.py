@@ -447,18 +447,18 @@ class Monitor(metaclass=Singleton):
                         link=settings.MP_DOMAIN('#/history')
                     ))
                     return
-                else:
-                    # 转移成功
-                    logger.info(f"{event_path.name} 入库成功：{transferinfo.target_diritem.path}")
-                    # 新增转移成功历史记录
-                    self.transferhis.add_success(
-                        fileitem=file_item,
-                        mode=dir_info.transfer_type,
-                        download_hash=download_hash,
-                        meta=file_meta,
-                        mediainfo=mediainfo,
-                        transferinfo=transferinfo
-                    )
+
+                # 转移成功
+                logger.info(f"{event_path.name} 入库成功：{transferinfo.target_diritem.path}")
+                # 新增转移成功历史记录
+                self.transferhis.add_success(
+                    fileitem=file_item,
+                    mode=dir_info.transfer_type,
+                    download_hash=download_hash,
+                    meta=file_meta,
+                    mediainfo=mediainfo,
+                    transferinfo=transferinfo
+                )
 
                 # TODO 汇总刮削
                 if dir_info.scraping:
@@ -475,7 +475,8 @@ class Monitor(metaclass=Singleton):
                 })
 
                 # 发送消息汇总
-                self.__collect_msg_medias(mediainfo=mediainfo, file_meta=file_meta, transferinfo=transferinfo)
+                if dir_info.notify:
+                    self.__collect_msg_medias(mediainfo=mediainfo, file_meta=file_meta, transferinfo=transferinfo)
 
                 # 移动模式删除空目录
                 if dir_info.transfer_type in ["move"]:
