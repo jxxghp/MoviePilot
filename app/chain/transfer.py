@@ -236,7 +236,6 @@ class TransferChain(ChainBase):
             # 有集自定义格式，过滤文件
             file_items = [f for f in file_items if formaterHandler.match(f.name)]
 
-<<<<<<< HEAD
         # 过滤后缀和大小
         video_files = [f for f in file_items
                         if f.extension and (f".{f.extension.lower()}" in self.all_exts
@@ -245,25 +244,12 @@ class TransferChain(ChainBase):
         # 过滤音轨文件
         audio_files = [f for f in file_items
             if f.extension and f".{f.extension.lower()}" in settings.RMT_AUDIO_TRACK_EXT]
-=======
-        video_files = [f for f in file_items
-               if f.extension and f".{f.extension.lower()}" in self.all_exts
-               and (not min_filesize or f.size > min_filesize * 1024 * 1024)]
-
-        # 过滤音轨文件
-        audio_files = [f for f in file_items
-               if f.extension and f".{f.extension.lower()}" in settings.RMT_AUDIO_TRACK_EXT]
->>>>>>> 91d7ea87b6ca9b768168016659acf565ab0d3775
 
         if not video_files:
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
-<<<<<<< HEAD
         # 有视频文件,合并音轨; 还缺少更精细处理
-=======
-        # 有视频再一起处理, 这里还缺少更精细的处理
->>>>>>> 91d7ea87b6ca9b768168016659acf565ab0d3775
         file_items = video_files + audio_files
         logger.info(f"正在整理 {len(file_items)} 个文件...")
 
