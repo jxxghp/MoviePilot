@@ -74,15 +74,17 @@ class AuthInterceptCredentials(ChainEventData):
         channel (str): 认证渠道
         service (str): 服务名称
         token (str): 认证令牌
+        status (str): 认证状态，"triggered" 和 "completed" 两个状态
 
         # 输出参数
         source (str): 拦截源，默认值为 "未知拦截源"
         cancel (bool): 是否取消认证，默认值为 False
     """
     # 输入参数
-    username: str = Field(..., description="用户名")
+    username: Optional[str] = Field(..., description="用户名")
     channel: str = Field(..., description="认证渠道")
     service: str = Field(..., description="服务名称")
+    status: str = Field(..., description="认证状态, 包含 'triggered' 表示认证触发，'completed' 表示认证成功")
     token: Optional[str] = Field(None, description="认证令牌")
 
     # 输出参数
