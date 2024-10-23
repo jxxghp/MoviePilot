@@ -149,14 +149,17 @@ class Monitor(metaclass=Singleton):
             if mon_dir.storage == "local":
                 # 本地目录监控
                 try:
-                    observer = self.__choose_observer()
+                    if mon_dir.monitor_mode == "fast":
+                        observer = self.__choose_observer()
+                    else:
+                        observer = PollingObserver()
                     self._observers.append(observer)
                     observer.schedule(FileMonitorHandler(mon_path=mon_path, callback=self),
-                                      path=mon_path,
+                                      path=str(mon_path),
                                       recursive=True)
                     observer.daemon = True
                     observer.start()
-                    logger.info(f"已启动 {mon_path} 的目录监控服务")
+                    logger.info(f"已启动 {mon_path} 的目录监控服务, 监控模式：{mon_dir.monitor_mode}")
                 except Exception as e:
                     err_msg = str(e)
                     if "inotify" in err_msg and "reached" in err_msg:
