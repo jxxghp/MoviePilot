@@ -2,10 +2,12 @@ from typing import Optional, Tuple, Union, Any, List, Generator
 
 from app import schemas
 from app.core.context import MediaInfo
+from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.plex.plex import Plex
-from app.schemas.types import MediaType, ModuleType
+from app.schemas.event import AuthCredentials, AuthInterceptCredentials
+from app.schemas.types import MediaType, ModuleType, ChainEventType
 
 
 class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
@@ -63,6 +65,37 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             if server.is_inactive():
                 logger.info(f"Plex {name} 服务器连接断开，尝试重连 ...")
                 server.reconnect()
+
+    def user_authenticate(self, credentials: AuthCredentials) -> Optional[AuthCredentials]:
+        """
+        使用Plex用户辅助完成用户认证
+        :param credentials: 认证数据
+        :return: 认证数据
+        """
+        # Plex认证
+        if not credentials or credentials.grant_type != "password":
+            return None
+        for name, server in self.get_instances().items():
+            # 触发认证拦截事件
+            intercept_event = eventmanager.send_event(
+                etype=ChainEventType.AuthIntercept,
+                data=AuthInterceptCredentials(username=credentials.username, channel=self.get_name(),
+                                              service=name, status="triggered")
+            )
+            if intercept_event and intercept_event.event_data:
+                intercept_data: AuthInterceptCredentials = intercept_event.event_data
+                if intercept_data.cancel:
+                    continue
+            auth_result = server.authenticate(credentials.username, credentials.password)
+            if auth_result:
+                token, username = auth_result
+                credentials.channel = self.get_name()
+                credentials.service = name
+                credentials.token = token
+                # Plex 传入可能为邮箱，这里调整为用户名返回
+                credentials.username = username
+                return credentials
+        return None
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[schemas.WebhookEventInfo]:
         """

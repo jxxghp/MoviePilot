@@ -2,11 +2,12 @@ from typing import Any, Generator, List, Optional, Tuple, Union
 
 from app import schemas
 from app.core.context import MediaInfo
+from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.jellyfin.jellyfin import Jellyfin
-from app.schemas.event import AuthCredentials
-from app.schemas.types import MediaType, ModuleType
+from app.schemas.event import AuthCredentials, AuthInterceptCredentials
+from app.schemas.types import MediaType, ModuleType, ChainEventType
 
 
 class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
@@ -75,6 +76,16 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         if not credentials or credentials.grant_type != "password":
             return None
         for name, server in self.get_instances().items():
+            # 触发认证拦截事件
+            intercept_event = eventmanager.send_event(
+                etype=ChainEventType.AuthIntercept,
+                data=AuthInterceptCredentials(username=credentials.username, channel=self.get_name(),
+                                              service=name, status="triggered")
+            )
+            if intercept_event and intercept_event.event_data:
+                intercept_data: AuthInterceptCredentials = intercept_event.event_data
+                if intercept_data.cancel:
+                    continue
             token = server.authenticate(credentials.username, credentials.password)
             if token:
                 credentials.channel = self.get_name()

@@ -202,9 +202,9 @@ class UserChain(ChainBase, metaclass=Singleton):
         # 触发认证通过的拦截事件
         intercept_event = self.eventmanager.send_event(
             etype=ChainEventType.AuthIntercept,
-            data=AuthInterceptCredentials(username=username, channel=channel, service=service, token=token)
+            data=AuthInterceptCredentials(username=username, channel=channel, service=service,
+                                          token=token, status="completed")
         )
-
         if intercept_event and intercept_event.event_data:
             intercept_data: AuthInterceptCredentials = intercept_event.event_data
             if intercept_data.cancel:

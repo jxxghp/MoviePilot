@@ -5,6 +5,7 @@ from urllib.parse import quote_plus
 
 from cachetools import TTLCache, cached
 from plexapi import media
+from plexapi.myplex import MyPlexAccount
 from plexapi.server import PlexServer
 from requests import Response, Session
 
@@ -60,6 +61,27 @@ class Plex:
         except Exception as e:
             self._plex = None
             logger.error(f"Plex服务器连接失败：{str(e)}")
+
+    def authenticate(self, username: str, password: str) -> Optional[Tuple[str, str]]:
+        """
+        用户认证
+        :param username: 用户名
+        :param password: 密码
+        :return: 认证成功返回 (token, 用户名)，否则返回 None
+        """
+        if not username or not password:
+            return None
+        try:
+            account = MyPlexAccount(username=username, password=password, remember=False)
+            if account:
+                plex = PlexServer(self._host, account.authToken)
+                if not plex:
+                    return None
+                return account.authToken, account.username
+        except Exception as e:
+            # 处理认证失败或网络错误等情况
+            logger.error(f"Authentication failed: {e}")
+        return None
 
     @cached(cache=TTLCache(maxsize=100, ttl=86400))
     def __get_library_images(self, library_key: str, mtype: int) -> Optional[List[str]]:
