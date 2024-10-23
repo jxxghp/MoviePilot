@@ -131,3 +131,5 @@ class TransferDirectoryConf(BaseModel):
     library_type_folder: Optional[bool] = False
     # 媒体库类别子目录
     library_category_folder: Optional[bool] = False
+    # 是否发送通知
+    notify: Optional[bool] = True

@@ -138,7 +138,8 @@ class TransferChain(ChainBase):
                     ),
                     target_storage=transfer_dirinfo.library_storage,
                     mediainfo=mediainfo,
-                    download_hash=torrent.hash
+                    download_hash=torrent.hash,
+                    notify=transfer_dirinfo.notify
                 )
 
                 # 设置下载任务状态
@@ -154,7 +155,7 @@ class TransferChain(ChainBase):
                       target_path: Path = None, transfer_type: str = None,
                       season: int = None, epformat: EpisodeFormat = None,
                       min_filesize: int = 0, scrape: bool = None,
-                      force: bool = False) -> Tuple[bool, str]:
+                      force: bool = False, notify: bool = True) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
@@ -240,7 +241,7 @@ class TransferChain(ChainBase):
             if not file_items:
                 logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
                 return False, f"{fileitem.name} 没有找到可整理的媒体文件"
-            
+
             logger.info(f"正在整理 {len(file_items)} 个文件...")
 
             # 整理所有文件
@@ -453,13 +454,14 @@ class TransferChain(ChainBase):
                 transfer_meta = metas[mkey]
                 transfer_info = transfers[mkey]
                 # 发送通知
-                se_str = None
-                if media.type == MediaType.TV:
-                    se_str = f"{transfer_meta.season} {StringUtils.format_ep(season_episodes[mkey])}"
-                self.send_transfer_message(meta=transfer_meta,
-                                           mediainfo=media,
-                                           transferinfo=transfer_info,
-                                           season_episode=se_str)
+                if notify:
+                    se_str = None
+                    if media.type == MediaType.TV:
+                        se_str = f"{transfer_meta.season} {StringUtils.format_ep(season_episodes[mkey])}"
+                    self.send_transfer_message(meta=transfer_meta,
+                                               mediainfo=media,
+                                               transferinfo=transfer_info,
+                                               season_episode=se_str)
                 # 刮削事件
                 if scrape or transfer_info.need_scrape:
                     self.eventmanager.send_event(EventType.MetadataScrape, {
@@ -617,10 +619,19 @@ class TransferChain(ChainBase):
         if history.src_fileitem:
             # 解析源文件对象
             fileitem = FileItem(**history.src_fileitem)
+            # 检查目录是否发送通知
+            transfer_dirinfo = None
+            for dir_info in self.directoryhelper.get_download_dirs():
+                if not dir_info.download_path:
+                    continue
+                if fileitem.path.is_relative_to(Path(dir_info.download_path)):
+                    transfer_dirinfo = dir_info
+                    break
             state, errmsg = self.__do_transfer(fileitem=fileitem,
                                                mediainfo=mediainfo,
                                                download_hash=history.download_hash,
-                                               force=True)
+                                               force=True,
+                                               notify=transfer_dirinfo.notify if transfer_dirinfo else False)
             if not state:
                 return False, errmsg
 
@@ -656,6 +667,15 @@ class TransferChain(ChainBase):
         """
         logger.info(f"手动整理：{fileitem.path} ...")
 
+        # 检查目录是否发送通知
+        transfer_dirinfo = None
+        for dir_info in self.directoryhelper.get_download_dirs():
+            if not dir_info.download_path:
+                continue
+            if fileitem.path.is_relative_to(Path(dir_info.download_path)):
+                transfer_dirinfo = dir_info
+                break
+
         if tmdbid or doubanid:
             # 有输入TMDBID时单个识别
             # 识别媒体信息
@@ -681,7 +701,8 @@ class TransferChain(ChainBase):
                 epformat=epformat,
                 min_filesize=min_filesize,
                 scrape=scrape,
-                force=force
+                force=force,
+                notify=transfer_dirinfo.notify if transfer_dirinfo else False
             )
             if not state:
                 return False, errmsg
@@ -699,7 +720,8 @@ class TransferChain(ChainBase):
                                                epformat=epformat,
                                                min_filesize=min_filesize,
                                                scrape=scrape,
-                                               force=force)
+                                               force=force,
+                                               notify=transfer_dirinfo.notify if transfer_dirinfo else False)
             return state, errmsg
 
     def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo,
