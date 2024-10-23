@@ -24,117 +24,117 @@ class CommandChain(ChainBase, metaclass=Singleton):
     """
     全局命令管理，消费事件
     """
-    # 注册的命令集合
-    _registered_commands = {}
-    # 所有命令集合
-    _commands = {}
-    # 内建命令集合
-    _preset_commands = {
-        "/cookiecloud": {
-            "id": "cookiecloud",
-            "type": "scheduler",
-            "description": "同步站点",
-            "category": "站点"
-        },
-        "/sites": {
-            "func": SiteChain().remote_list,
-            "description": "查询站点",
-            "category": "站点",
-            "data": {}
-        },
-        "/site_cookie": {
-            "func": SiteChain().remote_cookie,
-            "description": "更新站点Cookie",
-            "data": {}
-        },
-        "/site_enable": {
-            "func": SiteChain().remote_enable,
-            "description": "启用站点",
-            "data": {}
-        },
-        "/site_disable": {
-            "func": SiteChain().remote_disable,
-            "description": "禁用站点",
-            "data": {}
-        },
-        "/mediaserver_sync": {
-            "id": "mediaserver_sync",
-            "type": "scheduler",
-            "description": "同步媒体服务器",
-            "category": "管理"
-        },
-        "/subscribes": {
-            "func": SubscribeChain().remote_list,
-            "description": "查询订阅",
-            "category": "订阅",
-            "data": {}
-        },
-        "/subscribe_refresh": {
-            "id": "subscribe_refresh",
-            "type": "scheduler",
-            "description": "刷新订阅",
-            "category": "订阅"
-        },
-        "/subscribe_search": {
-            "id": "subscribe_search",
-            "type": "scheduler",
-            "description": "搜索订阅",
-            "category": "订阅"
-        },
-        "/subscribe_delete": {
-            "func": SubscribeChain().remote_delete,
-            "description": "删除订阅",
-            "data": {}
-        },
-        "/subscribe_tmdb": {
-            "id": "subscribe_tmdb",
-            "type": "scheduler",
-            "description": "订阅元数据更新"
-        },
-        "/downloading": {
-            "func": DownloadChain().remote_downloading,
-            "description": "正在下载",
-            "category": "管理",
-            "data": {}
-        },
-        "/transfer": {
-            "id": "transfer",
-            "type": "scheduler",
-            "description": "下载文件整理",
-            "category": "管理"
-        },
-        "/redo": {
-            "func": TransferChain().remote_transfer,
-            "description": "手动整理",
-            "data": {}
-        },
-        "/clear_cache": {
-            "func": SystemChain().remote_clear_cache,
-            "description": "清理缓存",
-            "category": "管理",
-            "data": {}
-        },
-        "/restart": {
-            "func": SystemChain().restart,
-            "description": "重启系统",
-            "category": "管理",
-            "data": {}
-        },
-        "/version": {
-            "func": SystemChain().version,
-            "description": "当前版本",
-            "category": "管理",
-            "data": {}
-        }
-    }
-    # 插件命令集合
-    _plugin_commands = {}
-    # 其他命令集合
-    _other_commands = {}
 
     def __init__(self):
         # 插件管理器
         super().__init__()
+        # 注册的命令集合
+        self._registered_commands = {}
+        # 所有命令集合
+        self._commands = {}
+        # 内建命令集合
+        self._preset_commands = {
+            "/cookiecloud": {
+                "id": "cookiecloud",
+                "type": "scheduler",
+                "description": "同步站点",
+                "category": "站点"
+            },
+            "/sites": {
+                "func": SiteChain().remote_list,
+                "description": "查询站点",
+                "category": "站点",
+                "data": {}
+            },
+            "/site_cookie": {
+                "func": SiteChain().remote_cookie,
+                "description": "更新站点Cookie",
+                "data": {}
+            },
+            "/site_enable": {
+                "func": SiteChain().remote_enable,
+                "description": "启用站点",
+                "data": {}
+            },
+            "/site_disable": {
+                "func": SiteChain().remote_disable,
+                "description": "禁用站点",
+                "data": {}
+            },
+            "/mediaserver_sync": {
+                "id": "mediaserver_sync",
+                "type": "scheduler",
+                "description": "同步媒体服务器",
+                "category": "管理"
+            },
+            "/subscribes": {
+                "func": SubscribeChain().remote_list,
+                "description": "查询订阅",
+                "category": "订阅",
+                "data": {}
+            },
+            "/subscribe_refresh": {
+                "id": "subscribe_refresh",
+                "type": "scheduler",
+                "description": "刷新订阅",
+                "category": "订阅"
+            },
+            "/subscribe_search": {
+                "id": "subscribe_search",
+                "type": "scheduler",
+                "description": "搜索订阅",
+                "category": "订阅"
+            },
+            "/subscribe_delete": {
+                "func": SubscribeChain().remote_delete,
+                "description": "删除订阅",
+                "data": {}
+            },
+            "/subscribe_tmdb": {
+                "id": "subscribe_tmdb",
+                "type": "scheduler",
+                "description": "订阅元数据更新"
+            },
+            "/downloading": {
+                "func": DownloadChain().remote_downloading,
+                "description": "正在下载",
+                "category": "管理",
+                "data": {}
+            },
+            "/transfer": {
+                "id": "transfer",
+                "type": "scheduler",
+                "description": "下载文件整理",
+                "category": "管理"
+            },
+            "/redo": {
+                "func": TransferChain().remote_transfer,
+                "description": "手动整理",
+                "data": {}
+            },
+            "/clear_cache": {
+                "func": SystemChain().remote_clear_cache,
+                "description": "清理缓存",
+                "category": "管理",
+                "data": {}
+            },
+            "/restart": {
+                "func": SystemChain().restart,
+                "description": "重启系统",
+                "category": "管理",
+                "data": {}
+            },
+            "/version": {
+                "func": SystemChain().version,
+                "description": "当前版本",
+                "category": "管理",
+                "data": {}
+            }
+        }
+        # 插件命令集合
+        self._plugin_commands = {}
+        # 其他命令集合
+        self._other_commands = {}
         # 初始化锁
         self._rlock = threading.RLock()
         # 插件管理
