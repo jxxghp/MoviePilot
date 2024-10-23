@@ -382,7 +382,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("list_torrents", status=status, hashs=hashs, downloader=downloader)
 
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
-                 transfer_type: str, target_storage: str = None, target_path: Path = None,
+                 transfer_type: str = None, target_storage: str = None, target_path: Path = None,
                  episodes_info: List[TmdbEpisode] = None,
                  scrape: bool = None) -> Optional[TransferInfo]:
         """
@@ -401,17 +401,13 @@ class ChainBase(metaclass=ABCMeta):
                                transfer_type=transfer_type, target_storage=target_storage,
                                target_path=target_path, episodes_info=episodes_info, scrape=scrape)
 
-    def transfer_completed(self, hashs: str, path: Path = None,
-                           downloader: str = None, transfer_type: str = None) -> None:
+    def transfer_completed(self, hashs: str, downloader: str = None) -> None:
         """
-        转移完成后的处理
+        下载器转移完成后的处理
         :param hashs:  种子Hash
-        :param path:  源目录
         :param downloader:  下载器
-        :param transfer_type:   整理方式
         """
-        return self.run_module("transfer_completed", hashs=hashs, path=path,
-                               downloader=downloader, transfer_type=transfer_type)
+        return self.run_module("transfer_completed", hashs=hashs, downloader=downloader)
 
     def remove_torrents(self, hashs: Union[str, list], delete_file: bool = True,
                         downloader: str = None) -> bool:

@@ -127,9 +127,9 @@ class TransferDirectoryConf(BaseModel):
     renaming: Optional[bool] = False
     # 刮削
     scraping: Optional[bool] = False
+    # 是否发送通知
+    notify: Optional[bool] = True
     # 媒体库类型子目录
     library_type_folder: Optional[bool] = False
     # 媒体库类别子目录
     library_category_folder: Optional[bool] = False
-    # 是否发送通知
-    notify: Optional[bool] = True

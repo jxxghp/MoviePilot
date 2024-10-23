@@ -1,4 +1,3 @@
-import shutil
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List
 
@@ -14,7 +13,6 @@ from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.schemas import TransferTorrent, DownloadingTorrent
 from app.schemas.types import TorrentStatus, ModuleType
 from app.utils.string import StringUtils
-from app.utils.system import SystemUtils
 
 
 class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
@@ -269,29 +267,16 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
             return None
         return ret_torrents
 
-    def transfer_completed(self, hashs: str, path: Path = None,
-                           downloader: str = None, transfer_type: str = None) -> None:
+    def transfer_completed(self, hashs: str, downloader: str = None) -> None:
         """
         转移完成后的处理
         :param hashs:  种子Hash
-        :param path:  源目录
         :param downloader:  下载器
-        :param transfer_type:   整理方式
         """
         server: Qbittorrent = self.get_instance(downloader)
         if not server:
             return None
         server.set_torrents_tag(ids=hashs, tags=['已整理'])
-        # 移动模式删除种子
-        if transfer_type and transfer_type in ["move"]:
-            if self.remove_torrents(hashs):
-                logger.info(f"移动模式删除种子成功：{hashs} ")
-            # 删除本地残留文件
-            if path and path.exists():
-                files = SystemUtils.list_files(path, settings.RMT_MEDIAEXT)
-                if not files:
-                    logger.warn(f"删除残留文件夹：{path}")
-                    shutil.rmtree(path, ignore_errors=True)
 
     def remove_torrents(self, hashs: Union[str, list], delete_file: bool = True,
                         downloader: str = None) -> Optional[bool]:

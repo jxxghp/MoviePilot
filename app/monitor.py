@@ -383,8 +383,7 @@ class Monitor(metaclass=Singleton):
                     return
 
                 # 查询转移目的目录
-                dir_info = self.directoryhelper.get_dir(mediainfo, src_path=Path(mon_path))
-                if not dir_info:
+                if not self.directoryhelper.get_dir(mediainfo, src_path=Path(mon_path)):
                     logger.warn(f"{event_path.name} 未找到对应的目标目录")
                     return
 
@@ -416,11 +415,7 @@ class Monitor(metaclass=Singleton):
                 transferinfo: TransferInfo = self.chain.transfer(fileitem=file_item,
                                                                  meta=file_meta,
                                                                  mediainfo=mediainfo,
-                                                                 transfer_type=dir_info.transfer_type,
-                                                                 target_storage=dir_info.library_storage,
-                                                                 target_path=Path(dir_info.library_path),
-                                                                 episodes_info=episodes_info,
-                                                                 scrape=dir_info.scraping)
+                                                                 episodes_info=episodes_info)
 
                 if not transferinfo:
                     logger.error("文件转移模块运行失败")
@@ -432,7 +427,7 @@ class Monitor(metaclass=Singleton):
                     # 新增转移失败历史记录
                     self.transferhis.add_fail(
                         fileitem=file_item,
-                        mode=dir_info.transfer_type,
+                        mode=transferinfo.transfer_type if transferinfo else '',
                         download_hash=download_hash,
                         meta=file_meta,
                         mediainfo=mediainfo,
@@ -453,15 +448,15 @@ class Monitor(metaclass=Singleton):
                 # 新增转移成功历史记录
                 self.transferhis.add_success(
                     fileitem=file_item,
-                    mode=dir_info.transfer_type,
+                    mode=transferinfo.transfer_type if transferinfo else '',
                     download_hash=download_hash,
                     meta=file_meta,
                     mediainfo=mediainfo,
                     transferinfo=transferinfo
                 )
 
-                # TODO 汇总刮削
-                if dir_info.scraping:
+                # 汇总刮削
+                if transferinfo.need_scrape:
                     self.mediaChain.scrape_metadata(fileitem=transferinfo.target_diritem,
                                                     meta=file_meta,
                                                     mediainfo=mediainfo)
@@ -475,11 +470,11 @@ class Monitor(metaclass=Singleton):
                 })
 
                 # 发送消息汇总
-                if dir_info.notify:
+                if transferinfo.need_notify:
                     self.__collect_msg_medias(mediainfo=mediainfo, file_meta=file_meta, transferinfo=transferinfo)
 
                 # 移动模式删除空目录
-                if dir_info.transfer_type in ["move"]:
+                if transferinfo.transfer_type in ["move"]:
                     logger.info(f"正在删除： {file_item.storage} {file_item.path}")
                     self.storagechain.delete_file(file_item)
 

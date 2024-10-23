@@ -92,16 +92,16 @@ class TransferChain(ChainBase):
                     logger.warn(f"文件不存在：{file_path}")
                     continue
                 # 检查是否为下载器监控目录中的文件
-                transfer_dirinfo = None
+                is_downloader_monitor = False
                 for dir_info in download_dirs:
                     if dir_info.monitor_type != "downloader":
                         continue
                     if not dir_info.download_path:
                         continue
                     if file_path.is_relative_to(Path(dir_info.download_path)):
-                        transfer_dirinfo = dir_info
+                        is_downloader_monitor = True
                         break
-                if not transfer_dirinfo:
+                if not is_downloader_monitor:
                     logger.debug(f"文件 {file_path} 不在下载器监控目录中，不通过下载器进行整理")
                     continue
                 # 查询下载记录识别情况
@@ -127,7 +127,7 @@ class TransferChain(ChainBase):
                     mediainfo = None
 
                 # 执行整理
-                self.__do_transfer(
+                state, errmsg = self.__do_transfer(
                     fileitem=FileItem(
                         storage="local",
                         path=str(file_path),
@@ -136,15 +136,14 @@ class TransferChain(ChainBase):
                         size=file_path.stat().st_size,
                         extension=file_path.suffix.lstrip('.'),
                     ),
-                    target_storage=transfer_dirinfo.library_storage,
                     mediainfo=mediainfo,
-                    download_hash=torrent.hash,
-                    notify=transfer_dirinfo.notify
+                    download_hash=torrent.hash
                 )
 
                 # 设置下载任务状态
-                self.transfer_completed(hashs=torrent.hash, path=torrent.path,
-                                        transfer_type=transfer_dirinfo.transfer_type)
+                if state:
+                    self.transfer_completed(hashs=torrent.hash)
+
             # 结束
             logger.info("所有下载器中下载完成的文件已整理完成")
             return True
@@ -155,7 +154,7 @@ class TransferChain(ChainBase):
                       target_path: Path = None, transfer_type: str = None,
                       season: int = None, epformat: EpisodeFormat = None,
                       min_filesize: int = 0, scrape: bool = None,
-                      force: bool = False, notify: bool = True) -> Tuple[bool, str]:
+                      force: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
@@ -193,6 +192,8 @@ class TransferChain(ChainBase):
         fail_num = 0
         # 跳过数量
         skip_num = 0
+        # 本次整理方式
+        current_transfer_type = transfer_type
 
         # 获取待整理路径清单
         trans_items = self.__get_trans_fileitems(fileitem)
@@ -412,6 +413,7 @@ class TransferChain(ChainBase):
                     continue
 
                 # 汇总信息
+                current_transfer_type = transferinfo.transfer_type
                 mkey = (file_mediainfo.tmdb_id, file_meta.begin_season)
                 if mkey not in medias:
                     # 新增信息
@@ -454,7 +456,7 @@ class TransferChain(ChainBase):
                 transfer_meta = metas[mkey]
                 transfer_info = transfers[mkey]
                 # 发送通知
-                if notify:
+                if transfer_info.need_notify:
                     se_str = None
                     if media.type == MediaType.TV:
                         se_str = f"{transfer_meta.season} {StringUtils.format_ep(season_episodes[mkey])}"
@@ -473,8 +475,20 @@ class TransferChain(ChainBase):
                 self.eventmanager.send_event(EventType.TransferComplete, {
                     'meta': transfer_meta,
                     'mediainfo': media,
-                    'transferinfo': transfer_info
+                    'transferinfo': transfer_info,
+                    'download_hash': download_hash,
                 })
+
+        # 移动模式处理
+        if current_transfer_type in ["move"]:
+            # 下载器hash
+            if download_hash:
+                if self.remove_torrents(download_hash):
+                    logger.info(f"移动模式删除种子成功：{download_hash} ")
+            # 删除残留文件
+            if fileitem:
+                logger.warn(f"删除残留文件夹：【{fileitem.storage}】{fileitem.path}")
+                self.storagechain.delete_file(fileitem)
 
         # 结束进度
         logger.info(f"{fileitem.path} 整理完成，共 {total_num} 个文件，"
@@ -617,21 +631,10 @@ class TransferChain(ChainBase):
 
         # 强制整理
         if history.src_fileitem:
-            # 解析源文件对象
-            fileitem = FileItem(**history.src_fileitem)
-            # 检查目录是否发送通知
-            transfer_dirinfo = None
-            for dir_info in self.directoryhelper.get_download_dirs():
-                if not dir_info.download_path:
-                    continue
-                if fileitem.path.is_relative_to(Path(dir_info.download_path)):
-                    transfer_dirinfo = dir_info
-                    break
-            state, errmsg = self.__do_transfer(fileitem=fileitem,
+            state, errmsg = self.__do_transfer(fileitem=FileItem(**history.src_fileitem),
                                                mediainfo=mediainfo,
                                                download_hash=history.download_hash,
-                                               force=True,
-                                               notify=transfer_dirinfo.notify if transfer_dirinfo else False)
+                                               force=True)
             if not state:
                 return False, errmsg
 
@@ -666,16 +669,6 @@ class TransferChain(ChainBase):
         :param force: 是否强制整理
         """
         logger.info(f"手动整理：{fileitem.path} ...")
-
-        # 检查目录是否发送通知
-        transfer_dirinfo = None
-        for dir_info in self.directoryhelper.get_download_dirs():
-            if not dir_info.download_path:
-                continue
-            if fileitem.path.is_relative_to(Path(dir_info.download_path)):
-                transfer_dirinfo = dir_info
-                break
-
         if tmdbid or doubanid:
             # 有输入TMDBID时单个识别
             # 识别媒体信息
@@ -702,7 +695,6 @@ class TransferChain(ChainBase):
                 min_filesize=min_filesize,
                 scrape=scrape,
                 force=force,
-                notify=transfer_dirinfo.notify if transfer_dirinfo else False
             )
             if not state:
                 return False, errmsg
@@ -720,8 +712,7 @@ class TransferChain(ChainBase):
                                                epformat=epformat,
                                                min_filesize=min_filesize,
                                                scrape=scrape,
-                                               force=force,
-                                               notify=transfer_dirinfo.notify if transfer_dirinfo else False)
+                                               force=force)
             return state, errmsg
 
     def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo,

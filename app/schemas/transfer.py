@@ -66,6 +66,8 @@ class TransferInfo(BaseModel):
     message: Optional[str] = None
     # 是否需要刮削
     need_scrape: Optional[bool] = False
+    # 是否需要通知
+    need_notify: Optional[bool] = False
 
     def to_dict(self):
         """

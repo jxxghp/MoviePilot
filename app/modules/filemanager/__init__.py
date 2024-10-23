@@ -281,7 +281,7 @@ class FileManagerModule(_ModuleBase):
         return storage_oper.usage()
 
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
-                 transfer_type: str, target_storage: str = None, target_path: Path = None,
+                 transfer_type: str = None, target_storage: str = None, target_path: Path = None,
                  episodes_info: List[TmdbEpisode] = None,
                  scrape: bool = None) -> TransferInfo:
         """
@@ -329,12 +329,15 @@ class FileManagerModule(_ModuleBase):
             need_rename = dir_info.renaming
             # 覆盖模式
             overwrite_mode = dir_info.overwrite_mode
+            # 是否需要通知
+            need_notify = dir_info.notify
             # 拼装媒体库一、二级子目录
             target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=dir_info)
         elif target_path:
-            # 自定义目标路径
+            # 自定义目标路径，仅适用于手动整理的场景
             need_scrape = scrape or False
             need_rename = True
+            need_notify = False
             overwrite_mode = "never"
         else:
             # 未找到有效的媒体库目录
@@ -355,7 +358,8 @@ class FileManagerModule(_ModuleBase):
                                    target_path=target_path,
                                    episodes_info=episodes_info,
                                    need_scrape=need_scrape,
-                                   need_rename=need_rename)
+                                   need_rename=need_rename,
+                                   need_notify=need_notify)
 
     def __get_storage_oper(self, _storage: str, _func: str = None) -> Optional[StorageBase]:
         """
@@ -811,7 +815,8 @@ class FileManagerModule(_ModuleBase):
                        target_path: Path,
                        episodes_info: List[TmdbEpisode] = None,
                        need_scrape: bool = False,
-                       need_rename: bool = True
+                       need_rename: bool = True,
+                       need_notify: bool = True,
                        ) -> TransferInfo:
         """
         识别并整理一个文件或者一个目录下的所有文件
@@ -825,6 +830,7 @@ class FileManagerModule(_ModuleBase):
         :param episodes_info: 当前季的全部集信息
         :param need_scrape: 是否需要刮削
         :param need_rename: 是否需要重命名
+        :param need_notify: 是否需要通知
         :return: TransferInfo、错误信息
         """
 
@@ -854,7 +860,8 @@ class FileManagerModule(_ModuleBase):
                 return TransferInfo(success=False,
                                     message=errmsg,
                                     fileitem=fileitem,
-                                    transfer_type=transfer_type)
+                                    transfer_type=transfer_type,
+                                    need_notify=need_notify)
 
             logger.info(f"文件夹 {fileitem.path} 整理成功")
             # 返回整理后的路径
@@ -875,7 +882,8 @@ class FileManagerModule(_ModuleBase):
                                         message=f"未识别到文件集数",
                                         fileitem=fileitem,
                                         fail_list=[fileitem.path],
-                                        transfer_type=transfer_type)
+                                        transfer_type=transfer_type,
+                                        need_notify=need_notify)
 
                 # 文件结束季为空
                 in_meta.end_season = None
@@ -938,7 +946,8 @@ class FileManagerModule(_ModuleBase):
                                                     target_item=target_item,
                                                     target_diritem=target_diritem,
                                                     fail_list=[fileitem.path],
-                                                    transfer_type=transfer_type)
+                                                    transfer_type=transfer_type,
+                                                    need_notify=need_notify)
                         case 'never':
                             # 存在不覆盖
                             return TransferInfo(success=False,
@@ -947,7 +956,8 @@ class FileManagerModule(_ModuleBase):
                                                 target_item=target_item,
                                                 target_diritem=target_diritem,
                                                 fail_list=[fileitem.path],
-                                                transfer_type=transfer_type)
+                                                transfer_type=transfer_type,
+                                                need_notify=need_notify)
                         case 'latest':
                             # 仅保留最新版本
                             logger.info(f"当前整理覆盖模式设置为仅保留最新版本，将覆盖：{new_file}")
@@ -969,7 +979,8 @@ class FileManagerModule(_ModuleBase):
                                     message=err_msg,
                                     fileitem=fileitem,
                                     fail_list=[fileitem.path],
-                                    transfer_type=transfer_type)
+                                    transfer_type=transfer_type,
+                                    need_notify=need_notify)
 
             logger.info(f"文件 {fileitem.path} 整理成功")
             return TransferInfo(success=True,
@@ -981,7 +992,8 @@ class FileManagerModule(_ModuleBase):
                                 file_list=[fileitem.path],
                                 file_list_new=[new_item.path],
                                 need_scrape=need_scrape,
-                                transfer_type=transfer_type)
+                                transfer_type=transfer_type,
+                                need_notify=need_notify)
 
     @staticmethod
     def __get_naming_dict(meta: MetaBase, mediainfo: MediaInfo, file_ext: str = None,

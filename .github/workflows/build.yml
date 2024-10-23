@@ -69,8 +69,8 @@ jobs:
       - name: Generate Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.app_version }}
-          name: ${{ env.app_version }}
+          tag_name: v${{ env.app_version }}
+          name: v${{ env.app_version }}
           draft: false
           prerelease: false
           make_latest: false
