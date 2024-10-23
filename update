@@ -66,7 +66,7 @@ function install_backend_and_download_resources() {
     fi
     INFO "安装依赖成功"
     # 从后端文件中读取前端版本号
-    frontend_version=$(grep -oP "(?<=FRONTEND_VERSION\s*=\s*')[^']+" /tm/App/version.py)
+    frontend_version=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /tmp/app/version.py)
     if [[ "${frontend_version}" != *v* ]]; then
         WARN "前端最新版本号获取失败，继续启动..."
         return 1
