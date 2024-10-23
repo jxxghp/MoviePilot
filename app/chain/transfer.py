@@ -184,6 +184,8 @@ class TransferChain(ChainBase):
         # 开始进度
         self.progress.start(ProgressKey.FileTransfer)
 
+        # 待整理文件列表
+        file_items = []
         # 汇总错误信息
         err_msgs: List[str] = []
         # 已处理数量
@@ -228,21 +230,27 @@ class TransferChain(ChainBase):
                     continue
             else:
                 # 文件或蓝光目录
-                file_items = [trans_item]
+                file_items.append(trans_item)
 
             if formaterHandler:
                 # 有集自定义格式，过滤文件
                 file_items = [f for f in file_items if formaterHandler.match(f.name)]
 
             # 过滤后缀和大小
-            file_items = [f for f in file_items
+            video_files = [f for f in file_items
                           if f.extension and (f".{f.extension.lower()}" in self.all_exts
                                               and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
 
-            if not file_items:
+            # 过滤音轨文件
+            audio_files = [f for f in file_items
+                if f.extension and f".{f.extension.lower()}" in settings.RMT_AUDIO_TRACK_EXT]
+
+            if not video_files:
                 logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
                 return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
+            # 有视频文件,合并音轨; 还缺少更精细处理
+            file_items = video_files + audio_files
             logger.info(f"正在整理 {len(file_items)} 个文件...")
 
             # 整理所有文件
