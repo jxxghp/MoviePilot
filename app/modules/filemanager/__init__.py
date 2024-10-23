@@ -565,17 +565,14 @@ class FileManagerModule(_ModuleBase):
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件整理")
             return False, f"不支持的文件存储：{fileitem.storage}"
-
-        # 上级目录
-        org_dir: Path = org_path.parent
         # 查找上级文件项
-        parent_item: FileItem = storage_oper.get_folder(org_dir)
+        parent_item: FileItem = storage_oper.get_parent(fileitem)
         if not parent_item:
-            return False, f"{org_dir} 目录获取失败"
+            return False, f"{org_path} 上级目录获取失败"
         # 字幕文件列表
         file_list: List[FileItem] = storage_oper.list(parent_item)
         if len(file_list) == 0:
-            logger.debug(f"{org_dir} 目录下没有找到字幕文件...")
+            logger.debug(f"{parent_item.path} 目录下没有找到字幕文件...")
         else:
             logger.debug("字幕文件清单：" + str(file_list))
             # 识别文件名
@@ -662,18 +659,16 @@ class FileManagerModule(_ModuleBase):
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件整理")
             return False, f"不支持的文件存储：{fileitem.storage}"
-        # 上级目录
-        org_dir = org_path.parent
         # 查找上级文件项
-        parent_item: FileItem = storage_oper.get_folder(org_dir)
+        parent_item: FileItem = storage_oper.get_parent(fileitem)
         if not parent_item:
-            return False, f"{org_dir} 目录获取失败"
+            return False, f"{org_path} 上级目录获取失败"
         file_list: List[FileItem] = storage_oper.list(parent_item)
         # 匹配音轨文件
         pending_file_list: List[FileItem] = [file for file in file_list if Path(file.name).stem == org_path.name
                                              and f".{file.extension.lower()}" in settings.RMT_AUDIOEXT]
         if len(pending_file_list) == 0:
-            return True, f"{org_dir} 目录下没有找到匹配的音轨文件"
+            return True, f"{parent_item.path} 目录下没有找到匹配的音轨文件"
         logger.debug("音轨文件清单：" + str(pending_file_list))
         for track_file in pending_file_list:
             track_ext = f".{track_file.extension}"
