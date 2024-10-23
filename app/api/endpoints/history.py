@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List, Any
 
 from fastapi import APIRouter, Depends
@@ -5,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.storage import StorageChain
+from app.core.config import settings
 from app.core.event import eventmanager
 from app.core.security import verify_token
 from app.db import get_db
@@ -12,7 +14,7 @@ from app.db.models import User
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
 from app.db.user_oper import get_current_active_superuser
-from app.schemas.types import EventType
+from app.schemas.types import EventType, MediaType
 
 router = APIRouter()
 
@@ -89,6 +91,25 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
         state = StorageChain().delete_file(dest_fileitem)
         if not state:
             return schemas.Response(success=False, msg=f"{dest_fileitem.path}删除失败")
+        # 上级目录
+        if history.type == MediaType.TV.value:
+            dir_path = Path(dest_fileitem.path).parent.parent
+        else:
+            dir_path = Path(dest_fileitem.path).parent
+        dir_item = StorageChain().get_file_item(storage=dest_fileitem.storage, path=dir_path)
+        if dir_item:
+            files = StorageChain().list_files(dir_item, recursion=True)
+            if files:
+                # 检查是否还有其他媒体文件
+                media_file_exist = False
+                for file in files:
+                    if file.extension and f".{file.extension.lower()}" in settings.RMT_MEDIAEXT:
+                        media_file_exist = True
+                        break
+                # 删除空目录
+                if not media_file_exist:
+                    StorageChain().delete_file(dir_item)
+
     # 删除源文件
     if deletesrc and history.src_fileitem:
         src_fileitem = schemas.FileItem(**history.src_fileitem)
