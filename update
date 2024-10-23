@@ -102,7 +102,7 @@ function install_backend_and_download_resources() {
     INFO "程序部分更新成功，前端版本：${frontend_version}，后端版本：${1}"
     INFO "开始更新插件..."
     if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" "Plugins"; then
-        cp -a /plugins/* /app/app/plugins/
+        cp -a /plugins.v2/* /app/app/plugins/
         rm -rf /plugins
         WARN "插件下载失败，继续使用旧的插件来启动..."
         return 1
