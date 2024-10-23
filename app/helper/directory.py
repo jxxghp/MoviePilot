@@ -69,10 +69,13 @@ class DirectoryHelper:
                 continue
             # 下载目录
             download_path = Path(d.download_path)
+            # 媒体库目录
+            library_path = Path(d.library_path)
+            # 媒体类型
             # 有目录时直接匹配
             if src_path and download_path != src_path:
                 continue
-            if dest_path and download_path != dest_path:
+            if dest_path and library_path != dest_path:
                 continue
             # 本地目录
             if local and d.storage != "local":

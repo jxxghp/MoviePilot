@@ -418,6 +418,7 @@ class Monitor(metaclass=Singleton):
                                                                  mediainfo=mediainfo,
                                                                  transfer_type=dir_info.transfer_type,
                                                                  target_storage=dir_info.library_storage,
+                                                                 target_path=Path(dir_info.library_path),
                                                                  episodes_info=episodes_info,
                                                                  scrape=dir_info.scraping)
 
