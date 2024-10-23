@@ -129,6 +129,9 @@ class Monitor(metaclass=Singleton):
         if not monitor_dirs:
             return
 
+        # 按下载目录去重
+        monitor_dirs = list({f"{d.storage}_{d.download_path}": d for d in monitor_dirs}.values())
+
         # 启动定时服务进程
         self._scheduler = BackgroundScheduler(timezone=settings.TZ)
 
