@@ -560,13 +560,20 @@ class FileManagerModule(_ModuleBase):
 
         # 比对文件名并整理字幕
         org_path = Path(fileitem.path)
-        org_dir: Path = org_path.parent
         # 列出所有字幕文件
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件整理")
             return False, f"不支持的文件存储：{fileitem.storage}"
-        file_list: List[FileItem] = storage_oper.list(fileitem)
+
+        # 上级目录
+        org_dir: Path = org_path.parent
+        # 查找上级文件项
+        parent_item: FileItem = storage_oper.get_folder(org_dir)
+        if not parent_item:
+            return False, f"{org_dir} 目录获取失败"
+        # 字幕文件列表
+        file_list: List[FileItem] = storage_oper.list(parent_item)
         if len(file_list) == 0:
             logger.debug(f"{org_dir} 目录下没有找到字幕文件...")
         else:
@@ -650,19 +657,23 @@ class FileManagerModule(_ModuleBase):
         :param transfer_type: 整理方式
         """
         org_path = Path(fileitem.path)
-        dir_name = org_path.parent
-        file_name = org_path.name
         # 列出所有音轨文件
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件整理")
             return False, f"不支持的文件存储：{fileitem.storage}"
-        file_list: List[FileItem] = storage_oper.list(fileitem)
+        # 上级目录
+        org_dir = org_path.parent
+        # 查找上级文件项
+        parent_item: FileItem = storage_oper.get_folder(org_dir)
+        if not parent_item:
+            return False, f"{org_dir} 目录获取失败"
+        file_list: List[FileItem] = storage_oper.list(parent_item)
         # 匹配音轨文件
         pending_file_list: List[FileItem] = [file for file in file_list if Path(file.name).stem == org_path.name
                                              and f".{file.extension.lower()}" in settings.RMT_AUDIOEXT]
         if len(pending_file_list) == 0:
-            return True, f"{dir_name} 目录下没有找到匹配的音轨文件"
+            return True, f"{org_dir} 目录下没有找到匹配的音轨文件"
         logger.debug("音轨文件清单：" + str(pending_file_list))
         for track_file in pending_file_list:
             track_ext = f".{track_file.extension}"
@@ -674,11 +685,11 @@ class FileManagerModule(_ModuleBase):
                                                            target_file=new_track_file,
                                                            transfer_type=transfer_type)
                 if new_item:
-                    logger.info(f"音轨文件 {file_name} 整理完成")
+                    logger.info(f"音轨文件 {org_path.name} 整理完成")
                 else:
-                    logger.error(f"音轨文件 {file_name} 整理失败：{errmsg}")
+                    logger.error(f"音轨文件 {org_path.name} 整理失败：{errmsg}")
             except Exception as error:
-                logger.error(f"音轨文件 {file_name} 整理失败：{str(error)}")
+                logger.error(f"音轨文件 {org_path.name} 整理失败：{str(error)}")
         return True, ""
 
     def __transfer_dir(self, fileitem: FileItem, transfer_type: str,
