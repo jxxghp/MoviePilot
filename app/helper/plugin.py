@@ -615,11 +615,11 @@ class PluginHelper(metaclass=Singleton):
         try:
             logger.debug(f"需要安装或更新的依赖项：{dependencies}")
             # 创建临时的 requirements.txt 文件用于批量安装
-            requirements_temp_file = Path(settings.TEMP_PATH) / "plugin_dependencies" / "requirements.txt"
+            requirements_temp_file = Path(settings.TEMP_PATH) / "plugins_dependencies" / "requirements.txt"
             requirements_temp_file.parent.mkdir(parents=True, exist_ok=True)
             with open(requirements_temp_file, "w", encoding="utf-8") as f:
                 for dep in dependencies:
-                    f.write(dep + '\n')
+                    f.write(dep + "\n")
 
             # 使用自动降级策略安装依赖
             success, message = self.__pip_install_with_fallback(requirements_temp_file)
