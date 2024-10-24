@@ -101,18 +101,22 @@ function install_backend_and_download_resources() {
     rm -rf /tmp/*
     INFO "程序部分更新成功，前端版本：${frontend_version}，后端版本：${1}"
     INFO "开始更新插件..."
-    if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" "Plugins"; then
-        cp -a /plugins.v2/* /app/app/plugins/
-        rm -rf /plugins
-        WARN "插件下载失败，继续使用旧的插件来启动..."
-        return 1
+    # 检查 /plugins/ 目录是否为空，有则恢复，无则下载
+    if [ -z "$(ls -A /plugins/)" ]; then
+        if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Plugins/archive/refs/heads/main.zip" "Plugins"; then
+            rm -rf /plugins
+            WARN "插件下载失败..."
+            return 1
+        fi
+        INFO "插件下载成功"
+
+        # 插件仓库
+        rsync -av --remove-source-files /tmp/Plugins/plugins/* /app/app/plugins/ > /dev/null
+        rsync -av --remove-source-files /tmp/Plugins/plugins.v2/* /app/app/plugins/ > /dev/null
+    else
+        cp -a /plugins/* /app/app/plugins/
+        INFO "插件恢复成功"
     fi
-    INFO "插件下载成功"
-    # 恢复插件目录
-    cp -a /plugins/* /app/app/plugins/
-    # 插件仓库
-    rsync -av --remove-source-files /tmp/Plugins/plugins/* /app/app/plugins/ > /dev/null
-    rsync -av --remove-source-files /tmp/Plugins/plugins.v2/* /app/app/plugins/ > /dev/null
     # 提前安装插件依赖
     find /app/app/plugins -name requirements.txt -exec pip install --root-user-action=ignore ${PIP_OPTIONS} -r {} \; > /dev/null
     # 清理临时目录
