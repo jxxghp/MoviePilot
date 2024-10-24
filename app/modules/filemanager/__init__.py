@@ -260,6 +260,16 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.get_item(path)
 
+    def get_parent_item(self, fileitem: FileItem) -> Optional[FileItem]:
+        """
+        获取上级目录项
+        """
+        storage_oper = self.__get_storage_oper(fileitem.storage)
+        if not storage_oper:
+            logger.error(f"不支持 {fileitem.storage} 的文件获取")
+            return None
+        return storage_oper.get_parent(fileitem)
+
     def snapshot_storage(self, storage: str, path: Path) -> Optional[Dict[str, float]]:
         """
         快照存储

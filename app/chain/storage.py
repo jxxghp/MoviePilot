@@ -3,6 +3,9 @@ from typing import Optional, Tuple, List, Dict
 
 from app import schemas
 from app.chain import ChainBase
+from app.core.config import settings
+from app.log import logger
+from app.schemas import MediaType
 
 
 class StorageChain(ChainBase):
@@ -74,6 +77,12 @@ class StorageChain(ChainBase):
         """
         return self.run_module("get_file_item", storage=storage, path=path)
 
+    def get_parent_item(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
+        """
+        获取上级目录项
+        """
+        return self.run_module("get_parent_item", fileitem=fileitem)
+
     def snapshot_storage(self, storage: str, path: Path) -> Optional[Dict[str, float]]:
         """
         快照存储
@@ -91,3 +100,31 @@ class StorageChain(ChainBase):
         获取支持的整理方式
         """
         return self.run_module("support_transtype", storage=storage)
+
+    def delete_media_file(self, fileitem: schemas.FileItem, mtype: MediaType = None) -> bool:
+        """
+        删除媒体文件，以及不含媒体文件的目录
+        """
+        state = self.delete_file(fileitem)
+        if not state:
+            logger.warn(f"【{fileitem.storage}】{fileitem.path} 删除失败")
+            return False
+        # 上级目录
+        if mtype and mtype == MediaType.TV:
+            dir_path = Path(fileitem.path).parent.parent
+            dir_item = self.get_file_item(storage=fileitem.storage, path=dir_path)
+        else:
+            dir_item = self.get_parent_item(fileitem)
+        if dir_item:
+            files = self.list_files(dir_item, recursion=True)
+            if files:
+                # 检查是否还有其他媒体文件
+                media_file_exist = False
+                for file in files:
+                    if file.extension and f".{file.extension.lower()}" in settings.RMT_MEDIAEXT:
+                        media_file_exist = True
+                        break
+                # 删除空目录
+                if not media_file_exist:
+                    self.delete_file(dir_item)
+        return False

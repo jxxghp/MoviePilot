@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import List, Any
 
 from fastapi import APIRouter, Depends
@@ -6,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.storage import StorageChain
-from app.core.config import settings
 from app.core.event import eventmanager
 from app.core.security import verify_token
 from app.db import get_db
@@ -88,34 +86,16 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
     # 册除媒体库文件
     if deletedest and history.dest_fileitem:
         dest_fileitem = schemas.FileItem(**history.dest_fileitem)
-        state = StorageChain().delete_file(dest_fileitem)
+        state = StorageChain().delete_media_file(fileitem=dest_fileitem, mtype=MediaType(history.type))
         if not state:
-            return schemas.Response(success=False, msg=f"{dest_fileitem.path}删除失败")
-        # 上级目录
-        if history.type == MediaType.TV.value:
-            dir_path = Path(dest_fileitem.path).parent.parent
-        else:
-            dir_path = Path(dest_fileitem.path).parent
-        dir_item = StorageChain().get_file_item(storage=dest_fileitem.storage, path=dir_path)
-        if dir_item:
-            files = StorageChain().list_files(dir_item, recursion=True)
-            if files:
-                # 检查是否还有其他媒体文件
-                media_file_exist = False
-                for file in files:
-                    if file.extension and f".{file.extension.lower()}" in settings.RMT_MEDIAEXT:
-                        media_file_exist = True
-                        break
-                # 删除空目录
-                if not media_file_exist:
-                    StorageChain().delete_file(dir_item)
+            return schemas.Response(success=False, msg=f"{dest_fileitem.path} 删除失败")
 
     # 删除源文件
     if deletesrc and history.src_fileitem:
         src_fileitem = schemas.FileItem(**history.src_fileitem)
-        state = StorageChain().delete_file(src_fileitem)
+        state = StorageChain().delete_media_file(src_fileitem)
         if not state:
-            return schemas.Response(success=False, msg=f"{src_fileitem.path}删除失败")
+            return schemas.Response(success=False, msg=f"{src_fileitem.path} 删除失败")
         # 发送事件
         eventmanager.send_event(
             EventType.DownloadFileDeleted,
