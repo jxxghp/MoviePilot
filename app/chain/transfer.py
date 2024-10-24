@@ -184,6 +184,17 @@ class TransferChain(ChainBase):
         # 开始进度
         self.progress.start(ProgressKey.FileTransfer)
 
+        # 汇总季集清单
+        season_episodes: Dict[Tuple, List[int]] = {}
+        # 汇总元数据
+        metas: Dict[Tuple, MetaBase] = {}
+        # 汇总媒体信息
+        medias: Dict[Tuple, MediaInfo] = {}
+        # 汇总整理信息
+        transfers: Dict[Tuple, TransferInfo] = {}
+
+        # 待整理文件列表
+        file_items = []
         # 汇总错误信息
         err_msgs: List[str] = []
         # 已处理数量
@@ -209,14 +220,6 @@ class TransferChain(ChainBase):
 
         # 处理所有待整理目录或文件，默认一个整理路径或文件只有一个媒体信息
         for trans_item in trans_items:
-            # 汇总季集清单
-            season_episodes: Dict[Tuple, List[int]] = {}
-            # 汇总元数据
-            metas: Dict[Tuple, MetaBase] = {}
-            # 汇总媒体信息
-            medias: Dict[Tuple, MediaInfo] = {}
-            # 汇总整理信息
-            transfers: Dict[Tuple, TransferInfo] = {}
 
             item_path = Path(trans_item.path)
             # 如果是目录且不是⼀蓝光原盘，获取所有文件并整理
@@ -228,7 +231,7 @@ class TransferChain(ChainBase):
                     continue
             else:
                 # 文件或蓝光目录
-                file_items = [trans_item]
+                file_items.append(trans_item)
 
             if formaterHandler:
                 # 有集自定义格式，过滤文件
@@ -236,13 +239,15 @@ class TransferChain(ChainBase):
 
             # 过滤后缀和大小
             file_items = [f for f in file_items
-                          if f.extension and (f".{f.extension.lower()}" in self.all_exts
+                          if f.extension and (f".{f.extension.lower()}" in self.all_exts + settings.RMT_AUDIO_TRACK_EXT
                                               and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
 
             if not file_items:
                 logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
                 return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
+            # 更新总文件数
+            total_num = len(file_items)
             logger.info(f"正在整理 {len(file_items)} 个文件...")
 
             # 整理所有文件
