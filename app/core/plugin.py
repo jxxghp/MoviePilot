@@ -334,10 +334,7 @@ class PluginManager(metaclass=Singleton):
     def install_plugin_missing_dependencies(self) -> List[str]:
         """
         安装插件中缺失或不兼容的依赖项
-
-        :return: (success, message)
         """
-        # return []
         # 第一步：获取需要安装的依赖项列表
         missing_dependencies = self.pluginhelper.find_missing_dependencies()
         if not missing_dependencies:
