@@ -161,13 +161,9 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         """
         获取默认服务配置的名称
 
-        :return: 返回第一个设置为默认的配置名称；如果没有默认配置，则返回第一个配置的名称；如果没有配置，返回 None
+        :return: 默认第一个配置的名称
         """
-        # 优先查找默认配置
-        for conf in self._configs.values():
-            if getattr(conf, "default", False):
-                return conf.name
-        # 如果没有默认配置，返回第一个配置的名称
+        # 默认使用第一个配置的名称
         first_conf = next(iter(self._configs.values()), None)
         return first_conf.name if first_conf else None
 
@@ -225,6 +221,33 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
     """
     下载器基类
     """
+
+    def __init__(self):
+        """
+        初始化下载器基类
+        """
+        super().__init__()
+        self._default_config_name: Optional[str] = None
+
+    def get_default_config_name(self) -> Optional[str]:
+        """
+        获取默认服务配置的名称
+
+        :return: 优先从所有下载器中查找配置了默认的下载器，如果没有配置，则获取第一个下载器名称
+        """
+        # 优先查找默认配置
+        if self._default_config_name:
+            return self._default_config_name
+
+        configs = ServiceConfigHelper.get_downloader_configs()
+        for conf in configs:
+            if conf.default:
+                self._default_config_name = conf.name
+                return self._default_config_name
+        # 如果没有默认配置，返回第一个配置的名称
+        first_conf = next(iter(configs), None)
+        self._default_config_name = first_conf.name if first_conf else None
+        return self._default_config_name
 
     def get_configs(self) -> Dict[str, DownloaderConf]:
         """
