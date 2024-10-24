@@ -122,37 +122,6 @@ function install_backend_and_download_resources() {
     return 0
 }
 
-function test_connectivity_pip() {
-    pip uninstall -y pip-hello-world > /dev/null 2>&1
-    case "$1" in
-    0)
-        if [[ -n "${PIP_PROXY}" ]]; then
-            if pip install -i ${PIP_PROXY} pip-hello-world > /dev/null 2>&1; then
-                PIP_OPTIONS="-i ${PIP_PROXY}"
-                PIP_LOG="镜像代理模式"
-                return 0
-            fi
-        fi
-        return 1
-        ;;
-    1)
-        if [[ -n "${PROXY_HOST}" ]]; then
-            if pip install --proxy=${PROXY_HOST} pip-hello-world > /dev/null 2>&1; then
-                PIP_OPTIONS="--proxy=${PROXY_HOST}"
-                PIP_LOG="全局代理模式"
-                return 0
-            fi
-        fi
-        return 1
-        ;;
-    2)
-        PIP_OPTIONS=""
-        PIP_LOG="不使用代理"
-        return 0
-        ;;
-    esac
-}
-
 function test_connectivity_github() {
     case "$1" in
     0)
@@ -252,16 +221,6 @@ function get_priority() {
 }
 
 if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
-    # 优先级：镜像站 > 全局 > 不代理
-    # pip
-    retries=0
-    while true; do
-        if test_connectivity_pip ${retries}; then
-            break
-        else
-            retries=$((retries + 1))
-        fi
-    done
     # Github
     retries=0
     while true; do
