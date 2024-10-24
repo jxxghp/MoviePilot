@@ -208,7 +208,7 @@ class TransferChain(ChainBase):
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
         # 处理所有待整理目录或文件，默认一个整理路径或文件只有一个媒体信息
-        for trans_item in trans_items:
+        for index, trans_item in enumerate(trans_items):
             # 汇总季集清单
             season_episodes: Dict[Tuple, List[int]] = {}
             # 汇总元数据
@@ -236,12 +236,16 @@ class TransferChain(ChainBase):
 
             # 过滤后缀和大小
             file_items = [f for f in file_items
-                          if f.extension and (f".{f.extension.lower()}" in self.all_exts
+                          if f.extension and (f".{f.extension.lower()}" in self.all_exts + settings.RMT_AUDIO_TRACK_EXT
                                               and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
-
-            if not file_items:
+            # 没有符合条件的文件且是最后一个
+            if not file_items and index == total_num -1:
                 logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
                 return False, f"{fileitem.name} 没有找到可整理的媒体文件"
+            # 没有符合条件的文件继续下一个
+            if not file_items:
+                skip_num += 1
+                continue
 
             logger.info(f"正在整理 {len(file_items)} 个文件...")
 
