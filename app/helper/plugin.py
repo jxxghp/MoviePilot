@@ -4,11 +4,10 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
 
-import pkg_resources
 from cachetools import TTLCache, cached
 from packaging.specifiers import SpecifierSet, InvalidSpecifier
 from packaging.version import Version, InvalidVersion
-from pkg_resources import Requirement
+from pkg_resources import Requirement, working_set
 
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
@@ -640,7 +639,7 @@ class PluginHelper(metaclass=Singleton):
         """
         installed_packages = {}
         try:
-            for dist in pkg_resources.working_set:
+            for dist in working_set:
                 pkg_name = self.__standardize_pkg_name(dist.project_name)
                 try:
                     installed_packages[pkg_name] = Version(dist.version)
