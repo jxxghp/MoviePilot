@@ -427,6 +427,10 @@ class Settings(BaseSettings, ConfigModel):
 
     @property
     def CACHE_CONF(self):
+        if isinstance(self.META_CACHE_EXPIRE, int) and self.META_CACHE_EXPIRE > 0:
+            META_CACHE_EXPIRE = self.META_CACHE_EXPIRE
+        else:
+            META_CACHE_EXPIRE = 0
         if self.BIG_MEMORY_MODE:
             return {
                 "tmdb": 1024,
@@ -434,7 +438,7 @@ class Settings(BaseSettings, ConfigModel):
                 "torrents": 100,
                 "douban": 512,
                 "fanart": 512,
-                "meta": (self.META_CACHE_EXPIRE or 168) * 3600
+                "meta": (META_CACHE_EXPIRE or 168) * 3600
             }
         return {
             "tmdb": 256,
@@ -442,7 +446,7 @@ class Settings(BaseSettings, ConfigModel):
             "torrents": 50,
             "douban": 256,
             "fanart": 128,
-            "meta": (self.META_CACHE_EXPIRE or 72) * 3600
+            "meta": (META_CACHE_EXPIRE or 72) * 3600
         }
 
     @property
