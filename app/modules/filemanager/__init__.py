@@ -578,6 +578,8 @@ class FileManagerModule(_ModuleBase):
             # 识别文件名
             metainfo = MetaInfoPath(org_path)
             for sub_item in file_list:
+                if sub_item.type == "dir" or not sub_item.extension:
+                    continue
                 if f".{sub_item.extension.lower()}" not in settings.RMT_SUBEXT:
                     continue
                 # 识别字幕文件名
@@ -665,7 +667,9 @@ class FileManagerModule(_ModuleBase):
             return False, f"{org_path} 上级目录获取失败"
         file_list: List[FileItem] = storage_oper.list(parent_item)
         # 匹配音轨文件
-        pending_file_list: List[FileItem] = [file for file in file_list if Path(file.name).stem == org_path.name
+        pending_file_list: List[FileItem] = [file for file in file_list
+                                             if Path(file.name).stem == org_path.name
+                                             and file.type == "file" and file.extension
                                              and f".{file.extension.lower()}" in settings.RMT_AUDIOEXT]
         if len(pending_file_list) == 0:
             return True, f"{parent_item.path} 目录下没有找到匹配的音轨文件"
