@@ -41,10 +41,13 @@ async def init_plugins_async():
 
 
 async def execute_task(loop, task_func, task_name):
+    """
+    执行后台任务
+    """
     try:
         result = await loop.run_in_executor(None, task_func)
         if isinstance(result, list) and result:
-            logger.info(f"{task_name} 已完成，共处理 {len(result)} 个项目")
+            logger.debug(f"{task_name} 已完成，共处理 {len(result)} 个项目")
         else:
             logger.debug(f"没有新的 {task_name} 需要处理")
         return result

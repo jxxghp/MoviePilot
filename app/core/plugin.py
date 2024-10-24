@@ -339,6 +339,7 @@ class PluginManager(metaclass=Singleton):
         missing_dependencies = self.pluginhelper.find_missing_dependencies()
         if not missing_dependencies:
             return missing_dependencies
+        logger.debug(f"检测到缺失的依赖项: {missing_dependencies}")
         logger.info(f"开始安装缺失的依赖项，共 {len(missing_dependencies)} 个...")
         # 第二步：安装依赖项并返回结果
         total_start_time = time.time()

@@ -403,7 +403,7 @@ class PluginHelper(metaclass=Singleton):
         :return: 备份目录路径
         """
         plugin_dir = PLUGIN_DIR / pid
-        backup_dir = Path(settings.TEMP_PATH) / "plugins_backup" / pid
+        backup_dir = Path(settings.TEMP_PATH) / "plugin_backup" / pid
 
         if plugin_dir.exists():
             # 备份时清理已有的备份目录，防止残留文件影响
@@ -576,12 +576,12 @@ class PluginHelper(metaclass=Singleton):
         """
         try:
             # 收集所有插件的依赖项
-            missing_dependencies = self.__find_plugin_dependencies()  # 返回格式为 {package_name: version_specifier}
+            plugin_dependencies = self.__find_plugin_dependencies()  # 返回格式为 {package_name: version_specifier}
             # 获取已安装的包及其版本
             installed_packages = self.__get_installed_packages()  # 返回格式为 {package_name: Version}
             # 需要安装或更新的依赖项列表
             dependencies_to_install = []
-            for pkg_name, version_specifier in missing_dependencies.items():
+            for pkg_name, version_specifier in plugin_dependencies.items():
                 spec_set = SpecifierSet(version_specifier)
                 installed_version = installed_packages.get(pkg_name)
                 if installed_version is None:
@@ -615,7 +615,7 @@ class PluginHelper(metaclass=Singleton):
         try:
             logger.debug(f"需要安装或更新的依赖项：{dependencies}")
             # 创建临时的 requirements.txt 文件用于批量安装
-            requirements_temp_file = Path(settings.TEMP_PATH) / "plugins_dependencies" / "requirements.txt"
+            requirements_temp_file = Path(settings.TEMP_PATH) / "plugin_dependencies" / "requirements.txt"
             requirements_temp_file.parent.mkdir(parents=True, exist_ok=True)
             with open(requirements_temp_file, "w", encoding="utf-8") as f:
                 for dep in dependencies:
@@ -667,7 +667,6 @@ class PluginHelper(metaclass=Singleton):
                         # 解析当前插件的 requirements.txt，获取依赖项
                         plugin_deps = self.__parse_requirements(requirements_file)
                         for pkg_name, version_specifiers in plugin_deps.items():
-                            logger.debug(f"当前处理的包：{pkg_name}, 版本约束：{version_specifiers}")
                             if pkg_name in dependencies:
                                 # 更新已存在的包的版本约束集合
                                 dependencies[pkg_name].update(version_specifiers)
@@ -698,7 +697,6 @@ class PluginHelper(metaclass=Singleton):
                             req = Requirement(line)
                             pkg_name = self.__standardize_pkg_name(req.name)
                             version_specifier = str(req.specifier)
-                            logger.debug(f"解析到依赖项：包名={pkg_name}, 版本约束={version_specifier}")
                             if pkg_name in dependencies:
                                 dependencies[pkg_name].append(version_specifier)
                             else:
@@ -722,7 +720,6 @@ class PluginHelper(metaclass=Singleton):
         try:
             merged_dependencies = {}
             for pkg_name, version_specifiers in dependencies.items():
-                logger.debug(f"合并包：{pkg_name} 的版本约束：{version_specifiers}")
                 # 合并版本约束
                 spec_set = SpecifierSet()
                 for specifier in version_specifiers:
