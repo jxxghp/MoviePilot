@@ -227,8 +227,8 @@ class TransferChain(ChainBase):
                     and not (trans_item.storage == "local" and SystemUtils.is_bluray_dir(item_path))):
                 # 遍历获取下载目录所有文件（递归）
                 file_items = self.storagechain.list_files(trans_item, recursion=True)
-                if not file_items:
-                    continue
+                if file_items:
+                    file_items.extend(trans_items)
             else:
                 # 文件或蓝光目录
                 file_items.append(trans_item)
@@ -248,7 +248,7 @@ class TransferChain(ChainBase):
 
         # 更新总文件数
         total_num = len(file_items)
-        logger.info(f"正在整理 {len(file_items)} 个文件...")
+        logger.info(f"正在整理 {total_num} 个文件...")
 
         # 整理所有文件
         for file_item in file_items:
