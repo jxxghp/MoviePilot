@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict
 
 from pydantic import BaseModel, Field, root_validator
 
@@ -66,7 +66,7 @@ class AuthCredentials(ChainEventData):
 
 class AuthInterceptCredentials(ChainEventData):
     """
-    AuthPassedIntercept 事件的数据模型
+    AuthIntercept 事件的数据模型
 
     Attributes:
         # 输入参数
@@ -90,3 +90,27 @@ class AuthInterceptCredentials(ChainEventData):
     # 输出参数
     source: str = Field("未知拦截源", description="拦截源")
     cancel: bool = Field(False, description="是否取消认证")
+
+
+class CommandRegisterEventData(ChainEventData):
+    """
+    CommandRegister 事件的数据模型
+
+    Attributes:
+        # 输入参数
+        commands (dict): 菜单命令
+        origin (str): 事件源，可以是 Chain 或具体的模块名称
+        service (str): 服务名称
+
+        # 输出参数
+        source (str): 拦截源，默认值为 "未知拦截源"
+        cancel (bool): 是否取消认证，默认值为 False
+    """
+    # 输入参数
+    commands: Dict[str, dict] = Field(..., description="菜单命令")
+    origin: str = Field(..., description="事件源")
+    service: Optional[str] = Field(..., description="服务名称")
+
+    # 输出参数
+    cancel: bool = Field(False, description="是否取消注册")
+    source: str = Field("未知拦截源", description="拦截源")

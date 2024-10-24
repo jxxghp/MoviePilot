@@ -12,9 +12,11 @@ from app.core.config import settings
 from app.core.event import Event as ManagerEvent, eventmanager, Event
 from app.core.plugin import PluginManager
 from app.helper.message import MessageHelper
+from app.helper.thread import ThreadHelper
 from app.log import logger
 from app.scheduler import Scheduler
 from app.schemas import Notification
+from app.schemas.event import CommandRegisterEventData
 from app.schemas.types import EventType, MessageChannel, ChainEventType
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
@@ -154,32 +156,48 @@ class CommandChain(ChainBase, metaclass=Singleton):
             logger.debug("Development mode active. Skipping command initialization.")
             return
 
-        with self._rlock:
-            logger.debug("Acquired lock for initializing commands.")
-            self._plugin_commands = self.__build_plugin_commands()
-            self._commands = {
-                **self._preset_commands,
-                **self._plugin_commands,
-                **self._other_commands
-            }
+        # 使用线程池提交后台任务，避免引起阻塞
+        ThreadHelper().submit(self.__init_commands_background, pid)
 
-            # 触发事件允许可以拦截和调整命令
-            event, initial_commands = self.__trigger_register_commands_event()
+    def __init_commands_background(self, pid: Optional[str] = None) -> None:
+        """
+        后台初始化菜单命令
+        """
+        try:
+            with self._rlock:
+                logger.debug("Acquired lock for initializing commands in background.")
+                self._plugin_commands = self.__build_plugin_commands(pid)
+                self._commands = {
+                    **self._preset_commands,
+                    **self._plugin_commands,
+                    **self._other_commands
+                }
 
-            # 如果事件返回有效的 event_data，使用事件中调整后的命令
-            if event and event.event_data:
-                initial_commands = event.event_data.get("commands") or {}
-                logger.debug(f"Registering command count from event: {len(initial_commands)}")
-            else:
-                logger.debug(f"Registering initial command count: {len(initial_commands)}")
+                # 触发事件允许可以拦截和调整命令
+                event, initial_commands = self.__trigger_register_commands_event()
+
+                # 如果事件返回有效的 event_data，使用事件中调整后的命令
+                if event and event.event_data:
+                    event_data: CommandRegisterEventData = event.event_data
+                    initial_commands = event_data.commands or {}
+                    logger.debug(f"Registering command count from event: {len(initial_commands)}")
+                else:
+                    logger.debug(f"Registering initial command count: {len(initial_commands)}")
+
+                # initial_commands 必须是 self._commands 的子集
+                filtered_initial_commands = {
+                    cmd: details for cmd, details in initial_commands.items() if cmd in self._commands
+                }
 
                 # 对比调整后的命令与当前命令
-                if initial_commands == self._registered_commands:
+                if filtered_initial_commands == self._registered_commands:
                     logger.debug("Command set unchanged, skipping broadcast registration.")
                 else:
                     logger.debug("Command set has changed, Updating and broadcasting new commands.")
-                    self._registered_commands = initial_commands
-                    super().register_commands(commands=initial_commands)
+                    self._registered_commands = filtered_initial_commands
+                    super().register_commands(commands=filtered_initial_commands)
+        except Exception as e:
+            logger.error(f"Error occurred during command initialization in background: {e}", exc_info=True)
 
     def __trigger_register_commands_event(self) -> (Optional[Event], dict):
         """
@@ -207,15 +225,14 @@ class CommandChain(ChainBase, metaclass=Singleton):
         add_commands(self._preset_commands, "preset")
         add_commands(self._plugin_commands, "plugin")
         add_commands(self._other_commands, "other")
-        event_data = {
-            "commands": commands
-        }
+        event_data = CommandRegisterEventData(commands=commands, origin="CommandChain", service=None)
         return eventmanager.send_event(ChainEventType.CommandRegister, event_data), commands
 
-    def __build_plugin_commands(self) -> Dict[str, dict]:
+    def __build_plugin_commands(self, pid: Optional[str] = None) -> Dict[str, dict]:
         """
         构建插件命令
         """
+        # 为了保证命令顺序的一致性，目前这里没有直接使用 pid 获取单一插件命令，后续如果存在性能问题，可以考虑优化这里的逻辑
         plugin_commands = {}
         for command in self.pluginmanager.get_plugin_commands():
             cmd = command.get("cmd")
