@@ -108,8 +108,6 @@ function install_backend_and_download_resources() {
         cp -a /plugins/* /app/app/plugins/
         INFO "插件恢复成功"
     fi
-    # 提前安装插件依赖
-    find /app/app/plugins -name requirements.txt -exec pip install --root-user-action=ignore ${PIP_OPTIONS} -r {} \; > /dev/null
     # 清理临时目录
     rm -rf /tmp/*
     INFO "插件更新成功"
