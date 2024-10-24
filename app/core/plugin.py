@@ -331,6 +331,25 @@ class PluginManager(metaclass=Singleton):
         )
         return sync_plugins
 
+    def install_plugin_missing_dependencies(self) -> List[str]:
+        """
+        安装插件中缺失或不兼容的依赖项
+        """
+        # 第一步：获取需要安装的依赖项列表
+        missing_dependencies = self.pluginhelper.find_missing_dependencies()
+        if not missing_dependencies:
+            return missing_dependencies
+        logger.info(f"开始安装缺失的依赖项，共 {len(missing_dependencies)} 个...")
+        # 第二步：安装依赖项并返回结果
+        total_start_time = time.time()
+        success, message = self.pluginhelper.install_dependencies(missing_dependencies)
+        total_elapsed_time = time.time() - total_start_time
+        if success:
+            logger.info(f"已完成 {len(missing_dependencies)} 个依赖项安装，总耗时：{total_elapsed_time:.2f} 秒")
+        else:
+            logger.warning(f"存在缺失依赖项安装失败，请尝试手动安装，总耗时：{total_elapsed_time:.2f} 秒")
+        return missing_dependencies
+
     def get_plugin_config(self, pid: str) -> dict:
         """
         获取插件配置
