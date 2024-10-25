@@ -206,14 +206,15 @@ class Telegram:
         """
         向Telegram发送报文
         """
-
         if image:
             res = RequestUtils(proxies=settings.PROXY).get_res(image)
             if res is None:
                 raise Exception("获取图片失败")
             if res.content:
                 # 使用随机标识构建图片文件的完整路径，并写入图片内容到文件
-                image_file = Path(settings.TEMP_PATH) / str(uuid.uuid4())
+                image_file = Path(settings.TEMP_PATH) / "telegram" / str(uuid.uuid4())
+                if not image_file.parent.exists():
+                    image_file.parent.mkdir(parents=True, exist_ok=True)
                 image_file.write_bytes(res.content)
                 photo = InputFile(image_file)
                 # 发送图片到Telegram
@@ -223,8 +224,7 @@ class Telegram:
                                            parse_mode="Markdown")
                 if ret is None:
                     raise Exception("发送图片消息失败")
-                if ret:
-                    return True
+                return True
         # 按4096分段循环发送消息
         ret = None
         if len(caption) > 4095:
