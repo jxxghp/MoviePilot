@@ -117,14 +117,18 @@ class StorageChain(ChainBase):
             dir_item = self.get_parent_item(fileitem)
         if dir_item:
             files = self.list_files(dir_item, recursion=True)
+
+            # 是否存在其他媒体文件
+            media_file_exist = False
             if files:
-                # 检查是否还有其他媒体文件
-                media_file_exist = False
                 for file in files:
                     if file.extension and f".{file.extension.lower()}" in settings.RMT_MEDIAEXT:
                         media_file_exist = True
                         break
-                # 删除空目录
-                if not media_file_exist:
-                    self.delete_file(dir_item)
-        return False
+            # 不存在其他媒体文件，删除空目录
+            if not media_file_exist:
+                # 返回空目录删除状态
+                return self.delete_file(dir_item)
+
+        # 存在媒体文件，返回文件删除状态
+        return state
