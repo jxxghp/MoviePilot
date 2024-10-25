@@ -359,7 +359,7 @@ class FilterModule(_ModuleBase):
         seeders = self.rule_set[rule_name].get("seeders")
         # FREE规则
         downloadvolumefactor = self.rule_set[rule_name].get("downloadvolumefactor")
-        if not any(re.search(r"%s" % include, content, re.IGNORECASE) for include in includes):
+        if includes and not any(re.search(r"%s" % include, content, re.IGNORECASE) for include in includes):
             # 未发现任何包含项
             logger.debug(f"种子 {torrent.site_name} - {torrent.title} 不包含任何项 {includes}")
             return False
