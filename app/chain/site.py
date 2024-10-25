@@ -22,7 +22,7 @@ from app.helper.rss import RssHelper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import MessageChannel, Notification, SiteUserData
-from app.schemas.types import EventType
+from app.schemas.types import EventType, NotificationType
 from app.utils.http import RequestUtils
 from app.utils.site import SiteUtils
 from app.utils.string import StringUtils
@@ -65,9 +65,27 @@ class SiteChain(ChainBase):
             self.siteoper.update_userdata(domain=StringUtils.get_url_domain(site.get("domain")),
                                           name=site.get("name"),
                                           payload=userdata.dict())
+            # 发送事件
             EventManager().send_event(EventType.SiteRefreshed, {
                 "site_id": site.get("id")
             })
+            # 发送站点消息
+            if userdata.message_unread:
+                if userdata.message_unread_contents and len(userdata.message_unread_contents) > 0:
+                    for head, date, content in userdata.message_unread_contents:
+                        msg_title = f"【站点 {site.get('name')} 消息】"
+                        msg_text = f"时间：{date}\n标题：{head}\n内容：\n{content}"
+                        self.post_message(Notification(
+                            mtype=NotificationType.SiteMessage,
+                            title=msg_title, text=msg_text, link=site.get("url")
+                        ))
+                else:
+                    self.post_message(Notification(
+                        mtype=NotificationType.SiteMessage,
+                        title=f"站点 {site.get('name')} 收到 "
+                              f"{userdata.message_unread} 条新消息，请登陆查看",
+                        link=site.get("url")
+                    ))
         return userdata
 
     def refresh_userdatas(self) -> None:
