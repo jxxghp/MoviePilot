@@ -66,7 +66,7 @@ class WeChat:
         """
         获取状态
         """
-        return True if self.__get_access_token else False
+        return True if self.__get_access_token() else False
 
     @retry(Exception, logger=logger)
     def __get_access_token(self, force=False):
@@ -172,23 +172,17 @@ class WeChat:
         if not title:
             logger.error("消息标题不能为空")
             return False
-
-        message_url = self._send_msg_url.format(access_token=self.__get_access_token())
         if text:
             formatted_text = text.replace("\n\n", "\n")
             content = f"{title}\n{formatted_text}"
         else:
             content = title
-
         if link:
             content = f"{content}\n点击查看：{link}"
-
         if not userid:
             userid = "@all"
-
         # 分块处理逻辑
         content_chunks = self.__split_content(content)
-
         # 逐块发送消息
         for chunk in content_chunks:
             req_json = {
@@ -202,11 +196,13 @@ class WeChat:
                 "enable_id_trans": 0,
                 "enable_duplicate_check": 0
             }
-            result = self.__post_request(message_url, req_json)
-            if not result:
-                logger.error(f"发送消息块失败: {chunk}")
+            try:
+                # 如果是超长消息，有一个发送失败就全部失败
+                if not self.__post_request(self._send_msg_url, req_json):
+                    return False
+            except Exception as e:
+                logger.error(f"发送消息块失败：{e}")
                 return False
-
         return True
 
     def __send_image_message(self, title: str, text: str, image_url: str,
@@ -220,7 +216,6 @@ class WeChat:
         :param link: 跳转链接
         :return: 发送状态，错误信息
         """
-        message_url = self._send_msg_url.format(access_token=self.__get_access_token())
         if text:
             text = text.replace("\n\n", "\n")
         if not userid:
@@ -240,7 +235,11 @@ class WeChat:
                 ]
             }
         }
-        return self.__post_request(message_url, req_json)
+        try:
+            return self.__post_request(self._send_msg_url, req_json)
+        except Exception as e:
+            logger.error(f"发送图文消息失败：{e}")
+            return False
 
     def send_msg(self, title: str, text: str = "", image: str = "",
                  userid: str = None, link: str = None) -> Optional[bool]:
@@ -272,7 +271,6 @@ class WeChat:
             logger.error("获取微信access_token失败，请检查参数配置")
             return None
 
-        message_url = self._send_msg_url.format(access_token=self.__get_access_token())
         if not userid:
             userid = "@all"
         articles = []
@@ -298,7 +296,11 @@ class WeChat:
                 "articles": articles
             }
         }
-        return self.__post_request(message_url, req_json)
+        try:
+            return self.__post_request(self._send_msg_url, req_json)
+        except Exception as e:
+            logger.error(f"发送消息失败：{e}")
+            return False
 
     def send_torrents_msg(self, torrents: List[Context],
                           userid: str = "", title: str = "", link: str = None) -> Optional[bool]:
@@ -314,7 +316,6 @@ class WeChat:
             self.__send_message(title=title, userid=userid, link=link)
 
         # 发送列表
-        message_url = self._send_msg_url.format(access_token=self.__get_access_token())
         if not userid:
             userid = "@all"
         articles = []
@@ -348,35 +349,41 @@ class WeChat:
                 "articles": articles
             }
         }
-        return self.__post_request(message_url, req_json)
+        try:
+            return self.__post_request(self._send_msg_url, req_json)
+        except Exception as e:
+            logger.error(f"发送消息失败：{e}")
+            return False
 
-    def __post_request(self, message_url: str, req_json: dict) -> bool:
+    @retry(Exception, logger=logger)
+    def __post_request(self, url: str, req_json: dict) -> bool:
         """
         向微信发送请求
         """
-        try:
-            res = RequestUtils(content_type="application/json").post(
-                message_url,
-                data=json.dumps(req_json, ensure_ascii=False).encode("utf-8")
-            )
-            if res and res.status_code == 200:
-                ret_json = res.json()
-                if ret_json.get("errcode") == 0:
-                    return True
-                else:
-                    if ret_json.get("errcode") == 42001:
-                        self.__get_access_token(force=True)
-                    logger.error(f"发送请求失败，错误信息：{ret_json.get('errmsg')}")
-                    return False
-            elif res is not None:
-                logger.error(f"发送请求失败，错误码：{res.status_code}，错误原因：{res.reason}")
-                return False
+        url = url.format(access_token=self.__get_access_token())
+        res = RequestUtils(content_type="application/json").post(
+            url=url,
+            data=json.dumps(req_json, ensure_ascii=False).encode("utf-8")
+        )
+        if res is None:
+            error_msg = "发送请求失败，未获取到返回信息"
+            raise Exception(error_msg)
+        if res.status_code != 200:
+            error_msg = f"发送请求失败，错误码：{res.status_code}，错误原因：{res.reason}"
+            raise Exception(error_msg)
+
+        ret_json = res.json()
+        if ret_json.get("errcode") == 0:
+            return True
+        else:
+            if ret_json.get("errcode") == 42001:
+                self.__get_access_token(force=True)
+                error_msg = (f"access_token 已过期，尝试重新获取 access_token,"
+                             f"errcode: {ret_json.get('errcode')}, errmsg: {ret_json.get('errmsg')}")
+                raise Exception(error_msg)
             else:
-                logger.error(f"发送请求失败，未获取到返回信息")
+                logger.error(f"发送请求失败，错误信息：{ret_json.get('errmsg')}")
                 return False
-        except Exception as err:
-            logger.error(f"发送请求失败，错误信息：{str(err)}")
-            return False
 
     def create_menus(self, commands: Dict[str, dict]):
         """
@@ -418,7 +425,7 @@ class WeChat:
         }
         """
         # 请求URL
-        req_url = self._create_menu_url.format(access_token=self.__get_access_token(), agentid=self._appid)
+        req_url = self._create_menu_url.format(access_token="{access_token}", agentid=self._appid)
 
         # 对commands按category分组
         category_dict = {}
@@ -447,9 +454,13 @@ class WeChat:
 
         if buttons:
             # 发送请求
-            self.__post_request(req_url, {
-                "button": buttons[:3]
-            })
+            try:
+                self.__post_request(req_url, {
+                    "button": buttons[:3]
+                })
+            except Exception as e:
+                logger.error(f"创建菜单失败：{e}")
+                return False
 
     def delete_menus(self):
         """
