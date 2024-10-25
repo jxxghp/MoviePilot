@@ -27,6 +27,10 @@ nginx
 # 启动docker http proxy nginx
 if [ -S "/var/run/docker.sock" ]; then
     nginx -c /etc/nginx/docker_http_proxy.conf
+    # 上面nginx是通过root启动的，会将目录权限改成root，所以需要重新再设置一遍权限
+    chown -R moviepilot:moviepilot \
+        /var/lib/nginx \
+        /var/log/nginx
 fi
 # 设置后端服务权限掩码
 umask "${UMASK}"
