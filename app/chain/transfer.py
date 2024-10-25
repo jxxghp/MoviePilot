@@ -220,7 +220,6 @@ class TransferChain(ChainBase):
 
         # 处理所有待整理目录或文件，默认一个整理路径或文件只有一个媒体信息
         for trans_item in trans_items:
-
             item_path = Path(trans_item.path)
             # 如果是目录且不是⼀蓝光原盘，获取所有文件并整理
             if (trans_item.type == "dir"
@@ -239,8 +238,8 @@ class TransferChain(ChainBase):
 
         # 过滤后缀和大小
         file_items = [f for f in file_items
-                        if f.extension and (f".{f.extension.lower()}" in self.all_exts + settings.RMT_AUDIO_TRACK_EXT
-                                            and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
+                      if f.extension and (f".{f.extension.lower()}" in self.all_exts
+                                          and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
 
         if not file_items:
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
@@ -295,8 +294,8 @@ class TransferChain(ChainBase):
 
             # 更新进度
             self.progress.update(value=processed_num / total_num * 100,
-                                    text=f"正在整理 （{processed_num + 1}/{total_num}）{file_item.name} ...",
-                                    key=ProgressKey.FileTransfer)
+                                 text=f"正在整理 （{processed_num + 1}/{total_num}）{file_item.name} ...",
+                                 key=ProgressKey.FileTransfer)
 
             if not meta:
                 # 文件元数据
@@ -355,7 +354,7 @@ class TransferChain(ChainBase):
             # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
             if not settings.SCRAP_FOLLOW_TMDB:
                 transfer_history = self.transferhis.get_by_type_tmdbid(tmdbid=file_mediainfo.tmdb_id,
-                                                                        mtype=file_mediainfo.type.value)
+                                                                       mtype=file_mediainfo.type.value)
                 if transfer_history:
                     file_mediainfo.title = transfer_history.title
 
@@ -381,13 +380,13 @@ class TransferChain(ChainBase):
 
             # 执行整理
             transferinfo: TransferInfo = self.transfer(fileitem=file_item,
-                                                        meta=file_meta,
-                                                        mediainfo=file_mediainfo,
-                                                        transfer_type=transfer_type,
-                                                        target_storage=target_storage,
-                                                        target_path=target_path,
-                                                        episodes_info=episodes_info,
-                                                        scrape=scrape)
+                                                       meta=file_meta,
+                                                       mediainfo=file_mediainfo,
+                                                       transfer_type=transfer_type,
+                                                       target_storage=target_storage,
+                                                       target_path=target_path,
+                                                       episodes_info=episodes_info,
+                                                       scrape=scrape)
             if not transferinfo:
                 logger.error("文件整理模块运行失败")
                 return False, "文件整理模块运行失败"
@@ -449,12 +448,12 @@ class TransferChain(ChainBase):
             # 更新进度
             processed_num += 1
             self.progress.update(value=processed_num / total_num * 100,
-                                    text=f"{file_path.name} 整理完成",
-                                    key=ProgressKey.FileTransfer)
+                                 text=f"{file_path.name} 整理完成",
+                                 key=ProgressKey.FileTransfer)
 
         # 目录或文件整理完成
-        self.progress.update(text=f"{trans_item.path} 整理完成，正在执行后续处理 ...",
-                                key=ProgressKey.FileTransfer)
+        self.progress.update(text=f"{fileitem.path} 整理完成，正在执行后续处理 ...",
+                             key=ProgressKey.FileTransfer)
 
         # 执行后续处理
         for mkey, media in medias.items():
@@ -466,9 +465,9 @@ class TransferChain(ChainBase):
                 if media.type == MediaType.TV:
                     se_str = f"{transfer_meta.season} {StringUtils.format_ep(season_episodes[mkey])}"
                 self.send_transfer_message(meta=transfer_meta,
-                                            mediainfo=media,
-                                            transferinfo=transfer_info,
-                                            season_episode=se_str)
+                                           mediainfo=media,
+                                           transferinfo=transfer_info,
+                                           season_episode=se_str)
             # 刮削事件
             if scrape or transfer_info.need_scrape:
                 self.eventmanager.send_event(EventType.MetadataScrape, {
