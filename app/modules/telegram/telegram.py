@@ -256,6 +256,15 @@ class Telegram:
                 ]
             )
 
+    def delete_commands(self):
+        """
+        清理菜单命令
+        """
+        if not self._bot:
+            return
+        # 清理菜单命令
+        self._bot.delete_my_commands()
+
     def stop(self):
         """
         停止Telegram消息接收服务
