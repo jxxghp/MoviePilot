@@ -143,7 +143,8 @@ class Jellyfin:
             return []
         libraries = []
         for library in self.__get_jellyfin_librarys(username) or []:
-            if hidden and self._sync_libraries and library.get("Id") not in self._sync_libraries:
+            if hidden and self._sync_libraries and "all" not in self._sync_libraries \
+                    and library.get("Id") not in self._sync_libraries:
                 continue
             match library.get("CollectionType"):
                 case "movies":

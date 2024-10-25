@@ -134,7 +134,8 @@ class Plex:
             return []
         libraries = []
         for library in self._libraries:
-            if hidden and self._sync_libraries and str(library.key) not in self._sync_libraries:
+            if hidden and self._sync_libraries and "all" not in self._sync_libraries \
+                    and str(library.key) not in self._sync_libraries:
                 continue
             match library.type:
                 case "movie":
