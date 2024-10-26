@@ -98,7 +98,7 @@ def manual_transfer(transer_item: ManualTransferItem,
                 dest_fileitem = FileItem(**history.dest_fileitem)
                 state = StorageChain().delete_media_file(dest_fileitem, mtype=MediaType(history.type))
                 if not state:
-                    return schemas.Response(success=False, msg=f"{dest_fileitem.path} 删除失败")
+                    return schemas.Response(success=False, message=f"{dest_fileitem.path} 删除失败")
 
         # 从历史数据获取信息
         if transer_item.from_history:
