@@ -361,6 +361,10 @@ class SubscribeChain(ChainBase):
                 torrent_meta = context.meta_info
                 torrent_info = context.torrent_info
                 torrent_mediainfo = context.media_info
+                # 过滤订阅 `包含` 和 `排除` 规则
+                if not self.torrenthelper.filter_torrent(torrent_info=torrent_info,
+                                                         filter_params=self.get_params(subscribe)):
+                    continue
                 # 洗版
                 if subscribe.best_version:
                     # 洗版时，非整季不要
