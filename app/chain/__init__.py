@@ -499,7 +499,7 @@ class ChainBase(metaclass=ABCMeta):
                     to_targets = self.useroper.get_settings(settings.SUPERUSER)
             message.targets = to_targets
         # 发送事件
-        self.eventmanager.send_event(etype=EventType.NoticeMessage, data=message.dict())
+        self.eventmanager.send_event(etype=EventType.NoticeMessage, data={**message.dict(), "type": message.mtype})
         # 保存消息
         self.messagehelper.put(message, role="user", title=message.title)
         self.messageoper.add(**message.dict())
