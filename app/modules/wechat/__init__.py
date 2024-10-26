@@ -1,14 +1,18 @@
+import copy
 import xml.dom.minidom
 from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.core.context import Context, MediaInfo
+from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.modules.wechat.wechat import WeChat
 from app.schemas import MessageChannel, CommingMessage, Notification
-from app.schemas.types import ModuleType
+from app.schemas.event import CommandRegisterEventData
+from app.schemas.types import ModuleType, ChainEventType
 from app.utils.dom import DomUtils
+from app.utils.structures import DictUtils
 
 
 class WechatModule(_ModuleBase, _MessageBase[WeChat]):
@@ -222,7 +226,42 @@ class WechatModule(_ModuleBase, _MessageBase[WeChat]):
             # 如果没有配置消息解密相关参数，则也没有必要进行菜单初始化
             if not client_config.config.get("WECHAT_ENCODING_AESKEY") or not client_config.config.get("WECHAT_TOKEN"):
                 logger.debug(f"{client_config.name} 缺少消息解密参数，跳过后续菜单初始化")
-            else:
-                client = self.get_instance(client_config.name)
-                if client:
-                    client.create_menus(commands)
+                continue
+
+            client = self.get_instance(client_config.name)
+            if not client:
+                continue
+
+            # 触发事件，允许调整命令数据，这里需要进行深复制，避免实例共享
+            scoped_commands = copy.deepcopy(commands)
+            event = eventmanager.send_event(
+                ChainEventType.CommandRegister,
+                CommandRegisterEventData(commands=scoped_commands, origin="WeChat", service=client_config.name)
+            )
+
+            # 如果事件返回有效的 event_data，使用事件中调整后的命令
+            if event and event.event_data:
+                event_data: CommandRegisterEventData = event.event_data
+                # 如果事件被取消，跳过命令注册，并清理菜单
+                if event_data.cancel:
+                    client.delete_menus()
+                    logger.debug(
+                        f"Command registration for {client_config.name} canceled by event: {event_data.source}"
+                    )
+                    continue
+                scoped_commands = event_data.commands or {}
+                if not scoped_commands:
+                    logger.debug("Filtered commands are empty, skipping registration.")
+                    client.delete_menus()
+
+            # scoped_commands 必须是 commands 的子集
+            filtered_scoped_commands = DictUtils.filter_keys_to_subset(scoped_commands, commands)
+            # 如果 filtered_scoped_commands 为空，则跳过注册
+            if not filtered_scoped_commands:
+                logger.debug("Filtered commands are empty, skipping registration.")
+                client.delete_menus()
+                continue
+            # 对比调整后的命令与当前命令
+            if filtered_scoped_commands != commands:
+                logger.debug(f"Command set has changed, Updating new commands: {filtered_scoped_commands}")
+            client.create_menus(filtered_scoped_commands)

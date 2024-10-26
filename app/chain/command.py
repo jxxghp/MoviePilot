@@ -20,6 +20,7 @@ from app.schemas.event import CommandRegisterEventData
 from app.schemas.types import EventType, MessageChannel, ChainEventType
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
+from app.utils.structures import DictUtils
 
 
 class CommandChain(ChainBase, metaclass=Singleton):
@@ -173,29 +174,40 @@ class CommandChain(ChainBase, metaclass=Singleton):
                     **self._other_commands
                 }
 
+                # 强制触发注册
+                force_register = False
                 # 触发事件允许可以拦截和调整命令
                 event, initial_commands = self.__trigger_register_commands_event()
 
-                # 如果事件返回有效的 event_data，使用事件中调整后的命令
                 if event and event.event_data:
+                    # 如果事件返回有效的 event_data，使用事件中调整后的命令
                     event_data: CommandRegisterEventData = event.event_data
+                    # 如果事件被取消，跳过命令注册
+                    if event_data.cancel:
+                        logger.debug(f"Command initialization canceled by event: {event_data.source}")
+                        return
+                    # 如果拦截源与插件标识一致时，这里认为需要强制触发注册
+                    if pid is not None and pid == event_data.source:
+                        force_register = True
                     initial_commands = event_data.commands or {}
                     logger.debug(f"Registering command count from event: {len(initial_commands)}")
                 else:
                     logger.debug(f"Registering initial command count: {len(initial_commands)}")
 
                 # initial_commands 必须是 self._commands 的子集
-                filtered_initial_commands = {
-                    cmd: details for cmd, details in initial_commands.items() if cmd in self._commands
-                }
+                filtered_initial_commands = DictUtils.filter_keys_to_subset(initial_commands, self._commands)
+                # 如果 filtered_initial_commands 为空，则跳过注册
+                if not filtered_initial_commands and not force_register:
+                    logger.debug("Filtered commands are empty, skipping registration.")
+                    return
 
                 # 对比调整后的命令与当前命令
-                if filtered_initial_commands == self._registered_commands:
-                    logger.debug("Command set unchanged, skipping broadcast registration.")
-                else:
-                    logger.debug("Command set has changed, Updating and broadcasting new commands.")
+                if filtered_initial_commands != self._registered_commands or force_register:
+                    logger.debug("Command set has changed or force registration is enabled.")
                     self._registered_commands = filtered_initial_commands
                     super().register_commands(commands=filtered_initial_commands)
+                else:
+                    logger.debug("Command set unchanged, skipping broadcast registration.")
         except Exception as e:
             logger.error(f"Error occurred during command initialization in background: {e}", exc_info=True)
 
@@ -220,13 +232,16 @@ class CommandChain(ChainBase, metaclass=Singleton):
                     command_data["pid"] = plugin_id
                 commands[cmd] = command_data
 
-        # 触发事件允许可以拦截和调整命令
-        commands = {}
+        # 初始化命令字典
+        commands: Dict[str, dict] = {}
         add_commands(self._preset_commands, "preset")
         add_commands(self._plugin_commands, "plugin")
         add_commands(self._other_commands, "other")
+
+        # 触发事件允许可以拦截和调整命令
         event_data = CommandRegisterEventData(commands=commands, origin="CommandChain", service=None)
-        return eventmanager.send_event(ChainEventType.CommandRegister, event_data), commands
+        event = eventmanager.send_event(ChainEventType.CommandRegister, event_data)
+        return event, commands
 
     def __build_plugin_commands(self, pid: Optional[str] = None) -> Dict[str, dict]:
         """

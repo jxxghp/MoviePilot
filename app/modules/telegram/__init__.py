@@ -1,12 +1,16 @@
+import copy
 import json
 from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.core.context import MediaInfo, Context
+from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.telegram.telegram import Telegram
 from app.schemas import MessageChannel, CommingMessage, Notification
-from app.schemas.types import ModuleType
+from app.schemas.event import CommandRegisterEventData
+from app.schemas.types import ModuleType, ChainEventType
+from app.utils.structures import DictUtils
 
 
 class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
@@ -189,5 +193,41 @@ class TelegramModule(_ModuleBase, _MessageBase[Telegram]):
         注册命令，实现这个函数接收系统可用的命令菜单
         :param commands: 命令字典
         """
-        for client in self.get_instances().values():
-            client.register_commands(commands)
+        for client_config in self.get_configs().values():
+            client = self.get_instance(client_config.name)
+            if not client:
+                continue
+
+            # 触发事件，允许调整命令数据，这里需要进行深复制，避免实例共享
+            scoped_commands = copy.deepcopy(commands)
+            event = eventmanager.send_event(
+                ChainEventType.CommandRegister,
+                CommandRegisterEventData(commands=scoped_commands, origin="Telegram", service=client_config.name)
+            )
+
+            # 如果事件返回有效的 event_data，使用事件中调整后的命令
+            if event and event.event_data:
+                event_data: CommandRegisterEventData = event.event_data
+                # 如果事件被取消，跳过命令注册，并清理菜单
+                if event_data.cancel:
+                    client.delete_commands()
+                    logger.debug(
+                        f"Command registration for {client_config.name} canceled by event: {event_data.source}"
+                    )
+                    continue
+                scoped_commands = event_data.commands or {}
+                if not scoped_commands:
+                    logger.debug("Filtered commands are empty, skipping registration.")
+                    client.delete_commands()
+
+            # scoped_commands 必须是 commands 的子集
+            filtered_scoped_commands = DictUtils.filter_keys_to_subset(scoped_commands, commands)
+            # 如果 filtered_scoped_commands 为空，则跳过注册
+            if not filtered_scoped_commands:
+                logger.debug("Filtered commands are empty, skipping registration.")
+                client.delete_commands()
+                continue
+            # 对比调整后的命令与当前命令
+            if filtered_scoped_commands != commands:
+                logger.debug(f"Command set has changed, Updating new commands: {filtered_scoped_commands}")
+            client.register_commands(filtered_scoped_commands)
