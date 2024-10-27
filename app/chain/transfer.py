@@ -223,14 +223,16 @@ class TransferChain(ChainBase):
         # 处理所有待整理目录或文件，默认一个整理路径或文件只有一个媒体信息
         for trans_item in trans_items:
             item_path = Path(trans_item.path)
+            # 是否是蓝光路径
+            bluray_dir = trans_item.storage == "local" and SystemUtils.is_bluray_dir(item_path)
             # 如果是目录且不是⼀蓝光原盘，获取所有文件并整理
-            if (trans_item.type == "dir"
-                    and not (trans_item.storage == "local" and SystemUtils.is_bluray_dir(item_path))):
+            if trans_item.type == "dir" and not bluray_dir:
                 # 遍历获取下载目录所有文件（递归）
-                files = self.storagechain.list_files(trans_item, recursion=True)
-                if files:
-                    file_items.extend(files)
-            elif (trans_item.storage == "local" and SystemUtils.is_bluray_dir(item_path)):
+                if (files := self.storagechain.list_files(trans_item, recursion=True)): file_items.extend(files)
+                # files = self.storagechain.list_files(trans_item, recursion=True)
+                # if files:
+                #     file_items.extend(files)
+            elif bluray_dir:
                 # 计算目录下文件总大小
                 trans_item.size = sum(file.stat().st_size for file in item_path.rglob('*') if file.is_file())
                 bluray.append(trans_item)
