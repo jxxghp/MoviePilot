@@ -130,27 +130,6 @@ def fetch_image(
         headers=headers
     )
 
-# def update_rule_groups(new_rules: list[dict]) -> list[tuple]:
-#     existing_rules: list[dict] = SystemConfigOper().get(SystemConfigKey.CustomFilterRules)
-#     result: list[tuple] = [(SystemConfigKey.CustomFilterRules, new_rules)]
-#     deleded_ids = {rule.get("id") for rule in existing_rules} - {rule.get("id") for rule in new_rules}
-#     if deleded_ids:
-#         rule_groups: list[dict] = SystemConfigOper().get(SystemConfigKey.UserFilterRuleGroups)
-#         for group in rule_groups:
-#             full_expr = []
-#             for parsed_expr in group.get("rule_string", "").replace(" ", "").split('>'):
-#                 parsed = []
-#                 for expr in parsed_expr.split('&'):
-#                     if expr not in deleded_ids:
-#                         parsed.append(expr)
-#                 if parsed:
-#                     exps = ' & '.join(parsed)
-#                     full_expr.append(exps)
-#             all_expr = ' > '.join(full_expr)
-#             group['rule_string'] = all_expr
-#         return [(SystemConfigKey.CustomFilterRules, new_rules), (SystemConfigKey.UserFilterRuleGroups, rule_groups)] 
-#     return result
-
 def update_rule_groups(new_rules: list[dict]) -> list[tuple]:
     """
     删除自定义规则时，一同删除优先级规则组中的自定义规则
