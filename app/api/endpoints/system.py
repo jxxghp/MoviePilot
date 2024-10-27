@@ -130,6 +130,61 @@ def fetch_image(
         headers=headers
     )
 
+# def update_rule_groups(new_rules: list[dict]) -> list[tuple]:
+#     existing_rules: list[dict] = SystemConfigOper().get(SystemConfigKey.CustomFilterRules)
+#     result: list[tuple] = [(SystemConfigKey.CustomFilterRules, new_rules)]
+#     deleded_ids = {rule.get("id") for rule in existing_rules} - {rule.get("id") for rule in new_rules}
+#     if deleded_ids:
+#         rule_groups: list[dict] = SystemConfigOper().get(SystemConfigKey.UserFilterRuleGroups)
+#         for group in rule_groups:
+#             full_expr = []
+#             for parsed_expr in group.get("rule_string", "").replace(" ", "").split('>'):
+#                 parsed = []
+#                 for expr in parsed_expr.split('&'):
+#                     if expr not in deleded_ids:
+#                         parsed.append(expr)
+#                 if parsed:
+#                     exps = ' & '.join(parsed)
+#                     full_expr.append(exps)
+#             all_expr = ' > '.join(full_expr)
+#             group['rule_string'] = all_expr
+#         return [(SystemConfigKey.CustomFilterRules, new_rules), (SystemConfigKey.UserFilterRuleGroups, rule_groups)] 
+#     return result
+
+def update_rule_groups(new_rules: list[dict]) -> list[tuple]:
+    """
+    删除自定义规则时，一同删除优先级规则组中的自定义规则
+    """
+    # 获取现有的自定义规则
+    existing_rules = SystemConfigOper().get(SystemConfigKey.CustomFilterRules)
+    result: list[tuple] = [(SystemConfigKey.CustomFilterRules, new_rules)]
+    # 要删除的规则ID
+    deleded_ids = {rule.get("id") for rule in existing_rules} - {rule.get("id") for rule in new_rules}
+    # 删除了自定义规则，则更新`优先级规则组`
+    if deleded_ids:
+        # 获取所有优先级规则组
+        try:
+            rule_groups = SystemConfigOper().get(SystemConfigKey.UserFilterRuleGroups)
+            for group in rule_groups:
+                group['rule_string'] = ' > '.join(
+                    ' & '.join(
+                        expr
+                        for expr in parsed_expr.split('&')
+                        if expr not in deleded_ids
+                    )
+                    for parsed_expr in group.get("rule_string")
+                    .replace(" ", "")
+                    .split('>')
+                    if any(
+                        expr not in deleded_ids for expr in parsed_expr.split('&')
+                    )
+                )
+            # 将规则组添加到更新列表
+            result.append((SystemConfigKey.UserFilterRuleGroups, rule_groups))
+            logger.info('优先级规则组已更新')
+        except Exception as e:
+            logger.error(f"优先级规则组更新失败: {e}")
+    return result
 
 @router.get("/img/{proxy}", summary="图片代理")
 def proxy_img(
@@ -269,6 +324,12 @@ def set_setting(key: str, value: Union[list, dict, bool, int, str] = None,
     if hasattr(settings, key):
         success, message = settings.update_setting(key=key, value=value)
         return schemas.Response(success=success, message=message)
+    # key为自定义过滤规则时，特殊处理
+    elif key == SystemConfigKey.CustomFilterRules.value:
+        request = update_rule_groups(value)
+        for key, value in request:
+            SystemConfigOper().set(key, value)
+        return schemas.Response(success=True)
     elif key in {item.value for item in SystemConfigKey}:
         SystemConfigOper().set(key, value)
         return schemas.Response(success=True)
