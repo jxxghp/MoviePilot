@@ -229,9 +229,7 @@ class TransferChain(ChainBase):
             if trans_item.type == "dir" and not bluray_dir:
                 # 遍历获取下载目录所有文件（递归）
                 if (files := self.storagechain.list_files(trans_item, recursion=True)): file_items.extend(files)
-                # files = self.storagechain.list_files(trans_item, recursion=True)
-                # if files:
-                #     file_items.extend(files)
+            # 如果是蓝光目录,计算⼤⼩
             elif bluray_dir:
                 # 计算目录下文件总大小
                 trans_item.size = sum(file.stat().st_size for file in item_path.rglob('*') if file.is_file())
