@@ -349,6 +349,7 @@ class FileManagerModule(_ModuleBase):
             need_rename = True
             need_notify = False
             overwrite_mode = "never"
+            logger.warn(f"{target_path} 为自定义路径, 通知将不会发送")
         else:
             # 未找到有效的媒体库目录
             logger.error(
@@ -893,6 +894,7 @@ class FileManagerModule(_ModuleBase):
                                 target_diritem=new_diritem,
                                 total_size=total_size,
                                 need_scrape=need_scrape,
+                                need_notify=need_notify,
                                 transfer_type=transfer_type)
         else:
             # 整理单个文件
