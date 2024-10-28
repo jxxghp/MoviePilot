@@ -349,7 +349,7 @@ class SubscribeChain(ChainBase):
                                                 rule_groups=rule_groups,
                                                 area="imdbid" if subscribe.search_imdbid else "title",
                                                 custom_words=custom_word_list,
-                                                subscribe=subscribe)
+                                                filter_params=self.get_params(subscribe))
             if not contexts:
                 logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
                 self.finish_subscribe_or_not(subscribe=subscribe, meta=meta,
@@ -638,7 +638,8 @@ class SubscribeChain(ChainBase):
                         _, apply_words = WordsMatcher().prepare(torrent_info.title,
                                                                 custom_words=subscribe.custom_words.split("\n"))
                         if apply_words:
-                            logger.info(f'{torrent_info.site_name} - {torrent_info.title} 因订阅存在自定义识别词，重新识别元数据...')
+                            logger.info(
+                                f'{torrent_info.site_name} - {torrent_info.title} 因订阅存在自定义识别词，重新识别元数据...')
                             # 重新识别元数据
                             torrent_meta = MetaInfo(title=torrent_info.title, subtitle=torrent_info.description,
                                                     custom_words=subscribe.custom_word)

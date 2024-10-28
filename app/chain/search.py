@@ -11,7 +11,6 @@ from app.core.context import Context
 from app.core.context import MediaInfo, TorrentInfo
 from app.core.event import eventmanager, Event
 from app.core.metainfo import MetaInfo
-from app.db.models import Subscribe
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.progress import ProgressHelper
 from app.helper.sites import SitesHelper
@@ -107,7 +106,7 @@ class SearchChain(ChainBase):
                 rule_groups: List[str] = None,
                 area: str = "title",
                 custom_words: List[str] = None,
-                subscribe: Subscribe = None) -> List[Context]:
+                filter_params: Dict[str, str] = None) -> List[Context]:
         """
         根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
         :param mediainfo: 媒体信息
@@ -235,9 +234,8 @@ class SearchChain(ChainBase):
                     continue
 
                 # 匹配订阅附加参数
-                if subscribe and not self.torrenthelper.filter_torrent(torrent_info=torrent,
-                                                                       filter_params=self.__get_subscribe_params(
-                                                                           subscribe)):
+                if filter_params and not self.torrenthelper.filter_torrent(torrent_info=torrent,
+                                                                           filter_params=filter_params):
                     continue
 
                 # 比对种子
@@ -278,24 +276,6 @@ class SearchChain(ChainBase):
 
         # 返回
         return contexts
-
-    def __get_subscribe_params(self, subscribe: Subscribe):
-        """
-        获取订阅默认参数
-        """
-        # 默认过滤规则
-        default_rule = self.systemconfig.get(SystemConfigKey.SubscribeDefaultParams) or {}
-        return {
-            "include": subscribe.include or default_rule.get("include"),
-            "exclude": subscribe.exclude or default_rule.get("exclude"),
-            "quality": subscribe.quality or default_rule.get("quality"),
-            "resolution": subscribe.resolution or default_rule.get("resolution"),
-            "effect": subscribe.effect or default_rule.get("effect"),
-            "tv_size": default_rule.get("tv_size"),
-            "movie_size": default_rule.get("movie_size"),
-            "min_seeders": default_rule.get("min_seeders"),
-            "min_seeders_time": default_rule.get("min_seeders_time"),
-        }
 
     def __search_all_sites(self, keywords: List[str],
                            mediainfo: Optional[MediaInfo] = None,
