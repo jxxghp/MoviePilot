@@ -884,12 +884,14 @@ class FileManagerModule(_ModuleBase):
                                     need_notify=need_notify)
 
             logger.info(f"文件夹 {fileitem.path} 整理成功")
+            # 计算目录下所有文件大小
+            total_size = sum(file.stat().st_size for file in Path(fileitem.path).rglob('*') if file.is_file())
             # 返回整理后的路径
             return TransferInfo(success=True,
                                 fileitem=fileitem,
                                 target_item=new_diritem,
                                 target_diritem=new_diritem,
-                                total_size=fileitem.size,
+                                total_size=total_size,
                                 need_scrape=need_scrape,
                                 transfer_type=transfer_type)
         else:

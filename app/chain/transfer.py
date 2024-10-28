@@ -194,7 +194,9 @@ class TransferChain(ChainBase):
         transfers: Dict[Tuple, TransferInfo] = {}
 
         # 待整理文件列表
-        file_items = []
+        file_items: List[FileItem] = []
+        # 蓝光目录列表
+        bluray: List[FileItem] = []
         # 汇总错误信息
         err_msgs: List[str] = []
         # 已处理数量
@@ -221,15 +223,17 @@ class TransferChain(ChainBase):
         # 处理所有待整理目录或文件，默认一个整理路径或文件只有一个媒体信息
         for trans_item in trans_items:
             item_path = Path(trans_item.path)
+            # 是否蓝光路径
+            bluray_dir = trans_item.storage == "local" and SystemUtils.is_bluray_dir(item_path)
             # 如果是目录且不是⼀蓝光原盘，获取所有文件并整理
-            if (trans_item.type == "dir"
-                    and not (trans_item.storage == "local" and SystemUtils.is_bluray_dir(item_path))):
+            if trans_item.type == "dir" and not bluray_dir:
                 # 遍历获取下载目录所有文件（递归）
-                file_items = self.storagechain.list_files(trans_item, recursion=True)
-                if file_items:
-                    file_items.extend(trans_items)
+                if (files := self.storagechain.list_files(trans_item, recursion=True)): file_items.extend(files)
+            # 如果是蓝光目录,计算⼤⼩
+            elif bluray_dir:
+                bluray.append(trans_item)
+            # 单个文件
             else:
-                # 文件或蓝光目录
                 file_items.append(trans_item)
 
         if formaterHandler:
@@ -240,7 +244,8 @@ class TransferChain(ChainBase):
         file_items = [f for f in file_items
                       if f.extension and (f".{f.extension.lower()}" in self.all_exts
                                           and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
-
+        # BDMV 跳过过滤
+        file_items.extend(bluray)
         if not file_items:
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
