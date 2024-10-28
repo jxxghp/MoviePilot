@@ -105,7 +105,8 @@ class SearchChain(ChainBase):
                 sites: List[int] = None,
                 rule_groups: List[str] = None,
                 area: str = "title",
-                custom_words: List[str] = None) -> List[Context]:
+                custom_words: List[str] = None,
+                filter_params: Dict[str, str] = None) -> List[Context]:
         """
         根据媒体信息搜索种子资源，精确匹配，应用过滤规则，同时根据no_exists过滤本地已存在的资源
         :param mediainfo: 媒体信息
@@ -231,6 +232,12 @@ class SearchChain(ChainBase):
                     logger.info(f'{mediainfo.title} 通过IMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
                     _match_torrents.append((torrent, torrent_meta))
                     continue
+
+                # 匹配订阅附加参数
+                if filter_params and not self.torrenthelper.filter_torrent(torrent_info=torrent,
+                                                                           filter_params=filter_params):
+                    continue
+
                 # 比对种子
                 if self.torrenthelper.match_torrent(mediainfo=mediainfo,
                                                     torrent_meta=torrent_meta,
