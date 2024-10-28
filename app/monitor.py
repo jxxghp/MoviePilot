@@ -386,9 +386,12 @@ class Monitor(metaclass=Singleton):
                     return
 
                 # 查询转移目的目录
-                if not self.directoryhelper.get_dir(mediainfo, src_path=Path(mon_path)):
+                dir_info = self.directoryhelper.get_dir(mediainfo, src_path=Path(mon_path))
+                if not dir_info:
                     logger.warn(f"{event_path.name} 未找到对应的目标目录")
                     return
+                # 获取目标路径
+                dest_path = Path(dir_info.library_path)
 
                 # 查找这个文件项
                 file_item = self.storagechain.get_file_item(storage=storage, path=event_path)
@@ -418,6 +421,7 @@ class Monitor(metaclass=Singleton):
                 transferinfo: TransferInfo = self.chain.transfer(fileitem=file_item,
                                                                  meta=file_meta,
                                                                  mediainfo=mediainfo,
+                                                                 target_path=dest_path,
                                                                  episodes_info=episodes_info)
 
                 if not transferinfo:
