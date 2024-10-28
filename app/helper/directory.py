@@ -65,7 +65,7 @@ class DirectoryHelper:
         dirs = self.get_dirs()
         # 按照配置顺序查找
         for d in dirs:
-            if not d.download_path or not d.library_path:
+            if not d.download_path:
                 continue
             # 下载目录
             download_path = Path(d.download_path)
