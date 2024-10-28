@@ -65,17 +65,15 @@ class DirectoryHelper:
         dirs = self.get_dirs()
         # 按照配置顺序查找
         for d in dirs:
-            if not d.download_path or not d.library_path:
-                continue
             # 下载目录
             download_path = Path(d.download_path)
             # 媒体库目录
             library_path = Path(d.library_path)
-            # 媒体类型
-            # 有目录时直接匹配
+            # 下载目录不匹配, 不符合条件, 通常处理`下载`匹配
             if src_path and download_path != src_path:
                 continue
-            if dest_path and library_path != dest_path:
+            # 媒体库目录不匹配, 或监控方式为None(即不自动整理), 不符合条件, 通常处理`整理`匹配
+            if dest_path and library_path != dest_path or not d.monitor_type:
                 continue
             # 本地目录
             if local and d.storage != "local":
