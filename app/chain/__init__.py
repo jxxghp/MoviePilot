@@ -20,7 +20,7 @@ from app.helper.message import MessageHelper
 from app.helper.service import ServiceConfigHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, ExistMediaInfo, DownloadingTorrent, CommingMessage, Notification, \
-    WebhookEventInfo, TmdbEpisode, MediaPerson, FileItem
+    WebhookEventInfo, TmdbEpisode, MediaPerson, FileItem, TransferDirectoryConf
 from app.schemas.types import TorrentStatus, MediaType, MediaImageType, EventType
 from app.utils.object import ObjectUtils
 
@@ -382,24 +382,29 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("list_torrents", status=status, hashs=hashs, downloader=downloader)
 
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
-                 transfer_type: str = None, target_storage: str = None, target_path: Path = None,
-                 episodes_info: List[TmdbEpisode] = None,
-                 scrape: bool = None) -> Optional[TransferInfo]:
+                 target_directory: TransferDirectoryConf = None,
+                 target_storage: str = None, target_path: Path = None,
+                 transfer_type: str = None, scrape: bool = None,
+                 episodes_info: List[TmdbEpisode] = None) -> Optional[TransferInfo]:
         """
         文件转移
         :param fileitem:  文件信息
         :param meta: 预识别的元数据
         :param mediainfo:  识别的媒体信息
-        :param transfer_type:  转移模式
+        :param target_directory:  目标目录配置
         :param target_storage:  目标存储
         :param target_path:  目标路径
-        :param episodes_info: 当前季的全部集信息
+        :param transfer_type:  转移模式
         :param scrape: 是否刮削元数据
+        :param episodes_info: 当前季的全部集信息
         :return: {path, target_path, message}
         """
-        return self.run_module("transfer", fileitem=fileitem, meta=meta, mediainfo=mediainfo,
-                               transfer_type=transfer_type, target_storage=target_storage,
-                               target_path=target_path, episodes_info=episodes_info, scrape=scrape)
+        return self.run_module("transfer",
+                               fileitem=fileitem, meta=meta, mediainfo=mediainfo,
+                               target_directory=target_directory,
+                               target_path=target_path, target_storage=target_storage,
+                               transfer_type=transfer_type, scrape=scrape,
+                               episodes_info=episodes_info)
 
     def transfer_completed(self, hashs: str, downloader: str = None) -> None:
         """

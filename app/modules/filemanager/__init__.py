@@ -291,19 +291,21 @@ class FileManagerModule(_ModuleBase):
         return storage_oper.usage()
 
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
-                 transfer_type: str = None, target_storage: str = None, target_path: Path = None,
-                 episodes_info: List[TmdbEpisode] = None,
-                 scrape: bool = None) -> TransferInfo:
+                 target_directory: TransferDirectoryConf = None,
+                 target_storage: str = None, target_path: Path = None,
+                 transfer_type: str = None, scrape: bool = None,
+                 episodes_info: List[TmdbEpisode] = None) -> TransferInfo:
         """
         文件整理
-        :param fileitem:  源文件
-        :param meta: 预识别的元数据，仅单文件整理时传递
+        :param fileitem:  文件信息
+        :param meta: 预识别的元数据
         :param mediainfo:  识别的媒体信息
-        :param transfer_type:  整理方式
+        :param target_directory:  目标目录配置
         :param target_storage:  目标存储
         :param target_path:  目标路径
-        :param episodes_info: 当前季的全部集信息
+        :param transfer_type:  转移模式
         :param scrape: 是否刮削元数据
+        :param episodes_info: 当前季的全部集信息
         :return: {path, target_path, message}
         """
         # 检查目录路径
