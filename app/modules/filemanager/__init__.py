@@ -321,30 +321,33 @@ class FileManagerModule(_ModuleBase):
                                 message=f"{target_path} 不是有效目录")
         # 获取目标路径
         directoryhelper = DirectoryHelper()
-        if target_path:
-            dir_info = directoryhelper.get_dir(mediainfo, dest_path=target_path)
-        else:
-            dir_info = directoryhelper.get_dir(mediainfo)
-        if dir_info:
+        if not target_directory:
+            # 根据目的路径查找目录配置
+            if target_path:
+                target_directory = directoryhelper.get_dir(mediainfo, dest_path=target_path)
+            else:
+                target_directory = directoryhelper.get_dir(mediainfo)
+
+        if target_directory:
+            # 拼装媒体库一、二级子目录
+            target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_directory)
             # 目标存储类型
             if not target_storage:
-                target_storage = dir_info.library_storage
+                target_storage = target_directory.library_storage
             # 整理方式
             if not transfer_type:
-                transfer_type = dir_info.transfer_type
+                transfer_type = target_directory.transfer_type
             # 是否需要刮削
             if scrape is None:
-                need_scrape = dir_info.scraping
+                need_scrape = target_directory.scraping
             else:
                 need_scrape = scrape
             # 是否需要重命名
-            need_rename = dir_info.renaming
-            # 覆盖模式
-            overwrite_mode = dir_info.overwrite_mode
+            need_rename = target_directory.renaming
             # 是否需要通知
-            need_notify = dir_info.notify
-            # 拼装媒体库一、二级子目录
-            target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=dir_info)
+            need_notify = target_directory.notify
+            # 覆盖模式
+            overwrite_mode = target_directory.overwrite_mode
         elif target_path:
             # 自定义目标路径，仅适用于手动整理的场景
             need_scrape = scrape or False
@@ -365,14 +368,14 @@ class FileManagerModule(_ModuleBase):
         return self.transfer_media(fileitem=fileitem,
                                    in_meta=meta,
                                    mediainfo=mediainfo,
-                                   transfer_type=transfer_type,
-                                   overwrite_mode=overwrite_mode,
                                    target_storage=target_storage,
                                    target_path=target_path,
-                                   episodes_info=episodes_info,
+                                   transfer_type=transfer_type,
                                    need_scrape=need_scrape,
                                    need_rename=need_rename,
-                                   need_notify=need_notify)
+                                   need_notify=need_notify,
+                                   overwrite_mode=overwrite_mode,
+                                   episodes_info=episodes_info)
 
     def __get_storage_oper(self, _storage: str, _func: str = None) -> Optional[StorageBase]:
         """
@@ -832,14 +835,14 @@ class FileManagerModule(_ModuleBase):
                        fileitem: FileItem,
                        in_meta: MetaBase,
                        mediainfo: MediaInfo,
-                       transfer_type: str,
-                       overwrite_mode: str,
                        target_storage: str,
                        target_path: Path,
-                       episodes_info: List[TmdbEpisode] = None,
+                       transfer_type: str,
                        need_scrape: bool = False,
                        need_rename: bool = True,
                        need_notify: bool = True,
+                       overwrite_mode: str = None,
+                       episodes_info: List[TmdbEpisode] = None,
                        ) -> TransferInfo:
         """
         识别并整理一个文件或者一个目录下的所有文件
@@ -849,11 +852,11 @@ class FileManagerModule(_ModuleBase):
         :param target_storage: 目标存储
         :param target_path: 目标路径
         :param transfer_type: 文件整理方式
-        :param overwrite_mode: 覆盖模式
-        :param episodes_info: 当前季的全部集信息
         :param need_scrape: 是否需要刮削
         :param need_rename: 是否需要重命名
         :param need_notify: 是否需要通知
+        :param overwrite_mode: 覆盖模式
+        :param episodes_info: 当前季的全部集信息
         :return: TransferInfo、错误信息
         """
 

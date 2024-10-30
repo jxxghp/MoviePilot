@@ -20,7 +20,7 @@ from app.helper.directory import DirectoryHelper
 from app.helper.format import FormatParser
 from app.helper.progress import ProgressHelper
 from app.log import logger
-from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem
+from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem, TransferDirectoryConf
 from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
     SystemConfigKey
 from app.utils.string import StringUtils
@@ -65,15 +65,9 @@ class TransferChain(ChainBase):
             # 获取下载器监控目录
             download_dirs = self.directoryhelper.get_download_dirs()
             # 如果没有下载器监控的目录则不处理
-            downloader_monitor = False
-            for dir_info in download_dirs:
-                # 只有下载器监控的本地目录才处理
-                if dir_info.monitor_type == "downloader" and dir_info.storage == "local":
-                    downloader_monitor = True
-                    break
-            if not downloader_monitor:
+            if not any(dir_info.monitor_type == "downloader" and dir_info.storage == "local"
+                       for dir_info in download_dirs):
                 return True
-
             logger.info("开始整理下载器中已经完成下载的文件 ...")
             # 从下载器获取种子列表
             torrents: Optional[List[TransferTorrent]] = self.list_torrents(status=TorrentStatus.TRANSFER)
@@ -150,24 +144,25 @@ class TransferChain(ChainBase):
 
     def __do_transfer(self, fileitem: FileItem,
                       meta: MetaBase = None, mediainfo: MediaInfo = None,
-                      download_hash: str = None, target_storage: str = None,
-                      target_path: Path = None, transfer_type: str = None,
+                      target_directory: TransferDirectoryConf = None,
+                      target_storage: str = None, target_path: Path = None,
+                      transfer_type: str = None, scrape: bool = None,
                       season: int = None, epformat: EpisodeFormat = None,
-                      min_filesize: int = 0, scrape: bool = None,
-                      force: bool = False) -> Tuple[bool, str]:
+                      min_filesize: int = 0, download_hash: str = None, force: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
         :param meta: 元数据
         :param mediainfo: 媒体信息
-        :param download_hash: 下载记录hash
+        :param target_directory:  目标目录配置
         :param target_storage: 目标存储器
         :param target_path: 目标路径
         :param transfer_type: 整理类型
+        :param scrape: 是否刮削元数据
         :param season: 季
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
-        :param scrape: 是否刮削元数据
+        :param download_hash: 下载记录hash
         :param force: 是否强制整理
         返回：成功标识，错误信息
         """
@@ -228,7 +223,8 @@ class TransferChain(ChainBase):
             # 如果是目录且不是⼀蓝光原盘，获取所有文件并整理
             if trans_item.type == "dir" and not bluray_dir:
                 # 遍历获取下载目录所有文件（递归）
-                if (files := self.storagechain.list_files(trans_item, recursion=True)): file_items.extend(files)
+                if files := self.storagechain.list_files(trans_item, recursion=True):
+                    file_items.extend(files)
             # 如果是蓝光目录,计算⼤⼩
             elif bluray_dir:
                 bluray.append(trans_item)
@@ -387,9 +383,10 @@ class TransferChain(ChainBase):
             transferinfo: TransferInfo = self.transfer(fileitem=file_item,
                                                        meta=file_meta,
                                                        mediainfo=file_mediainfo,
-                                                       transfer_type=transfer_type,
+                                                       target_directory=target_directory,
                                                        target_storage=target_storage,
                                                        target_path=target_path,
+                                                       transfer_type=transfer_type,
                                                        episodes_info=episodes_info,
                                                        scrape=scrape)
             if not transferinfo:
