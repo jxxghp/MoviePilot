@@ -193,8 +193,8 @@ class SystemUtils:
             pattern = r".*"
 
         # 遍历目录及子目录
-        for matched_glob in glob(str(directory / '**'), recursive=recursive, include_hidden=True):
-            path = Path(matched_glob)
+        for matched_glob in glob('**', root_dir=directory, recursive=recursive, include_hidden=True):
+            path = directory.joinpath(matched_glob)
             if path.is_file() \
                     and re.match(pattern, path.name, re.IGNORECASE) \
                     and path.stat().st_size >= min_filesize * 1024 * 1024:
@@ -229,8 +229,8 @@ class SystemUtils:
         pattern = r".*(" + "|".join(extensions) + ")$"
 
         # 遍历目录及子目录
-        for matched_glob in glob(str(directory / '**'), recursive=recursive, include_hidden=True):
-            path = Path(matched_glob)
+        for matched_glob in glob('**', root_dir=directory, recursive=recursive, include_hidden=True):
+            path = directory.joinpath(matched_glob)
             if path.is_file() \
                     and re.match(pattern, path.name, re.IGNORECASE) \
                     and path.stat().st_size >= min_filesize * 1024 * 1024:
