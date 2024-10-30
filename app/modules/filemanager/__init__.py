@@ -1173,6 +1173,9 @@ class FileManagerModule(_ModuleBase):
         :param mediainfo:  识别的媒体信息
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
+        if not settings.LOCAL_EXISTS_SEARCH:
+            return None
+
         # 检查媒体库
         fileitems = self.media_files(mediainfo)
         if not fileitems:
