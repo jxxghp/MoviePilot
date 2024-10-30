@@ -73,8 +73,9 @@ class DirectoryHelper:
             if src_path and download_path != src_path:
                 continue
             # 媒体库目录不匹配, 或监控方式为None(即不自动整理), 不符合条件, 通常处理`整理`匹配
-            if dest_path and library_path != dest_path or not d.monitor_type:
-                continue
+            if dest_path:
+                if library_path != dest_path or not d.monitor_type:
+                    continue
             # 本地目录
             if local and d.storage != "local":
                 continue
