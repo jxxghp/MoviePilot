@@ -145,6 +145,8 @@ class ConfigModel(BaseModel):
     SUBSCRIBE_STATISTIC_SHARE: bool = True
     # 订阅搜索开关
     SUBSCRIBE_SEARCH: bool = False
+    # 检查本地媒体库是否存在资源开关
+    LOCAL_EXISTS_SEARCH: bool = False
     # 搜索多个名称
     SEARCH_MULTIPLE_NAME: bool = False
     # 站点数据刷新间隔（小时）
