@@ -75,6 +75,15 @@ class Subscribe(BaseModel):
         orm_mode = True
 
 
+class SubscribeMediaQuery(BaseModel):
+    # 媒体ID，格式tmdb:123/douban:456/bangumi:789
+    mediaid: str
+    # 季度
+    season: Optional[int] = None
+    # 标题
+    title: Optional[str] = None
+
+
 class SubscribeShare(BaseModel):
     # 分享ID
     id: Optional[int] = None

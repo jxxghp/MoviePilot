@@ -126,9 +126,7 @@ def update_subscribe(
 
 @router.get("/media/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
 def subscribe_mediaid(
-        mediaid: str,
-        season: int = None,
-        title: str = None,
+        query: schemas.SubscribeMediaQuery = Depends(),
         db: Session = Depends(get_db),
         _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -136,9 +134,12 @@ def subscribe_mediaid(
     """
     result = None
     title_check = False
+    mediaid = query.mediaid
+    season = query.season
+    title = query.title
     if mediaid.startswith("tmdb:"):
         tmdbid = mediaid[5:]
-        if not tmdbid or not str(tmdbid).isdigit():
+        if not tmdbid or not tmdbid.isdigit():
             return Subscribe()
         result = Subscribe.exists(db, tmdbid=int(tmdbid), season=season)
     elif mediaid.startswith("douban:"):
@@ -150,7 +151,7 @@ def subscribe_mediaid(
             title_check = True
     elif mediaid.startswith("bangumi:"):
         bangumiid = mediaid[8:]
-        if not bangumiid or not str(bangumiid).isdigit():
+        if not bangumiid or not bangumiid.isdigit():
             return Subscribe()
         result = Subscribe.get_by_bangumiid(db, int(bangumiid))
         if not result and title:
@@ -163,6 +164,60 @@ def subscribe_mediaid(
         result = Subscribe.get_by_title(db, title=meta.name, season=meta.begin_season)
 
     return result if result else Subscribe()
+
+
+@router.post("/media", summary="批量查询订阅", response_model=List[schemas.Subscribe])
+def subscribe_mediaid_batch(
+        querys: List[schemas.SubscribeMediaQuery],
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据多个TMDBID/豆瓣ID/BangumiId批量查询订阅
+    """
+    # 一次性获取所有订阅信息
+    subscriptions = Subscribe.list(db)
+    # 将已获取的订阅信息按照不同的ID类型分组，以便快速查找
+    tmdbs = {str(sub.tmdbid): sub for sub in subscriptions if sub.tmdbid is not None}
+    doubans = {sub.doubanid: sub for sub in subscriptions if sub.doubanid is not None}
+    bangumis = {str(sub.bangumiid): sub for sub in subscriptions if sub.bangumiid is not None}
+    results = []
+    for query in querys:
+        result = None
+        title_check = False
+        mediaid = query.mediaid
+        season = query.season
+        title = query.title
+        if mediaid.startswith("tmdb:"):
+            tmdbid = mediaid[5:]
+            if not tmdbid or not tmdbid.isdigit():
+                results.append(Subscribe())
+                continue
+            result = tmdbs.get(tmdbid)
+        elif mediaid.startswith("douban:"):
+            doubanid = mediaid[7:]
+            if not doubanid:
+                results.append(Subscribe())
+                continue
+            result = doubans.get(doubanid)
+            if not result and title:
+                title_check = True
+        elif mediaid.startswith("bangumi:"):
+            bangumiid = mediaid[8:]
+            if not bangumiid or not bangumiid.isdigit():
+                results.append(Subscribe())
+                continue
+            result = bangumis.get(bangumiid)
+            if not result and title:
+                title_check = True
+        # 使用名称检查订阅
+        if title_check and title:
+            meta = MetaInfo(title)
+            if season:
+                meta.begin_season = season
+            result = next((sub for sub in subscriptions
+                           if sub.name == meta.name and sub.season == meta.begin_season), None)
+        results.append(result if result else Subscribe())
+    return results
 
 
 @router.get("/refresh", summary="刷新订阅", response_model=schemas.Response)
