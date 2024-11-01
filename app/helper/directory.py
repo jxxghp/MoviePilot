@@ -49,12 +49,13 @@ class DirectoryHelper:
         return [d for d in self.get_library_dirs() if d.library_storage == "local"]
 
     def get_dir(self, media: MediaInfo, src_path: Path = None, dest_path: Path = None,
-                local: bool = False) -> Optional[schemas.TransferDirectoryConf]:
+                fileitem: schemas.FileItem = None, local: bool = False) -> Optional[schemas.TransferDirectoryConf]:
         """
         根据媒体信息获取下载目录、媒体库目录配置
         :param media: 媒体信息
         :param src_path: 源目录，有值时直接匹配
         :param dest_path: 目标目录，有值时直接匹配
+        :param fileitem: 文件项，使用文件路径匹配
         :param local: 是否本地目录
         """
         # 处理类型
@@ -76,6 +77,9 @@ class DirectoryHelper:
             if dest_path:
                 if library_path != dest_path or not d.monitor_type:
                     continue
+            # 没有目录配置时起作用, 通常处理`手动整理`未选择`目标目录`的情况
+            if fileitem and not Path(fileitem.path).is_relative_to(download_path):
+                continue
             # 本地目录
             if local and d.storage != "local":
                 continue

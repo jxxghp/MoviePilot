@@ -326,7 +326,7 @@ class FileManagerModule(_ModuleBase):
             if target_path:
                 target_directory = directoryhelper.get_dir(mediainfo, dest_path=target_path)
             else:
-                target_directory = directoryhelper.get_dir(mediainfo)
+                target_directory = directoryhelper.get_dir(mediainfo, fileitem=fileitem)
 
         if target_directory:
             # 拼装媒体库一、二级子目录
