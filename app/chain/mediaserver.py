@@ -1,6 +1,8 @@
 import threading
 from typing import List, Union, Optional, Generator
 
+from cachetools import cached, TTLCache
+
 from app import schemas
 from app.chain import ChainBase
 from app.core.config import global_vars
@@ -91,6 +93,19 @@ class MediaServerChain(ChainBase):
         获取媒体服务器最新入库条目
         """
         return self.run_module("mediaserver_latest", count=count, server=server, username=username)
+    
+    @cached(cache=TTLCache(maxsize=1, ttl=3600))
+    def get_latest_wallpapers(self, server:str, count=20) -> List[str]:
+        """
+        获取最新最新入库条目海报作为壁纸，缓存1小时
+        """
+        return self.run_module("mediaserver_latest_images", server=server, count=count)
+
+    def get_latest_wallpaper(self, server:str) -> Optional[str]:
+        """
+        获取最新最新入库条目海报作为壁纸，缓存1小时
+        """
+        return self.get_latest_wallpapers(server=server, count=20)[0]
 
     def get_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """

@@ -79,7 +79,7 @@ class ConfigModel(BaseModel):
     API_TOKEN: Optional[str] = None
     # 网络代理 IP:PORT
     PROXY_HOST: Optional[str] = None
-    # 登录页面电影海报,tmdb/bing
+    # 登录页面电影海报,tmdb/bing/mediaserver
     WALLPAPER: str = "tmdb"
     # 媒体搜索来源 themoviedb/douban/bangumi，多个用,分隔
     SEARCH_SOURCE: str = "themoviedb,douban,bangumi"
