@@ -280,3 +280,35 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
         if not server:
             return []
         return server.get_latest(num=count, username=username)
+    
+    def mediaserver_latest_images(self, 
+                                 server: str,
+                                 count: int = 20, 
+                                 username: str = None, 
+                                 host_type: bool = True,
+        ) -> List[str]:
+        """
+        获取媒体服务器最新入库条目的图片
+
+        :param server: 媒体服务器名称
+        :param count: 获取数量
+        :param username: 用户名
+        :param host_type: True为外网链接, False为内网链接
+        :return: 图片链接列表
+        """
+        server: Emby = self.get_instance(server)
+        if not server:
+            return []
+        
+        links = []
+        items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(num=count, username=username)
+        for item in items:
+            if host_type and item.id:
+                _link = server.generate_external_image_link(id=item.id, image_type="Backdrop")
+                if _link:
+                    links.append(_link)
+            elif item.image:
+                links.append(item.image)
+
+        return links
+            
