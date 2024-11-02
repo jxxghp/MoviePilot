@@ -294,7 +294,9 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         links = []
         items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(num=count, username=username)
         for item in items:
-            link = server.get_remote_image_by_id(item_id=item.id, image_type="Backdrop")
+            link = server.get_remote_image_by_id(item_id=item.id, 
+                                                 image_type="Backdrop",
+                                                 plex_url=False)
             if link:
                 links.append(link)
                 
