@@ -5,7 +5,7 @@ from cachetools import cached, TTLCache
 
 from app import schemas
 from app.chain import ChainBase
-from app.core.config import global_vars, settings
+from app.core.config import global_vars
 from app.db.mediaserver_oper import MediaServerOper
 from app.helper.service import ServiceConfigHelper
 from app.log import logger
