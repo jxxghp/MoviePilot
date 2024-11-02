@@ -293,13 +293,18 @@ class Plex:
             season_episodes[episode.seasonNumber].append(episode.index)
         return videos.key, season_episodes
 
-    def get_remote_image_by_id(self, item_id: str, image_type: str, depth: int = 0) -> Optional[str]:
+    def get_remote_image_by_id(self, 
+                               item_id: str, 
+                               image_type: str,
+                               depth: int = 0,
+                               plex_url: bool = True) -> Optional[str]:
         """
         根据ItemId从Plex查询图片地址
         :param item_id: 在Plex中的ID
         :param image_type: 图片的类型，Poster或者Backdrop等
         :param depth: 当前递归深度，默认为0
-        :return: 图片对应在TMDB中的URL
+        :param plex_url: 是否返回Plex的URL，默认为True（仅在配置了外网地址和Token时有效）
+        :return: 图片对应在plex服务器或TMDB中的URL
         """
         if not self._plex or depth > 2 or not item_id:
             return None
@@ -310,7 +315,7 @@ class Plex:
             if not item:
                 return None
             # 如果配置了外网播放地址以及Token，则默认从Plex媒体服务器获取图片，否则返回有外网地址的图片资源
-            if self._playhost and self._token:
+            if self._playhost and self._token and plex_url:
                 query = {"X-Plex-Token": self._token}
                 if image_type == "Poster":
                     if item.thumb:
