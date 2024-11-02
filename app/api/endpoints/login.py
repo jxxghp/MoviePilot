@@ -7,6 +7,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app import schemas
 from app.chain.tmdb import TmdbChain
 from app.chain.user import UserChain
+from app.chain.mediaserver import MediaServerChain
 from app.core import security
 from app.core.config import settings
 from app.helper.sites import SitesHelper
@@ -53,10 +54,12 @@ def wallpaper() -> Any:
     """
     获取登录页面电影海报
     """
-    if settings.WALLPAPER == "tmdb":
-        url = TmdbChain().get_random_wallpager()
-    else:
+    if settings.WALLPAPER == "bing":
         url = WebUtils.get_bing_wallpaper()
+    elif settings.WALLPAPER == "mediaserver":
+        url = MediaServerChain().get_latest_wallpaper()
+    else:
+         url = TmdbChain().get_random_wallpager()
     if url:
         return schemas.Response(
             success=True,
@@ -70,7 +73,9 @@ def wallpapers() -> Any:
     """
     获取登录页面电影海报
     """
-    if settings.WALLPAPER == "tmdb":
-        return TmdbChain().get_trending_wallpapers()
-    else:
+    if settings.WALLPAPER == "bing":
         return WebUtils.get_bing_wallpapers()
+    elif settings.WALLPAPER == "mediaserver":
+        url = MediaServerChain().get_latest_wallpapers()
+    else:
+         url = TmdbChain().get_trending_wallpapers()
