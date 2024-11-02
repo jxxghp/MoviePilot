@@ -274,6 +274,32 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
             return []
         return server.get_latest(num=count)
 
+    def mediaserver_latest_images(self, 
+                                 server: str,
+                                 count: int = 20, 
+                                 username: str = None, 
+        ) -> List[str]:
+        """
+        获取媒体服务器最新入库条目的图片
+
+        :param server: 媒体服务器名称
+        :param count: 获取数量
+        :param username: 用户名
+        :return: 图片链接列表
+        """
+        server: Plex = self.get_instance(server)
+        if not server:
+            return []
+        
+        links = []
+        items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(num=count, username=username)
+        for item in items:
+            link = server.get_remote_image_by_id(item_id=item.id, image_type="Backdrop")
+            if link:
+                links.append(link)
+                
+        return links
+    
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
         获取媒体库播放地址
