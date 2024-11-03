@@ -117,8 +117,10 @@ class TheMovieDbModule(_ModuleBase):
                 info = self.tmdb.get_info(mtype=mtype, tmdbid=tmdbid)
             elif meta:
                 info = {}
+                # 简体名称
+                zh_name = zhconv.convert(meta.cn_name, "zh-hans") if meta.cn_name else None
                 # 使用中英文名分别识别，去重去空，但要保持顺序
-                names = list(dict.fromkeys([k for k in [meta.cn_name, zhconv.convert(meta.cn_name, "zh-hans"), meta.en_name] if k]))
+                names = list(dict.fromkeys([k for k in [meta.cn_name, zh_name, meta.en_name] if k]))
                 for name in names:
                     if meta.begin_season:
                         logger.info(f"正在识别 {name} 第{meta.begin_season}季 ...")

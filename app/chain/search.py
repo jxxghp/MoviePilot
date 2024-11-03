@@ -116,6 +116,7 @@ class SearchChain(ChainBase):
         :param rule_groups: 过滤规则组名称列表
         :param area: 搜索范围，title or imdbid
         :param custom_words: 自定义识别词列表
+        :param filter_params: 过滤参数
         """
 
         def __do_filter(torrent_list: List[TorrentInfo]) -> List[TorrentInfo]:
