@@ -105,7 +105,8 @@ class MediaServerChain(ChainBase):
         """
         获取最新最新入库条目海报作为壁纸，缓存1小时
         """
-        return self.get_latest_wallpapers(server=server, count=20)[0]
+        wallpapers = self.get_latest_wallpapers(server=server, count=20)
+        return wallpapers[0] if wallpapers else None
 
     def get_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
