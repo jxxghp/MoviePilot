@@ -280,13 +280,13 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
         if not server:
             return []
         return server.get_latest(num=count, username=username)
-    
-    def mediaserver_latest_images(self, 
-                                 server: str,
-                                 count: int = 20, 
-                                 username: str = None, 
-                                 host_type: bool = True,
-        ) -> List[str]:
+
+    def mediaserver_latest_images(self,
+                                  server: str = None,
+                                  count: int = 20,
+                                  username: str = None,
+                                  host_type: bool = True,
+                                  ) -> List[str]:
         """
         获取媒体服务器最新入库条目的图片
 
@@ -299,7 +299,7 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
         server: Emby = self.get_instance(server)
         if not server:
             return []
-        
+
         links = []
         items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(num=count, username=username)
         for item in items:
@@ -311,4 +311,3 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
                 links.append(item.image)
 
         return links
-            

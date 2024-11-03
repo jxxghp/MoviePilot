@@ -642,7 +642,7 @@ class SubscribeChain(ChainBase):
                                 f'{torrent_info.site_name} - {torrent_info.title} 因订阅存在自定义识别词，重新识别元数据...')
                             # 重新识别元数据
                             torrent_meta = MetaInfo(title=torrent_info.title, subtitle=torrent_info.description,
-                                                    custom_words=subscribe.custom_word)
+                                                    custom_words=subscribe.custom_words)
                             # 媒体信息需要重新识别
                             torrent_mediainfo = None
 

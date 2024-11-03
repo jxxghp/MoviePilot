@@ -278,13 +278,13 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         if not server:
             return []
         return server.get_latest(num=count, username=username)
-    
-    def mediaserver_latest_images(self, 
-                                 server: str,
-                                 count: int = 20, 
-                                 username: str = None, 
-                                 host_type: bool = True,
-        ) -> List[str]:
+
+    def mediaserver_latest_images(self,
+                                  server: str = None,
+                                  count: int = 20,
+                                  username: str = None,
+                                  host_type: bool = True,
+                                  ) -> List[str]:
         """
         获取媒体服务器最新入库条目的图片
 
@@ -297,11 +297,11 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         server: Jellyfin = self.get_instance(server)
         if not server:
             return []
-        
+
         links = []
         items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(num=count, username=username)
         for item in items:
-            link = server.generate_image_link(item_id=item.id, image_type="Backdrop",host_type=host_type)
+            link = server.generate_image_link(item_id=item.id, image_type="Backdrop", host_type=host_type)
             if link:
                 links.append(link)
 

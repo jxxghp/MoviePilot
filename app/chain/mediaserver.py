@@ -93,15 +93,15 @@ class MediaServerChain(ChainBase):
         获取媒体服务器最新入库条目
         """
         return self.run_module("mediaserver_latest", count=count, server=server, username=username)
-    
+
     @cached(cache=TTLCache(maxsize=1, ttl=3600))
-    def get_latest_wallpapers(self, server:str, count=20) -> List[str]:
+    def get_latest_wallpapers(self, server: str = None, count=20) -> List[str]:
         """
         获取最新最新入库条目海报作为壁纸，缓存1小时
         """
         return self.run_module("mediaserver_latest_images", server=server, count=count)
 
-    def get_latest_wallpaper(self, server:str) -> Optional[str]:
+    def get_latest_wallpaper(self, server: str = None) -> Optional[str]:
         """
         获取最新最新入库条目海报作为壁纸，缓存1小时
         """
