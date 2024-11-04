@@ -65,8 +65,8 @@ class ConfigModel(BaseModel):
     DB_POOL_RECYCLE: int = 1800
     # 数据库连接池获取连接的超时时间（秒），默认 60 秒
     DB_POOL_TIMEOUT: int = 60
-    # 数据库连接池最大溢出连接数，默认 10
-    DB_MAX_OVERFLOW: int = 10
+    # 数据库连接池最大溢出连接数，默认 500
+    DB_MAX_OVERFLOW: int = 500
     # SQLite 的 busy_timeout 参数，默认为 60 秒
     DB_TIMEOUT: int = 60
     # 配置文件目录
@@ -360,15 +360,19 @@ class Settings(BaseSettings, ConfigModel):
 
         try:
             field = self.__fields__[key]
+            original_value = getattr(self, key)
             if field.name == "API_TOKEN":
-                converted_value, needs_update = self.validate_api_token(value, getattr(self, key))
+                converted_value, needs_update = self.validate_api_token(value, original_value)
             else:
-                converted_value, needs_update = self.generic_type_converter(value, getattr(self, key), field.type_,
+                converted_value, needs_update = self.generic_type_converter(value, original_value, field.type_,
                                                                             field.default, key)
             # 如果没有抛出异常，则统一使用 converted_value 进行更新
             if needs_update or str(value) != str(converted_value):
-                setattr(self, key, converted_value)
-                return self.update_env_config(field, value, converted_value)
+                success, message = self.update_env_config(field, original_value, converted_value)
+                # 仅成功更新配置时，才更新内存
+                if success:
+                    setattr(self, key, converted_value)
+                return success, message
             return True, ""
         except Exception as e:
             return False, str(e)
