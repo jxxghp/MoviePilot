@@ -65,8 +65,8 @@ class ConfigModel(BaseModel):
     DB_POOL_RECYCLE: int = 1800
     # 数据库连接池获取连接的超时时间（秒），默认 60 秒
     DB_POOL_TIMEOUT: int = 60
-    # 数据库连接池最大溢出连接数，默认 10
-    DB_MAX_OVERFLOW: int = 10
+    # 数据库连接池最大溢出连接数，默认 500
+    DB_MAX_OVERFLOW: int = 500
     # SQLite 的 busy_timeout 参数，默认为 60 秒
     DB_TIMEOUT: int = 60
     # 配置文件目录
