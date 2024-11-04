@@ -182,7 +182,7 @@ def get_env_setting(_: User = Depends(get_current_active_superuser)):
     查询系统环境变量，包括当前版本号（仅管理员）
     """
     info = settings.dict(
-        exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY", "API_TOKEN", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN"}
+        exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY"}
     )
     info.update({
         "VERSION": APP_VERSION,
