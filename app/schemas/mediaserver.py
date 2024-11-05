@@ -173,3 +173,4 @@ class MediaServerPlayItem(BaseModel):
     image: Optional[str] = None
     link: Optional[str] = None
     percent: Optional[float] = None
+    BackdropImageTags: Optional[list] = []

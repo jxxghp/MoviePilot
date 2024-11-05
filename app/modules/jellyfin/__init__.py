@@ -269,8 +269,8 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
             return None
         return server_obj.get_play_url(item_id)
 
-    def mediaserver_latest(self, server: str = None,
-                           count: int = 20, username: str = None) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_latest(self, server: str = None, count: int = 20,
+                           username: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """
@@ -283,7 +283,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
                                   server: str = None,
                                   count: int = 20,
                                   username: str = None,
-                                  host_type: bool = True,
+                                  remote: bool = False,
                                   ) -> List[str]:
         """
         获取媒体服务器最新入库条目的图片
@@ -291,7 +291,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         :param server: 媒体服务器名称
         :param count: 获取数量
         :param username: 用户名
-        :param host_type: True为外网链接, False为内网链接
+        :param remote: True为外网链接, False为内网链接
         :return: 图片链接列表
         """
         server_obj: Jellyfin = self.get_instance(server)
@@ -302,7 +302,10 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(server=server, count=count,
                                                                            username=username)
         for item in items:
-            link = server_obj.generate_image_link(item_id=item.id, image_type="Backdrop", host_type=host_type)
-            if link:
-                links.append(link)
+            if item.BackdropImageTags:
+                image_url = server_obj.get_backdrop_url(item_id=item.id,
+                                                        image_tag=item.BackdropImageTags[0],
+                                                        remote=remote)
+                if image_url:
+                    links.append(image_url)
         return links

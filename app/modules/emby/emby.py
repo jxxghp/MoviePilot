@@ -1077,20 +1077,23 @@ class Emby:
         return f"{self._playhost or self._host}web/index.html#!" \
                f"/item?id={item_id}&context=home&serverId={self.serverid}"
 
-    def __get_backdrop_url(self, item_id: str, image_tag: str) -> str:
+    def get_backdrop_url(self, item_id: str, image_tag: str, remote: bool = False) -> str:
         """
         获取Emby的Backdrop图片地址
         :param: item_id: 在Emby中的ID
         :param: image_tag: 图片的tag
         :param: remote 是否远程使用，TG微信等客户端调用应为True
-        :param: inner 是否NT内部调用，为True是会使用NT中转
         """
         if not self._host or not self._apikey:
             return ""
         if not image_tag or not item_id:
             return ""
-        return f"{self._host}Items/{item_id}/" \
-               f"Images/Backdrop?tag={image_tag}&fillWidth=666&api_key={self._apikey}"
+        if remote:
+            host_url = self._playhost or self._host
+        else:
+            host_url = self._host
+        return f"{host_url}Items/{item_id}/" \
+               f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
     def __get_local_image_by_id(self, item_id: str) -> str:
         """
@@ -1146,13 +1149,13 @@ class Emby:
                         subtitle = f'S{item.get("ParentIndexNumber")}:{item.get("IndexNumber")} - {item.get("Name")}'
                     if item_type == MediaType.MOVIE.value:
                         if item.get("BackdropImageTags"):
-                            image = self.__get_backdrop_url(item_id=item.get("Id"),
-                                                            image_tag=item.get("BackdropImageTags")[0])
+                            image = self.get_backdrop_url(item_id=item.get("Id"),
+                                                          image_tag=item.get("BackdropImageTags")[0])
                         else:
                             image = self.__get_local_image_by_id(item.get("Id"))
                     else:
-                        image = self.__get_backdrop_url(item_id=item.get("SeriesId"),
-                                                        image_tag=item.get("SeriesPrimaryImageTag"))
+                        image = self.get_backdrop_url(item_id=item.get("SeriesId"),
+                                                      image_tag=item.get("SeriesPrimaryImageTag"))
                         if not image:
                             image = self.__get_local_image_by_id(item.get("SeriesId"))
                     ret_resume.append(schemas.MediaServerPlayItem(
@@ -1185,7 +1188,7 @@ class Emby:
         params = {
             "Limit": 100,
             "MediaTypes": "Video",
-            "Fields": "ProductionYear,Path",
+            "Fields": "ProductionYear,Path,BackdropImageTags",
             "api_key": self._apikey
         }
         try:
@@ -1213,7 +1216,8 @@ class Emby:
                         subtitle=item.get("ProductionYear"),
                         type=item_type,
                         image=image,
-                        link=link
+                        link=link,
+                        BackdropImageTags=item.get("BackdropImageTags")
                     ))
                 return ret_latest
             else:

@@ -279,6 +279,7 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
                                   server: str = None,
                                   count: int = 20,
                                   username: str = None,
+                                  **kwargs
                                   ) -> List[str]:
         """
         获取媒体服务器最新入库条目的图片

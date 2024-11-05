@@ -823,20 +823,23 @@ class Jellyfin:
             return ""
         return "%sItems/%s/Images/Primary" % (self._host, item_id)
 
-    def __get_backdrop_url(self, item_id: str, image_tag: str) -> str:
+    def get_backdrop_url(self, item_id: str, image_tag: str, remote: bool = False) -> str:
         """
         获取Backdrop图片地址
         :param: item_id: 在Jellyfin中的ID
         :param: image_tag: 图片的tag
         :param: remote 是否远程使用，TG微信等客户端调用应为True
-        :param: inner 是否NT内部调用，为True是会使用NT中转
         """
         if not self._host or not self._apikey:
             return ""
         if not image_tag or not item_id:
             return ""
-        return f"{self._host}Items/{item_id}/" \
-               f"Images/Backdrop?tag={image_tag}&fillWidth=666&api_key={self._apikey}"
+        if remote:
+            host_url = self._playhost or self._host
+        else:
+            host_url = self._host
+        return f"{host_url}Items/{item_id}/" \
+               f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
     def get_resume(self, num: int = 12, username: str = None) -> Optional[List[schemas.MediaServerPlayItem]]:
         """
@@ -875,8 +878,8 @@ class Jellyfin:
                     item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
                     link = self.get_play_url(item.get("Id"))
                     if item.get("BackdropImageTags"):
-                        image = self.__get_backdrop_url(item_id=item.get("Id"),
-                                                        image_tag=item.get("BackdropImageTags")[0])
+                        image = self.get_backdrop_url(item_id=item.get("Id"),
+                                                      image_tag=item.get("BackdropImageTags")[0])
                     else:
                         image = self.__get_local_image_by_id(item.get("Id"))
                     # 小部分剧集无[xxx-S01E01-thumb.jpg]图片
@@ -919,7 +922,7 @@ class Jellyfin:
         params = {
             "Limit": 100,
             "MediaTypes": "Video",
-            "Fields": "ProductionYear,Path",
+            "Fields": "ProductionYear,Path,BackdropImageTags",
             "api_key": self._apikey,
         }
         try:
@@ -947,7 +950,8 @@ class Jellyfin:
                         subtitle=item.get("ProductionYear"),
                         type=item_type,
                         image=image,
-                        link=link
+                        link=link,
+                        BackdropImageTags=item.get("BackdropImageTags")
                     ))
                 return ret_latest
             else:

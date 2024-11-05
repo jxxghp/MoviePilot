@@ -283,9 +283,9 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
 
     def mediaserver_latest_images(self,
                                   server: str = None,
-                                  count: int = 20,
+                                  count: int = 10,
                                   username: str = None,
-                                  host_type: bool = True,
+                                  remote: bool = False
                                   ) -> List[str]:
         """
         获取媒体服务器最新入库条目的图片
@@ -293,7 +293,7 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
         :param server: 媒体服务器名称
         :param count: 获取数量
         :param username: 用户名
-        :param host_type: True为外网链接, False为内网链接
+        :param remote: True为外网链接, False为内网链接
         :return: 图片链接列表
         """
         server_obj: Emby = self.get_instance(server)
@@ -304,10 +304,10 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
         items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(server=server, count=count,
                                                                            username=username)
         for item in items:
-            if host_type and item.id:
-                _link = server_obj.generate_external_image_link(item_id=item.id, image_type="Backdrop")
-                if _link:
-                    links.append(_link)
-            elif item.image:
-                links.append(item.image)
+            if item.BackdropImageTags:
+                image_url = server_obj.get_backdrop_url(item_id=item.id,
+                                                        image_tag=item.BackdropImageTags[0],
+                                                        remote=remote)
+                if image_url:
+                    links.append(image_url)
         return links

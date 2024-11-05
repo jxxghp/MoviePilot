@@ -95,17 +95,19 @@ class MediaServerChain(ChainBase):
         return self.run_module("mediaserver_latest", count=count, server=server, username=username)
 
     @cached(cache=TTLCache(maxsize=1, ttl=3600))
-    def get_latest_wallpapers(self, server: str = None, count=20) -> List[str]:
+    def get_latest_wallpapers(self, server: str = None, count: int = 10,
+                              remote: bool = False, username: str = None) -> List[str]:
         """
         获取最新最新入库条目海报作为壁纸，缓存1小时
         """
-        return self.run_module("mediaserver_latest_images", server=server, count=count)
+        return self.run_module("mediaserver_latest_images", server=server, count=count,
+                               remote=remote, username=username)
 
-    def get_latest_wallpaper(self, server: str = None) -> Optional[str]:
+    def get_latest_wallpaper(self, server: str = None, remote: bool = False, username: str = None) -> Optional[str]:
         """
         获取最新最新入库条目海报作为壁纸，缓存1小时
         """
-        wallpapers = self.get_latest_wallpapers(server=server, count=20)
+        wallpapers = self.get_latest_wallpapers(server=server, count=1, remote=remote, username=username)
         return wallpapers[0] if wallpapers else None
 
     def get_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:

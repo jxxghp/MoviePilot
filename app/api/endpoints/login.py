@@ -59,7 +59,7 @@ def wallpaper() -> Any:
     elif settings.WALLPAPER == "mediaserver":
         url = MediaServerChain().get_latest_wallpaper()
     else:
-         url = TmdbChain().get_random_wallpager()
+        url = TmdbChain().get_random_wallpager()
     if url:
         return schemas.Response(
             success=True,
