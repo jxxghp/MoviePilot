@@ -1,2 +1,2 @@
-APP_VERSION = 'v2.0.0-beta'
-FRONTEND_VERSION = 'v2.0.0-beta'
+APP_VERSION = 'v2.0.1'
+FRONTEND_VERSION = 'v2.0.1'
