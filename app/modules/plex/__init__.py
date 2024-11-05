@@ -189,10 +189,10 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         媒体数量统计
         """
         if server:
-            server: Plex = self.get_instance(server)
-            if not server:
+            server_obj: Plex = self.get_instance(server)
+            if not server_obj:
                 return None
-            servers = [server]
+            servers = [server_obj]
         else:
             servers = self.get_instances().values()
         media_statistics = []
@@ -209,9 +209,9 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         """
         媒体库列表
         """
-        server: Plex = self.get_instance(server)
-        if server:
-            return server.get_librarys(hidden)
+        server_obj: Plex = self.get_instance(server)
+        if server_obj:
+            return server_obj.get_librarys(hidden)
         return None
 
     def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: int = 0,
@@ -226,18 +226,18 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
 
         :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
         """
-        server: Plex = self.get_instance(server)
-        if server:
-            return server.get_items(library_id, start_index, limit)
+        server_obj: Plex = self.get_instance(server)
+        if server_obj:
+            return server_obj.get_items(library_id, start_index, limit)
         return None
 
     def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[schemas.MediaServerItem]:
         """
         媒体库项目详情
         """
-        server: Plex = self.get_instance(server)
-        if server:
-            return server.get_iteminfo(item_id)
+        server_obj: Plex = self.get_instance(server)
+        if server_obj:
+            return server_obj.get_iteminfo(item_id)
         return None
 
     def mediaserver_tv_episodes(self, server: str,
@@ -245,10 +245,10 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         """
         获取剧集信息
         """
-        server: Plex = self.get_instance(server)
-        if not server:
+        server_obj: Plex = self.get_instance(server)
+        if not server_obj:
             return None
-        _, seasoninfo = server.get_tv_episodes(item_id=item_id)
+        _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id)
         if not seasoninfo:
             return []
         return [schemas.MediaServerSeasonInfo(
@@ -260,19 +260,20 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         """
         获取媒体服务器正在播放信息
         """
-        server: Plex = self.get_instance(server)
-        if not server:
+        server_obj: Plex = self.get_instance(server)
+        if not server_obj:
             return []
-        return server.get_resume(num=count)
+        return server_obj.get_resume(num=count)
 
-    def mediaserver_latest(self, server: str, count: int = 20, **kwargs) -> List[schemas.MediaServerPlayItem]:
+    def mediaserver_latest(self, server: str = None, count: int = 20,
+                           **kwargs) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """
-        server: Plex = self.get_instance(server)
-        if not server:
+        server_obj: Plex = self.get_instance(server)
+        if not server_obj:
             return []
-        return server.get_latest(num=count)
+        return server_obj.get_latest(num=count)
 
     def mediaserver_latest_images(self,
                                   server: str = None,
@@ -287,26 +288,26 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         :param username: 用户名
         :return: 图片链接列表
         """
-        server: Plex = self.get_instance(server)
-        if not server:
+        server_obj: Plex = self.get_instance(server)
+        if not server_obj:
             return []
 
         links = []
-        items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(num=count, username=username)
+        items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(server=server, count=count,
+                                                                           username=username)
         for item in items:
-            link = server.get_remote_image_by_id(item_id=item.id,
-                                                 image_type="Backdrop",
-                                                 plex_url=False)
+            link = server_obj.get_remote_image_by_id(item_id=item.id,
+                                                     image_type="Backdrop",
+                                                     plex_url=False)
             if link:
                 links.append(link)
-
         return links
 
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
         获取媒体库播放地址
         """
-        server: Plex = self.get_instance(server)
-        if not server:
+        server_obj: Plex = self.get_instance(server)
+        if not server_obj:
             return None
-        return server.get_play_url(item_id)
+        return server_obj.get_play_url(item_id)

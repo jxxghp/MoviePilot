@@ -182,10 +182,10 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         媒体数量统计
         """
         if server:
-            server: Jellyfin = self.get_instance(server)
-            if not server:
+            server_obj: Jellyfin = self.get_instance(server)
+            if not server_obj:
                 return None
-            servers = [server]
+            servers = [server_obj]
         else:
             servers = self.get_instances().values()
         media_statistics = []
@@ -203,9 +203,9 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         """
         媒体库列表
         """
-        server: Jellyfin = self.get_instance(server)
-        if server:
-            return server.get_librarys(username=username, hidden=hidden)
+        server_obj: Jellyfin = self.get_instance(server)
+        if server_obj:
+            return server_obj.get_librarys(username=username, hidden=hidden)
         return None
 
     def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: int = 0,
@@ -220,18 +220,18 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
 
         :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
         """
-        server: Jellyfin = self.get_instance(server)
-        if server:
-            return server.get_items(library_id, start_index, limit)
+        server_obj: Jellyfin = self.get_instance(server)
+        if server_obj:
+            return server_obj.get_items(library_id, start_index, limit)
         return None
 
     def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[schemas.MediaServerItem]:
         """
         媒体库项目详情
         """
-        server: Jellyfin = self.get_instance(server)
-        if server:
-            return server.get_iteminfo(item_id)
+        server_obj: Jellyfin = self.get_instance(server)
+        if server_obj:
+            return server_obj.get_iteminfo(item_id)
         return None
 
     def mediaserver_tv_episodes(self, server: str,
@@ -239,10 +239,10 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         """
         获取剧集信息
         """
-        server: Jellyfin = self.get_instance(server)
-        if not server:
+        server_obj: Jellyfin = self.get_instance(server)
+        if not server_obj:
             return None
-        _, seasoninfo = server.get_tv_episodes(item_id=item_id)
+        _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id)
         if not seasoninfo:
             return []
         return [schemas.MediaServerSeasonInfo(
@@ -255,29 +255,29 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         """
         获取媒体服务器正在播放信息
         """
-        server: Jellyfin = self.get_instance(server)
-        if not server:
+        server_obj: Jellyfin = self.get_instance(server)
+        if not server_obj:
             return []
-        return server.get_resume(num=count, username=username)
+        return server_obj.get_resume(num=count, username=username)
 
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
         获取媒体库播放地址
         """
-        server: Jellyfin = self.get_instance(server)
-        if not server:
+        server_obj: Jellyfin = self.get_instance(server)
+        if not server_obj:
             return None
-        return server.get_play_url(item_id)
+        return server_obj.get_play_url(item_id)
 
-    def mediaserver_latest(self, server: str,
+    def mediaserver_latest(self, server: str = None,
                            count: int = 20, username: str = None) -> List[schemas.MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """
-        server: Jellyfin = self.get_instance(server)
-        if not server:
+        server_obj: Jellyfin = self.get_instance(server)
+        if not server_obj:
             return []
-        return server.get_latest(num=count, username=username)
+        return server_obj.get_latest(num=count, username=username)
 
     def mediaserver_latest_images(self,
                                   server: str = None,
@@ -294,15 +294,15 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         :param host_type: True为外网链接, False为内网链接
         :return: 图片链接列表
         """
-        server: Jellyfin = self.get_instance(server)
+        server_obj: Jellyfin = self.get_instance(server)
         if not server:
             return []
 
         links = []
-        items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(num=count, username=username)
+        items: List[schemas.MediaServerPlayItem] = self.mediaserver_latest(server=server, count=count,
+                                                                           username=username)
         for item in items:
-            link = server.generate_image_link(item_id=item.id, image_type="Backdrop", host_type=host_type)
+            link = server_obj.generate_image_link(item_id=item.id, image_type="Backdrop", host_type=host_type)
             if link:
                 links.append(link)
-
         return links
