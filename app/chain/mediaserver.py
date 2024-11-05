@@ -103,7 +103,7 @@ class MediaServerChain(ChainBase):
         return self.run_module("mediaserver_latest_images", server=server, count=count,
                                remote=remote, username=username)
 
-    def get_latest_wallpaper(self, server: str = None, remote: bool = False, username: str = None) -> Optional[str]:
+    def get_latest_wallpaper(self, server: str = None, remote: bool = True, username: str = None) -> Optional[str]:
         """
         获取最新最新入库条目海报作为壁纸，缓存1小时
         """
