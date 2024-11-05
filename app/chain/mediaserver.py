@@ -96,7 +96,7 @@ class MediaServerChain(ChainBase):
 
     @cached(cache=TTLCache(maxsize=1, ttl=3600))
     def get_latest_wallpapers(self, server: str = None, count: int = 10,
-                              remote: bool = False, username: str = None) -> List[str]:
+                              remote: bool = True, username: str = None) -> List[str]:
         """
         获取最新最新入库条目海报作为壁纸，缓存1小时
         """
