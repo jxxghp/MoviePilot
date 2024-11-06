@@ -222,7 +222,7 @@ class LocalStorage(StorageBase):
         软链接文件
         """
         file_path = Path(fileitem.path)
-        code, message = SystemUtils.copy(file_path, target_file)
+        code, message = SystemUtils.softlink(file_path, target_file)
         if code != 0:
             logger.error(f"软链接文件失败：{message}")
             return False
