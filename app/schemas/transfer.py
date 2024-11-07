@@ -86,4 +86,4 @@ class EpisodeFormat(BaseModel):
     format: Optional[str] = None
     detail: Optional[str] = None
     part: Optional[str] = None
-    offset: Optional[int] = None
+    offset: Optional[str] = None

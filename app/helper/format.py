@@ -9,17 +9,19 @@ class FormatParser(object):
     _split_chars = r"\.|\s+|\(|\)|\[|]|-|\+|【|】|/|～|;|&|\||#|_|「|」|~"
 
     def __init__(self, eformat: str, details: str = None, part: str = None,
-                 offset: int = None, key: str = "ep"):
+                 offset: str = None, key: str = "ep"):
         """
         :params eformat: 格式化字符串
         :params details: 格式化详情
         :params part: 分集
-        :params offset: 偏移量
+        :params offset: 偏移量 -10/EP*2
         :prams key: EP关键字
         """
         self._format = eformat
         self._start_ep = None
         self._end_ep = None
+        self.__offset = offset or "EP"
+        self._key = key
         self._part = None
         if part:
             self._part = part
@@ -34,8 +36,6 @@ class FormatParser(object):
                     self._end_ep = int(tmp[0]) if int(tmp[0]) > int(tmp[1]) else int(tmp[1])
                 else:
                     self._start_ep = self._end_ep = int(tmp[0])
-        self.__offset = int(offset) if offset else 0
-        self._key = key
 
     @property
     def format(self):
@@ -77,15 +77,21 @@ class FormatParser(object):
         if self._start_ep is not None and self._start_ep == self._end_ep:
             if isinstance(self._start_ep, str):
                 s, e = self._start_ep.split("-")
+                start_ep = self.__offset.replace("EP", s)
+                end_ep = self.__offset.replace("EP", e)
                 if int(s) == int(e):
-                    return int(s) + self.__offset, None, self.part
-                return int(s) + self.__offset, int(e) + self.__offset, self.part
-            return self._start_ep + self.__offset, None, self.part
+                    return int(eval(start_ep)), None, self.part
+                return int(eval(start_ep)), int(eval(end_ep)), self.part
+            else:
+                start_ep = self.__offset.replace("EP", str(self._start_ep))
+                return int(eval(start_ep)), None, self.part
         if not self._format:
             return self._start_ep, self._end_ep, self.part
-        s, e = self.__handle_single(file_name)
-        return s + self.__offset if s is not None else None, \
-            e + self.__offset if e is not None else None, self.part
+        else:
+            s, e = self.__handle_single(file_name)
+            start_ep = self.__offset.replace("EP", str(s)) if s else None
+            end_ep = self.__offset.replace("EP", str(e)) if e else None
+            return int(eval(start_ep)) if start_ep else None,  int(eval(end_ep)) if end_ep else None, self.part
 
     def __handle_single(self, file: str) -> Tuple[Optional[int], Optional[int]]:
         """
