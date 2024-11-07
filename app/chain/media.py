@@ -335,6 +335,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
             :param _path: 元数据文件路径
             :param _content: 文件内容
             """
+            if not _fileitem or not _content or not _path:
+                return
             tmp_file = settings.TEMP_PATH / _path.name
             tmp_file.write_bytes(_content)
             logger.info(f"保存文件：【{_fileitem.storage}】{_path}")
@@ -356,6 +358,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     logger.info(f"{_url} 图片下载失败，请检查网络连通性！")
             except Exception as err:
                 logger.error(f"{_url} 图片下载失败：{str(err)}！")
+            return None
 
         # 当前文件路径
         filepath = Path(fileitem.path)
@@ -410,7 +413,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             # 下载图片
                             content = __download_image(_url=attr_value)
                             # 写入图片到当前目录
-                            __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+                            if content:
+                                __save_file(_fileitem=fileitem, _path=image_path, _content=content)
         else:
             # 电视剧
             if fileitem.type == "file":
@@ -447,7 +451,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                         # 下载图片
                         content = __download_image(image_url)
                         # 保存图片文件到当前目录
-                        __save_file(_fileitem=parent, _path=image_path, _content=content)
+                        if content:
+                            __save_file(_fileitem=parent, _path=image_path, _content=content)
 
             else:
                 # 当前为目录，处理目录内的文件
@@ -485,7 +490,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                 # 下载图片
                                 content = __download_image(image_url)
                                 # 保存图片文件到当前目录
-                                __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+                                if content:
+                                    __save_file(_fileitem=fileitem, _path=image_path, _content=content)
                     # 判断当前目录是不是剧集根目录
                     if season_meta.name:
                         # 当前目录有名称，生成tvshow nfo 和 tv图片
@@ -511,6 +517,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                 # 下载图片
                                 content = __download_image(image_url)
                                 # 保存图片文件到当前目录
-                                __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+                                if content:
+                                    __save_file(_fileitem=fileitem, _path=image_path, _content=content)
 
         logger.info(f"{filepath.name} 刮削完成")
