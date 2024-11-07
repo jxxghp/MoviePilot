@@ -468,6 +468,30 @@ class Jellyfin:
             return None
         return None
 
+    def get_item_path_by_id(self, item_id: str) -> Optional[str]:
+        """
+        根据ItemId查询所在的Path
+        :param item_id: 在Jellyfin中的ID
+        :return: Path
+        """
+        if not self._host or not self._apikey:
+            return None
+        url = f"{self._host}Items/{item_id}/PlaybackInfo"
+        params = {"api_key": self._apikey}
+        try:
+            res = RequestUtils(timeout=10).get_res(url, params)
+            if res:
+                media_sources = res.json().get("MediaSources")
+                if media_sources:
+                    return media_sources[0].get("Path")
+            else:
+                logger.error("Items/Id/PlaybackInfo 未获取到返回数据，不设置 Path")
+                return None
+        except Exception as e:
+            logger.error("连接Items/Id/PlaybackInfo出错：" + str(e))
+            return None
+        return None
+
     def generate_image_link(self, item_id: str, image_type: str, host_type: bool) -> Optional[str]:
         """
         根据ItemId和imageType查询本地对应图片
@@ -662,6 +686,8 @@ class Jellyfin:
                 item_id=eventItem.item_id,
                 image_type="Backdrop"
             )
+            # jellyfin 的 webhook 不含 item_path，需要单独获取
+            eventItem.item_path = self.get_item_path_by_id(eventItem.item_id)
 
         return eventItem
 
