@@ -462,6 +462,11 @@ class FileManagerModule(_ModuleBase):
                         # 上传文件
                         new_item = target_oper.upload(target_fileitem, filepath)
                         if new_item:
+                            # 重命名为目标文件名
+                            if new_item.name != target_file.name:
+                                if target_oper.rename(new_item, target_file.name):
+                                    new_item.name = target_file.name
+                                    new_item.path = str(Path(new_item.path).parent / target_file.name)
                             return new_item, ""
                         else:
                             return None, f"{fileitem.path} 上传 {target_storage} 失败"
@@ -475,6 +480,11 @@ class FileManagerModule(_ModuleBase):
                         # 上传文件
                         new_item = target_oper.upload(target_fileitem, filepath)
                         if new_item:
+                            # 重命名为目标文件名
+                            if new_item.name != target_file.name:
+                                if target_oper.rename(new_item, target_file.name):
+                                    new_item.name = target_file.name
+                                    new_item.path = str(Path(new_item.path).parent / target_file.name)
                             # 删除源文件
                             source_oper.delete(fileitem)
                             return new_item, ""
