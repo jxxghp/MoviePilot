@@ -225,12 +225,13 @@ class RssHelper:
     }
 
     @staticmethod
-    def parse(url, proxy: bool = False, timeout: int = 15) -> Union[List[dict], None]:
+    def parse(url, proxy: bool = False, timeout: int = 15, headers: dict = None) -> Union[List[dict], None]:
         """
         解析RSS订阅URL，获取RSS中的种子信息
         :param url: RSS地址
         :param proxy: 是否使用代理
         :param timeout: 请求超时
+        :param headers: 自定义请求头
         :return: 种子信息列表，如为None代表Rss过期
         """
         # 开始处理
@@ -238,7 +239,8 @@ class RssHelper:
         if not url:
             return []
         try:
-            ret = RequestUtils(proxies=settings.PROXY if proxy else None, timeout=timeout).get_res(url)
+            ret = RequestUtils(proxies=settings.PROXY if proxy else None,
+                               timeout=timeout, headers=headers).get_res(url)
             if not ret:
                 return []
         except Exception as err:
