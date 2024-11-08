@@ -52,7 +52,7 @@ class DoubanCache(metaclass=Singleton):
         获取缓存KEY
         """
         return f"[{meta.type.value if meta.type else '未知'}]" \
-               f"{meta.name or meta.doubanid}-{meta.year}-{meta.begin_season}"
+               f"{meta.doubanid or meta.name}-{meta.year}-{meta.begin_season}"
 
     def get(self, meta: MetaBase):
         """
