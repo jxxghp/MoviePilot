@@ -1,10 +1,12 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Integer, String, Sequence, JSON
+from sqlalchemy import Boolean, Column, Integer, String, Sequence, JSON, Text
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, Base
-
+from app.core.config import settings
+if settings.DB_TYPE.lower() == "mysql":
+    String = String(255)
 
 class Site(Base):
     """
@@ -23,6 +25,8 @@ class Site(Base):
     rss = Column(String)
     # Cookie
     cookie = Column(String)
+    if settings.DB_TYPE.lower() == "mysql":
+        cookie = Column(Text)
     # User-Agent
     ua = Column(String)
     # ApiKey

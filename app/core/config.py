@@ -57,6 +57,12 @@ class ConfigModel(BaseModel):
     DB_ECHO: bool = False
     # 数据库连接池类型，QueuePool, NullPool
     DB_POOL_TYPE: str = "QueuePool"
+    DB_TYPE: str = "sqlite"
+    DB_USER: str = "mp"
+    DB_PASSWORD: str = "root"
+    DB_HOST: str = "127.0.0.1"
+    DB_PORT: int = 3306
+    DB_NAME: str = "root"
     # 是否在获取连接时进行预先 ping 操作，默认关闭
     DB_POOL_PRE_PING: bool = False
     # 数据库连接池的大小，默认 100

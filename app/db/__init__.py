@@ -1,23 +1,37 @@
 from typing import Any, Generator, List, Optional, Self, Tuple
-
 from sqlalchemy import NullPool, QueuePool, and_, create_engine, inspect
 from sqlalchemy.orm import Session, as_declarative, declared_attr, scoped_session, sessionmaker
-
 from app.core.config import settings
 
 # 根据池类型设置 poolclass 和相关参数
 pool_class = NullPool if settings.DB_POOL_TYPE == "NullPool" else QueuePool
-kwargs = {
-    "url": f"sqlite:///{settings.CONFIG_PATH}/user.db",
-    "pool_pre_ping": settings.DB_POOL_PRE_PING,
-    "echo": settings.DB_ECHO,
-    "poolclass": pool_class,
-    "pool_recycle": settings.DB_POOL_RECYCLE,
-    "connect_args": {
-        # "check_same_thread": False,
-        "timeout": settings.DB_TIMEOUT
+
+if settings.DB_TYPE.lower() == "mysql":
+    kwargs = {
+        # MySQL连接字符串
+        "url": f"mysql+pymysql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}",
+        "pool_pre_ping": settings.DB_POOL_PRE_PING,
+        "echo": settings.DB_ECHO,
+        "poolclass": pool_class,
+        "pool_recycle": settings.DB_POOL_RECYCLE,
+        "connect_args": {
+            # MySQL 连接的特定参数
+            "charset": "utf8mb4"
+        }
     }
-}
+if settings.DB_TYPE.lower() == "sqlite":
+    kwargs = {
+        "url": f"sqlite:///{settings.CONFIG_PATH}/user.db",
+        "pool_pre_ping": settings.DB_POOL_PRE_PING,
+        "echo": settings.DB_ECHO,
+        "poolclass": pool_class,
+        "pool_recycle": settings.DB_POOL_RECYCLE,
+        "connect_args": {
+            # "check_same_thread": False,
+            "timeout": settings.DB_TIMEOUT
+        }
+    }
+
 # 当使用 QueuePool 时，添加 QueuePool 特有的参数
 if pool_class == QueuePool:
     kwargs.update({
@@ -25,6 +39,7 @@ if pool_class == QueuePool:
         "pool_timeout": settings.DB_POOL_TIMEOUT,
         "max_overflow": settings.DB_MAX_OVERFLOW
     })
+
 # 创建数据库引擎
 Engine = create_engine(**kwargs)
 

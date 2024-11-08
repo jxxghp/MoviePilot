@@ -2,7 +2,9 @@ from sqlalchemy import Column, Integer, String, Sequence, JSON
 from sqlalchemy.orm import Session
 
 from app.db import db_query, Base
-
+from app.core.config import settings
+if settings.DB_TYPE.lower() == "mysql":
+    String = String(255)
 
 class Message(Base):
     """

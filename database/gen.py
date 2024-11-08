@@ -16,4 +16,6 @@ script_location = settings.ROOT_PATH / 'database'
 alembic_cfg = AlembicConfig()
 alembic_cfg.set_main_option('script_location', str(script_location))
 alembic_cfg.set_main_option('sqlalchemy.url', f"sqlite:///{db_location}")
+if settings.DB_TYPE.lower() == "mysql":
+    alembic_cfg.set_main_option('sqlalchemy.url', f"mysql+pymysql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}")
 alembic_revision(alembic_cfg, db_version, True)

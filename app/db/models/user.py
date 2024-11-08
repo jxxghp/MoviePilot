@@ -2,7 +2,9 @@ from sqlalchemy import Boolean, Column, Integer, JSON, Sequence, String
 from sqlalchemy.orm import Session
 
 from app.db import Base, db_query, db_update
-
+from app.core.config import settings
+if settings.DB_TYPE.lower() == "mysql":
+    String = String(255)
 
 class User(Base):
     """
