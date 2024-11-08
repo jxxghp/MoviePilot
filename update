@@ -212,14 +212,14 @@ function compare_versions() {
                 return 1
             elif (( current_ver < release_ver )); then
                 INFO "发现新版本，开始自动升级..."
-                install_backend_and_download_resources "tags/${release_ver}.zip"
+                install_backend_and_download_resources "tags/$2.zip"
                 return 0
             else
-                WARN "当前版本已是最新版本，跳过更新步骤..."
-                return 1
+                continue
             fi
         fi
     done
+    WARN "当前版本已是最新版本，跳过更新步骤..."
 }
 
 # 优先级转换
