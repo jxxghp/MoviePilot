@@ -187,6 +187,7 @@ class StorageSchema(Enum):
     Alipan = "alipan"
     U115 = "u115"
     Rclone = "rclone"
+    Alist = "alist"
 
 
 # 模块类型
