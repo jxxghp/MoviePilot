@@ -432,26 +432,32 @@ class FilterModule(_ModuleBase):
     @staticmethod
     def __match_size(torrent: TorrentInfo, size_range: str) -> bool:
         """
-        判断种子是否匹配大小范围（MB）
+        判断种子是否匹配大小范围（MB），剧集拆分为每集大小
         """
         if not size_range:
             return True
+        # 集数
+        meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+        episode_count = meta.total_episode or 1
+        # 每集大小
+        torrent_size = torrent.size / episode_count
+        # 大小范围
         size_range = size_range.strip()
         if size_range.find("-") != -1:
             # 区间
             size_min, size_max = size_range.split("-")
             size_min = float(size_min.strip()) * 1024 * 1024
             size_max = float(size_max.strip()) * 1024 * 1024
-            if size_min <= torrent.size <= size_max:
+            if size_min <= torrent_size <= size_max:
                 return True
         elif size_range.startswith(">"):
             # 大于
             size_min = float(size_range[1:].strip()) * 1024 * 1024
-            if torrent.size >= size_min:
+            if torrent_size >= size_min:
                 return True
         elif size_range.startswith("<"):
             # 小于
             size_max = float(size_range[1:].strip()) * 1024 * 1024
-            if torrent.size <= size_max:
+            if torrent_size <= size_max:
                 return True
         return False
