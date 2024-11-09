@@ -37,6 +37,12 @@ class StorageChain(ChainBase):
         """
         return self.run_module("list_files", fileitem=fileitem, recursion=recursion)
 
+    def any_files(self, fileitem: schemas.FileItem, extensions: list = None) -> Optional[bool]:
+        """
+        查询当前目录下是否存在指定扩展名任意文件
+        """
+        return self.run_module("any_files", fileitem=fileitem, extensions=extensions)
+
     def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """
         创建目录
@@ -116,18 +122,8 @@ class StorageChain(ChainBase):
         else:
             dir_item = self.get_parent_item(fileitem)
         if dir_item:
-            files = self.list_files(dir_item, recursion=True)
-
-            # 是否存在其他媒体文件
-            media_file_exist = False
-            if files:
-                for file in files:
-                    if file.extension and f".{file.extension.lower()}" in settings.RMT_MEDIAEXT:
-                        media_file_exist = True
-                        break
             # 不存在其他媒体文件，删除空目录
-            if not media_file_exist:
-                # 返回空目录删除状态
+            if not self.any_files(dir_item, extensions=settings.RMT_MEDIAEXT):
                 return self.delete_file(dir_item)
 
         # 存在媒体文件，返回文件删除状态

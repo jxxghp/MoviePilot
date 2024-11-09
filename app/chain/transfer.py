@@ -494,7 +494,13 @@ class TransferChain(ChainBase):
             # 删除残留文件
             if fileitem:
                 logger.warn(f"删除残留文件夹：【{fileitem.storage}】{fileitem.path}")
-                self.storagechain.delete_file(fileitem)
+                if self.storagechain.delete_file(fileitem):
+                    # 删除空的父目录
+                    dir_item = self.storagechain.get_parent_item(fileitem)
+                    if dir_item:
+                        if not self.storagechain.any_files(dir_item, extensions=settings.RMT_MEDIAEXT):
+                            logger.warn(f"正在删除空目录：【{dir_item.storage}】{dir_item.path}")
+                            return self.storagechain.delete_file(dir_item)
 
         # 结束进度
         logger.info(f"{fileitem.path} 整理完成，共 {total_num} 个文件，"
