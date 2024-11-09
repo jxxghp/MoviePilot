@@ -149,11 +149,10 @@ def rename(fileitem: schemas.FileItem,
     :param recursive: 是否递归修改
     :param _: token
     """
-    if fileitem.storage != 'local':
-        if not fileitem.fileid or not new_name:
-            return schemas.Response(success=False, message="ID或新名称为空")
-    elif not new_name:
+    if not new_name:
         return schemas.Response(success=False, message="新名称为空")
+    if fileitem.storage != 'local' and not fileitem.fileid:
+            return schemas.Response(success=False, message="资源ID获取失败")
     result = StorageChain().rename_file(fileitem, new_name)
     if result:
         if recursive:
