@@ -468,7 +468,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     season_meta = MetaInfo(filepath.name)
                     if season_meta.begin_season:
                         # 当前目录有季号，生成季nfo
-                        season_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo, season=meta.begin_season)
+                        season_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo, season=season_meta.begin_season)
                         if not season_nfo:
                             logger.warn(f"无法生成电视剧季nfo文件：{meta.name}")
                             return
