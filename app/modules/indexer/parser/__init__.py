@@ -182,7 +182,8 @@ class SiteParserBase(metaclass=ABCMeta):
                 )
             )
         # 解析用户未读消息
-        self._pase_unread_msgs()
+        if settings.SITE_MESSAGE:
+            self._pase_unread_msgs()
         # 解析用户上传、下载、分享率等信息
         if self._user_traffic_page:
             self._parse_user_traffic_info(
