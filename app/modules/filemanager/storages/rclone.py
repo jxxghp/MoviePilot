@@ -331,11 +331,24 @@ class Rclone(StorageBase):
         """
         存储使用情况
         """
+        conf = self.get_config()
+        if not conf:
+            return None
+        file_path = conf.config.get("filepath")
+        if not file_path or not Path(file_path).exists():
+            return None
+        # 读取rclone文件，检查是否有[MP]节点配置
+        with open(file_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            if not lines:
+                return None
+            if not any("[MP]" in line.strip() for line in lines):
+                return None
         try:
             ret = subprocess.run(
                 [
                     'rclone', 'about',
-                    '/', '--json'
+                    'MP:/', '--json'
                 ],
                 capture_output=True,
                 startupinfo=self.__get_hidden_shell()
