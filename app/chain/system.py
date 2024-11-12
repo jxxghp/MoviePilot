@@ -1,6 +1,5 @@
 import json
 import re
-from pathlib import Path
 from typing import Union
 
 from app.chain import ChainBase
@@ -10,6 +9,7 @@ from app.schemas import Notification, MessageChannel
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.system import SystemUtils
+from version import FRONTEND_VERSION, APP_VERSION
 
 
 class SystemChain(ChainBase, metaclass=Singleton):
@@ -98,77 +98,67 @@ class SystemChain(ChainBase, metaclass=Singleton):
     @staticmethod
     def __get_server_release_version():
         """
-        获取后端最新版本
+        获取后端V2最新版本
         """
         try:
-            version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
-                "https://api.github.com/repos/jxxghp/MoviePilot/releases/latest")
-            if version_res:
-                ver_json = version_res.json()
-                version = f"{ver_json['tag_name']}"
-                return version
+            # 获取所有发布的版本列表
+            response = RequestUtils(
+                proxies=settings.PROXY,
+                headers=settings.GITHUB_HEADERS
+            ).get_res("https://api.github.com/repos/jxxghp/MoviePilot/releases")
+            if response:
+                releases = [release['tag_name'] for release in response.json()]
+                v2_releases = [tag for tag in releases if re.match(r"^v2\.", tag)]
+                if not v2_releases:
+                    logger.warn("获取v2后端最新版本版本出错！")
+                else:
+                    # 找到最新的v2版本
+                    latest_v2 = sorted(v2_releases, key=lambda s: list(map(int, re.findall(r'\d+', s))))[-1]
+                    logger.info(f"获取到后端最新版本：{latest_v2}")
+                    return latest_v2
             else:
-                return None
+                logger.error("无法获取后端版本信息，请检查网络连接或GitHub API请求。")
         except Exception as err:
             logger.error(f"获取后端最新版本失败：{str(err)}")
-            return None
+        return None
 
     @staticmethod
     def __get_front_release_version():
         """
-        获取前端最新版本
+        获取前端V2最新版本
         """
         try:
-            version_res = RequestUtils(proxies=settings.PROXY, headers=settings.GITHUB_HEADERS).get_res(
-                "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/latest")
-            if version_res:
-                ver_json = version_res.json()
-                version = f"{ver_json['tag_name']}"
-                return version
+            # 获取所有发布的版本列表
+            response = RequestUtils(
+                proxies=settings.PROXY,
+                headers=settings.GITHUB_HEADERS
+            ).get_res("https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases")
+            if response:
+                releases = [release['tag_name'] for release in response.json()]
+                v2_releases = [tag for tag in releases if re.match(r"^v2\.", tag)]
+                if not v2_releases:
+                    logger.warn("获取v2前端最新版本版本出错！")
+                else:
+                    # 找到最新的v2版本
+                    latest_v2 = sorted(v2_releases, key=lambda s: list(map(int, re.findall(r'\d+', s))))[-1]
+                    logger.info(f"获取到前端最新版本：{latest_v2}")
+                    return latest_v2
             else:
-                return None
+                logger.error("无法获取前端版本信息，请检查网络连接或GitHub API请求。")
         except Exception as err:
             logger.error(f"获取前端最新版本失败：{str(err)}")
-            return None
+        return None
 
     @staticmethod
     def get_server_local_version():
         """
         查看当前版本
         """
-        version_file = settings.ROOT_PATH / "version.py"
-        if version_file.exists():
-            try:
-                with open(version_file, 'rb') as f:
-                    version = f.read()
-                pattern = r"'([^']*)'"
-                match = re.search(pattern, str(version))
-
-                if match:
-                    version = match.group(1)
-                    return version
-                else:
-                    logger.warn("未找到版本号")
-                    return None
-            except Exception as err:
-                logger.error(f"加载版本文件 {version_file} 出错：{str(err)}")
+        return APP_VERSION
 
     @staticmethod
     def get_frontend_version():
         """
         获取前端版本
         """
-        if SystemUtils.is_frozen() and SystemUtils.is_windows():
-            version_file = settings.CONFIG_PATH.parent / "nginx" / "html" / "version.txt"
-        else:
-            version_file = Path(settings.FRONTEND_PATH) / "version.txt"
-        if version_file.exists():
-            try:
-                with open(version_file, 'r') as f:
-                    version = str(f.read()).strip()
-                return version
-            except Exception as err:
-                logger.error(f"加载版本文件 {version_file} 出错：{str(err)}")
-        else:
-            logger.warn("未找到前端版本文件，请正确设置 FRONTEND_PATH")
-            return None
+        return FRONTEND_VERSION
