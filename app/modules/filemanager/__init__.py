@@ -195,7 +195,7 @@ class FileManagerModule(_ModuleBase):
         result = []
         __get_files(fileitem, recursion)
 
-        return
+        return result
 
     def any_files(self, fileitem: FileItem, extensions: list = None) -> Optional[bool]:
         """
