@@ -1,5 +1,5 @@
 from typing import Any, Generator, List, Optional, Self, Tuple
-from sqlalchemy import NullPool, QueuePool, and_, create_engine, inspect
+from sqlalchemy import NullPool, QueuePool, and_, create_engine, inspect, text
 from sqlalchemy.orm import Session, as_declarative, declared_attr, scoped_session, sessionmaker
 from app.core.config import settings
 
@@ -20,18 +20,20 @@ if settings.DB_TYPE.lower() == "mysql":
         }
     }
 if settings.DB_TYPE.lower() == "sqlite":
-    kwargs = {
-        "url": f"sqlite:///{settings.CONFIG_PATH}/user.db",
-        "pool_pre_ping": settings.DB_POOL_PRE_PING,
-        "echo": settings.DB_ECHO,
-        "poolclass": pool_class,
-        "pool_recycle": settings.DB_POOL_RECYCLE,
-        "connect_args": {
-            # "check_same_thread": False,
-            "timeout": settings.DB_TIMEOUT
-        }
+    connect_args = {
+      "timeout": settings.DB_TIMEOUT
     }
-
+    # 启用 WAL 模式时的额外配置
+    if settings.DB_WAL_ENABLE:
+      connect_args["check_same_thread"] = False
+    kwargs = {
+      "url": f"sqlite:///{settings.CONFIG_PATH}/user.db",
+      "pool_pre_ping": settings.DB_POOL_PRE_PING,
+      "echo": settings.DB_ECHO,
+      "poolclass": pool_class,
+      "pool_recycle": settings.DB_POOL_RECYCLE,
+      "connect_args": connect_args
+    }
 # 当使用 QueuePool 时，添加 QueuePool 特有的参数
 if pool_class == QueuePool:
     kwargs.update({
@@ -42,6 +44,11 @@ if pool_class == QueuePool:
 
 # 创建数据库引擎
 Engine = create_engine(**kwargs)
+# 根据配置设置日志模式
+journal_mode = "WAL" if settings.DB_WAL_ENABLE else "DELETE"
+with Engine.connect() as connection:
+    current_mode = connection.execute(text(f"PRAGMA journal_mode={journal_mode};")).scalar()
+    print(f"Database journal mode set to: {current_mode}")
 
 # 会话工厂
 SessionFactory = sessionmaker(bind=Engine)
@@ -64,11 +71,34 @@ def get_db() -> Generator:
             db.close()
 
 
+def perform_checkpoint(mode: str = "PASSIVE"):
+    """
+    执行 SQLite 的 checkpoint 操作，将 WAL 文件内容写回主数据库
+    :param mode: checkpoint 模式，可选值包括 "PASSIVE"、"FULL"、"RESTART"、"TRUNCATE"
+                 默认为 "PASSIVE"，即不锁定 WAL 文件的轻量级同步
+    """
+    if not settings.DB_WAL_ENABLE:
+        return
+    valid_modes = {"PASSIVE", "FULL", "RESTART", "TRUNCATE"}
+    if mode.upper() not in valid_modes:
+        raise ValueError(f"Invalid checkpoint mode '{mode}'. Must be one of {valid_modes}")
+    try:
+        # 使用指定的 checkpoint 模式，确保 WAL 文件数据被正确写回主数据库
+        with Engine.connect() as conn:
+            conn.execute(text(f"PRAGMA wal_checkpoint({mode.upper()});"))
+    except Exception as e:
+        print(f"Error during WAL checkpoint: {e}")
+
+
 def close_database():
     """
-    关闭所有数据库连接
+    关闭所有数据库连接并清理资源
     """
-    Engine.dispose()
+    try:
+        # 释放连接池，SQLite 会自动清空 WAL 文件，这里不单独再调用 checkpoint
+        Engine.dispose()
+    except Exception as e:
+        print(f"Error while disposing database connections: {e}")
 
 
 def get_args_db(args: tuple, kwargs: dict) -> Optional[Session]:

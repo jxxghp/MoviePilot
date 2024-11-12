@@ -81,6 +81,8 @@ class ConfigModel(BaseModel):
     DB_MAX_OVERFLOW: int = 500
     # SQLite 的 busy_timeout 参数，默认为 60 秒
     DB_TIMEOUT: int = 60
+    # SQLite 是否启用 WAL 模式，默认关闭
+    DB_WAL_ENABLE: bool = False
     # 配置文件目录
     CONFIG_DIR: Optional[str] = None
     # 超级管理员
@@ -163,6 +165,8 @@ class ConfigModel(BaseModel):
     SEARCH_MULTIPLE_NAME: bool = False
     # 站点数据刷新间隔（小时）
     SITEDATA_REFRESH_INTERVAL: int = 6
+    # 读取和发送站点消息
+    SITE_MESSAGE: bool = True
     # 种子标签
     TORRENT_TAG: str = "MOVIEPILOT"
     # 下载站点字幕

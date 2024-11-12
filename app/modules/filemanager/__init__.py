@@ -197,6 +197,35 @@ class FileManagerModule(_ModuleBase):
 
         return result
 
+    def any_files(self, fileitem: FileItem, extensions: list = None) -> Optional[bool]:
+        """
+        查询当前目录下是否存在指定扩展名任意文件
+        """
+        storage_oper = self.__get_storage_oper(fileitem.storage)
+        if not storage_oper:
+            logger.error(f"不支持 {fileitem.storage} 的文件浏览")
+            return None
+
+        def __any_file(_item: FileItem):
+            """
+            递归处理
+            """
+            _items = storage_oper.list(_item)
+            if _items:
+                if not extensions:
+                    return True
+                for t in _items:
+                    if (t.type == "file"
+                            and t.extension
+                            and f".{t.extension.lower()}" in extensions):
+                        return True
+                    elif t.type == "dir":
+                        return __any_file(t)
+            return False
+
+        # 返回结果
+        return __any_file(fileitem)
+
     def create_folder(self, fileitem: FileItem, name: str) -> Optional[FileItem]:
         """
         创建目录
