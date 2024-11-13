@@ -120,7 +120,7 @@ class TransferChain(ChainBase):
                     # 非MoviePilot下载的任务，按文件识别
                     mediainfo = None
 
-                # 执行整理
+                # 执行整理，匹配源目录
                 state, errmsg = self.__do_transfer(
                     fileitem=FileItem(
                         storage="local",
@@ -131,7 +131,8 @@ class TransferChain(ChainBase):
                         extension=file_path.suffix.lstrip('.'),
                     ),
                     mediainfo=mediainfo,
-                    download_hash=torrent.hash
+                    download_hash=torrent.hash,
+                    src_match=True
                 )
 
                 # 设置下载任务状态
@@ -148,7 +149,8 @@ class TransferChain(ChainBase):
                       target_storage: str = None, target_path: Path = None,
                       transfer_type: str = None, scrape: bool = None,
                       season: int = None, epformat: EpisodeFormat = None,
-                      min_filesize: int = 0, download_hash: str = None, force: bool = False) -> Tuple[bool, str]:
+                      min_filesize: int = 0, download_hash: str = None,
+                      force: bool = False, src_match: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
@@ -164,6 +166,7 @@ class TransferChain(ChainBase):
         :param min_filesize: 最小文件大小(MB)
         :param download_hash: 下载记录hash
         :param force: 是否强制整理
+        :param src_match: 是否源目录匹配
         返回：成功标识，错误信息
         """
 
@@ -378,6 +381,15 @@ class TransferChain(ChainBase):
                 download_file = self.downloadhis.get_file_by_fullpath(file_item.path)
                 if download_file:
                     download_hash = download_file.download_hash
+
+            # 查询整理目标目录
+            if not target_directory:
+                if target_path:
+                    target_directory = self.directoryhelper.get_dir(mediainfo, dest_path=target_path)
+                elif src_match:
+                    target_directory = self.directoryhelper.get_dir(mediainfo, src_path=file_path)
+                else:
+                    target_directory = self.directoryhelper.get_dir(mediainfo)
 
             # 执行整理
             transferinfo: TransferInfo = self.transfer(fileitem=file_item,

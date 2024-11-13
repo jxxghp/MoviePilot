@@ -4,7 +4,7 @@ from typing import List, Optional
 from app import schemas
 from app.core.context import MediaInfo
 from app.db.systemconfig_oper import SystemConfigOper
-from app.schemas.types import SystemConfigKey, MediaType
+from app.schemas.types import SystemConfigKey
 
 
 class DirectoryHelper:
@@ -59,10 +59,10 @@ class DirectoryHelper:
         :param local: 是否本地目录
         """
         # 处理类型
-        if media:
-            media_type = media.type.value
-        else:
-            media_type = MediaType.UNKNOWN.value
+        if not media:
+            return None
+        # 电影/电视剧
+        media_type = media.type.value
         dirs = self.get_dirs()
         # 按照配置顺序查找
         for d in dirs:
@@ -70,15 +70,14 @@ class DirectoryHelper:
             download_path = Path(d.download_path)
             # 媒体库目录
             library_path = Path(d.library_path)
-            # 下载目录不匹配, 不符合条件, 通常处理`下载`匹配
-            if src_path and download_path != src_path:
+            # 有源目录时，源目录不匹配下载目录
+            if src_path and not src_path.is_relative_to(download_path):
                 continue
-            # 媒体库目录不匹配, 或监控方式为None(即不自动整理), 不符合条件, 通常处理`整理`匹配
-            if dest_path:
-                if library_path != dest_path or not d.monitor_type:
-                    continue
-            # 没有目录配置时起作用, 通常处理`手动整理`未选择`目标目录`的情况
+            # 有文件项时，文件项不匹配下载目录
             if fileitem and not Path(fileitem.path).is_relative_to(download_path):
+                continue
+            # 有目标目录时，目标目录不匹配媒体库目录
+            if dest_path and not dest_path.is_relative_to(library_path):
                 continue
             # 本地目录
             if local and d.storage != "local":

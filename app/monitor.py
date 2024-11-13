@@ -263,19 +263,17 @@ class Monitor(metaclass=Singleton):
             try:
                 item = self._queue.get(timeout=self._transfer_interval)
                 if item:
-                    self.__handle_file(storage=item.get("storage"),
-                                       event_path=item.get("filepath"),
-                                       mon_path=item.get("mon_path"))
+                    self.__handle_file(storage=item.get("storage"), event_path=item.get("filepath"))
             except queue.Empty:
                 continue
             except Exception as e:
                 logger.error(f"整理队列处理出现错误：{e}")
 
-    def __handle_file(self, storage: str, event_path: Path, mon_path: Path):
+    def __handle_file(self, storage: str, event_path: Path):
         """
         整理一个文件
+        :param storage: 存储
         :param event_path: 事件文件路径
-        :param mon_path: 监控目录
         """
 
         def __get_bluray_dir(_path: Path):
@@ -386,7 +384,7 @@ class Monitor(metaclass=Singleton):
                     return
 
                 # 查询转移目的目录
-                dir_info = self.directoryhelper.get_dir(mediainfo, src_path=mon_path)
+                dir_info = self.directoryhelper.get_dir(mediainfo, src_path=event_path)
                 if not dir_info:
                     logger.warn(f"{event_path.name} 未找到对应的目标目录")
                     return

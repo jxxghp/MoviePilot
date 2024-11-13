@@ -65,9 +65,8 @@ class FileManagerModule(_ModuleBase):
         """
         测试模块连接性
         """
-        directoryhelper = DirectoryHelper()
         # 检查目录
-        dirs = directoryhelper.get_dirs()
+        dirs = self.directoryhelper.get_dirs()
         if not dirs:
             return False, "未设置任何目录"
         for d in dirs:
@@ -349,14 +348,6 @@ class FileManagerModule(_ModuleBase):
                                 fileitem=fileitem,
                                 message=f"{target_path} 不是有效目录")
         # 获取目标路径
-        directoryhelper = DirectoryHelper()
-        if not target_directory:
-            # 根据目的路径查找目录配置
-            if target_path:
-                target_directory = directoryhelper.get_dir(mediainfo, dest_path=target_path)
-            else:
-                target_directory = directoryhelper.get_dir(mediainfo, fileitem=fileitem)
-
         if target_directory:
             # 拼装媒体库一、二级子目录
             target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_directory)
@@ -378,7 +369,7 @@ class FileManagerModule(_ModuleBase):
             # 覆盖模式
             overwrite_mode = target_directory.overwrite_mode
         elif target_path:
-            # 自定义目标路径，仅适用于手动整理的场景
+            # 手动整理的场景，有自定义目标路径
             need_scrape = scrape or False
             need_rename = True
             need_notify = False
