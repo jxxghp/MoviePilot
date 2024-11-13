@@ -24,7 +24,8 @@ class SiteUtils:
             ' or contains(@data-url, "logout")'
             ' or contains(@href, "mybonus") '
             ' or contains(@onclick, "logout")'
-            ' or contains(@href, "usercp")]',
+            ' or contains(@href, "usercp")'
+            ' or contains(@lay-on, "logout")]',
             '//form[contains(@action, "logout")]',
             '//div[@class="user-info-side"]',
             '//a[@id="myitem"]'
