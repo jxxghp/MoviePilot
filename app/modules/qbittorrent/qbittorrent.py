@@ -1,4 +1,5 @@
 import time
+import traceback
 from typing import Optional, Union, Tuple, List
 
 import qbittorrentapi
@@ -75,8 +76,13 @@ class Qbittorrent:
                                         REQUESTS_ARGS={'timeout': (15, 60)})
             try:
                 qbt.auth_log_in()
-            except qbittorrentapi.LoginFailed as e:
+            except (qbittorrentapi.LoginFailed, qbittorrentapi.Forbidden403Error) as e:
                 logger.error(f"qbittorrent 登录失败：{str(e)}")
+                return None
+            except Exception as e:
+                stack_trace = "".join(traceback.format_exception(None, e, e.__traceback__))[:2000]
+                logger.error(f"qbittorrent 登录失败：{str(e)}\n{stack_trace}")
+                return None
             return qbt
         except Exception as err:
             logger.error(f"qbittorrent 连接出错：{str(err)}")
