@@ -746,12 +746,15 @@ class Alist(StorageBase):
 
     @staticmethod
     def __parse_timestamp(time_str: str) -> float:
-        try:
-            # 尝试解析带微秒的时间格式
-            dt = datetime.strptime(time_str[:26], '%Y-%m-%dT%H:%M:%S.%f')
-        except ValueError:
-            # 如果失败，尝试解析不带微秒的时间格式
-            dt = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%SZ')
+        # try:
+        #     # 尝试解析带微秒的时间格式
+        #     dt = datetime.strptime(time_str[:26], '%Y-%m-%dT%H:%M:%S.%f')
+        # except ValueError:
+        #     # 如果失败，尝试解析不带微秒的时间格式
+        #     dt = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%SZ')
+
+        # 直接使用 ISO 8601 格式解析时间
+        dt = datetime.fromisoformat(time_str)
 
         # 返回时间戳
         return dt.timestamp()
