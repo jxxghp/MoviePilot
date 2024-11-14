@@ -252,10 +252,10 @@ class DownloadChain(ChainBase):
         # 下载目录
         if save_path:
             # 有自定义下载目录时，尝试匹配目录配置
-            dir_info = self.directoryhelper.get_dir(_media, src_path=Path(save_path), local=True)
+            dir_info = self.directoryhelper.get_dir(_media, src_path=Path(save_path))
         else:
             # 根据媒体信息查询下载目录配置
-            dir_info = self.directoryhelper.get_dir(_media, local=True)
+            dir_info = self.directoryhelper.get_dir(_media)
 
         # 拼装子目录
         if dir_info:

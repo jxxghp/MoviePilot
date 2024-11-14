@@ -384,7 +384,7 @@ class Monitor(metaclass=Singleton):
                     return
 
                 # 查询转移目的目录
-                dir_info = self.directoryhelper.get_dir(mediainfo, src_path=event_path)
+                dir_info = self.directoryhelper.get_dir(mediainfo, storage=storage, src_path=event_path)
                 if not dir_info:
                     logger.warn(f"{event_path.name} 未找到对应的目标目录")
                     return

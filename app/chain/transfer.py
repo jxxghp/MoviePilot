@@ -385,11 +385,13 @@ class TransferChain(ChainBase):
             # 查询整理目标目录
             if not target_directory:
                 if target_path:
-                    target_directory = self.directoryhelper.get_dir(mediainfo, dest_path=target_path)
+                    target_directory = self.directoryhelper.get_dir(file_mediainfo,
+                                                                    storage=target_storage, dest_path=target_path)
                 elif src_match:
-                    target_directory = self.directoryhelper.get_dir(mediainfo, src_path=file_path)
+                    target_directory = self.directoryhelper.get_dir(file_mediainfo,
+                                                                    storage=file_item.storage, src_path=file_path)
                 else:
-                    target_directory = self.directoryhelper.get_dir(mediainfo)
+                    target_directory = self.directoryhelper.get_dir(file_mediainfo)
 
             # 执行整理
             transferinfo: TransferInfo = self.transfer(fileitem=file_item,

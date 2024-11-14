@@ -357,6 +357,11 @@ class FileManagerModule(_ModuleBase):
             # 整理方式
             if not transfer_type:
                 transfer_type = target_directory.transfer_type
+                if not transfer_type:
+                    logger.error(f"{target_directory.name} 未设置整理方式")
+                    return TransferInfo(success=False,
+                                        fileitem=fileitem,
+                                        message=f"{target_directory.name} 未设置整理方式")
             # 是否需要刮削
             if scrape is None:
                 need_scrape = target_directory.scraping
@@ -465,6 +470,8 @@ class FileManagerModule(_ModuleBase):
                     state = source_oper.link(fileitem, target_file)
                 elif transfer_type == "softlink":
                     state = source_oper.softlink(fileitem, target_file)
+                else:
+                    return None, f"不支持的整理方式：{transfer_type}"
                 if state:
                     return __get_targetitem(target_file), ""
                 else:
@@ -616,18 +623,16 @@ class FileManagerModule(_ModuleBase):
         if not parent_item:
             return False, f"{org_path} 上级目录获取失败"
         # 字幕文件列表
-        file_list: List[FileItem] = storage_oper.list(parent_item)
+        file_list: List[FileItem] = storage_oper.list(parent_item) or []
+        file_list = [f for f in file_list if f.type == "file" and f.extension
+                     and f".{f.extension.lower()}" in settings.RMT_SUBEXT]
         if len(file_list) == 0:
-            logger.debug(f"{parent_item.path} 目录下没有找到字幕文件...")
+            logger.info(f"{parent_item.path} 目录下没有找到字幕文件...")
         else:
-            logger.debug("字幕文件清单：" + str(file_list))
+            logger.info(f"字幕文件清单：{[f.name for f in file_list]}")
             # 识别文件名
             metainfo = MetaInfoPath(org_path)
             for sub_item in file_list:
-                if sub_item.type == "dir" or not sub_item.extension:
-                    continue
-                if f".{sub_item.extension.lower()}" not in settings.RMT_SUBEXT:
-                    continue
                 # 识别字幕文件名
                 sub_file_name = re.sub(_zhtw_sub_re,
                                        ".",
