@@ -30,40 +30,17 @@ class Alist(StorageBase):
 
     def __init__(self):
         super().__init__()
+        self.req = RequestUtils(headers=self.__get_header_with_token())
 
     def check_login(self, *args, **kwargs) -> Optional[Dict[str, str]]:
         pass
-
-    def get_config(self) -> Optional[schemas.StorageConf]:
-        """
-        获取配置
-        """
-        return self.storagehelper.get_storage(self.schema.value)
-
-    def set_config(self, conf: dict):
-        """
-        设置配置
-        """
-        self.storagehelper.set_storage(self.schema.value, conf)
-
-    def support_transtype(self) -> dict:
-        """
-        支持的整理方式
-        """
-        return self.transtype
-
-    def is_support_transtype(self, transtype: str) -> bool:
-        """
-        是否支持整理方式
-        """
-        return transtype in self.transtype
 
     @property
     def __get_base_url(self) -> str:
         """
         获取基础URL
         """
-        url = self.get_config().config.get("url")
+        url = self.get_conf().get("url")
         if url is None:
             return ""
         return StringUtils.get_base_url(url)
@@ -81,7 +58,7 @@ class Alist(StorageBase):
         如果设置永久令牌则返回永久令牌
         否则使用账号密码生成临时令牌
         """
-        token = self.get_config().config.get("token")
+        token = self.get_conf().get("token")
         if token:
             return token
         return self.__generate_token
@@ -93,8 +70,8 @@ class Alist(StorageBase):
         使用账号密码生成一个临时token
         缓存2天，提前5分钟更新
         """
-        conf = self.get_config().config
-        resp: Response = RequestUtils.post(
+        conf = self.get_conf()
+        resp: Response = self.req.post_res(
             self.__get_api_url("/api/auth/login"),
             json={
                 "username": conf.get("username"),
@@ -155,9 +132,8 @@ class Alist(StorageBase):
         :param per_page: 每页数量
         :param refresh: 是否刷新
         """
-        resp: Response = RequestUtils.post(
+        resp: Response = self.req.post_res(
             self.__get_api_url("/api/fs/list"),
-            headers=self.__get_header_with_token(),
             json={
                 "path": fileitem.path,
                 "password": password,
@@ -237,10 +213,9 @@ class Alist(StorageBase):
         """
         创建目录
         """
-        path = fileitem.path + "/" + name
-        resp: Response = RequestUtils.post(
+        path = Path(fileitem.path) / name
+        resp: Response = self.req.post_res(
             self.__get_api_url("/api/auth/login"),
-            headers=self.__get_header_with_token(),
             json={"path": path},
         )
         """
@@ -267,10 +242,10 @@ class Alist(StorageBase):
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
         """
-        获取目录，如目录不存在则创建
+        FIXME 获取目录，如目录不存在则创建
         """
         folder = self.get_item(path)
-        if folder is None:
+        if not folder:
             folder = self.create_folder(self.get_parent(path), path.name)
         return folder
 
@@ -290,9 +265,8 @@ class Alist(StorageBase):
         :param per_page: 每页数量
         :param refresh: 是否刷新
         """
-        resp: Response = RequestUtils.post(
+        resp: Response = self.req.post_res(
             self.__get_api_url("/api/fs/get"),
-            headers=self.__get_header_with_token(),
             json={
                 "path": path.as_posix(),
                 "password": password,
@@ -363,9 +337,8 @@ class Alist(StorageBase):
         """
         删除文件
         """
-        resp: Response = RequestUtils.post(
+        resp: Response = self.req.post_res(
             self.__get_api_url("/api/fs/delete"),
-            headers=self.__get_header_with_token(),
             json={
                 "dir": Path(fileitem.path).parent.as_posix(),
                 "names": [fileitem.name],
@@ -403,9 +376,8 @@ class Alist(StorageBase):
         """
         重命名文件
         """
-        resp: Response = RequestUtils.post(
+        resp: Response = self.req.post_res(
             self.__get_api_url("/api/fs/rename"),
-            headers=self.__get_header_with_token(),
             json={
                 "name": name,
                 "path": fileitem.path,
@@ -444,7 +416,7 @@ class Alist(StorageBase):
         path: Path = None,
         password: str = "",
         raw_url: bool = False,
-    ) -> Path:
+    ) -> Optional[Path]:
         """
         下载文件，保存到本地，返回本地临时文件地址
         :param fileitem: 文件项
@@ -452,9 +424,8 @@ class Alist(StorageBase):
         :param password: 文件密码
         :param raw_url: 是否使用原始链接下载
         """
-        resp: Response = RequestUtils.post(
+        resp: Response = self.req.post_res(
             self.__get_api_url("/api/fs/get"),
-            headers=self.__get_header_with_token(),
             json={
                 "path": fileitem.path,
                 "password": password,
@@ -502,7 +473,7 @@ class Alist(StorageBase):
             if result["data"]["sign"]:
                 download_url = download_url + "?sign=" + result["data"]["sign"]
 
-        resp = RequestUtils.get(download_url)
+        resp = self.req.get_res(download_url)
         with open(path, "wb") as f:
             f.write(resp.content)
 
@@ -525,9 +496,8 @@ class Alist(StorageBase):
         headers.setdefault("As-Task", str(task).lower())
         headers.setdefault("File-Path", encoded_path)
         with open(path, "rb") as f:
-            resp: Response = RequestUtils.put(
+            resp: Response = RequestUtils(headers=headers).put_res(
                 self.__get_api_url("/api/fs/form"),
-                headers=headers,
                 data={"file": f},
             )
 
@@ -541,10 +511,11 @@ class Alist(StorageBase):
         """
         获取文件详情
         """
-        return self.get_item(fileitem.path)
+        return self.get_item(Path(fileitem.path))
 
+    @staticmethod
     def __get_copy_and_move_data(
-        self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]
+            fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]
     ) -> Tuple[str, str, List[str], bool]:
         """
         获取复制或移动文件需要的数据
@@ -579,9 +550,8 @@ class Alist(StorageBase):
         if not is_valid:
             return False
 
-        resp: Response = RequestUtils.post(
+        resp: Response = self.req.post_res(
             self.__get_api_url("/api/fs/copy"),
-            headers=self.__get_header_with_token(),
             json={
                 "src_dir": src_dir,
                 "dst_dir": dst_dir,
@@ -629,9 +599,8 @@ class Alist(StorageBase):
         if not is_valid:
             return False
 
-        resp: Response = RequestUtils.post(
+        resp: Response = self.req.post_res(
             self.__get_api_url("/api/fs/move"),
-            headers=self.__get_header_with_token(),
             json={
                 "src_dir": src_dir,
                 "dst_dir": dst_dir,

@@ -28,6 +28,13 @@ class StorageBase(metaclass=ABCMeta):
         """
         return self.storagehelper.get_storage(self.schema.value)
 
+    def get_conf(self) -> dict:
+        """
+        获取配置
+        """
+        conf = self.get_config()
+        return conf.config if conf else {}
+
     def set_config(self, conf: dict):
         """
         设置配置
