@@ -36,7 +36,10 @@ class TNodeSiteUserInfo(SiteParserBase):
         pass
 
     def _parse_user_detail_info(self, html_text: str):
-        detail = json.loads(html_text)
+        try:
+            detail = json.loads(html_text)
+        except json.JSONDecodeError:
+            return
         if detail.get("status") != 200:
             return
 
