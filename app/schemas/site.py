@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Optional, Any, Union
 
 from pydantic import BaseModel
 
@@ -75,7 +75,7 @@ class SiteUserData(BaseModel):
     # 用户名
     username: Optional[str]
     # 用户ID
-    userid: Optional[int]
+    userid: Optional[Union[int, str]]
     # 用户等级
     user_level: Optional[str]
     # 加入时间
