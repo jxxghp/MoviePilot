@@ -10,7 +10,7 @@ from app.log import logger
 
 class TwoFactorAuth:
     def __init__(self, code_or_secret: str):
-        if code_or_secret and len(code_or_secret) > 16:
+        if code_or_secret and len(code_or_secret) >= 16:
             self.code = None
             self.secret = code_or_secret
         else:
