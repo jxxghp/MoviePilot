@@ -20,7 +20,15 @@ class FormatParser(object):
         self._format = eformat
         self._start_ep = None
         self._end_ep = None
-        self.__offset = offset or "EP"
+        if not offset:
+            self.__offset = "EP"
+        elif "EP" in offset:
+            self.__offset = offset
+        else:
+            if offset.startswith("-") or offset.startswith("+"):
+                self.__offset = f"EP{offset}"
+            else:
+                self.__offset = f"EP+{offset}"
         self._key = key
         self._part = None
         if part:
@@ -91,7 +99,7 @@ class FormatParser(object):
             s, e = self.__handle_single(file_name)
             start_ep = self.__offset.replace("EP", str(s)) if s else None
             end_ep = self.__offset.replace("EP", str(e)) if e else None
-            return int(eval(start_ep)) if start_ep else None,  int(eval(end_ep)) if end_ep else None, self.part
+            return int(eval(start_ep)) if start_ep else None, int(eval(end_ep)) if end_ep else None, self.part
 
     def __handle_single(self, file: str) -> Tuple[Optional[int], Optional[int]]:
         """
