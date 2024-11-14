@@ -2,15 +2,15 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Union
 
-from requests import Response
 from cachetools import cached, TTLCache
+from requests import Response
 
 from app import schemas
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase
 from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
-from app.utils.string import StringUtils
+from app.utils.url import UrlUtils
 
 
 class Alist(StorageBase):
@@ -64,15 +64,13 @@ class Alist(StorageBase):
         获取基础URL
         """
         url = self.get_config().config.get("url")
-        if url is None:
-            return ""
-        return StringUtils.get_base_url(url)
+        return UrlUtils.standardize_base_url(url) or ""
 
     def __get_api_url(self, path: str) -> str:
         """
         获取API URL
         """
-        return self.__get_base_url + path
+        return UrlUtils.adapt_request_url(self.__get_base_url, path)
 
     @property
     def __get_valuable_toke(self) -> str:
@@ -140,12 +138,12 @@ class Alist(StorageBase):
         pass
 
     def list(
-        self,
-        fileitem: schemas.FileItem,
-        password: str = "",
-        page: int = 1,
-        per_page: int = 0,
-        refresh: bool = False,
+            self,
+            fileitem: schemas.FileItem,
+            password: str = "",
+            page: int = 1,
+            per_page: int = 0,
+            refresh: bool = False,
     ) -> Optional[List[schemas.FileItem]]:
         """
         浏览文件
@@ -232,7 +230,7 @@ class Alist(StorageBase):
         ]
 
     def create_folder(
-        self, fileitem: schemas.FileItem, name: str
+            self, fileitem: schemas.FileItem, name: str
     ) -> Optional[schemas.FileItem]:
         """
         创建目录
@@ -275,12 +273,12 @@ class Alist(StorageBase):
         return folder
 
     def get_item(
-        self,
-        path: Path,
-        password: str = "",
-        page: int = 1,
-        per_page: int = 0,
-        refresh: bool = False,
+            self,
+            path: Path,
+            password: str = "",
+            page: int = 1,
+            per_page: int = 0,
+            refresh: bool = False,
     ) -> Optional[schemas.FileItem]:
         """
         获取文件或目录，不存在返回None
@@ -439,11 +437,11 @@ class Alist(StorageBase):
         return True
 
     def download(
-        self,
-        fileitem: schemas.FileItem,
-        path: Path = None,
-        password: str = "",
-        raw_url: bool = False,
+            self,
+            fileitem: schemas.FileItem,
+            path: Path = None,
+            password: str = "",
+            raw_url: bool = False,
     ) -> Path:
         """
         下载文件，保存到本地，返回本地临时文件地址
@@ -498,7 +496,7 @@ class Alist(StorageBase):
         if raw_url:
             download_url = result["data"]["raw_url"]
         else:
-            download_url = self.__get_base_url + "/d" + fileitem.path
+            download_url = UrlUtils.adapt_request_url(self.__get_base_url, f"/d{fileitem.path}")
             if result["data"]["sign"]:
                 download_url = download_url + "?sign=" + result["data"]["sign"]
 
@@ -511,7 +509,7 @@ class Alist(StorageBase):
         return None
 
     def upload(
-        self, fileitem: schemas.FileItem, path: Path, task: bool = False
+            self, fileitem: schemas.FileItem, path: Path, task: bool = False
     ) -> Optional[schemas.FileItem]:
         """
         上传文件
@@ -519,7 +517,7 @@ class Alist(StorageBase):
         :param path: 本地文件路径
         :param task: 是否为任务，默认为False避免未完成上传时对文件进行操作
         """
-        encoded_path = StringUtils.url_eqote(fileitem.path)
+        encoded_path = UrlUtils.quote(fileitem.path)
         headers = self.__get_header_with_token()
         headers.setdefault("Content-Type", "multipart/form-data")
         headers.setdefault("As-Task", str(task).lower())
@@ -544,7 +542,7 @@ class Alist(StorageBase):
         return self.get_item(fileitem.path)
 
     def __get_copy_and_move_data(
-        self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]
+            self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]
     ) -> Tuple[str, str, List[str], bool]:
         """
         获取复制或移动文件需要的数据
@@ -566,7 +564,7 @@ class Alist(StorageBase):
         return src_dir, traget_dir, [name], True
 
     def copy(
-        self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]
+            self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]
     ) -> bool:
         """
         复制文件
@@ -618,7 +616,7 @@ class Alist(StorageBase):
         return True
 
     def move(
-        self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]
+            self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]
     ) -> bool:
         """
         移动文件

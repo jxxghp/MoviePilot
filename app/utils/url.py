@@ -1,7 +1,7 @@
 import mimetypes
 from pathlib import Path
 from typing import Optional, Union
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse, quote
 
 from app.log import logger
 
@@ -26,7 +26,7 @@ class UrlUtils:
     @staticmethod
     def adapt_request_url(host: str, endpoint: str) -> Optional[str]:
         """
-        基于传入的host，适配请求的URL，确保每个请求的URL是完整的，用于在发送请求前自动处理和修正请求的URL。
+        基于传入的host，适配请求的URL，确保每个请求的URL是完整的，用于在发送请求前自动处理和修正请求的URL
         :param host: 主机头
         :param endpoint: 端点
         :return: 完整的请求URL字符串
@@ -41,7 +41,7 @@ class UrlUtils:
     @staticmethod
     def combine_url(host: str, path: Optional[str] = None, query: Optional[dict] = None) -> Optional[str]:
         """
-        使用给定的主机头、路径和查询参数组合生成完整的URL。
+        使用给定的主机头、路径和查询参数组合生成完整的URL
         :param host: str, 主机头，例如 https://example.com
         :param path: Optional[str], 包含路径和可能已经包含的查询参数的端点，例如 /path/to/resource?current=1
         :param query: Optional[dict], 可选，额外的查询参数，例如 {"key": "value"}
@@ -76,7 +76,6 @@ class UrlUtils:
     def get_mime_type(path_or_url: Union[str, Path], default_type: str = "application/octet-stream") -> str:
         """
         根据文件路径或 URL 获取 MIME 类型，如果无法获取则返回默认类型
-
         :param path_or_url: 文件路径 (Path) 或 URL (str)
         :param default_type: 无法获取类型时返回的默认 MIME 类型
         :return: 获取到的 MIME 类型或默认类型
@@ -95,3 +94,12 @@ class UrlUtils:
         except Exception as e:
             logger.debug(f"Error get_mime_type: {e}")
             return default_type
+
+    @staticmethod
+    def quote(content: str) -> str:
+        """
+        对给定的字符串进行 URL 编码，以便在 URL 中安全传输
+        :param content: 要编码的字符串
+        :return: 编码后的字符串
+        """
+        return quote(content)

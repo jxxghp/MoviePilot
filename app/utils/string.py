@@ -805,14 +805,3 @@ class StringUtils:
         :return: 如果elem有效（非None且长度大于0），返回True；否则返回False
         """
         return elem is not None and len(elem) > 0
-    
-    @staticmethod
-    def url_eqote(s:str) -> str:
-        """
-        将字符串编码为 URL 安全的格式
-        这将确保路径中的特殊字符（如空格、中文字符等）被正确编码，以便在 URL 中传输
-
-        :param s: 要编码的字符串
-        :return: 编码后的字符串
-        """
-        return parse.quote(s)
