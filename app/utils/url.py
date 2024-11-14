@@ -1,6 +1,7 @@
 import mimetypes
 from pathlib import Path
 from typing import Optional, Union
+from urllib import parse
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 from app.log import logger
@@ -95,3 +96,14 @@ class UrlUtils:
         except Exception as e:
             logger.debug(f"Error get_mime_type: {e}")
             return default_type
+
+    @staticmethod
+    def quote(s: str) -> str:
+        """
+        将字符串编码为 URL 安全的格式
+        这将确保路径中的特殊字符（如空格、中文字符等）被正确编码，以便在 URL 中传输
+
+        :param s: 要编码的字符串
+        :return: 编码后的字符串
+        """
+        return parse.quote(s)

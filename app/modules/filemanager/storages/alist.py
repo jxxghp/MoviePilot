@@ -10,7 +10,7 @@ from app.log import logger
 from app.modules.filemanager.storages import StorageBase
 from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
-from app.utils.string import StringUtils
+from app.utils.url import UrlUtils
 
 
 class Alist(StorageBase):
@@ -32,9 +32,6 @@ class Alist(StorageBase):
         super().__init__()
         self.req = RequestUtils(headers=self.__get_header_with_token())
 
-    def check_login(self, *args, **kwargs) -> Optional[Dict[str, str]]:
-        pass
-
     @property
     def __get_base_url(self) -> str:
         """
@@ -43,13 +40,13 @@ class Alist(StorageBase):
         url = self.get_conf().get("url")
         if url is None:
             return ""
-        return StringUtils.get_base_url(url)
+        return UrlUtils.standardize_base_url(self.get_conf().get("url"))
 
     def __get_api_url(self, path: str) -> str:
         """
         获取API URL
         """
-        return self.__get_base_url + path
+        return UrlUtils.adapt_request_url(self.__get_base_url, path)
 
     @property
     def __get_valuable_toke(self) -> str:
@@ -215,7 +212,7 @@ class Alist(StorageBase):
         """
         path = Path(fileitem.path) / name
         resp: Response = self.req.post_res(
-            self.__get_api_url("/api/auth/login"),
+            self.__get_api_url("/api/fs/mkdir"),
             json={"path": path},
         )
         """
@@ -229,6 +226,9 @@ class Alist(StorageBase):
             "data": null
         }
         """
+        if resp is None:
+            logging.warning(f"请求创建目录 {path} 失败，无法连接alist服务")
+            return
         if resp.status_code != 200:
             logging.warning(f"请求创建目录 {path} 失败，状态码：{resp.status_code}")
             return
@@ -242,11 +242,17 @@ class Alist(StorageBase):
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
         """
-        FIXME 获取目录，如目录不存在则创建
+        获取目录，如目录不存在则创建
         """
         folder = self.get_item(path)
         if not folder:
-            folder = self.create_folder(self.get_parent(path), path.name)
+            folder = self.create_folder(self.get_parent(schemas.FileItem(
+                storage=self.schema.value,
+                type="dir",
+                path=path.as_posix(),
+                name=path.name,
+                basename=path.stem
+            )), path.name)
         return folder
 
     def get_item(
@@ -306,6 +312,9 @@ class Alist(StorageBase):
             }
         }
         """
+        if resp is None:
+            logging.warning(f"请求获取文件 {path} 失败，无法连接alist服务")
+            return
         if resp.status_code != 200:
             logging.warning(f"请求获取文件 {path} 失败，状态码：{resp.status_code}")
             return
@@ -358,6 +367,9 @@ class Alist(StorageBase):
             "data": null
         }
         """
+        if resp is None:
+            logging.warning(f"请求删除文件 {fileitem.path} 失败，无法连接alist服务")
+            return False
         if resp.status_code != 200:
             logging.warning(
                 f"请求删除文件 {fileitem.path} 失败，状态码：{resp.status_code}"
@@ -395,6 +407,9 @@ class Alist(StorageBase):
             "data": null
         }
         """
+        if not resp:
+            logging.warning(f"请求重命名文件 {fileitem.path} 失败，无法连接alist服务")
+            return False
         if resp.status_code != 200:
             logging.warning(
                 f"请求重命名文件 {fileitem.path} 失败，状态码：{resp.status_code}"
@@ -457,6 +472,9 @@ class Alist(StorageBase):
             }
         }
         """
+        if not resp:
+            logging.warning(f"请求获取文件 {path} 失败，无法连接alist服务")
+            return
         if resp.status_code != 200:
             logging.warning(f"请求获取文件 {path} 失败，状态码：{resp.status_code}")
             return
@@ -469,7 +487,7 @@ class Alist(StorageBase):
         if raw_url:
             download_url = result["data"]["raw_url"]
         else:
-            download_url = self.__get_base_url + "/d" + fileitem.path
+            download_url = UrlUtils.adapt_request_url(self.__get_base_url, f"/d{fileitem.path}")
             if result["data"]["sign"]:
                 download_url = download_url + "?sign=" + result["data"]["sign"]
 
@@ -490,7 +508,7 @@ class Alist(StorageBase):
         :param path: 本地文件路径
         :param task: 是否为任务，默认为False避免未完成上传时对文件进行操作
         """
-        encoded_path = StringUtils.url_eqote(fileitem.path)
+        encoded_path = UrlUtils.quote(fileitem.path)
         headers = self.__get_header_with_token()
         headers.setdefault("Content-Type", "multipart/form-data")
         headers.setdefault("As-Task", str(task).lower())
@@ -573,6 +591,11 @@ class Alist(StorageBase):
             "data": null
         }
         """
+        if resp is None:
+            logging.warning(
+                f"请求复制文件 {fileitem.path} 失败，无法连接alist服务"
+            )
+            return False
         if resp.status_code != 200:
             logging.warning(
                 f"请求复制文件 {fileitem.path} 失败，状态码：{resp.status_code}"
@@ -622,6 +645,11 @@ class Alist(StorageBase):
             "data": null
         }
         """
+        if resp is None:
+            logging.warning(
+                f"请求移动文件 {fileitem.path} 失败，无法连接alist服务"
+            )
+            return False
         if resp.status_code != 200:
             logging.warning(
                 f"请求移动文件 {fileitem.path} 失败，状态码：{resp.status_code}"
