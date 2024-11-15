@@ -162,26 +162,26 @@ class Plex:
     def get_medias_count(self) -> schemas.Statistic:
         """
         获得电影、电视剧、动漫媒体数量
-        :return: MovieCount SeriesCount SongCount
+        :return: movie_count tv_count episode_count
         """
         if not self._plex:
             return schemas.Statistic()
         sections = self._plex.library.sections()
-        MovieCount = SeriesCount = EpisodeCount = 0
+        movie_count = tv_count = episode_count = 0
         # 媒体库白名单
         allow_library = [lib.id for lib in self.get_librarys(hidden=True)]
         for sec in sections:
-            if str(sec.key) not in allow_library:
+            if sec.key not in allow_library:
                 continue
             if sec.type == "movie":
-                MovieCount += sec.totalSize
+                movie_count += sec.totalSize
             if sec.type == "show":
-                SeriesCount += sec.totalSize
-                EpisodeCount += sec.totalViewSize(libtype='episode')
+                tv_count += sec.totalSize
+                episode_count += sec.totalViewSize(libtype="episode")
         return schemas.Statistic(
-            movie_count=MovieCount,
-            tv_count=SeriesCount,
-            episode_count=EpisodeCount
+            movie_count=movie_count,
+            tv_count=tv_count,
+            episode_count=episode_count
         )
 
     def get_movies(self,
@@ -721,7 +721,7 @@ class Plex:
         if not self._plex:
             return []
         # 媒体库白名单
-        allow_library = ",".join([lib.id for lib in self.get_librarys(hidden=True)])
+        allow_library = ",".join(map(str, (lib.id for lib in self.get_librarys(hidden=True))))
         params = {"contentDirectoryID": allow_library}
         items = self._plex.fetchItems("/hubs/continueWatching/items",
                                       container_start=0,
@@ -757,7 +757,7 @@ class Plex:
         if not self._plex:
             return None
         # 请求参数（除黑名单）
-        allow_library = ",".join([lib.id for lib in self.get_librarys(hidden=True)])
+        allow_library = ",".join(map(str, (lib.id for lib in self.get_librarys(hidden=True))))
         params = {
             "contentDirectoryID": allow_library,
             "count": num,
