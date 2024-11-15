@@ -225,6 +225,7 @@ class DownloadChain(ChainBase):
         _torrent = context.torrent_info
         _media = context.media_info
         _meta = context.meta_info
+        _downloader = _torrent.site_downloader
 
         # 补充完整的media数据
         if not _media.genre_ids:
@@ -287,7 +288,7 @@ class DownloadChain(ChainBase):
                                                 episodes=episodes,
                                                 download_dir=download_dir,
                                                 category=_media.category,
-                                                downloader=downloader)
+                                                downloader=downloader or _downloader)
         if result:
             _downloader, _hash, error_msg = result
         else:
