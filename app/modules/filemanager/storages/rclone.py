@@ -76,7 +76,7 @@ class Rclone(StorageBase):
             return schemas.FileItem(
                 storage=self.schema.value,
                 type="dir",
-                path=f"{parent}{item.get('Name')}",
+                path=f"{parent}{item.get('Name')}" + "/",
                 name=item.get("Name"),
                 basename=item.get("Name"),
                 modify_time=StringUtils.str_to_timestamp(item.get("ModTime"))
