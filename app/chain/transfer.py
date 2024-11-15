@@ -205,6 +205,8 @@ class TransferChain(ChainBase):
         skip_num = 0
         # 本次整理方式
         current_transfer_type = transfer_type
+        # 是否全部成功
+        all_success = True
 
         # 获取待整理路径清单
         trans_items = self.__get_trans_fileitems(fileitem)
@@ -284,6 +286,7 @@ class TransferChain(ChainBase):
                 # 计数
                 processed_num += 1
                 skip_num += 1
+                all_success = False
                 continue
 
             # 整理成功的不再处理
@@ -294,6 +297,7 @@ class TransferChain(ChainBase):
                     # 计数
                     processed_num += 1
                     skip_num += 1
+                    all_success = False
                     continue
 
             # 更新进度
@@ -317,6 +321,7 @@ class TransferChain(ChainBase):
                 # 计数
                 processed_num += 1
                 fail_num += 1
+                all_success = False
                 continue
 
             # 自定义识别
@@ -353,6 +358,7 @@ class TransferChain(ChainBase):
                 # 计数
                 processed_num += 1
                 fail_num += 1
+                all_success = False
                 continue
 
             # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
@@ -430,6 +436,7 @@ class TransferChain(ChainBase):
                 # 计数
                 processed_num += 1
                 fail_num += 1
+                all_success = False
                 continue
 
             # 汇总信息
@@ -500,21 +507,20 @@ class TransferChain(ChainBase):
             })
 
         # 移动模式处理
-        if current_transfer_type in ["move"]:
+        if all_success and current_transfer_type in ["move"]:
             # 下载器hash
             if download_hash:
                 if self.remove_torrents(download_hash):
                     logger.info(f"移动模式删除种子成功：{download_hash} ")
-            # 删除残留文件
+            # 删除残留目录
             if fileitem:
-                logger.warn(f"删除残留文件夹：【{fileitem.storage}】{fileitem.path}")
-                if self.storagechain.delete_file(fileitem):
-                    # 删除空的父目录
-                    dir_item = self.storagechain.get_parent_item(fileitem)
-                    if dir_item:
-                        if not self.storagechain.any_files(dir_item, extensions=settings.RMT_MEDIAEXT):
-                            logger.warn(f"正在删除空目录：【{dir_item.storage}】{dir_item.path}")
-                            return self.storagechain.delete_file(dir_item)
+                if fileitem.type == "dir":
+                    folder_item = fileitem
+                else:
+                    folder_item = self.storagechain.get_parent_item(fileitem)
+                if folder_item and not self.storagechain.any_files(folder_item, extensions=settings.RMT_MEDIAEXT):
+                    logger.warn(f"删除残留空文件夹：【{folder_item.storage}】{folder_item.path}")
+                    self.storagechain.delete_file(folder_item)
 
         # 结束进度
         logger.info(f"{fileitem.path} 整理完成，共 {total_num} 个文件，"
