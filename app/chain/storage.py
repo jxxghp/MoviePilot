@@ -115,6 +115,8 @@ class StorageChain(ChainBase):
         if not state:
             logger.warn(f"【{fileitem.storage}】{fileitem.path} 删除失败")
             return False
+        if fileitem.type == "dir":
+            return True
         # 上级目录
         if mtype and mtype == MediaType.TV:
             dir_path = Path(fileitem.path).parent.parent
