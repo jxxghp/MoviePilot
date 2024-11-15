@@ -39,7 +39,7 @@ class Rclone(StorageBase):
         path = Path(filepath)
         if not path.parent.exists():
             path.parent.mkdir(parents=True)
-        path.write_text(conf.get('content'))
+        path.write_text(conf.get('content'), encoding='utf-8')
 
     @staticmethod
     def __get_hidden_shell():
