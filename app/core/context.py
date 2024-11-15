@@ -23,6 +23,8 @@ class TorrentInfo:
     site_proxy: bool = False
     # 站点优先级
     site_order: int = 0
+    # 站点下载器
+    site_downloader: str = None
     # 种子名称
     title: str = None
     # 种子副标题

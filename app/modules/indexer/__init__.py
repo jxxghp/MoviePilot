@@ -191,6 +191,7 @@ class IndexerModule(_ModuleBase):
                                     site_ua=site.get("ua"),
                                     site_proxy=site.get("proxy"),
                                     site_order=site.get("pri"),
+                                    site_downloader=site.get("downloader"),
                                     **result) for result in result_array]
             # 去重
             return __remove_duplicate(torrents)
@@ -199,7 +200,7 @@ class IndexerModule(_ModuleBase):
     def __spider_search(indexer: CommentedMap,
                         search_word: str = None,
                         mtype: MediaType = None,
-                        page: int = 0) -> (bool, List[dict]):
+                        page: int = 0) -> Tuple[bool, List[dict]]:
         """
         根据关键字搜索单个站点
         :param: indexer: 站点配置

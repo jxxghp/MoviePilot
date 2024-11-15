@@ -51,6 +51,8 @@ class Site(Base):
     is_active = Column(Boolean(), default=True)
     # 创建时间
     lst_mod_date = Column(String, default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    # 下载器
+    downloader = Column(String)
 
     @staticmethod
     @db_query

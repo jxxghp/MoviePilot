@@ -44,6 +44,8 @@ class Site(BaseModel):
     limit_seconds: Optional[int] = None
     # 是否启用
     is_active: Optional[bool] = True
+    # 下载器
+    downloader: Optional[str] = None
 
     class Config:
         orm_mode = True
