@@ -136,7 +136,7 @@ class ConfigModel(BaseModel):
                           '.aifc', '.aiff', '.alac', '.adif', '.adts',
                           '.flac', '.midi', '.opus', '.sfalc']
     # 下载器临时文件后缀
-    DOWNLOAD_TMPEXT: list = ['.!qB', '.part']
+    DOWNLOAD_TMPEXT: list = ['.!qb', '.part']
     # 媒体服务器同步间隔（小时）
     MEDIASERVER_SYNC_INTERVAL: int = 6
     # 订阅模式
