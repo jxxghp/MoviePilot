@@ -353,7 +353,7 @@ class AliPan(StorageBase):
             return Path(local_path)
         return None
 
-    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件，并标记完成
         """
@@ -361,7 +361,7 @@ class AliPan(StorageBase):
             return None
         # 上传文件
         result = self.aligo.upload_file(file_path=str(path), parent_file_id=fileitem.fileid,
-                                        drive_id=fileitem.drive_id, name=path.name,
+                                        drive_id=fileitem.drive_id, name=new_name or path.name,
                                         check_name_mode="refuse")
         if result:
             item = self.aligo.get_file(file_id=result.file_id, drive_id=result.drive_id)

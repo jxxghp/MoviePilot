@@ -328,7 +328,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             logger.error(f"115下载失败：{str(e)}")
         return None
 
-    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         """
@@ -359,7 +359,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 if result:
                     result_data = result.get('data')
                     logger.info(f"115上传文件成功：{result_data.get('file_name')}")
-                    return schemas.FileItem(
+                    item = schemas.FileItem(
                         storage=self.schema.value,
                         fileid=result_data.get('file_id'),
                         parent_fileid=fileitem.fileid,
@@ -371,6 +371,13 @@ class U115Pan(StorageBase, metaclass=Singleton):
                         extension=Path(result_data.get('file_name')).suffix[1:],
                         pickcode=result_data.get('pickcode')
                     )
+                    if new_name and new_name != item.name:
+                        if self.rename(item, new_name):
+                            item.name = new_name
+                            item.basename = Path(new_name).stem
+                            item.path = f"{fileitem.path}{new_name}"
+                            item.extension = Path(new_name).suffix[1:]
+                    return item
                 else:
                     logger.warn(f"115上传文件失败：{por.resp.response.text}")
                     return None

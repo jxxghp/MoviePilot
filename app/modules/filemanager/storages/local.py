@@ -183,12 +183,12 @@ class LocalStorage(StorageBase):
         """
         return Path(fileitem.path)
 
-    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         """
         dir_path = Path(fileitem.path)
-        target_path = dir_path / path.name
+        target_path = dir_path / (new_name or path.name)
         code, message = SystemUtils.move(path, target_path)
         if code != 0:
             logger.error(f"移动文件失败：{message}")

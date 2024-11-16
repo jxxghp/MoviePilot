@@ -534,12 +534,13 @@ class Alist(StorageBase):
         return None
 
     def upload(
-            self, fileitem: schemas.FileItem, path: Path, task: bool = False
+            self, fileitem: schemas.FileItem, path: Path, new_name: str = None, task: bool = False
     ) -> Optional[schemas.FileItem]:
         """
         上传文件
         :param fileitem: 上传目录项
         :param path: 本地文件路径
+        :param new_name: 上传后文件名
         :param task: 是否为任务，默认为False避免未完成上传时对文件进行操作
         """
         encoded_path = UrlUtils.quote(fileitem.path)
@@ -557,7 +558,11 @@ class Alist(StorageBase):
             logging.warning(f"请求上传文件 {path} 失败，状态码：{resp.status_code}")
             return
 
-        return fileitem
+        if new_name and new_name != path.name:
+            if self.rename(fileitem, new_name):
+                return self.get_item(Path(fileitem.path).parent / new_name)
+
+        return self.get_item(Path(fileitem.path) / path.name)
 
     def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """

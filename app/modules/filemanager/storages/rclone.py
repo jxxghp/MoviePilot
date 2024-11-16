@@ -260,7 +260,7 @@ class Rclone(StorageBase):
             logger.error(f"rclone复制文件失败：{err}")
         return None
 
-    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         """
@@ -269,7 +269,7 @@ class Rclone(StorageBase):
                 [
                     'rclone', 'copyto',
                     str(path),
-                    f'MP:{Path(fileitem.path) / path.name}'
+                    f'MP:{Path(fileitem.path) / (new_name or path.name)}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode

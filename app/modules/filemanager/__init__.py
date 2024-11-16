@@ -268,7 +268,7 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.download(fileitem, path=path)
 
-    def upload_file(self, fileitem: FileItem, path: Path) -> Optional[FileItem]:
+    def upload_file(self, fileitem: FileItem, path: Path, new_name: str = None) -> Optional[FileItem]:
         """
         上传文件
         """
@@ -276,7 +276,7 @@ class FileManagerModule(_ModuleBase):
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的上传处理")
             return None
-        return storage_oper.upload(fileitem, path)
+        return storage_oper.upload(fileitem, path, new_name)
 
     def get_file_item(self, storage: str, path: Path) -> Optional[FileItem]:
         """
@@ -487,13 +487,8 @@ class FileManagerModule(_ModuleBase):
                     target_fileitem = target_oper.get_folder(target_file.parent)
                     if target_fileitem:
                         # 上传文件
-                        new_item = target_oper.upload(target_fileitem, filepath)
+                        new_item = target_oper.upload(target_fileitem, filepath, target_file.name)
                         if new_item:
-                            # 重命名为目标文件名
-                            if new_item.name != target_file.name:
-                                if target_oper.rename(new_item, target_file.name):
-                                    new_item.name = target_file.name
-                                    new_item.path = str(Path(new_item.path).parent / target_file.name)
                             return new_item, ""
                         else:
                             return None, f"{fileitem.path} 上传 {target_storage} 失败"
@@ -505,13 +500,8 @@ class FileManagerModule(_ModuleBase):
                     target_fileitem = target_oper.get_folder(target_file.parent)
                     if target_fileitem:
                         # 上传文件
-                        new_item = target_oper.upload(target_fileitem, filepath)
+                        new_item = target_oper.upload(target_fileitem, filepath, target_file.name)
                         if new_item:
-                            # 重命名为目标文件名
-                            if new_item.name != target_file.name:
-                                if target_oper.rename(new_item, target_file.name):
-                                    new_item.name = target_file.name
-                                    new_item.path = str(Path(new_item.path).parent / target_file.name)
                             # 删除源文件
                             source_oper.delete(fileitem)
                             return new_item, ""
