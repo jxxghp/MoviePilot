@@ -482,7 +482,8 @@ class Monitor(metaclass=Singleton):
                         folder_item = file_item
                     else:
                         folder_item = self.storagechain.get_parent_item(file_item)
-                    if folder_item and not self.storagechain.any_files(folder_item, extensions=settings.RMT_MEDIAEXT):
+                    exts = settings.RMT_MEDIAEXT + settings.DOWNLOAD_TMPEXT
+                    if folder_item and self.storagechain.any_files(folder_item, extensions=exts) is False:
                         logger.warn(f"删除残留空文件夹：【{folder_item.storage}】{folder_item.path}")
                         self.storagechain.delete_file(folder_item)
 
