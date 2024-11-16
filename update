@@ -20,6 +20,16 @@ function WARN() {
     echo -e "${WARN} ${1}"
 }
 
+TMP_PATH=$(mktemp -d)
+if [ ! -d "${TMP_PATH}" ]; then
+    # 如果自动生成 tmp 文件夹失败则手动指定，避免出现数据丢失等情况
+    TMP_PATH=/tmp/mp_update_path
+    if [ -d /tmp/mp_update_path ]; then
+        rm -rf /tmp/mp_update_path
+    fi
+    mkdir -p /tmp/mp_update_path
+fi
+
 # 下载及解压
 function download_and_unzip() {
     local retries=0
@@ -28,9 +38,9 @@ function download_and_unzip() {
     local target_dir="$2"
     INFO "正在下载 ${url}..."
     while [ $retries -lt $max_retries ]; do
-        if curl ${CURL_OPTIONS} "${url}" ${CURL_HEADERS} | busybox unzip -d /tmp - > /dev/null; then
-            if [ -e /tmp/MoviePilot-* ]; then
-                mv /tmp/MoviePilot-* /tmp/"${target_dir}"
+        if curl ${CURL_OPTIONS} "${url}" ${CURL_HEADERS} | busybox unzip -d ${TMP_PATH} - > /dev/null; then
+            if [ -e ${TMP_PATH}/MoviePilot-* ]; then
+                mv ${TMP_PATH}/MoviePilot-* ${TMP_PATH}/"${target_dir}"
             fi
             break
         else
@@ -48,8 +58,6 @@ function download_and_unzip() {
 
 # 下载程序资源，$1: 后端版本路径
 function install_backend_and_download_resources() {
-    # 清理临时目录，上次安装失败可能有残留
-    rm -rf /tmp/*
     # 更新后端程序
     if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"; then
         WARN "后端程序下载失败，继续使用旧的程序来启动..."
@@ -61,13 +69,13 @@ function install_backend_and_download_resources() {
         ERROR "pip 更新失败，请重新拉取镜像"
         return 1
     fi
-    if ! pip install ${PIP_OPTIONS} --root-user-action=ignore -r /tmp/App/requirements.txt > /dev/null; then
+    if ! pip install ${PIP_OPTIONS} --root-user-action=ignore -r ${TMP_PATH}/App/requirements.txt > /dev/null; then
         ERROR "安装依赖失败，请重新拉取镜像"
         return 1
     fi
     INFO "安装依赖成功"
     # 从后端文件中读取前端版本号
-    frontend_version=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /tmp/App/version.py)
+    frontend_version=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" ${TMP_PATH}/App/version.py)
     if [[ "${frontend_version}" != *v* ]]; then
         WARN "前端最新版本号获取失败，继续启动..."
         return 1
@@ -94,11 +102,11 @@ function install_backend_and_download_resources() {
     rm -rf /app
     mkdir -p /app
     # 复制新后端程序
-    cp -a /tmp/App/* /app/
+    cp -a ${TMP_PATH}/App/* /app/
     # 复制新前端程序
     rm -rf /public
     mkdir -p /public
-    cp -a /tmp/dist/* /public/
+    cp -a ${TMP_PATH}/dist/* /public/
     INFO "程序部分更新成功，前端版本：${frontend_version}，后端版本：${1}"
     # 恢复插件目录
     cp -a /plugins/* /app/app/plugins/
@@ -112,10 +120,10 @@ function install_backend_and_download_resources() {
     fi
     INFO "站点资源下载成功"
     # 复制新站点资源
-    cp -a /tmp/Resources/resources/* /app/app/helper/
+    cp -a ${TMP_PATH}/Resources/resources/* /app/app/helper/
     INFO "站点资源更新成功"
     # 清理临时目录
-    rm -rf /tmp/*
+    rm -rf "${TMP_PATH}"
     return 0
 }
 
