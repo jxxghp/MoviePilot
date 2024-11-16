@@ -1,5 +1,4 @@
 import base64
-import subprocess
 from pathlib import Path
 from typing import Optional, Tuple, List
 
@@ -32,19 +31,6 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
     cloud: Optional[Cloud] = None
     _session: QrcodeSession = None
-
-    # 是否有aria2c
-    _has_aria2c: bool = False
-
-    def __init__(self):
-        super().__init__()
-        try:
-            subprocess.run(['aria2c', '-h'], capture_output=True)
-            self._has_aria2c = True
-            logger.debug('发现 aria2c, 将使用 aria2c 下载文件')
-        except FileNotFoundError:
-            logger.debug('未发现 aria2c')
-            self._has_aria2c = False
 
     def __init_cloud(self) -> bool:
         """
