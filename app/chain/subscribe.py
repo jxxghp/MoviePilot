@@ -159,6 +159,8 @@ class SubscribeChain(ChainBase):
                 "search_imdbid") else kwargs.get("search_imdbid"),
             'sites': self.__get_default_subscribe_config(mediainfo.type, "sites") or None if not kwargs.get(
                 "sites") else kwargs.get("sites"),
+            'downloader': self.__get_default_subscribe_config(mediainfo.type, "downloader") if not kwargs.get(
+                "downloader") else kwargs.get("downloader"),
             'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path") if not kwargs.get(
                 "save_path") else kwargs.get("save_path")
         })
@@ -394,7 +396,8 @@ class SubscribeChain(ChainBase):
                 userid=subscribe.username,
                 username=subscribe.username,
                 save_path=subscribe.save_path,
-                media_category=subscribe.media_category
+                media_category=subscribe.media_category,
+                downloader=subscribe.downloader,
             )
 
             # 判断是否应完成订阅
@@ -773,7 +776,8 @@ class SubscribeChain(ChainBase):
                                                                  userid=subscribe.username,
                                                                  username=subscribe.username,
                                                                  save_path=subscribe.save_path,
-                                                                 media_category=subscribe.media_category)
+                                                                 media_category=subscribe.media_category,
+                                                                 downloader=subscribe.downloader)
             # 判断是否要完成订阅
             self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
                                          downloads=downloads, lefts=lefts)

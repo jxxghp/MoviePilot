@@ -64,6 +64,8 @@ class Subscribe(Base):
     username = Column(String)
     # 订阅站点
     sites = Column(JSON, default=list)
+    # 下载器
+    downloader = Column(String)
     # 是否洗版
     best_version = Column(Integer, default=0)
     # 当前优先级
