@@ -339,9 +339,10 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 return
             tmp_file = settings.TEMP_PATH / _path.name
             tmp_file.write_bytes(_content)
-            logger.info(f"保存文件：【{_fileitem.storage}】{_path}")
             _fileitem.path = str(_path.parent)
-            self.storagechain.upload_file(fileitem=_fileitem, path=tmp_file)
+            item = self.storagechain.upload_file(fileitem=_fileitem, path=tmp_file)
+            if item:
+                logger.info(f"已保存文件：{item.path}")
             if tmp_file.exists():
                 tmp_file.unlink()
 

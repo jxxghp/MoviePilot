@@ -275,6 +275,10 @@ class SystemUtils:
         # 遍历目录
         for path in directory.iterdir():
             if path.is_dir():
+                if not SystemUtils.is_windows() and path.name.startswith("."):
+                    continue
+                if path.name == "@eaDir":
+                    continue
                 dirs.append(path)
 
         return dirs
