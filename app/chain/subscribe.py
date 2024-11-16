@@ -1245,6 +1245,9 @@ class SubscribeChain(ChainBase):
                             file_path=file.fullpath,
                         )
                         if subscribe.type == MediaType.TV.value:
+                            season_number = file_meta.begin_season
+                            if season_number and season_number != subscribe.season:
+                                continue
                             episode_number = file_meta.begin_episode
                             if episode_number and episodes.get(episode_number):
                                 episodes[episode_number].download.append(file_info)
@@ -1282,6 +1285,9 @@ class SubscribeChain(ChainBase):
                     file_path=fileitem.path,
                 )
                 if subscribe.type == MediaType.TV.value:
+                    season_number = file_meta.begin_season
+                    if season_number and season_number != subscribe.season:
+                        continue
                     episode_number = file_meta.begin_episode
                     if episode_number and episodes.get(episode_number):
                         episodes[episode_number].library.append(file_info)
