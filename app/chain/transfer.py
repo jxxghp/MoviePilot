@@ -514,14 +514,7 @@ class TransferChain(ChainBase):
                     logger.info(f"移动模式删除种子成功：{download_hash} ")
             # 删除残留目录
             if fileitem:
-                if fileitem.type == "dir":
-                    folder_item = fileitem
-                else:
-                    folder_item = self.storagechain.get_parent_item(fileitem)
-                exts = settings.RMT_MEDIAEXT + settings.DOWNLOAD_TMPEXT
-                if folder_item and self.storagechain.any_files(folder_item, extensions=exts) is False:
-                    logger.warn(f"删除残留空文件夹：【{folder_item.storage}】{folder_item.path}")
-                    self.storagechain.delete_file(folder_item)
+                self.storagechain.delete_media_file(fileitem, delete_self=False)
 
         # 结束进度
         logger.info(f"{fileitem.path} 整理完成，共 {total_num} 个文件，"

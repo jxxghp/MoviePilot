@@ -478,14 +478,7 @@ class Monitor(metaclass=Singleton):
 
                 # 移动模式删除空目录
                 if transferinfo.transfer_type in ["move"]:
-                    if file_item.type == "dir":
-                        folder_item = file_item
-                    else:
-                        folder_item = self.storagechain.get_parent_item(file_item)
-                    exts = settings.RMT_MEDIAEXT + settings.DOWNLOAD_TMPEXT
-                    if folder_item and self.storagechain.any_files(folder_item, extensions=exts) is False:
-                        logger.warn(f"删除残留空文件夹：【{folder_item.storage}】{folder_item.path}")
-                        self.storagechain.delete_file(folder_item)
+                    self.storagechain.delete_media_file(file_item, delete_self=False)
 
             except Exception as e:
                 logger.error("目录监控发生错误：%s - %s" % (str(e), traceback.format_exc()))
