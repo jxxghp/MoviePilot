@@ -347,7 +347,7 @@ class AliPan(StorageBase):
         """
         if not self.aligo:
             return None
-        local_path = self.aligo.download_file(file_id=fileitem.fileid, drive_id=fileitem.drive_id,
+        local_path = self.aligo.download_file(file_id=fileitem.fileid, drive_id=fileitem.drive_id,  # noqa
                                               local_folder=str(path or settings.TEMP_PATH))
         if local_path:
             return Path(local_path)

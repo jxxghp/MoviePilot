@@ -116,9 +116,6 @@ def scrape(fileitem: schemas.FileItem,
     if storage == "local":
         if not scrape_path.exists():
             return schemas.Response(success=False, message="刮削路径不存在")
-    else:
-        if not fileitem.fileid:
-            return schemas.Response(success=False, message="刮削文件ID无效")
     # 手动刮削
     chain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
     return schemas.Response(success=True, message=f"{fileitem.path} 刮削完成")
