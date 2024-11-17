@@ -410,7 +410,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                             image_path = filepath / image_name
                             if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage,
                                                                                  path=image_path):
-                                logger.info(f"已存在图片文件：{image_path}")
+                                logger.debug(f"已存在图片文件：{image_path}")
                                 continue
                             # 下载图片
                             content = __download_image(_url=attr_value)
@@ -449,7 +449,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     for episode, image_url in image_dict.items():
                         image_path = filepath.with_suffix(Path(image_url).suffix)
                         if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=image_path):
-                            logger.info(f"已存在图片文件：{image_path}")
+                            logger.debug(f"已存在图片文件：{image_path}")
                             continue
                         # 下载图片
                         content = __download_image(image_url)
@@ -489,7 +489,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                 image_path = filepath.with_name(image_name)
                                 if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage,
                                                                                      path=image_path):
-                                    logger.info(f"已存在图片文件：{image_path}")
+                                    logger.debug(f"已存在图片文件：{image_path}")
                                     continue
                                 # 下载图片
                                 content = __download_image(image_url)
@@ -517,7 +517,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                 image_path = filepath / image_name
                                 if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage,
                                                                                      path=image_path):
-                                    logger.info(f"已存在图片文件：{image_path}")
+                                    logger.debug(f"已存在图片文件：{image_path}")
                                     continue
                                 # 下载图片
                                 content = __download_image(image_url)
