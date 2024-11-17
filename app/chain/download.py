@@ -252,35 +252,31 @@ class DownloadChain(ChainBase):
 
         # 下载目录
         if save_path:
-            # 有自定义下载目录时，尝试匹配目录配置
-            dir_info = self.directoryhelper.get_dir(_media, src_path=Path(save_path))
+            # 下载目录使用自定义的
+            download_dir = Path(save_path)
         else:
             # 根据媒体信息查询下载目录配置
             dir_info = self.directoryhelper.get_dir(_media)
+            # 拼装子目录
+            if dir_info:
+                # 一级目录
+                if not dir_info.media_type and dir_info.download_type_folder:
+                    # 一级自动分类
+                    download_dir = Path(dir_info.download_path) / _media.type.value
+                else:
+                    # 一级不分类
+                    download_dir = Path(dir_info.download_path)
 
-        # 拼装子目录
-        if dir_info:
-            # 一级目录
-            if not dir_info.media_type and dir_info.download_type_folder:
-                # 一级自动分类
-                download_dir = Path(dir_info.download_path) / _media.type.value
+                # 二级目录
+                if not dir_info.media_category and dir_info.download_category_folder and _media and _media.category:
+                    # 二级自动分类
+                    download_dir = download_dir / _media.category
             else:
-                # 一级不分类
-                download_dir = Path(dir_info.download_path)
-
-            # 二级目录
-            if not dir_info.media_category and dir_info.download_category_folder and _media and _media.category:
-                # 二级自动分类
-                download_dir = download_dir / _media.category
-        elif save_path:
-            # 自定义下载目录
-            download_dir = Path(save_path)
-        else:
-            # 未找到下载目录，且没有自定义下载目录
-            logger.error(f"未找到下载目录：{_media.type.value} {_media.title_year}")
-            self.messagehelper.put(f"{_media.type.value} {_media.title_year} 未找到下载目录！",
-                                   title="下载失败", role="system")
-            return None
+                # 未找到下载目录，且没有自定义下载目录
+                logger.error(f"未找到下载目录：{_media.type.value} {_media.title_year}")
+                self.messagehelper.put(f"{_media.type.value} {_media.title_year} 未找到下载目录！",
+                                       title="下载失败", role="system")
+                return None
 
         # 添加下载
         result: Optional[tuple] = self.download(content=content,
