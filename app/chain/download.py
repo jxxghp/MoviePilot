@@ -332,7 +332,7 @@ class DownloadChain(ChainBase):
                         continue
                 # 只处理视频格式
                 if not Path(file).suffix \
-                        or Path(file).suffix not in settings.RMT_MEDIAEXT:
+                        or Path(file).suffix.lower() not in settings.RMT_MEDIAEXT:
                     continue
                 files_to_add.append({
                     "download_hash": _hash,

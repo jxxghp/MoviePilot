@@ -287,7 +287,7 @@ class TorrentHelper(metaclass=Singleton):
             if not file:
                 continue
             file_path = Path(file)
-            if file_path.suffix not in settings.RMT_MEDIAEXT:
+            if not file_path.suffix or file_path.suffix.lower() not in settings.RMT_MEDIAEXT:
                 continue
             # 只使用文件名识别
             meta = MetaInfo(file_path.stem)
