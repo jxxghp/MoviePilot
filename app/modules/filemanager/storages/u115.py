@@ -71,6 +71,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         生成二维码
         """
+        if not self.__init_cloud():
+            return None
         try:
             resp = self.client.login_qrcode_token()
             self.session_info = resp["data"]
@@ -89,9 +91,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         二维码登录确认
         """
+        if not self.session_info:
+            return {}, "请先生成二维码！"
         try:
-            if not self.session_info:
-                return {}, "请先生成二维码！"
             resp = self.client.login_qrcode_scan_status(self.session_info)
             match resp["data"].get("status"):
                 case 0:
