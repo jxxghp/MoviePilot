@@ -32,13 +32,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         初始化Cloud
         """
-        credential = self.__credential
-        if not credential:
-            logger.warn("115未登录，请先登录！")
-            return False
         try:
             if not self.client or not self.client.cookies or force:
-                self.client = P115Client(credential)
+                self.client = P115Client(self.__credential)
                 self.fs = P115FileSystem(self.client)
         except Exception as err:
             logger.error(f"115连接失败，请重新扫码登录：{str(err)}")
