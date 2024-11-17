@@ -241,7 +241,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     path=item.path + ("/" if item.is_directory else ""),
                     name=item.name,
                     size=item.size,
-                    extension=item.suffix[1:] if not item.is_directory else None,
+                    extension=Path(item.name).suffix[1:] if not item.is_directory else None,
                     modify_time=item.mtime,
                     thumbnail=item.get("thumb")
                 )
@@ -267,7 +267,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     path=item.path + ("/" if item.is_directory else ""),
                     name=item.name,
                     size=item.size,
-                    extension=item.suffix[1:] if not item.is_directory else None,
+                    extension=Path(item.name).suffix[1:] if not item.is_directory else None,
                     modify_time=item.mtime,
                     thumbnail=item.get("thumb")
                 )
