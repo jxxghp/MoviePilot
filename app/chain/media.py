@@ -342,7 +342,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             _fileitem.path = str(_path.parent)
             item = self.storagechain.upload_file(fileitem=_fileitem, path=tmp_file)
             if item:
-                logger.info(f"已保存文件：{item.path}")
+                logger.info(f"已保存文件：{Path(item.path) / item.name}")
             if tmp_file.exists():
                 tmp_file.unlink()
 
@@ -389,6 +389,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     logger.warn(f"{filepath.name} nfo文件生成失败！")
                     return
                 # 保存或上传nfo文件到上级目录
+                if not parent:
+                    parent = self.storagechain.get_parent_item(fileitem)
                 __save_file(_fileitem=parent, _path=nfo_path, _content=movie_nfo)
             else:
                 # 电影目录
@@ -441,6 +443,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     logger.warn(f"{filepath.name} nfo生成失败！")
                     return
                 # 保存或上传nfo文件到上级目录
+                if not parent:
+                    parent = self.storagechain.get_parent_item(fileitem)
                 __save_file(_fileitem=parent, _path=nfo_path, _content=episode_nfo)
                 # 获取集的图片
                 image_dict = self.metadata_img(mediainfo=file_mediainfo,
@@ -455,6 +459,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                         content = __download_image(image_url)
                         # 保存图片文件到当前目录
                         if content:
+                            if not parent:
+                                parent = self.storagechain.get_parent_item(fileitem)
                             __save_file(_fileitem=parent, _path=image_path, _content=content)
 
             else:

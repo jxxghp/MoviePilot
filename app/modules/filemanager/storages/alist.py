@@ -558,11 +558,12 @@ class Alist(StorageBase):
             logging.warning(f"请求上传文件 {path} 失败，状态码：{resp.status_code}")
             return
 
+        new_item = self.get_item(Path(fileitem.path) / path.name)
         if new_name and new_name != path.name:
-            if self.rename(fileitem, new_name):
-                return self.get_item(Path(fileitem.path).parent / new_name)
+            if self.rename(new_item, new_name):
+                return self.get_item(Path(new_item.path).with_name(new_name))
 
-        return self.get_item(Path(fileitem.path) / path.name)
+        return new_item
 
     def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """

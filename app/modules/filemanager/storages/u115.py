@@ -174,7 +174,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
                 name=item.name,
                 basename=item.stem,
                 size=item.stat().st_size,
-                extension=item.suffix[1:],
+                extension=item.suffix[1:] if not item.is_dir() else None,
                 modify_time=item.stat().st_mtime
             ) for item in items if item]
         except Exception as e:
@@ -188,14 +188,15 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not self.__init_cloud():
             return None
         try:
-            result = self.fs.makedirs(path=(Path(fileitem.path) / name), exist_ok=True)  # noqa
+            result = self.fs.makedirs(Path(fileitem.path) / name, exist_ok=True)
             if result:
                 return schemas.FileItem(
                     storage=self.schema.value,
                     type="dir",
-                    path=f"{fileitem.path}{name}/",
+                    path=f"{result.path}/",
                     name=name,
-                    modify_time=result.get("utime")
+                    basename=Path(result.name).stem,
+                    modify_time=result.mtime
                 )
         except Exception as e:
             logger.error(f"115创建目录失败：{str(e)}")
@@ -208,14 +209,15 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not self.__init_cloud():
             return None
         try:
-            result = self.fs.makedirs(path=path, exist_ok=True)  # noqa
+            result = self.fs.makedirs(path, exist_ok=True)
             if result:
                 return schemas.FileItem(
                     storage=self.schema.value,
                     type="dir",
-                    path=str(path) + "/",
-                    name=path.name,
-                    modify_time=result.get("utime")
+                    path=result.path + "/",
+                    name=result.name,
+                    basename=Path(result.name).stem,
+                    modify_time=result.mtime
                 )
         except Exception as e:
             logger.error(f"115获取目录失败：{str(e)}")
@@ -228,19 +230,23 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not self.__init_cloud():
             return None
         try:
-            item = self.fs.attr(path)
+            try:
+                item = self.fs.attr(path)
+            except FileNotFoundError:
+                return None
             if item:
                 return schemas.FileItem(
                     storage=self.schema.value,
-                    type="dir" if item.is_dir() else "file",
-                    path=str(path) + ("/" if item.is_dir() else ""),
+                    type="dir" if item.is_directory else "file",
+                    path=item.path + ("/" if item.is_directory else ""),
                     name=item.name,
-                    size=item.stat().st_size,
-                    extension=item.file_extension[1:],
-                    modify_time=item.stat().st_mtime
+                    size=item.size,
+                    extension=item.suffix[1:] if not item.is_directory else None,
+                    modify_time=item.mtime,
+                    thumbnail=item.get("thumb")
                 )
         except Exception as e:
-            logger.error(f"115获取文件失败：{str(e)}")
+            logger.info(f"115获取文件失败：{str(e)}")
         return None
 
     def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
@@ -250,16 +256,20 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not self.__init_cloud():
             return None
         try:
-            item = self.fs.attr(fileitem.path)
+            try:
+                item = self.fs.attr(fileitem.path)
+            except FileNotFoundError:
+                return None
             if item:
                 return schemas.FileItem(
                     storage=self.schema.value,
-                    type="dir" if item.is_dir() else "file",
-                    path=fileitem.path + ("/" if item.is_dir() else ""),
+                    type="dir" if item.is_directory else "file",
+                    path=item.path + ("/" if item.is_directory else ""),
                     name=item.name,
-                    size=item.stat().st_size,
-                    extension=item.file_extension[1:],
-                    modify_time=item.stat().st_mtime
+                    size=item.size,
+                    extension=item.suffix[1:] if not item.is_directory else None,
+                    modify_time=item.mtime,
+                    thumbnail=item.get("thumb")
                 )
         except Exception as e:
             logger.error(f"115获取文件详情失败：{str(e)}")
@@ -313,17 +323,19 @@ class U115Pan(StorageBase, metaclass=Singleton):
         if not self.__init_cloud():
             return None
         try:
+            new_path = Path(fileitem.path) / (new_name or path.name)
             with open(path, "rb") as f:
-                result = self.fs.upload(f, Path(fileitem.path) / (new_name or path.name))
+                result = self.fs.upload(f, new_path)
                 if result:
                     return schemas.FileItem(
                         storage=self.schema.value,
                         type="file",
-                        path=fileitem.path,
-                        name=new_name or path.name,
-                        size=result.get("size"),
-                        extension=result.get("extension"),
-                        modify_time=result.get("utime")
+                        path=str(path),
+                        name=result.name,
+                        basename=Path(result.name).stem,
+                        size=result.size,
+                        extension=Path(result.name).suffix[1:],
+                        modify_time=result.mtime
                     )
         except Exception as e:
             logger.error(f"115上传文件失败：{str(e)}")

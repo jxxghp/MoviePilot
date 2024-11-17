@@ -265,16 +265,17 @@ class Rclone(StorageBase):
         上传文件
         """
         try:
+            new_path = Path(fileitem.path) / (new_name or path.name)
             retcode = subprocess.run(
                 [
                     'rclone', 'copyto',
                     str(path),
-                    f'MP:{Path(fileitem.path) / (new_name or path.name)}'
+                    f'MP:{new_path}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode
             if retcode == 0:
-                return self.__get_fileitem(path)
+                return self.__get_fileitem(new_path)
         except Exception as err:
             logger.error(f"rclone上传文件失败：{err}")
         return None
