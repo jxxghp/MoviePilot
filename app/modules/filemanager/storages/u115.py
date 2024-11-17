@@ -28,7 +28,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
     fs: P115FileSystem = None
     session_info: dict = None
 
-    def __init_cloud(self) -> bool:
+    def __init_cloud(self, force: bool = False) -> bool:
         """
         初始化Cloud
         """
@@ -37,7 +37,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             logger.warn("115未登录，请先登录！")
             return False
         try:
-            if not self.client or not self.client.cookies:
+            if not self.client or not self.client.cookies or force:
                 self.client = P115Client(credential)
                 self.fs = P115FileSystem(self.client)
         except Exception as err:
@@ -113,7 +113,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
                     resp = self.client.login_qrcode_scan_result(uid=self.session_info.get("uid"),
                                                                 app="alipaymini")
                     if resp:
+                        # 保存认证信息
                         self.__save_credential(resp["data"]["cookie"])
+                        self.__init_cloud(force=True)
                     result = {
                         "status": 2,
                         "tip": "登录成功！"
