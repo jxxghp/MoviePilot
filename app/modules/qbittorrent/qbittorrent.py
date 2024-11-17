@@ -77,7 +77,7 @@ class Qbittorrent:
             try:
                 qbt.auth_log_in()
             except (qbittorrentapi.LoginFailed, qbittorrentapi.Forbidden403Error) as e:
-                logger.error(f"qbittorrent 登录失败：{str(e)}")
+                logger.error(f"qbittorrent 登录失败：{str(e).strip() or '请检查用户名和密码是否正确'}")
                 return None
             except Exception as e:
                 stack_trace = "".join(traceback.format_exception(None, e, e.__traceback__))[:2000]
