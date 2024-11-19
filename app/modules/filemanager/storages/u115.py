@@ -21,7 +21,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
     # 支持的整理方式
     transtype = {
-        "move": "移动"
+        "move": "移动",
+        "copy": "复制"
     }
 
     client: P115Client = None
