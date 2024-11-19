@@ -21,7 +21,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
     # 支持的整理方式
     transtype = {
-        "move": "移动"
+        "move": "移动",
+        "copy": "复制"
     }
 
     client: P115Client = None
@@ -34,7 +35,8 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         try:
             if not self.client or not self.client.cookies or force:
-                self.client = P115Client(self.__credential)
+                self.client = P115Client(self.__credential,
+                                         check_for_relogin=True, app="alipaymini", console_qrcode=False)
                 self.fs = P115FileSystem(self.client)
         except Exception as err:
             logger.error(f"115连接失败，请重新扫码登录：{str(err)}")

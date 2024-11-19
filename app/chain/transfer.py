@@ -389,14 +389,13 @@ class TransferChain(ChainBase):
                     download_hash = download_file.download_hash
 
             # 查询整理目标目录
-            if not target_directory:
-                if target_path:
-                    target_directory = self.directoryhelper.get_dir(file_mediainfo,
-                                                                    storage=target_storage, dest_path=target_path)
-                elif src_match:
+            if not target_directory and not target_path:
+                if src_match:
+                    # 按源目录匹配，以便找到更合适的目录配置
                     target_directory = self.directoryhelper.get_dir(file_mediainfo,
                                                                     storage=file_item.storage, src_path=file_path)
                 else:
+                    # 未指定目标路径，根据媒体信息获取目标目录
                     target_directory = self.directoryhelper.get_dir(file_mediainfo)
 
             # 执行整理

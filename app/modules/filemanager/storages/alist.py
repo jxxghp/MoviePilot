@@ -213,7 +213,7 @@ class Alist(StorageBase):
                 path=(Path(fileitem.path) / item["name"]).as_posix() + ("/" if item["is_dir"] else ""),
                 name=item["name"],
                 basename=Path(item["name"]).stem,
-                extension=Path(item["name"]).suffix if not item["is_dir"] else None,
+                extension=Path(item["name"]).suffix[1:] if not item["is_dir"] else None,
                 size=item["size"] if not item["is_dir"] else None,
                 modify_time=self.__parse_timestamp(item["modified"]),
                 thumbnail=item["thumb"],
@@ -351,7 +351,7 @@ class Alist(StorageBase):
             path=path.as_posix() + ("/" if result["data"]["is_dir"] else ""),
             name=result["data"]["name"],
             basename=Path(result["data"]["name"]).stem,
-            extension=Path(result["data"]["name"]).suffix,
+            extension=Path(result["data"]["name"]).suffix[1:],
             size=result["data"]["size"],
             modify_time=self.__parse_timestamp(result["data"]["modified"]),
             thumbnail=result["data"]["thumb"],
@@ -521,13 +521,15 @@ class Alist(StorageBase):
         ).get_res(download_url)
 
         if not path:
-            path = settings.TEMP_PATH / fileitem.name
+            new_path = settings.TEMP_PATH / fileitem.name
+        else:
+            new_path = path / fileitem.name
 
-        with open(path, "wb") as f:
+        with open(new_path, "wb") as f:
             f.write(resp.content)
 
-        if path.exists():
-            return path
+        if new_path.exists():
+            return new_path
         return None
 
     def upload(
