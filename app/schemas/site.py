@@ -1,4 +1,4 @@
-from typing import Optional, Any, Union
+from typing import Optional, Any, Union, Dict
 
 from pydantic import BaseModel
 
@@ -110,3 +110,8 @@ class SiteUserData(BaseModel):
     updated_day: Optional[str] = None
     # 更新时间
     updated_time: Optional[str] = None
+
+
+class SiteAuth(BaseModel):
+    site: Optional[str] = None
+    params: Optional[Dict[str, Union[int, str]]] = {}

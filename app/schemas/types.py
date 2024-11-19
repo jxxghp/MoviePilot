@@ -122,6 +122,8 @@ class SystemConfigKey(Enum):
     DefaultMovieSubscribeConfig = "DefaultMovieSubscribeConfig"
     # 默认电视剧订阅规则
     DefaultTvSubscribeConfig = "DefaultTvSubscribeConfig"
+    # 用户站点认证参数
+    UserSiteAuthParams = "UserSiteAuthParams"
 
 
 # 处理进度Key字典
