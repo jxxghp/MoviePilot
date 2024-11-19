@@ -75,7 +75,7 @@ class Scheduler(metaclass=Singleton):
                                                    message="用户认证失败次数过多，将不再尝试认证！",
                                                    role="system")
                 return
-            logger.info("用户未认证，正在尝试重新认证...")
+            logger.info("用户未认证，正在尝试认证...")
             auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
             if auth_conf:
                 status, msg = SitesHelper().check_user(**auth_conf)
@@ -173,6 +173,9 @@ class Scheduler(metaclass=Singleton):
 
         # 停止定时服务
         self.stop()
+
+        # 用户认证立即执行一次
+        user_auth()
 
         # 调试模式不启动定时服务
         if settings.DEV:
