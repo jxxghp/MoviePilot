@@ -79,9 +79,8 @@ class DirectoryHelper:
             if src_path and not src_path.is_relative_to(download_path):
                 continue
             # 有目标目录时，目标目录不匹配媒体库目录
-            if dest_path:
-                if library_path != dest_path or not d.monitor_type:
-                    continue
+            if dest_path and library_path != dest_path:
+                continue
             # 目录类型为全部的，符合条件
             if not d.media_type:
                 return d
