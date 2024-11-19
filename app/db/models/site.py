@@ -46,7 +46,7 @@ class Site(Base):
     # 流控间隔
     limit_seconds = Column(Integer, default=0)
     # 超时时间
-    timeout = Column(Integer, default=0)
+    timeout = Column(Integer, default=15)
     # 是否启用
     is_active = Column(Boolean(), default=True)
     # 创建时间
