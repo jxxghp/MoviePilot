@@ -294,7 +294,7 @@ class Plex:
         return videos.key, season_episodes
 
     def get_remote_image_by_id(self, 
-                               item_id: str, 
+                               item_id: str,
                                image_type: str,
                                depth: int = 0,
                                plex_url: bool = True) -> Optional[str]:
@@ -310,12 +310,16 @@ class Plex:
             return None
         try:
             image_url = None
-            ekey = f"/library/metadata/{item_id}"
+            ekey = item_id
             item = self._plex.fetchItem(ekey=ekey)
             if not item:
                 return None
             # 如果配置了外网播放地址以及Token，则默认从Plex媒体服务器获取图片，否则返回有外网地址的图片资源
-            if self._playhost and self._token and plex_url:
+            # Plex外网播放地址这个框里目前可以填两种地址
+            #   1. Plex的官方转发地址https://app.plex.tv, 2. 自己处理的端口转发地址
+            #   如果使用的是1的官方转发地址,那么就不能走这个逻辑，因为官方转发地址无法获取到图片
+            if (self._playhost and "app.plex.tv" not in self._playhost
+                    and self._token and plex_url):
                 query = {"X-Plex-Token": self._token}
                 if image_type == "Poster":
                     if item.thumb:
@@ -346,8 +350,8 @@ class Plex:
                         image_url = image.key
                         break
                     # 如果最后还是找不到，则递归父级进行查找
-                if not image_url and hasattr(item, "parentRatingKey"):
-                    return self.get_remote_image_by_id(item_id=item.parentRatingKey,
+                if not image_url and hasattr(item, "parentKey"):
+                    return self.get_remote_image_by_id(item_id=item.parentKey,
                                                        image_type=image_type,
                                                        depth=depth + 1)
             return image_url
@@ -665,7 +669,7 @@ class Plex:
                     "S" + str(message.get('Metadata', {}).get('parentIndex')),
                     "E" + str(message.get('Metadata', {}).get('index')),
                     message.get('Metadata', {}).get('title'))
-                eventItem.item_id = message.get('Metadata', {}).get('ratingKey')
+                eventItem.item_id = message.get('Metadata', {}).get('key')
                 eventItem.season_id = message.get('Metadata', {}).get('parentIndex')
                 eventItem.episode_id = message.get('Metadata', {}).get('index')
 
@@ -680,7 +684,7 @@ class Plex:
                 eventItem.item_name = "%s %s" % (
                     message.get('Metadata', {}).get('title'),
                     "(" + str(message.get('Metadata', {}).get('year')) + ")")
-                eventItem.item_id = message.get('Metadata', {}).get('ratingKey')
+                eventItem.item_id = message.get('Metadata', {}).get('key')
                 if len(message.get('Metadata', {}).get('summary')) > 100:
                     eventItem.overview = str(message.get('Metadata', {}).get('summary'))[:100] + "..."
                 else:
