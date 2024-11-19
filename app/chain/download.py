@@ -180,7 +180,7 @@ class DownloadChain(ChainBase):
         torrent_file, content, download_folder, files, error_msg = self.torrent.download_torrent(
             url=torrent_url,
             cookie=site_cookie,
-            ua=torrent.site_ua,
+            ua=torrent.site_ua or settings.USER_AGENT,
             proxy=torrent.site_proxy)
 
         if isinstance(content, str):
