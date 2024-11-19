@@ -524,16 +524,7 @@ class MetaVideo(MetaBase):
         """
         if not self.name:
             return
-        source_res = re.search(r"(%s)" % self._source_re, token, re.IGNORECASE)
-        if source_res:
-            self._last_token_type = "source"
-            self._continue_flag = False
-            self._stop_name_flag = True
-            if not self._source:
-                self._source = source_res.group(1)
-                self._last_token = self._source.upper()
-            return
-        elif token.upper() == "DL" \
+        if token.upper() == "DL" \
                 and self._last_token_type == "source" \
                 and self._last_token == "WEB":
             self._source = "WEB-DL"
@@ -553,7 +544,7 @@ class MetaVideo(MetaBase):
             self._source = "WEB-DL"
             self._continue_flag = False
             return
-        # UHD REMUX组合
+            # UHD REMUX组合
         if token.upper() == "REMUX" \
                 and self._source == "BluRay":
             self._source = "BluRay REMUX"
@@ -562,7 +553,17 @@ class MetaVideo(MetaBase):
         elif token.upper() == "BLURAY" \
                 and self._source == "UHD":
             self._source = "UHD BluRay"
-
+            self._continue_flag = False
+            return
+        source_res = re.search(r"(%s)" % self._source_re, token, re.IGNORECASE)
+        if source_res:
+            self._last_token_type = "source"
+            self._continue_flag = False
+            self._stop_name_flag = True
+            if not self._source:
+                self._source = source_res.group(1)
+                self._last_token = self._source.upper()
+            return
         effect_res = re.search(r"(%s)" % self._effect_re, token, re.IGNORECASE)
         if effect_res:
             self._last_token_type = "effect"

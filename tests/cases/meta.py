@@ -345,13 +345,13 @@ meta_cases = [{
         "part": "",
         "season": "",
         "episode": "",
-        "restype": "BluRay Remux",
+        "restype": "BluRay REMUX",
         "pix": "1080p",
         "video_codec": "AVC",
         "audio_codec": "LPCM 7³"
     }
 }, {
-    "title": "30.Rock.S02E01.1080p.BluRay.X264-BORDURE.mkv",
+    "title": "30.Rock.S02E01.1080p.UHD.BluRay.X264-BORDURE.mkv",
     "subtitle": "",
     "target": {
         "type": "电视剧",
@@ -361,7 +361,7 @@ meta_cases = [{
         "part": "",
         "season": "S02",
         "episode": "E01",
-        "restype": "BluRay",
+        "restype": "UHD BluRay",
         "pix": "1080p",
         "video_codec": "X264",
         "audio_codec": ""
@@ -611,7 +611,7 @@ meta_cases = [{
     "subtitle": "",
     "target": {
         "type": "电视剧",
-        "cn_name": "处刑少女的生存之道",
+        "cn_name": "處刑少女的生存之道",
         "en_name": "",
         "year": "",
         "part": "",
@@ -665,7 +665,7 @@ meta_cases = [{
         "part": "",
         "season": "",
         "episode": "",
-        "restype": "BluRay DoVi UHD",
+        "restype": "UHD BluRay DoVi",
         "pix": "1080p",
         "video_codec": "X265",
         "audio_codec": "DD 7.1"
