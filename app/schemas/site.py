@@ -35,7 +35,7 @@ class Site(BaseModel):
     # 备注
     note: Optional[Any] = None
     # 超时时间
-    timeout: Optional[int] = 0
+    timeout: Optional[int] = 15
     # 流控单位周期
     limit_interval: Optional[int] = None
     # 流控次数
