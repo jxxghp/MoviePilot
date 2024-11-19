@@ -131,7 +131,8 @@ class TransferChain(ChainBase):
                         extension=file_path.suffix.lstrip('.'),
                     ),
                     mediainfo=mediainfo,
-                    download_hash=torrent.hash
+                    download_hash=torrent.hash,
+                    src_match=True
                 )
 
                 # 设置下载任务状态
@@ -149,7 +150,7 @@ class TransferChain(ChainBase):
                       transfer_type: str = None, scrape: bool = None,
                       season: int = None, epformat: EpisodeFormat = None,
                       min_filesize: int = 0, download_hash: str = None,
-                      force: bool = False) -> Tuple[bool, str]:
+                      force: bool = False, src_match: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
@@ -165,6 +166,7 @@ class TransferChain(ChainBase):
         :param min_filesize: 最小文件大小(MB)
         :param download_hash: 下载记录hash
         :param force: 是否强制整理
+        :param src_match: 是否源目录匹配
         返回：成功标识，错误信息
         """
 
@@ -391,11 +393,15 @@ class TransferChain(ChainBase):
                 # 指定了`目标目录`
                 if target_path:
                     target_directory = self.directoryhelper.get_dir(media=file_mediainfo, 
-                                                                    storage=file_item.storage, dest_path=target_path)
+                                                                    storage=target_storage, dest_path=target_path)
+                # 源目录匹配
+                elif src_match:
+                    target_directory = self.directoryhelper.get_dir(media=file_mediainfo,
+                                                                    storage=file_item.storage, src_path=target_path)
                 # 未指定`目标目录`
                 else:
                     target_directory = self.directoryhelper.get_dir(media=file_mediainfo,
-                                                                    storage=file_item.storage, src_path=file_path)
+                                                                    storage=target_storage, src_path=file_path)
             # 执行整理
             transferinfo: TransferInfo = self.transfer(fileitem=file_item,
                                                        meta=file_meta,
