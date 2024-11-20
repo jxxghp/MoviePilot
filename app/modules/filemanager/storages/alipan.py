@@ -70,7 +70,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         refresh_token = self.__auth_params.get("refreshToken")
         if refresh_token:
             self.aligo = Aligo(refresh_token=refresh_token, show=show_qrcode, use_aria2=self._has_aria2c,
-                               name="MoviePilot V2", level=logging.ERROR)
+                               name="MoviePilot V2", level=logging.ERROR, re_login=False)
 
     @property
     def __auth_params(self):
