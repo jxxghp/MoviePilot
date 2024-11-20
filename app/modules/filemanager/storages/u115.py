@@ -35,11 +35,10 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         try:
             if not self.client or not self.client.cookies or force:
-                self.client = P115Client(self.__credential,
-                                         check_for_relogin=True, app="alipaymini", console_qrcode=False)
+                self.client = P115Client(self.__credential, app="alipaymini")
                 self.fs = P115FileSystem(self.client)
         except Exception as err:
-            logger.error(f"115连接失败，请重新扫码登录：{str(err)}")
+            logger.error(f"115连接失败，请重新登录：{str(err)}")
             self.__clear_credential()
             return False
         return True
@@ -54,8 +53,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             return None
         if not conf.config:
             return None
-        # 将dict转换为cookie字符串格式
-        return "; ".join([f"{k}={v}" for k, v in conf.config.items()])
+        return conf.config.get("cookie")
 
     def __save_credential(self, credential: dict):
         """
@@ -73,15 +71,14 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         生成二维码
         """
-        if not self.__init_cloud():
-            return None
+        self.__init_cloud()
         try:
             resp = self.client.login_qrcode_token()
             self.session_info = resp["data"]
             qrcode_content = self.session_info.pop("qrcode")
             if not qrcode_content:
                 logger.warn("115生成二维码失败：未获取到二维码数据！")
-                return None
+                return {}, ""
             return {
                 "codeContent": qrcode_content
             }, ""
@@ -114,7 +111,10 @@ class U115Pan(StorageBase, metaclass=Singleton):
                                                                 app="alipaymini")
                     if resp:
                         # 保存认证信息
-                        self.__save_credential(resp["data"]["cookie"])
+                        cookie_dict = resp["data"]["cookie"]
+                        cookie_str = "; ".join([f"{k}={v}" for k, v in cookie_dict.items()])
+                        cookie_dict.update({"cookie": cookie_str})
+                        self.__save_credential(cookie_dict)
                         self.__init_cloud(force=True)
                     result = {
                         "status": 2,

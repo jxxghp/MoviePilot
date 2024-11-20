@@ -143,7 +143,7 @@ class FileManagerModule(_ModuleBase):
             return
         storage_oper.set_config(conf)
 
-    def generate_qrcode(self, storage: str) -> Optional[Dict[str, str]]:
+    def generate_qrcode(self, storage: str) -> Optional[Tuple[dict, str]]:
         """
         生成二维码
         """

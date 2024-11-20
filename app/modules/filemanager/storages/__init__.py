@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Optional, List, Union, Dict
+from typing import Optional, List, Union, Dict, Tuple
 
 from app import schemas
 from app.helper.storage import StorageHelper
@@ -16,7 +16,7 @@ class StorageBase(metaclass=ABCMeta):
     def __init__(self):
         self.storagehelper = StorageHelper()
 
-    def generate_qrcode(self, *args, **kwargs) -> Optional[Dict[str, str]]:
+    def generate_qrcode(self, *args, **kwargs) -> Optional[Tuple[dict, str]]:
         pass
 
     def check_login(self, *args, **kwargs) -> Optional[Dict[str, str]]:
