@@ -40,20 +40,18 @@ class U115Pan(StorageBase, metaclass=Singleton):
         super().__init__()
         self.init_storage()
 
-    def init_storage(self) -> bool:
+    def init_storage(self):
         """
         初始化Cloud
         """
         if not self.__credential:
-            return False
+            return
         try:
             self.client = P115Client(self.__credential, app="alipaymini",
                                      check_for_relogin=True, console_qrcode=False)
         except Exception as err:
             logger.error(f"115连接失败，请重新登录：{str(err)}")
             self.__clear_credential()
-            return False
-        return True
 
     @property
     def __credential(self) -> Optional[str]:

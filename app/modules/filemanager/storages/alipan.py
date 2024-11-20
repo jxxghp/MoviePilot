@@ -69,8 +69,12 @@ class AliPan(StorageBase, metaclass=Singleton):
 
         refresh_token = self.__auth_params.get("refreshToken")
         if refresh_token:
-            self.aligo = Aligo(refresh_token=refresh_token, show=show_qrcode, use_aria2=self._has_aria2c,
-                               name="MoviePilot V2", level=logging.ERROR, re_login=False)
+            try:
+                self.aligo = Aligo(refresh_token=refresh_token, show=show_qrcode, use_aria2=self._has_aria2c,
+                                   name="MoviePilot V2", level=logging.ERROR, re_login=False)
+            except Exception as err:
+                logger.error(f"初始化阿里云盘失败：{str(err)}")
+                self.__clear_params()
 
     @property
     def __auth_params(self):
