@@ -27,6 +27,12 @@ class Rclone(StorageBase):
         "copy": "复制"
     }
 
+    def init_storage(self):
+        """
+        初始化
+        """
+        pass
+
     def set_config(self, conf: dict):
         """
         设置配置

@@ -34,6 +34,12 @@ class Alist(StorageBase):
     def __init__(self):
         super().__init__()
 
+    def init_storage(self):
+        """
+        初始化
+        """
+        pass
+
     @property
     def __get_base_url(self) -> str:
         """

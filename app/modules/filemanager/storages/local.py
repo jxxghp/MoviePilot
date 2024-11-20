@@ -25,6 +25,12 @@ class LocalStorage(StorageBase):
         "softlink": "软链接"
     }
 
+    def init_storage(self):
+        """
+        初始化
+        """
+        pass
+
     def check(self) -> bool:
         """
         检查存储是否可用

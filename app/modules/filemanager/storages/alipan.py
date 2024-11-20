@@ -16,10 +16,11 @@ from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
 from aligo import Aligo, BaseFile
 
+from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
 
-class AliPan(StorageBase):
+class AliPan(StorageBase, metaclass=Singleton):
     """
     阿里云相关操作
     """
@@ -54,16 +55,21 @@ class AliPan(StorageBase):
         except FileNotFoundError:
             logger.debug('未发现 aria2c')
             self._has_aria2c = False
+        self.init_storage()
 
-        self.__init_aligo()
-
-    def __init_aligo(self):
+    def init_storage(self):
         """
         初始化 aligo
         """
+        def show_qrcode(qr_link: str):
+            """
+            显示二维码
+            """
+            logger.info(f"请用阿里云盘 App 扫码登录：{qr_link}")
+
         refresh_token = self.__auth_params.get("refreshToken")
         if refresh_token:
-            self.aligo = Aligo(refresh_token=refresh_token, use_aria2=self._has_aria2c,
+            self.aligo = Aligo(refresh_token=refresh_token, show=show_qrcode, use_aria2=self._has_aria2c,
                                name="MoviePilot V2", level=logging.ERROR)
 
     @property
@@ -160,7 +166,7 @@ class AliPan(StorageBase):
                         })
                         self.__update_params(data)
                         self.__update_drives()
-                        self.__init_aligo()
+                        self.init_storage()
                 except Exception as e:
                     return {}, f"bizExt 解码失败：{str(e)}"
             return data, ""
@@ -180,12 +186,16 @@ class AliPan(StorageBase):
         """
         获取用户信息（drive_id等）
         """
+        if not self.aligo:
+            return {}
         return self.aligo.get_user()
 
     def __update_drives(self):
         """
         更新用户存储根目录
         """
+        if not self.aligo:
+            return
         drivers = self.aligo.list_my_drives()
         for driver in drivers:
             if driver.category == "resource":

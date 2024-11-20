@@ -16,6 +16,13 @@ class StorageBase(metaclass=ABCMeta):
     def __init__(self):
         self.storagehelper = StorageHelper()
 
+    @abstractmethod
+    def init_storage(self):
+        """
+        初始化
+        """
+        pass
+
     def generate_qrcode(self, *args, **kwargs) -> Optional[Tuple[dict, str]]:
         pass
 
@@ -40,6 +47,7 @@ class StorageBase(metaclass=ABCMeta):
         设置配置
         """
         self.storagehelper.set_storage(self.schema.value, conf)
+        self.init_storage()
 
     def support_transtype(self) -> dict:
         """
