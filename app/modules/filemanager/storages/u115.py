@@ -48,7 +48,7 @@ class U115Pan(StorageBase, metaclass=Singleton):
             return
         try:
             self.client = P115Client(self.__credential, app="alipaymini",
-                                     check_for_relogin=True, console_qrcode=False)
+                                     check_for_relogin=False, console_qrcode=False)
         except Exception as err:
             logger.error(f"115连接失败，请重新登录：{str(err)}")
             self.__clear_credential()
