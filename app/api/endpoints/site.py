@@ -8,6 +8,7 @@ from app import schemas
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
 from app.core.event import EventManager
+from app.core.plugin import PluginManager
 from app.core.security import verify_token
 from app.db import get_db
 from app.db.models import User
@@ -351,6 +352,8 @@ def auth_site(
         return schemas.Response(success=False, message="请输入认证站点和认证参数")
     status, msg = SitesHelper().check_user(auth_info.site, auth_info.params)
     SystemConfigOper().set(SystemConfigKey.UserSiteAuthParams, auth_info.dict())
+    PluginManager().init_config()
+    Scheduler().init_plugin_jobs()
     return schemas.Response(success=status, message=msg)
 
 
