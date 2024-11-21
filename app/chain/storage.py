@@ -135,9 +135,17 @@ class StorageChain(ChainBase):
             if not self.delete_file(fileitem):
                 logger.warn(f"【{fileitem.storage}】{fileitem.path} 删除失败")
                 return False
-        # 处理上级目录
-        if mtype and mtype == MediaType.TV:
-            dir_item = self.get_file_item(storage=fileitem.storage, path=Path(fileitem.path).parent.parent)
+        if mtype:
+            # 重命名格式
+            rename_format = settings.TV_RENAME_FORMAT \
+                if mtype == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+            # 计算重命名中的文件夹层数
+            rename_format_level = len(rename_format.split("/")) - 1
+            if rename_format_level < 1:
+                return True
+            # 处理上级目录
+            dir_item = self.get_file_item(storage=fileitem.storage,
+                                          path=Path(fileitem.path).parents[rename_format_level - 1])
         else:
             dir_item = self.get_parent_item(fileitem)
         if dir_item and len(Path(dir_item.path).parts) > 2:

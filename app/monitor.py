@@ -280,9 +280,9 @@ class Monitor(metaclass=Singleton):
             """
             获取BDMV目录的上级目录
             """
-            for parent in _path.parents:
-                if parent.name == "BDMV":
-                    return parent.parent
+            for p in _path.parents:
+                if p.name == "BDMV":
+                    return p.parent
             return None
 
         # 全程加锁

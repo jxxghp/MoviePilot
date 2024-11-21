@@ -884,6 +884,18 @@ class FileManagerModule(_ModuleBase):
         rename_format = settings.TV_RENAME_FORMAT \
             if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
 
+        # 计算重命名中的文件夹层数
+        rename_format_level = len(rename_format.split("/")) - 1
+
+        if rename_format_level < 1:
+            # 重命名格式不合法
+            logger.error(f"重命名格式不合法：{rename_format}")
+            return TransferInfo(success=False,
+                                message=f"重命名格式不合法",
+                                fileitem=fileitem,
+                                transfer_type=transfer_type,
+                                need_notify=need_notify)
+
         # 判断是否为文件夹
         if fileitem.type == "dir":
             # 整理整个目录，一般为蓝光原盘
@@ -964,9 +976,15 @@ class FileManagerModule(_ModuleBase):
             # 目的操作对象
             target_oper: StorageBase = self.__get_storage_oper(target_storage)
             # 目标目录
-            target_diritem = target_oper.get_folder(
-                new_file.parent) if mediainfo.type == MediaType.MOVIE else target_oper.get_folder(
-                new_file.parent.parent)
+            target_diritem = target_oper.get_folder(new_file.parents[rename_format_level - 1])
+            if not target_diritem:
+                logger.error(f"目标目录 {new_file.parents[rename_format_level - 1]} 获取失败")
+                return TransferInfo(success=False,
+                                    message=f"目标目录 {new_file.parents[rename_format_level - 1]} 获取失败",
+                                    fileitem=fileitem,
+                                    fail_list=[fileitem.path],
+                                    transfer_type=transfer_type,
+                                    need_notify=need_notify)
             # 目标文件
             target_item = target_oper.get_item(new_file)
             if target_item:
