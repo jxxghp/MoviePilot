@@ -124,7 +124,8 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
             is_paused=is_paused,
             tag=tags,
             cookie=cookie,
-            category=category
+            category=category,
+            ignore_category_check=False
         )
         if not state:
             # 读取种子的名称
