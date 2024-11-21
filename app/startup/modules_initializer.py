@@ -23,7 +23,9 @@ from app.helper.message import MessageHelper
 from app.scheduler import Scheduler
 from app.monitor import Monitor
 from app.schemas import Notification, NotificationType
+from app.schemas.types import SystemConfigKey
 from app.db import close_database
+from app.db.systemconfig_oper import SystemConfigOper
 from app.chain.command import CommandChain
 
 
@@ -70,6 +72,19 @@ def clear_temp():
     SystemUtils.clear(settings.TEMP_PATH, days=3)
     # 清理图片缓存目录中7天前的文件
     SystemUtils.clear(settings.CACHE_PATH / "images", days=7)
+
+
+def user_auth():
+    """
+    用户认证检查
+    """
+    if SitesHelper().auth_level >= 2:
+        return
+    auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
+    if auth_conf:
+        SitesHelper().check_user(**auth_conf)
+    else:
+        SitesHelper().check_user()
 
 
 def check_auth():
@@ -128,6 +143,8 @@ def start_modules(_: FastAPI):
     SitesHelper()
     # 资源包检测
     ResourceHelper()
+    # 用户认证
+    user_auth()
     # 加载模块
     ModuleManager()
     # 启动事件消费

@@ -174,9 +174,6 @@ class Scheduler(metaclass=Singleton):
         # 停止定时服务
         self.stop()
 
-        # 用户认证立即执行一次
-        user_auth()
-
         # 调试模式不启动定时服务
         if settings.DEV:
             return
