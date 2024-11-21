@@ -82,6 +82,10 @@ class Scheduler(metaclass=Singleton):
             else:
                 status, msg = SitesHelper().check_user()
             if status:
+                # 仅重试时，才需要初始化插件服务
+                if self._auth_count > 0:
+                    PluginManager().init_config()
+                    self.init_plugin_jobs()
                 self._auth_count = 0
                 logger.info(f"{msg} 用户认证成功")
                 SchedulerChain().post_message(
@@ -92,9 +96,6 @@ class Scheduler(metaclass=Singleton):
                         link=settings.MP_DOMAIN('#/site')
                     )
                 )
-                PluginManager().init_config()
-                self.init_plugin_jobs()
-
             else:
                 self._auth_count += 1
                 logger.error(f"用户认证失败：{msg}，共失败 {self._auth_count} 次")
