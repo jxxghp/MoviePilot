@@ -130,7 +130,6 @@ class FileManagerModule(_ModuleBase):
         )
         return str(path)
 
-        pass
 
     def save_config(self, storage: str, conf: Dict) -> None:
         """
@@ -218,7 +217,8 @@ class FileManagerModule(_ModuleBase):
                             and f".{t.extension.lower()}" in extensions):
                         return True
                     elif t.type == "dir":
-                        return __any_file(t)
+                        if __any_file(t):
+                            return True
             return False
 
         # 返回结果
