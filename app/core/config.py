@@ -366,10 +366,9 @@ class Settings(BaseSettings, ConfigModel):
             logger.warning(message)
 
         if field.name in os.environ:
-            if is_converted:
-                message = f"配置项 '{field.name}' 已在环境变量中设置，请手动更新以保持一致性"
-                logger.warning(message)
-                return False, message
+            message = f"配置项 '{field.name}' 已在环境变量中设置，请手动更新以保持一致性"
+            logger.warning(message)
+            return False, message
         else:
             set_key(SystemUtils.get_env_path(), field.name, str(converted_value) if converted_value is not None else "")
             if is_converted:
@@ -393,7 +392,7 @@ class Settings(BaseSettings, ConfigModel):
                                                                             field.default, key)
             # 如果没有抛出异常，则统一使用 converted_value 进行更新
             if needs_update or str(value) != str(converted_value):
-                success, message = self.update_env_config(field, original_value, converted_value)
+                success, message = self.update_env_config(field, value, converted_value)
                 # 仅成功更新配置时，才更新内存
                 if success:
                     setattr(self, key, converted_value)
