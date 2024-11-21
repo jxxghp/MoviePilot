@@ -2,10 +2,10 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict, Union
+from typing import Optional, List, Dict
 
-from requests import Response
 from cachetools import cached, TTLCache
+from requests import Response
 
 from app import schemas
 from app.core.config import settings
@@ -13,10 +13,11 @@ from app.log import logger
 from app.modules.filemanager.storages import StorageBase
 from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
+from app.utils.singleton import Singleton
 from app.utils.url import UrlUtils
 
 
-class Alist(StorageBase):
+class Alist(StorageBase, metaclass=Singleton):
     """
     Alist相关操作
     api文档：https://alist.nn.ci/zh/guide/api
@@ -348,7 +349,7 @@ class Alist(StorageBase):
 
         result = resp.json()
         if result["code"] != 200:
-            logging.warning(f'获取文件 {path} 失败，错误信息：{result["message"]}')
+            logging.debug(f'获取文件 {path} 失败，错误信息：{result["message"]}')
             return
 
         return schemas.FileItem(
@@ -576,51 +577,21 @@ class Alist(StorageBase):
         """
         return self.get_item(Path(fileitem.path))
 
-    @staticmethod
-    def __get_copy_and_move_data(
-            fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]
-    ) -> Tuple[str, str, List[str], bool]:
-        """
-        获取复制或移动文件需要的数据
-
-        :param fileitem: 文件项
-        :param target: 目标文件项或目标路径
-        :return: 源目录，目标目录，文件名列表，是否有效
-        """
-        name = Path(target).name
-        if fileitem.name != name:
-            return "", "", [], False
-
-        src_dir = Path(fileitem.path).parent.as_posix()
-        if isinstance(target, schemas.FileItem):
-            traget_dir = Path(target.path).parent.as_posix()
-        else:
-            traget_dir = target.parent.as_posix()
-
-        return src_dir, traget_dir, [name], True
-
-    def copy(
-            self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]
-    ) -> bool:
+    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
         复制文件
-
-        源文件名和目标文件名必须相同
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
-        src_dir, dst_dir, names, is_valid = self.__get_copy_and_move_data(
-            fileitem, target
-        )
-        if not is_valid:
-            return False
-
         resp: Response = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
             self.__get_api_url("/api/fs/copy"),
             json={
-                "src_dir": src_dir,
-                "dst_dir": dst_dir,
-                "names": names,
+                "src_dir": Path(fileitem.path).parent.as_posix(),
+                "dst_dir": path.as_posix(),
+                "names": [fileitem.name],
             },
         )
         """
@@ -655,28 +626,31 @@ class Alist(StorageBase):
                 f'复制文件 {fileitem.path} 失败，错误信息：{result["message"]}'
             )
             return False
+        # 重命名
+        if fileitem.name != new_name:
+            self.rename(
+                self.get_item(path / fileitem.name), new_name
+            )
         return True
 
-    def move(
-            self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]
-    ) -> bool:
+    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
         移动文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
-        src_dir, dst_dir, names, is_valid = self.__get_copy_and_move_data(
-            fileitem, target
-        )
-        if not is_valid:
-            return False
-
+        # 先重命名
+        if fileitem.name != new_name:
+            self.rename(fileitem, new_name)
         resp: Response = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
             self.__get_api_url("/api/fs/move"),
             json={
-                "src_dir": src_dir,
-                "dst_dir": dst_dir,
-                "names": names,
+                "src_dir": Path(fileitem.path).parent.as_posix(),
+                "dst_dir": path.as_posix(),
+                "names": [new_name],
             },
         )
         """
@@ -757,15 +731,7 @@ class Alist(StorageBase):
 
     @staticmethod
     def __parse_timestamp(time_str: str) -> float:
-        # try:
-        #     # 尝试解析带微秒的时间格式
-        #     dt = datetime.strptime(time_str[:26], '%Y-%m-%dT%H:%M:%S.%f')
-        # except ValueError:
-        #     # 如果失败，尝试解析不带微秒的时间格式
-        #     dt = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%SZ')
-
-        # 直接使用 ISO 8601 格式解析时间
-        dt = datetime.fromisoformat(time_str)
-
-        # 返回时间戳
-        return dt.timestamp()
+        """
+        直接使用 ISO 8601 格式解析时间
+        """
+        return datetime.fromisoformat(time_str).timestamp()

@@ -393,10 +393,14 @@ class TransferChain(ChainBase):
                 if src_match:
                     # 按源目录匹配，以便找到更合适的目录配置
                     target_directory = self.directoryhelper.get_dir(file_mediainfo,
-                                                                    storage=file_item.storage, src_path=file_path)
+                                                                    storage=file_item.storage,
+                                                                    src_path=file_path,
+                                                                    target_storage=target_storage)
                 else:
                     # 未指定目标路径，根据媒体信息获取目标目录
-                    target_directory = self.directoryhelper.get_dir(file_mediainfo)
+                    target_directory = self.directoryhelper.get_dir(file_mediainfo,
+                                                                    storage=target_storage,
+                                                                    target_storage=target_storage)
 
             # 执行整理
             transferinfo: TransferInfo = self.transfer(fileitem=file_item,

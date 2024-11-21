@@ -61,6 +61,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         """
         初始化 aligo
         """
+
         def show_qrcode(qr_link: str):
             """
             显示二维码
@@ -370,6 +371,9 @@ class AliPan(StorageBase, metaclass=Singleton):
     def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件，并标记完成
+        :param fileitem: 上传目录项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
         if not self.aligo:
             return None
@@ -383,19 +387,41 @@ class AliPan(StorageBase, metaclass=Singleton):
                 return self.__get_fileitem(item)
         return None
 
-    def move(self, fileitem: schemas.FileItem, target: schemas.FileItem) -> bool:
+    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
         移动文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
         if not self.aligo:
             return False
+        target = self.get_folder(path)
+        if not target:
+            return False
         if self.aligo.move_file(file_id=fileitem.fileid, drive_id=fileitem.drive_id,
-                                to_parent_file_id=target.fileid, to_drive_id=target.drive_id):
+                                to_parent_file_id=target.fileid, to_drive_id=target.drive_id,
+                                new_name=new_name):
             return True
         return False
 
-    def copy(self, fileitem: schemas.FileItem, target: schemas.FileItem) -> bool:
-        pass
+    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+        """
+        复制文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
+        """
+        if not self.aligo:
+            return False
+        target = self.get_folder(path)
+        if not target:
+            return False
+        if self.aligo.copy_file(file_id=fileitem.fileid, drive_id=fileitem.drive_id,
+                                to_parent_file_id=target.fileid, to_drive_id=target.drive_id,
+                                new_name=new_name):
+            return True
+        return False
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         """

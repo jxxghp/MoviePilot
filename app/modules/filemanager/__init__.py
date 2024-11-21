@@ -1,4 +1,3 @@
-import copy
 import re
 from pathlib import Path
 from threading import Lock
@@ -463,9 +462,9 @@ class FileManagerModule(_ModuleBase):
                     target_file.parent.mkdir(parents=True)
                 # 本地到本地
                 if transfer_type == "copy":
-                    state = source_oper.copy(fileitem, target_file)
+                    state = source_oper.copy(fileitem, target_file.parent, target_file.name)
                 elif transfer_type == "move":
-                    state = source_oper.move(fileitem, target_file)
+                    state = source_oper.move(fileitem, target_file.parent, target_file.name)
                 elif transfer_type == "link":
                     state = source_oper.link(fileitem, target_file)
                 elif transfer_type == "softlink":
@@ -493,7 +492,7 @@ class FileManagerModule(_ModuleBase):
                         else:
                             return None, f"{fileitem.path} 上传 {target_storage} 失败"
                     else:
-                        return None, f"{target_file.parent} {target_storage} 目录获取失败"
+                        return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
                 elif transfer_type == "move":
                     # 移动
                     # 根据目的路径获取文件夹
@@ -508,7 +507,7 @@ class FileManagerModule(_ModuleBase):
                         else:
                             return None, f"{fileitem.path} 上传 {target_storage} 失败"
                     else:
-                        return None, f"{target_file.parent} {target_storage} 目录获取失败"
+                        return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
             elif fileitem.storage != "local" and target_storage == "local":
                 # 网盘到本地
                 if target_file.exists():
@@ -532,25 +531,20 @@ class FileManagerModule(_ModuleBase):
                         return None, f"{fileitem.path} {fileitem.storage} 下载失败"
             elif fileitem.storage == target_storage:
                 # 同一网盘
-                # 根据目的路径获取文件夹
-                target_diritem = target_oper.get_folder(target_file.parent)
-                if target_diritem:
-                    # 重命名文件
-                    if target_oper.rename(fileitem, target_file.name):
-                        # 移动文件到新目录
-                        if source_oper.move(fileitem, target_diritem):
-                            ret_fileitem = copy.deepcopy(fileitem)
-                            ret_fileitem.path = target_diritem.path + "/" + target_file.name
-                            ret_fileitem.name = target_file.name
-                            ret_fileitem.basename = target_file.stem
-                            ret_fileitem.parent_fileid = target_diritem.fileid
-                            return ret_fileitem, ""
-                        else:
-                            return None, f"{fileitem.path} {target_storage} 移动文件失败"
+                if transfer_type == "copy":
+                    # 移动文件到新目录
+                    if source_oper.move(fileitem, target_file.parent, target_file.name):
+                        return target_oper.get_item(target_file), ""
                     else:
-                        return None, f"{fileitem.path} {target_storage} 重命名文件失败"
+                        return None, f"【{target_storage}】{fileitem.path} 移动文件失败"
+                elif transfer_type == "move":
+                    # 移动文件到新目录
+                    if source_oper.move(fileitem, target_file.parent, target_file.name):
+                        return target_oper.get_item(target_file), ""
+                    else:
+                        return None, f"【{target_storage}】{fileitem.path} 移动文件失败"
                 else:
-                    return None, f"{target_file.parent} {target_storage} 目录获取失败"
+                    return None, f"不支持的整理方式：{transfer_type}"
 
         return None, "未知错误"
 
@@ -815,7 +809,8 @@ class FileManagerModule(_ModuleBase):
             else:
                 logger.info(f"正在删除已存在的文件：{target_file}")
                 target_file.unlink()
-        logger.info(f"正在整理文件：【{fileitem.storage}】{fileitem.path} 到 【{target_storage}】{target_file}")
+        logger.info(f"正在整理文件：【{fileitem.storage}】{fileitem.path} 到 【{target_storage}】{target_file}，"
+                    f"操作类型：{transfer_type}")
         new_item, errmsg = self.__transfer_command(fileitem=fileitem,
                                                    target_storage=target_storage,
                                                    target_file=target_file,

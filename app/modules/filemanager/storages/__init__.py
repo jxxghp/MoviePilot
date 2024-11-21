@@ -122,7 +122,6 @@ class StorageBase(metaclass=ABCMeta):
         下载文件，保存到本地，返回本地临时文件地址
         :param fileitem: 文件项
         :param path: 文件保存路径
-
         """
         pass
 
@@ -144,16 +143,22 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def copy(self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]) -> bool:
+    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
         复制文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
         pass
 
     @abstractmethod
-    def move(self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]) -> bool:
+    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
         移动文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
         pass
 

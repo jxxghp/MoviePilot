@@ -358,30 +358,36 @@ class U115Pan(StorageBase, metaclass=Singleton):
             logger.error(f"115上传文件失败：{str(e)}")
         return None
 
-    def move(self, fileitem: schemas.FileItem, target: schemas.FileItem) -> bool:
-        """
-        移动文件
-        """
-        if not self.client:
-            return False
-        try:
-            self.client.fs.move(fileitem.path, target.path)
-            return True
-        except Exception as e:
-            logger.error(f"115移动文件失败：{str(e)}")
-        return False
-
-    def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
+    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
         复制文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
         if not self.client:
             return False
         try:
-            self.client.fs.copy(fileitem.path, target_file)
+            self.client.fs.copy(fileitem.path, path / new_name)
             return True
         except Exception as e:
             logger.error(f"115复制文件失败：{str(e)}")
+        return False
+
+    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+        """
+        移动文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
+        """
+        if not self.client:
+            return False
+        try:
+            self.client.fs.move(fileitem.path, path / new_name)
+            return True
+        except Exception as e:
+            logger.error(f"115移动文件失败：{str(e)}")
         return False
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:

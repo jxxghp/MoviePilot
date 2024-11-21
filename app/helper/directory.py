@@ -48,16 +48,18 @@ class DirectoryHelper:
         """
         return [d for d in self.get_library_dirs() if d.library_storage == "local"]
 
-    def get_dir(self, media: MediaInfo, storage: str = "local",
-                src_path: Path = None, dest_path: Path = None, fileitem: schemas.FileItem = None
+    def get_dir(self, media: MediaInfo,
+                storage: str = "local", fileitem: schemas.FileItem = None, src_path: Path = None,
+                target_storage: str = "local", dest_path: Path = None
                 ) -> Optional[schemas.TransferDirectoryConf]:
         """
         根据媒体信息获取下载目录、媒体库目录配置
         :param media: 媒体信息
-        :param storage: 存储类型
+        :param storage: 源存储类型
+        :param target_storage: 目标存储类型
+        :param fileitem: 文件项，使用文件路径匹配
         :param src_path: 源目录，有值时直接匹配
         :param dest_path: 目标目录，有值时直接匹配
-        :param fileitem: 文件项，使用文件路径匹配
         """
         # 处理类型
         if not media:
@@ -70,21 +72,23 @@ class DirectoryHelper:
             # 没有启用整理的目录
             if not d.monitor_type:
                 continue
-            # 存储类型不匹配
+            # 源存储类型不匹配
             if storage and d.storage != storage:
                 continue
-            # 下载目录
-            download_path = Path(d.download_path)
-            # 媒体库目录
-            library_path = Path(d.library_path)
-            # 有源目录时，源目录不匹配下载目录
-            if src_path and not src_path.is_relative_to(download_path):
+            # 目标存储类型不匹配
+            if target_storage and d.library_storage != target_storage:
+                continue
+            # 有文件项时，源存储不匹配
+            if fileitem and fileitem.storage != d.storage:
                 continue
             # 有文件项时，文件项不匹配下载目录
-            if fileitem and not Path(fileitem.path).is_relative_to(download_path):
+            if fileitem and not Path(fileitem.path).is_relative_to(d.download_path):
+                continue
+            # 有源目录时，源目录不匹配下载目录
+            if src_path and not src_path.is_relative_to(d.download_path):
                 continue
             # 有目标目录时，目标目录不匹配媒体库目录
-            if dest_path and not dest_path.is_relative_to(library_path):
+            if dest_path and not dest_path.is_relative_to(d.library_path):
                 continue
             # 目录类型为全部的，符合条件
             if not d.media_type:
