@@ -1,9 +1,9 @@
 import traceback
-from functools import lru_cache
 from typing import Optional, List
 from urllib.parse import quote
 
 import zhconv
+from cachetools import TTLCache, cached
 from lxml import etree
 
 from app.core.config import settings
@@ -27,8 +27,6 @@ class TmdbApi:
         self.tmdb.domain = settings.TMDB_API_DOMAIN
         # 开启缓存
         self.tmdb.cache = True
-        # 缓存大小
-        self.tmdb.REQUEST_CACHE_MAXSIZE = settings.CACHE_CONF.get('tmdb')
         # APIKEY
         self.tmdb.api_key = settings.TMDB_API_KEY
         # 语种
@@ -466,7 +464,7 @@ class TmdbApi:
 
             return ret_info
 
-    @lru_cache(maxsize=settings.CACHE_CONF.get('tmdb'))
+    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["tmdb"], ttl=settings.CACHE_CONF["meta"]))
     def match_web(self, name: str, mtype: MediaType) -> Optional[dict]:
         """
         搜索TMDB网站，直接抓取结果，结果只有一条时才返回

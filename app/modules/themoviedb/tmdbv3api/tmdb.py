@@ -4,11 +4,12 @@ import logging
 import os
 import time
 from datetime import datetime
-from functools import lru_cache
 
 import requests
 import requests.exceptions
+from cachetools import TTLCache, cached
 
+from app.core.config import settings
 from app.utils.http import RequestUtils
 from .exceptions import TMDbException
 
@@ -24,7 +25,6 @@ class TMDb(object):
     TMDB_CACHE_ENABLED = "TMDB_CACHE_ENABLED"
     TMDB_PROXIES = "TMDB_PROXIES"
     TMDB_DOMAIN = "TMDB_DOMAIN"
-    REQUEST_CACHE_MAXSIZE = None
 
     _req = None
     _session = None
@@ -137,7 +137,7 @@ class TMDb(object):
     def cache(self, cache):
         os.environ[self.TMDB_CACHE_ENABLED] = str(cache)
 
-    @lru_cache(maxsize=REQUEST_CACHE_MAXSIZE)
+    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["tmdb"], ttl=settings.CACHE_CONF["meta"]))
     def cached_request(self, method, url, data, json,
                        _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """

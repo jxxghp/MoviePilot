@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 from dotenv import set_key
-from pydantic import BaseModel, BaseSettings, validator
+from pydantic import BaseModel, BaseSettings, validator, Field
 
 from app.log import logger
 from app.utils.system import SystemUtils
@@ -36,7 +36,7 @@ class ConfigModel(BaseModel):
     # RESOURCE密钥
     RESOURCE_SECRET_KEY: str = secrets.token_urlsafe(32)
     # 允许的域名
-    ALLOWED_HOSTS: list = ["*"]
+    ALLOWED_HOSTS: list = Field(default_factory=lambda: ["*"])
     # TOKEN过期时间
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     # RESOURCE_TOKEN过期时间
@@ -114,29 +114,39 @@ class ConfigModel(BaseModel):
     # 是否启用DOH解析域名
     DOH_ENABLE: bool = True
     # 使用 DOH 解析的域名列表
-    DOH_DOMAINS: str = "api.themoviedb.org,api.tmdb.org,webservice.fanart.tv,api.github.com,github.com,raw.githubusercontent.com,api.telegram.org"
+    DOH_DOMAINS: str = ("api.themoviedb.org,"
+                        "api.tmdb.org,"
+                        "webservice.fanart.tv,"
+                        "api.github.com,"
+                        "github.com,"
+                        "raw.githubusercontent.com,"
+                        "api.telegram.org")
     # DOH 解析服务器列表
     DOH_RESOLVERS: str = "1.0.0.1,1.1.1.1,9.9.9.9,149.112.112.112"
     # 支持的后缀格式
-    RMT_MEDIAEXT: list = ['.mp4', '.mkv', '.ts', '.iso',
-                          '.rmvb', '.avi', '.mov', '.mpeg',
-                          '.mpg', '.wmv', '.3gp', '.asf',
-                          '.m4v', '.flv', '.m2ts', '.strm',
-                          '.tp', '.f4v']
+    RMT_MEDIAEXT: list = Field(
+        default_factory=lambda: ['.mp4', '.mkv', '.ts', '.iso',
+                                 '.rmvb', '.avi', '.mov', '.mpeg',
+                                 '.mpg', '.wmv', '.3gp', '.asf',
+                                 '.m4v', '.flv', '.m2ts', '.strm',
+                                 '.tp', '.f4v']
+    )
     # 支持的字幕文件后缀格式
-    RMT_SUBEXT: list = ['.srt', '.ass', '.ssa', '.sup']
+    RMT_SUBEXT: list = Field(default_factory=lambda: ['.srt', '.ass', '.ssa', '.sup'])
     # 支持的音轨文件后缀格式
-    RMT_AUDIO_TRACK_EXT: list = ['.mka']
+    RMT_AUDIO_TRACK_EXT: list = Field(default_factory=lambda: ['.mka'])
     # 音轨文件后缀格式
-    RMT_AUDIOEXT: list = ['.aac', '.ac3', '.amr', '.caf', '.cda', '.dsf',
-                          '.dff', '.kar', '.m4a', '.mp1', '.mp2', '.mp3',
-                          '.mid', '.mod', '.mka', '.mpc', '.nsf', '.ogg',
-                          '.pcm', '.rmi', '.s3m', '.snd', '.spx', '.tak',
-                          '.tta', '.vqf', '.wav', '.wma',
-                          '.aifc', '.aiff', '.alac', '.adif', '.adts',
-                          '.flac', '.midi', '.opus', '.sfalc']
+    RMT_AUDIOEXT: list = Field(
+        default_factory=lambda: ['.aac', '.ac3', '.amr', '.caf', '.cda', '.dsf',
+                                 '.dff', '.kar', '.m4a', '.mp1', '.mp2', '.mp3',
+                                 '.mid', '.mod', '.mka', '.mpc', '.nsf', '.ogg',
+                                 '.pcm', '.rmi', '.s3m', '.snd', '.spx', '.tak',
+                                 '.tta', '.vqf', '.wav', '.wma',
+                                 '.aifc', '.aiff', '.alac', '.adif', '.adts',
+                                 '.flac', '.midi', '.opus', '.sfalc']
+    )
     # 下载器临时文件后缀
-    DOWNLOAD_TMPEXT: list = ['.!qb', '.part']
+    DOWNLOAD_TMPEXT: list = Field(default_factory=lambda: ['.!qb', '.part'])
     # 媒体服务器同步间隔（小时）
     MEDIASERVER_SYNC_INTERVAL: int = 6
     # 订阅模式
@@ -189,7 +199,10 @@ class ConfigModel(BaseModel):
     # 服务器地址，对应 https://github.com/jxxghp/MoviePilot-Server 项目
     MP_SERVER_HOST: str = "https://movie-pilot.org"
     # 插件市场仓库地址，多个地址使用,分隔，地址以/结尾
-    PLUGIN_MARKET: str = "https://github.com/jxxghp/MoviePilot-Plugins,https://github.com/thsrite/MoviePilot-Plugins,https://github.com/honue/MoviePilot-Plugins,https://github.com/InfinityPacer/MoviePilot-Plugins"
+    PLUGIN_MARKET: str = ("https://github.com/jxxghp/MoviePilot-Plugins,"
+                          "https://github.com/thsrite/MoviePilot-Plugins,"
+                          "https://github.com/honue/MoviePilot-Plugins,"
+                          "https://github.com/InfinityPacer/MoviePilot-Plugins")
     # 插件安装数据共享
     PLUGIN_STATISTIC_SHARE: bool = True
     # 是否开启插件热加载
@@ -207,10 +220,18 @@ class ConfigModel(BaseModel):
     # 全局图片缓存，将媒体图片缓存到本地
     GLOBAL_IMAGE_CACHE: bool = False
     # 允许的图片缓存域名
-    SECURITY_IMAGE_DOMAINS: List[str] = ["image.tmdb.org", "static-mdb.v.geilijiasu.com", "doubanio.com", "lain.bgm.tv",
-                                         "raw.githubusercontent.com", "github.com"]
+    SECURITY_IMAGE_DOMAINS: List[str] = Field(
+        default_factory=lambda: ["image.tmdb.org",
+                                 "static-mdb.v.geilijiasu.com",
+                                 "doubanio.com",
+                                 "lain.bgm.tv",
+                                 "raw.githubusercontent.com",
+                                 "github.com"]
+    )
     # 允许的图片文件后缀格式
-    SECURITY_IMAGE_SUFFIXES: List[str] = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"]
+    SECURITY_IMAGE_SUFFIXES: List[str] = Field(
+        default_factory=lambda: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"]
+    )
 
 
 class Settings(BaseSettings, ConfigModel):
@@ -437,22 +458,32 @@ class Settings(BaseSettings, ConfigModel):
 
     @property
     def CACHE_CONF(self):
+        """
+        {
+            "torrents": "缓存种子数量",
+            "refresh": "订阅刷新处理数量",
+            "tmdb": "TMDB请求缓存数量",
+            "douban": "豆瓣请求缓存数量",
+            "fanart": "Fanart请求缓存数量",
+            "meta": "元数据缓存过期时间（秒）"
+        }
+        """
         if self.BIG_MEMORY_MODE:
             return {
+                "torrents": 200,
+                "refresh": 100,
                 "tmdb": 1024,
-                "refresh": 50,
-                "torrents": 100,
                 "douban": 512,
                 "fanart": 512,
-                "meta": (self.META_CACHE_EXPIRE or 168) * 3600
+                "meta": (self.META_CACHE_EXPIRE or 24) * 3600
             }
         return {
+            "torrents": 100,
+            "refresh": 50,
             "tmdb": 256,
-            "refresh": 30,
-            "torrents": 50,
             "douban": 256,
             "fanart": 128,
-            "meta": (self.META_CACHE_EXPIRE or 72) * 3600
+            "meta": (self.META_CACHE_EXPIRE or 2) * 3600
         }
 
     @property

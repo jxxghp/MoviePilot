@@ -15,7 +15,7 @@ from app.schemas.types import MediaType
 lock = RLock()
 
 CACHE_EXPIRE_TIMESTAMP_STR = "cache_expire_timestamp"
-EXPIRE_TIMESTAMP = settings.CACHE_CONF.get('meta')
+EXPIRE_TIMESTAMP = settings.CACHE_CONF["meta"]
 
 
 class TmdbCache(metaclass=Singleton):
@@ -75,7 +75,7 @@ class TmdbCache(metaclass=Singleton):
         @return: 被删除的缓存内容
         """
         with lock:
-            return self._meta_data.pop(key, None)
+            return self._meta_data.pop(key, {})
 
     def delete_by_tmdbid(self, tmdbid: int) -> None:
         """
@@ -138,14 +138,14 @@ class TmdbCache(metaclass=Singleton):
                 if cache_year:
                     cache_year = cache_year[:4]
                 self._meta_data[self.__get_key(meta)] = {
-                        "id": info.get("id"),
-                        "type": info.get("media_type"),
-                        "year": cache_year,
-                        "title": cache_title,
-                        "poster_path": info.get("poster_path"),
-                        "backdrop_path": info.get("backdrop_path"),
-                        CACHE_EXPIRE_TIMESTAMP_STR: int(time.time()) + EXPIRE_TIMESTAMP
-                    }
+                    "id": info.get("id"),
+                    "type": info.get("media_type"),
+                    "year": cache_year,
+                    "title": cache_title,
+                    "poster_path": info.get("poster_path"),
+                    "backdrop_path": info.get("backdrop_path"),
+                    CACHE_EXPIRE_TIMESTAMP_STR: int(time.time()) + EXPIRE_TIMESTAMP
+                }
             elif info is not None:
                 # None时不缓存，此时代表网络错误，允许重复请求
                 self._meta_data[self.__get_key(meta)] = {'id': 0}
@@ -164,7 +164,7 @@ class TmdbCache(metaclass=Singleton):
             return
 
         with open(self._meta_path, 'wb') as f:
-            pickle.dump(new_meta_data, f, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(new_meta_data, f, pickle.HIGHEST_PROTOCOL)  # type: ignore
 
     def _random_sample(self, new_meta_data: dict) -> bool:
         """
