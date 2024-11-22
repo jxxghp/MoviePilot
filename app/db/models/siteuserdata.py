@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Sequence, Float, JSON, func
+from sqlalchemy import Column, Integer, String, Sequence, Float, JSON, func, Text
 from sqlalchemy.orm import Session
 
 from app.db import db_query, Base
@@ -49,6 +49,8 @@ class SiteUserData(Base):
     message_unread_contents = Column(JSON, default=list)
     # 错误信息
     err_msg = Column(String)
+    if settings.DB_TYPE.lower() == "mysql":
+        err_msg = Column(Text)
     # 更新日期
     updated_day = Column(String, index=True, default=datetime.now().strftime('%Y-%m-%d'))
     # 更新时间

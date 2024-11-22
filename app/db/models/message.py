@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Sequence, JSON
+from sqlalchemy import Column, Integer, String, Sequence, JSON, Text
 from sqlalchemy.orm import Session
 
 from app.db import db_query, Base
@@ -21,6 +21,8 @@ class Message(Base):
     title = Column(String)
     # 文本内容
     text = Column(String)
+    if settings.DB_TYPE.lower() == "mysql":
+        text = Column(Text)
     # 图片
     image = Column(String)
     # 链接

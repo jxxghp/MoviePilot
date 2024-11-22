@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Sequence
+from sqlalchemy import Column, Integer, String, Sequence, Text
 from sqlalchemy.orm import Session
 
 from app.db import db_query, Base
@@ -19,6 +19,8 @@ class SiteIcon(Base):
     url = Column(String, nullable=False)
     # 图标Base64
     base64 = Column(String)
+    if settings.DB_TYPE.lower() == "mysql":
+        base64 = Column(Text)
 
     @staticmethod
     @db_query

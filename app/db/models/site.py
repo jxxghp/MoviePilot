@@ -33,6 +33,8 @@ class Site(Base):
     apikey = Column(String)
     # Token
     token = Column(String)
+    if settings.DB_TYPE.lower() == "mysql":
+        token = Column(Text)
     # 是否使用代理 0-否，1-是
     proxy = Column(Integer)
     # 过滤规则

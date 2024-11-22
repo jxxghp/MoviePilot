@@ -1,6 +1,6 @@
 import time
 
-from sqlalchemy import Column, Integer, String, Sequence, Float, JSON
+from sqlalchemy import Column, Integer, String, Sequence, Float, JSON, Text
 from sqlalchemy.orm import Session
 
 from app.db import db_query, db_update, Base
@@ -36,6 +36,8 @@ class Subscribe(Base):
     vote = Column(Float)
     # 简介
     description = Column(String)
+    if settings.DB_TYPE.lower() == "mysql":
+        description = Column(Text)
     # 过滤规则
     filter = Column(String)
     # 包含
