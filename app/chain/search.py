@@ -35,7 +35,7 @@ class SearchChain(ChainBase):
         self.torrenthelper = TorrentHelper()
 
     def search_by_id(self, tmdbid: int = None, doubanid: str = None,
-                     mtype: MediaType = None, area: str = "title", season: int = None, site: int = None) -> List[Context]:
+                     mtype: MediaType = None, area: str = "title", season: int = None, sites: List[int] = None) -> List[Context]:
         """
         根据TMDBID/豆瓣ID搜索资源，精确匹配，但不不过滤本地存在的资源
         :param tmdbid: TMDB ID
@@ -56,25 +56,25 @@ class SearchChain(ChainBase):
                     season: NotExistMediaInfo(episodes=[])
                 }
             }
-        results = self.process(mediainfo=mediainfo, area=area, no_exists=no_exists, sites=[site] if site else None)
+        results = self.process(mediainfo=mediainfo, area=area, no_exists=no_exists, sites=sites)
         # 保存到本地文件
         bytes_results = pickle.dumps(results)
         self.save_cache(bytes_results, self.__result_temp_file)
         return results
 
-    def search_by_title(self, title: str, page: int = 0, site: int = None) -> List[Context]:
+    def search_by_title(self, title: str, page: int = 0, sites: List[int] = None) -> List[Context]:
         """
         根据标题搜索资源，不识别不过滤，直接返回站点内容
         :param title: 标题，为空时返回所有站点首页内容
         :param page: 页码
-        :param site: 站点ID
+        :param sites: 多个站点ID
         """
         if title:
             logger.info(f'开始搜索资源，关键词：{title} ...')
         else:
-            logger.info(f'开始浏览资源，站点：{site} ...')
+            logger.info(f'开始浏览资源，站点：{sites} ...')
         # 搜索
-        torrents = self.__search_all_sites(keywords=[title], sites=[site] if site else None, page=page) or []
+        torrents = self.__search_all_sites(keywords=[title], sites=sites, page=page) or []
         if not torrents:
             logger.warn(f'{title} 未搜索到资源')
             return []
