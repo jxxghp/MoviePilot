@@ -60,14 +60,16 @@ class EventType(Enum):
 
 # 同步链式事件
 class ChainEventType(Enum):
-    # 名称识别请求
+    # 名称识别
     NameRecognize = "name.recognize"
-    # 认证验证请求
+    # 认证验证
     AuthVerification = "auth.verification"
-    # 认证拦截请求
+    # 认证拦截
     AuthIntercept = "auth.intercept"
-    # 命令注册请求
+    # 命令注册
     CommandRegister = "command.register"
+    # 智能重命名
+    SmartRename = "SmartRename"
 
 
 # 系统配置Key字典

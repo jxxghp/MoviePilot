@@ -7,6 +7,7 @@ from jinja2 import Template
 
 from app.core.config import settings
 from app.core.context import MediaInfo
+from app.core.event import eventmanager
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.helper.directory import DirectoryHelper
@@ -16,7 +17,8 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
-from app.schemas.types import MediaType, ModuleType
+from app.schemas.event import SmartRenameEventData
+from app.schemas.types import MediaType, ModuleType, ChainEventType
 from app.utils.system import SystemUtils
 
 lock = Lock()
@@ -129,7 +131,6 @@ class FileManagerModule(_ModuleBase):
                                                file_ext=Path(meta.title).suffix)
         )
         return str(path)
-
 
     def save_config(self, storage: str, conf: Dict) -> None:
         """
@@ -1146,18 +1147,46 @@ class FileManagerModule(_ModuleBase):
             # 文件后缀
             "fileExt": file_ext,
             # 自定义占位符
-            "customization": meta.customization
+            "customization": meta.customization,
+            # 文件元数据
+            "__meta__": meta,
+            # 识别的媒体信息
+            "__mediainfo__": mediainfo,
+            # 当前季的全部集信息
+            "__episodes_info__": episodes_info,
         }
 
     @staticmethod
     def get_rename_path(template_string: str, rename_dict: dict, path: Path = None) -> Path:
         """
-        生成重命名后的完整路径
+        生成重命名后的完整路径，支持智能重命名事件
+        :param template_string: Jinja2 模板字符串
+        :param rename_dict: 渲染上下文，用于替换模板中的变量
+        :param path: 可选的基础路径，如果提供，将在其基础上拼接生成的路径
+        :return: 生成的完整路径
         """
         # 创建jinja2模板对象
         template = Template(template_string)
         # 渲染生成的字符串
         render_str = template.render(rename_dict)
+
+        logger.debug(f"Initial render string: {render_str}")
+        # 发送智能重命名事件
+        event_data = SmartRenameEventData(
+            template_string=template_string,
+            rename_dict=rename_dict,
+            render_str=render_str,
+            path=path
+        )
+        event = eventmanager.send_event(ChainEventType.SmartRename, event_data)
+        # 检查事件返回的结果
+        if event and event.event_data:
+            event_data: SmartRenameEventData = event.event_data
+            if event_data.updated and event_data.updated_str:
+                logger.debug(f"Render string updated by event: "
+                             f"{render_str} -> {event_data.updated_str} (source: {event_data.source})")
+                render_str = event_data.updated_str
+
         # 目的路径
         if path:
             return path / render_str
