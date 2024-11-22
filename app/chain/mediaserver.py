@@ -3,12 +3,12 @@ from typing import List, Union, Optional, Generator
 
 from cachetools import cached, TTLCache
 
-from app import schemas
 from app.chain import ChainBase
 from app.core.config import global_vars
 from app.db.mediaserver_oper import MediaServerOper
 from app.helper.service import ServiceConfigHelper
 from app.log import logger
+from app.schemas import MediaServerLibrary, MediaServerItem, MediaServerSeasonInfo, MediaServerPlayItem
 
 lock = threading.Lock()
 
@@ -22,7 +22,7 @@ class MediaServerChain(ChainBase):
         super().__init__()
         self.dboper = MediaServerOper()
 
-    def librarys(self, server: str, username: str = None, hidden: bool = False) -> List[schemas.MediaServerLibrary]:
+    def librarys(self, server: str, username: str = None, hidden: bool = False) -> List[MediaServerLibrary]:
         """
         获取媒体服务器所有媒体库
         """
@@ -70,25 +70,25 @@ class MediaServerChain(ChainBase):
         yield from self.run_module("mediaserver_items", server=server, library_id=library_id,
                                    start_index=start_index, limit=limit)
 
-    def iteminfo(self, server: str, item_id: Union[str, int]) -> schemas.MediaServerItem:
+    def iteminfo(self, server: str, item_id: Union[str, int]) -> MediaServerItem:
         """
         获取媒体服务器项目信息
         """
         return self.run_module("mediaserver_iteminfo", server=server, item_id=item_id)
 
-    def episodes(self, server: str, item_id: Union[str, int]) -> List[schemas.MediaServerSeasonInfo]:
+    def episodes(self, server: str, item_id: Union[str, int]) -> List[MediaServerSeasonInfo]:
         """
         获取媒体服务器剧集信息
         """
         return self.run_module("mediaserver_tv_episodes", server=server, item_id=item_id)
 
-    def playing(self, server: str, count: int = 20, username: str = None) -> List[schemas.MediaServerPlayItem]:
+    def playing(self, server: str, count: int = 20, username: str = None) -> List[MediaServerPlayItem]:
         """
         获取媒体服务器正在播放信息
         """
         return self.run_module("mediaserver_playing", count=count, server=server, username=username)
 
-    def latest(self, server: str, count: int = 20, username: str = None) -> List[schemas.MediaServerPlayItem]:
+    def latest(self, server: str, count: int = 20, username: str = None) -> List[MediaServerPlayItem]:
         """
         获取媒体服务器最新入库条目
         """

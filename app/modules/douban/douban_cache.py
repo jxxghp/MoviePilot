@@ -16,7 +16,7 @@ from app.schemas.types import MediaType
 lock = RLock()
 
 CACHE_EXPIRE_TIMESTAMP_STR = "cache_expire_timestamp"
-EXPIRE_TIMESTAMP = settings.CACHE_CONF.get('meta')
+EXPIRE_TIMESTAMP = settings.CACHE_CONF["meta"]
 
 
 class DoubanCache(metaclass=Singleton):
@@ -77,7 +77,7 @@ class DoubanCache(metaclass=Singleton):
         @return: 被删除的缓存内容
         """
         with lock:
-            return self._meta_data.pop(key, None)
+            return self._meta_data.pop(key, {})
 
     def delete_by_doubanid(self, doubanid: str) -> None:
         """

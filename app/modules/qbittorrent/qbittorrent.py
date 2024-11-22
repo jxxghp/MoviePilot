@@ -1,4 +1,5 @@
 import time
+import traceback
 from typing import Optional, Union, Tuple, List
 
 import qbittorrentapi
@@ -75,8 +76,13 @@ class Qbittorrent:
                                         REQUESTS_ARGS={'timeout': (15, 60)})
             try:
                 qbt.auth_log_in()
-            except qbittorrentapi.LoginFailed as e:
-                logger.error(f"qbittorrent 登录失败：{str(e)}")
+            except (qbittorrentapi.LoginFailed, qbittorrentapi.Forbidden403Error) as e:
+                logger.error(f"qbittorrent 登录失败：{str(e).strip() or '请检查用户名和密码是否正确'}")
+                return None
+            except Exception as e:
+                stack_trace = "".join(traceback.format_exception(None, e, e.__traceback__))[:2000]
+                logger.error(f"qbittorrent 登录失败：{str(e)}\n{stack_trace}")
+                return None
             return qbt
         except Exception as err:
             logger.error(f"qbittorrent 连接出错：{str(err)}")
@@ -245,6 +251,7 @@ class Qbittorrent:
         :param category: 种子分类
         :param download_dir: 下载路径
         :param cookie: 站点Cookie用于辅助下载种子
+        :param kwargs: 可选参数，如 ignore_category_check 以及 QB相关参数
         :return: bool
         """
         if not self.qbc or not content:
@@ -270,13 +277,16 @@ class Qbittorrent:
         else:
             tags = None
 
-        # 分类自动管理
-        if category and self._category:
-            is_auto = True
+        # 如果忽略分类检查，则直接使用传入的分类值，否则，仅在分类存在且启用了自动管理时才传递参数
+        ignore_category_check = kwargs.pop("ignore_category_check", True)
+        if ignore_category_check:
+            is_auto = self._category
         else:
-            is_auto = False
-            category = None
-
+            if category and self._category:
+                is_auto = True
+            else:
+                is_auto = False
+                category = None
         try:
             # 添加下载
             qbc_ret = self.qbc.torrents_add(urls=urls,

@@ -3,11 +3,11 @@ import base64
 import hashlib
 import hmac
 from datetime import datetime
-from functools import lru_cache
 from random import choice
 from urllib import parse
 
 import requests
+from cachetools import TTLCache, cached
 
 from app.core.config import settings
 from app.utils.http import RequestUtils
@@ -160,12 +160,12 @@ class DoubanApi(metaclass=Singleton):
         self._session = requests.Session()
 
     @classmethod
-    def __sign(cls, url: str, ts: int, method='GET') -> str:
+    def __sign(cls, url: str, ts: str, method='GET') -> str:
         """
         签名
         """
         url_path = parse.urlparse(url).path
-        raw_sign = '&'.join([method.upper(), parse.quote(url_path, safe=''), str(ts)])
+        raw_sign = '&'.join([method.upper(), parse.quote(url_path, safe=''), ts])
         return base64.b64encode(
             hmac.new(
                 cls._api_secret_key.encode(),
@@ -174,7 +174,7 @@ class DoubanApi(metaclass=Singleton):
             ).digest()
         ).decode()
 
-    @lru_cache(maxsize=settings.CACHE_CONF.get('douban'))
+    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"]))
     def __invoke(self, url: str, **kwargs) -> dict:
         """
         GET请求
@@ -203,7 +203,7 @@ class DoubanApi(metaclass=Singleton):
             return resp.json()
         return resp.json() if resp else {}
 
-    @lru_cache(maxsize=settings.CACHE_CONF.get('douban'))
+    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"]))
     def __post(self, url: str, **kwargs) -> dict:
         """
         POST请求

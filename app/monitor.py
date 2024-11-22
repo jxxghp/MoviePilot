@@ -263,28 +263,26 @@ class Monitor(metaclass=Singleton):
             try:
                 item = self._queue.get(timeout=self._transfer_interval)
                 if item:
-                    self.__handle_file(storage=item.get("storage"),
-                                       event_path=item.get("filepath"),
-                                       mon_path=item.get("mon_path"))
+                    self.__handle_file(storage=item.get("storage"), event_path=item.get("filepath"))
             except queue.Empty:
                 continue
             except Exception as e:
                 logger.error(f"整理队列处理出现错误：{e}")
 
-    def __handle_file(self, storage: str, event_path: Path, mon_path: Path):
+    def __handle_file(self, storage: str, event_path: Path):
         """
         整理一个文件
+        :param storage: 存储
         :param event_path: 事件文件路径
-        :param mon_path: 监控目录
         """
 
         def __get_bluray_dir(_path: Path):
             """
             获取BDMV目录的上级目录
             """
-            for parent in _path.parents:
-                if parent.name == "BDMV":
-                    return parent.parent
+            for p in _path.parents:
+                if p.name == "BDMV":
+                    return p.parent
             return None
 
         # 全程加锁
@@ -386,7 +384,7 @@ class Monitor(metaclass=Singleton):
                     return
 
                 # 查询转移目的目录
-                dir_info = self.directoryhelper.get_dir(mediainfo, src_path=mon_path)
+                dir_info = self.directoryhelper.get_dir(mediainfo, storage=storage, src_path=event_path)
                 if not dir_info:
                     logger.warn(f"{event_path.name} 未找到对应的目标目录")
                     return
@@ -480,14 +478,7 @@ class Monitor(metaclass=Singleton):
 
                 # 移动模式删除空目录
                 if transferinfo.transfer_type in ["move"]:
-                    logger.info(f"正在删除： {file_item.storage} {file_item.path}")
-                    if self.storagechain.delete_file(file_item):
-                        # 删除空的父目录
-                        dir_item = self.storagechain.get_parent_item(file_item)
-                        if dir_item:
-                            if not self.storagechain.any_files(dir_item, extensions=settings.RMT_MEDIAEXT):
-                                logger.warn(f"正在删除空目录： {dir_item.storage} {dir_item.path}")
-                                return self.storagechain.delete_file(dir_item)
+                    self.storagechain.delete_media_file(file_item, delete_self=False)
 
             except Exception as e:
                 logger.error("目录监控发生错误：%s - %s" % (str(e), traceback.format_exc()))

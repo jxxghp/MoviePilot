@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Optional, List, Union, Dict
+from typing import Optional, List, Union, Dict, Tuple
 
 from app import schemas
 from app.helper.storage import StorageHelper
@@ -16,7 +16,14 @@ class StorageBase(metaclass=ABCMeta):
     def __init__(self):
         self.storagehelper = StorageHelper()
 
-    def generate_qrcode(self, *args, **kwargs) -> Optional[Dict[str, str]]:
+    @abstractmethod
+    def init_storage(self):
+        """
+        初始化
+        """
+        pass
+
+    def generate_qrcode(self, *args, **kwargs) -> Optional[Tuple[dict, str]]:
         pass
 
     def check_login(self, *args, **kwargs) -> Optional[Dict[str, str]]:
@@ -28,11 +35,19 @@ class StorageBase(metaclass=ABCMeta):
         """
         return self.storagehelper.get_storage(self.schema.value)
 
+    def get_conf(self) -> dict:
+        """
+        获取配置
+        """
+        conf = self.get_config()
+        return conf.config if conf else {}
+
     def set_config(self, conf: dict):
         """
         设置配置
         """
         self.storagehelper.set_storage(self.schema.value, conf)
+        self.init_storage()
 
     def support_transtype(self) -> dict:
         """
@@ -107,16 +122,16 @@ class StorageBase(metaclass=ABCMeta):
         下载文件，保存到本地，返回本地临时文件地址
         :param fileitem: 文件项
         :param path: 文件保存路径
-
         """
         pass
 
     @abstractmethod
-    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         :param fileitem: 上传目录项
         :param path: 本地文件路径
+        :param new_name: 上传后文件名
         """
         pass
 
@@ -128,16 +143,22 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def copy(self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]) -> bool:
+    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
         复制文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
         pass
 
     @abstractmethod
-    def move(self, fileitem: schemas.FileItem, target: Union[schemas.FileItem, Path]) -> bool:
+    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
         移动文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
         pass
 

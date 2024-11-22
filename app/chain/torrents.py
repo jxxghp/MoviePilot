@@ -120,6 +120,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                 site_ua=site.get("ua") or settings.USER_AGENT,
                 site_proxy=site.get("proxy"),
                 site_order=site.get("pri"),
+                site_downloader=site.get("downloader"),
                 title=item.get("title"),
                 enclosure=item.get("enclosure"),
                 page_url=item.get("link"),
@@ -174,7 +175,7 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
             # 按pubdate降序排列
             torrents.sort(key=lambda x: x.pubdate or '', reverse=True)
             # 取前N条
-            torrents = torrents[:settings.CACHE_CONF.get('refresh')]
+            torrents = torrents[:settings.CACHE_CONF["refresh"]]
             if torrents:
                 # 过滤出没有处理过的种子
                 torrents = [torrent for torrent in torrents
@@ -214,8 +215,8 @@ class TorrentsChain(ChainBase, metaclass=Singleton):
                     else:
                         torrents_cache[domain].append(context)
                     # 如果超过了限制条数则移除掉前面的
-                    if len(torrents_cache[domain]) > settings.CACHE_CONF.get('torrents'):
-                        torrents_cache[domain] = torrents_cache[domain][-settings.CACHE_CONF.get('torrents'):]
+                    if len(torrents_cache[domain]) > settings.CACHE_CONF["torrents"]:
+                        torrents_cache[domain] = torrents_cache[domain][-settings.CACHE_CONF["torrents"]:]
                 # 回收资源
                 del torrents
             else:

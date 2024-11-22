@@ -94,6 +94,7 @@ class SiteParserBase(metaclass=ABCMeta):
         # 未读消息
         self.message_unread = 0
         self.message_unread_contents = []
+        self.message_read_force = False
 
         # 全局附加请求头
         self._addition_headers = None
@@ -202,7 +203,7 @@ class SiteParserBase(metaclass=ABCMeta):
         :return:
         """
         unread_msg_links = []
-        if self.message_unread > 0:
+        if self.message_unread > 0 or self.message_read_force:
             links = {self._user_mail_unread_page, self._sys_mail_unread_page}
             for link in links:
                 if not link:
@@ -226,7 +227,7 @@ class SiteParserBase(metaclass=ABCMeta):
                     )
                 unread_msg_links.extend(msg_links)
         # 重新更新未读消息数（99999表示有消息但数量未知）
-        if self.message_unread == 99999:
+        if unread_msg_links and not self.message_unread:
             self.message_unread = len(unread_msg_links)
         # 解析未读消息内容
         for msg_link in unread_msg_links:

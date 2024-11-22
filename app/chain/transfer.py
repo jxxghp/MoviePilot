@@ -10,7 +10,7 @@ from app.chain.tmdb import TmdbChain
 from app.core.config import settings, global_vars
 from app.core.context import MediaInfo
 from app.core.meta import MetaBase
-from app.core.metainfo import MetaInfoPath
+from app.core.metainfo import MetaInfoPath, MetaInfo
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
@@ -120,7 +120,7 @@ class TransferChain(ChainBase):
                     # 非MoviePilot下载的任务，按文件识别
                     mediainfo = None
 
-                # 执行整理
+                # 执行整理，匹配源目录
                 state, errmsg = self.__do_transfer(
                     fileitem=FileItem(
                         storage="local",
@@ -131,7 +131,8 @@ class TransferChain(ChainBase):
                         extension=file_path.suffix.lstrip('.'),
                     ),
                     mediainfo=mediainfo,
-                    download_hash=torrent.hash
+                    download_hash=torrent.hash,
+                    src_match=True
                 )
 
                 # 设置下载任务状态
@@ -148,7 +149,8 @@ class TransferChain(ChainBase):
                       target_storage: str = None, target_path: Path = None,
                       transfer_type: str = None, scrape: bool = None,
                       season: int = None, epformat: EpisodeFormat = None,
-                      min_filesize: int = 0, download_hash: str = None, force: bool = False) -> Tuple[bool, str]:
+                      min_filesize: int = 0, download_hash: str = None,
+                      force: bool = False, src_match: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
@@ -164,6 +166,7 @@ class TransferChain(ChainBase):
         :param min_filesize: 最小文件大小(MB)
         :param download_hash: 下载记录hash
         :param force: 是否强制整理
+        :param src_match: 是否源目录匹配
         返回：成功标识，错误信息
         """
 
@@ -181,8 +184,6 @@ class TransferChain(ChainBase):
 
         # 汇总季集清单
         season_episodes: Dict[Tuple, List[int]] = {}
-        # 汇总元数据
-        metas: Dict[Tuple, MetaBase] = {}
         # 汇总媒体信息
         medias: Dict[Tuple, MediaInfo] = {}
         # 汇总整理信息
@@ -202,6 +203,8 @@ class TransferChain(ChainBase):
         skip_num = 0
         # 本次整理方式
         current_transfer_type = transfer_type
+        # 是否全部成功
+        all_success = True
 
         # 获取待整理路径清单
         trans_items = self.__get_trans_fileitems(fileitem)
@@ -281,6 +284,7 @@ class TransferChain(ChainBase):
                 # 计数
                 processed_num += 1
                 skip_num += 1
+                all_success = False
                 continue
 
             # 整理成功的不再处理
@@ -291,6 +295,7 @@ class TransferChain(ChainBase):
                     # 计数
                     processed_num += 1
                     skip_num += 1
+                    all_success = False
                     continue
 
             # 更新进度
@@ -314,6 +319,7 @@ class TransferChain(ChainBase):
                 # 计数
                 processed_num += 1
                 fail_num += 1
+                all_success = False
                 continue
 
             # 自定义识别
@@ -350,6 +356,7 @@ class TransferChain(ChainBase):
                 # 计数
                 processed_num += 1
                 fail_num += 1
+                all_success = False
                 continue
 
             # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
@@ -378,6 +385,20 @@ class TransferChain(ChainBase):
                 download_file = self.downloadhis.get_file_by_fullpath(file_item.path)
                 if download_file:
                     download_hash = download_file.download_hash
+
+            # 查询整理目标目录
+            if not target_directory and not target_path:
+                if src_match:
+                    # 按源目录匹配，以便找到更合适的目录配置
+                    target_directory = self.directoryhelper.get_dir(file_mediainfo,
+                                                                    storage=file_item.storage,
+                                                                    src_path=file_path,
+                                                                    target_storage=target_storage)
+                else:
+                    # 未指定目标路径，根据媒体信息获取目标目录
+                    target_directory = self.directoryhelper.get_dir(file_mediainfo,
+                                                                    storage=target_storage,
+                                                                    target_storage=target_storage)
 
             # 执行整理
             transferinfo: TransferInfo = self.transfer(fileitem=file_item,
@@ -416,6 +437,7 @@ class TransferChain(ChainBase):
                 # 计数
                 processed_num += 1
                 fail_num += 1
+                all_success = False
                 continue
 
             # 汇总信息
@@ -423,7 +445,6 @@ class TransferChain(ChainBase):
             mkey = (file_mediainfo.tmdb_id, file_meta.begin_season)
             if mkey not in medias:
                 # 新增信息
-                metas[mkey] = file_meta
                 medias[mkey] = file_mediainfo
                 season_episodes[mkey] = file_meta.episode_list
                 transfers[mkey] = transferinfo
@@ -447,6 +468,14 @@ class TransferChain(ChainBase):
                 transferinfo=transferinfo
             )
 
+            # 整理完成事件
+            self.eventmanager.send_event(EventType.TransferComplete, {
+                'meta': file_meta,
+                'mediainfo': file_mediainfo,
+                'transferinfo': transferinfo,
+                'download_hash': download_hash,
+            })
+
             # 更新进度
             processed_num += 1
             self.progress.update(value=processed_num / total_num * 100,
@@ -459,8 +488,9 @@ class TransferChain(ChainBase):
 
         # 执行后续处理
         for mkey, media in medias.items():
-            transfer_meta = metas[mkey]
             transfer_info = transfers[mkey]
+            transfer_meta = MetaInfo(transfer_info.target_diritem.name)
+            transfer_meta.begin_season = mkey[1]
             # 发送通知
             if transfer_info.need_notify:
                 se_str = None
@@ -477,30 +507,16 @@ class TransferChain(ChainBase):
                     'mediainfo': media,
                     'fileitem': transfer_info.target_diritem
                 })
-            # 整理完成事件
-            self.eventmanager.send_event(EventType.TransferComplete, {
-                'meta': transfer_meta,
-                'mediainfo': media,
-                'transferinfo': transfer_info,
-                'download_hash': download_hash,
-            })
 
         # 移动模式处理
-        if current_transfer_type in ["move"]:
+        if all_success and current_transfer_type in ["move"]:
             # 下载器hash
             if download_hash:
                 if self.remove_torrents(download_hash):
                     logger.info(f"移动模式删除种子成功：{download_hash} ")
-            # 删除残留文件
+            # 删除残留目录
             if fileitem:
-                logger.warn(f"删除残留文件夹：【{fileitem.storage}】{fileitem.path}")
-                if self.storagechain.delete_file(fileitem):
-                    # 删除空的父目录
-                    dir_item = self.storagechain.get_parent_item(fileitem)
-                    if dir_item:
-                        if not self.storagechain.any_files(dir_item, extensions=settings.RMT_MEDIAEXT):
-                            logger.warn(f"正在删除空目录：【{dir_item.storage}】{dir_item.path}")
-                            return self.storagechain.delete_file(dir_item)
+                self.storagechain.delete_media_file(fileitem, delete_self=False)
 
         # 结束进度
         logger.info(f"{fileitem.path} 整理完成，共 {total_num} 个文件，"

@@ -25,13 +25,19 @@ class LocalStorage(StorageBase):
         "softlink": "软链接"
     }
 
+    def init_storage(self):
+        """
+        初始化
+        """
+        pass
+
     def check(self) -> bool:
         """
         检查存储是否可用
         """
         return True
 
-    def __get_fileitem(self, path: Path):
+    def __get_fileitem(self, path: Path) -> schemas.FileItem:
         """
         获取文件项
         """
@@ -46,7 +52,7 @@ class LocalStorage(StorageBase):
             modify_time=path.stat().st_mtime,
         )
 
-    def __get_diritem(self, path: Path):
+    def __get_diritem(self, path: Path) -> schemas.FileItem:
         """
         获取目录项
         """
@@ -183,28 +189,17 @@ class LocalStorage(StorageBase):
         """
         return Path(fileitem.path)
 
-    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         """
         dir_path = Path(fileitem.path)
-        target_path = dir_path / path.name
+        target_path = dir_path / (new_name or path.name)
         code, message = SystemUtils.move(path, target_path)
         if code != 0:
             logger.error(f"移动文件失败：{message}")
             return None
-        return self.__get_diritem(target_path)
-
-    def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
-        """
-        复制文件
-        """
-        file_path = Path(fileitem.path)
-        code, message = SystemUtils.copy(file_path, target_file)
-        if code != 0:
-            logger.error(f"复制文件失败：{message}")
-            return False
-        return True
+        return self.get_item(target_path)
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         """
@@ -228,12 +223,29 @@ class LocalStorage(StorageBase):
             return False
         return True
 
-    def move(self, fileitem: schemas.FileItem, target: Path) -> bool:
+    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
-        移动文件
+        复制文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
         file_path = Path(fileitem.path)
-        code, message = SystemUtils.move(file_path, target)
+        code, message = SystemUtils.copy(file_path, path / new_name)
+        if code != 0:
+            logger.error(f"复制文件失败：{message}")
+            return False
+        return True
+
+    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+        """
+        移动文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
+        """
+        file_path = Path(fileitem.path)
+        code, message = SystemUtils.move(file_path, path / new_name)
         if code != 0:
             logger.error(f"移动文件失败：{message}")
             return False

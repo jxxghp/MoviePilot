@@ -19,10 +19,11 @@ from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.event import EventManager
 from app.core.plugin import PluginManager
+from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.sites import SitesHelper
 from app.log import logger
 from app.schemas import Notification, NotificationType
-from app.schemas.types import EventType
+from app.schemas.types import EventType, SystemConfigKey
 from app.utils.singleton import Singleton
 from app.utils.timer import TimerUtils
 
@@ -74,8 +75,12 @@ class Scheduler(metaclass=Singleton):
                                                    message="用户认证失败次数过多，将不再尝试认证！",
                                                    role="system")
                 return
-            logger.info("用户未认证，正在尝试重新认证...")
-            status, msg = SitesHelper().check_user()
+            logger.info("用户未认证，正在尝试认证...")
+            auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
+            if auth_conf:
+                status, msg = SitesHelper().check_user(**auth_conf)
+            else:
+                status, msg = SitesHelper().check_user()
             if status:
                 self._auth_count = 0
                 logger.info(f"{msg} 用户认证成功")
@@ -321,7 +326,7 @@ class Scheduler(metaclass=Singleton):
             "interval",
             id="clear_cache",
             name="缓存清理",
-            hours=settings.CACHE_CONF.get("meta") / 3600,
+            hours=settings.CACHE_CONF["meta"] / 3600,
             kwargs={
                 'job_id': 'clear_cache'
             }

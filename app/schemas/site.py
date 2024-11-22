@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Optional, Any, Union, Dict
 
 from pydantic import BaseModel
 
@@ -35,7 +35,7 @@ class Site(BaseModel):
     # 备注
     note: Optional[Any] = None
     # 超时时间
-    timeout: Optional[int] = 0
+    timeout: Optional[int] = 15
     # 流控单位周期
     limit_interval: Optional[int] = None
     # 流控次数
@@ -44,6 +44,8 @@ class Site(BaseModel):
     limit_seconds: Optional[int] = None
     # 是否启用
     is_active: Optional[bool] = True
+    # 下载器
+    downloader: Optional[str] = None
 
     class Config:
         orm_mode = True
@@ -75,7 +77,7 @@ class SiteUserData(BaseModel):
     # 用户名
     username: Optional[str]
     # 用户ID
-    userid: Optional[int]
+    userid: Optional[Union[int, str]]
     # 用户等级
     user_level: Optional[str]
     # 加入时间
@@ -108,3 +110,8 @@ class SiteUserData(BaseModel):
     updated_day: Optional[str] = None
     # 更新时间
     updated_time: Optional[str] = None
+
+
+class SiteAuth(BaseModel):
+    site: Optional[str] = None
+    params: Optional[Dict[str, Union[int, str]]] = {}

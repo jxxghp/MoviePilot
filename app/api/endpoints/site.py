@@ -8,6 +8,7 @@ from app import schemas
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
 from app.core.event import EventManager
+from app.core.plugin import PluginManager
 from app.core.security import verify_token
 from app.db import get_db
 from app.db.models import User
@@ -329,6 +330,31 @@ def read_rss_sites(db: Session = Depends(get_db),
     # 选中的rss站点
     rss_sites = [site for site in all_site if site and site.id in selected_sites]
     return rss_sites
+
+
+@router.get("/auth", summary="查询认证站点", response_model=dict)
+def read_auth_sites(_: schemas.TokenPayload = Depends(verify_token)) -> dict:
+    """
+    获取可认证站点列表
+    """
+    return SitesHelper().get_authsites()
+
+
+@router.post("/auth", summary="用户站点认证", response_model=schemas.Response)
+def auth_site(
+        auth_info: schemas.SiteAuth,
+        _: User = Depends(get_current_active_superuser)
+) -> Any:
+    """
+    用户站点认证
+    """
+    if not auth_info or not auth_info.site or not auth_info.params:
+        return schemas.Response(success=False, message="请输入认证站点和认证参数")
+    status, msg = SitesHelper().check_user(auth_info.site, auth_info.params)
+    SystemConfigOper().set(SystemConfigKey.UserSiteAuthParams, auth_info.dict())
+    PluginManager().init_config()
+    Scheduler().init_plugin_jobs()
+    return schemas.Response(success=status, message=msg)
 
 
 @router.get("/{site_id}", summary="站点详情", response_model=schemas.Site)

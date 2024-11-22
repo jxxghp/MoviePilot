@@ -16,10 +16,11 @@ from app.schemas.types import StorageSchema
 from app.utils.http import RequestUtils
 from aligo import Aligo, BaseFile
 
+from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
 
-class AliPan(StorageBase):
+class AliPan(StorageBase, metaclass=Singleton):
     """
     阿里云相关操作
     """
@@ -54,17 +55,27 @@ class AliPan(StorageBase):
         except FileNotFoundError:
             logger.debug('未发现 aria2c')
             self._has_aria2c = False
+        self.init_storage()
 
-        self.__init_aligo()
-
-    def __init_aligo(self):
+    def init_storage(self):
         """
         初始化 aligo
         """
+
+        def show_qrcode(qr_link: str):
+            """
+            显示二维码
+            """
+            logger.info(f"请用阿里云盘 App 扫码登录：{qr_link}")
+
         refresh_token = self.__auth_params.get("refreshToken")
         if refresh_token:
-            self.aligo = Aligo(refresh_token=refresh_token, use_aria2=self._has_aria2c,
-                               name="MoviePilot V2", level=logging.ERROR)
+            try:
+                self.aligo = Aligo(refresh_token=refresh_token, show=show_qrcode, use_aria2=self._has_aria2c,
+                                   name="MoviePilot V2", level=logging.ERROR, re_login=False)
+            except Exception as err:
+                logger.error(f"初始化阿里云盘失败：{str(err)}")
+                self.__clear_params()
 
     @property
     def __auth_params(self):
@@ -160,7 +171,7 @@ class AliPan(StorageBase):
                         })
                         self.__update_params(data)
                         self.__update_drives()
-                        self.__init_aligo()
+                        self.init_storage()
                 except Exception as e:
                     return {}, f"bizExt 解码失败：{str(e)}"
             return data, ""
@@ -180,12 +191,16 @@ class AliPan(StorageBase):
         """
         获取用户信息（drive_id等）
         """
+        if not self.aligo:
+            return {}
         return self.aligo.get_user()
 
     def __update_drives(self):
         """
         更新用户存储根目录
         """
+        if not self.aligo:
+            return
         drivers = self.aligo.list_my_drives()
         for driver in drivers:
             if driver.category == "resource":
@@ -347,21 +362,24 @@ class AliPan(StorageBase):
         """
         if not self.aligo:
             return None
-        local_path = self.aligo.download_file(file_id=fileitem.fileid, drive_id=fileitem.drive_id,
+        local_path = self.aligo.download_file(file_id=fileitem.fileid, drive_id=fileitem.drive_id,  # noqa
                                               local_folder=str(path or settings.TEMP_PATH))
         if local_path:
             return Path(local_path)
         return None
 
-    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件，并标记完成
+        :param fileitem: 上传目录项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
         if not self.aligo:
             return None
         # 上传文件
         result = self.aligo.upload_file(file_path=str(path), parent_file_id=fileitem.fileid,
-                                        drive_id=fileitem.drive_id, name=path.name,
+                                        drive_id=fileitem.drive_id, name=new_name or path.name,
                                         check_name_mode="refuse")
         if result:
             item = self.aligo.get_file(file_id=result.file_id, drive_id=result.drive_id)
@@ -369,19 +387,41 @@ class AliPan(StorageBase):
                 return self.__get_fileitem(item)
         return None
 
-    def move(self, fileitem: schemas.FileItem, target: schemas.FileItem) -> bool:
+    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
         移动文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
         if not self.aligo:
             return False
+        target = self.get_folder(path)
+        if not target:
+            return False
         if self.aligo.move_file(file_id=fileitem.fileid, drive_id=fileitem.drive_id,
-                                to_parent_file_id=target.fileid, to_drive_id=target.drive_id):
+                                to_parent_file_id=target.fileid, to_drive_id=target.drive_id,
+                                new_name=new_name):
             return True
         return False
 
-    def copy(self, fileitem: schemas.FileItem, target: schemas.FileItem) -> bool:
-        pass
+    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+        """
+        复制文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
+        """
+        if not self.aligo:
+            return False
+        target = self.get_folder(path)
+        if not target:
+            return False
+        if self.aligo.copy_file(file_id=fileitem.fileid, drive_id=fileitem.drive_id,
+                                to_parent_file_id=target.fileid, to_drive_id=target.drive_id,
+                                new_name=new_name):
+            return True
+        return False
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         """

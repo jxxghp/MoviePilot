@@ -32,7 +32,7 @@ class ManualTransferItem(BaseModel):
     episode_format: Optional[str] = None,
     episode_detail: Optional[str] = None,
     episode_part: Optional[str] = None,
-    episode_offset: Optional[int] = 0,
+    episode_offset: Optional[str] = None,
     min_filesize: Optional[int] = 0,
     scrape: bool = False,
     from_history: bool = False

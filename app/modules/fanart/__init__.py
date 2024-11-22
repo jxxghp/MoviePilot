@@ -1,12 +1,13 @@
 import re
-from functools import lru_cache
 from typing import Optional, Tuple, Union
+
+from cachetools import TTLCache, cached
 
 from app.core.context import MediaInfo, settings
 from app.log import logger
 from app.modules import _ModuleBase
-from app.utils.http import RequestUtils
 from app.schemas.types import MediaType, ModuleType
+from app.utils.http import RequestUtils
 
 
 class FanartModule(_ModuleBase):
@@ -404,7 +405,7 @@ class FanartModule(_ModuleBase):
         return result
 
     @classmethod
-    @lru_cache(maxsize=settings.CACHE_CONF.get('fanart'))
+    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["fanart"], ttl=settings.CACHE_CONF["meta"]))
     def __request_fanart(cls, media_type: MediaType, queryid: Union[str, int]) -> Optional[dict]:
         if media_type == MediaType.MOVIE:
             image_url = cls._movie_url % queryid

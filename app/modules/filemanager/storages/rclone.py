@@ -27,6 +27,12 @@ class Rclone(StorageBase):
         "copy": "复制"
     }
 
+    def init_storage(self):
+        """
+        初始化
+        """
+        pass
+
     def set_config(self, conf: dict):
         """
         设置配置
@@ -39,7 +45,7 @@ class Rclone(StorageBase):
         path = Path(filepath)
         if not path.parent.exists():
             path.parent.mkdir(parents=True)
-        path.write_text(conf.get('content'))
+        path.write_text(conf.get('content'), encoding='utf-8')
 
     @staticmethod
     def __get_hidden_shell():
@@ -76,7 +82,7 @@ class Rclone(StorageBase):
             return schemas.FileItem(
                 storage=self.schema.value,
                 type="dir",
-                path=f"{parent}{item.get('Name')}",
+                path=f"{parent}{item.get('Name')}" + "/",
                 name=item.get("Name"),
                 basename=item.get("Name"),
                 modify_time=StringUtils.str_to_timestamp(item.get("ModTime"))
@@ -260,21 +266,22 @@ class Rclone(StorageBase):
             logger.error(f"rclone复制文件失败：{err}")
         return None
 
-    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         """
         try:
+            new_path = Path(fileitem.path) / (new_name or path.name)
             retcode = subprocess.run(
                 [
                     'rclone', 'copyto',
                     str(path),
-                    f'MP:{Path(fileitem.path) / path.name}'
+                    f'MP:{new_path}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode
             if retcode == 0:
-                return self.__get_fileitem(path)
+                return self.__get_fileitem(new_path)
         except Exception as err:
             logger.error(f"rclone上传文件失败：{err}")
         return None
@@ -299,16 +306,19 @@ class Rclone(StorageBase):
             logger.error(f"rclone获取文件详情失败：{err}")
         return None
 
-    def move(self, fileitem: schemas.FileItem, target: Path) -> bool:
+    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
-        移动文件，target_file格式：rclone:path
+        移动文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
         try:
             retcode = subprocess.run(
                 [
                     'rclone', 'moveto',
                     f'MP:{fileitem.path}',
-                    f'MP:{target}'
+                    f'MP:{path / new_name}'
                 ],
                 startupinfo=self.__get_hidden_shell()
             ).returncode
@@ -318,8 +328,27 @@ class Rclone(StorageBase):
             logger.error(f"rclone移动文件失败：{err}")
         return False
 
-    def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
-        pass
+    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+        """
+        复制文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
+        """
+        try:
+            retcode = subprocess.run(
+                [
+                    'rclone', 'copyto',
+                    f'MP:{fileitem.path}',
+                    f'MP:{path / new_name}'
+                ],
+                startupinfo=self.__get_hidden_shell()
+            ).returncode
+            if retcode == 0:
+                return True
+        except Exception as err:
+            logger.error(f"rclone复制文件失败：{err}")
+        return False
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         pass

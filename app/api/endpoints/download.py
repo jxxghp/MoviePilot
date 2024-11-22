@@ -9,7 +9,9 @@ from app.core.context import MediaInfo, Context, TorrentInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.db.models.user import User
+from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_user
+from app.schemas.types import SystemConfigKey
 
 router = APIRouter()
 
@@ -109,6 +111,17 @@ def stop(hashString: str,
     """
     ret = DownloadChain().set_downloading(hashString, "stop")
     return schemas.Response(success=True if ret else False)
+
+
+@router.get("/clients", summary="查询可用下载器", response_model=List[dict])
+def clients(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询可用下载器
+    """
+    downloaders: List[dict] = SystemConfigOper().get(SystemConfigKey.Downloaders)
+    if downloaders:
+        return [{"name": d.get("name"), "type": d.get("type")} for d in downloaders if d.get("enabled")]
+    return []
 
 
 @router.delete("/{hashString}", summary="删除下载任务", response_model=schemas.Response)

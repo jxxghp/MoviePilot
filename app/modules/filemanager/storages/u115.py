@@ -1,12 +1,7 @@
-import base64
-import subprocess
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-import oss2
-import py115
-from py115 import Cloud
-from py115.types import LoginTarget, QrcodeSession, QrcodeStatus, Credential
+from p115 import P115Client, P115Path
 
 from app import schemas
 from app.core.config import settings
@@ -27,57 +22,54 @@ class U115Pan(StorageBase, metaclass=Singleton):
 
     # 支持的整理方式
     transtype = {
-        "move": "移动"
+        "move": "移动",
+        "copy": "复制"
     }
 
-    cloud: Optional[Cloud] = None
-    _session: QrcodeSession = None
+    # 115二维码登录地址
+    qrcode_url = "https://qrcodeapi.115.com/api/1.0/web/1.0/token/"
+    # 115登录状态检查
+    login_check_url = "https://qrcodeapi.115.com/get/status/"
+    # 115登录完成 alipaymini
+    login_done_api = f"https://passportapi.115.com/app/1.0/alipaymini/1.0/login/qrcode/"
 
-    # 是否有aria2c
-    _has_aria2c: bool = False
+    client: P115Client = None
+    session_info: dict = None
 
     def __init__(self):
         super().__init__()
-        try:
-            subprocess.run(['aria2c', '-h'], capture_output=True)
-            self._has_aria2c = True
-            logger.debug('发现 aria2c, 将使用 aria2c 下载文件')
-        except FileNotFoundError:
-            logger.debug('未发现 aria2c')
-            self._has_aria2c = False
+        self.init_storage()
 
-    def __init_cloud(self) -> bool:
+    def init_storage(self):
         """
         初始化Cloud
         """
-        credential = self.__credential
-        if not credential:
-            logger.warn("115未登录，请先登录！")
-            return False
+        if not self.__credential:
+            return
         try:
-            if not self.cloud:
-                self.cloud = py115.connect(credential)
+            self.client = P115Client(self.__credential, app="alipaymini",
+                                     check_for_relogin=False, console_qrcode=False)
         except Exception as err:
-            logger.error(f"115连接失败，请重新扫码登录：{str(err)}")
+            logger.error(f"115连接失败，请重新登录：{str(err)}")
             self.__clear_credential()
-            return False
-        return True
 
     @property
-    def __credential(self) -> Optional[Credential]:
+    def __credential(self) -> Optional[str]:
         """
-        获取已保存的115认证参数
+        获取已保存的115 Cookie
         """
-        cookie_dict = self.get_config()
-        if not cookie_dict:
+        conf = self.get_config()
+        if not conf:
             return None
-        return Credential.from_dict(cookie_dict.dict().get("config"))
+        if not conf.config:
+            return None
+        return conf.config.get("cookie")
 
-    def __save_credential(self, credential: Credential):
+    def __save_credential(self, credential: dict):
         """
         设置115认证参数
         """
-        self.set_config(credential.to_dict())
+        self.set_config(credential)
 
     def __clear_credential(self):
         """
@@ -89,62 +81,75 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         生成二维码
         """
-        try:
-            self.cloud = py115.connect()
-            self._session = self.cloud.qrcode_login(LoginTarget.Web)
-            image_bin = self._session.image_data
-            if not image_bin:
+        res = RequestUtils(timeout=10).get_res(self.qrcode_url)
+        if res:
+            self.session_info = res.json().get("data")
+            qrcode_content = self.session_info.pop("qrcode")
+            if not qrcode_content:
                 logger.warn("115生成二维码失败：未获取到二维码数据！")
-                return None
-            # 转换为base64图片格式
-            image_base64 = base64.b64encode(image_bin).decode()
+                return {}, ""
             return {
-                "codeContent": f"data:image/jpeg;base64,{image_base64}"
+                "codeContent": qrcode_content
             }, ""
-        except Exception as e:
-            logger.warn(f"115生成二维码失败：{str(e)}")
-            return {}, f"115生成二维码失败：{str(e)}"
+        elif res is not None:
+            return {}, f"115生成二维码失败：{res.status_code} - {res.reason}"
+        return {}, f"115生成二维码失败：无法连接！"
 
     def check_login(self) -> Optional[Tuple[dict, str]]:
         """
         二维码登录确认
         """
-        if not self._session:
+        if not self.session_info:
             return {}, "请先生成二维码！"
         try:
-            if not self.cloud:
-                return {}, "请先生成二维码！"
-            status = self.cloud.qrcode_poll(self._session)
-            if status == QrcodeStatus.Done:
-                # 确认完成，保存认证信息
-                self.__save_credential(self.cloud.export_credentail())
-                result = {
-                    "status": 1,
-                    "tip": "登录成功！"
-                }
-            elif status == QrcodeStatus.Waiting:
-                result = {
-                    "status": 0,
-                    "tip": "请使用微信或115客户端扫码"
-                }
-            elif status == QrcodeStatus.Expired:
-                result = {
-                    "status": -1,
-                    "tip": "二维码已过期，请重新刷新！"
-                }
-                self.cloud = None
-            elif status == QrcodeStatus.Failed:
-                result = {
-                    "status": -2,
-                    "tip": "登录失败，请重试！"
-                }
-                self.cloud = None
-            else:
-                result = {
-                    "status": -3,
-                    "tip": "未知错误，请重试！"
-                }
-                self.cloud = None
+            resp = RequestUtils(timeout=10).get_res(self.login_check_url, params=self.session_info)
+            if not resp:
+                return {}, "115登录确认失败：无法连接！"
+            result = resp.json()
+            match result["data"].get("status"):
+                case 0:
+                    result = {
+                        "status": 0,
+                        "tip": "请使用微信或115客户端扫码"
+                    }
+                case 1:
+                    result = {
+                        "status": 1,
+                        "tip": "已扫码"
+                    }
+                case 2:
+                    # 确认完成，保存认证信息
+                    resp = RequestUtils(timeout=10).post_res(self.login_done_api,
+                                                             data={"account": self.session_info.get("uid")})
+                    if not resp:
+                        return {}, "115登录确认失败：无法连接！"
+                    if resp:
+                        # 保存认证信息
+                        result = resp.json()
+                        cookie_dict = result["data"]["cookie"]
+                        cookie_str = "; ".join([f"{k}={v}" for k, v in cookie_dict.items()])
+                        cookie_dict.update({"cookie": cookie_str})
+                        self.__save_credential(cookie_dict)
+                        self.init_storage()
+                    result = {
+                        "status": 2,
+                        "tip": "登录成功！"
+                    }
+                case -1:
+                    result = {
+                        "status": -1,
+                        "tip": "二维码已过期，请重新刷新！"
+                    }
+                case -2:
+                    result = {
+                        "status": -2,
+                        "tip": "登录失败，请重试！"
+                    }
+                case _:
+                    result = {
+                        "status": -3,
+                        "tip": "未知错误，请重试！"
+                    }
             return result, ""
         except Exception as e:
             return {}, f"115登录确认失败：{str(e)}"
@@ -153,10 +158,12 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         获取存储空间
         """
-        if not self.__init_cloud():
+        if not self.client:
             return None
         try:
-            return self.cloud.storage().space()
+            usage = self.client.fs.space_summury()
+            if usage:
+                return usage['rt_space_info']['all_total']['size'], usage['rt_space_info']['all_remain']['size']
         except Exception as e:
             logger.error(f"115获取存储空间失败：{str(e)}")
         return None
@@ -165,31 +172,27 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         检查存储是否可用
         """
-        return True if self.list(schemas.FileItem(
-            fileid="0"
-        )) else False
+        return True if self.list(schemas.FileItem()) else False
 
     def list(self, fileitem: schemas.FileItem) -> Optional[List[schemas.FileItem]]:
         """
         浏览文件
         """
-        if not self.__init_cloud():
+        if not self.client:
             return []
         try:
             if fileitem.type == "file":
                 return [fileitem]
-            items = self.cloud.storage().list(dir_id=fileitem.fileid)
+            items: List[P115Path] = self.client.fs.list(fileitem.path)
             return [schemas.FileItem(
                 storage=self.schema.value,
-                fileid=item.file_id,
-                parent_fileid=item.parent_id,
-                type="dir" if item.is_dir else "file",
-                path=f"{fileitem.path}{item.name}" + ("/" if item.is_dir else ""),
+                type="dir" if item.is_dir() else "file",
+                path=item.path + ("/" if item.is_dir() else ""),
                 name=item.name,
-                size=item.size,
-                extension=Path(item.name).suffix[1:],
-                modify_time=item.modified_time.timestamp() if item.modified_time else 0,
-                pickcode=item.pickcode
+                basename=item.stem,
+                size=item.stat().st_size,
+                extension=item.suffix[1:] if not item.is_dir() else None,
+                modify_time=item.stat().st_mtime
             ) for item in items if item]
         except Exception as e:
             logger.error(f"115浏览文件失败：{str(e)}")
@@ -199,20 +202,18 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         创建目录
         """
-        if not self.__init_cloud():
+        if not self.client:
             return None
         try:
-            result = self.cloud.storage().make_dir(fileitem.fileid, name)
+            result = self.client.fs.makedirs(Path(fileitem.path) / name, exist_ok=True)
             if result:
                 return schemas.FileItem(
                     storage=self.schema.value,
-                    fileid=result.file_id,
-                    parent_fileid=result.parent_id,
                     type="dir",
-                    path=f"{fileitem.path}{name}/",
+                    path=f"{result.path}/",
                     name=name,
-                    modify_time=result.modified_time.timestamp() if result.modified_time else 0,
-                    pickcode=result.pickcode
+                    basename=Path(result.name).stem,
+                    modify_time=result.mtime
                 )
         except Exception as e:
             logger.error(f"115创建目录失败：{str(e)}")
@@ -222,73 +223,83 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         根据文件路程获取目录，不存在则创建
         """
-
-        def __find_dir(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
-            """
-            查找下级目录中匹配名称的目录
-            """
-            for sub_file in self.list(_fileitem):
-                if sub_file.type != "dir":
-                    continue
-                if sub_file.name == _name:
-                    return sub_file
+        if not self.client:
             return None
-
-        # 逐级查找和创建目录
-        fileitem = schemas.FileItem(fileid="0")
-        for part in path.parts:
-            if part == "/":
-                continue
-            dir_file = __find_dir(fileitem, part)
-            if dir_file:
-                fileitem = dir_file
-            else:
-                dir_file = self.create_folder(fileitem, part)
-                if not dir_file:
-                    logger.warn(f"115创建目录 {fileitem.path}{part} 失败!")
-                    return None
-                fileitem = dir_file
-        return fileitem if fileitem.fileid != "0" else None
+        try:
+            result = self.client.fs.makedirs(path, exist_ok=True)
+            if result:
+                return schemas.FileItem(
+                    storage=self.schema.value,
+                    type="dir",
+                    path=result.path + "/",
+                    name=result.name,
+                    basename=Path(result.name).stem,
+                    modify_time=result.mtime
+                )
+        except Exception as e:
+            logger.error(f"115获取目录失败：{str(e)}")
+        return None
 
     def get_item(self, path: Path) -> Optional[schemas.FileItem]:
         """
         获取文件或目录，不存在返回None
         """
-
-        def __find_item(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
-            """
-            查找下级目录中匹配名称的目录或文件
-            """
-            for sub_file in self.list(_fileitem):
-                if sub_file.name == _name:
-                    return sub_file
+        if not self.client:
             return None
-
-        # 逐级查找
-        fileitem = schemas.FileItem(fileid="0")
-        for part in path.parts:
-            if part == "/":
-                continue
-            item = __find_item(fileitem, part)
-            if not item:
+        try:
+            try:
+                item = self.client.fs.attr(path)
+            except FileNotFoundError:
                 return None
-            fileitem = item
-        return fileitem
+            if item:
+                return schemas.FileItem(
+                    storage=self.schema.value,
+                    type="dir" if item.is_directory else "file",
+                    path=item.path + ("/" if item.is_directory else ""),
+                    name=item.name,
+                    size=item.size,
+                    extension=Path(item.name).suffix[1:] if not item.is_directory else None,
+                    modify_time=item.mtime,
+                    thumbnail=item.get("thumb")
+                )
+        except Exception as e:
+            logger.info(f"115获取文件失败：{str(e)}")
+        return None
 
     def detail(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
         """
         获取文件详情
         """
-        pass
+        if not self.client:
+            return None
+        try:
+            try:
+                item = self.client.fs.attr(fileitem.path)
+            except FileNotFoundError:
+                return None
+            if item:
+                return schemas.FileItem(
+                    storage=self.schema.value,
+                    type="dir" if item.is_directory else "file",
+                    path=item.path + ("/" if item.is_directory else ""),
+                    name=item.name,
+                    size=item.size,
+                    extension=Path(item.name).suffix[1:] if not item.is_directory else None,
+                    modify_time=item.mtime,
+                    thumbnail=item.get("thumb")
+                )
+        except Exception as e:
+            logger.error(f"115获取文件详情失败：{str(e)}")
+        return None
 
     def delete(self, fileitem: schemas.FileItem) -> bool:
         """
         删除文件
         """
-        if not self.__init_cloud():
+        if not self.client:
             return False
         try:
-            self.cloud.storage().delete(fileitem.fileid)
+            self.client.fs.remove(fileitem.path)
             return True
         except Exception as e:
             logger.error(f"115删除文件失败：{str(e)}")
@@ -298,10 +309,10 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         重命名文件
         """
-        if not self.__init_cloud():
+        if not self.client:
             return False
         try:
-            self.cloud.storage().rename(fileitem.fileid, name)
+            self.client.fs.rename(fileitem.path, Path(fileitem.path).with_name(name))
             return True
         except Exception as e:
             logger.error(f"115重命名文件失败：{str(e)}")
@@ -311,88 +322,73 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         获取下载链接
         """
-        if not self.__init_cloud():
+        if not self.client:
             return None
+        local_file = (path or settings.TEMP_PATH) / fileitem.name
         try:
-            ticket = self.cloud.storage().request_download(fileitem.pickcode)
-            if ticket:
-                path = (path or settings.TEMP_PATH) / fileitem.name
-                res = RequestUtils(headers=ticket.headers).get_res(ticket.url)
-                if res:
-                    with open(path, "wb") as f:
-                        f.write(res.content)
-                    return path
-            else:
-                logger.warn(f"{fileitem.path} 未获取到下载链接")
+            task = self.client.fs.download(fileitem.path, file=local_file)
+            if task:
+                return local_file
         except Exception as e:
-            logger.error(f"115下载失败：{str(e)}")
+            logger.error(f"115下载文件失败：{str(e)}")
         return None
 
-    def upload(self, fileitem: schemas.FileItem, path: Path) -> Optional[schemas.FileItem]:
+    def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件
         """
-        if not self.__init_cloud():
+        if not self.client:
             return None
         try:
-            ticket = self.cloud.storage().request_upload(dir_id=fileitem.fileid, file_path=str(path))
-            if ticket is None:
-                logger.warn(f"115请求上传出错")
-                return None
-            elif ticket.is_done:
-                file_path = Path(fileitem.path) / path.name
-                logger.warn(f"115上传：{file_path} 文件已存在")
-                return self.get_item(file_path)
-            else:
-                auth = oss2.StsAuth(**ticket.oss_token)
-                bucket = oss2.Bucket(
-                    auth=auth,
-                    endpoint=ticket.oss_endpoint,
-                    bucket_name=ticket.bucket_name,
-                )
-                por = bucket.put_object_from_file(
-                    key=ticket.object_key,
-                    filename=str(path),
-                    headers=ticket.headers,
-                )
-                result = por.resp.response.json()
+            new_path = Path(fileitem.path) / (new_name or path.name)
+            with open(path, "rb") as f:
+                result = self.client.fs.upload(f, new_path)
                 if result:
-                    result_data = result.get('data')
-                    logger.info(f"115上传文件成功：{result_data.get('file_name')}")
                     return schemas.FileItem(
                         storage=self.schema.value,
-                        fileid=result_data.get('file_id'),
-                        parent_fileid=fileitem.fileid,
                         type="file",
-                        name=result_data.get('file_name'),
-                        basename=Path(result_data.get('file_name')).stem,
-                        path=f"{fileitem.path}{result_data.get('file_name')}",
-                        size=result_data.get('file_size'),
-                        extension=Path(result_data.get('file_name')).suffix[1:],
-                        pickcode=result_data.get('pickcode')
+                        path=str(path),
+                        name=result.name,
+                        basename=Path(result.name).stem,
+                        size=result.size,
+                        extension=Path(result.name).suffix[1:],
+                        modify_time=result.mtime
                     )
-                else:
-                    logger.warn(f"115上传文件失败：{por.resp.response.text}")
-                    return None
         except Exception as e:
             logger.error(f"115上传文件失败：{str(e)}")
         return None
 
-    def move(self, fileitem: schemas.FileItem, target: schemas.FileItem) -> bool:
+    def copy(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
         """
-        移动文件
+        复制文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
         """
-        if not self.__init_cloud():
+        if not self.client:
             return False
         try:
-            self.cloud.storage().move(fileitem.fileid, target.fileid)
+            self.client.fs.copy(fileitem.path, path / new_name)
+            return True
+        except Exception as e:
+            logger.error(f"115复制文件失败：{str(e)}")
+        return False
+
+    def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
+        """
+        移动文件
+        :param fileitem: 文件项
+        :param path: 目标目录
+        :param new_name: 新文件名
+        """
+        if not self.client:
+            return False
+        try:
+            self.client.fs.move(fileitem.path, path / new_name)
             return True
         except Exception as e:
             logger.error(f"115移动文件失败：{str(e)}")
         return False
-
-    def copy(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
-        pass
 
     def link(self, fileitem: schemas.FileItem, target_file: Path) -> bool:
         pass
@@ -406,9 +402,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         info = self.storage()
         if info:
-            total, used = info
+            total, free = info
             return schemas.StorageUsage(
                 total=total,
-                available=total - used
+                available=free
             )
         return schemas.StorageUsage()

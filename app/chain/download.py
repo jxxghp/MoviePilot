@@ -180,7 +180,7 @@ class DownloadChain(ChainBase):
         torrent_file, content, download_folder, files, error_msg = self.torrent.download_torrent(
             url=torrent_url,
             cookie=site_cookie,
-            ua=torrent.site_ua,
+            ua=torrent.site_ua or settings.USER_AGENT,
             proxy=torrent.site_proxy)
 
         if isinstance(content, str):
@@ -204,10 +204,10 @@ class DownloadChain(ChainBase):
     def download_single(self, context: Context, torrent_file: Path = None,
                         episodes: Set[int] = None,
                         channel: MessageChannel = None, source: str = None,
+                        downloader: str = None,
                         save_path: str = None,
                         userid: Union[str, int] = None,
                         username: str = None,
-                        downloader: str = None,
                         media_category: str = None) -> Optional[str]:
         """
         下载及发送通知
@@ -216,15 +216,16 @@ class DownloadChain(ChainBase):
         :param episodes: 需要下载的集数
         :param channel: 通知渠道
         :param source: 通知来源
+        :param downloader: 下载器
         :param save_path: 保存路径
         :param userid: 用户ID
         :param username: 调用下载的用户名/插件名
-        :param downloader: 下载器
         :param media_category: 自定义媒体类别
         """
         _torrent = context.torrent_info
         _media = context.media_info
         _meta = context.meta_info
+        _site_downloader = _torrent.site_downloader
 
         # 补充完整的media数据
         if not _media.genre_ids:
@@ -251,35 +252,31 @@ class DownloadChain(ChainBase):
 
         # 下载目录
         if save_path:
-            # 有自定义下载目录时，尝试匹配目录配置
-            dir_info = self.directoryhelper.get_dir(_media, src_path=Path(save_path), local=True)
-        else:
-            # 根据媒体信息查询下载目录配置
-            dir_info = self.directoryhelper.get_dir(_media, local=True)
-
-        # 拼装子目录
-        if dir_info:
-            # 一级目录
-            if not dir_info.media_type and dir_info.download_type_folder:
-                # 一级自动分类
-                download_dir = Path(dir_info.download_path) / _media.type.value
-            else:
-                # 一级不分类
-                download_dir = Path(dir_info.download_path)
-
-            # 二级目录
-            if not dir_info.media_category and dir_info.download_category_folder and _media and _media.category:
-                # 二级自动分类
-                download_dir = download_dir / _media.category
-        elif save_path:
-            # 自定义下载目录
+            # 下载目录使用自定义的
             download_dir = Path(save_path)
         else:
-            # 未找到下载目录，且没有自定义下载目录
-            logger.error(f"未找到下载目录：{_media.type.value} {_media.title_year}")
-            self.messagehelper.put(f"{_media.type.value} {_media.title_year} 未找到下载目录！",
-                                   title="下载失败", role="system")
-            return None
+            # 根据媒体信息查询下载目录配置
+            dir_info = self.directoryhelper.get_dir(_media)
+            # 拼装子目录
+            if dir_info:
+                # 一级目录
+                if not dir_info.media_type and dir_info.download_type_folder:
+                    # 一级自动分类
+                    download_dir = Path(dir_info.download_path) / _media.type.value
+                else:
+                    # 一级不分类
+                    download_dir = Path(dir_info.download_path)
+
+                # 二级目录
+                if not dir_info.media_category and dir_info.download_category_folder and _media and _media.category:
+                    # 二级自动分类
+                    download_dir = download_dir / _media.category
+            else:
+                # 未找到下载目录，且没有自定义下载目录
+                logger.error(f"未找到下载目录：{_media.type.value} {_media.title_year}")
+                self.messagehelper.put(f"{_media.type.value} {_media.title_year} 未找到下载目录！",
+                                       title="下载失败", role="system")
+                return None
 
         # 添加下载
         result: Optional[tuple] = self.download(content=content,
@@ -287,7 +284,7 @@ class DownloadChain(ChainBase):
                                                 episodes=episodes,
                                                 download_dir=download_dir,
                                                 category=_media.category,
-                                                downloader=downloader)
+                                                downloader=downloader or _site_downloader)
         if result:
             _downloader, _hash, error_msg = result
         else:
@@ -335,7 +332,7 @@ class DownloadChain(ChainBase):
                         continue
                 # 只处理视频格式
                 if not Path(file).suffix \
-                        or Path(file).suffix not in settings.RMT_MEDIAEXT:
+                        or Path(file).suffix.lower() not in settings.RMT_MEDIAEXT:
                     continue
                 files_to_add.append({
                     "download_hash": _hash,
@@ -386,7 +383,8 @@ class DownloadChain(ChainBase):
                        source: str = None,
                        userid: str = None,
                        username: str = None,
-                       media_category: str = None
+                       media_category: str = None,
+                       downloader: str = None
                        ) -> Tuple[List[Context], Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
         """
         根据缺失数据，自动种子列表中组合择优下载
@@ -398,6 +396,7 @@ class DownloadChain(ChainBase):
         :param userid:  用户ID
         :param username: 调用下载的用户名/插件名
         :param media_category: 自定义媒体类别
+        :param downloader: 下载器
         :return: 已经下载的资源列表、剩余未下载到的剧集 no_exists[tmdb_id/douban_id] = {season: NotExistMediaInfo}
         """
         # 已下载的项目
@@ -469,7 +468,7 @@ class DownloadChain(ChainBase):
                 logger.info(f"开始下载电影 {context.torrent_info.title} ...")
                 if self.download_single(context, save_path=save_path, channel=channel,
                                         source=source, userid=userid, username=username,
-                                        media_category=media_category):
+                                        media_category=media_category, downloader=downloader):
                     # 下载成功
                     logger.info(f"{context.torrent_info.title} 添加下载成功")
                     downloaded_list.append(context)
@@ -554,7 +553,8 @@ class DownloadChain(ChainBase):
                                         source=source,
                                         userid=userid,
                                         username=username,
-                                        media_category=media_category
+                                        media_category=media_category,
+                                        downloader=downloader,
                                     )
                             else:
                                 # 下载
@@ -562,7 +562,8 @@ class DownloadChain(ChainBase):
                                 download_id = self.download_single(context, save_path=save_path,
                                                                    channel=channel, source=source,
                                                                    userid=userid, username=username,
-                                                                   media_category=media_category)
+                                                                   media_category=media_category,
+                                                                   downloader=downloader)
 
                             if download_id:
                                 # 下载成功
@@ -633,7 +634,8 @@ class DownloadChain(ChainBase):
                                 download_id = self.download_single(context, save_path=save_path,
                                                                    channel=channel, source=source,
                                                                    userid=userid, username=username,
-                                                                   media_category=media_category)
+                                                                   media_category=media_category,
+                                                                   downloader=downloader)
                                 if download_id:
                                     # 下载成功
                                     logger.info(f"{meta.title} 添加下载成功")
@@ -722,7 +724,8 @@ class DownloadChain(ChainBase):
                                 source=source,
                                 userid=userid,
                                 username=username,
-                                media_category=media_category
+                                media_category=media_category,
+                                downloader=downloader
                             )
                             if not download_id:
                                 continue

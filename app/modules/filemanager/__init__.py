@@ -1,4 +1,3 @@
-import copy
 import re
 from pathlib import Path
 from threading import Lock
@@ -65,9 +64,8 @@ class FileManagerModule(_ModuleBase):
         """
         测试模块连接性
         """
-        directoryhelper = DirectoryHelper()
         # 检查目录
-        dirs = directoryhelper.get_dirs()
+        dirs = self.directoryhelper.get_dirs()
         if not dirs:
             return False, "未设置任何目录"
         for d in dirs:
@@ -132,7 +130,6 @@ class FileManagerModule(_ModuleBase):
         )
         return str(path)
 
-        pass
 
     def save_config(self, storage: str, conf: Dict) -> None:
         """
@@ -144,7 +141,7 @@ class FileManagerModule(_ModuleBase):
             return
         storage_oper.set_config(conf)
 
-    def generate_qrcode(self, storage: str) -> Optional[Dict[str, str]]:
+    def generate_qrcode(self, storage: str) -> Optional[Tuple[dict, str]]:
         """
         生成二维码
         """
@@ -220,7 +217,8 @@ class FileManagerModule(_ModuleBase):
                             and f".{t.extension.lower()}" in extensions):
                         return True
                     elif t.type == "dir":
-                        return __any_file(t)
+                        if __any_file(t):
+                            return True
             return False
 
         # 返回结果
@@ -269,7 +267,7 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.download(fileitem, path=path)
 
-    def upload_file(self, fileitem: FileItem, path: Path) -> Optional[FileItem]:
+    def upload_file(self, fileitem: FileItem, path: Path, new_name: str = None) -> Optional[FileItem]:
         """
         上传文件
         """
@@ -277,7 +275,7 @@ class FileManagerModule(_ModuleBase):
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的上传处理")
             return None
-        return storage_oper.upload(fileitem, path)
+        return storage_oper.upload(fileitem, path, new_name)
 
     def get_file_item(self, storage: str, path: Path) -> Optional[FileItem]:
         """
@@ -349,14 +347,6 @@ class FileManagerModule(_ModuleBase):
                                 fileitem=fileitem,
                                 message=f"{target_path} 不是有效目录")
         # 获取目标路径
-        directoryhelper = DirectoryHelper()
-        if not target_directory:
-            # 根据目的路径查找目录配置
-            if target_path:
-                target_directory = directoryhelper.get_dir(mediainfo, dest_path=target_path)
-            else:
-                target_directory = directoryhelper.get_dir(mediainfo, fileitem=fileitem)
-
         if target_directory:
             # 拼装媒体库一、二级子目录
             target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_directory)
@@ -366,6 +356,11 @@ class FileManagerModule(_ModuleBase):
             # 整理方式
             if not transfer_type:
                 transfer_type = target_directory.transfer_type
+                if not transfer_type:
+                    logger.error(f"{target_directory.name} 未设置整理方式")
+                    return TransferInfo(success=False,
+                                        fileitem=fileitem,
+                                        message=f"{target_directory.name} 未设置整理方式")
             # 是否需要刮削
             if scrape is None:
                 need_scrape = target_directory.scraping
@@ -378,7 +373,7 @@ class FileManagerModule(_ModuleBase):
             # 覆盖模式
             overwrite_mode = target_directory.overwrite_mode
         elif target_path:
-            # 自定义目标路径，仅适用于手动整理的场景
+            # 手动整理的场景，有自定义目标路径
             need_scrape = scrape or False
             need_rename = True
             need_notify = False
@@ -467,13 +462,15 @@ class FileManagerModule(_ModuleBase):
                     target_file.parent.mkdir(parents=True)
                 # 本地到本地
                 if transfer_type == "copy":
-                    state = source_oper.copy(fileitem, target_file)
+                    state = source_oper.copy(fileitem, target_file.parent, target_file.name)
                 elif transfer_type == "move":
-                    state = source_oper.move(fileitem, target_file)
+                    state = source_oper.move(fileitem, target_file.parent, target_file.name)
                 elif transfer_type == "link":
                     state = source_oper.link(fileitem, target_file)
                 elif transfer_type == "softlink":
                     state = source_oper.softlink(fileitem, target_file)
+                else:
+                    return None, f"不支持的整理方式：{transfer_type}"
                 if state:
                     return __get_targetitem(target_file), ""
                 else:
@@ -489,38 +486,28 @@ class FileManagerModule(_ModuleBase):
                     target_fileitem = target_oper.get_folder(target_file.parent)
                     if target_fileitem:
                         # 上传文件
-                        new_item = target_oper.upload(target_fileitem, filepath)
+                        new_item = target_oper.upload(target_fileitem, filepath, target_file.name)
                         if new_item:
-                            # 重命名为目标文件名
-                            if new_item.name != target_file.name:
-                                if target_oper.rename(new_item, target_file.name):
-                                    new_item.name = target_file.name
-                                    new_item.path = str(Path(new_item.path).parent / target_file.name)
                             return new_item, ""
                         else:
                             return None, f"{fileitem.path} 上传 {target_storage} 失败"
                     else:
-                        return None, f"{target_file.parent} {target_storage} 目录获取失败"
+                        return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
                 elif transfer_type == "move":
                     # 移动
                     # 根据目的路径获取文件夹
                     target_fileitem = target_oper.get_folder(target_file.parent)
                     if target_fileitem:
                         # 上传文件
-                        new_item = target_oper.upload(target_fileitem, filepath)
+                        new_item = target_oper.upload(target_fileitem, filepath, target_file.name)
                         if new_item:
-                            # 重命名为目标文件名
-                            if new_item.name != target_file.name:
-                                if target_oper.rename(new_item, target_file.name):
-                                    new_item.name = target_file.name
-                                    new_item.path = str(Path(new_item.path).parent / target_file.name)
                             # 删除源文件
                             source_oper.delete(fileitem)
                             return new_item, ""
                         else:
                             return None, f"{fileitem.path} 上传 {target_storage} 失败"
                     else:
-                        return None, f"{target_file.parent} {target_storage} 目录获取失败"
+                        return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
             elif fileitem.storage != "local" and target_storage == "local":
                 # 网盘到本地
                 if target_file.exists():
@@ -544,25 +531,20 @@ class FileManagerModule(_ModuleBase):
                         return None, f"{fileitem.path} {fileitem.storage} 下载失败"
             elif fileitem.storage == target_storage:
                 # 同一网盘
-                # 根据目的路径获取文件夹
-                target_diritem = target_oper.get_folder(target_file.parent)
-                if target_diritem:
-                    # 重命名文件
-                    if target_oper.rename(fileitem, target_file.name):
-                        # 移动文件到新目录
-                        if source_oper.move(fileitem, target_diritem):
-                            ret_fileitem = copy.deepcopy(fileitem)
-                            ret_fileitem.path = target_diritem.path + "/" + target_file.name
-                            ret_fileitem.name = target_file.name
-                            ret_fileitem.basename = target_file.stem
-                            ret_fileitem.parent_fileid = target_diritem.fileid
-                            return ret_fileitem, ""
-                        else:
-                            return None, f"{fileitem.path} {target_storage} 移动文件失败"
+                if transfer_type == "copy":
+                    # 移动文件到新目录
+                    if source_oper.move(fileitem, target_file.parent, target_file.name):
+                        return target_oper.get_item(target_file), ""
                     else:
-                        return None, f"{fileitem.path} {target_storage} 重命名文件失败"
+                        return None, f"【{target_storage}】{fileitem.path} 移动文件失败"
+                elif transfer_type == "move":
+                    # 移动文件到新目录
+                    if source_oper.move(fileitem, target_file.parent, target_file.name):
+                        return target_oper.get_item(target_file), ""
+                    else:
+                        return None, f"【{target_storage}】{fileitem.path} 移动文件失败"
                 else:
-                    return None, f"{target_file.parent} {target_storage} 目录获取失败"
+                    return None, f"不支持的整理方式：{transfer_type}"
 
         return None, "未知错误"
 
@@ -625,18 +607,16 @@ class FileManagerModule(_ModuleBase):
         if not parent_item:
             return False, f"{org_path} 上级目录获取失败"
         # 字幕文件列表
-        file_list: List[FileItem] = storage_oper.list(parent_item)
+        file_list: List[FileItem] = storage_oper.list(parent_item) or []
+        file_list = [f for f in file_list if f.type == "file" and f.extension
+                     and f".{f.extension.lower()}" in settings.RMT_SUBEXT]
         if len(file_list) == 0:
-            logger.debug(f"{parent_item.path} 目录下没有找到字幕文件...")
+            logger.info(f"{parent_item.path} 目录下没有找到字幕文件...")
         else:
-            logger.debug("字幕文件清单：" + str(file_list))
+            logger.info(f"字幕文件清单：{[f.name for f in file_list]}")
             # 识别文件名
             metainfo = MetaInfoPath(org_path)
             for sub_item in file_list:
-                if sub_item.type == "dir" or not sub_item.extension:
-                    continue
-                if f".{sub_item.extension.lower()}" not in settings.RMT_SUBEXT:
-                    continue
                 # 识别字幕文件名
                 sub_file_name = re.sub(_zhtw_sub_re,
                                        ".",
@@ -829,7 +809,8 @@ class FileManagerModule(_ModuleBase):
             else:
                 logger.info(f"正在删除已存在的文件：{target_file}")
                 target_file.unlink()
-        logger.info(f"正在整理文件：【{fileitem.storage}】{fileitem.path} 到 【{target_storage}】{target_file}")
+        logger.info(f"正在整理文件：【{fileitem.storage}】{fileitem.path} 到 【{target_storage}】{target_file}，"
+                    f"操作类型：{transfer_type}")
         new_item, errmsg = self.__transfer_command(fileitem=fileitem,
                                                    target_storage=target_storage,
                                                    target_file=target_file,
@@ -902,6 +883,18 @@ class FileManagerModule(_ModuleBase):
         # 重命名格式
         rename_format = settings.TV_RENAME_FORMAT \
             if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
+
+        # 计算重命名中的文件夹层数
+        rename_format_level = len(rename_format.split("/")) - 1
+
+        if rename_format_level < 1:
+            # 重命名格式不合法
+            logger.error(f"重命名格式不合法：{rename_format}")
+            return TransferInfo(success=False,
+                                message=f"重命名格式不合法",
+                                fileitem=fileitem,
+                                transfer_type=transfer_type,
+                                need_notify=need_notify)
 
         # 判断是否为文件夹
         if fileitem.type == "dir":
@@ -983,9 +976,15 @@ class FileManagerModule(_ModuleBase):
             # 目的操作对象
             target_oper: StorageBase = self.__get_storage_oper(target_storage)
             # 目标目录
-            target_diritem = target_oper.get_folder(
-                new_file.parent) if mediainfo.type == MediaType.MOVIE else target_oper.get_folder(
-                new_file.parent.parent)
+            target_diritem = target_oper.get_folder(new_file.parents[rename_format_level - 1])
+            if not target_diritem:
+                logger.error(f"目标目录 {new_file.parents[rename_format_level - 1]} 获取失败")
+                return TransferInfo(success=False,
+                                    message=f"目标目录 {new_file.parents[rename_format_level - 1]} 获取失败",
+                                    fileitem=fileitem,
+                                    fail_list=[fileitem.path],
+                                    transfer_type=transfer_type,
+                                    need_notify=need_notify)
             # 目标文件
             target_item = target_oper.get_item(new_file)
             if target_item:

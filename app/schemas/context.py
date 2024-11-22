@@ -180,6 +180,8 @@ class TorrentInfo(BaseModel):
     site_proxy: Optional[bool] = False
     # 站点优先级
     site_order: Optional[int] = 0
+    # 站点下载器
+    site_downloader: Optional[str] = None
     # 种子名称
     title: Optional[str] = None
     # 种子副标题

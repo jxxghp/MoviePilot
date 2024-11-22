@@ -159,6 +159,8 @@ class SubscribeChain(ChainBase):
                 "search_imdbid") else kwargs.get("search_imdbid"),
             'sites': self.__get_default_subscribe_config(mediainfo.type, "sites") or None if not kwargs.get(
                 "sites") else kwargs.get("sites"),
+            'downloader': self.__get_default_subscribe_config(mediainfo.type, "downloader") if not kwargs.get(
+                "downloader") else kwargs.get("downloader"),
             'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path") if not kwargs.get(
                 "save_path") else kwargs.get("save_path")
         })
@@ -363,10 +365,6 @@ class SubscribeChain(ChainBase):
                 torrent_info = context.torrent_info
                 torrent_mediainfo = context.media_info
 
-                # 匹配订阅附加参数
-                if not self.torrenthelper.filter_torrent(torrent_info=torrent_info,
-                                                         filter_params=self.get_params(subscribe)):
-                    continue
                 # 洗版
                 if subscribe.best_version:
                     # 洗版时，非整季不要
@@ -394,7 +392,8 @@ class SubscribeChain(ChainBase):
                 userid=subscribe.username,
                 username=subscribe.username,
                 save_path=subscribe.save_path,
-                media_category=subscribe.media_category
+                media_category=subscribe.media_category,
+                downloader=subscribe.downloader,
             )
 
             # 判断是否应完成订阅
@@ -773,7 +772,8 @@ class SubscribeChain(ChainBase):
                                                                  userid=subscribe.username,
                                                                  username=subscribe.username,
                                                                  save_path=subscribe.save_path,
-                                                                 media_category=subscribe.media_category)
+                                                                 media_category=subscribe.media_category,
+                                                                 downloader=subscribe.downloader)
             # 判断是否要完成订阅
             self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
                                          downloads=downloads, lefts=lefts)
@@ -1241,6 +1241,9 @@ class SubscribeChain(ChainBase):
                             file_path=file.fullpath,
                         )
                         if subscribe.type == MediaType.TV.value:
+                            season_number = file_meta.begin_season
+                            if season_number and season_number != subscribe.season:
+                                continue
                             episode_number = file_meta.begin_episode
                             if episode_number and episodes.get(episode_number):
                                 episodes[episode_number].download.append(file_info)
@@ -1278,6 +1281,9 @@ class SubscribeChain(ChainBase):
                     file_path=fileitem.path,
                 )
                 if subscribe.type == MediaType.TV.value:
+                    season_number = file_meta.begin_season
+                    if season_number and season_number != subscribe.season:
+                        continue
                     episode_number = file_meta.begin_episode
                     if episode_number and episodes.get(episode_number):
                         episodes[episode_number].library.append(file_info)

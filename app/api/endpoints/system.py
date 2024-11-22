@@ -159,7 +159,8 @@ def cache_img(
     本地缓存图片文件，支持 HTTP 缓存，如果启用全局图片缓存，则使用磁盘缓存
     """
     # 如果没有启用全局图片缓存，则不使用磁盘缓存
-    return fetch_image(url=url, proxy=False, use_disk_cache=settings.GLOBAL_IMAGE_CACHE, if_none_match=if_none_match)
+    proxy = "doubanio.com" not in url
+    return fetch_image(url=url, proxy=proxy, use_disk_cache=settings.GLOBAL_IMAGE_CACHE, if_none_match=if_none_match)
 
 
 @router.get("/global", summary="查询非敏感系统设置", response_model=schemas.Response)
