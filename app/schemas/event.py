@@ -1,4 +1,5 @@
-from typing import Optional, Dict
+from pathlib import Path
+from typing import Optional, Dict, Any
 
 from pydantic import BaseModel, Field, root_validator
 
@@ -114,3 +115,31 @@ class CommandRegisterEventData(ChainEventData):
     # 输出参数
     cancel: bool = Field(False, description="是否取消注册")
     source: str = Field("未知拦截源", description="拦截源")
+
+
+class SmartRenameEventData(ChainEventData):
+    """
+    SmartRename 事件的数据模型
+
+    Attributes:
+        # 输入参数
+        template_string (str): Jinja2 模板字符串
+        rename_dict (dict): 渲染上下文
+        render_str (str): 渲染生成的字符串
+        path (Optional[Path]): 当前文件的目标路径
+
+        # 输出参数
+        updated (bool): 是否已更新，默认值为 False
+        updated_str (str): 更新后的字符串
+        source (str): 拦截源，默认值为 "未知拦截源"
+    """
+    # 输入参数
+    template_string: str = Field(..., description="模板字符串")
+    rename_dict: Dict[str, Any] = Field(..., description="渲染上下文")
+    path: Optional[Path] = Field(None, description="文件的目标路径")
+    render_str: str = Field(..., description="渲染生成的字符串")
+
+    # 输出参数
+    updated: bool = Field(False, description="是否已更新")
+    updated_str: Optional[str] = Field(None, description="更新后的字符串")
+    source: Optional[str] = Field("未知拦截源", description="拦截源")
