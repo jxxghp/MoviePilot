@@ -221,6 +221,12 @@ class SearchChain(ChainBase):
                                      key=ProgressKey.Search)
                 if not torrent.title:
                     continue
+
+                # 匹配订阅附加参数
+                if filter_params and not self.torrenthelper.filter_torrent(torrent_info=torrent,
+                                                                           filter_params=filter_params):
+                    continue
+
                 # 识别元数据
                 torrent_meta = MetaInfo(title=torrent.title, subtitle=torrent.description,
                                         custom_words=custom_words)
@@ -232,11 +238,6 @@ class SearchChain(ChainBase):
                         and torrent.imdbid == mediainfo.imdb_id:
                     logger.info(f'{mediainfo.title} 通过IMDBID匹配到资源：{torrent.site_name} - {torrent.title}')
                     _match_torrents.append((torrent, torrent_meta))
-                    continue
-
-                # 匹配订阅附加参数
-                if filter_params and not self.torrenthelper.filter_torrent(torrent_info=torrent,
-                                                                           filter_params=filter_params):
                     continue
 
                 # 比对种子
