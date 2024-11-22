@@ -35,7 +35,7 @@ class SearchChain(ChainBase):
         self.torrenthelper = TorrentHelper()
 
     def search_by_id(self, tmdbid: int = None, doubanid: str = None,
-                     mtype: MediaType = None, area: str = "title", season: int = None) -> List[Context]:
+                     mtype: MediaType = None, area: str = "title", season: int = None, site: int = None) -> List[Context]:
         """
         根据TMDBID/豆瓣ID搜索资源，精确匹配，但不不过滤本地存在的资源
         :param tmdbid: TMDB ID
@@ -43,6 +43,7 @@ class SearchChain(ChainBase):
         :param mtype: 媒体，电影 or 电视剧
         :param area: 搜索范围，title or imdbid
         :param season: 季数
+        :param site: 搜索的站点
         """
         mediainfo = self.recognize_media(tmdbid=tmdbid, doubanid=doubanid, mtype=mtype)
         if not mediainfo:
@@ -55,7 +56,7 @@ class SearchChain(ChainBase):
                     season: NotExistMediaInfo(episodes=[])
                 }
             }
-        results = self.process(mediainfo=mediainfo, area=area, no_exists=no_exists)
+        results = self.process(mediainfo=mediainfo, area=area, no_exists=no_exists, sites=[site] if site else None)
         # 保存到本地文件
         bytes_results = pickle.dumps(results)
         self.save_cache(bytes_results, self.__result_temp_file)
