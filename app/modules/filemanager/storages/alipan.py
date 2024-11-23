@@ -262,7 +262,7 @@ class AliPan(StorageBase, metaclass=Singleton):
                     drive_id=self.__auth_params.get("resourceDriveId"),
                     parent_fileid="root",
                     type="dir",
-                    path="/资源库/",
+                    path="/",
                     name="资源库",
                     basename="资源库"
                 ),
@@ -272,7 +272,7 @@ class AliPan(StorageBase, metaclass=Singleton):
                     drive_id=self.__auth_params.get("backDriveId"),
                     parent_fileid="root",
                     type="dir",
-                    path="/备份盘/",
+                    path="/",
                     name="备份盘",
                     basename="备份盘"
                 )
