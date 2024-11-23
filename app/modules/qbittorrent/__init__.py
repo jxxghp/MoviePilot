@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Set, Tuple, Optional, Union, List
+from typing import Set, Tuple, Optional, Union, List, Dict
 
 from qbittorrentapi import TorrentFilesList
 from torrentool.torrent import Torrent
@@ -204,66 +204,75 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
         :return: 下载器中符合状态的种子列表
         """
         # 获取下载器
-        server: Qbittorrent = self.get_instance(downloader)
-        if not server:
-            return None
-
+        if downloader:
+            server: Qbittorrent = self.get_instance(downloader)
+            if not server:
+                return None
+            servers = {downloader: server}
+        else:
+            servers: Dict[str, Qbittorrent] = self.get_instances()
         ret_torrents = []
         if hashs:
             # 按Hash获取
-            torrents, _ = server.get_torrents(ids=hashs, tags=settings.TORRENT_TAG)
-            for torrent in torrents or []:
-                content_path = torrent.get("content_path")
-                if content_path:
-                    torrent_path = Path(content_path)
-                else:
-                    torrent_path = Path(torrent.get('save_path')) / torrent.get('name')
-                ret_torrents.append(TransferTorrent(
-                    title=torrent.get('name'),
-                    path=torrent_path,
-                    hash=torrent.get('hash'),
-                    size=torrent.get('total_size'),
-                    tags=torrent.get('tags')
-                ))
+            for name, server in servers.items():
+                torrents, _ = server.get_torrents(ids=hashs, tags=settings.TORRENT_TAG)
+                for torrent in torrents or []:
+                    content_path = torrent.get("content_path")
+                    if content_path:
+                        torrent_path = Path(content_path)
+                    else:
+                        torrent_path = Path(torrent.get('save_path')) / torrent.get('name')
+                    ret_torrents.append(TransferTorrent(
+                        downloader=name,
+                        title=torrent.get('name'),
+                        path=torrent_path,
+                        hash=torrent.get('hash'),
+                        size=torrent.get('total_size'),
+                        tags=torrent.get('tags')
+                    ))
         elif status == TorrentStatus.TRANSFER:
             # 获取已完成且未整理的
-            torrents = server.get_completed_torrents(tags=settings.TORRENT_TAG)
-            for torrent in torrents or []:
-                tags = torrent.get("tags") or []
-                if "已整理" in tags:
-                    continue
-                # 内容路径
-                content_path = torrent.get("content_path")
-                if content_path:
-                    torrent_path = Path(content_path)
-                else:
-                    torrent_path = torrent.get('save_path') / torrent.get('name')
-                ret_torrents.append(TransferTorrent(
-                    title=torrent.get('name'),
-                    path=torrent_path,
-                    hash=torrent.get('hash'),
-                    tags=torrent.get('tags')
-                ))
+            for name, server in servers.items():
+                torrents = server.get_completed_torrents(tags=settings.TORRENT_TAG)
+                for torrent in torrents or []:
+                    tags = torrent.get("tags") or []
+                    if "已整理" in tags:
+                        continue
+                    # 内容路径
+                    content_path = torrent.get("content_path")
+                    if content_path:
+                        torrent_path = Path(content_path)
+                    else:
+                        torrent_path = torrent.get('save_path') / torrent.get('name')
+                    ret_torrents.append(TransferTorrent(
+                        downloader=name,
+                        title=torrent.get('name'),
+                        path=torrent_path,
+                        hash=torrent.get('hash'),
+                        tags=torrent.get('tags')
+                    ))
         elif status == TorrentStatus.DOWNLOADING:
             # 获取正在下载的任务
-            torrents = server.get_downloading_torrents(tags=settings.TORRENT_TAG)
-            for torrent in torrents or []:
-                meta = MetaInfo(torrent.get('name'))
-                ret_torrents.append(DownloadingTorrent(
-                    hash=torrent.get('hash'),
-                    title=torrent.get('name'),
-                    name=meta.name,
-                    year=meta.year,
-                    season_episode=meta.season_episode,
-                    progress=torrent.get('progress') * 100,
-                    size=torrent.get('total_size'),
-                    state="paused" if torrent.get('state') in ("paused", "pausedDL") else "downloading",
-                    dlspeed=StringUtils.str_filesize(torrent.get('dlspeed')),
-                    upspeed=StringUtils.str_filesize(torrent.get('upspeed')),
-                    left_time=StringUtils.str_secends(
-                        (torrent.get('total_size') - torrent.get('completed')) / torrent.get('dlspeed')) if torrent.get(
-                        'dlspeed') > 0 else ''
-                ))
+            for name, server in servers.items():
+                torrents = server.get_downloading_torrents(tags=settings.TORRENT_TAG)
+                for torrent in torrents or []:
+                    meta = MetaInfo(torrent.get('name'))
+                    ret_torrents.append(DownloadingTorrent(
+                        downloader=name,
+                        hash=torrent.get('hash'),
+                        title=torrent.get('name'),
+                        name=meta.name,
+                        year=meta.year,
+                        season_episode=meta.season_episode,
+                        progress=torrent.get('progress') * 100,
+                        size=torrent.get('total_size'),
+                        state="paused" if torrent.get('state') in ("paused", "pausedDL") else "downloading",
+                        dlspeed=StringUtils.str_filesize(torrent.get('dlspeed')),
+                        upspeed=StringUtils.str_filesize(torrent.get('upspeed')),
+                        left_time=StringUtils.str_secends(
+                            (torrent.get('total_size') - torrent.get('completed')) / torrent.get('dlspeed')) if torrent.get(
+                            'dlspeed') > 0 else ''
+                    ))
         else:
             return None
         return ret_torrents

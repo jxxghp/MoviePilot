@@ -233,6 +233,8 @@ class Alist(StorageBase, metaclass=Singleton):
     ) -> Optional[schemas.FileItem]:
         """
         创建目录
+        :param fileitem: 父目录
+        :param name: 目录名
         """
         path = Path(fileitem.path) / name
         resp: Response = RequestUtils(
@@ -271,14 +273,16 @@ class Alist(StorageBase, metaclass=Singleton):
         获取目录，如目录不存在则创建
         """
         folder = self.get_item(path)
+        if folder:
+            return folder
         if not folder:
-            folder = self.create_folder(self.get_parent(schemas.FileItem(
+            folder = self.create_folder(schemas.FileItem(
                 storage=self.schema.value,
                 type="dir",
-                path=path.as_posix() + "/",
+                path=path.parent.as_posix(),
                 name=path.name,
                 basename=path.stem
-            )), path.name)
+            ), path.name)
         return folder
 
     def get_item(

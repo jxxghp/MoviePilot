@@ -35,6 +35,8 @@ class ManualTransferItem(BaseModel):
     episode_offset: Optional[str] = None,
     min_filesize: Optional[int] = 0,
     scrape: bool = False,
+    library_type_folder: bool = False,
+    library_category_folder: bool = False,
     from_history: bool = False
 
 
@@ -148,6 +150,8 @@ def manual_transfer(transer_item: ManualTransferItem,
         epformat=epformat,
         min_filesize=transer_item.min_filesize,
         scrape=transer_item.scrape,
+        library_type_folder=transer_item.library_type_folder,
+        library_category_folder=transer_item.library_category_folder,
         force=force
     )
     # 失败

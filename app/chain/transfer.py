@@ -131,6 +131,7 @@ class TransferChain(ChainBase):
                         extension=file_path.suffix.lstrip('.'),
                     ),
                     mediainfo=mediainfo,
+                    downloader=torrent.downloader,
                     download_hash=torrent.hash,
                     src_match=True
                 )
@@ -148,8 +149,9 @@ class TransferChain(ChainBase):
                       target_directory: TransferDirectoryConf = None,
                       target_storage: str = None, target_path: Path = None,
                       transfer_type: str = None, scrape: bool = None,
-                      season: int = None, epformat: EpisodeFormat = None,
-                      min_filesize: int = 0, download_hash: str = None,
+                      library_type_folder: bool = False, library_category_folder: bool = False,
+                      season: int = None, epformat: EpisodeFormat = None, min_filesize: int = 0,
+                      downloader: str = None, download_hash: str = None,
                       force: bool = False, src_match: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
@@ -161,9 +163,12 @@ class TransferChain(ChainBase):
         :param target_path: 目标路径
         :param transfer_type: 整理类型
         :param scrape: 是否刮削元数据
+        :param library_type_folder: 媒体库类型子目录
+        :param library_category_folder: 媒体库类别子目录
         :param season: 季
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
+        :param downloader: 下载器
         :param download_hash: 下载记录hash
         :param force: 是否强制整理
         :param src_match: 是否源目录匹配
@@ -409,7 +414,9 @@ class TransferChain(ChainBase):
                                                        target_path=target_path,
                                                        transfer_type=transfer_type,
                                                        episodes_info=episodes_info,
-                                                       scrape=scrape)
+                                                       scrape=scrape,
+                                                       library_type_folder=library_type_folder,
+                                                       library_category_folder=library_category_folder)
             if not transferinfo:
                 logger.error("文件整理模块运行失败")
                 return False, "文件整理模块运行失败"
@@ -473,6 +480,7 @@ class TransferChain(ChainBase):
                 'meta': file_meta,
                 'mediainfo': file_mediainfo,
                 'transferinfo': transferinfo,
+                'downloader': downloader,
                 'download_hash': download_hash,
             })
 
@@ -512,7 +520,7 @@ class TransferChain(ChainBase):
         if all_success and current_transfer_type in ["move"]:
             # 下载器hash
             if download_hash:
-                if self.remove_torrents(download_hash):
+                if self.remove_torrents(download_hash, downloader=downloader):
                     logger.info(f"移动模式删除种子成功：{download_hash} ")
             # 删除残留目录
             if fileitem:
@@ -680,6 +688,8 @@ class TransferChain(ChainBase):
                         epformat: EpisodeFormat = None,
                         min_filesize: int = 0,
                         scrape: bool = None,
+                        library_type_folder: bool = False,
+                        library_category_folder: bool = False,
                         force: bool = False) -> Tuple[bool, Union[str, list]]:
         """
         手动整理，支持复杂条件，带进度显示
@@ -694,6 +704,8 @@ class TransferChain(ChainBase):
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
         :param scrape: 是否刮削元数据
+        :param library_type_folder: 是否按类型建立目录
+        :param library_category_folder: 是否按类别建立目录
         :param force: 是否强制整理
         """
         logger.info(f"手动整理：{fileitem.path} ...")
@@ -722,6 +734,8 @@ class TransferChain(ChainBase):
                 epformat=epformat,
                 min_filesize=min_filesize,
                 scrape=scrape,
+                library_type_folder=library_type_folder,
+                library_category_folder=library_category_folder,
                 force=force,
             )
             if not state:

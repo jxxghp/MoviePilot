@@ -1,7 +1,7 @@
 import base64
 import re
 from datetime import datetime
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Dict
 from urllib.parse import urljoin
 
 from lxml import etree
@@ -86,14 +86,22 @@ class SiteChain(ChainBase):
                               f"{userdata.message_unread} 条新消息，请登陆查看",
                         link=site.get("url")
                     ))
+            # 低分享率警告
+            if userdata.ratio and float(userdata.ratio) < 1:
+                self.post_message(Notification(
+                    mtype=NotificationType.SiteMessage,
+                    title=f"【站点分享率低预警】",
+                    text=f"站点 {site.get('name')} 分享率 {userdata.ratio}，请注意！"
+                ))
         return userdata
 
-    def refresh_userdatas(self) -> None:
+    def refresh_userdatas(self) -> Dict[str, SiteUserData]:
         """
         刷新所有站点的用户数据
         """
         sites = self.siteshelper.get_indexers()
         any_site_updated = False
+        result = {}
         for site in sites:
             if global_vars.is_system_stopped:
                 return
@@ -101,10 +109,12 @@ class SiteChain(ChainBase):
                 userdata = self.refresh_userdata(site)
                 if userdata:
                     any_site_updated = True
+                    result[site.get("name")] = userdata
         if any_site_updated:
             EventManager().send_event(EventType.SiteRefreshed, {
                 "site_id": "*"
             })
+        return result
 
     def is_special_site(self, domain: str) -> bool:
         """
@@ -705,3 +715,66 @@ class SiteChain(ChainBase):
                 source=source,
                 title=f"【{site_info.name}】 Cookie&UA更新成功",
                 userid=userid))
+
+    def remote_refresh_userdatas(self, channel: MessageChannel,
+                                 userid: Union[str, int] = None, source: str = None):
+        """
+        刷新所有站点用户数据
+        """
+        logger.info("收到命令，开始刷新站点数据 ...")
+        self.post_message(Notification(
+            channel=channel,
+            source=source,
+            title="开始刷新站点数据 ...",
+            userid=userid
+        ))
+        # 刷新站点数据
+        site_datas = self.refresh_userdatas()
+        if site_datas:
+            # 发送消息
+            messages = {}
+            # 总上传
+            incUploads = 0
+            # 总下载
+            incDownloads = 0
+            # 今天日期
+            today_date = datetime.now().strftime("%Y-%m-%d")
+
+            for rand, site in enumerate(site_datas.keys()):
+                upload = int(site_datas[site].upload or 0)
+                download = int(site_datas[site].download or 0)
+                updated_date = site_datas[site].updated_day
+                if updated_date and updated_date != today_date:
+                    updated_date = f"（{updated_date}）"
+                else:
+                    updated_date = ""
+
+                if upload > 0 or download > 0:
+                    incUploads += upload
+                    incDownloads += download
+                    messages[upload + (rand / 1000)] = (
+                            f"【{site}】{updated_date}\n"
+                            + f"上传量：{StringUtils.str_filesize(upload)}\n"
+                            + f"下载量：{StringUtils.str_filesize(download)}\n"
+                            + "————————————"
+                    )
+            if incDownloads or incUploads:
+                sorted_messages = [messages[key] for key in sorted(messages.keys(), reverse=True)]
+                sorted_messages.insert(0, f"【汇总】\n"
+                                          f"总上传：{StringUtils.str_filesize(incUploads)}\n"
+                                          f"总下载：{StringUtils.str_filesize(incDownloads)}\n"
+                                          f"————————————")
+                self.post_message(Notification(
+                    channel=channel,
+                    source=source,
+                    title="【站点数据统计】",
+                    text="\n".join(sorted_messages),
+                    userid=userid
+                ))
+        else:
+            self.post_message(Notification(
+                channel=channel,
+                source=source,
+                title="没有刷新到任何站点数据！",
+                userid=userid
+            ))
