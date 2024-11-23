@@ -489,6 +489,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 if init_folder:
                     # 识别文件夹名称
                     season_meta = MetaInfo(filepath.name)
+                    # 当前文件夹为Specials或者SPs时，设置为S0
+                    if filepath.name in settings.RENAME_FORMAT_S0_NAMES:
+                        season_meta.begin_season = 0
                     if season_meta.begin_season is not None:
                         # 是否已存在
                         nfo_path = filepath / "season.nfo"
