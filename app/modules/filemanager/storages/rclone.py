@@ -172,6 +172,10 @@ class Rclone(StorageBase):
                     return sub_folder
             return None
 
+        # 是否已存在
+        folder = self.get_item(path)
+        if folder:
+            return folder
         # 逐级查找和创建目录
         fileitem = schemas.FileItem(path="/")
         for part in path.parts:

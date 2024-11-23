@@ -319,14 +319,10 @@ class AliPan(StorageBase, metaclass=Singleton):
                     return sub_folder
             return None
 
-        if not self.aligo:
-            return None
-        item = self.aligo.get_folder_by_path(path=str(path), create_folder=True)
-        if item:
-            # 已存在
-            if isinstance(item, CreateFileResponse):
-                item = self.aligo.get_file(file_id=item.file_id, drive_id=item.drive_id)
-            return self.__get_fileitem(item)
+        # 是否已存在
+        folder = self.get_item(path)
+        if folder:
+            return folder
         # 逐级查找和创建目录
         fileitem = schemas.FileItem(path="/")
         for part in path.parts:
