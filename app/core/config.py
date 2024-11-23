@@ -232,6 +232,10 @@ class ConfigModel(BaseModel):
     SECURITY_IMAGE_SUFFIXES: List[str] = Field(
         default_factory=lambda: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"]
     )
+    # 重命名时支持的S0别名
+    RENAME_FORMAT_S0_NAMES: List[str] = Field(
+        default_factory=lambda: ["Specials", "SPs"]
+    )
 
 
 class Settings(BaseSettings, ConfigModel):

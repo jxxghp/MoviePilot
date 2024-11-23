@@ -489,7 +489,10 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 if init_folder:
                     # 识别文件夹名称
                     season_meta = MetaInfo(filepath.name)
-                    if season_meta.begin_season:
+                    # 当前文件夹为Specials或者SPs时，设置为S0
+                    if filepath.name in settings.RENAME_FORMAT_S0_NAMES:
+                        season_meta.begin_season = 0
+                    if season_meta.begin_season is not None:
                         # 是否已存在
                         nfo_path = filepath / "season.nfo"
                         if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
@@ -517,7 +520,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                 if content:
                                     __save_file(_fileitem=fileitem, _path=image_path, _content=content)
                     # 判断当前目录是不是剧集根目录
-                    if season_meta.name:
+                    if not season_meta.season:
                         # 是否已存在
                         nfo_path = filepath / "tvshow.nfo"
                         if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
