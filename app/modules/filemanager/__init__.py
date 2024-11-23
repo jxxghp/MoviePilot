@@ -1101,7 +1101,6 @@ class FileManagerModule(_ModuleBase):
                 if episode.episode_number == meta.begin_episode:
                     episode_date = episode.air_date
                     break
-        season_year = mediainfo.season_years.get(int(meta.season_seq), None) if (mediainfo.season_years and meta.season_seq) else None
         
         return {
             # 标题
