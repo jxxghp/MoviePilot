@@ -322,7 +322,7 @@ class FileManagerModule(_ModuleBase):
                  target_directory: TransferDirectoryConf = None,
                  target_storage: str = None, target_path: Path = None,
                  transfer_type: str = None, scrape: bool = None,
-                 library_type_folder: bool = False, library_category_folder: bool = False,
+                 library_type_folder: bool = None, library_category_folder: bool = None,
                  episodes_info: List[TmdbEpisode] = None) -> TransferInfo:
         """
         文件整理
