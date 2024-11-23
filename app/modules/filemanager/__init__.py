@@ -1151,7 +1151,7 @@ class FileManagerModule(_ModuleBase):
             "part": meta.part,
             # 剧集标题
             "episode_title": __convert_invalid_characters(episode_title),
-            # 剧集日期根据season_info值获取
+            # 剧集日期根据episodes_info值获取
             "episode_date": episode_date,
             # 文件后缀
             "fileExt": file_ext,
