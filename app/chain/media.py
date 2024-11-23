@@ -11,12 +11,15 @@ from app.core.event import eventmanager, Event
 from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo, MetaInfoPath
 from app.log import logger
+from app.schemas import FileItem
 from app.schemas.types import EventType, MediaType, ChainEventType
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 
 recognize_lock = Lock()
+scraping_lock = Lock()
+scraping_files = []
 
 
 class MediaChain(ChainBase, metaclass=Singleton):
@@ -301,12 +304,23 @@ class MediaChain(ChainBase, metaclass=Singleton):
         if not event:
             return
         event_data = event.event_data or {}
-        fileitem = event_data.get("fileitem")
-        meta = event_data.get("meta")
-        mediainfo = event_data.get("mediainfo")
+        fileitem: FileItem = event_data.get("fileitem")
+        meta: MetaBase = event_data.get("meta")
+        mediainfo: MediaInfo = event_data.get("mediainfo")
         if not fileitem:
             return
-        self.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
+        # 刮削锁
+        with scraping_lock:
+            if fileitem.path in scraping_files:
+                return
+            scraping_files.append(fileitem.path)
+        try:
+            # 执行刮削
+            self.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
+        finally:
+            # 释放锁
+            with scraping_lock:
+                scraping_files.remove(fileitem.path)
 
     def scrape_metadata(self, fileitem: schemas.FileItem,
                         meta: MetaBase = None, mediainfo: MediaInfo = None,
