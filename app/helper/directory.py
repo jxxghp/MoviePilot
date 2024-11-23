@@ -5,6 +5,7 @@ from app import schemas
 from app.core.context import MediaInfo
 from app.db.systemconfig_oper import SystemConfigOper
 from app.schemas.types import SystemConfigKey
+from app.utils.system import SystemUtils
 
 
 class DirectoryHelper:
@@ -67,6 +68,8 @@ class DirectoryHelper:
         # 电影/电视剧
         media_type = media.type.value
         dirs = self.get_dirs()
+        # 已匹配的目录
+        matched_dirs = []
         # 按照配置顺序查找
         for d in dirs:
             # 没有启用整理的目录
@@ -92,12 +95,22 @@ class DirectoryHelper:
                 continue
             # 目录类型为全部的，符合条件
             if not d.media_type:
-                return d
+                matched_dirs.append(d)
+                continue
             # 目录类型相等，目录类别为全部，符合条件
             if d.media_type == media_type and not d.media_category:
-                return d
+                matched_dirs.append(d)
+                continue
             # 目录类型相等，目录类别相等，符合条件
             if d.media_type == media_type and d.media_category == media.category:
-                return d
-
+                matched_dirs.append(d)
+                continue
+        if matched_dirs:
+            if src_path:
+                # 优先源目录同盘
+                for matched_dir in matched_dirs:
+                    matched_path = Path(matched_dir.download_path)
+                    if SystemUtils.is_same_disk(matched_path, src_path):
+                        return matched_dir
+            return matched_dirs[0]
         return None
