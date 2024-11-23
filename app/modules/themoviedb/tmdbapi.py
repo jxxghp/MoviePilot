@@ -1290,7 +1290,7 @@ class TmdbApi:
                 for group_episode in group_episodes:
                     order = group_episode.get('order')
                     episodes = group_episode.get('episodes')
-                    if not episodes or not order:
+                    if not episodes:
                         continue
                     # 当前季第一季时间
                     first_date = episodes[0].get("air_date")

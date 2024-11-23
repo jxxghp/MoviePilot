@@ -1119,7 +1119,14 @@ class FileManagerModule(_ModuleBase):
                 if episode.episode_number == meta.begin_episode:
                     episode_title = episode.name
                     break
-
+        # 获取集播出日期
+        episode_date = None
+        if meta.begin_episode and episodes_info:
+            for episode in episodes_info:
+                if episode.episode_number == meta.begin_episode:
+                    episode_date = episode.air_date
+                    break
+        
         return {
             # 标题
             "title": __convert_invalid_characters(mediainfo.title),
@@ -1169,6 +1176,8 @@ class FileManagerModule(_ModuleBase):
             "part": meta.part,
             # 剧集标题
             "episode_title": __convert_invalid_characters(episode_title),
+            # 剧集日期根据episodes_info值获取
+            "episode_date": episode_date,
             # 文件后缀
             "fileExt": file_ext,
             # 自定义占位符
