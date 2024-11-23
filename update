@@ -20,16 +20,6 @@ function WARN() {
     echo -e "${WARN} ${1}"
 }
 
-TMP_PATH=$(mktemp -d)
-if [ ! -d "${TMP_PATH}" ]; then
-    # 如果自动生成 tmp 文件夹失败则手动指定，避免出现数据丢失等情况
-    TMP_PATH=/tmp/mp_update_path
-    if [ -d /tmp/mp_update_path ]; then
-        rm -rf /tmp/mp_update_path
-    fi
-    mkdir -p /tmp/mp_update_path
-fi
-
 # 下载及解压
 function download_and_unzip() {
     local retries=0
@@ -275,6 +265,15 @@ function get_priority() {
 }
 
 if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "release" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]]; then
+    TMP_PATH=$(mktemp -d)
+    if [ ! -d "${TMP_PATH}" ]; then
+        # 如果自动生成 tmp 文件夹失败则手动指定，避免出现数据丢失等情况
+        TMP_PATH=/tmp/mp_update_path
+        if [ -d /tmp/mp_update_path ]; then
+            rm -rf /tmp/mp_update_path
+        fi
+        mkdir -p /tmp/mp_update_path
+    fi
     # 优先级：镜像站 > 全局 > 不代理
     # pip
     retries=0
@@ -323,6 +322,9 @@ if [[ "${MOVIEPILOT_AUTO_UPDATE}" = "true" ]] || [[ "${MOVIEPILOT_AUTO_UPDATE}" 
         else
             WARN "当前版本号获取失败，继续启动..."
         fi
+    fi
+    if [ -d "${TMP_PATH}" ]; then
+        rm -rf "${TMP_PATH}"
     fi
 elif [[ "${MOVIEPILOT_AUTO_UPDATE}" = "false" ]]; then
     INFO "程序自动升级已关闭，如需自动升级请在创建容器时设置环境变量：MOVIEPILOT_AUTO_UPDATE=release"
