@@ -149,7 +149,7 @@ class TransferChain(ChainBase):
                       target_directory: TransferDirectoryConf = None,
                       target_storage: str = None, target_path: Path = None,
                       transfer_type: str = None, scrape: bool = None,
-                      library_type_folder: bool = False, library_category_folder: bool = False,
+                      library_type_folder: bool = None, library_category_folder: bool = None,
                       season: int = None, epformat: EpisodeFormat = None, min_filesize: int = 0,
                       downloader: str = None, download_hash: str = None,
                       force: bool = False, src_match: bool = False) -> Tuple[bool, str]:
