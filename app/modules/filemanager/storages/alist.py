@@ -381,7 +381,7 @@ class Alist(StorageBase, metaclass=Singleton):
         resp: Response = RequestUtils(
             headers=self.__get_header_with_token()
         ).post_res(
-            self.__get_api_url("/api/fs/delete"),
+            self.__get_api_url("/api/fs/remove"),
             json={
                 "dir": Path(fileitem.path).parent.as_posix(),
                 "names": [fileitem.name],
