@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Set, Tuple, Optional, Union, List
+from typing import Set, Tuple, Optional, Union, List, Dict
 
 from torrentool.torrent import Torrent
 from transmission_rpc import File
@@ -196,60 +196,70 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
         :return: 下载器中符合状态的种子列表
         """
         # 获取下载器
-        server: Transmission = self.get_instance(downloader)
-        if not server:
-            return None
+        if downloader:
+            server: Transmission = self.get_instance(downloader)
+            if not server:
+                return None
+            servers = {downloader: server}
+        else:
+            servers: Dict[str, Transmission] = self.get_instances()
         ret_torrents = []
         if hashs:
             # 按Hash获取
-            torrents, _ = server.get_torrents(ids=hashs, tags=settings.TORRENT_TAG)
-            for torrent in torrents or []:
-                ret_torrents.append(TransferTorrent(
-                    title=torrent.name,
-                    path=Path(torrent.download_dir) / torrent.name,
-                    hash=torrent.hashString,
-                    size=torrent.total_size,
-                    tags=",".join(torrent.labels or [])
-                ))
+            for name, server in servers.items():
+                torrents, _ = server.get_torrents(ids=hashs, tags=settings.TORRENT_TAG)
+                for torrent in torrents or []:
+                    ret_torrents.append(TransferTorrent(
+                        downloader=name,
+                        title=torrent.name,
+                        path=Path(torrent.download_dir) / torrent.name,
+                        hash=torrent.hashString,
+                        size=torrent.total_size,
+                        tags=",".join(torrent.labels or [])
+                    ))
         elif status == TorrentStatus.TRANSFER:
             # 获取已完成且未整理的
-            torrents = server.get_completed_torrents(tags=settings.TORRENT_TAG)
-            for torrent in torrents or []:
-                # 含"已整理"tag的不处理
-                if "已整理" in torrent.labels or []:
-                    continue
-                # 下载路径
-                path = torrent.download_dir
-                # 无法获取下载路径的不处理
-                if not path:
-                    logger.debug(f"未获取到 {torrent.name} 下载保存路径")
-                    continue
-                ret_torrents.append(TransferTorrent(
-                    title=torrent.name,
-                    path=Path(torrent.download_dir) / torrent.name,
-                    hash=torrent.hashString,
-                    tags=",".join(torrent.labels or [])
-                ))
+            for name, server in servers.items():
+                torrents = server.get_completed_torrents(tags=settings.TORRENT_TAG)
+                for torrent in torrents or []:
+                    # 含"已整理"tag的不处理
+                    if "已整理" in torrent.labels or []:
+                        continue
+                    # 下载路径
+                    path = torrent.download_dir
+                    # 无法获取下载路径的不处理
+                    if not path:
+                        logger.debug(f"未获取到 {torrent.name} 下载保存路径")
+                        continue
+                    ret_torrents.append(TransferTorrent(
+                        downloader=name,
+                        title=torrent.name,
+                        path=Path(torrent.download_dir) / torrent.name,
+                        hash=torrent.hashString,
+                        tags=",".join(torrent.labels or [])
+                    ))
         elif status == TorrentStatus.DOWNLOADING:
             # 获取正在下载的任务
-            torrents = server.get_downloading_torrents(tags=settings.TORRENT_TAG)
-            for torrent in torrents or []:
-                meta = MetaInfo(torrent.name)
-                dlspeed = torrent.rate_download if hasattr(torrent, "rate_download") else torrent.rateDownload
-                upspeed = torrent.rate_upload if hasattr(torrent, "rate_upload") else torrent.rateUpload
-                ret_torrents.append(DownloadingTorrent(
-                    hash=torrent.hashString,
-                    title=torrent.name,
-                    name=meta.name,
-                    year=meta.year,
-                    season_episode=meta.season_episode,
-                    progress=torrent.progress,
-                    size=torrent.total_size,
-                    state="paused" if torrent.status == "stopped" else "downloading",
-                    dlspeed=StringUtils.str_filesize(dlspeed),
-                    upspeed=StringUtils.str_filesize(upspeed),
-                    left_time=StringUtils.str_secends(torrent.left_until_done / dlspeed) if dlspeed > 0 else ''
-                ))
+            for name, server in servers.items():
+                torrents = server.get_downloading_torrents(tags=settings.TORRENT_TAG)
+                for torrent in torrents or []:
+                    meta = MetaInfo(torrent.name)
+                    dlspeed = torrent.rate_download if hasattr(torrent, "rate_download") else torrent.rateDownload
+                    upspeed = torrent.rate_upload if hasattr(torrent, "rate_upload") else torrent.rateUpload
+                    ret_torrents.append(DownloadingTorrent(
+                        downloader=name,
+                        hash=torrent.hashString,
+                        title=torrent.name,
+                        name=meta.name,
+                        year=meta.year,
+                        season_episode=meta.season_episode,
+                        progress=torrent.progress,
+                        size=torrent.total_size,
+                        state="paused" if torrent.status == "stopped" else "downloading",
+                        dlspeed=StringUtils.str_filesize(dlspeed),
+                        upspeed=StringUtils.str_filesize(upspeed),
+                        left_time=StringUtils.str_secends(torrent.left_until_done / dlspeed) if dlspeed > 0 else ''
+                    ))
         else:
             return None
         return ret_torrents

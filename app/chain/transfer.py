@@ -131,6 +131,7 @@ class TransferChain(ChainBase):
                         extension=file_path.suffix.lstrip('.'),
                     ),
                     mediainfo=mediainfo,
+                    downloader=torrent.downloader,
                     download_hash=torrent.hash,
                     src_match=True
                 )
@@ -149,8 +150,8 @@ class TransferChain(ChainBase):
                       target_storage: str = None, target_path: Path = None,
                       transfer_type: str = None, scrape: bool = None,
                       library_type_folder: bool = False, library_category_folder: bool = False,
-                      season: int = None, epformat: EpisodeFormat = None,
-                      min_filesize: int = 0, download_hash: str = None,
+                      season: int = None, epformat: EpisodeFormat = None, min_filesize: int = 0,
+                      downloader: str = None, download_hash: str = None,
                       force: bool = False, src_match: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
@@ -167,6 +168,7 @@ class TransferChain(ChainBase):
         :param season: 季
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
+        :param downloader: 下载器
         :param download_hash: 下载记录hash
         :param force: 是否强制整理
         :param src_match: 是否源目录匹配
@@ -478,6 +480,7 @@ class TransferChain(ChainBase):
                 'meta': file_meta,
                 'mediainfo': file_mediainfo,
                 'transferinfo': transferinfo,
+                'downloader': downloader,
                 'download_hash': download_hash,
             })
 
@@ -517,7 +520,7 @@ class TransferChain(ChainBase):
         if all_success and current_transfer_type in ["move"]:
             # 下载器hash
             if download_hash:
-                if self.remove_torrents(download_hash):
+                if self.remove_torrents(download_hash, downloader=downloader):
                     logger.info(f"移动模式删除种子成功：{download_hash} ")
             # 删除残留目录
             if fileitem:

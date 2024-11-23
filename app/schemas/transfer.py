@@ -10,6 +10,7 @@ class TransferTorrent(BaseModel):
     """
     待转移任务信息
     """
+    downloader: Optional[str] = None
     title: Optional[str] = None
     path: Optional[Path] = None
     hash: Optional[str] = None
@@ -22,6 +23,7 @@ class DownloadingTorrent(BaseModel):
     """
     下载中任务信息
     """
+    downloader: Optional[str] = None
     hash: Optional[str] = None
     title: Optional[str] = None
     name: Optional[str] = None
