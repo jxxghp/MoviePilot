@@ -148,6 +148,7 @@ class TransferChain(ChainBase):
                       target_directory: TransferDirectoryConf = None,
                       target_storage: str = None, target_path: Path = None,
                       transfer_type: str = None, scrape: bool = None,
+                      library_type_folder: bool = False, library_category_folder: bool = False,
                       season: int = None, epformat: EpisodeFormat = None,
                       min_filesize: int = 0, download_hash: str = None,
                       force: bool = False, src_match: bool = False) -> Tuple[bool, str]:
@@ -161,6 +162,8 @@ class TransferChain(ChainBase):
         :param target_path: 目标路径
         :param transfer_type: 整理类型
         :param scrape: 是否刮削元数据
+        :param library_type_folder: 媒体库类型子目录
+        :param library_category_folder: 媒体库类别子目录
         :param season: 季
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
@@ -409,7 +412,9 @@ class TransferChain(ChainBase):
                                                        target_path=target_path,
                                                        transfer_type=transfer_type,
                                                        episodes_info=episodes_info,
-                                                       scrape=scrape)
+                                                       scrape=scrape,
+                                                       library_type_folder=library_type_folder,
+                                                       library_category_folder=library_category_folder)
             if not transferinfo:
                 logger.error("文件整理模块运行失败")
                 return False, "文件整理模块运行失败"
@@ -680,6 +685,8 @@ class TransferChain(ChainBase):
                         epformat: EpisodeFormat = None,
                         min_filesize: int = 0,
                         scrape: bool = None,
+                        library_type_folder: bool = False,
+                        library_category_folder: bool = False,
                         force: bool = False) -> Tuple[bool, Union[str, list]]:
         """
         手动整理，支持复杂条件，带进度显示
@@ -694,6 +701,8 @@ class TransferChain(ChainBase):
         :param epformat: 剧集格式
         :param min_filesize: 最小文件大小(MB)
         :param scrape: 是否刮削元数据
+        :param library_type_folder: 是否按类型建立目录
+        :param library_category_folder: 是否按类别建立目录
         :param force: 是否强制整理
         """
         logger.info(f"手动整理：{fileitem.path} ...")
@@ -722,6 +731,8 @@ class TransferChain(ChainBase):
                 epformat=epformat,
                 min_filesize=min_filesize,
                 scrape=scrape,
+                library_type_folder=library_type_folder,
+                library_category_folder=library_category_folder,
                 force=force,
             )
             if not state:

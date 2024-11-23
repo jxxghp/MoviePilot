@@ -385,6 +385,7 @@ class ChainBase(metaclass=ABCMeta):
                  target_directory: TransferDirectoryConf = None,
                  target_storage: str = None, target_path: Path = None,
                  transfer_type: str = None, scrape: bool = None,
+                 library_type_folder: bool = False, library_category_folder: bool = False,
                  episodes_info: List[TmdbEpisode] = None) -> Optional[TransferInfo]:
         """
         文件转移
@@ -396,6 +397,8 @@ class ChainBase(metaclass=ABCMeta):
         :param target_path:  目标路径
         :param transfer_type:  转移模式
         :param scrape: 是否刮削元数据
+        :param library_type_folder: 是否按类型创建目录
+        :param library_category_folder: 是否按类别创建目录
         :param episodes_info: 当前季的全部集信息
         :return: {path, target_path, message}
         """
@@ -404,6 +407,8 @@ class ChainBase(metaclass=ABCMeta):
                                target_directory=target_directory,
                                target_path=target_path, target_storage=target_storage,
                                transfer_type=transfer_type, scrape=scrape,
+                               library_type_folder=library_type_folder,
+                               library_category_folder=library_category_folder,
                                episodes_info=episodes_info)
 
     def transfer_completed(self, hashs: str, downloader: str = None) -> None:
