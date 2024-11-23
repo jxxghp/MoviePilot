@@ -225,6 +225,9 @@ class U115Pan(StorageBase, metaclass=Singleton):
         """
         if not self.client:
             return None
+        folder = self.get_item(path)
+        if folder:
+            return folder
         try:
             result = self.client.fs.makedirs(path, exist_ok=True)
             if result:

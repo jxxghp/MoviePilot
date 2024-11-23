@@ -139,6 +139,8 @@ class Rclone(StorageBase):
     def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """
         创建目录
+        :param fileitem: 父目录
+        :param name: 目录名
         """
         try:
             retcode = subprocess.run(
@@ -149,10 +151,7 @@ class Rclone(StorageBase):
                 startupinfo=self.__get_hidden_shell()
             ).returncode
             if retcode == 0:
-                ret_fileitem = copy.deepcopy(fileitem)
-                ret_fileitem.path = f"{fileitem.path}/{name}/"
-                ret_fileitem.name = name
-                return ret_fileitem
+                return self.get_item(Path(f"{fileitem.path}/{name}"))
         except Exception as err:
             logger.error(f"rclone创建目录失败：{err}")
         return None
@@ -166,11 +165,11 @@ class Rclone(StorageBase):
             """
             查找下级目录中匹配名称的目录
             """
-            for sub_file in self.list(_fileitem):
-                if sub_file.type != "dir":
+            for sub_folder in self.list(_fileitem):
+                if sub_folder.type != "dir":
                     continue
-                if sub_file.name == _name:
-                    return sub_file
+                if sub_folder.name == _name:
+                    return sub_folder
             return None
 
         # 逐级查找和创建目录

@@ -79,6 +79,8 @@ class StorageBase(metaclass=ABCMeta):
     def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """
         创建目录
+        :param fileitem: 父目录
+        :param name: 目录名
         """
         pass
 

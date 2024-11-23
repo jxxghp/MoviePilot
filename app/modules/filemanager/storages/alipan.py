@@ -291,6 +291,8 @@ class AliPan(StorageBase, metaclass=Singleton):
     def create_folder(self, fileitem: schemas.FileItem, name: str) -> Optional[schemas.FileItem]:
         """
         创建目录
+        :param fileitem: 父目录
+        :param name: 目录名
         """
         if not self.aligo:
             return None
@@ -305,14 +307,40 @@ class AliPan(StorageBase, metaclass=Singleton):
         """
         根据文件路程获取目录，不存在则创建
         """
+
+        def __find_dir(_fileitem: schemas.FileItem, _name: str) -> Optional[schemas.FileItem]:
+            """
+            查找下级目录中匹配名称的目录
+            """
+            for sub_folder in self.list(_fileitem):
+                if sub_folder.type != "dir":
+                    continue
+                if sub_folder.name == _name:
+                    return sub_folder
+            return None
+
         if not self.aligo:
             return None
         item = self.aligo.get_folder_by_path(path=str(path), create_folder=True)
         if item:
+            # 已存在
             if isinstance(item, CreateFileResponse):
                 item = self.aligo.get_file(file_id=item.file_id, drive_id=item.drive_id)
             return self.__get_fileitem(item)
-        return None
+        # 逐级查找和创建目录
+        fileitem = schemas.FileItem(path="/")
+        for part in path.parts:
+            if part == "/":
+                continue
+            dir_file = __find_dir(fileitem, part)
+            if dir_file:
+                fileitem = dir_file
+            else:
+                dir_file = self.create_folder(fileitem, part)
+                if not dir_file:
+                    return None
+                fileitem = dir_file
+        return fileitem
 
     def get_item(self, path: Path) -> Optional[schemas.FileItem]:
         """
