@@ -54,6 +54,11 @@ class CommandChain(ChainBase, metaclass=Singleton):
                 "description": "更新站点Cookie",
                 "data": {}
             },
+            "/site_statistic": {
+                "func": SiteChain().remote_refresh_userdatas,
+                "description": "站点数据统计",
+                "data": {}
+            },
             "/site_enable": {
                 "func": SiteChain().remote_enable,
                 "description": "启用站点",
@@ -402,7 +407,7 @@ class CommandChain(ChainBase, metaclass=Singleton):
                              channel=event_channel, source=event_source, userid=event_user)
 
     @eventmanager.register(EventType.ModuleReload)
-    def module_reload_event(self, event: ManagerEvent) -> None:
+    def module_reload_event(self, _: ManagerEvent) -> None:
         """
         注册模块重载事件
         """
