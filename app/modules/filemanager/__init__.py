@@ -352,21 +352,9 @@ class FileManagerModule(_ModuleBase):
                                 message=f"{target_path} 不是有效目录")
         # 获取目标路径
         if target_directory:
-            # 拼装媒体库一、二级子目录
-            target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_directory,
-                                              need_type_folder=library_type_folder,
-                                              need_category_folder=library_category_folder)
-            # 目标存储类型
-            if not target_storage:
-                target_storage = target_directory.library_storage
             # 整理方式
             if not transfer_type:
                 transfer_type = target_directory.transfer_type
-                if not transfer_type:
-                    logger.error(f"{target_directory.name} 未设置整理方式")
-                    return TransferInfo(success=False,
-                                        fileitem=fileitem,
-                                        message=f"{target_directory.name} 未设置整理方式")
             # 是否需要重命名
             need_rename = target_directory.renaming
             # 是否需要通知
@@ -378,16 +366,22 @@ class FileManagerModule(_ModuleBase):
                 need_scrape = target_directory.scraping
             else:
                 need_scrape = scrape
+            # 目标存储类型
+            if not target_storage:
+                target_storage = target_directory.library_storage
+            # 拼装媒体库一、二级子目录
+            target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_directory,
+                                              need_type_folder=library_type_folder,
+                                              need_category_folder=library_category_folder)
         elif target_path:
-            # 手动整理的场景，有自定义目标路径
-            target_path = self.__get_dest_path(mediainfo=mediainfo, target_path=target_path,
-                                               need_type_folder=library_type_folder,
-                                               need_category_folder=library_category_folder)
             need_scrape = scrape or False
             need_rename = True
             need_notify = False
             overwrite_mode = "never"
-            logger.info(f"{target_path} 为自定义路径, 通知将不会发送")
+            # 手动整理的场景，有自定义目标路径
+            target_path = self.__get_dest_path(mediainfo=mediainfo, target_path=target_path,
+                                               need_type_folder=library_type_folder,
+                                               need_category_folder=library_category_folder)
         else:
             # 未找到有效的媒体库目录
             logger.error(
@@ -395,9 +389,14 @@ class FileManagerModule(_ModuleBase):
             return TransferInfo(success=False,
                                 fileitem=fileitem,
                                 message="未找到有效的媒体库目录")
-
-        logger.info(f"获取整理目标路径：【{target_storage}】{target_path}")
+        # 整理方式
+        if not transfer_type:
+            logger.error(f"{target_directory.name} 未设置整理方式")
+            return TransferInfo(success=False,
+                                fileitem=fileitem,
+                                message=f"{target_directory.name} 未设置整理方式")
         # 整理
+        logger.info(f"获取整理目标路径：【{target_storage}】{target_path}")
         return self.transfer_media(fileitem=fileitem,
                                    in_meta=meta,
                                    mediainfo=mediainfo,
@@ -541,17 +540,25 @@ class FileManagerModule(_ModuleBase):
             elif fileitem.storage == target_storage:
                 # 同一网盘
                 if transfer_type == "copy":
-                    # 移动文件到新目录
-                    if source_oper.move(fileitem, target_file.parent, target_file.name):
-                        return target_oper.get_item(target_file), ""
+                    # 复制文件到新目录
+                    target_fileitem = target_oper.get_folder(target_file.parent)
+                    if target_fileitem:
+                        if source_oper.move(fileitem, Path(target_fileitem.path), target_file.name):
+                            return target_oper.get_item(target_file), ""
+                        else:
+                            return None, f"【{target_storage}】{fileitem.path} 复制文件失败"
                     else:
-                        return None, f"【{target_storage}】{fileitem.path} 移动文件失败"
+                        return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
                 elif transfer_type == "move":
                     # 移动文件到新目录
-                    if source_oper.move(fileitem, target_file.parent, target_file.name):
-                        return target_oper.get_item(target_file), ""
+                    target_fileitem = target_oper.get_folder(target_file.parent)
+                    if target_fileitem:
+                        if source_oper.move(fileitem, Path(target_fileitem.path), target_file.name):
+                            return target_oper.get_item(target_file), ""
+                        else:
+                            return None, f"【{target_storage}】{fileitem.path} 移动文件失败"
                     else:
-                        return None, f"【{target_storage}】{fileitem.path} 移动文件失败"
+                        return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
                 else:
                     return None, f"不支持的整理方式：{transfer_type}"
 
