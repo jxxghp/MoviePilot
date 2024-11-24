@@ -372,12 +372,13 @@ class MediaChain(ChainBase, metaclass=Singleton):
             try:
                 parent_item = self.storagechain.get_parent_item(_fileitem)
                 if not parent_item:
+                    logger.warn(f"无法获取 {_fileitem.path} 的上级目录！")
                     return
                 item = self.storagechain.upload_file(fileitem=parent_item, path=tmp_file, new_name=_path.name)
                 if item:
-                    logger.info(f"已保存文件：{Path(parent_item.path) / item.name}")
+                    logger.info(f"已保存文件：{item.path}")
                 else:
-                    logger.warn(f"文件保存失败：{Path(parent_item.path) / _path.name}")
+                    logger.warn(f"文件保存失败：{item.path}")
             finally:
                 if tmp_file.exists():
                     tmp_file.unlink()
