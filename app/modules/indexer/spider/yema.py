@@ -21,14 +21,30 @@ class YemaSpider:
     _cookie = None
     _ua = None
     _size = 40
-    _searchurl = "%sapi/torrent/fetchCategoryOpenTorrentList"
+    _searchurl = "%sapi/torrent/fetchOpenTorrentList"
     _downloadurl = "%sapi/torrent/download?id=%s"
     _pageurl = "%s#/torrent/detail/%s/"
     _timeout = 15
 
     # 分类
-    _movie_category = 4
-    _tv_category = 5
+    _movie_category = [4]
+    _tv_category = [5, 13, 14, 17, 15, 6, 16]
+
+    # 标签 https://wiki.yemapt.org/developer/constants
+    _labels = {
+        "1": "禁转",
+        "2": "首发",
+        "3": "官方",
+        "4": "自制",
+        "5": "国语",
+        "6": "中字",
+        "7": "粤语",
+        "8": "英字",
+        "9": "HDR10",
+        "10": "杜比视界",
+        "11": "分集",
+        "12": "完结",
+    }
 
     def __init__(self, indexer: CommentedMap):
         self.systemconfig = SystemConfigOper()
@@ -47,14 +63,7 @@ class YemaSpider:
         """
         搜索
         """
-        if not mtype:
-            categoryId = self._movie_category
-        elif mtype == MediaType.TV:
-            categoryId = self._tv_category
-        else:
-            categoryId = self._movie_category
         params = {
-            "categoryId": categoryId,
             "pageParam": {
                 "current": page + 1,
                 "pageSize": self._size,
@@ -62,6 +71,12 @@ class YemaSpider:
             },
             "sorter": {}
         }
+        # 新接口可不传 categoryId 参数
+        # if mtype == MediaType.MOVIE:
+        #     params.update({
+        #         "categoryId": self._movie_category,
+        #     })
+        #     pass
         if keyword:
             params.update({
                 "keyword": keyword,
@@ -82,17 +97,27 @@ class YemaSpider:
             results = res.json().get('data', []) or []
             for result in results:
                 category_value = result.get('categoryId')
-                if category_value == self._tv_category:
+                if category_value in self._tv_category :
                     category = MediaType.TV.value
-                elif category_value == self._movie_category:
+                elif category_value in self._movie_category:
                     category = MediaType.MOVIE.value
                 else:
                     category = MediaType.UNKNOWN.value
+                    pass
+
+                torrentLabelIds = result.get('tagList')
+                torrentLabels = []
+                for labelId in torrentLabelIds:
+                    if self._labels.get(labelId) is not None:
+                        torrentLabels.append(self._labels.get(labelId))
+                        pass
+                    pass
                 torrent = {
                     'title': result.get('showName'),
                     'description': result.get('shortDesc'),
                     'enclosure': self.__get_download_url(result.get('id')),
-                    'pubdate': StringUtils.unify_datetime_str(result.get('gmtCreate')),
+                    # 使用上架时间，而不是用户发布时间，上架时间即其他用户可见时间
+                    'pubdate': StringUtils.unify_datetime_str(result.get('listingTime')),
                     'size': result.get('fileSize'),
                     'seeders': result.get('seedNum'),
                     'peers': result.get('leechNum'),
@@ -101,7 +126,7 @@ class YemaSpider:
                     'uploadvolumefactor': self.__get_uploadvolumefactor(result.get('uploadPromotion')),
                     'freedate': StringUtils.unify_datetime_str(result.get('downloadPromotionEndTime')),
                     'page_url': self._pageurl % (self._domain, result.get('id')),
-                    'labels': [],
+                    'labels': torrentLabels,
                     'category': category
                 }
                 torrents.append(torrent)
