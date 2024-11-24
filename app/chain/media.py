@@ -336,6 +336,20 @@ class MediaChain(ChainBase, metaclass=Singleton):
         :param overwrite: 是否覆盖已有文件
         """
 
+        def is_bluray_folder(_fileitem: schemas.FileItem) -> bool:
+            """
+            判断是否为原盘目录
+            """
+            if not _fileitem or _fileitem.type != "dir":
+                return False
+            # 蓝光原盘目录必备的文件或文件夹
+            required_files = ['BDMV', 'CERTIFICATE']
+            # 检查目录下是否存在所需文件或文件夹
+            for item in self.storagechain.list_files(_fileitem):
+                if item.name in required_files:
+                    return True
+            return False
+
         def __list_files(_fileitem: schemas.FileItem):
             """
             列出下级文件
@@ -408,11 +422,26 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 __save_file(_fileitem=parent, _path=nfo_path, _content=movie_nfo)
             else:
                 # 电影目录
-                files = __list_files(_fileitem=fileitem)
-                for file in files:
-                    self.scrape_metadata(fileitem=file,
-                                         meta=meta, mediainfo=mediainfo,
-                                         init_folder=False, parent=fileitem)
+                if is_bluray_folder(fileitem):
+                    # 原盘目录
+                    nfo_path = filepath / "movie.nfo"
+                    if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
+                        logger.debug(f"已存在nfo文件：{nfo_path}")
+                        return
+                    # 生成原盘nfo
+                    movie_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo)
+                    if not movie_nfo:
+                        logger.warn(f"{filepath.name} nfo文件生成失败！")
+                        return
+                    # 保存或上传nfo文件到当前目录
+                    __save_file(_fileitem=fileitem, _path=nfo_path, _content=movie_nfo)
+                else:
+                    # 处理目录内的文件
+                    files = __list_files(_fileitem=fileitem)
+                    for file in files:
+                        self.scrape_metadata(fileitem=file,
+                                             meta=meta, mediainfo=mediainfo,
+                                             init_folder=False, parent=fileitem)
                 # 生成目录内图片文件
                 if init_folder:
                     # 图片
