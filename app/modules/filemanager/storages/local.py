@@ -194,6 +194,9 @@ class LocalStorage(StorageBase):
     def upload(self, fileitem: schemas.FileItem, path: Path, new_name: str = None) -> Optional[schemas.FileItem]:
         """
         上传文件
+        :param fileitem: 上传目录项
+        :param path: 本地文件路径
+        :param new_name: 上传后文件名
         """
         dir_path = Path(fileitem.path)
         target_path = dir_path / (new_name or path.name)

@@ -255,28 +255,9 @@ class AliPan(StorageBase, metaclass=Singleton):
             return []
         # 根目录处理
         if not fileitem or not fileitem.drive_id:
-            return [
-                schemas.FileItem(
-                    storage=self.schema.value,
-                    fileid="root",
-                    drive_id=self.__auth_params.get("resourceDriveId"),
-                    parent_fileid="root",
-                    type="dir",
-                    path="/",
-                    name="资源库",
-                    basename="资源库"
-                ),
-                schemas.FileItem(
-                    storage=self.schema.value,
-                    fileid="root",
-                    drive_id=self.__auth_params.get("backDriveId"),
-                    parent_fileid="root",
-                    type="dir",
-                    path="/",
-                    name="备份盘",
-                    basename="备份盘"
-                )
-            ]
+            items = self.aligo.get_file_list()
+            if items:
+                return [self.__get_fileitem(item) for item in items]
         elif fileitem.type == "file":
             # 文件处理
             file = self.detail(fileitem)
@@ -396,8 +377,8 @@ class AliPan(StorageBase, metaclass=Singleton):
         """
         上传文件，并标记完成
         :param fileitem: 上传目录项
-        :param path: 目标目录
-        :param new_name: 新文件名
+        :param path: 本地文件路径
+        :param new_name: 上传后文件名
         """
         if not self.aligo:
             return None
