@@ -370,11 +370,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             tmp_file.write_bytes(_content)
             # 获取文件的父目录
             try:
-                parent_item = self.storagechain.get_parent_item(_fileitem)
-                if not parent_item:
-                    logger.warn(f"无法获取 {_fileitem.path} 的上级目录！")
-                    return
-                item = self.storagechain.upload_file(fileitem=parent_item, path=tmp_file, new_name=_path.name)
+                item = self.storagechain.upload_file(fileitem=_fileitem, path=tmp_file, new_name=_path.name)
                 if item:
                     logger.info(f"已保存文件：{item.path}")
                 else:
@@ -425,8 +421,6 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     logger.warn(f"{filepath.name} nfo文件生成失败！")
                     return
                 # 保存或上传nfo文件到上级目录
-                if not parent:
-                    parent = self.storagechain.get_parent_item(fileitem)
                 __save_file(_fileitem=parent, _path=nfo_path, _content=movie_nfo)
             else:
                 # 电影目录

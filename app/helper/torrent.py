@@ -290,7 +290,7 @@ class TorrentHelper(metaclass=Singleton):
             if not file_path.suffix or file_path.suffix.lower() not in settings.RMT_MEDIAEXT:
                 continue
             # 只使用文件名识别
-            meta = MetaInfo(file_path.stem)
+            meta = MetaInfo(file_path.name)
             if not meta.begin_episode:
                 continue
             episodes = list(set(episodes).union(set(meta.episode_list)))

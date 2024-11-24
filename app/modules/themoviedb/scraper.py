@@ -104,6 +104,7 @@ class TmdbScraper:
             url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{seasoninfo.get('poster_path')}"
             image_name = f"season{sea_seq}-poster{ext}"
             return image_name, url
+        return "", ""
 
     @staticmethod
     def __get_episode_detail(seasoninfo: dict, episode: int) -> dict:
