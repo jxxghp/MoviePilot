@@ -402,7 +402,6 @@ class TransferChain(ChainBase):
                 elif target_path:
                     # 指定目标路径，`手动整理`场景下使用，忽略源目录匹配，使用指定目录匹配
                     target_directory = self.directoryhelper.get_dir(media=file_mediainfo,
-                                                                    storage=target_storage,
                                                                     dest_path=target_path,
                                                                     target_storage=target_storage)
                 else:
