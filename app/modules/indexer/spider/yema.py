@@ -105,7 +105,7 @@ class YemaSpider:
                     category = MediaType.UNKNOWN.value
                     pass
 
-                torrentLabelIds = result.get('tagList')
+                torrentLabelIds = result.get('tagList', []) or []
                 torrentLabels = []
                 for labelId in torrentLabelIds:
                     if self._labels.get(labelId) is not None:
