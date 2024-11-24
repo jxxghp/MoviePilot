@@ -420,7 +420,6 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     logger.info(f"已存在nfo文件：{nfo_path}")
                     return
                 # 电影文件
-                logger.info(f"正在生成电影nfo：{mediainfo.title_year} - {filepath.name}")
                 movie_nfo = self.metadata_nfo(meta=meta, mediainfo=mediainfo)
                 if not movie_nfo:
                     logger.warn(f"{filepath.name} nfo文件生成失败！")

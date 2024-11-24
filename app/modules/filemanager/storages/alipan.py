@@ -300,7 +300,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         if item:
             if isinstance(item, CreateFileResponse):
                 item = self.aligo.get_file(file_id=item.file_id, drive_id=item.drive_id)
-            return self.__get_fileitem(item)
+            return self.__get_fileitem(item, parent=fileitem.path)
         return None
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
@@ -346,7 +346,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             return None
         item = self.aligo.get_file_by_path(path=str(path))
         if item:
-            return self.__get_fileitem(item)
+            return self.__get_fileitem(item, parent=path.parent)
         return None
 
     def delete(self, fileitem: schemas.FileItem) -> bool:
@@ -367,7 +367,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             return None
         item = self.aligo.get_file(file_id=fileitem.fileid, drive_id=fileitem.drive_id)
         if item:
-            return self.__get_fileitem(item)
+            return self.__get_fileitem(item, parent=fileitem.path)
         return None
 
     def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
@@ -408,7 +408,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         if result:
             item = self.aligo.get_file(file_id=result.file_id, drive_id=result.drive_id)
             if item:
-                return self.__get_fileitem(item)
+                return self.__get_fileitem(item, parent=fileitem.path)
         return None
 
     def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:
