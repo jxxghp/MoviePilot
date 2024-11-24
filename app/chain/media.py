@@ -365,14 +365,22 @@ class MediaChain(ChainBase, metaclass=Singleton):
             """
             if not _fileitem or not _content or not _path:
                 return
+            # 保存文件到临时目录
             tmp_file = settings.TEMP_PATH / _path.name
             tmp_file.write_bytes(_content)
-            _fileitem.path = str(_path.parent)
-            item = self.storagechain.upload_file(fileitem=_fileitem, path=tmp_file)
-            if item:
-                logger.info(f"已保存文件：{Path(item.path) / item.name}")
-            if tmp_file.exists():
-                tmp_file.unlink()
+            # 获取文件的父目录
+            try:
+                parent_item = self.storagechain.get_parent_item(_fileitem)
+                if not parent_item:
+                    return
+                item = self.storagechain.upload_file(fileitem=parent_item, path=tmp_file, new_name=_path.name)
+                if item:
+                    logger.info(f"已保存文件：{Path(parent_item.path) / item.name}")
+                else:
+                    logger.warn(f"文件保存失败：{Path(parent_item.path) / _path.name}")
+            finally:
+                if tmp_file.exists():
+                    tmp_file.unlink()
 
         def __download_image(_url: str) -> Optional[bytes]:
             """
