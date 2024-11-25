@@ -54,53 +54,6 @@ class Scheduler(metaclass=Singleton):
         """
         初始化定时服务
         """
-
-        def clear_cache():
-            """
-            清理缓存
-            """
-            TorrentsChain().clear_cache()
-            SchedulerChain().clear_cache()
-
-        def user_auth():
-            """
-            用户认证检查
-            """
-            if SitesHelper().auth_level >= 2:
-                return
-            # 最大重试次数
-            __max_try__ = 30
-            if self._auth_count > __max_try__:
-                SchedulerChain().messagehelper.put(title=f"用户认证失败",
-                                                   message="用户认证失败次数过多，将不再尝试认证！",
-                                                   role="system")
-                return
-            logger.info("用户未认证，正在尝试认证...")
-            auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
-            if auth_conf:
-                status, msg = SitesHelper().check_user(**auth_conf)
-            else:
-                status, msg = SitesHelper().check_user()
-            if status:
-                self._auth_count = 0
-                logger.info(f"{msg} 用户认证成功")
-                SchedulerChain().post_message(
-                    Notification(
-                        mtype=NotificationType.Manual,
-                        title="MoviePilot用户认证成功",
-                        text=f"使用站点：{msg}",
-                        link=settings.MP_DOMAIN('#/site')
-                    )
-                )
-                PluginManager().init_config()
-                self.init_plugin_jobs()
-
-            else:
-                self._auth_count += 1
-                logger.error(f"用户认证失败：{msg}，共失败 {self._auth_count} 次")
-                if self._auth_count >= __max_try__:
-                    logger.error("用户认证失败次数过多，将不再尝试认证！")
-
         # 各服务的运行状态
         self._jobs = {
             "cookiecloud": {
@@ -146,12 +99,12 @@ class Scheduler(metaclass=Singleton):
             },
             "clear_cache": {
                 "name": "缓存清理",
-                "func": clear_cache,
+                "func": self.clear_cache,
                 "running": False,
             },
             "user_auth": {
                 "name": "用户认证检查",
-                "func": user_auth,
+                "func": self.user_auth,
                 "running": False,
             },
             "scheduler_job": {
@@ -570,3 +523,50 @@ class Scheduler(metaclass=Singleton):
                 logger.info("定时任务停止完成")
         except Exception as e:
             logger.error(f"停止定时任务失败：：{str(e)} - {traceback.format_exc()}")
+
+    @staticmethod
+    def clear_cache():
+        """
+        清理缓存
+        """
+        TorrentsChain().clear_cache()
+        SchedulerChain().clear_cache()
+
+    def user_auth(self):
+        """
+        用户认证检查
+        """
+        if SitesHelper().auth_level >= 2:
+            return
+        # 最大重试次数
+        __max_try__ = 30
+        if self._auth_count > __max_try__:
+            SchedulerChain().messagehelper.put(title=f"用户认证失败",
+                                               message="用户认证失败次数过多，将不再尝试认证！",
+                                               role="system")
+            return
+        logger.info("用户未认证，正在尝试认证...")
+        auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
+        if auth_conf:
+            status, msg = SitesHelper().check_user(**auth_conf)
+        else:
+            status, msg = SitesHelper().check_user()
+        if status:
+            self._auth_count = 0
+            logger.info(f"{msg} 用户认证成功")
+            SchedulerChain().post_message(
+                Notification(
+                    mtype=NotificationType.Manual,
+                    title="MoviePilot用户认证成功",
+                    text=f"使用站点：{msg}",
+                    link=settings.MP_DOMAIN('#/site')
+                )
+            )
+            PluginManager().init_config()
+            self.init_plugin_jobs()
+
+        else:
+            self._auth_count += 1
+            logger.error(f"用户认证失败：{msg}，共失败 {self._auth_count} 次")
+            if self._auth_count >= __max_try__:
+                logger.error("用户认证失败次数过多，将不再尝试认证！")
