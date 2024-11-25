@@ -149,7 +149,7 @@ class TransferChain(ChainBase):
                       target_directory: TransferDirectoryConf = None,
                       target_storage: str = None, target_path: Path = None,
                       transfer_type: str = None, scrape: bool = None,
-                      library_type_folder: bool = False, library_category_folder: bool = False,
+                      library_type_folder: bool = None, library_category_folder: bool = None,
                       season: int = None, epformat: EpisodeFormat = None, min_filesize: int = 0,
                       downloader: str = None, download_hash: str = None,
                       force: bool = False, src_match: bool = False) -> Tuple[bool, str]:
@@ -392,12 +392,17 @@ class TransferChain(ChainBase):
                     download_hash = download_file.download_hash
 
             # 查询整理目标目录
-            if not target_directory and not target_path:
+            if not target_directory:
                 if src_match:
                     # 按源目录匹配，以便找到更合适的目录配置
-                    target_directory = self.directoryhelper.get_dir(file_mediainfo,
+                    target_directory = self.directoryhelper.get_dir(media=file_mediainfo,
                                                                     storage=file_item.storage,
                                                                     src_path=file_path,
+                                                                    target_storage=target_storage)
+                elif target_path:
+                    # 指定目标路径，`手动整理`场景下使用，忽略源目录匹配，使用指定目录匹配
+                    target_directory = self.directoryhelper.get_dir(media=file_mediainfo,
+                                                                    dest_path=target_path,
                                                                     target_storage=target_storage)
                 else:
                     # 未指定目标路径，根据媒体信息获取目标目录

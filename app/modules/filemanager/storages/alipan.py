@@ -255,28 +255,9 @@ class AliPan(StorageBase, metaclass=Singleton):
             return []
         # 根目录处理
         if not fileitem or not fileitem.drive_id:
-            return [
-                schemas.FileItem(
-                    storage=self.schema.value,
-                    fileid="root",
-                    drive_id=self.__auth_params.get("resourceDriveId"),
-                    parent_fileid="root",
-                    type="dir",
-                    path="/资源库/",
-                    name="资源库",
-                    basename="资源库"
-                ),
-                schemas.FileItem(
-                    storage=self.schema.value,
-                    fileid="root",
-                    drive_id=self.__auth_params.get("backDriveId"),
-                    parent_fileid="root",
-                    type="dir",
-                    path="/备份盘/",
-                    name="备份盘",
-                    basename="备份盘"
-                )
-            ]
+            items = self.aligo.get_file_list()
+            if items:
+                return [self.__get_fileitem(item) for item in items]
         elif fileitem.type == "file":
             # 文件处理
             file = self.detail(fileitem)
@@ -300,7 +281,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         if item:
             if isinstance(item, CreateFileResponse):
                 item = self.aligo.get_file(file_id=item.file_id, drive_id=item.drive_id)
-            return self.__get_fileitem(item)
+            return self.__get_fileitem(item, parent=fileitem.path)
         return None
 
     def get_folder(self, path: Path) -> Optional[schemas.FileItem]:
@@ -319,14 +300,10 @@ class AliPan(StorageBase, metaclass=Singleton):
                     return sub_folder
             return None
 
-        if not self.aligo:
-            return None
-        item = self.aligo.get_folder_by_path(path=str(path), create_folder=True)
-        if item:
-            # 已存在
-            if isinstance(item, CreateFileResponse):
-                item = self.aligo.get_file(file_id=item.file_id, drive_id=item.drive_id)
-            return self.__get_fileitem(item)
+        # 是否已存在
+        folder = self.get_item(path)
+        if folder:
+            return folder
         # 逐级查找和创建目录
         fileitem = schemas.FileItem(path="/")
         for part in path.parts:
@@ -350,7 +327,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             return None
         item = self.aligo.get_file_by_path(path=str(path))
         if item:
-            return self.__get_fileitem(item)
+            return self.__get_fileitem(item, parent=path.parent)
         return None
 
     def delete(self, fileitem: schemas.FileItem) -> bool:
@@ -371,7 +348,7 @@ class AliPan(StorageBase, metaclass=Singleton):
             return None
         item = self.aligo.get_file(file_id=fileitem.fileid, drive_id=fileitem.drive_id)
         if item:
-            return self.__get_fileitem(item)
+            return self.__get_fileitem(item, parent=fileitem.path)
         return None
 
     def rename(self, fileitem: schemas.FileItem, name: str) -> bool:
@@ -400,8 +377,8 @@ class AliPan(StorageBase, metaclass=Singleton):
         """
         上传文件，并标记完成
         :param fileitem: 上传目录项
-        :param path: 目标目录
-        :param new_name: 新文件名
+        :param path: 本地文件路径
+        :param new_name: 上传后文件名
         """
         if not self.aligo:
             return None
@@ -412,7 +389,7 @@ class AliPan(StorageBase, metaclass=Singleton):
         if result:
             item = self.aligo.get_file(file_id=result.file_id, drive_id=result.drive_id)
             if item:
-                return self.__get_fileitem(item)
+                return self.__get_fileitem(item, parent=fileitem.path)
         return None
 
     def move(self, fileitem: schemas.FileItem, path: Path, new_name: str) -> bool:

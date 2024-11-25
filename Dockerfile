@@ -10,10 +10,7 @@ ENV LANG="C.UTF-8" \
     UMASK=000 \
     PORT=3001 \
     NGINX_PORT=3000 \
-    PROXY_HOST="" \
-    MOVIEPILOT_AUTO_UPDATE=false \
-    AUTH_SITE="iyuu" \
-    IYUU_SIGN=""
+    MOVIEPILOT_AUTO_UPDATE=release
 WORKDIR "/app"
 RUN apt-get update -y \
     && apt-get upgrade -y \

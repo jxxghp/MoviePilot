@@ -30,7 +30,7 @@ class TmdbScraper:
             # 电影元数据文件
             doc = self.__gen_movie_nfo_file(mediainfo=mediainfo)
         else:
-            if season:
+            if season is not None:
                 # 查询季信息
                 seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, meta.begin_season)
                 if episode:
@@ -57,7 +57,7 @@ class TmdbScraper:
         :param episode: 集号
         """
         images = {}
-        if season:
+        if season is not None:
             # 只需要集的图片
             if episode:
                 # 集的图片
@@ -104,6 +104,7 @@ class TmdbScraper:
             url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{seasoninfo.get('poster_path')}"
             image_name = f"season{sea_seq}-poster{ext}"
             return image_name, url
+        return "", ""
 
     @staticmethod
     def __get_episode_detail(seasoninfo: dict, episode: int) -> dict:
