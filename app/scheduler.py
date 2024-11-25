@@ -440,6 +440,7 @@ class Scheduler(metaclass=Singleton):
                         "name": service["name"],
                         "pid": pid,
                         "plugin_name": plugin_name,
+                        "kwargs": service.get("func_kwargs") or {},
                         "running": False,
                     }
                     self._scheduler.add_job(

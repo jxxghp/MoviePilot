@@ -526,7 +526,8 @@ class PluginManager(metaclass=Singleton):
             "name": "服务名称",
             "trigger": "触发器：cron、interval、date、CronTrigger.from_crontab()",
             "func": self.xxx,
-            "kwargs": {} # 定时器参数
+            "kwargs": {} # 定时器参数,
+            "func_kwargs": {} # 方法参数
         }]
         """
         ret_services = []
