@@ -759,6 +759,8 @@ class TransferChain(ChainBase):
                                                epformat=epformat,
                                                min_filesize=min_filesize,
                                                scrape=scrape,
+                                               library_type_folder=library_type_folder,
+                                               library_category_folder=library_category_folder,
                                                force=force)
             return state, errmsg
 
