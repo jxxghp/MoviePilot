@@ -407,7 +407,7 @@ class TransferChain(ChainBase):
                 else:
                     # 未指定目标路径，根据媒体信息获取目标目录
                     target_directory = self.directoryhelper.get_dir(file_mediainfo,
-                                                                    storage=target_storage,
+                                                                    storage=file_item.storage,
                                                                     target_storage=target_storage)
 
             # 执行整理

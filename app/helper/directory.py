@@ -68,12 +68,14 @@ class DirectoryHelper:
         # 电影/电视剧
         media_type = media.type.value
         dirs = self.get_dirs()
+        # 是否下载器匹配
+        not_downloader: bool = src_path or dest_path or target_storage
         # 已匹配的目录
         matched_dirs: List[schemas.TransferDirectoryConf] = []
         # 按照配置顺序查找
         for d in dirs:
             # 没有启用整理的目录
-            if not d.monitor_type:
+            if not d.monitor_type and not_downloader:
                 continue
             # 源存储类型不匹配
             if storage and d.storage != storage:
