@@ -49,13 +49,14 @@ class DirectoryHelper:
         """
         return [d for d in self.get_library_dirs() if d.library_storage == "local"]
 
-    def get_dir(self, media: MediaInfo,
+    def get_dir(self, media: MediaInfo, include_unsorted: bool = False,
                 storage: str = None, src_path: Path = None,
                 target_storage: str = None, dest_path: Path = None
                 ) -> Optional[schemas.TransferDirectoryConf]:
         """
         根据媒体信息获取下载目录、媒体库目录配置
         :param media: 媒体信息
+        :param include_unsorted: 包含不整理目录
         :param storage: 源存储类型
         :param target_storage: 目标存储类型
         :param fileitem: 文件项，使用文件路径匹配
@@ -73,7 +74,7 @@ class DirectoryHelper:
         # 按照配置顺序查找
         for d in dirs:
             # 没有启用整理的目录
-            if not d.monitor_type:
+            if not d.monitor_type and not include_unsorted:
                 continue
             # 源存储类型不匹配
             if storage and d.storage != storage:
