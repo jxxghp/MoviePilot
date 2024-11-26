@@ -102,7 +102,11 @@ class TmdbScraper:
             ext = Path(seasoninfo.get('poster_path')).suffix
             # URL
             url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{seasoninfo.get('poster_path')}"
-            image_name = f"season{sea_seq}-poster{ext}"
+            # S0海报格式不同
+            if season == 0:
+                image_name = f"season-specials-poster{ext}"
+            else:
+                image_name = f"season{sea_seq}-poster{ext}"
             return image_name, url
         return "", ""
 
