@@ -233,23 +233,29 @@ class EventManager(metaclass=Singleton):
         可视化所有事件处理器，包括是否被禁用的状态
         :return: 处理器列表，包含事件类型、处理器标识符、优先级（如果有）和状态
         """
+
+        def parse_handler_data(data):
+            """
+            解析处理器数据，判断是否包含优先级
+            :param data: 订阅者数据，可能是元组或单一值
+            :return: (priority, handler)，若没有优先级则返回 (None, handler)
+            """
+            if isinstance(data, tuple) and len(data) == 2:
+                return data
+            return None, data
+
         handler_info = []
         # 统一处理广播事件和链式事件
         for event_type, subscribers in {**self.__broadcast_subscribers, **self.__chain_subscribers}.items():
-            for handler_data in subscribers:
-                if isinstance(subscribers, dict):
-                    priority, handler = handler_data
-                else:
-                    priority = None
-                    handler = handler_data
-                # 获取处理器的唯一标识符
-                handler_id = self.__get_handler_identifier(handler)
+            for handler_identifier, handler_data in subscribers.items():
+                # 解析优先级和处理器
+                priority, handler = parse_handler_data(handler_data)
                 # 检查处理器的启用状态
                 status = "enabled" if self.__is_handler_enabled(handler) else "disabled"
                 # 构建处理器信息字典
                 handler_dict = {
                     "event_type": event_type.value,
-                    "handler_identifier": handler_id,
+                    "handler_identifier": handler_identifier,
                     "status": status
                 }
                 if priority is not None:
