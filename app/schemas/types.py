@@ -68,8 +68,8 @@ class ChainEventType(Enum):
     AuthIntercept = "auth.intercept"
     # 命令注册
     CommandRegister = "command.register"
-    # 智能重命名
-    SmartRename = "SmartRename"
+    # 整理重命名
+    TransferRename = "transfer.rename"
 
 
 # 系统配置Key字典
