@@ -426,7 +426,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 # 电影目录
                 if is_bluray_folder(fileitem):
                     # 原盘目录
-                    nfo_path = filepath / "movie.nfo"
+                    nfo_path = filepath / (filepath.name + ".nfo")
                     if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage, path=nfo_path):
                         logger.info(f"已存在nfo文件：{nfo_path}")
                         return
