@@ -278,18 +278,18 @@ class RequestUtils:
 
     @staticmethod
     def detect_encoding_from_html_response(response: Response,
-                                           compatible_mode: bool = False, confidence_threshold: float = 0.8):
+                                           performance_mode: bool = False, confidence_threshold: float = 0.8):
         """
         根据HTML响应内容探测编码信息
 
         :param response: HTTP 响应对象
-        :param compatible_mode: 是否使用兼容模式，默认为 False (性能模式)
+        :param performance_mode: 是否使用性能模式，默认为 False (兼容模式)
         :param confidence_threshold: chardet 检测置信度阈值，默认为 0.8
         :return: 解析得到的字符编码
         """
         fallback_encoding = None
         try:
-            if compatible_mode:
+            if not performance_mode:
                 # 兼容模式：使用chardet分析后，再处理 BOM 和 meta 信息
                 # 1. 使用 chardet 库进一步分析内容
                 detection = chardet.detect(response.content)
@@ -349,12 +349,12 @@ class RequestUtils:
 
     @staticmethod
     def get_decoded_html_content(response: Response,
-                                 compatible_mode: bool = False, confidence_threshold: float = 0.8) -> str:
+                                 performance_mode: bool = False, confidence_threshold: float = 0.8) -> str:
         """
         获取HTML响应的解码文本内容
 
         :param response: HTTP 响应对象
-        :param compatible_mode: 是否使用兼容模式，默认为 False (性能模式)
+        :param performance_mode: 是否使用性能模式，默认为 False (兼容模式)
         :param confidence_threshold: chardet 检测置信度阈值，默认为 0.8
         :return: 解码后的响应文本内容
         """
@@ -363,7 +363,7 @@ class RequestUtils:
                 return ""
             if response.content:
                 # 1. 获取编码信息
-                encoding = (RequestUtils.detect_encoding_from_html_response(response, compatible_mode,
+                encoding = (RequestUtils.detect_encoding_from_html_response(response, performance_mode,
                                                                             confidence_threshold)
                             or response.apparent_encoding)
                 # 2. 根据解析得到的编码进行解码

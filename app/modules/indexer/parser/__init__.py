@@ -345,7 +345,7 @@ class SiteParserBase(metaclass=ABCMeta):
                         f"{self._site_name} 检测到Cloudflare，请更新Cookie和UA")
                     return ""
                 return RequestUtils.get_decoded_html_content(res,
-                                                             settings.ENCODING_DETECTION_COMPATIBLE_MODE,
+                                                             settings.ENCODING_DETECTION_PERFORMANCE_MODE,
                                                              settings.ENCODING_DETECTION_MIN_CONFIDENCE)
 
         return ""

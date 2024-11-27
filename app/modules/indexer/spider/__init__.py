@@ -250,7 +250,7 @@ class TorrentSpider:
                 proxies=self.proxies
             ).get_res(searchurl, allow_redirects=True)
             page_source = RequestUtils.get_decoded_html_content(ret,
-                                                                settings.ENCODING_DETECTION_COMPATIBLE_MODE,
+                                                                settings.ENCODING_DETECTION_PERFORMANCE_MODE,
                                                                 settings.ENCODING_DETECTION_MIN_CONFIDENCE)
 
         # 解析
