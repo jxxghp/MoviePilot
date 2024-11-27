@@ -117,9 +117,9 @@ class CommandRegisterEventData(ChainEventData):
     source: str = Field("未知拦截源", description="拦截源")
 
 
-class SmartRenameEventData(ChainEventData):
+class TransferRenameEventData(ChainEventData):
     """
-    SmartRename 事件的数据模型
+    TransferRename 事件的数据模型
 
     Attributes:
         # 输入参数

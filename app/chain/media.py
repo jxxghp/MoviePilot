@@ -547,9 +547,11 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                     continue
                                 # 下载图片
                                 content = __download_image(image_url)
-                                # 保存图片文件到当前目录
+                                # 保存图片文件到剧集目录
                                 if content:
-                                    __save_file(_fileitem=fileitem, _path=image_path, _content=content)
+                                    if not parent:
+                                        parent = self.storagechain.get_parent_item(fileitem)
+                                    __save_file(_fileitem=parent, _path=image_path, _content=content)
                     # 判断当前目录是不是剧集根目录
                     if not season_meta.season:
                         # 是否已存在
