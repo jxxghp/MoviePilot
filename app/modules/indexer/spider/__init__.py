@@ -5,7 +5,6 @@ import traceback
 from typing import List
 from urllib.parse import quote, urlencode, urlparse, parse_qs
 
-import chardet
 from jinja2 import Template
 from pyquery import PyQuery
 from ruamel.yaml import CommentedMap
@@ -250,27 +249,9 @@ class TorrentSpider:
                 referer=self.referer,
                 proxies=self.proxies
             ).get_res(searchurl, allow_redirects=True)
-            if ret is not None:
-                # 使用chardet检测字符编码
-                raw_data = ret.content
-                if raw_data:
-                    try:
-                        result = chardet.detect(raw_data)
-                        encoding = result['encoding']
-                        # 解码为字符串
-                        page_source = raw_data.decode(encoding)
-                    except Exception as e:
-                        logger.debug(f"chardet解码失败：{str(e)}")
-                        # 探测utf-8解码
-                        if re.search(r"charset=\"?utf-8\"?", ret.text, re.IGNORECASE):
-                            ret.encoding = "utf-8"
-                        else:
-                            ret.encoding = ret.apparent_encoding
-                        page_source = ret.text
-                else:
-                    page_source = ret.text
-            else:
-                page_source = ""
+            page_source = RequestUtils.get_decoded_html_content(ret,
+                                                                settings.ENCODING_DETECTION_COMPATIBLE_MODE,
+                                                                settings.ENCODING_DETECTION_MIN_CONFIDENCE)
 
         # 解析
         return self.parse(page_source)
