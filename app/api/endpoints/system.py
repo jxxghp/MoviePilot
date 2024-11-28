@@ -16,6 +16,7 @@ from app import schemas
 from app.chain.search import SearchChain
 from app.chain.system import SystemChain
 from app.core.config import global_vars, settings
+from app.core.metainfo import MetaInfo
 from app.core.module import ModuleManager
 from app.core.security import verify_apitoken, verify_resource_token, verify_token
 from app.db.models import User
@@ -385,9 +386,12 @@ def ruletest(title: str,
     if not rulegroup:
         return schemas.Response(success=False, message=f"过滤规则组 {rulegroup_name} 不存在！")
 
+    # 根据标题查询媒体信息
+    media_info =SearchChain().recognize_media(MetaInfo(title=title, subtitle=subtitle))
+
     # 过滤
     result = SearchChain().filter_torrents(rule_groups=[rulegroup.name],
-                                           torrent_list=[torrent])
+                                           torrent_list=[torrent],mediainfo=media_info)
     if not result:
         return schemas.Response(success=False, message="不符合过滤规则！")
     return schemas.Response(success=True, data={
