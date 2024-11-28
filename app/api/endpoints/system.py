@@ -391,7 +391,7 @@ def ruletest(title: str,
 
     # 过滤
     result = SearchChain().filter_torrents(rule_groups=[rulegroup.name],
-                                           torrent_list=[torrent],mediainfo=media_info)
+                                           torrent_list=[torrent], mediainfo=media_info)
     if not result:
         return schemas.Response(success=False, message="不符合过滤规则！")
     return schemas.Response(success=True, data={
