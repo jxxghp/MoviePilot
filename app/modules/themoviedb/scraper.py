@@ -32,7 +32,7 @@ class TmdbScraper:
         else:
             if season is not None:
                 # 查询季信息
-                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, meta.begin_season)
+                seasoninfo = self.tmdb.get_tv_season_detail(mediainfo.tmdb_id, season)
                 if episode:
                     # 集元数据文件
                     episodeinfo = self.__get_episode_detail(seasoninfo, meta.begin_episode)
@@ -102,7 +102,11 @@ class TmdbScraper:
             ext = Path(seasoninfo.get('poster_path')).suffix
             # URL
             url = f"https://{settings.TMDB_IMAGE_DOMAIN}/t/p/original{seasoninfo.get('poster_path')}"
-            image_name = f"season{sea_seq}-poster{ext}"
+            # S0海报格式不同
+            if season == 0:
+                image_name = f"season-specials-poster{ext}"
+            else:
+                image_name = f"season{sea_seq}-poster{ext}"
             return image_name, url
         return "", ""
 
@@ -229,7 +233,7 @@ class TmdbScraper:
         xoutline = DomUtils.add_node(doc, root, "outline")
         xoutline.appendChild(doc.createCDATASection(seasoninfo.get("overview") or ""))
         # 标题
-        DomUtils.add_node(doc, root, "title", "季 %s" % season)
+        DomUtils.add_node(doc, root, "title", seasoninfo.get("name") or "季 %s" % season)
         # 发行日期
         DomUtils.add_node(doc, root, "premiered", seasoninfo.get("air_date") or "")
         DomUtils.add_node(doc, root, "releasedate", seasoninfo.get("air_date") or "")

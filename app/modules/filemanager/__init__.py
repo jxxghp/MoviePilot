@@ -17,7 +17,7 @@ from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
-from app.schemas.event import SmartRenameEventData
+from app.schemas.event import TransferRenameEventData
 from app.schemas.types import MediaType, ModuleType, ChainEventType
 from app.utils.system import SystemUtils
 
@@ -1213,16 +1213,16 @@ class FileManagerModule(_ModuleBase):
 
         logger.debug(f"Initial render string: {render_str}")
         # 发送智能重命名事件
-        event_data = SmartRenameEventData(
+        event_data = TransferRenameEventData(
             template_string=template_string,
             rename_dict=rename_dict,
             render_str=render_str,
             path=path
         )
-        event = eventmanager.send_event(ChainEventType.SmartRename, event_data)
+        event = eventmanager.send_event(ChainEventType.TransferRename, event_data)
         # 检查事件返回的结果
         if event and event.event_data:
-            event_data: SmartRenameEventData = event.event_data
+            event_data: TransferRenameEventData = event.event_data
             if event_data.updated and event_data.updated_str:
                 logger.debug(f"Render string updated by event: "
                              f"{render_str} -> {event_data.updated_str} (source: {event_data.source})")

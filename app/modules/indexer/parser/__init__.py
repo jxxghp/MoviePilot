@@ -344,11 +344,9 @@ class SiteParserBase(metaclass=ABCMeta):
                     logger.warn(
                         f"{self._site_name} 检测到Cloudflare，请更新Cookie和UA")
                     return ""
-                if re.search(r"charset=\"?utf-8\"?", res.text, re.IGNORECASE):
-                    res.encoding = "utf-8"
-                else:
-                    res.encoding = res.apparent_encoding
-                return res.text
+                return RequestUtils.get_decoded_html_content(res,
+                                                             settings.ENCODING_DETECTION_PERFORMANCE_MODE,
+                                                             settings.ENCODING_DETECTION_MIN_CONFIDENCE)
 
         return ""
 

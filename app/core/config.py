@@ -231,6 +231,10 @@ class ConfigModel(BaseModel):
     BIG_MEMORY_MODE: bool = False
     # 全局图片缓存，将媒体图片缓存到本地
     GLOBAL_IMAGE_CACHE: bool = False
+    # 是否启用编码探测的性能模式
+    ENCODING_DETECTION_PERFORMANCE_MODE: bool = True
+    # 编码探测的最低置信度阈值
+    ENCODING_DETECTION_MIN_CONFIDENCE: float = 0.8
     # 允许的图片缓存域名
     SECURITY_IMAGE_DOMAINS: List[str] = Field(
         default_factory=lambda: ["image.tmdb.org",

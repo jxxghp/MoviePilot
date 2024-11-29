@@ -256,7 +256,7 @@ class DownloadChain(ChainBase):
             download_dir = Path(save_path)
         else:
             # 根据媒体信息查询下载目录配置
-            dir_info = self.directoryhelper.get_dir(_media, storage="local")
+            dir_info = self.directoryhelper.get_dir(_media, storage="local", include_unsorted=True)
             # 拼装子目录
             if dir_info:
                 # 一级目录
