@@ -338,10 +338,10 @@ class SubscribeChain(ChainBase):
             # 优先级过滤规则
             if subscribe.best_version:
                 rule_groups = subscribe.filter_groups \
-                              or self.systemconfig.get(SystemConfigKey.BestVersionFilterRuleGroups)
+                              or self.systemconfig.get(SystemConfigKey.BestVersionFilterRuleGroups) or []
             else:
                 rule_groups = subscribe.filter_groups \
-                              or self.systemconfig.get(SystemConfigKey.SubscribeFilterRuleGroups)
+                              or self.systemconfig.get(SystemConfigKey.SubscribeFilterRuleGroups) or []
 
             # 搜索，同时电视剧会过滤掉不需要的剧集
             contexts = self.searchchain.process(mediainfo=mediainfo,
