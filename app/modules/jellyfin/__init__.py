@@ -80,7 +80,7 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         # 确定要认证的服务器列表
         if service_name:
             # 如果指定了服务名，获取该服务实例
-            servers = [(service_name, self.get_instance(service_name))]
+            servers = [(service_name, server)] if (server := self.get_instance(service_name)) else []
         else:
             # 如果没有指定服务名，遍历所有服务
             servers = self.get_instances().items()
