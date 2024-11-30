@@ -477,7 +477,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 if not file_meta.begin_episode:
                     logger.warn(f"{filepath.name} 无法识别文件集数！")
                     return
-                file_mediainfo = self.recognize_media(meta=file_meta)
+                file_mediainfo = self.recognize_media(meta=file_meta, tmdbid=mediainfo.tmdb_id)
                 if not file_mediainfo:
                     logger.warn(f"{filepath.name} 无法识别文件媒体信息！")
                     return

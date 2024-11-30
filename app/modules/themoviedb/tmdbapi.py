@@ -161,7 +161,7 @@ class TmdbApi:
               season_number: int = None) -> Optional[dict]:
         """
         搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息
-        :param name: 剑索的名称
+        :param name: 检索的名称
         :param mtype: 类型：电影、电视剧
         :param year: 年份，如要是季集需要是首播年份(first_air_date)
         :param season_year: 当前季集年份
