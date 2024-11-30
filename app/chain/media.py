@@ -552,6 +552,29 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                     if not parent:
                                         parent = self.storagechain.get_parent_item(fileitem)
                                     __save_file(_fileitem=parent, _path=image_path, _content=content)
+                        # 额外fanart季图片：poster thumb banner
+                        image_dict = self.metadata_img(mediainfo=mediainfo)
+                        if image_dict:
+                            for image_name, image_url in image_dict.items():
+                                if image_name.startswith("season"):
+                                    image_path = filepath.with_name(image_name)
+                                    # 只下载当前刮削季的图片
+                                    image_season = "00" if "specials" in image_name else image_name[6:8]
+                                    if image_season != str(season_meta.begin_season).rjust(2, '0'):
+                                        logger.info(f"当前刮削季为：{season_meta.begin_season}，跳过文件：{image_path}")
+                                        continue
+                                    if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage,
+                                                                                        path=image_path):
+                                        logger.info(f"已存在图片文件：{image_path}")
+                                        continue
+                                    # 下载图片
+                                    content = __download_image(image_url)
+                                    # 保存图片文件到当前目录
+                                    if content:
+                                        if not parent:
+                                            parent = self.storagechain.get_parent_item(fileitem)
+                                        __save_file(_fileitem=parent, _path=image_path, _content=content)
+                                
                     # 判断当前目录是不是剧集根目录
                     if not season_meta.season:
                         # 是否已存在
@@ -570,6 +593,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
                         image_dict = self.metadata_img(mediainfo=mediainfo)
                         if image_dict:
                             for image_name, image_url in image_dict.items():
+                                # 不下载季图片
+                                if image_name.startswith("season"):
+                                    continue
                                 image_path = filepath / image_name
                                 if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage,
                                                                                      path=image_path):

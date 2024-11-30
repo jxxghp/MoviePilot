@@ -377,20 +377,30 @@ class FanartModule(_ModuleBase):
                 continue
             if not isinstance(images, list):
                 continue
-            # 按欢迎程度倒排
-            images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
-            # 取第一张图片
-            image_obj = images[0]
+            
             # 图片属性xx_path
             image_name = self.__name(name)
-            image_season = image_obj.get('season')
-            # 设置图片
-            if image_name.startswith("season") and image_season:
-                # 季图片格式 seasonxx-poster
-                image_name = f"season{str(image_season).rjust(2, '0')}-{image_name[6:]}"
-            if not mediainfo.get_image(image_name):
-                # 没有图片才设置
-                mediainfo.set_image(image_name, image_obj.get('url'))
+            if image_name.startswith("season"):
+                # 季图片，图片格式seasonxx-xxxx/season-specials-xxxx
+                for image_obj in images:
+                    image_season = image_obj.get('season')
+                    if image_season is not None:
+                        # 包括poster,thumb,banner
+                        if image_season == '0':
+                            season_image = f"season-specials-{image_name[6:]}"
+                        else:
+                            season_image = f"season{str(image_season).rjust(2, '0')}-{image_name[6:]}"
+                        # 设置图片，没有图片才设置
+                        if not mediainfo.get_image(season_image):
+                            mediainfo.set_image(season_image, image_obj.get('url'))
+            else:
+                # 其他图片，按欢迎程度倒排
+                images.sort(key=lambda x: int(x.get('likes', 0)), reverse=True)
+                # 取第一张图片
+                image_obj = images[0]
+                # 设置图片，没有图片才设置
+                if not mediainfo.get_image(image_name):
+                    mediainfo.set_image(image_name, image_obj.get('url'))
 
         return mediainfo
 
