@@ -111,7 +111,7 @@ def scrape(fileitem: schemas.FileItem,
     scrape_path = Path(fileitem.path)
     meta = MetaInfoPath(scrape_path)
     mediainfo = chain.recognize_by_meta(meta)
-    if not media_info:
+    if not mediainfo:
         return schemas.Response(success=False, message="刮削失败，无法识别媒体信息")
     if storage == "local":
         if not scrape_path.exists():
