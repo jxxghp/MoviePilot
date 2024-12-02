@@ -53,7 +53,7 @@ class DownloadHistory(Base):
     @staticmethod
     @db_query
     def get_by_hash(db: Session, download_hash: str):
-        return db.query(DownloadHistory).filter(DownloadHistory.download_hash == download_hash).first()
+        return db.query(DownloadHistory).filter(DownloadHistory.download_hash == download_hash).last()
 
     @staticmethod
     @db_query
