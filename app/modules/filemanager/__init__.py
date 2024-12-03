@@ -18,7 +18,7 @@ from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
 from app.schemas.event import TransferRenameEventData
-from app.schemas.types import MediaType, ModuleType, ChainEventType
+from app.schemas.types import MediaType, ModuleType, ChainEventType, OtherModulesType
 from app.utils.system import SystemUtils
 
 lock = Lock()
@@ -51,6 +51,13 @@ class FileManagerModule(_ModuleBase):
         获取模块类型
         """
         return ModuleType.Other
+
+    @staticmethod
+    def get_subtype() -> OtherModulesType:
+        """
+        获取模块子类型
+        """
+        return OtherModulesType.FileManager
 
     @staticmethod
     def get_priority() -> int:

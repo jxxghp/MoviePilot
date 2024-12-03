@@ -2,8 +2,9 @@ from abc import abstractmethod, ABCMeta
 from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
 
 from app.helper.service import ServiceConfigHelper
-from app.schemas import Notification, MessageChannel, NotificationConf, MediaServerConf, DownloaderConf
-from app.schemas.types import ModuleType
+from app.schemas import Notification, NotificationConf, MediaServerConf, DownloaderConf
+from app.schemas.types import ModuleType, DownloaderType, MediaServerType, MessageChannel, StorageSchema, \
+    OtherModulesType
 
 
 class _ModuleBase(metaclass=ABCMeta):
@@ -40,6 +41,14 @@ class _ModuleBase(metaclass=ABCMeta):
     def get_type() -> ModuleType:
         """
         获取模块类型
+        """
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def get_subtype() -> Union[DownloaderType, MediaServerType, MessageChannel, StorageSchema, OtherModulesType]:
+        """
+        获取模块子类型（下载器、媒体服务器、消息通道、存储类型、其他杂项模块类型）
         """
         pass
 

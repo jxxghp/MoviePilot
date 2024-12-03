@@ -7,7 +7,7 @@ from app.core.meta import MetaBase
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.bangumi.bangumi import BangumiApi
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, MediaRecognizeType
 from app.utils.http import RequestUtils
 
 
@@ -44,6 +44,13 @@ class BangumiModule(_ModuleBase):
         获取模块类型
         """
         return ModuleType.MediaRecognize
+
+    @staticmethod
+    def get_subtype() -> MediaRecognizeType:
+        """
+        获取模块子类型
+        """
+        return MediaRecognizeType.Bangumi
     
     @staticmethod
     def get_priority() -> int:

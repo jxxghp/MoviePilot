@@ -4,7 +4,7 @@ from app.core.config import settings
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.thetvdb import tvdbapi
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, MediaRecognizeType
 from app.utils.http import RequestUtils
 
 
@@ -27,6 +27,13 @@ class TheTvDbModule(_ModuleBase):
         获取模块类型
         """
         return ModuleType.MediaRecognize
+
+    @staticmethod
+    def get_subtype() -> MediaRecognizeType:
+        """
+        获取模块子类型
+        """
+        return MediaRecognizeType.TVDB
 
     @staticmethod
     def get_priority() -> int:

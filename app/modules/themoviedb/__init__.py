@@ -14,7 +14,7 @@ from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.schemas import MediaPerson
-from app.schemas.types import MediaType, MediaImageType, ModuleType
+from app.schemas.types import MediaType, MediaImageType, ModuleType, MediaRecognizeType
 from app.utils.http import RequestUtils
 
 
@@ -48,6 +48,13 @@ class TheMovieDbModule(_ModuleBase):
         获取模块类型
         """
         return ModuleType.MediaRecognize
+
+    @staticmethod
+    def get_subtype() -> MediaRecognizeType:
+        """
+        获取模块子类型
+        """
+        return MediaRecognizeType.TMDB
 
     @staticmethod
     def get_priority() -> int:

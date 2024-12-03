@@ -10,7 +10,7 @@ from app.core.context import Context
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.modules import _ModuleBase
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, OtherModulesType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
@@ -39,6 +39,13 @@ class SubtitleModule(_ModuleBase):
         获取模块类型
         """
         return ModuleType.Other
+
+    @staticmethod
+    def get_subtype() -> OtherModulesType:
+        """
+        获取模块子类型
+        """
+        return OtherModulesType.Subtitle
 
     @staticmethod
     def get_priority() -> int:

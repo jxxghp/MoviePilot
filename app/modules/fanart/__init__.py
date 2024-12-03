@@ -6,7 +6,7 @@ from cachetools import TTLCache, cached
 from app.core.context import MediaInfo, settings
 from app.log import logger
 from app.modules import _ModuleBase
-from app.schemas.types import MediaType, ModuleType
+from app.schemas.types import MediaType, ModuleType, OtherModulesType
 from app.utils.http import RequestUtils
 
 
@@ -342,6 +342,13 @@ class FanartModule(_ModuleBase):
         获取模块类型
         """
         return ModuleType.Other
+
+    @staticmethod
+    def get_subtype() -> OtherModulesType:
+        """
+        获取模块子类型
+        """
+        return OtherModulesType.Fanart
 
     @staticmethod
     def get_priority() -> int:

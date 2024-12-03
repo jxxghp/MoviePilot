@@ -178,6 +178,50 @@ class MessageChannel(Enum):
     WebPush = "WebPush"
 
 
+# 下载器类型
+class DownloaderType(Enum):
+    # Qbittorrent
+    Qbittorrent = "Qbittorrent"
+    # Transmission
+    Transmission = "Transmission"
+    # Aria2
+    # Aria2 = "Aria2"
+
+
+# 媒体服务器类型
+class MediaServerType(Enum):
+    # Emby
+    Emby = "Emby"
+    # Jellyfin
+    Jellyfin = "Jellyfin"
+    # Plex
+    Plex = "Plex"
+
+
+# 识别器类型
+class MediaRecognizeType(Enum):
+    # 豆瓣
+    Douban = "豆瓣"
+    # TMDB
+    TMDB = "TheMovieDb"
+    # TVDB
+    TVDB = "TheTvDb"
+    # bangumi
+    Bangumi = "Bangumi"
+
+
+# 其他杂项模块类型
+class OtherModulesType(Enum):
+    # 字幕
+    Subtitle = "站点字幕"
+    # Fanart
+    Fanart = "Fanart"
+    # 文件整理
+    FileManager = "文件整理"
+    # 过滤器
+    Filter = "过滤器"
+
+
 # 用户配置Key字典
 class UserConfigKey(Enum):
     # 监控面板
