@@ -297,17 +297,18 @@ class Scheduler(metaclass=Singleton):
             }
         )
 
-        # 站点数据刷新，每隔30分钟
-        self._scheduler.add_job(
-            self.start,
-            "interval",
-            id="sitedata_refresh",
-            name="站点数据刷新",
-            minutes=settings.SITEDATA_REFRESH_INTERVAL * 60,
-            kwargs={
-                'job_id': 'sitedata_refresh'
-            }
-        )
+        # 站点数据刷新
+        if settings.SITEDATA_REFRESH_INTERVAL:
+            self._scheduler.add_job(
+                self.start,
+                "interval",
+                id="sitedata_refresh",
+                name="站点数据刷新",
+                minutes=settings.SITEDATA_REFRESH_INTERVAL * 60,
+                kwargs={
+                    'job_id': 'sitedata_refresh'
+                }
+            )
 
         self.init_plugin_jobs()
 
