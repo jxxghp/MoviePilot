@@ -7,7 +7,7 @@ from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.jellyfin.jellyfin import Jellyfin
 from app.schemas.event import AuthCredentials, AuthInterceptCredentials
-from app.schemas.types import MediaType, ModuleType, ChainEventType
+from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType
 
 
 class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
@@ -29,6 +29,13 @@ class JellyfinModule(_ModuleBase, _MediaServerBase[Jellyfin]):
         获取模块类型
         """
         return ModuleType.MediaServer
+
+    @staticmethod
+    def get_subtype() -> MediaServerType:
+        """
+        获取模块子类型
+        """
+        return MediaServerType.Jellyfin
 
     @staticmethod
     def get_priority() -> int:

@@ -11,7 +11,7 @@ from app.log import logger
 from app.modules import _ModuleBase, _DownloaderBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.schemas import TransferTorrent, DownloadingTorrent
-from app.schemas.types import TorrentStatus, ModuleType
+from app.schemas.types import TorrentStatus, ModuleType, DownloaderType
 from app.utils.string import StringUtils
 
 
@@ -34,6 +34,13 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
         获取模块类型
         """
         return ModuleType.Downloader
+
+    @staticmethod
+    def get_subtype() -> DownloaderType:
+        """
+        获取模块子类型
+        """
+        return DownloaderType.Qbittorrent
 
     @staticmethod
     def get_priority() -> int:

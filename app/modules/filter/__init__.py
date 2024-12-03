@@ -7,7 +7,7 @@ from app.helper.rule import RuleHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filter.RuleParser import RuleParser
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, OtherModulesType
 from app.utils.string import StringUtils
 
 
@@ -166,6 +166,13 @@ class FilterModule(_ModuleBase):
         获取模块类型
         """
         return ModuleType.Other
+
+    @staticmethod
+    def get_subtype() -> OtherModulesType:
+        """
+        获取模块子类型
+        """
+        return OtherModulesType.Filter
 
     @staticmethod
     def get_priority() -> int:

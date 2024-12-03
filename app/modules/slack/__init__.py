@@ -32,6 +32,13 @@ class SlackModule(_ModuleBase, _MessageBase[Slack]):
         return ModuleType.Notification
 
     @staticmethod
+    def get_subtype() -> MessageChannel:
+        """
+        获取模块子类型
+        """
+        return MessageChannel.Slack
+
+    @staticmethod
     def get_priority() -> int:
         """
         获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效

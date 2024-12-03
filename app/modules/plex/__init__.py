@@ -7,7 +7,7 @@ from app.log import logger
 from app.modules import _ModuleBase, _MediaServerBase
 from app.modules.plex.plex import Plex
 from app.schemas.event import AuthCredentials, AuthInterceptCredentials
-from app.schemas.types import MediaType, ModuleType, ChainEventType
+from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType
 
 
 class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
@@ -29,6 +29,13 @@ class PlexModule(_ModuleBase, _MediaServerBase[Plex]):
         获取模块类型
         """
         return ModuleType.MediaServer
+
+    @staticmethod
+    def get_subtype() -> MediaServerType:
+        """
+        获取模块子类型
+        """
+        return MediaServerType.Plex
 
     @staticmethod
     def get_priority() -> int:

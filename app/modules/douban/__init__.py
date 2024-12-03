@@ -15,7 +15,7 @@ from app.modules.douban.apiv2 import DoubanApi
 from app.modules.douban.douban_cache import DoubanCache
 from app.modules.douban.scraper import DoubanScraper
 from app.schemas import MediaPerson, APIRateLimitException
-from app.schemas.types import MediaType, ModuleType
+from app.schemas.types import MediaType, ModuleType, MediaRecognizeType
 from app.utils.common import retry
 from app.utils.http import RequestUtils
 from app.utils.limit import rate_limit_exponential
@@ -58,6 +58,13 @@ class DoubanModule(_ModuleBase):
         获取模块类型
         """
         return ModuleType.MediaRecognize
+
+    @staticmethod
+    def get_subtype() -> MediaRecognizeType:
+        """
+        获取模块子类型
+        """
+        return MediaRecognizeType.Douban
 
     @staticmethod
     def get_priority() -> int:
