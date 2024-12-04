@@ -1,6 +1,7 @@
 import copy
 import random
 import time
+import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
 
@@ -28,15 +29,17 @@ from app.log import logger
 from app.schemas import NotExistMediaInfo, Notification, SubscrbieInfo, SubscribeEpisodeInfo, SubscribeDownloadFileInfo, \
     SubscribeLibraryFileInfo
 from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType
+from app.utils.singleton import Singleton
 
 
-class SubscribeChain(ChainBase):
+class SubscribeChain(ChainBase, metaclass=Singleton):
     """
     订阅管理处理链
     """
 
     def __init__(self):
         super().__init__()
+        self._rlock = threading.RLock()
         self.downloadchain = DownloadChain()
         self.downloadhis = DownloadHistoryOper()
         self.searchchain = SearchChain()
@@ -238,176 +241,183 @@ class SubscribeChain(ChainBase):
         :param manual: 是否手动搜索
         :return: 更新订阅状态为R或删除订阅
         """
-        if sid:
-            subscribes = [self.subscribeoper.get(sid)]
-        else:
-            subscribes = self.subscribeoper.list(state)
-        # 遍历订阅
-        for subscribe in subscribes:
-            if global_vars.is_system_stopped:
-                break
-            mediakey = subscribe.tmdbid or subscribe.doubanid
-            custom_word_list = subscribe.custom_words.split("\n") if subscribe.custom_words else None
-            # 校验当前时间减订阅创建时间是否大于1分钟，否则跳过先，留出编辑订阅的时间
-            if subscribe.date:
-                now = datetime.now()
-                subscribe_time = datetime.strptime(subscribe.date, '%Y-%m-%d %H:%M:%S')
-                if (now - subscribe_time).total_seconds() < 60:
-                    logger.debug(f"订阅标题：{subscribe.name} 新增小于1分钟，暂不搜索...")
-                    continue
-            # 随机休眠1-5分钟
-            if not sid and state == 'R':
-                sleep_time = random.randint(60, 300)
-                logger.info(f'订阅搜索随机休眠 {sleep_time} 秒 ...')
-                time.sleep(sleep_time)
-            try:
-                logger.info(f'开始搜索订阅，标题：{subscribe.name} ...')
-                # 生成元数据
-                meta = MetaInfo(subscribe.name)
-                meta.year = subscribe.year
-                meta.begin_season = subscribe.season or None
-                try:
-                    meta.type = MediaType(subscribe.type)
-                except ValueError:
-                    logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
-                    continue
-                # 识别媒体信息
-                mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
-                                                            tmdbid=subscribe.tmdbid,
-                                                            doubanid=subscribe.doubanid,
-                                                            cache=False)
-                if not mediainfo:
-                    logger.warn(
-                        f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
-                    continue
-
-                # 非洗版状态
-                if not subscribe.best_version:
-                    # 每季总集数
-                    totals = {}
-                    if subscribe.season and subscribe.total_episode:
-                        totals = {
-                            subscribe.season: subscribe.total_episode
-                        }
-                    # 查询媒体库缺失的媒体信息
-                    exist_flag, no_exists = self.downloadchain.get_no_exists_info(
-                        meta=meta,
-                        mediainfo=mediainfo,
-                        totals=totals
-                    )
-                else:
-                    # 洗版状态
-                    exist_flag = False
-                    if meta.type == MediaType.TV:
-                        no_exists = {
-                            mediakey: {
-                                subscribe.season: NotExistMediaInfo(
-                                    season=subscribe.season,
-                                    episodes=[],
-                                    total_episode=subscribe.total_episode,
-                                    start_episode=subscribe.start_episode or 1)
-                            }
-                        }
-                    else:
-                        no_exists = {}
-
-                # 已存在
-                if exist_flag:
-                    logger.info(f'{mediainfo.title_year} 媒体库中已存在')
-                    self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
-                    continue
-
-                # 电视剧订阅处理缺失集
-                if meta.type == MediaType.TV:
-                    # 实际缺失集与订阅开始结束集范围进行整合，同时剔除已下载的集数
-                    no_exists = self.__get_subscribe_no_exits(
-                        subscribe_name=f'{subscribe.name} {meta.season}',
-                        no_exists=no_exists,
-                        mediakey=mediakey,
-                        begin_season=meta.begin_season,
-                        total_episode=subscribe.total_episode,
-                        start_episode=subscribe.start_episode,
-                        downloaded_episodes=self.__get_downloaded_episodes(subscribe)
-                    )
-
-                # 站点范围
-                sites = self.get_sub_sites(subscribe)
-
-                # 优先级过滤规则
-                if subscribe.best_version:
-                    rule_groups = subscribe.filter_groups \
-                                  or self.systemconfig.get(SystemConfigKey.BestVersionFilterRuleGroups) or []
-                else:
-                    rule_groups = subscribe.filter_groups \
-                                  or self.systemconfig.get(SystemConfigKey.SubscribeFilterRuleGroups) or []
-
-                # 搜索，同时电视剧会过滤掉不需要的剧集
-                contexts = self.searchchain.process(mediainfo=mediainfo,
-                                                    keyword=subscribe.keyword,
-                                                    no_exists=no_exists,
-                                                    sites=sites,
-                                                    rule_groups=rule_groups,
-                                                    area="imdbid" if subscribe.search_imdbid else "title",
-                                                    custom_words=custom_word_list,
-                                                    filter_params=self.get_params(subscribe))
-                if not contexts:
-                    logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
-                    self.finish_subscribe_or_not(subscribe=subscribe, meta=meta,
-                                                 mediainfo=mediainfo, lefts=no_exists)
-                    continue
-
-                # 过滤搜索结果
-                matched_contexts = []
-                for context in contexts:
-                    torrent_meta = context.meta_info
-                    torrent_info = context.torrent_info
-                    torrent_mediainfo = context.media_info
-
-                    # 洗版
-                    if subscribe.best_version:
-                        # 洗版时，非整季不要
-                        if torrent_mediainfo.type == MediaType.TV:
-                            if torrent_meta.episode_list:
-                                logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
-                                continue
-                        # 洗版时，优先级小于等于已下载优先级的不要
-                        if subscribe.current_priority \
-                                and torrent_info.pri_order <= subscribe.current_priority:
-                            logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
-                            continue
-                    matched_contexts.append(context)
-
-                if not matched_contexts:
-                    logger.warn(f'订阅 {subscribe.name} 没有符合过滤条件的资源')
-                    self.finish_subscribe_or_not(subscribe=subscribe, meta=meta,
-                                                 mediainfo=mediainfo, lefts=no_exists)
-                    continue
-
-                # 自动下载
-                downloads, lefts = self.downloadchain.batch_download(
-                    contexts=matched_contexts,
-                    no_exists=no_exists,
-                    userid=subscribe.username,
-                    username=subscribe.username,
-                    save_path=subscribe.save_path,
-                    media_category=subscribe.media_category,
-                    downloader=subscribe.downloader,
-                )
-
-                # 判断是否应完成订阅
-                self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
-                                             downloads=downloads, lefts=lefts)
-            finally:
-                # 如果状态为N则更新为R
-                if subscribe.state == 'N':
-                    self.subscribeoper.update(subscribe.id, {'state': 'R'})
-
-        # 手动触发时发送系统消息
-        if manual:
+        with self._rlock:
+            logger.debug(f"search lock acquired at {datetime.now()}")
             if sid:
-                self.message.put(f'{subscribes[0].name} 搜索完成！', title="订阅搜索", role="system")
+                subscribe = self.subscribeoper.get(sid)
+                subscribes = [subscribe] if subscribe else []
             else:
-                self.message.put('所有订阅搜索完成！', title="订阅搜索", role="system")
+                subscribes = self.subscribeoper.list(state)
+            # 遍历订阅
+            for subscribe in subscribes:
+                if global_vars.is_system_stopped:
+                    break
+                mediakey = subscribe.tmdbid or subscribe.doubanid
+                custom_word_list = subscribe.custom_words.split("\n") if subscribe.custom_words else None
+                # 校验当前时间减订阅创建时间是否大于1分钟，否则跳过先，留出编辑订阅的时间
+                if subscribe.date:
+                    now = datetime.now()
+                    subscribe_time = datetime.strptime(subscribe.date, '%Y-%m-%d %H:%M:%S')
+                    if (now - subscribe_time).total_seconds() < 60:
+                        logger.debug(f"订阅标题：{subscribe.name} 新增小于1分钟，暂不搜索...")
+                        continue
+                # 随机休眠1-5分钟
+                if not sid and state == 'R':
+                    sleep_time = random.randint(60, 300)
+                    logger.info(f'订阅搜索随机休眠 {sleep_time} 秒 ...')
+                    time.sleep(sleep_time)
+                try:
+                    logger.info(f'开始搜索订阅，标题：{subscribe.name} ...')
+                    # 生成元数据
+                    meta = MetaInfo(subscribe.name)
+                    meta.year = subscribe.year
+                    meta.begin_season = subscribe.season or None
+                    try:
+                        meta.type = MediaType(subscribe.type)
+                    except ValueError:
+                        logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
+                        continue
+                    # 识别媒体信息
+                    mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
+                                                                tmdbid=subscribe.tmdbid,
+                                                                doubanid=subscribe.doubanid,
+                                                                cache=False)
+                    if not mediainfo:
+                        logger.warn(
+                            f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
+                        continue
+
+                    # 非洗版状态
+                    if not subscribe.best_version:
+                        # 每季总集数
+                        totals = {}
+                        if subscribe.season and subscribe.total_episode:
+                            totals = {
+                                subscribe.season: subscribe.total_episode
+                            }
+                        # 查询媒体库缺失的媒体信息
+                        exist_flag, no_exists = self.downloadchain.get_no_exists_info(
+                            meta=meta,
+                            mediainfo=mediainfo,
+                            totals=totals
+                        )
+                    else:
+                        # 洗版状态
+                        exist_flag = False
+                        if meta.type == MediaType.TV:
+                            no_exists = {
+                                mediakey: {
+                                    subscribe.season: NotExistMediaInfo(
+                                        season=subscribe.season,
+                                        episodes=[],
+                                        total_episode=subscribe.total_episode,
+                                        start_episode=subscribe.start_episode or 1)
+                                }
+                            }
+                        else:
+                            no_exists = {}
+
+                    # 已存在
+                    if exist_flag:
+                        logger.info(f'{mediainfo.title_year} 媒体库中已存在')
+                        self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
+                        continue
+
+                    # 电视剧订阅处理缺失集
+                    if meta.type == MediaType.TV:
+                        # 实际缺失集与订阅开始结束集范围进行整合，同时剔除已下载的集数
+                        no_exists = self.__get_subscribe_no_exits(
+                            subscribe_name=f'{subscribe.name} {meta.season}',
+                            no_exists=no_exists,
+                            mediakey=mediakey,
+                            begin_season=meta.begin_season,
+                            total_episode=subscribe.total_episode,
+                            start_episode=subscribe.start_episode,
+                            downloaded_episodes=self.__get_downloaded_episodes(subscribe)
+                        )
+
+                    # 站点范围
+                    sites = self.get_sub_sites(subscribe)
+
+                    # 优先级过滤规则
+                    if subscribe.best_version:
+                        rule_groups = subscribe.filter_groups \
+                                      or self.systemconfig.get(SystemConfigKey.BestVersionFilterRuleGroups) or []
+                    else:
+                        rule_groups = subscribe.filter_groups \
+                                      or self.systemconfig.get(SystemConfigKey.SubscribeFilterRuleGroups) or []
+
+                    # 搜索，同时电视剧会过滤掉不需要的剧集
+                    contexts = self.searchchain.process(mediainfo=mediainfo,
+                                                        keyword=subscribe.keyword,
+                                                        no_exists=no_exists,
+                                                        sites=sites,
+                                                        rule_groups=rule_groups,
+                                                        area="imdbid" if subscribe.search_imdbid else "title",
+                                                        custom_words=custom_word_list,
+                                                        filter_params=self.get_params(subscribe))
+                    if not contexts:
+                        logger.warn(f'订阅 {subscribe.keyword or subscribe.name} 未搜索到资源')
+                        self.finish_subscribe_or_not(subscribe=subscribe, meta=meta,
+                                                     mediainfo=mediainfo, lefts=no_exists)
+                        continue
+
+                    # 过滤搜索结果
+                    matched_contexts = []
+                    for context in contexts:
+                        torrent_meta = context.meta_info
+                        torrent_info = context.torrent_info
+                        torrent_mediainfo = context.media_info
+
+                        # 洗版
+                        if subscribe.best_version:
+                            # 洗版时，非整季不要
+                            if torrent_mediainfo.type == MediaType.TV:
+                                if torrent_meta.episode_list:
+                                    logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
+                                    continue
+                            # 洗版时，优先级小于等于已下载优先级的不要
+                            if subscribe.current_priority \
+                                    and torrent_info.pri_order <= subscribe.current_priority:
+                                logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
+                                continue
+                        matched_contexts.append(context)
+
+                    if not matched_contexts:
+                        logger.warn(f'订阅 {subscribe.name} 没有符合过滤条件的资源')
+                        self.finish_subscribe_or_not(subscribe=subscribe, meta=meta,
+                                                     mediainfo=mediainfo, lefts=no_exists)
+                        continue
+
+                    # 自动下载
+                    downloads, lefts = self.downloadchain.batch_download(
+                        contexts=matched_contexts,
+                        no_exists=no_exists,
+                        userid=subscribe.username,
+                        username=subscribe.username,
+                        save_path=subscribe.save_path,
+                        media_category=subscribe.media_category,
+                        downloader=subscribe.downloader,
+                    )
+
+                    # 判断是否应完成订阅
+                    self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
+                                                 downloads=downloads, lefts=lefts)
+                finally:
+                    # 如果状态为N则更新为R
+                    if subscribe.state == 'N':
+                        self.subscribeoper.update(subscribe.id, {'state': 'R'})
+
+            # 手动触发时发送系统消息
+            if manual:
+                if subscribes:
+                    if sid:
+                        self.message.put(f'{subscribes[0].name} 搜索完成！', title="订阅搜索", role="system")
+                    else:
+                        self.message.put('所有订阅搜索完成！', title="订阅搜索", role="system")
+                else:
+                    self.message.put('没有找到订阅！', title="订阅搜索", role="system")
+            logger.debug(f"search Lock released at {datetime.now()}")
 
     def update_subscribe_priority(self, subscribe: Subscribe, meta: MetaInfo,
                                   mediainfo: MediaInfo, downloads: List[Context]):
@@ -535,250 +545,253 @@ class SubscribeChain(ChainBase):
         # 记录重新识别过的种子
         _recognize_cached = []
 
-        # 所有订阅
-        subscribes = self.subscribeoper.list('R')
-        # 遍历订阅
-        for subscribe in subscribes:
-            if global_vars.is_system_stopped:
-                break
-            logger.info(f'开始匹配订阅，标题：{subscribe.name} ...')
-            mediakey = subscribe.tmdbid or subscribe.doubanid
-            # 生成元数据
-            meta = MetaInfo(subscribe.name)
-            meta.year = subscribe.year
-            meta.begin_season = subscribe.season or None
-            try:
-                meta.type = MediaType(subscribe.type)
-            except ValueError:
-                logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
-                continue
-            # 订阅的站点域名列表
-            domains = []
-            if subscribe.sites:
-                domains = self.siteoper.get_domains_by_ids(subscribe.sites)
-            # 识别媒体信息
-            mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
-                                                        tmdbid=subscribe.tmdbid,
-                                                        doubanid=subscribe.doubanid,
-                                                        cache=False)
-            if not mediainfo:
-                logger.warn(
-                    f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
-                continue
-            # 非洗版
-            if not subscribe.best_version:
-                # 每季总集数
-                totals = {}
-                if subscribe.season and subscribe.total_episode:
-                    totals = {
-                        subscribe.season: subscribe.total_episode
-                    }
-                # 查询缺失的媒体信息
-                exist_flag, no_exists = self.downloadchain.get_no_exists_info(
-                    meta=meta,
-                    mediainfo=mediainfo,
-                    totals=totals
-                )
-            else:
-                # 洗版
-                exist_flag = False
-                if meta.type == MediaType.TV:
-                    no_exists = {
-                        mediakey: {
-                            subscribe.season: NotExistMediaInfo(
-                                season=subscribe.season,
-                                episodes=[],
-                                total_episode=subscribe.total_episode,
-                                start_episode=subscribe.start_episode or 1)
-                        }
-                    }
-                else:
-                    no_exists = {}
-
-            # 已存在
-            if exist_flag:
-                logger.info(f'{mediainfo.title_year} 媒体库中已存在')
-                self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
-                continue
-
-            # 电视剧订阅
-            if meta.type == MediaType.TV:
-                # 整合实际缺失集与订阅开始集结束集，同时剔除已下载的集数
-                no_exists = self.__get_subscribe_no_exits(
-                    subscribe_name=f'{subscribe.name} {meta.season}',
-                    no_exists=no_exists,
-                    mediakey=mediakey,
-                    begin_season=meta.begin_season,
-                    total_episode=subscribe.total_episode,
-                    start_episode=subscribe.start_episode,
-                    downloaded_episodes=self.__get_downloaded_episodes(subscribe)
-                )
-
-            # 遍历缓存种子
-            _match_context = []
-            for domain, contexts in torrents.items():
+        with self._rlock:
+            logger.debug(f"match lock acquired at {datetime.now()}")
+            # 所有订阅
+            subscribes = self.subscribeoper.list('R')
+            # 遍历订阅
+            for subscribe in subscribes:
                 if global_vars.is_system_stopped:
                     break
-                if domains and domain not in domains:
+                logger.info(f'开始匹配订阅，标题：{subscribe.name} ...')
+                mediakey = subscribe.tmdbid or subscribe.doubanid
+                # 生成元数据
+                meta = MetaInfo(subscribe.name)
+                meta.year = subscribe.year
+                meta.begin_season = subscribe.season or None
+                try:
+                    meta.type = MediaType(subscribe.type)
+                except ValueError:
+                    logger.error(f'订阅 {subscribe.name} 类型错误：{subscribe.type}')
                     continue
-                logger.debug(f'开始匹配站点：{domain}，共缓存了 {len(contexts)} 个种子...')
-                for context in contexts:
-                    # 提取信息
-                    torrent_meta = copy.deepcopy(context.meta_info)
-                    torrent_mediainfo = copy.deepcopy(context.media_info)
-                    torrent_info = context.torrent_info
-
-                    # 不在订阅站点范围的不处理
-                    sub_sites = self.get_sub_sites(subscribe)
-                    if sub_sites and torrent_info.site not in sub_sites:
-                        logger.debug(f"{torrent_info.site_name} - {torrent_info.title} 不符合订阅站点要求")
-                        continue
-
-                    # 有自定义识别词时，需要判断是否需要重新识别
-                    if subscribe.custom_words:
-                        _, apply_words = WordsMatcher().prepare(torrent_info.title,
-                                                                custom_words=subscribe.custom_words.split("\n"))
-                        if apply_words:
-                            logger.info(
-                                f'{torrent_info.site_name} - {torrent_info.title} 因订阅存在自定义识别词，重新识别元数据...')
-                            # 重新识别元数据
-                            torrent_meta = MetaInfo(title=torrent_info.title, subtitle=torrent_info.description,
-                                                    custom_words=subscribe.custom_words)
-                            # 媒体信息需要重新识别
-                            torrent_mediainfo = None
-
-                    # 先判断是否有没识别的种子，否则重新识别
-                    if not torrent_mediainfo \
-                            or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
-                        # 避免重复处理
-                        _cache_key = f"{torrent_meta.org_string}_{torrent_info.description}"
-                        if _cache_key not in _recognize_cached:
-                            _recognize_cached.append(_cache_key)
-                            # 重新识别媒体信息
-                            torrent_mediainfo = self.recognize_media(meta=torrent_meta)
-                            if torrent_mediainfo:
-                                # 更新种子缓存
-                                context.media_info = torrent_mediainfo
-                            if not torrent_mediainfo:
-                                # 通过标题匹配兜底
-                                logger.warn(
-                                    f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
-                                if self.torrenthelper.match_torrent(mediainfo=mediainfo,
-                                                                    torrent_meta=torrent_meta,
-                                                                    torrent=torrent_info):
-                                    # 匹配成功
-                                    logger.info(
-                                        f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
-                                    # 更新种子缓存
-                                    torrent_mediainfo = mediainfo
-                                    context.media_info = mediainfo
-                                else:
-                                    continue
-
-                    # 直接比对媒体信息
-                    if torrent_mediainfo and (torrent_mediainfo.tmdb_id or torrent_mediainfo.douban_id):
-                        if torrent_mediainfo.type != mediainfo.type:
-                            continue
-                        if torrent_mediainfo.tmdb_id \
-                                and torrent_mediainfo.tmdb_id != mediainfo.tmdb_id:
-                            continue
-                        if torrent_mediainfo.douban_id \
-                                and torrent_mediainfo.douban_id != mediainfo.douban_id:
-                            continue
-                        logger.info(
-                            f'{mediainfo.title_year} 通过媒体信ID匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
+                # 订阅的站点域名列表
+                domains = []
+                if subscribe.sites:
+                    domains = self.siteoper.get_domains_by_ids(subscribe.sites)
+                # 识别媒体信息
+                mediainfo: MediaInfo = self.recognize_media(meta=meta, mtype=meta.type,
+                                                            tmdbid=subscribe.tmdbid,
+                                                            doubanid=subscribe.doubanid,
+                                                            cache=False)
+                if not mediainfo:
+                    logger.warn(
+                        f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
+                    continue
+                # 非洗版
+                if not subscribe.best_version:
+                    # 每季总集数
+                    totals = {}
+                    if subscribe.season and subscribe.total_episode:
+                        totals = {
+                            subscribe.season: subscribe.total_episode
+                        }
+                    # 查询缺失的媒体信息
+                    exist_flag, no_exists = self.downloadchain.get_no_exists_info(
+                        meta=meta,
+                        mediainfo=mediainfo,
+                        totals=totals
+                    )
+                else:
+                    # 洗版
+                    exist_flag = False
+                    if meta.type == MediaType.TV:
+                        no_exists = {
+                            mediakey: {
+                                subscribe.season: NotExistMediaInfo(
+                                    season=subscribe.season,
+                                    episodes=[],
+                                    total_episode=subscribe.total_episode,
+                                    start_episode=subscribe.start_episode or 1)
+                            }
+                        }
                     else:
-                        continue
+                        no_exists = {}
 
-                    # 如果是电视剧
-                    if torrent_mediainfo.type == MediaType.TV:
-                        # 有多季的不要
-                        if len(torrent_meta.season_list) > 1:
-                            logger.debug(f'{torrent_info.title} 有多季，不处理')
+                # 已存在
+                if exist_flag:
+                    logger.info(f'{mediainfo.title_year} 媒体库中已存在')
+                    self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
+                    continue
+
+                # 电视剧订阅
+                if meta.type == MediaType.TV:
+                    # 整合实际缺失集与订阅开始集结束集，同时剔除已下载的集数
+                    no_exists = self.__get_subscribe_no_exits(
+                        subscribe_name=f'{subscribe.name} {meta.season}',
+                        no_exists=no_exists,
+                        mediakey=mediakey,
+                        begin_season=meta.begin_season,
+                        total_episode=subscribe.total_episode,
+                        start_episode=subscribe.start_episode,
+                        downloaded_episodes=self.__get_downloaded_episodes(subscribe)
+                    )
+
+                # 遍历缓存种子
+                _match_context = []
+                for domain, contexts in torrents.items():
+                    if global_vars.is_system_stopped:
+                        break
+                    if domains and domain not in domains:
+                        continue
+                    logger.debug(f'开始匹配站点：{domain}，共缓存了 {len(contexts)} 个种子...')
+                    for context in contexts:
+                        # 提取信息
+                        torrent_meta = copy.deepcopy(context.meta_info)
+                        torrent_mediainfo = copy.deepcopy(context.media_info)
+                        torrent_info = context.torrent_info
+
+                        # 不在订阅站点范围的不处理
+                        sub_sites = self.get_sub_sites(subscribe)
+                        if sub_sites and torrent_info.site not in sub_sites:
+                            logger.debug(f"{torrent_info.site_name} - {torrent_info.title} 不符合订阅站点要求")
                             continue
-                        # 比对季
-                        if torrent_meta.begin_season:
-                            if meta.begin_season != torrent_meta.begin_season:
+
+                        # 有自定义识别词时，需要判断是否需要重新识别
+                        if subscribe.custom_words:
+                            _, apply_words = WordsMatcher().prepare(torrent_info.title,
+                                                                    custom_words=subscribe.custom_words.split("\n"))
+                            if apply_words:
+                                logger.info(
+                                    f'{torrent_info.site_name} - {torrent_info.title} 因订阅存在自定义识别词，重新识别元数据...')
+                                # 重新识别元数据
+                                torrent_meta = MetaInfo(title=torrent_info.title, subtitle=torrent_info.description,
+                                                        custom_words=subscribe.custom_words)
+                                # 媒体信息需要重新识别
+                                torrent_mediainfo = None
+
+                        # 先判断是否有没识别的种子，否则重新识别
+                        if not torrent_mediainfo \
+                                or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
+                            # 避免重复处理
+                            _cache_key = f"{torrent_meta.org_string}_{torrent_info.description}"
+                            if _cache_key not in _recognize_cached:
+                                _recognize_cached.append(_cache_key)
+                                # 重新识别媒体信息
+                                torrent_mediainfo = self.recognize_media(meta=torrent_meta)
+                                if torrent_mediainfo:
+                                    # 更新种子缓存
+                                    context.media_info = torrent_mediainfo
+                                if not torrent_mediainfo:
+                                    # 通过标题匹配兜底
+                                    logger.warn(
+                                        f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
+                                    if self.torrenthelper.match_torrent(mediainfo=mediainfo,
+                                                                        torrent_meta=torrent_meta,
+                                                                        torrent=torrent_info):
+                                        # 匹配成功
+                                        logger.info(
+                                            f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
+                                        # 更新种子缓存
+                                        torrent_mediainfo = mediainfo
+                                        context.media_info = mediainfo
+                                    else:
+                                        continue
+
+                        # 直接比对媒体信息
+                        if torrent_mediainfo and (torrent_mediainfo.tmdb_id or torrent_mediainfo.douban_id):
+                            if torrent_mediainfo.type != mediainfo.type:
+                                continue
+                            if torrent_mediainfo.tmdb_id \
+                                    and torrent_mediainfo.tmdb_id != mediainfo.tmdb_id:
+                                continue
+                            if torrent_mediainfo.douban_id \
+                                    and torrent_mediainfo.douban_id != mediainfo.douban_id:
+                                continue
+                            logger.info(
+                                f'{mediainfo.title_year} 通过媒体信ID匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
+                        else:
+                            continue
+
+                        # 如果是电视剧
+                        if torrent_mediainfo.type == MediaType.TV:
+                            # 有多季的不要
+                            if len(torrent_meta.season_list) > 1:
+                                logger.debug(f'{torrent_info.title} 有多季，不处理')
+                                continue
+                            # 比对季
+                            if torrent_meta.begin_season:
+                                if meta.begin_season != torrent_meta.begin_season:
+                                    logger.debug(f'{torrent_info.title} 季不匹配')
+                                    continue
+                            elif meta.begin_season != 1:
                                 logger.debug(f'{torrent_info.title} 季不匹配')
                                 continue
-                        elif meta.begin_season != 1:
-                            logger.debug(f'{torrent_info.title} 季不匹配')
-                            continue
-                        # 非洗版
-                        if not subscribe.best_version:
-                            # 不是缺失的剧集不要
-                            if no_exists and no_exists.get(mediakey):
-                                # 缺失集
-                                no_exists_info = no_exists.get(mediakey).get(subscribe.season)
-                                if no_exists_info:
-                                    # 是否有交集
-                                    if no_exists_info.episodes and \
-                                            torrent_meta.episode_list and \
-                                            not set(no_exists_info.episodes).intersection(
-                                                set(torrent_meta.episode_list)
-                                            ):
-                                        logger.debug(
-                                            f'{torrent_info.title} 对应剧集 {torrent_meta.episode_list} 未包含缺失的剧集'
-                                        )
+                            # 非洗版
+                            if not subscribe.best_version:
+                                # 不是缺失的剧集不要
+                                if no_exists and no_exists.get(mediakey):
+                                    # 缺失集
+                                    no_exists_info = no_exists.get(mediakey).get(subscribe.season)
+                                    if no_exists_info:
+                                        # 是否有交集
+                                        if no_exists_info.episodes and \
+                                                torrent_meta.episode_list and \
+                                                not set(no_exists_info.episodes).intersection(
+                                                    set(torrent_meta.episode_list)
+                                                ):
+                                            logger.debug(
+                                                f'{torrent_info.title} 对应剧集 {torrent_meta.episode_list} 未包含缺失的剧集'
+                                            )
+                                            continue
+                            else:
+                                # 洗版时，非整季不要
+                                if meta.type == MediaType.TV:
+                                    if torrent_meta.episode_list:
+                                        logger.debug(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
                                         continue
-                        else:
-                            # 洗版时，非整季不要
-                            if meta.type == MediaType.TV:
-                                if torrent_meta.episode_list:
-                                    logger.debug(f'{subscribe.name} 正在洗版，{torrent_info.title} 不是整季')
-                                    continue
 
-                    # 匹配订阅附加参数
-                    if not self.torrenthelper.filter_torrent(torrent_info=torrent_info,
-                                                             filter_params=self.get_params(subscribe)):
-                        continue
-
-                    # 优先级过滤规则
-                    if subscribe.best_version:
-                        rule_groups = subscribe.filter_groups \
-                                      or self.systemconfig.get(SystemConfigKey.BestVersionFilterRuleGroups)
-                    else:
-                        rule_groups = subscribe.filter_groups \
-                                      or self.systemconfig.get(SystemConfigKey.SubscribeFilterRuleGroups)
-                    result: List[TorrentInfo] = self.filter_torrents(
-                        rule_groups=rule_groups,
-                        torrent_list=[torrent_info],
-                        mediainfo=torrent_mediainfo)
-                    if result is not None and not result:
-                        # 不符合过滤规则
-                        logger.debug(f"{torrent_info.title} 不匹配过滤规则")
-                        continue
-
-                    # 洗版时，优先级小于已下载优先级的不要
-                    if subscribe.best_version:
-                        if subscribe.current_priority \
-                                and torrent_info.pri_order <= subscribe.current_priority:
-                            logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
+                        # 匹配订阅附加参数
+                        if not self.torrenthelper.filter_torrent(torrent_info=torrent_info,
+                                                                 filter_params=self.get_params(subscribe)):
                             continue
 
-                    # 匹配成功
-                    logger.info(f'{mediainfo.title_year} 匹配成功：{torrent_info.title}')
-                    _match_context.append(context)
+                        # 优先级过滤规则
+                        if subscribe.best_version:
+                            rule_groups = subscribe.filter_groups \
+                                          or self.systemconfig.get(SystemConfigKey.BestVersionFilterRuleGroups)
+                        else:
+                            rule_groups = subscribe.filter_groups \
+                                          or self.systemconfig.get(SystemConfigKey.SubscribeFilterRuleGroups)
+                        result: List[TorrentInfo] = self.filter_torrents(
+                            rule_groups=rule_groups,
+                            torrent_list=[torrent_info],
+                            mediainfo=torrent_mediainfo)
+                        if result is not None and not result:
+                            # 不符合过滤规则
+                            logger.debug(f"{torrent_info.title} 不匹配过滤规则")
+                            continue
 
-            if not _match_context:
-                # 未匹配到资源
-                logger.info(f'{mediainfo.title_year} 未匹配到符合条件的资源')
-                self.finish_subscribe_or_not(subscribe=subscribe, meta=meta,
-                                             mediainfo=mediainfo, lefts=no_exists)
-                continue
+                        # 洗版时，优先级小于已下载优先级的不要
+                        if subscribe.best_version:
+                            if subscribe.current_priority \
+                                    and torrent_info.pri_order <= subscribe.current_priority:
+                                logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
+                                continue
 
-            # 开始批量择优下载
-            logger.info(f'{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源')
-            downloads, lefts = self.downloadchain.batch_download(contexts=_match_context,
-                                                                 no_exists=no_exists,
-                                                                 userid=subscribe.username,
-                                                                 username=subscribe.username,
-                                                                 save_path=subscribe.save_path,
-                                                                 media_category=subscribe.media_category,
-                                                                 downloader=subscribe.downloader)
-            # 判断是否要完成订阅
-            self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
-                                         downloads=downloads, lefts=lefts)
+                        # 匹配成功
+                        logger.info(f'{mediainfo.title_year} 匹配成功：{torrent_info.title}')
+                        _match_context.append(context)
+
+                if not _match_context:
+                    # 未匹配到资源
+                    logger.info(f'{mediainfo.title_year} 未匹配到符合条件的资源')
+                    self.finish_subscribe_or_not(subscribe=subscribe, meta=meta,
+                                                 mediainfo=mediainfo, lefts=no_exists)
+                    continue
+
+                # 开始批量择优下载
+                logger.info(f'{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源')
+                downloads, lefts = self.downloadchain.batch_download(contexts=_match_context,
+                                                                     no_exists=no_exists,
+                                                                     userid=subscribe.username,
+                                                                     username=subscribe.username,
+                                                                     save_path=subscribe.save_path,
+                                                                     media_category=subscribe.media_category,
+                                                                     downloader=subscribe.downloader)
+                # 判断是否要完成订阅
+                self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
+                                             downloads=downloads, lefts=lefts)
+            logger.debug(f"match Lock released at {datetime.now()}")
 
     def check(self):
         """

@@ -83,7 +83,8 @@ class SubscribeOper(DbOper):
         更新订阅
         """
         subscribe = self.get(sid)
-        subscribe.update(self._db, payload)
+        if subscribe:
+            subscribe.update(self._db, payload)
         return subscribe
 
     def list_by_tmdbid(self, tmdbid: int, season: int = None) -> List[Subscribe]:
