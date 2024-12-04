@@ -44,7 +44,7 @@ def retry(ExceptionToCheck: Any,
 def version_comparison(standard_version) -> Optional[bool]:
     """
     版本比对
-    :param
+    :param standard_version: 指定版本号
     return: True - 当前版本大于等于输入版本，False - 当前版本输入标准版本, None - 版本比对失败
 
     - 可用于给插件或主程序进行版本比对使用，判断是否使用新特性，用于兼容旧版本主程序
