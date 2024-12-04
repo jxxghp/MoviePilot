@@ -70,6 +70,8 @@ class ChainEventType(Enum):
     CommandRegister = "command.register"
     # 整理重命名
     TransferRename = "transfer.rename"
+    # 资源选择
+    ResourceSelection = "resource.selection"
 
 
 # 系统配置Key字典

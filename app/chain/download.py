@@ -20,7 +20,8 @@ from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification
-from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType
+from app.schemas.event import ResourceSelectionEventData
+from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ChainEventType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 
@@ -457,6 +458,21 @@ class DownloadChain(ChainBase):
             if not no_exist.get(season):
                 return 9999
             return no_exist[season].total_episode
+
+        # 发送资源选择事件，允许外部修改上下文数据
+        logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
+        event_data = ResourceSelectionEventData(
+            contexts=contexts,
+            downloader=downloader
+        )
+        event = eventmanager.send_event(ChainEventType.ResourceSelection, event_data)
+        # 如果事件修改了上下文数据，使用更新后的数据
+        if event and event.event_data:
+            event_data: ResourceSelectionEventData = event.event_data
+            if event_data.updated and event_data.updated_contexts is not None:
+                logger.debug(f"Contexts updated by event: "
+                             f"{len(event_data.updated_contexts)} items (source: {event_data.source})")
+                contexts = event_data.updated_contexts
 
         # 分组排序
         contexts = TorrentHelper().sort_group_torrents(contexts)
