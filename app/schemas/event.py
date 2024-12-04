@@ -1,7 +1,9 @@
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from pydantic import BaseModel, Field, root_validator
+
+from app.core.context import Context
 
 
 class BaseEventData(BaseModel):
@@ -142,4 +144,28 @@ class TransferRenameEventData(ChainEventData):
     # 输出参数
     updated: bool = Field(False, description="是否已更新")
     updated_str: Optional[str] = Field(None, description="更新后的字符串")
+    source: Optional[str] = Field("未知拦截源", description="拦截源")
+
+
+class ResourceSelectionEventData(BaseModel):
+    """
+    ResourceSelection 事件的数据模型
+
+    Attributes:
+        # 输入参数
+        contexts (List[Context]): 当前待选择的资源上下文列表
+        source (str): 事件源，指示事件的触发来源
+
+        # 输出参数
+        updated (bool): 是否已更新，默认值为 False
+        updated_contexts (Optional[List[Context]]): 已更新的资源上下文列表，默认值为 None
+        source (str): 更新源，默认值为 "未知更新源"
+    """
+    # 输入参数
+    contexts: Any = Field(None, description="待选择的资源上下文列表")
+    downloader: Optional[str] = Field(None, description="下载器")
+
+    # 输出参数
+    updated: bool = Field(False, description="是否已更新")
+    updated_contexts: Optional[List[Context]] = Field(None, description="已更新的资源上下文列表")
     source: Optional[str] = Field("未知拦截源", description="拦截源")
