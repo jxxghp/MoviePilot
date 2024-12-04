@@ -355,7 +355,8 @@ class DownloadChain(ChainBase):
                 "hash": _hash,
                 "context": context,
                 "username": username,
-                "downloader": _downloader
+                "downloader": _downloader,
+                "episodes": episodes
             })
         else:
             # 下载失败
