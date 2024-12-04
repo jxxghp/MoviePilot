@@ -220,6 +220,8 @@ class OtherModulesType(Enum):
     FileManager = "文件整理"
     # 过滤器
     Filter = "过滤器"
+    # 站点索引
+    Indexer = "站点索引"
 
 
 # 用户配置Key字典

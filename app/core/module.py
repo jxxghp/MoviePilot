@@ -1,11 +1,12 @@
 import traceback
-from typing import Generator, Optional, Tuple, Any
+from typing import Generator, Optional, Tuple, Any, Union
 
 from app.core.config import settings
 from app.core.event import eventmanager
 from app.helper.module import ModuleHelper
 from app.log import logger
-from app.schemas.types import EventType, ModuleType
+from app.schemas.types import EventType, ModuleType, DownloaderType, MediaServerType, MessageChannel, StorageSchema, \
+    OtherModulesType
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
 
@@ -19,6 +20,8 @@ class ModuleManager(metaclass=Singleton):
     _modules: dict = {}
     # 运行态模块列表
     _running_modules: dict = {}
+    # 子模块类型集合
+    SubType = Union[DownloaderType, MediaServerType, MessageChannel, StorageSchema, OtherModulesType]
 
     def __init__(self):
         self.load_modules()
@@ -133,6 +136,17 @@ class ModuleManager(metaclass=Singleton):
         for _, module in self._running_modules.items():
             if hasattr(module, 'get_type') \
                     and module.get_type() == module_type:
+                yield module
+
+    def get_running_subtype_module(self, module_subtype: SubType) -> Generator:
+        """
+        获取指定子类型的模块
+        """
+        if not self._running_modules:
+            return []
+        for _, module in self._running_modules.items():
+            if hasattr(module, 'get_subtype') \
+                    and module.get_subtype() == module_subtype:
                 yield module
 
     def get_module(self, module_id: str) -> Any:

@@ -18,7 +18,7 @@ from app.modules.indexer.spider.tnode import TNodeSpider
 from app.modules.indexer.spider.torrentleech import TorrentLeech
 from app.modules.indexer.spider.yema import YemaSpider
 from app.schemas import SiteUserData
-from app.schemas.types import MediaType, ModuleType
+from app.schemas.types import MediaType, ModuleType, OtherModulesType
 from app.utils.string import StringUtils
 
 
@@ -46,6 +46,13 @@ class IndexerModule(_ModuleBase):
         获取模块类型
         """
         return ModuleType.Indexer
+
+    @staticmethod
+    def get_subtype() -> OtherModulesType:
+        """
+        获取模块子类型
+        """
+        return OtherModulesType.Indexer
 
     @staticmethod
     def get_priority() -> int:
