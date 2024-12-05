@@ -20,7 +20,7 @@ from app.helper.message import MessageHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import ExistMediaInfo, NotExistMediaInfo, DownloadingTorrent, Notification
-from app.schemas.event import ResourceSelectionEventData
+from app.schemas.event import ResourceSelectionEventData, ResourceDownloadEventData
 from app.schemas.types import MediaType, TorrentStatus, EventType, MessageChannel, NotificationType, ChainEventType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
@@ -192,7 +192,7 @@ class DownloadChain(ChainBase):
             logger.error(f"下载种子文件失败：{torrent.title} - {torrent_url}")
             self.post_message(Notification(
                 channel=channel,
-                source=source,
+                source=source if channel else None,
                 mtype=NotificationType.Manual,
                 title=f"{torrent.title} 种子下载失败！",
                 text=f"错误信息：{error_msg}\n站点：{torrent.site_name}",
@@ -204,7 +204,8 @@ class DownloadChain(ChainBase):
 
     def download_single(self, context: Context, torrent_file: Path = None,
                         episodes: Set[int] = None,
-                        channel: MessageChannel = None, source: str = None,
+                        channel: MessageChannel = None,
+                        source: str = None,
                         downloader: str = None,
                         save_path: str = None,
                         userid: Union[str, int] = None,
@@ -216,13 +217,36 @@ class DownloadChain(ChainBase):
         :param torrent_file: 种子文件路径
         :param episodes: 需要下载的集数
         :param channel: 通知渠道
-        :param source: 通知来源
+        :param source: 来源（消息通知、Subscribe、Manual等）
         :param downloader: 下载器
         :param save_path: 保存路径
         :param userid: 用户ID
         :param username: 调用下载的用户名/插件名
         :param media_category: 自定义媒体类别
         """
+        # 发送资源下载事件，允许外部拦截下载
+        event_data = ResourceDownloadEventData(
+            context=context,
+            episodes=episodes,
+            channel=channel,
+            source=source,
+            downloader=downloader,
+            save_path=save_path,
+            userid=userid,
+            username=username,
+            media_category=media_category
+        )
+        # 触发资源下载事件
+        event = eventmanager.send_event(ChainEventType.ResourceDownload, event_data)
+        if event and event.event_data:
+            event_data: ResourceDownloadEventData = event.event_data
+            # 如果事件被取消，跳过资源下载
+            if event_data.cancel:
+                logger.debug(
+                    f"Resource download canceled by event: {event_data.source},"
+                    f"Reason: {event_data.reason}")
+                return None
+
         _torrent = context.torrent_info
         _media = context.media_info
         _meta = context.meta_info
@@ -366,7 +390,7 @@ class DownloadChain(ChainBase):
             # 只发送给对应渠道和用户
             self.post_message(Notification(
                 channel=channel,
-                source=source,
+                source=source if channel else None,
                 mtype=NotificationType.Manual,
                 title="添加下载任务失败：%s %s"
                       % (_media.title_year, _meta.season_episode),
@@ -394,7 +418,7 @@ class DownloadChain(ChainBase):
         :param no_exists:  缺失的剧集信息
         :param save_path:  保存路径
         :param channel:  通知渠道
-        :param source:  通知来源
+        :param source:  来源（消息通知、订阅、手工下载等）
         :param userid:  用户ID
         :param username: 调用下载的用户名/插件名
         :param media_category: 自定义媒体类别
