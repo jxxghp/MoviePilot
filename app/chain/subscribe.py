@@ -237,7 +237,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         """
         订阅搜索
         :param sid: 订阅ID，有值时只处理该订阅
-        :param state: 订阅状态 N:未搜索 R:已搜索
+        :param state: 订阅状态 N:新建, R:订阅中, P:待定, S:暂停
         :param manual: 是否手动搜索
         :return: 更新订阅状态为R或删除订阅
         """
@@ -247,7 +247,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 subscribe = self.subscribeoper.get(sid)
                 subscribes = [subscribe] if subscribe else []
             else:
-                subscribes = self.subscribeoper.list(state)
+                subscribes = self.subscribeoper.list(self.get_states_for_search(state))
             # 遍历订阅
             for subscribe in subscribes:
                 if global_vars.is_system_stopped:
@@ -262,7 +262,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         logger.debug(f"订阅标题：{subscribe.name} 新增小于1分钟，暂不搜索...")
                         continue
                 # 随机休眠1-5分钟
-                if not sid and state == 'R':
+                if not sid and state in ['R', 'P']:
                     sleep_time = random.randint(60, 300)
                     logger.info(f'订阅搜索随机休眠 {sleep_time} 秒 ...')
                     time.sleep(sleep_time)
@@ -379,7 +379,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                             # 洗版时，优先级小于等于已下载优先级的不要
                             if subscribe.current_priority \
                                     and torrent_info.pri_order <= subscribe.current_priority:
-                                logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
+                                logger.info(
+                                    f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
                                 continue
                         matched_contexts.append(context)
 
@@ -520,7 +521,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         :return: 返回[]代表所有站点命中，返回None代表没有订阅
         """
         # 查询所有订阅
-        subscribes = self.subscribeoper.list('R')
+        subscribes = self.subscribeoper.list(self.get_states_for_search('R'))
         if not subscribes:
             return None
         ret_sites = []
@@ -548,7 +549,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         with self._rlock:
             logger.debug(f"match lock acquired at {datetime.now()}")
             # 所有订阅
-            subscribes = self.subscribeoper.list('R')
+            subscribes = self.subscribeoper.list(self.get_states_for_search('R'))
             # 遍历订阅
             for subscribe in subscribes:
                 if global_vars.is_system_stopped:
@@ -765,7 +766,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         if subscribe.best_version:
                             if subscribe.current_priority \
                                     and torrent_info.pri_order <= subscribe.current_priority:
-                                logger.info(f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
+                                logger.info(
+                                    f'{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级')
                                 continue
 
                         # 匹配成功
@@ -931,6 +933,9 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         """
         完成订阅
         """
+        # 如果订阅状态为待定（P），说明订阅信息尚未完全更新，无法完成订阅
+        if subscribe.state == "P":
+            return
         # 完成订阅
         msgstr = "订阅"
         if bestversion:
@@ -1309,3 +1314,19 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         subscribe_info.subscribe = Subscribe(**subscribe.to_dict())
         subscribe_info.episodes = episodes
         return subscribe_info
+
+    @staticmethod
+    def get_states_for_search(state: str) -> str:
+        """
+        根据给定的状态返回实际需要搜索的状态列表，支持多个状态用逗号分隔
+        :param state: 订阅状态
+            N: New（新建，未处理）
+            R: Resolved（订阅中）
+            P: Pending（待定，信息待进一步更新，允许搜索，不允许完成）
+            S: Suspended（暂停，订阅不参与任何动作，暂时停止处理）
+        :return: 需要查询的状态列表（多个状态用逗号分隔）
+        """
+        # 如果状态是 R 或 P，则视为一起搜索，返回 R,P 作为查询条件
+        if state in ["R", "P"]:
+            return "R,P"
+        return state
