@@ -702,7 +702,7 @@ class FileManagerModule(_ModuleBase):
                                 return False, errmsg
                         except Exception as error:
                             logger.info(f"字幕 {new_file} 出错了,原因: {str(error)}")
-        return False, ""
+        return True, ""
 
     def __transfer_audio_track_files(self, fileitem: FileItem, target_storage: str, target_file: Path,
                                      transfer_type: str) -> Tuple[bool, str]:
@@ -726,7 +726,7 @@ class FileManagerModule(_ModuleBase):
         file_list: List[FileItem] = storage_oper.list(parent_item)
         # 匹配音轨文件
         pending_file_list: List[FileItem] = [file for file in file_list
-                                             if Path(file.name).stem == org_path.name
+                                             if Path(file.name).stem == org_path.stem
                                              and file.type == "file" and file.extension
                                              and f".{file.extension.lower()}" in settings.RMT_AUDIOEXT]
         if len(pending_file_list) == 0:
