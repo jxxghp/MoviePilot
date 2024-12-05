@@ -124,6 +124,27 @@ def update_subscribe(
     return schemas.Response(success=True)
 
 
+@router.put("/status/{subid}", summary="更新订阅状态", response_model=schemas.Response)
+def update_subscribe_status(
+        subid: int,
+        state: str,
+        db: Session = Depends(get_db),
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    更新订阅状态
+    """
+    subscribe = Subscribe.get(db, subid)
+    if not subscribe:
+        return schemas.Response(success=False, message="订阅不存在")
+    valid_states = ["R", "P", "S"]
+    if state not in valid_states:
+        return schemas.Response(success=False, message="无效的订阅状态")
+    subscribe.update(db, {
+        "state": state
+    })
+    return schemas.Response(success=True)
+
+
 @router.get("/media/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
 def subscribe_mediaid(
         mediaid: str,
