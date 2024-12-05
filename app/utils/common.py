@@ -77,18 +77,20 @@ def version_comparison(standard_version: str = APP_VERSION, app_version: str = A
 
                 for a, s in zip(app_version_list, standard_version_list):
                     # 最低版本
-                    if mode == "min" and a < s:
-                        raise VersionComparisonException(f"当前版本 {app_version} 小于标准版本 {standard_version}！")
+                    if mode == "min":
+                        if a < s:
+                            raise VersionComparisonException(f"当前版本 {app_version} 小于标准版本 {standard_version}！")
                     # 最高版本
-                    elif mode == "max" and a > s:
-                        raise VersionComparisonException(f"当前版本 {app_version} 大于标准版本 {standard_version}！")
+                    elif mode == "max":
+                        if a > s:
+                            raise VersionComparisonException(f"当前版本 {app_version} 大于标准版本 {standard_version}！")
                     # 匹配版本
-                    elif mode == "equal" and a != s:
-                        raise VersionComparisonException(
-                            f"当前版本 {app_version} 与指定标准版本 {standard_version} 不匹配！")
+                    elif mode == "equal":
+                        if a != s:
+                            raise VersionComparisonException(f"当前版本 {app_version} 与指定版本 {standard_version} 不匹配！")
                     # 异常的模式
                     else:
-                        raise VersionComparisonException(f"设置的版本比对模式 {mode} 不是有效的模式！")
+                        raise ValueError(f"设置的版本比对模式 {mode} 不是有效的模式！")
                 # 完成版本比对，允许执行函数
                 return f(*args, **kwargs)
 
