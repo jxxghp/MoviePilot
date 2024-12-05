@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Set, Union
 
 from pydantic import BaseModel, Field, root_validator
 
 from app.core.context import Context
+from app.schemas import MessageChannel
 
 
 class BaseEventData(BaseModel):
@@ -169,3 +170,41 @@ class ResourceSelectionEventData(BaseModel):
     updated: bool = Field(False, description="是否已更新")
     updated_contexts: Optional[List[Context]] = Field(None, description="已更新的资源上下文列表")
     source: Optional[str] = Field("未知拦截源", description="拦截源")
+
+
+class ResourceDownloadEventData(ChainEventData):
+    """
+    ResourceDownload 事件的数据模型
+
+    Attributes:
+        # 输入参数
+        context (Context): 当前资源上下文
+        episodes (Set[int]): 需要下载的集数
+        channel (MessageChannel): 通知渠道
+        origin (str): 来源（消息通知、订阅、手工下载等）
+        downloader (str): 下载器
+        save_path (str): 保存路径
+        userid (Union[str, int]): 用户ID
+        username (str): 调用下载的用户名/插件名
+        media_category (str): 自定义媒体类别
+
+        # 输出参数
+        cancel (bool): 是否取消下载，默认值为 False
+        source (str): 拦截源，默认值为 "未知拦截源"
+        reason (str): 拦截原因，描述拦截的具体原因
+    """
+    # 输入参数
+    context: Any = Field(None, description="当前资源上下文")
+    episodes: Optional[Set[int]] = Field(None, description="需要下载的集数")
+    channel: Optional[MessageChannel] = Field(None, description="通知渠道")
+    origin: Optional[str] = Field(None, description="来源")
+    downloader: Optional[str] = Field(None, description="下载器")
+    save_path: Optional[str] = Field(None, description="保存路径")
+    userid: Optional[Union[str, int]] = Field(None, description="用户ID")
+    username: Optional[str] = Field(None, description="调用下载的用户名/插件名")
+    media_category: Optional[str] = Field(None, description="自定义媒体类别")
+
+    # 输出参数
+    cancel: bool = Field(False, description="是否取消下载")
+    source: str = Field("未知拦截源", description="拦截源")
+    reason: str = Field("", description="拦截原因")
