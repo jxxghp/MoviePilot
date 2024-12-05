@@ -347,8 +347,17 @@ class EventManager(metaclass=Singleton):
         if not handlers:
             logger.debug(f"No handlers found for chain event: {event}")
             return False
+
+        # 过滤出启用的处理器
+        enabled_handlers = {handler_id: (priority, handler) for handler_id, (priority, handler) in handlers.items()
+                            if self.__is_handler_enabled(handler)}
+
+        if not enabled_handlers:
+            logger.debug(f"No enabled handlers found for chain event: {event}. Skipping execution.")
+            return False
+
         self.__log_event_lifecycle(event, "Started")
-        for handler_id, (priority, handler) in handlers.items():
+        for handler_id, (priority, handler) in enabled_handlers.items():
             start_time = time.time()
             self.__safe_invoke_handler(handler, event)
             logger.debug(
