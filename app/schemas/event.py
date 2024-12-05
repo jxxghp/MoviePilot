@@ -181,7 +181,7 @@ class ResourceDownloadEventData(ChainEventData):
         context (Context): 当前资源上下文
         episodes (Set[int]): 需要下载的集数
         channel (MessageChannel): 通知渠道
-        origin (str): 来源（消息通知、订阅、手工下载等）
+        origin (str): 来源（消息通知、Subscribe、Manual等）
         downloader (str): 下载器
         save_path (str): 保存路径
         userid (Union[str, int]): 用户ID
