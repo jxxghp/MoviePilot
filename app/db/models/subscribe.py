@@ -54,7 +54,7 @@ class Subscribe(Base):
     lack_episode = Column(Integer)
     # 附加信息
     note = Column(JSON)
-    # 状态：N-新建， R-订阅中
+    # 状态：N-新建 R-订阅中 P-待定 S-暂停
     state = Column(String, nullable=False, index=True, default='N')
     # 最后更新时间
     last_update = Column(String)
@@ -98,7 +98,13 @@ class Subscribe(Base):
     @staticmethod
     @db_query
     def get_by_state(db: Session, state: str):
-        result = db.query(Subscribe).filter(Subscribe.state == state).all()
+        # 如果 state 为空或 None，返回所有订阅
+        if not state:
+            result = db.query(Subscribe).all()
+        else:
+            # 如果传入的状态不为空，拆分成多个状态
+            states = state.split(',')
+            result = db.query(Subscribe).filter(Subscribe.state.in_(states)).all()
         return list(result)
 
     @staticmethod
