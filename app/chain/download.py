@@ -229,12 +229,14 @@ class DownloadChain(ChainBase):
             context=context,
             episodes=episodes,
             channel=channel,
-            source=source,
+            origin=source,
             downloader=downloader,
-            save_path=save_path,
-            userid=userid,
-            username=username,
-            media_category=media_category
+            options={
+                "save_path": save_path,
+                "userid": userid,
+                "username": username,
+                "media_category": media_category
+            }
         )
         # 触发资源下载事件
         event = eventmanager.send_event(ChainEventType.ResourceDownload, event_data)

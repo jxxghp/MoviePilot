@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Set, Union
+from typing import Optional, Dict, Any, List, Set
 
 from pydantic import BaseModel, Field, root_validator
 
@@ -183,10 +183,7 @@ class ResourceDownloadEventData(ChainEventData):
         channel (MessageChannel): 通知渠道
         origin (str): 来源（消息通知、Subscribe、Manual等）
         downloader (str): 下载器
-        save_path (str): 保存路径
-        userid (Union[str, int]): 用户ID
-        username (str): 调用下载的用户名/插件名
-        media_category (str): 自定义媒体类别
+        options (dict): 其他参数
 
         # 输出参数
         cancel (bool): 是否取消下载，默认值为 False
@@ -199,10 +196,7 @@ class ResourceDownloadEventData(ChainEventData):
     channel: Optional[MessageChannel] = Field(None, description="通知渠道")
     origin: Optional[str] = Field(None, description="来源")
     downloader: Optional[str] = Field(None, description="下载器")
-    save_path: Optional[str] = Field(None, description="保存路径")
-    userid: Optional[Union[str, int]] = Field(None, description="用户ID")
-    username: Optional[str] = Field(None, description="调用下载的用户名/插件名")
-    media_category: Optional[str] = Field(None, description="自定义媒体类别")
+    options: Optional[dict] = Field(None, description="其他参数")
 
     # 输出参数
     cancel: bool = Field(False, description="是否取消下载")
