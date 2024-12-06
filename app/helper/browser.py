@@ -16,7 +16,7 @@ class PlaywrightHelper:
         """
         sync_stealth(page, pure=True)
         page.goto(url)
-        return sync_cf_retry(page)
+        return sync_cf_retry(page)[0]
 
     def action(self, url: str,
                callback: Callable,
