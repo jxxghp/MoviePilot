@@ -399,6 +399,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         save_path=subscribe.save_path,
                         media_category=subscribe.media_category,
                         downloader=subscribe.downloader,
+                        source="Subscribe"
                     )
 
                     # 判断是否应完成订阅
@@ -789,7 +790,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                                                      username=subscribe.username,
                                                                      save_path=subscribe.save_path,
                                                                      media_category=subscribe.media_category,
-                                                                     downloader=subscribe.downloader)
+                                                                     downloader=subscribe.downloader,
+                                                                     source="Subscribe")
                 # 判断是否要完成订阅
                 self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
                                              downloads=downloads, lefts=lefts)

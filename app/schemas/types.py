@@ -72,6 +72,8 @@ class ChainEventType(Enum):
     TransferRename = "transfer.rename"
     # 资源选择
     ResourceSelection = "resource.selection"
+    # 资源下载
+    ResourceDownload = "resource.download"
 
 
 # 系统配置Key字典

@@ -51,7 +51,7 @@ def download(
         torrent_info=torrentinfo
     )
     did = DownloadChain().download_single(context=context, username=current_user.name,
-                                          downloader=downloader, save_path=save_path)
+                                          downloader=downloader, save_path=save_path, source="Manual")
     if not did:
         return schemas.Response(success=False, message="任务添加失败")
     return schemas.Response(success=True, data={
@@ -84,7 +84,7 @@ def add(
         torrent_info=torrentinfo
     )
     did = DownloadChain().download_single(context=context, username=current_user.name,
-                                          downloader=downloader, save_path=save_path)
+                                          downloader=downloader, save_path=save_path, source="Manual")
     if not did:
         return schemas.Response(success=False, message="任务添加失败")
     return schemas.Response(success=True, data={

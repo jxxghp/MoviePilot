@@ -111,6 +111,8 @@ class MessageChain(ChainBase):
         info = self.message_parser(source=source, body=body, form=form, args=args)
         if not info:
             return
+        # 更新消息来源
+        source = info.source
         # 渠道
         channel = info.channel
         # 用户ID
