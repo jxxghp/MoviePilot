@@ -59,7 +59,6 @@ class DirectoryHelper:
         :param include_unsorted: 包含不整理目录
         :param storage: 源存储类型
         :param target_storage: 目标存储类型
-        :param fileitem: 文件项，使用文件路径匹配
         :param src_path: 源目录，有值时直接匹配
         :param dest_path: 目标目录，有值时直接匹配
         """

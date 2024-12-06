@@ -564,7 +564,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                         logger.info(f"当前刮削季为：{season_meta.begin_season}，跳过文件：{image_path}")
                                         continue
                                     if not overwrite and self.storagechain.get_file_item(storage=fileitem.storage,
-                                                                                        path=image_path):
+                                                                                         path=image_path):
                                         logger.info(f"已存在图片文件：{image_path}")
                                         continue
                                     # 下载图片
@@ -574,7 +574,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                                         if not parent:
                                             parent = self.storagechain.get_parent_item(fileitem)
                                         __save_file(_fileitem=parent, _path=image_path, _content=content)
-                                
+
                     # 判断当前目录是不是剧集根目录
                     if not season_meta.season:
                         # 是否已存在

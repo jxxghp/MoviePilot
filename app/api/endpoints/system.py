@@ -387,7 +387,9 @@ def ruletest(title: str,
         return schemas.Response(success=False, message=f"过滤规则组 {rulegroup_name} 不存在！")
 
     # 根据标题查询媒体信息
-    media_info =SearchChain().recognize_media(MetaInfo(title=title, subtitle=subtitle))
+    media_info = SearchChain().recognize_media(MetaInfo(title=title, subtitle=subtitle))
+    if not media_info:
+        return schemas.Response(success=False, message="未识别到媒体信息！")
 
     # 过滤
     result = SearchChain().filter_torrents(rule_groups=[rulegroup.name],

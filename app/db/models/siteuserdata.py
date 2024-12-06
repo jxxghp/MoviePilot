@@ -81,7 +81,7 @@ class SiteUserData(Base):
                 func.max(SiteUserData.updated_day).label('latest_update_day')
             )
             .group_by(SiteUserData.domain)
-            .filter(SiteUserData.err_msg == None)
+            .filter(SiteUserData.err_msg is None)
             .subquery()
         )
 

@@ -392,23 +392,24 @@ class TransferChain(ChainBase):
                     download_hash = download_file.download_hash
 
             # 查询整理目标目录
+            dir_info = None
             if not target_directory:
                 if src_match:
                     # 按源目录匹配，以便找到更合适的目录配置
                     dir_info = self.directoryhelper.get_dir(media=file_mediainfo,
-                                                                    storage=file_item.storage,
-                                                                    src_path=file_path,
-                                                                    target_storage=target_storage)
+                                                            storage=file_item.storage,
+                                                            src_path=file_path,
+                                                            target_storage=target_storage)
                 elif target_path:
                     # 指定目标路径，`手动整理`场景下使用，忽略源目录匹配，使用指定目录匹配
                     dir_info = self.directoryhelper.get_dir(media=file_mediainfo,
-                                                                    dest_path=target_path,
-                                                                    target_storage=target_storage)
+                                                            dest_path=target_path,
+                                                            target_storage=target_storage)
                 else:
                     # 未指定目标路径，根据媒体信息获取目标目录
                     dir_info = self.directoryhelper.get_dir(file_mediainfo,
-                                                                    storage=file_item.storage,
-                                                                    target_storage=target_storage)
+                                                            storage=file_item.storage,
+                                                            target_storage=target_storage)
 
             # 执行整理
             transferinfo: TransferInfo = self.transfer(fileitem=file_item,

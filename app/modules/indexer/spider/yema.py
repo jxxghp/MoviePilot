@@ -97,7 +97,7 @@ class YemaSpider:
             results = res.json().get('data', []) or []
             for result in results:
                 category_value = result.get('categoryId')
-                if category_value in self._tv_category :
+                if category_value in self._tv_category:
                     category = MediaType.TV.value
                 elif category_value in self._movie_category:
                     category = MediaType.MOVIE.value
