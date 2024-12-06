@@ -5,10 +5,7 @@ on:
     branches:
       - v2
     paths:
-      - '.github/workflows/build.yml'
-      - 'Dockerfile'
       - 'version.py'
-      - 'requirements.in'
 
 jobs:
   Docker-build:
