@@ -818,18 +818,6 @@ class FileManagerModule(_ModuleBase):
         return None, errmsg
 
     @staticmethod
-    def __get_dest_path(mediainfo: MediaInfo, target_path: Path,
-                        need_type_folder: bool = False, need_category_folder: bool = False):
-        """
-        获取目标路径
-        """
-        if need_type_folder:
-            target_path = target_path / mediainfo.type.value
-        if need_category_folder and mediainfo.category:
-            target_path = target_path / mediainfo.category
-        return target_path
-
-    @staticmethod
     def __get_dest_dir(mediainfo: MediaInfo, target_dir: TransferDirectoryConf) -> Path:
         """
         根据设置并装媒体库目录

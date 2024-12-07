@@ -97,7 +97,7 @@ def manual_transfer(transer_item: TransferItem,
                     # E01单集
                     transer_item.episode_detail = str(history.episodes).replace("E", "")
 
-    elif not transer_item.fileitem:
+    if not transer_item.fileitem:
         return schemas.Response(success=False, message=f"缺少参数")
     # 开始转移
     state, errormsg = TransferChain().manual_transfer(
