@@ -1,8 +1,7 @@
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import schemas
@@ -14,48 +13,9 @@ from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
 from app.db.models.transferhistory import TransferHistory
 from app.db.user_oper import get_current_active_superuser
-from app.schemas import MediaType, FileItem
+from app.schemas import FileItem, TransferItem, MediaType
 
 router = APIRouter()
-
-
-class ManualTransferItem(BaseModel):
-    # 文件项
-    fileitem: FileItem = None
-    # 日志ID
-    logid: Optional[int] = None
-    # 目标存储
-    target_storage: Optional[str] = None
-    # 目标路径
-    target_path: Optional[str] = None
-    # TMDB ID
-    tmdbid: Optional[int] = None
-    # 豆瓣ID
-    doubanid: Optional[str] = None
-    # 类型
-    type_name: Optional[str] = None
-    # 季号
-    season: Optional[int] = None
-    # 整理方式
-    transfer_type: Optional[str] = None
-    # 自定义格式
-    episode_format: Optional[str] = None
-    # 指定集数
-    episode_detail: Optional[str] = None
-    # 指定PART
-    episode_part: Optional[str] = None
-    # 集数偏移
-    episode_offset: Optional[str] = None
-    # 最小文件大小
-    min_filesize: Optional[int] = 0
-    # 刮削
-    scrape: bool = False
-    # 媒体库类型子目录
-    library_type_folder: Optional[bool] = None
-    # 媒体库类别子目录
-    library_category_folder: Optional[bool] = None
-    # 复用历史识别信息
-    from_history: Optional[bool] = False
 
 
 @router.get("/name", summary="查询整理后的名称", response_model=schemas.Response)
@@ -88,7 +48,7 @@ def query_name(path: str, filetype: str,
 
 
 @router.post("/manual", summary="手动转移", response_model=schemas.Response)
-def manual_transfer(transer_item: ManualTransferItem,
+def manual_transfer(transer_item: TransferItem,
                     db: Session = Depends(get_db),
                     _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
@@ -98,7 +58,6 @@ def manual_transfer(transer_item: ManualTransferItem,
     :param _: Token校验
     """
     force = False
-    target_path = Path(transer_item.target_path) if transer_item.target_path else None
     if transer_item.logid:
         # 查询历史记录
         history: TransferHistory = TransferHistory.get(db, transer_item.logid)
@@ -108,10 +67,10 @@ def manual_transfer(transer_item: ManualTransferItem,
         force = True
         if history.status and ("move" in history.mode):
             # 重新整理成功的转移，则使用成功的 dest 做 in_path
-            src_fileitem = FileItem(**history.dest_fileitem)
+            transer_item.fileitem = FileItem(**history.dest_fileitem)
         else:
             # 源路径
-            src_fileitem = FileItem(**history.src_fileitem)
+            transer_item.fileitem = FileItem(**history.src_fileitem)
             # 目的路径
             if history.dest_fileitem:
                 # 删除旧的已整理文件
@@ -138,38 +97,11 @@ def manual_transfer(transer_item: ManualTransferItem,
                     # E01单集
                     transer_item.episode_detail = str(history.episodes).replace("E", "")
 
-    elif transer_item.fileitem:
-        src_fileitem = transer_item.fileitem
-    else:
+    elif not transer_item.fileitem:
         return schemas.Response(success=False, message=f"缺少参数")
-
-    # 类型
-    mtype = MediaType(transer_item.type_name) if transer_item.type_name else None
-    # 自定义格式
-    epformat = None
-    if transer_item.episode_offset or transer_item.episode_part \
-            or transer_item.episode_detail or transer_item.episode_format:
-        epformat = schemas.EpisodeFormat(
-            format=transer_item.episode_format,
-            detail=transer_item.episode_detail,
-            part=transer_item.episode_part,
-            offset=transer_item.episode_offset,
-        )
     # 开始转移
     state, errormsg = TransferChain().manual_transfer(
-        fileitem=src_fileitem,
-        target_storage=transer_item.target_storage,
-        target_path=target_path,
-        tmdbid=transer_item.tmdbid,
-        doubanid=transer_item.doubanid,
-        mtype=mtype,
-        season=transer_item.season,
-        transfer_type=transer_item.transfer_type,
-        epformat=epformat,
-        min_filesize=transer_item.min_filesize,
-        scrape=transer_item.scrape,
-        library_type_folder=transer_item.library_type_folder,
-        library_category_folder=transer_item.library_category_folder,
+        transfer_item=transer_item,
         force=force
     )
     # 失败

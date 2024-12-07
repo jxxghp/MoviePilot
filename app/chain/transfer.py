@@ -20,7 +20,7 @@ from app.helper.directory import DirectoryHelper
 from app.helper.format import FormatParser
 from app.helper.progress import ProgressHelper
 from app.log import logger
-from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem, TransferDirectoryConf
+from app.schemas import TransferItem, TransferInfo, TransferTorrent, Notification, FileItem
 from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
     SystemConfigKey
 from app.utils.string import StringUtils
@@ -122,13 +122,15 @@ class TransferChain(ChainBase):
 
                 # 执行整理，匹配源目录
                 state, errmsg = self.__do_transfer(
-                    fileitem=FileItem(
-                        storage="local",
-                        path=str(file_path),
-                        type="dir" if not file_path.is_file() else "file",
-                        name=file_path.name,
-                        size=file_path.stat().st_size,
-                        extension=file_path.suffix.lstrip('.'),
+                    transfer_item=TransferItem(
+                        fileitem=FileItem(
+                            storage="local",
+                            path=str(file_path),
+                            type="dir" if not file_path.is_file() else "file",
+                            name=file_path.name,
+                            size=file_path.stat().st_size,
+                            extension=file_path.suffix.lstrip('.'),
+                        ),
                     ),
                     mediainfo=mediainfo,
                     downloader=torrent.downloader,
@@ -144,30 +146,15 @@ class TransferChain(ChainBase):
             logger.info("所有下载器中下载完成的文件已整理完成")
             return True
 
-    def __do_transfer(self, fileitem: FileItem,
+    def __do_transfer(self,transfer_item: TransferItem,
                       meta: MetaBase = None, mediainfo: MediaInfo = None,
-                      target_directory: TransferDirectoryConf = None,
-                      target_storage: str = None, target_path: Path = None,
-                      transfer_type: str = None, scrape: bool = None,
-                      library_type_folder: bool = None, library_category_folder: bool = None,
-                      season: int = None, epformat: EpisodeFormat = None, min_filesize: int = 0,
                       downloader: str = None, download_hash: str = None,
                       force: bool = False, src_match: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
-        :param fileitem: 文件项
+        :param transfer_item: 转移配置
         :param meta: 元数据
         :param mediainfo: 媒体信息
-        :param target_directory:  目标目录配置
-        :param target_storage: 目标存储器
-        :param target_path: 目标路径
-        :param transfer_type: 整理类型
-        :param scrape: 是否刮削元数据
-        :param library_type_folder: 媒体库类型子目录
-        :param library_category_folder: 媒体库类别子目录
-        :param season: 季
-        :param epformat: 剧集格式
-        :param min_filesize: 最小文件大小(MB)
         :param downloader: 下载器
         :param download_hash: 下载记录hash
         :param force: 是否强制整理
@@ -176,6 +163,7 @@ class TransferChain(ChainBase):
         """
 
         # 自定义格式
+        epformat = transfer_item.epformat()
         formaterHandler = FormatParser(eformat=epformat.format,
                                        details=epformat.detail,
                                        part=epformat.part,
@@ -207,12 +195,14 @@ class TransferChain(ChainBase):
         # 跳过数量
         skip_num = 0
         # 本次整理方式
-        current_transfer_type = transfer_type
+        current_transfer_type = transfer_item.transfer_type
+        # 文件项
+        fileitem = transfer_item.fileitem
         # 是否全部成功
         all_success = True
 
         # 获取待整理路径清单
-        trans_items = self.__get_trans_fileitems(fileitem)
+        trans_items = self.__get_trans_fileitems(transfer_item.fileitem)
         # 总文件数
         total_num = len(trans_items)
         self.progress.update(value=0,
@@ -247,7 +237,7 @@ class TransferChain(ChainBase):
         # 过滤后缀和大小
         file_items = [f for f in file_items
                       if f.extension and (f".{f.extension.lower()}" in self.all_exts
-                                          and (not min_filesize or f.size > min_filesize * 1024 * 1024))]
+                                          and (not transfer_item.min_filesize or f.size > transfer_item.min_filesize * 1024 * 1024))]
         # BDMV 跳过过滤
         file_items.extend(bluray)
         if not file_items:
@@ -315,8 +305,8 @@ class TransferChain(ChainBase):
                 file_meta = meta
 
             # 合并季
-            if season is not None:
-                file_meta.begin_season = season
+            if transfer_item.season is not None:
+                file_meta.begin_season = transfer_item.season
 
             if not file_meta:
                 logger.error(f"{file_path} 无法识别有效信息")
@@ -348,7 +338,7 @@ class TransferChain(ChainBase):
                 # 新增整理失败历史记录
                 his = self.transferhis.add_fail(
                     fileitem=file_item,
-                    mode=transfer_type,
+                    mode=current_transfer_type,
                     meta=file_meta,
                     download_hash=download_hash
                 )
@@ -392,37 +382,30 @@ class TransferChain(ChainBase):
                     download_hash = download_file.download_hash
 
             # 查询整理目标目录
-            dir_info = None
-            if not target_directory:
-                if src_match:
-                    # 按源目录匹配，以便找到更合适的目录配置
-                    dir_info = self.directoryhelper.get_dir(media=file_mediainfo,
-                                                            storage=file_item.storage,
-                                                            src_path=file_path,
-                                                            target_storage=target_storage)
-                elif target_path:
-                    # 指定目标路径，`手动整理`场景下使用，忽略源目录匹配，使用指定目录匹配
-                    dir_info = self.directoryhelper.get_dir(media=file_mediainfo,
-                                                            dest_path=target_path,
-                                                            target_storage=target_storage)
-                else:
-                    # 未指定目标路径，根据媒体信息获取目标目录
-                    dir_info = self.directoryhelper.get_dir(file_mediainfo,
-                                                            storage=file_item.storage,
-                                                            target_storage=target_storage)
-
+            if src_match:
+                # 按源目录匹配，以便找到更合适的目录配置
+                dir_info = self.directoryhelper.get_dir(media=file_mediainfo,
+                                                                storage=file_item.storage,
+                                                                src_path=file_path,
+                                                                target_storage=transfer_item.target_storage)
+            elif transfer_item.target_path:
+                # 指定目标路径，`手动整理`场景下使用，忽略源目录匹配，使用指定目录匹配
+                dir_info = self.directoryhelper.get_dir(media=file_mediainfo,
+                                                                dest_path=Path(transfer_item.target_path),
+                                                                target_storage=transfer_item.target_storage)
+            else:
+                # 未指定目标路径，根据媒体信息获取目标目录
+                dir_info = self.directoryhelper.get_dir(file_mediainfo,
+                                                                storage=file_item.storage,
+                                                                target_storage=transfer_item.target_storage)
+            # 转换并合并目录信息
+            dir_info = transfer_item.to_transfer_directory_conf(dir_info)
             # 执行整理
             transferinfo: TransferInfo = self.transfer(fileitem=file_item,
                                                        meta=file_meta,
                                                        mediainfo=file_mediainfo,
-                                                       target_directory=target_directory or dir_info,
-                                                       target_storage=target_storage,
-                                                       target_path=target_path,
-                                                       transfer_type=transfer_type,
-                                                       episodes_info=episodes_info,
-                                                       scrape=scrape,
-                                                       library_type_folder=library_type_folder,
-                                                       library_category_folder=library_category_folder)
+                                                       target_directory=dir_info,
+                                                       episodes_info=episodes_info)
             if not transferinfo:
                 logger.error("文件整理模块运行失败")
                 return False, "文件整理模块运行失败"
@@ -433,7 +416,7 @@ class TransferChain(ChainBase):
                 # 新增整理失败历史记录
                 self.transferhis.add_fail(
                     fileitem=file_item,
-                    mode=transfer_type,
+                    mode=current_transfer_type,
                     download_hash=download_hash,
                     meta=file_meta,
                     mediainfo=file_mediainfo,
@@ -474,7 +457,7 @@ class TransferChain(ChainBase):
             # 新增整理成功历史记录
             self.transferhis.add_success(
                 fileitem=file_item,
-                mode=transfer_type or transferinfo.transfer_type,
+                mode=current_transfer_type or transferinfo.transfer_type,
                 download_hash=download_hash,
                 meta=file_meta,
                 mediainfo=file_mediainfo,
@@ -515,7 +498,7 @@ class TransferChain(ChainBase):
                                            transferinfo=transfer_info,
                                            season_episode=se_str)
             # 刮削事件
-            if scrape or transfer_info.need_scrape:
+            if transfer_item.scrape or transfer_info.need_scrape:
                 self.eventmanager.send_event(EventType.MetadataScrape, {
                     'meta': transfer_meta,
                     'mediainfo': media,
@@ -673,52 +656,31 @@ class TransferChain(ChainBase):
 
         # 强制整理
         if history.src_fileitem:
-            state, errmsg = self.__do_transfer(fileitem=FileItem(**history.src_fileitem),
-                                               mediainfo=mediainfo,
-                                               download_hash=history.download_hash,
-                                               force=True)
+            state, errmsg = self.__do_transfer(
+                transfer_item=TransferItem(
+                    fileitem=FileItem(**history.src_fileitem)
+                ),
+                mediainfo=mediainfo,
+                download_hash=history.download_hash,
+                force=True
+            )
             if not state:
                 return False, errmsg
 
         return True, ""
 
-    def manual_transfer(self,
-                        fileitem: FileItem,
-                        target_storage: str = None,
-                        target_path: Path = None,
-                        tmdbid: int = None,
-                        doubanid: str = None,
-                        mtype: MediaType = None,
-                        season: int = None,
-                        transfer_type: str = None,
-                        epformat: EpisodeFormat = None,
-                        min_filesize: int = 0,
-                        scrape: bool = None,
-                        library_type_folder: bool = None,
-                        library_category_folder: bool = None,
-                        force: bool = False) -> Tuple[bool, Union[str, list]]:
+    def manual_transfer(self, transfer_item: TransferItem, force: bool = False) -> Tuple[bool, Union[str, list]]:
         """
         手动整理，支持复杂条件，带进度显示
-        :param fileitem: 文件项
-        :param target_storage: 目标存储
-        :param target_path: 目标路径
-        :param tmdbid: TMDB ID
-        :param doubanid: 豆瓣ID
-        :param mtype: 媒体类型
-        :param season: 季度
-        :param transfer_type: 整理类型
-        :param epformat: 剧集格式
-        :param min_filesize: 最小文件大小(MB)
-        :param scrape: 是否刮削元数据
-        :param library_type_folder: 是否按类型建立目录
-        :param library_category_folder: 是否按类别建立目录
+        :param transfer_item: 转移配置
         :param force: 是否强制整理
         """
-        logger.info(f"手动整理：{fileitem.path} ...")
-        if tmdbid or doubanid:
+        logger.info(f"手动整理：{transfer_item.fileitem.path} ...")
+        if transfer_item.tmdbid or transfer_item.doubanid:
             # 有输入TMDBID时单个识别
             # 识别媒体信息
-            mediainfo: MediaInfo = self.mediachain.recognize_media(tmdbid=tmdbid, doubanid=doubanid, mtype=mtype)
+            mtype = MediaType(transfer_item.type_name) if transfer_item.type_name else None
+            mediainfo: MediaInfo = self.mediachain.recognize_media(tmdbid=transfer_item.tmdbid, doubanid=transfer_item.doubanid, mtype=mtype)
             if not mediainfo:
                 return False, f"媒体信息识别失败，tmdbid：{tmdbid}，doubanid：{doubanid}，type: {mtype.value}"
             else:
@@ -727,42 +689,25 @@ class TransferChain(ChainBase):
             # 开始进度
             self.progress.start(ProgressKey.FileTransfer)
             self.progress.update(value=0,
-                                 text=f"开始整理 {fileitem.path} ...",
+                                 text=f"开始整理 {transfer_item.fileitem.path} ...",
                                  key=ProgressKey.FileTransfer)
             # 开始整理
             state, errmsg = self.__do_transfer(
-                fileitem=fileitem,
-                target_storage=target_storage,
-                target_path=target_path,
-                mediainfo=mediainfo,
-                transfer_type=transfer_type,
-                season=season,
-                epformat=epformat,
-                min_filesize=min_filesize,
-                scrape=scrape,
-                library_type_folder=library_type_folder,
-                library_category_folder=library_category_folder,
-                force=force,
+                transfer_item=transfer_item,
+                force=force
             )
             if not state:
                 return False, errmsg
 
             self.progress.end(ProgressKey.FileTransfer)
-            logger.info(f"{fileitem.path} 整理完成")
+            logger.info(f"{transfer_item.fileitem.path} 整理完成")
             return True, ""
         else:
             # 没有输入TMDBID时，按文件识别
-            state, errmsg = self.__do_transfer(fileitem=fileitem,
-                                               target_storage=target_storage,
-                                               target_path=target_path,
-                                               transfer_type=transfer_type,
-                                               season=season,
-                                               epformat=epformat,
-                                               min_filesize=min_filesize,
-                                               scrape=scrape,
-                                               library_type_folder=library_type_folder,
-                                               library_category_folder=library_category_folder,
-                                               force=force)
+            state, errmsg = self.__do_transfer(
+                transfer_item=transfer_item,
+                force=force
+            )
             return state, errmsg
 
     def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo,

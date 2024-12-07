@@ -326,23 +326,14 @@ class FileManagerModule(_ModuleBase):
         return storage_oper.usage()
 
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
-                 target_directory: TransferDirectoryConf = None,
-                 target_storage: str = None, target_path: Path = None,
-                 transfer_type: str = None, scrape: bool = None,
-                 library_type_folder: bool = None, library_category_folder: bool = None,
-                 episodes_info: List[TmdbEpisode] = None) -> TransferInfo:
+                target_directory: TransferDirectoryConf = None,
+                episodes_info: List[TmdbEpisode] = None) -> TransferInfo:
         """
         文件整理
         :param fileitem:  文件信息
         :param meta: 预识别的元数据
         :param mediainfo:  识别的媒体信息
         :param target_directory:  目标目录配置
-        :param target_storage:  目标存储
-        :param target_path:  目标路径
-        :param transfer_type:  转移模式
-        :param scrape: 是否刮削元数据
-        :param library_type_folder: 是否按媒体类型创建目录
-        :param library_category_folder: 是否按媒体类别创建目录
         :param episodes_info: 当前季的全部集信息
         :return: {path, target_path, message}
         """
@@ -351,17 +342,10 @@ class FileManagerModule(_ModuleBase):
             return TransferInfo(success=False,
                                 fileitem=fileitem,
                                 message=f"{fileitem.path} 不存在")
-        # 目标路径不能是文件
-        if target_path and target_path.is_file():
-            logger.error(f"整理目标路径 {target_path} 是一个文件")
-            return TransferInfo(success=False,
-                                fileitem=fileitem,
-                                message=f"{target_path} 不是有效目录")
         # 获取目标路径
-        if target_directory:
+        if target_directory and target_directory.library_path:
             # 整理方式
-            if not transfer_type:
-                transfer_type = target_directory.transfer_type
+            transfer_type = target_directory.transfer_type
             # 是否需要重命名
             need_rename = target_directory.renaming
             # 是否需要通知
@@ -369,26 +353,11 @@ class FileManagerModule(_ModuleBase):
             # 覆盖模式
             overwrite_mode = target_directory.overwrite_mode
             # 是否需要刮削
-            if scrape is None:
-                need_scrape = target_directory.scraping
-            else:
-                need_scrape = scrape
+            need_scrape = target_directory.scraping
             # 目标存储类型
-            if not target_storage:
-                target_storage = target_directory.library_storage
+            target_storage = target_directory.library_storage
             # 拼装媒体库一、二级子目录
-            target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_directory,
-                                              need_type_folder=library_type_folder,
-                                              need_category_folder=library_category_folder)
-        elif target_path:
-            need_scrape = scrape or False
-            need_rename = True
-            need_notify = False
-            overwrite_mode = "never"
-            # 手动整理的场景，有自定义目标路径
-            target_path = self.__get_dest_path(mediainfo=mediainfo, target_path=target_path,
-                                               need_type_folder=library_type_folder,
-                                               need_category_folder=library_category_folder)
+            target_path = self.__get_dest_dir(mediainfo=mediainfo, target_dir=target_directory)
         else:
             # 未找到有效的媒体库目录
             logger.error(
@@ -861,31 +830,24 @@ class FileManagerModule(_ModuleBase):
         return target_path
 
     @staticmethod
-    def __get_dest_dir(mediainfo: MediaInfo, target_dir: TransferDirectoryConf,
-                       need_type_folder: bool = None, need_category_folder: bool = None) -> Path:
+    def __get_dest_dir(mediainfo: MediaInfo, target_dir: TransferDirectoryConf) -> Path:
         """
         根据设置并装媒体库目录
         :param mediainfo: 媒体信息
         :target_dir: 媒体库根目录
-        :need_type_folder: 是否需要按媒体类型创建目录
-        :need_category_folder: 是否需要按媒体类别创建目录
         """
-        if need_type_folder is None:
-            need_type_folder = target_dir.library_type_folder
-        if need_category_folder is None:
-            need_category_folder = target_dir.library_category_folder
-        if not target_dir.media_type and need_type_folder:
+        if not target_dir.media_type and target_dir.library_type_folder:
             # 一级自动分类
             library_dir = Path(target_dir.library_path) / mediainfo.type.value
-        elif target_dir.media_type and need_type_folder:
+        elif target_dir.media_type and target_dir.library_type_folder:
             # 一级手动分类
             library_dir = Path(target_dir.library_path) / target_dir.media_type
         else:
             library_dir = Path(target_dir.library_path)
-        if not target_dir.media_category and need_category_folder and mediainfo.category:
+        if not target_dir.media_category and target_dir.library_category_folder and mediainfo.category:
             # 二级自动分类
             library_dir = library_dir / mediainfo.category
-        elif target_dir.media_category and need_category_folder:
+        elif target_dir.media_category and target_dir.library_category_folder:
             # 二级手动分类
             library_dir = library_dir / target_dir.media_category
 

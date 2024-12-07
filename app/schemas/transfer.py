@@ -4,6 +4,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from app.schemas.file import FileItem
+from app.schemas.system import TransferDirectoryConf
 
 
 class TransferTorrent(BaseModel):
@@ -89,3 +90,83 @@ class EpisodeFormat(BaseModel):
     detail: Optional[str] = None
     part: Optional[str] = None
     offset: Optional[str] = None
+
+
+class TransferItem(BaseModel):
+    # 文件项
+    fileitem: FileItem = None
+    # 日志ID
+    logid: Optional[int] = None
+    # 目标存储
+    target_storage: Optional[str] = None
+    # 目标路径
+    target_path: Optional[str] = None
+    # TMDB ID
+    tmdbid: Optional[int] = None
+    # 豆瓣ID
+    doubanid: Optional[str] = None
+    # 类型
+    type_name: Optional[str] = None
+    # 季号
+    season: Optional[int] = None
+    # 整理方式
+    transfer_type: Optional[str] = None
+    # 自定义格式
+    episode_format: Optional[str] = None
+    # 指定集数
+    episode_detail: Optional[str] = None
+    # 指定PART
+    episode_part: Optional[str] = None
+    # 集数偏移
+    episode_offset: Optional[str] = None
+    # 最小文件大小
+    min_filesize: Optional[int] = 0
+    # 刮削
+    scrape: Optional[bool] = None
+    # 媒体库类型子目录
+    library_type_folder: Optional[bool] = None
+    # 媒体库类别子目录
+    library_category_folder: Optional[bool] = None
+    # 复用历史识别信息
+    from_history: Optional[bool] = False
+
+    def epformat(self) -> Optional[EpisodeFormat]:
+          if self.episode_format or self.episode_detail \
+                or self.episode_part or self.episode_offset:
+            return EpisodeFormat(
+                format = self.episode_format,
+                detail = self.episode_detail,
+                part = self.episode_part,
+                offset = self.episode_offset,
+                )
+          return None
+
+    def to_transfer_directory_conf(self, dir_info: TransferDirectoryConf = None) -> TransferDirectoryConf:
+        """
+        转换为`TransferDirectoryConf`对象
+        """
+        # 属性映射
+        _attribute_mapping = {
+            "target_storage": "library_storage",
+            "target_path": "library_path",
+            "transfer_type": "transfer_type",
+            "scrape": "scraping",
+            "library_type_folder": "library_type_folder",
+            "library_category_folder": "library_category_folder",
+        }
+
+        # 初始化目录配置
+        _dir_info = dir_info or TransferDirectoryConf(
+            renaming=True,
+            scraping=False,
+            notify=False,
+            overwrite_mode="never",
+        )
+
+        # 更新目录配置对象
+        for source_key, target_key in _attribute_mapping.items():
+            current_value = getattr(self, source_key)
+            # 更新声明的属性
+            if current_value or isinstance(current_value, bool) and current_value is not None:
+                setattr(_dir_info, target_key, current_value)
+        return _dir_info

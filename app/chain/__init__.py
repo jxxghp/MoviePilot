@@ -382,10 +382,7 @@ class ChainBase(metaclass=ABCMeta):
         return self.run_module("list_torrents", status=status, hashs=hashs, downloader=downloader)
 
     def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
-                 target_directory: TransferDirectoryConf = None,
-                 target_storage: str = None, target_path: Path = None,
-                 transfer_type: str = None, scrape: bool = None,
-                 library_type_folder: bool = None, library_category_folder: bool = None,
+                 target_directory: TransferDirectoryConf,
                  episodes_info: List[TmdbEpisode] = None) -> Optional[TransferInfo]:
         """
         文件转移
@@ -393,22 +390,12 @@ class ChainBase(metaclass=ABCMeta):
         :param meta: 预识别的元数据
         :param mediainfo:  识别的媒体信息
         :param target_directory:  目标目录配置
-        :param target_storage:  目标存储
-        :param target_path:  目标路径
-        :param transfer_type:  转移模式
-        :param scrape: 是否刮削元数据
-        :param library_type_folder: 是否按类型创建目录
-        :param library_category_folder: 是否按类别创建目录
         :param episodes_info: 当前季的全部集信息
         :return: {path, target_path, message}
         """
         return self.run_module("transfer",
                                fileitem=fileitem, meta=meta, mediainfo=mediainfo,
                                target_directory=target_directory,
-                               target_path=target_path, target_storage=target_storage,
-                               transfer_type=transfer_type, scrape=scrape,
-                               library_type_folder=library_type_folder,
-                               library_category_folder=library_category_folder,
                                episodes_info=episodes_info)
 
     def transfer_completed(self, hashs: str, downloader: str = None) -> None:
