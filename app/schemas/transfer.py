@@ -89,3 +89,42 @@ class EpisodeFormat(BaseModel):
     detail: Optional[str] = None
     part: Optional[str] = None
     offset: Optional[str] = None
+
+
+class ManualTransferItem(BaseModel):
+    # 文件项
+    fileitem: FileItem = None
+    # 日志ID
+    logid: Optional[int] = None
+    # 目标存储
+    target_storage: Optional[str] = None
+    # 目标路径
+    target_path: Optional[str] = None
+    # TMDB ID
+    tmdbid: Optional[int] = None
+    # 豆瓣ID
+    doubanid: Optional[str] = None
+    # 类型
+    type_name: Optional[str] = None
+    # 季号
+    season: Optional[int] = None
+    # 整理方式
+    transfer_type: Optional[str] = None
+    # 自定义格式
+    episode_format: Optional[str] = None
+    # 指定集数
+    episode_detail: Optional[str] = None
+    # 指定PART
+    episode_part: Optional[str] = None
+    # 集数偏移
+    episode_offset: Optional[str] = None
+    # 最小文件大小
+    min_filesize: Optional[int] = 0
+    # 刮削
+    scrape: bool = False
+    # 媒体库类型子目录
+    library_type_folder: Optional[bool] = None
+    # 媒体库类别子目录
+    library_category_folder: Optional[bool] = None
+    # 复用历史识别信息
+    from_history: Optional[bool] = False
