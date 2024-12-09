@@ -330,7 +330,7 @@ class TransferChain(ChainBase):
             # 自定义识别
             if formaterHandler:
                 # 开始集、结束集、PART
-                begin_ep, end_ep, part = formaterHandler.split_episode(file_path.name)
+                begin_ep, end_ep, part = formaterHandler.split_episode(file_name=file_path.name, file_meta=file_meta)
                 if begin_ep is not None:
                     file_meta.begin_episode = begin_ep
                     file_meta.part = part
