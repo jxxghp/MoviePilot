@@ -87,7 +87,8 @@ class SiteChain(ChainBase):
                         link=site.get("url")
                     ))
             # 低分享率警告
-            if userdata.ratio and float(userdata.ratio) < 1:
+            if userdata.ratio and float(userdata.ratio) < 1 and not bool(
+                    re.search(r"(贵宾|VIP?)", userdata.user_level, re.IGNORECASE)):
                 self.post_message(Notification(
                     mtype=NotificationType.SiteMessage,
                     title=f"【站点分享率低预警】",
