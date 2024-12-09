@@ -96,12 +96,9 @@ class FormatParser(object):
                 start_ep = self.__offset.replace("EP", str(self._start_ep))
                 return int(eval(start_ep)), None, self.part
         if not self._format:
-            try:
-                start_ep = eval(self.__offset.replace("EP", str(file_meta.begin_episode))) if file_meta.begin_episode is not None else None
-                end_ep = eval(self.__offset.replace("EP", str(file_meta.end_episode))) if file_meta.end_episode is not None else None
-                return int(start_ep), int(end_ep), self.part
-            except (SyntaxError, NameError) as e:
-                return None, None, self.part
+            start_ep = eval(self.__offset.replace("EP", str(file_meta.begin_episode))) if file_meta.begin_episode else None
+            end_ep = eval(self.__offset.replace("EP", str(file_meta.end_episode))) if file_meta.end_episode else None
+            return int(start_ep) if start_ep else None, int(end_ep) if end_ep else None, self.part
         else:
             s, e = self.__handle_single(file_name)
             start_ep = self.__offset.replace("EP", str(s)) if s else None
