@@ -3,6 +3,8 @@ from typing import Tuple, Optional
 
 import parse
 
+from app.core.meta.metabase import MetaBase
+
 
 class FormatParser(object):
     _key = ""
@@ -77,7 +79,7 @@ class FormatParser(object):
             return True
         return False
 
-    def split_episode(self, file_name: str) -> Tuple[Optional[int], Optional[int], Optional[str]]:
+    def split_episode(self, file_name: str, file_meta: MetaBase) -> Tuple[Optional[int], Optional[int], Optional[str]]:
         """
         拆分集数，返回开始集数，结束集数，Part信息
         """
@@ -94,7 +96,12 @@ class FormatParser(object):
                 start_ep = self.__offset.replace("EP", str(self._start_ep))
                 return int(eval(start_ep)), None, self.part
         if not self._format:
-            return self._start_ep, self._end_ep, self.part
+            try:
+                start_ep = eval(self.__offset.replace("EP", str(file_meta.begin_episode))) if file_meta.begin_episode is not None else None
+                end_ep = eval(self.__offset.replace("EP", str(file_meta.end_episode))) if file_meta.end_episode is not None else None
+                return int(start_ep), int(end_ep), self.part
+            except (SyntaxError, NameError) as e:
+                return None, None, self.part
         else:
             s, e = self.__handle_single(file_name)
             start_ep = self.__offset.replace("EP", str(s)) if s else None
