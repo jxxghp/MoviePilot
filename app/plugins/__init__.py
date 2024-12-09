@@ -225,7 +225,7 @@ class _PluginBase(metaclass=ABCMeta):
         return self.plugindata.del_data(plugin_id, key)
 
     def post_message(self, channel: MessageChannel = None, mtype: NotificationType = None, title: str = None,
-                     text: str = None, image: str = None, link: str = None, userid: str = None):
+                     text: str = None, image: str = None, link: str = None, userid: str = None, username: str = None):
         """
         发送消息
         """
@@ -233,7 +233,7 @@ class _PluginBase(metaclass=ABCMeta):
             link = settings.MP_DOMAIN(f"#/plugins?tab=installed&id={self.__class__.__name__}")
         self.chain.post_message(Notification(
             channel=channel, mtype=mtype, title=title, text=text,
-            image=image, link=link, userid=userid
+            image=image, link=link, userid=userid, username=username
         ))
 
     def close(self):
