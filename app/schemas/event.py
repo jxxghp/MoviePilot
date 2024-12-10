@@ -165,6 +165,7 @@ class ResourceSelectionEventData(BaseModel):
     # 输入参数
     contexts: Any = Field(None, description="待选择的资源上下文列表")
     downloader: Optional[str] = Field(None, description="下载器")
+    origin: Optional[str] = Field(None, description="来源")
 
     # 输出参数
     updated: bool = Field(False, description="是否已更新")

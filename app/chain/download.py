@@ -345,7 +345,8 @@ class DownloadChain(ChainBase):
                 username=username,
                 channel=channel.value if channel else None,
                 date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-                media_category=media_category
+                media_category=media_category,
+                note={"source": source}
             )
 
             # 登记下载文件
@@ -383,7 +384,8 @@ class DownloadChain(ChainBase):
                 "context": context,
                 "username": username,
                 "downloader": _downloader,
-                "episodes": episodes
+                "episodes": episodes,
+                "source": source
             })
         else:
             # 下载失败
@@ -489,7 +491,8 @@ class DownloadChain(ChainBase):
         logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
         event_data = ResourceSelectionEventData(
             contexts=contexts,
-            downloader=downloader
+            downloader=downloader,
+            origin=source
         )
         event = eventmanager.send_event(ChainEventType.ResourceSelection, event_data)
         # 如果事件修改了上下文数据，使用更新后的数据
