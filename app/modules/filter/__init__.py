@@ -366,6 +366,8 @@ class FilterModule(_ModuleBase):
         seeders = self.rule_set[rule_name].get("seeders")
         # FREE规则
         downloadvolumefactor = self.rule_set[rule_name].get("downloadvolumefactor")
+        # 发布时间规则
+        pubdate: str = self.rule_set[rule_name].get("publish_time")
         if includes and not any(re.search(r"%s" % include, content, re.IGNORECASE) for include in includes):
             # 未发现任何包含项
             logger.debug(f"种子 {torrent.site_name} - {torrent.title} 不包含任何项 {includes}")
@@ -392,6 +394,22 @@ class FilterModule(_ModuleBase):
                 logger.debug(
                     f"种子 {torrent.site_name} - {torrent.title} FREE值 {torrent.downloadvolumefactor} 不是 {downloadvolumefactor}")
                 return False
+        if pubdate:
+            # 种子发布时间
+            pub_minutes = torrent.pub_minutes()
+            # 发布时间规则
+            pub_times = [float(t) for t in pubdate.split("-")]
+            if len(pub_times) == 1:
+                # 发布时间小于规则
+                if pub_minutes < pub_times[0]:
+                    logger.debug(f"种子 {torrent.site_name} - {torrent.title} 发布时间 {pub_minutes} 小于 {pub_times[0]}")
+                    return False
+            else:
+                # 区间
+                if not (pub_times[0] <= pub_minutes <= pub_times[1]):
+                    logger.debug(f"种子 {torrent.site_name} - {torrent.title} 发布时间 {pub_minutes} 不在 {pub_times[0]}-{pub_times[1]} 时间区间")
+                    return False
+
         return True
 
     def __match_tmdb(self, tmdb: dict) -> bool:
