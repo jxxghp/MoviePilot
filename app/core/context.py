@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass, field, asdict
+from datetime import datetime
 from typing import List, Dict, Any, Tuple
 
 from app.core.config import settings
@@ -122,6 +123,20 @@ class TorrentInfo:
         if not self.freedate:
             return ""
         return StringUtils.diff_time_str(self.freedate)
+
+    def pub_minutes(self) -> float:
+        """
+        返回发布时间距离当前时间的分钟数
+        """
+        if not self.pubdate:
+            return 0
+        try:
+            pub_date = datetime.strptime(self.pubdate, "%Y-%m-%d %H:%M:%S")
+            now_datetime = datetime.now()
+            return (now_datetime - pub_date).total_seconds() // 60
+        except Exception as e:
+            print(f"种子发布时间获取失败: {e}")
+            return 0
 
     def to_dict(self):
         """
