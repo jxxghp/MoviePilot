@@ -1,7 +1,8 @@
 import copy
+import json
 import random
-import time
 import threading
+import time
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
 
@@ -391,15 +392,6 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         continue
 
                     # 自动下载
-                    source_keyword = {
-                        'id': subscribe.id,
-                        'name': subscribe.name,
-                        'year': subscribe.year,
-                        'type': subscribe.type,
-                        'season': subscribe.season,
-                        'tmdbid': subscribe.tmdbid
-                    }
-                    source = f"Subscribe|{source_keyword}"
                     downloads, lefts = self.downloadchain.batch_download(
                         contexts=matched_contexts,
                         no_exists=no_exists,
@@ -408,7 +400,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         save_path=subscribe.save_path,
                         media_category=subscribe.media_category,
                         downloader=subscribe.downloader,
-                        source=source
+                        source=self.get_subscribe_source_keyword(subscribe)
                     )
 
                     # 判断是否应完成订阅
@@ -793,15 +785,6 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
 
                 # 开始批量择优下载
                 logger.info(f'{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源')
-                source_keyword = {
-                    'id': subscribe.id,
-                    'name': subscribe.name,
-                    'year': subscribe.year,
-                    'type': subscribe.type,
-                    'season': subscribe.season,
-                    'tmdbid': subscribe.tmdbid
-                }
-                source = f"Subscribe|{source_keyword}"
                 downloads, lefts = self.downloadchain.batch_download(contexts=_match_context,
                                                                      no_exists=no_exists,
                                                                      userid=subscribe.username,
@@ -809,7 +792,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                                                      save_path=subscribe.save_path,
                                                                      media_category=subscribe.media_category,
                                                                      downloader=subscribe.downloader,
-                                                                     source=source)
+                                                                     source=self.get_subscribe_source_keyword(subscribe)
+                                                                     )
                 # 判断是否要完成订阅
                 self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
                                              downloads=downloads, lefts=lefts)
@@ -1350,3 +1334,24 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         if state in ["R", "P"]:
             return "R,P"
         return state
+
+    @staticmethod
+    def get_subscribe_source_keyword(subscribe: Subscribe) -> str:
+        """
+        构造用于订阅来源的关键字字符串
+        :param subscribe: Subscribe 对象
+        :return: 格式化的订阅来源关键字字符串，格式为 "Subscribe|{...}"
+        """
+        source_keyword = {
+            'id': subscribe.id,
+            'name': subscribe.name,
+            'year': subscribe.year,
+            'type': subscribe.type,
+            'season': subscribe.season,
+            'tmdbid': subscribe.tmdbid,
+            'imdbid': subscribe.imdbid,
+            'tvdbid': subscribe.tvdbid,
+            'doubanid': subscribe.doubanid,
+            'bangumiid': subscribe.bangumiid
+        }
+        return f"Subscribe|{json.dumps(source_keyword, ensure_ascii=False)}"
