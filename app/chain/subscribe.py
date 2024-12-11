@@ -327,7 +327,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     # 电视剧订阅处理缺失集
                     if meta.type == MediaType.TV:
                         # 实际缺失集与订阅开始结束集范围进行整合，同时剔除已下载的集数
-                        no_exists = self.__get_subscribe_no_exits(
+                        exist_flag, no_exists = self.__get_subscribe_no_exits(
                             subscribe_name=f'{subscribe.name} {meta.season}',
                             no_exists=no_exists,
                             mediakey=mediakey,
@@ -336,6 +336,12 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                             start_episode=subscribe.start_episode,
                             downloaded_episodes=self.__get_downloaded_episodes(subscribe)
                         )
+                        # 已存在
+                        if exist_flag:
+                            logger.info(f'{mediainfo.title_year} 已全部下载')
+                            self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
+                                                         force=True)
+                            continue
 
                     # 站点范围
                     sites = self.get_sub_sites(subscribe)
@@ -623,7 +629,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 # 电视剧订阅
                 if meta.type == MediaType.TV:
                     # 整合实际缺失集与订阅开始集结束集，同时剔除已下载的集数
-                    no_exists = self.__get_subscribe_no_exits(
+                    exist_flag, no_exists = self.__get_subscribe_no_exits(
                         subscribe_name=f'{subscribe.name} {meta.season}',
                         no_exists=no_exists,
                         mediakey=mediakey,
@@ -632,6 +638,11 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         start_episode=subscribe.start_episode,
                         downloaded_episodes=self.__get_downloaded_episodes(subscribe)
                     )
+                    # 已存在
+                    if exist_flag:
+                        logger.info(f'{mediainfo.title_year} 已全部下载')
+                        self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
+                        continue
 
                 # 遍历缓存种子
                 _match_context = []
@@ -1048,7 +1059,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                  total_episode: int,
                                  start_episode: int,
                                  downloaded_episodes: List[int] = None
-                                 ) -> Dict[Union[int, str], Dict[int, NotExistMediaInfo]]:
+                                 ) -> Tuple[bool, Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
         """
         根据订阅开始集数和总集数，结合TMDB信息计算当前订阅的缺失集数
         :param subscribe_name: 订阅名称
@@ -1061,7 +1072,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         """
         # 使用订阅的总集数和开始集数替换no_exists
         if not no_exists or not no_exists.get(mediakey):
-            return no_exists
+            return False, no_exists
         no_exists_item = no_exists.get(mediakey)
         if total_episode or start_episode:
             logger.info(f'订阅 {subscribe_name} 设定的开始集数：{start_episode}、总集数：{total_episode}')
@@ -1086,7 +1097,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     if not start_episode \
                             and not total_episode:
                         # 无需调整
-                        return no_exists
+                        return False, no_exists
                     if not start_episode:
                         # 没有自定义开始集
                         start_episode = start
@@ -1121,25 +1132,32 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     episode_list = list(range(start, total + 1))
                 # 更新剧集列表
                 episodes = list(set(episode_list).difference(set(downloaded_episodes)))
+                # 如果存在已下载剧集，则差集为空时，说明所有均已存在
+                if not episodes:
+                    return True, {}
                 # 更新集合
                 no_exists[mediakey][begin_season] = NotExistMediaInfo(
                     season=begin_season,
                     episodes=episodes,
                     total_episode=total,
-                    start_episode=start
+                    start_episode=start,
                 )
             else:
                 # 开始集数
                 start = start_episode or 1
-                # 不存在的季
+                # 更新剧集列表
+                episodes = list(set(range(start, total_episode + 1)).difference(set(downloaded_episodes)))
+                # 如果存在已下载剧集，则差集为空时，说明所有均已存在
+                if not episodes:
+                    return True, {}
                 no_exists[mediakey][begin_season] = NotExistMediaInfo(
                     season=begin_season,
-                    episodes=list(set(range(start, total_episode + 1)).difference(set(downloaded_episodes))),
+                    episodes=episodes,
                     total_episode=total_episode,
-                    start_episode=start
+                    start_episode=start,
                 )
         logger.info(f'订阅 {subscribe_name} 缺失剧集数更新为：{no_exists}')
-        return no_exists
+        return False, no_exists
 
     @eventmanager.register(EventType.SiteDeleted)
     def remove_site(self, event: Event):
