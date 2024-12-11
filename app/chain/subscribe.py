@@ -1150,7 +1150,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 if not subscribe.sites:
                     continue
                 self.subscribeoper.update(subscribe.id, {
-                    "sites": ""
+                    "sites": []
                 })
             return
         # 从选中的rss站点中移除
