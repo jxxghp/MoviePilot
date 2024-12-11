@@ -466,12 +466,12 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         # 是否完成订阅
         if not subscribe.best_version:
             # 订阅存在待定策略，不管是否已完成，均需更新订阅信息
-            if downloads and meta.type == MediaType.TV:
+            if meta.type == MediaType.TV:
                 # 电视剧更新已下载集数
                 self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
                 # 更新订阅剩余集数和时间
-                self.__update_lack_episodes(lefts=lefts, subscribe=subscribe,
-                                            mediainfo=mediainfo, update_date=True)
+                self.__update_lack_episodes(lefts=lefts, subscribe=subscribe, mediainfo=mediainfo,
+                                            update_date=bool(downloads))
             # 判断是否需要完成订阅
             if ((no_lefts and meta.type == MediaType.TV)
                     or (downloads and meta.type == MediaType.MOVIE)
@@ -480,10 +480,6 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             else:
                 # 未下载到内容且不完整
                 logger.info(f'{mediainfo.title_year} 未下载完整，继续订阅 ...')
-                if meta.type == MediaType.TV:
-                    # 更新订阅剩余集数
-                    self.__update_lack_episodes(lefts=lefts, subscribe=subscribe,
-                                                mediainfo=mediainfo, update_date=False)
         elif downloads:
             # 洗板，下载到了内容，更新资源优先级
             self.update_subscribe_priority(subscribe=subscribe, meta=meta,
