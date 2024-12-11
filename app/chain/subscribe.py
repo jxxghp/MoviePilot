@@ -403,12 +403,16 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         source=self.get_subscribe_source_keyword(subscribe)
                     )
 
+                    # 同步外部修改，更新订阅信息
+                    subscribe = self.subscribeoper.get(subscribe.id)
+
                     # 判断是否应完成订阅
-                    self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
-                                                 downloads=downloads, lefts=lefts)
+                    if subscribe:
+                        self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
+                                                     downloads=downloads, lefts=lefts)
                 finally:
                     # 如果状态为N则更新为R
-                    if subscribe.state == 'N':
+                    if subscribe and subscribe.state == 'N':
                         self.subscribeoper.update(subscribe.id, {'state': 'R'})
 
             # 手动触发时发送系统消息
@@ -794,9 +798,14 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                                                      downloader=subscribe.downloader,
                                                                      source=self.get_subscribe_source_keyword(subscribe)
                                                                      )
+
+                # 同步外部修改，更新订阅信息
+                subscribe = self.subscribeoper.get(subscribe.id)
+
                 # 判断是否要完成订阅
-                self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
-                                             downloads=downloads, lefts=lefts)
+                if subscribe:
+                    self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
+                                                 downloads=downloads, lefts=lefts)
             logger.debug(f"match Lock released at {datetime.now()}")
 
     def check(self):
