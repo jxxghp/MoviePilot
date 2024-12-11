@@ -288,54 +288,12 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                             f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
                         continue
 
-                    # 非洗版状态
-                    if not subscribe.best_version:
-                        # 每季总集数
-                        totals = {}
-                        if subscribe.season and subscribe.total_episode:
-                            totals = {
-                                subscribe.season: subscribe.total_episode
-                            }
-                        # 查询媒体库缺失的媒体信息
-                        exist_flag, no_exists = self.downloadchain.get_no_exists_info(
-                            meta=meta,
-                            mediainfo=mediainfo,
-                            totals=totals
-                        )
-                    else:
-                        # 洗版状态
-                        exist_flag = False
-                        if meta.type == MediaType.TV:
-                            no_exists = {
-                                mediakey: {
-                                    subscribe.season: NotExistMediaInfo(
-                                        season=subscribe.season,
-                                        episodes=[],
-                                        total_episode=subscribe.total_episode,
-                                        start_episode=subscribe.start_episode or 1)
-                                }
-                            }
-                        else:
-                            no_exists = {}
-
-                    # 已存在
+                    # 如果媒体已存在或已下载完毕，跳过当前订阅处理
+                    exist_flag, no_exists = self.check_and_handle_existing_media(subscribe=subscribe, meta=meta,
+                                                                                 mediainfo=mediainfo,
+                                                                                 mediakey=mediakey)
                     if exist_flag:
-                        logger.info(f'{mediainfo.title_year} 媒体库中已存在')
-                        self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
                         continue
-
-                    # 电视剧订阅处理缺失集
-                    if meta.type == MediaType.TV:
-                        # 实际缺失集与订阅开始结束集范围进行整合，同时剔除已下载的集数
-                        no_exists = self.__get_subscribe_no_exits(
-                            subscribe_name=f'{subscribe.name} {meta.season}',
-                            no_exists=no_exists,
-                            mediakey=mediakey,
-                            begin_season=meta.begin_season,
-                            total_episode=subscribe.total_episode,
-                            start_episode=subscribe.start_episode,
-                            downloaded_episodes=self.__get_downloaded_episodes(subscribe)
-                        )
 
                     # 站点范围
                     sites = self.get_sub_sites(subscribe)
@@ -403,12 +361,16 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         source=self.get_subscribe_source_keyword(subscribe)
                     )
 
+                    # 同步外部修改，更新订阅信息
+                    subscribe = self.subscribeoper.get(subscribe.id)
+
                     # 判断是否应完成订阅
-                    self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
-                                                 downloads=downloads, lefts=lefts)
+                    if subscribe:
+                        self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
+                                                     downloads=downloads, lefts=lefts)
                 finally:
                     # 如果状态为N则更新为R
-                    if subscribe.state == 'N':
+                    if subscribe and subscribe.state == 'N':
                         self.subscribeoper.update(subscribe.id, {'state': 'R'})
 
             # 手动触发时发送系统消息
@@ -455,25 +417,20 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         no_lefts = not lefts or not lefts.get(mediakey)
         # 是否完成订阅
         if not subscribe.best_version:
-            # 非洗板
+            # 订阅存在待定策略，不管是否已完成，均需更新订阅信息
+            # 更新订阅已下载信息
+            self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
+            # 更新订阅剩余集数和时间
+            self.__update_lack_episodes(lefts=lefts, subscribe=subscribe, mediainfo=mediainfo,
+                                        update_date=bool(downloads))
+            # 判断是否需要完成订阅
             if ((no_lefts and meta.type == MediaType.TV)
                     or (downloads and meta.type == MediaType.MOVIE)
                     or force):
-                # 完成订阅
                 self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
-            elif downloads and meta.type == MediaType.TV:
-                # 电视剧更新已下载集数
-                self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
-                # 更新订阅剩余集数和时间
-                self.__update_lack_episodes(lefts=lefts, subscribe=subscribe,
-                                            mediainfo=mediainfo, update_date=True)
             else:
                 # 未下载到内容且不完整
                 logger.info(f'{mediainfo.title_year} 未下载完整，继续订阅 ...')
-                if meta.type == MediaType.TV:
-                    # 更新订阅剩余集数
-                    self.__update_lack_episodes(lefts=lefts, subscribe=subscribe,
-                                                mediainfo=mediainfo, update_date=False)
         elif downloads:
             # 洗板，下载到了内容，更新资源优先级
             self.update_subscribe_priority(subscribe=subscribe, meta=meta,
@@ -580,54 +537,13 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     logger.warn(
                         f'未识别到媒体信息，标题：{subscribe.name}，tmdbid：{subscribe.tmdbid}，doubanid：{subscribe.doubanid}')
                     continue
-                # 非洗版
-                if not subscribe.best_version:
-                    # 每季总集数
-                    totals = {}
-                    if subscribe.season and subscribe.total_episode:
-                        totals = {
-                            subscribe.season: subscribe.total_episode
-                        }
-                    # 查询缺失的媒体信息
-                    exist_flag, no_exists = self.downloadchain.get_no_exists_info(
-                        meta=meta,
-                        mediainfo=mediainfo,
-                        totals=totals
-                    )
-                else:
-                    # 洗版
-                    exist_flag = False
-                    if meta.type == MediaType.TV:
-                        no_exists = {
-                            mediakey: {
-                                subscribe.season: NotExistMediaInfo(
-                                    season=subscribe.season,
-                                    episodes=[],
-                                    total_episode=subscribe.total_episode,
-                                    start_episode=subscribe.start_episode or 1)
-                            }
-                        }
-                    else:
-                        no_exists = {}
 
-                # 已存在
+                # 如果媒体已存在或已下载完毕，跳过当前订阅处理
+                exist_flag, no_exists = self.check_and_handle_existing_media(subscribe=subscribe, meta=meta,
+                                                                             mediainfo=mediainfo,
+                                                                             mediakey=mediakey)
                 if exist_flag:
-                    logger.info(f'{mediainfo.title_year} 媒体库中已存在')
-                    self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
                     continue
-
-                # 电视剧订阅
-                if meta.type == MediaType.TV:
-                    # 整合实际缺失集与订阅开始集结束集，同时剔除已下载的集数
-                    no_exists = self.__get_subscribe_no_exits(
-                        subscribe_name=f'{subscribe.name} {meta.season}',
-                        no_exists=no_exists,
-                        mediakey=mediakey,
-                        begin_season=meta.begin_season,
-                        total_episode=subscribe.total_episode,
-                        start_episode=subscribe.start_episode,
-                        downloaded_episodes=self.__get_downloaded_episodes(subscribe)
-                    )
 
                 # 遍历缓存种子
                 _match_context = []
@@ -794,9 +710,14 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                                                      downloader=subscribe.downloader,
                                                                      source=self.get_subscribe_source_keyword(subscribe)
                                                                      )
+
+                # 同步外部修改，更新订阅信息
+                subscribe = self.subscribeoper.get(subscribe.id)
+
                 # 判断是否要完成订阅
-                self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
-                                             downloads=downloads, lefts=lefts)
+                if subscribe:
+                    self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo,
+                                                 downloads=downloads, lefts=lefts)
             logger.debug(f"match Lock released at {datetime.now()}")
 
     def check(self):
@@ -858,7 +779,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
 
     def __update_subscribe_note(self, subscribe: Subscribe, downloads: List[Context]):
         """
-        更新已下载集数到note字段
+        更新已下载信息到note字段
         """
         # 查询现有Note
         if not downloads:
@@ -869,68 +790,81 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         for context in downloads:
             meta = context.meta_info
             mediainfo = context.media_info
-            if mediainfo.type != MediaType.TV:
-                continue
             if subscribe.tmdbid and mediainfo.tmdb_id \
                     and mediainfo.tmdb_id != subscribe.tmdbid:
                 continue
             if subscribe.doubanid and mediainfo.douban_id \
                     and mediainfo.douban_id != subscribe.doubanid:
                 continue
-            episodes = meta.episode_list
-            if not episodes:
+            items = []
+            if mediainfo.type == MediaType.TV:
+                # 电视剧有集数，使用 episode_list
+                items = meta.episode_list
+            elif mediainfo.type == MediaType.MOVIE:
+                # 电影只有一个条目，设置为 [1]
+                items = [1]
+            if not items:
                 continue
-            # 合并已下载集
-            note = list(set(note).union(set(episodes)))
-            # 更新订阅
+            # 合并已下载的集数或电影项（去重）
+            note = list(set(note).union(set(items)))
+        # 更新订阅
+        if note:
             self.subscribeoper.update(subscribe.id, {
                 "note": note
             })
 
     @staticmethod
-    def __get_downloaded_episodes(subscribe: Subscribe) -> List[int]:
+    def __get_downloaded(subscribe: Subscribe) -> List[int]:
         """
-        获取已下载过的集数
+        获取已下载过的集数或电影
         """
-        if not subscribe.note:
+        note = subscribe.note or []
+        if not note:
             return []
-        if subscribe.type != MediaType.TV.value:
-            return []
-        episodes = subscribe.note or []
-        logger.info(f'订阅 {subscribe.name} 第{subscribe.season}季 已下载集数：{episodes}')
-        return episodes
+        # 针对 TV 类型，返回已下载的集数
+        if subscribe.type == MediaType.TV.value:
+            logger.info(f'订阅 {subscribe.name} 第{subscribe.season}季 已下载集数：{note}')
+            return note
+        # 针对 Movie 类型，直接返回已下载的电影
+        if subscribe.type == MediaType.MOVIE.value:
+            logger.info(f'订阅 {subscribe.name} 已下载内容：{note}')
+            return note
+        return []
 
     def __update_lack_episodes(self, lefts: Dict[Union[int, str], Dict[int, NotExistMediaInfo]],
                                subscribe: Subscribe,
                                mediainfo: MediaInfo,
                                update_date: bool = False):
         """
-        更新订阅剩余集数
+        更新订阅剩余集数及时间
         """
-        if not lefts:
-            return
-        mediakey = subscribe.tmdbid or subscribe.doubanid
-        left_seasons = lefts.get(mediakey)
-        if left_seasons:
-            for season_info in left_seasons.values():
-                season = season_info.season
-                if season == subscribe.season:
-                    left_episodes = season_info.episodes
-                    if not left_episodes:
-                        lack_episode = season_info.total_episode
-                    else:
-                        lack_episode = len(left_episodes)
-                    logger.info(f'{mediainfo.title_year} 季 {season} 更新缺失集数为{lack_episode} ...')
-                    if update_date:
-                        # 同时更新最后时间
-                        self.subscribeoper.update(subscribe.id, {
-                            "lack_episode": lack_episode,
-                            "last_update": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        })
-                    else:
-                        self.subscribeoper.update(subscribe.id, {
-                            "lack_episode": lack_episode
-                        })
+        update_data = {}
+        if update_date:
+            update_data["last_update"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if subscribe.type == MediaType.TV.value:
+            if not lefts:
+                # 如果 lefts 为空，表示没有缺失集数，直接设置 lack_episode 为 0
+                lack_episode = 0
+                logger.info(f'{mediainfo.title_year} 没有缺失集数，直接更新为 0 ...')
+            else:
+                mediakey = subscribe.tmdbid or subscribe.doubanid
+                left_seasons = lefts.get(mediakey)
+                lack_episode = 0
+                if left_seasons:
+                    for season_info in left_seasons.values():
+                        season = season_info.season
+                        if season == subscribe.season:
+                            left_episodes = season_info.episodes
+                            if not left_episodes:
+                                lack_episode = season_info.total_episode
+                            else:
+                                lack_episode = len(left_episodes)
+                            logger.info(f"{mediainfo.title_year} 季 {season} 更新缺失集数为{lack_episode} ...")
+                            break
+            update_data = {"lack_episode": lack_episode}
+        # 更新数据库
+        if update_data:
+            self.subscribeoper.update(subscribe.id, update_data)
 
     def __finish_subscribe(self, subscribe: Subscribe, mediainfo: MediaInfo,
                            meta: MetaBase, bestversion: bool = False):
@@ -1039,7 +973,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                  total_episode: int,
                                  start_episode: int,
                                  downloaded_episodes: List[int] = None
-                                 ) -> Dict[Union[int, str], Dict[int, NotExistMediaInfo]]:
+                                 ) -> Tuple[bool, Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
         """
         根据订阅开始集数和总集数，结合TMDB信息计算当前订阅的缺失集数
         :param subscribe_name: 订阅名称
@@ -1052,7 +986,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         """
         # 使用订阅的总集数和开始集数替换no_exists
         if not no_exists or not no_exists.get(mediakey):
-            return no_exists
+            return False, no_exists
         no_exists_item = no_exists.get(mediakey)
         if total_episode or start_episode:
             logger.info(f'订阅 {subscribe_name} 设定的开始集数：{start_episode}、总集数：{total_episode}')
@@ -1077,7 +1011,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     if not start_episode \
                             and not total_episode:
                         # 无需调整
-                        return no_exists
+                        return False, no_exists
                     if not start_episode:
                         # 没有自定义开始集
                         start_episode = start
@@ -1112,25 +1046,32 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     episode_list = list(range(start, total + 1))
                 # 更新剧集列表
                 episodes = list(set(episode_list).difference(set(downloaded_episodes)))
+                # 如果存在已下载剧集，则差集为空时，说明所有均已存在
+                if not episodes:
+                    return True, {}
                 # 更新集合
                 no_exists[mediakey][begin_season] = NotExistMediaInfo(
                     season=begin_season,
                     episodes=episodes,
                     total_episode=total,
-                    start_episode=start
+                    start_episode=start,
                 )
             else:
                 # 开始集数
                 start = start_episode or 1
-                # 不存在的季
+                # 更新剧集列表
+                episodes = list(set(range(start, total_episode + 1)).difference(set(downloaded_episodes)))
+                # 如果存在已下载剧集，则差集为空时，说明所有均已存在
+                if not episodes:
+                    return True, {}
                 no_exists[mediakey][begin_season] = NotExistMediaInfo(
                     season=begin_season,
-                    episodes=list(set(range(start, total_episode + 1)).difference(set(downloaded_episodes))),
+                    episodes=episodes,
                     total_episode=total_episode,
-                    start_episode=start
+                    start_episode=start,
                 )
         logger.info(f'订阅 {subscribe_name} 缺失剧集数更新为：{no_exists}')
-        return no_exists
+        return False, no_exists
 
     @eventmanager.register(EventType.SiteDeleted)
     def remove_site(self, event: Event):
@@ -1318,6 +1259,85 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         subscribe_info.subscribe = Subscribe(**subscribe.to_dict())
         subscribe_info.episodes = episodes
         return subscribe_info
+
+    def check_and_handle_existing_media(self, subscribe: Subscribe, meta: MetaInfo,
+                                        mediainfo: MediaInfo, mediakey: str):
+        """
+        检查媒体是否已经存在，并根据情况执行相应的操作
+        1. 查询缺失的媒体信息
+        2. 判断是否已经下载完毕
+        3. 根据媒体类型（电视剧或电影）执行不同的处理
+
+        :param subscribe: 订阅信息对象
+        :param meta: 媒体元数据
+        :param mediainfo: 媒体信息
+        :param mediakey: 媒体标识符
+        :return:
+            - exist_flag (bool): 布尔值，表示媒体是否已经完全下载或已存在
+            - no_exists (dict): 缺失的媒体信息，包含缺失的集数或其他相关信息
+        """
+        # 非洗版
+        if not subscribe.best_version:
+            # 每季总集数
+            totals = {}
+            if subscribe.season and subscribe.total_episode:
+                totals = {
+                    subscribe.season: subscribe.total_episode
+                }
+            # 查询媒体库缺失的媒体信息
+            exist_flag, no_exists = self.downloadchain.get_no_exists_info(
+                meta=meta,
+                mediainfo=mediainfo,
+                totals=totals
+            )
+        else:
+            # 洗版
+            exist_flag = False
+            if meta.type == MediaType.TV:
+                # 对于电视剧，构造缺失的媒体信息
+                no_exists = {
+                    mediakey: {
+                        subscribe.season: NotExistMediaInfo(
+                            season=subscribe.season,
+                            episodes=[],
+                            total_episode=subscribe.total_episode,
+                            start_episode=subscribe.start_episode or 1)
+                    }
+                }
+            else:
+                no_exists = {}
+
+        # 如果媒体已存在，执行订阅完成操作
+        if exist_flag:
+            logger.info(f'{mediainfo.title_year} 媒体库中已存在')
+            self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
+            return True, no_exists
+
+        # 获取已下载的集数或电影
+        downloaded = self.__get_downloaded(subscribe)
+        if meta.type == MediaType.TV:
+            # 对于电视剧类型，整合缺失集数并剔除已下载的集数
+            exist_flag, no_exists = self.__get_subscribe_no_exits(
+                subscribe_name=f'{subscribe.name} {meta.season}',
+                no_exists=no_exists,
+                mediakey=mediakey,
+                begin_season=meta.begin_season,
+                total_episode=subscribe.total_episode,
+                start_episode=subscribe.start_episode,
+                downloaded_episodes=downloaded
+            )
+        elif meta.type == MediaType.MOVIE:
+            # 对于电影类型，直接根据是否已下载判断
+            exist_flag = bool(downloaded)
+
+        # 如果已下载完毕，执行订阅完成操作
+        if exist_flag:
+            logger.info(f'{mediainfo.title_year} 已全部下载')
+            self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
+            return True, no_exists
+
+        # 返回结果，表示媒体未完全下载或存在
+        return False, no_exists
 
     @staticmethod
     def get_states_for_search(state: str) -> str:
