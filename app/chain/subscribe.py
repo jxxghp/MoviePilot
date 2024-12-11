@@ -465,18 +465,18 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         no_lefts = not lefts or not lefts.get(mediakey)
         # 是否完成订阅
         if not subscribe.best_version:
-            # 非洗板
-            if ((no_lefts and meta.type == MediaType.TV)
-                    or (downloads and meta.type == MediaType.MOVIE)
-                    or force):
-                # 完成订阅
-                self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
-            elif downloads and meta.type == MediaType.TV:
+            # 订阅存在待定策略，不管是否已完成，均需更新订阅信息
+            if downloads and meta.type == MediaType.TV:
                 # 电视剧更新已下载集数
                 self.__update_subscribe_note(subscribe=subscribe, downloads=downloads)
                 # 更新订阅剩余集数和时间
                 self.__update_lack_episodes(lefts=lefts, subscribe=subscribe,
                                             mediainfo=mediainfo, update_date=True)
+            # 判断是否需要完成订阅
+            if ((no_lefts and meta.type == MediaType.TV)
+                    or (downloads and meta.type == MediaType.MOVIE)
+                    or force):
+                self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
             else:
                 # 未下载到内容且不完整
                 logger.info(f'{mediainfo.title_year} 未下载完整，继续订阅 ...')
@@ -928,29 +928,29 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         更新订阅剩余集数
         """
         if not lefts:
-            return
-        mediakey = subscribe.tmdbid or subscribe.doubanid
-        left_seasons = lefts.get(mediakey)
-        if left_seasons:
-            for season_info in left_seasons.values():
-                season = season_info.season
-                if season == subscribe.season:
-                    left_episodes = season_info.episodes
-                    if not left_episodes:
-                        lack_episode = season_info.total_episode
-                    else:
-                        lack_episode = len(left_episodes)
-                    logger.info(f'{mediainfo.title_year} 季 {season} 更新缺失集数为{lack_episode} ...')
-                    if update_date:
-                        # 同时更新最后时间
-                        self.subscribeoper.update(subscribe.id, {
-                            "lack_episode": lack_episode,
-                            "last_update": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        })
-                    else:
-                        self.subscribeoper.update(subscribe.id, {
-                            "lack_episode": lack_episode
-                        })
+            # 如果 lefts 为空，表示没有缺失集数，直接设置 lack_episode 为 0
+            lack_episode = 0
+            logger.info(f'{mediainfo.title_year} 没有缺失集数，直接更新为 0 ...')
+        else:
+            mediakey = subscribe.tmdbid or subscribe.doubanid
+            left_seasons = lefts.get(mediakey)
+            lack_episode = 0
+            if left_seasons:
+                for season_info in left_seasons.values():
+                    season = season_info.season
+                    if season == subscribe.season:
+                        left_episodes = season_info.episodes
+                        if not left_episodes:
+                            lack_episode = season_info.total_episode
+                        else:
+                            lack_episode = len(left_episodes)
+                        logger.info(f"{mediainfo.title_year} 季 {season} 更新缺失集数为{lack_episode} ...")
+                        break
+        # 更新数据库
+        update_data = {"lack_episode": lack_episode}
+        if update_date:
+            update_data["last_update"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.subscribeoper.update(subscribe.id, update_data)
 
     def __finish_subscribe(self, subscribe: Subscribe, mediainfo: MediaInfo,
                            meta: MetaBase, bestversion: bool = False):
