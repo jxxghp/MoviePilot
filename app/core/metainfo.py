@@ -42,8 +42,10 @@ def MetaInfo(title: str, subtitle: str = None, custom_words: List[str] = None) -
         try:
             begin_ep = metainfo['subtitle_offset'].replace("EP", str(meta.begin_episode)) if meta.begin_episode else None
             end_ep = metainfo['subtitle_offset'].replace("EP", str(meta.end_episode)) if meta.end_episode else None
-            meta.begin_episode = int(eval(begin_ep)) if begin_ep else None
-            meta.end_episode = int(eval(end_ep)) if end_ep else None
+            if begin_ep:
+                meta.begin_episode = int(eval(begin_ep))
+            if end_ep:
+                meta.end_episode = int(eval(end_ep))
         except Exception as e:
             logger.error(f"应用副标题集数偏移失败：{e}")
     # 修正媒体信息
