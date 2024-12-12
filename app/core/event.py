@@ -502,13 +502,15 @@ class EventManager(metaclass=Singleton):
             }
         )
 
-    def register(self, etype: Union[EventType, ChainEventType, List[Union[EventType, ChainEventType]], type]):
+    def register(self, etype: Union[EventType, ChainEventType, List[Union[EventType, ChainEventType]], type],
+                 priority: int = DEFAULT_EVENT_PRIORITY):
         """
         事件注册装饰器，用于将函数注册为事件的处理器
         :param etype:
             - 单个事件类型成员 (如 EventType.MetadataScrape, ChainEventType.PluginAction)
             - 事件类型类 (EventType, ChainEventType)
             - 或事件类型成员的列表
+        :param priority: 可选，链式事件的优先级，默认为 DEFAULT_EVENT_PRIORITY
         """
 
         def decorator(f: Callable):
@@ -528,11 +530,11 @@ class EventManager(metaclass=Singleton):
                 # 遍历列表，处理每个事件类型
             for event in event_list:
                 if isinstance(event, (EventType, ChainEventType)):
-                    self.add_event_listener(event, f)
+                    self.add_event_listener(event, f, priority)
                 elif isinstance(event, type) and issubclass(event, (EventType, ChainEventType)):
                     # 如果是 EventType 或 ChainEventType 类，提取该类中的所有成员
                     for et in event.__members__.values():
-                        self.add_event_listener(et, f)
+                        self.add_event_listener(et, f, priority)
                 else:
                     raise ValueError(f"无效的事件类型: {event}")
 
