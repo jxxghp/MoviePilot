@@ -37,6 +37,15 @@ def MetaInfo(title: str, subtitle: str = None, custom_words: List[str] = None) -
     meta.title = org_title
     #  记录使用的识别词
     meta.apply_words = apply_words or []
+    # 副标题集数偏移
+    if settings.SUBTITLE_OFFSET_ENABLE and meta.subtitle_offset and metainfo['subtitle_offset']:
+        try:
+            begin_ep = metainfo['subtitle_offset'].replace("EP", str(meta.begin_episode)) if meta.begin_episode else None
+            end_ep = metainfo['subtitle_offset'].replace("EP", str(meta.end_episode)) if meta.end_episode else None
+            meta.begin_episode = int(eval(begin_ep)) if begin_ep else None
+            meta.end_episode = int(eval(end_ep)) if end_ep else None
+        except Exception as e:
+            logger.error(f"应用副标题集数偏移失败：{e}")
     # 修正媒体信息
     if metainfo.get('tmdbid'):
         try:
@@ -114,6 +123,7 @@ def find_metainfo(title: str) -> Tuple[str, dict]:
         'begin_episode': None,
         'end_episode': None,
         'total_episode': None,
+        'subtitle_offset': None,
     }
     if not title:
         return title, metainfo
@@ -154,8 +164,12 @@ def find_metainfo(title: str) -> Tuple[str, dict]:
         end_episode = re.findall(r'(?<=e=\d+-)\d+', result)
         if end_episode and end_episode[0].isdigit():
             metainfo['end_episode'] = int(end_episode[0])
+        # 查找副标题偏移信息
+        subtitle_offset = re.findall(r'(?<=suboffset=).*?(?=;|$)', result)
+        if subtitle_offset:
+            metainfo['subtitle_offset'] = str(subtitle_offset[0])
         # 去除title中该部分
-        if tmdbid or mtype or begin_season or end_season or begin_episode or end_episode:
+        if tmdbid or mtype or begin_season or end_season or begin_episode or end_episode or subtitle_offset:
             title = title.replace(f"{{[{result}]}}", '')
     # 计算季集总数
     if metainfo.get('begin_season') and metainfo.get('end_season'):

@@ -139,6 +139,7 @@ class MetaVideo(MetaBase):
         # 解析副标题，只要季和集
         self.init_subtitle(self.org_string)
         if not self._subtitle_flag and self.subtitle:
+            self.subtitle_offset = True
             self.init_subtitle(self.subtitle)
         # 去掉名字中不需要的干扰字符，过短的纯数字不要
         self.cn_name = self.__fix_name(self.cn_name)
