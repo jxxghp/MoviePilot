@@ -227,7 +227,7 @@ class DownloadChain(ChainBase):
         # 发送资源下载事件，允许外部拦截下载
         event_data = ResourceDownloadEventData(
             context=context,
-            episodes=episodes,
+            episodes=episodes or context.meta_info.episode_list,
             channel=channel,
             origin=source,
             downloader=downloader,
@@ -384,7 +384,7 @@ class DownloadChain(ChainBase):
                 "context": context,
                 "username": username,
                 "downloader": _downloader,
-                "episodes": episodes,
+                "episodes": episodes or _meta.episode_list,
                 "source": source
             })
         else:
