@@ -64,10 +64,10 @@ class TorrentHelper(metaclass=Singleton):
             if not req.content:
                 return None, None, "", [], "未下载到种子数据"
             # 解析内容格式
-            if req.text and str(req.text).startswith("magnet:"):
+            if req.content.startswith(b"magnet:"):
                 # 磁力链接
                 return None, req.text, "", [], f"获取到磁力链接"
-            elif req.text and "下载种子文件" in req.text:
+            if "下载种子文件".encode("utf-8") in req.content:
                 # 首次下载提示页面
                 skip_flag = False
                 try:
