@@ -518,16 +518,11 @@ class EventManager(metaclass=Singleton):
             if isinstance(etype, list):
                 # 传入的已经是列表，直接使用
                 event_list = etype
-            elif etype is EventType:
-                # 订阅所有事件
-                event_list = []
-                for et in etype:
-                    event_list.append(et)
             else:
                 # 不是列表则包裹成单一元素的列表
                 event_list = [etype]
 
-                # 遍历列表，处理每个事件类型
+            # 遍历列表，处理每个事件类型
             for event in event_list:
                 if isinstance(event, (EventType, ChainEventType)):
                     self.add_event_listener(event, f, priority)
