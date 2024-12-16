@@ -1,4 +1,4 @@
-FROM python:3.11.4-slim-bookworm
+FROM python:3.12.8-slim-bookworm
 ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
     HOME="/moviepilot" \
