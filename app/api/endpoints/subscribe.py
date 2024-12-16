@@ -8,6 +8,7 @@ from app import schemas
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
 from app.core.context import MediaInfo
+from app.core.event import eventmanager
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token, verify_apitoken
 from app.db import get_db
@@ -17,7 +18,7 @@ from app.db.models.user import User
 from app.db.user_oper import get_current_active_user
 from app.helper.subscribe import SubscribeHelper
 from app.scheduler import Scheduler
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, EventType
 
 router = APIRouter()
 
@@ -274,17 +275,27 @@ def delete_subscribe_by_mediaid(
     """
     根据TMDBID或豆瓣ID删除订阅 tmdb:/douban:
     """
+    delete_subscribes = []
     if mediaid.startswith("tmdb:"):
         tmdbid = mediaid[5:]
         if not tmdbid or not str(tmdbid).isdigit():
             return schemas.Response(success=False)
-        Subscribe().delete_by_tmdbid(db, int(tmdbid), season)
+        subscribes = Subscribe().get_by_tmdbid(db, int(tmdbid), season)
+        delete_subscribes.extend(subscribes)
     elif mediaid.startswith("douban:"):
         doubanid = mediaid[7:]
         if not doubanid:
             return schemas.Response(success=False)
-        Subscribe().delete_by_doubanid(db, doubanid)
-
+        subscribe = Subscribe().get_by_doubanid(db, doubanid)
+        if subscribe:
+            delete_subscribes.append(subscribe)
+    for subscribe in delete_subscribes:
+        Subscribe().delete(db, subscribe.id)
+        # 发送事件
+        eventmanager.send_event(EventType.SubscribeDeleted, {
+            "subscribe_id": subscribe.id,
+            "subscribe": subscribe.to_dict()
+        })
     return schemas.Response(success=True)
 
 
@@ -507,9 +518,14 @@ def delete_subscribe(
     subscribe = Subscribe.get(db, subscribe_id)
     if subscribe:
         subscribe.delete(db, subscribe_id)
-    # 统计订阅
-    SubscribeHelper().sub_done_async({
-        "tmdbid": subscribe.tmdbid,
-        "doubanid": subscribe.doubanid
-    })
+        # 发送事件
+        eventmanager.send_event(EventType.SubscribeDeleted, {
+            "subscribe_id": subscribe_id,
+            "subscribe": subscribe.to_dict()
+        })
+        # 统计订阅
+        SubscribeHelper().sub_done_async({
+            "tmdbid": subscribe.tmdbid,
+            "doubanid": subscribe.doubanid
+        })
     return schemas.Response(success=True)

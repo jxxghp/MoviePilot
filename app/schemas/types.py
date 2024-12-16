@@ -48,6 +48,8 @@ class EventType(Enum):
     NoticeMessage = "notice.message"
     # 订阅已添加
     SubscribeAdded = "subscribe.added"
+    # 订阅已删除
+    SubscribeDeleted = "subscribe.deleted"
     # 订阅已完成
     SubscribeComplete = "subscribe.complete"
     # 系统错误
