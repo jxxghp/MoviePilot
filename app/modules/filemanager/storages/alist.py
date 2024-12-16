@@ -553,15 +553,15 @@ class Alist(StorageBase, metaclass=Singleton):
         :param new_name: 上传后文件名
         :param task: 是否为任务，默认为False避免未完成上传时对文件进行操作
         """
-        encoded_path = UrlUtils.quote(fileitem.path)
+        encoded_path = UrlUtils.quote(fileitem.path + path.name)
         headers = self.__get_header_with_token()
-        headers.setdefault("Content-Type", "multipart/form-data")
+        headers.setdefault("Content-Type", "application/octet-stream")
         headers.setdefault("As-Task", str(task).lower())
         headers.setdefault("File-Path", encoded_path)
         with open(path, "rb") as f:
             resp: Response = RequestUtils(headers=headers).put_res(
-                self.__get_api_url("/api/fs/form"),
-                data={"file": f},
+                self.__get_api_url("/api/fs/put"),
+                data=f,
             )
 
         if resp.status_code != 200:
