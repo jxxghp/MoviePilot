@@ -61,16 +61,7 @@ class Rclone(StorageBase):
         """
         获取文件项
         """
-        return schemas.FileItem(
-            storage=self.schema.value,
-            type="file",
-            path=str(path).replace("\\", "/"),
-            name=path.name,
-            basename=path.stem,
-            extension=path.suffix[1:],
-            size=path.stat().st_size,
-            modify_time=path.stat().st_mtime,
-        )
+        return self.get_item(path)
 
     def __get_rcloneitem(self, item: dict, parent: str = "/") -> schemas.FileItem:
         """
