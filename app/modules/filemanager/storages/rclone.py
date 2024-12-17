@@ -61,16 +61,7 @@ class Rclone(StorageBase):
         """
         获取文件项
         """
-        return schemas.FileItem(
-            storage=self.schema.value,
-            type="file",
-            path=str(path).replace("\\", "/"),
-            name=path.name,
-            basename=path.stem,
-            extension=path.suffix[1:],
-            size=path.stat().st_size,
-            modify_time=path.stat().st_mtime,
-        )
+        return self.get_item(path)
 
     def __get_rcloneitem(self, item: dict, parent: str = "/") -> schemas.FileItem:
         """
@@ -206,8 +197,27 @@ class Rclone(StorageBase):
                 startupinfo=self.__get_hidden_shell()
             )
             if ret.returncode == 0:
-                items = json.loads(ret.stdout)
-                return self.__get_rcloneitem(items[0])
+                # 判断是否是文件
+                if str(path.name) in str(ret.stdout.decode('utf-8')):
+                    items = json.loads(ret.stdout)
+                    return self.__get_rcloneitem(items[0], parent=str(path.parent) + "/")
+
+            ret = subprocess.run(
+                [
+                    'rclone', 'lsjson',
+                    f'MP:{path.parent}'
+                ],
+                capture_output=True,
+                startupinfo=self.__get_hidden_shell()
+            )
+            if ret.returncode == 0:
+                # 判断是否是目录
+                if str(path.name) in str(ret.stdout.decode('utf-8')):
+                    items = json.loads(ret.stdout)
+                    for item in items:
+                        if item.get("Path") == path.name:
+                            return self.__get_rcloneitem(item, parent=str(path.parent) + "/")
+            return None
         except Exception as err:
             logger.error(f"rclone获取文件失败：{err}")
         return None
