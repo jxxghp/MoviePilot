@@ -861,7 +861,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                 lack_episode = len(left_episodes)
                             logger.info(f"{mediainfo.title_year} 季 {season} 更新缺失集数为{lack_episode} ...")
                             break
-            update_data = {"lack_episode": lack_episode}
+            update_data["lack_episode"] = lack_episode
         # 更新数据库
         if update_data:
             self.subscribeoper.update(subscribe.id, update_data)
