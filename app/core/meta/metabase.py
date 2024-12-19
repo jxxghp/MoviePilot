@@ -67,6 +67,7 @@ class MetaBase(object):
 
     # 副标题解析
     _subtitle_flag = False
+    subtitle_offset = False
     _title_episodel_re = r"Episode\s+(\d{1,4})"
     _subtitle_season_re = r"(?<![全共]\s*)[第\s]+([0-9一二三四五六七八九十S\-]+)\s*季(?!\s*[全共])"
     _subtitle_season_all_re = r"[全共]\s*([0-9一二三四五六七八九十]+)\s*季|([0-9一二三四五六七八九十]+)\s*季\s*全"

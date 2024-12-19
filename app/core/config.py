@@ -91,6 +91,8 @@ class ConfigModel(BaseModel):
     SCRAP_SOURCE: str = "themoviedb"
     # 新增已入库媒体是否跟随TMDB信息变化
     SCRAP_FOLLOW_TMDB: bool = True
+    # 副标题集数偏移是否启用, 默认关闭
+    SUBTITLE_OFFSET_ENABLE: bool = False
     # TMDB图片地址
     TMDB_IMAGE_DOMAIN: str = "image.tmdb.org"
     # TMDB API地址
