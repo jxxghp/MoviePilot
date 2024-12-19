@@ -175,6 +175,19 @@ class DoubanApi(metaclass=Singleton):
         ).decode()
 
     @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"]))
+    def __invoke_recommend(self, url: str, **kwargs) -> dict:
+        """
+        推荐/发现类API
+        """
+        return self.__invoke(url, **kwargs)
+
+    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"]))
+    def __invoke_search(self, url: str, **kwargs) -> dict:
+        """
+        搜索类API
+        """
+        return self.__invoke(url, **kwargs)
+
     def __invoke(self, url: str, **kwargs) -> dict:
         """
         GET请求
@@ -244,189 +257,189 @@ class DoubanApi(metaclass=Singleton):
         """
         关键字搜索
         """
-        return self.__invoke(self._urls["search"], q=keyword,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_search(self._urls["search"], q=keyword,
+                                    start=start, count=count, _ts=ts)
 
     def movie_search(self, keyword: str, start: int = 0, count: int = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电影搜索
         """
-        return self.__invoke(self._urls["movie_search"], q=keyword,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_search(self._urls["movie_search"], q=keyword,
+                                    start=start, count=count, _ts=ts)
 
     def tv_search(self, keyword: str, start: int = 0, count: int = 20,
                   ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电视搜索
         """
-        return self.__invoke(self._urls["tv_search"], q=keyword,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_search(self._urls["tv_search"], q=keyword,
+                                    start=start, count=count, _ts=ts)
 
     def book_search(self, keyword: str, start: int = 0, count: int = 20,
                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         书籍搜索
         """
-        return self.__invoke(self._urls["book_search"], q=keyword,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_search(self._urls["book_search"], q=keyword,
+                                    start=start, count=count, _ts=ts)
 
     def group_search(self, keyword: str, start: int = 0, count: int = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         小组搜索
         """
-        return self.__invoke(self._urls["group_search"], q=keyword,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_search(self._urls["group_search"], q=keyword,
+                                    start=start, count=count, _ts=ts)
 
     def person_search(self, keyword: str, start: int = 0, count: int = 20,
                       ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         人物搜索
         """
-        return self.__invoke(self._urls["search_subject"], type="person", q=keyword,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_search(self._urls["search_subject"], type="person", q=keyword,
+                                    start=start, count=count, _ts=ts)
 
     def movie_showing(self, start: int = 0, count: int = 20,
                       ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         正在热映
         """
-        return self.__invoke(self._urls["movie_showing"],
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["movie_showing"],
+                                       start=start, count=count, _ts=ts)
 
     def movie_soon(self, start: int = 0, count: int = 20,
                    ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         即将上映
         """
-        return self.__invoke(self._urls["movie_soon"],
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["movie_soon"],
+                                       start=start, count=count, _ts=ts)
 
     def movie_hot_gaia(self, start: int = 0, count: int = 20,
                        ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         热门电影
         """
-        return self.__invoke(self._urls["movie_hot_gaia"],
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["movie_hot_gaia"],
+                                       start=start, count=count, _ts=ts)
 
     def tv_hot(self, start: int = 0, count: int = 20,
                ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         热门剧集
         """
-        return self.__invoke(self._urls["tv_hot"],
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["tv_hot"],
+                                       start=start, count=count, _ts=ts)
 
     def tv_animation(self, start: int = 0, count: int = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         动画
         """
-        return self.__invoke(self._urls["tv_animation"],
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["tv_animation"],
+                                       start=start, count=count, _ts=ts)
 
     def tv_variety_show(self, start: int = 0, count: int = 20,
                         ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         综艺
         """
-        return self.__invoke(self._urls["tv_variety_show"],
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["tv_variety_show"],
+                                       start=start, count=count, _ts=ts)
 
     def tv_rank_list(self, start: int = 0, count: int = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电视剧排行榜
         """
-        return self.__invoke(self._urls["tv_rank_list"],
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["tv_rank_list"],
+                                       start=start, count=count, _ts=ts)
 
     def show_hot(self, start: int = 0, count: int = 20,
                  ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         综艺热门
         """
-        return self.__invoke(self._urls["show_hot"],
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["show_hot"],
+                                       start=start, count=count, _ts=ts)
 
     def movie_detail(self, subject_id: str):
         """
         电影详情
         """
-        return self.__invoke(self._urls["movie_detail"] + subject_id)
+        return self.__invoke_search(self._urls["movie_detail"] + subject_id)
 
     def movie_celebrities(self, subject_id: str):
         """
         电影演职员
         """
-        return self.__invoke(self._urls["movie_celebrities"] % subject_id)
+        return self.__invoke_search(self._urls["movie_celebrities"] % subject_id)
 
     def tv_detail(self, subject_id: str):
         """
         电视剧详情
         """
-        return self.__invoke(self._urls["tv_detail"] + subject_id)
+        return self.__invoke_search(self._urls["tv_detail"] + subject_id)
 
     def tv_celebrities(self, subject_id: str):
         """
         电视剧演职员
         """
-        return self.__invoke(self._urls["tv_celebrities"] % subject_id)
+        return self.__invoke_search(self._urls["tv_celebrities"] % subject_id)
 
     def book_detail(self, subject_id: str):
         """
         书籍详情
         """
-        return self.__invoke(self._urls["book_detail"] + subject_id)
+        return self.__invoke_search(self._urls["book_detail"] + subject_id)
 
     def movie_top250(self, start: int = 0, count: int = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电影TOP250
         """
-        return self.__invoke(self._urls["movie_top250"],
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["movie_top250"],
+                                       start=start, count=count, _ts=ts)
 
     def movie_recommend(self, tags='', sort='R', start: int = 0, count: int = 20,
                         ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电影探索
         """
-        return self.__invoke(self._urls["movie_recommend"], tags=tags, sort=sort,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["movie_recommend"], tags=tags, sort=sort,
+                                       start=start, count=count, _ts=ts)
 
     def tv_recommend(self, tags='', sort='R', start: int = 0, count: int = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         电视剧探索
         """
-        return self.__invoke(self._urls["tv_recommend"], tags=tags, sort=sort,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["tv_recommend"], tags=tags, sort=sort,
+                                       start=start, count=count, _ts=ts)
 
     def tv_chinese_best_weekly(self, start: int = 0, count: int = 20,
                                ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         华语口碑周榜
         """
-        return self.__invoke(self._urls["tv_chinese_best_weekly"],
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["tv_chinese_best_weekly"],
+                                       start=start, count=count, _ts=ts)
 
     def tv_global_best_weekly(self, start: int = 0, count: int = 20,
                               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """
         全球口碑周榜
         """
-        return self.__invoke(self._urls["tv_global_best_weekly"],
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["tv_global_best_weekly"],
+                                       start=start, count=count, _ts=ts)
 
     def doulist_detail(self, subject_id: str):
         """
         豆列详情
         :param subject_id: 豆列id
         """
-        return self.__invoke(self._urls["doulist"] + subject_id)
+        return self.__invoke_search(self._urls["doulist"] + subject_id)
 
     def doulist_items(self, subject_id: str, start: int = 0, count: int = 20,
                       ts=datetime.strftime(datetime.now(), '%Y%m%d')):
@@ -437,8 +450,8 @@ class DoubanApi(metaclass=Singleton):
         :param count: 数量
         :param ts: 时间戳
         """
-        return self.__invoke(self._urls["doulist_items"] % subject_id,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_search(self._urls["doulist_items"] % subject_id,
+                                    start=start, count=count, _ts=ts)
 
     def movie_recommendations(self, subject_id: str, start: int = 0, count: int = 20,
                               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
@@ -449,8 +462,8 @@ class DoubanApi(metaclass=Singleton):
         :param count: 数量
         :param ts: 时间戳
         """
-        return self.__invoke(self._urls["movie_recommendations"] % subject_id,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["movie_recommendations"] % subject_id,
+                                       start=start, count=count, _ts=ts)
 
     def tv_recommendations(self, subject_id: str, start: int = 0, count: int = 20,
                            ts=datetime.strftime(datetime.now(), '%Y%m%d')):
@@ -461,8 +474,8 @@ class DoubanApi(metaclass=Singleton):
         :param count: 数量
         :param ts: 时间戳
         """
-        return self.__invoke(self._urls["tv_recommendations"] % subject_id,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_recommend(self._urls["tv_recommendations"] % subject_id,
+                                       start=start, count=count, _ts=ts)
 
     def movie_photos(self, subject_id: str, start: int = 0, count: int = 20,
                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
@@ -473,8 +486,8 @@ class DoubanApi(metaclass=Singleton):
         :param count: 数量
         :param ts: 时间戳
         """
-        return self.__invoke(self._urls["movie_photos"] % subject_id,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_search(self._urls["movie_photos"] % subject_id,
+                                    start=start, count=count, _ts=ts)
 
     def tv_photos(self, subject_id: str, start: int = 0, count: int = 20,
                   ts=datetime.strftime(datetime.now(), '%Y%m%d')):
@@ -485,8 +498,8 @@ class DoubanApi(metaclass=Singleton):
         :param count: 数量
         :param ts: 时间戳
         """
-        return self.__invoke(self._urls["tv_photos"] % subject_id,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_search(self._urls["tv_photos"] % subject_id,
+                                    start=start, count=count, _ts=ts)
 
     def person_detail(self, subject_id: int):
         """
@@ -494,7 +507,7 @@ class DoubanApi(metaclass=Singleton):
         :param subject_id: 人物 id
         :return:
         """
-        return self.__invoke(self._urls["person_detail"] + str(subject_id))
+        return self.__invoke_search(self._urls["person_detail"] + str(subject_id))
 
     def person_work(self, subject_id: int, start: int = 0, count: int = 20, sort_by: str = "time",
                     collection_title: str = "影视",
@@ -509,14 +522,16 @@ class DoubanApi(metaclass=Singleton):
         :param ts: 时间戳
         :return:
         """
-        return self.__invoke(self._urls["person_work"] % subject_id, sortby=sort_by, collection_title=collection_title,
-                             start=start, count=count, _ts=ts)
+        return self.__invoke_search(self._urls["person_work"] % subject_id, sortby=sort_by,
+                                    collection_title=collection_title,
+                                    start=start, count=count, _ts=ts)
 
     def clear_cache(self):
         """
         清空LRU缓存
         """
-        self.__invoke.cache_clear()
+        # 尚未支持缓存清理
+        pass
 
     def close(self):
         if self._session:
