@@ -823,6 +823,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         """
         获取已下载过的集数或电影
         """
+        if subscribe.best_version:
+            return []
         note = subscribe.note or []
         if not note:
             return []
