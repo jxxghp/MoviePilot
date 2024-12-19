@@ -294,7 +294,7 @@ def delete_subscribe_by_mediaid(
         # 发送事件
         eventmanager.send_event(EventType.SubscribeDeleted, {
             "subscribe_id": subscribe.id,
-            "subscribe": subscribe.to_dict()
+            "subscribe_info": subscribe.to_dict()
         })
     return schemas.Response(success=True)
 
@@ -521,7 +521,7 @@ def delete_subscribe(
         # 发送事件
         eventmanager.send_event(EventType.SubscribeDeleted, {
             "subscribe_id": subscribe_id,
-            "subscribe": subscribe.to_dict()
+            "subscribe_info": subscribe.to_dict()
         })
         # 统计订阅
         SubscribeHelper().sub_done_async({
