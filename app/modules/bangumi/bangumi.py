@@ -2,7 +2,9 @@ from datetime import datetime
 from functools import lru_cache
 
 import requests
+from cachetools import TTLCache, cached
 
+from app.core.config import settings
 from app.utils.http import RequestUtils
 
 
@@ -28,7 +30,7 @@ class BangumiApi(object):
         pass
 
     @classmethod
-    @lru_cache(maxsize=128)
+    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["bangumi"], ttl=settings.CACHE_CONF["meta"]))
     def __invoke(cls, url, **kwargs):
         req_url = cls._base_url + url
         params = {}
