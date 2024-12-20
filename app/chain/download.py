@@ -313,16 +313,21 @@ class DownloadChain(ChainBase):
                                                 category=_media.category,
                                                 downloader=downloader or _site_downloader)
         if result:
-            _downloader, _hash, error_msg = result
+            _downloader, _hash, _layout, error_msg = result
         else:
-            _downloader, _hash, error_msg = None, None, "未找到下载器"
+            _downloader, _hash, _layout, error_msg = None, None, None, "未找到下载器"
 
         if _hash:
             # 下载文件路径
-            if _folder_name:
+            if _layout == "NoSubfolder" or not _folder_name:
+                # `不创建子文件夹` 或 `不存在子文件夹` 则记录至文件
+                download_path = download_dir / _file_list[0] if _file_list else download_dir
+            elif _folder_name:
+                # 原始布局
                 download_path = download_dir / _folder_name
             else:
-                download_path = download_dir / _file_list[0] if _file_list else download_dir
+                # 创建子文件夹
+                download_path = download_dir / Path(_file_list[0]).stem if _file_list else download_dir
 
             # 登记下载记录
             self.downloadhis.add(
@@ -362,11 +367,23 @@ class DownloadChain(ChainBase):
                 if not Path(file).suffix \
                         or Path(file).suffix.lower() not in settings.RMT_MEDIAEXT:
                     continue
+
+                # savepath 包含子文件夹, 不含文件
+                if _layout == "NoSubfolder" or not _folder_name:
+                    # `不创建子文件夹` 或 `不存在子文件夹` 则记录至文件
+                    _save_path = download_dir
+                elif _folder_name:
+                    # 原始布局
+                    _save_path = download_dir / _folder_name
+                else:
+                    # 创建子文件夹
+                    _save_path = download_dir / Path(_file_list[0]).stem if _file_list else download_dir
+
                 files_to_add.append({
                     "download_hash": _hash,
                     "downloader": _downloader,
-                    "fullpath": str(download_dir / _folder_name / file),
-                    "savepath": str(download_dir / _folder_name),
+                    "fullpath": str(_save_path / file),
+                    "savepath": str(_save_path),
                     "filepath": file,
                     "torrentname": _meta.org_string,
                 })

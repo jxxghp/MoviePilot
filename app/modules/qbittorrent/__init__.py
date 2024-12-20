@@ -79,7 +79,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None,
-                 downloader: str = None) -> Optional[Tuple[Optional[str], Optional[str], str]]:
+                 downloader: str = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接
@@ -88,7 +88,7 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
         :param episodes:  需要下载的集数
         :param category:  分类
         :param downloader:  下载器
-        :return: 种子Hash，错误信息
+        :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
 
         def __get_torrent_info() -> Tuple[str, int]:
@@ -106,10 +106,10 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                 return "", 0
 
         if not content:
-            return None, None, "下载内容为空"
+            return None, None, None, "下载内容为空"
         if isinstance(content, Path) and not content.exists():
             logger.error(f"种子文件不存在：{content}")
-            return None, None, f"种子文件不存在：{content}"
+            return None, None, None, f"种子文件不存在：{content}"
 
         # 获取下载器
         server: Qbittorrent = self.get_instance(downloader)
@@ -134,15 +134,20 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
             category=category,
             ignore_category_check=False
         )
+        # 获取下载器全局设置
+        application = server.qbc.application.preferences
+        # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
+        torrent_layout = application.get("torrent_content_layout", "Original")
+
         if not state:
             # 读取种子的名称
             torrent_name, torrent_size = __get_torrent_info()
             if not torrent_name:
-                return None, None, f"添加种子任务失败：无法读取种子文件"
+                return None, None, None, f"添加种子任务失败：无法读取种子文件"
             # 查询所有下载器的种子
             torrents, error = server.get_torrents()
             if error:
-                return None, None, "无法连接qbittorrent下载器"
+                return None, None, None, "无法连接qbittorrent下载器"
             if torrents:
                 for torrent in torrents:
                     # 名称与大小相等则认为是同一个种子
@@ -156,19 +161,19 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                         if settings.TORRENT_TAG and settings.TORRENT_TAG not in torrent_tags:
                             logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
                             server.set_torrents_tag(ids=torrent_hash, tags=[settings.TORRENT_TAG])
-                        return downloader or self.get_default_config_name(), torrent_hash, f"下载任务已存在"
-            return None, None, f"添加种子任务失败：{content}"
+                        return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
+            return None, None, None, f"添加种子任务失败：{content}"
         else:
             # 获取种子Hash
             torrent_hash = server.get_torrent_id_by_tag(tags=tag)
             if not torrent_hash:
-                return None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{content}"
+                return None, None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{content}"
             else:
                 if is_paused:
                     # 种子文件
                     torrent_files = server.get_files(torrent_hash)
                     if not torrent_files:
-                        return downloader or self.get_default_config_name(), torrent_hash, "获取种子文件失败，下载任务可能在暂停状态"
+                        return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "获取种子文件失败，下载任务可能在暂停状态"
 
                     # 不需要的文件ID
                     file_ids = []
@@ -193,11 +198,11 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
                         server.torrents_set_force_start(torrent_hash)
                     else:
                         server.start_torrents(torrent_hash)
-                    return downloader or self.get_default_config_name(), torrent_hash, f"添加下载成功，已选择集数：{sucess_epidised}"
+                    return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"添加下载成功，已选择集数：{sucess_epidised}"
                 else:
                     if server.is_force_resume():
                         server.torrents_set_force_start(torrent_hash)
-                    return downloader or self.get_default_config_name(), torrent_hash, "添加下载成功"
+                    return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载成功"
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,

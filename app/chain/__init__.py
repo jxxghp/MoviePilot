@@ -342,7 +342,7 @@ class ChainBase(metaclass=ABCMeta):
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None,
                  downloader: str = None
-                 ) -> Optional[Tuple[Optional[str], Optional[str], str]]:
+                 ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接
@@ -351,7 +351,7 @@ class ChainBase(metaclass=ABCMeta):
         :param episodes:  需要下载的集数
         :param category:  种子分类
         :param downloader:  下载器
-        :return: 下载器名称、种子Hash、错误信息
+        :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
         return self.run_module("download", content=content, download_dir=download_dir,
                                cookie=cookie, episodes=episodes, category=category,
