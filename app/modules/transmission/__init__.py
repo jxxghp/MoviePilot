@@ -80,7 +80,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None,
-                 downloader: str = None) -> Optional[Tuple[Optional[str], Optional[str], str]]:
+                 downloader: str = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接
@@ -89,7 +89,7 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
         :param episodes:  需要下载的集数
         :param category:  分类，TR中未使用
         :param downloader:  下载器
-        :return: 下载器名称、种子Hash、错误原因
+        :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
 
         def __get_torrent_info() -> Tuple[str, int]:
@@ -107,9 +107,9 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                 return "", 0
 
         if not content:
-            return None, None, "下载内容为空"
+            return None, None, None, "下载内容为空"
         if isinstance(content, Path) and not content.exists():
-            return None, None, f"种子文件不存在：{content}"
+            return None, None,  None, f"种子文件不存在：{content}"
 
         # 获取下载器
         server: Transmission = self.get_instance(downloader)
@@ -131,15 +131,18 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
             labels=labels,
             cookie=cookie
         )
+        # TR 始终使用原始种子布局, 返回"Original"
+        torrent_layout = "Original"
+
         if not torrent:
             # 读取种子的名称
             torrent_name, torrent_size = __get_torrent_info()
             if not torrent_name:
-                return None, None, f"添加种子任务失败：无法读取种子文件"
+                return None, None, None, f"添加种子任务失败：无法读取种子文件"
             # 查询所有下载器的种子
             torrents, error = server.get_torrents()
             if error:
-                return None, None, "无法连接transmission下载器"
+                return None, None, None, "无法连接transmission下载器"
             if torrents:
                 for torrent in torrents:
                     # 名称与大小相等则认为是同一个种子
@@ -158,15 +161,15 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                             if settings.TORRENT_TAG and settings.TORRENT_TAG not in labels:
                                 labels.append(settings.TORRENT_TAG)
                                 server.set_torrent_tag(ids=torrent_hash, tags=labels)
-                        return downloader or self.get_default_config_name(), torrent_hash, f"下载任务已存在"
-            return None, None, f"添加种子任务失败：{content}"
+                        return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
+            return None, None, None, f"添加种子任务失败：{content}"
         else:
             torrent_hash = torrent.hashString
             if is_paused:
                 # 选择文件
                 torrent_files = server.get_files(torrent_hash)
                 if not torrent_files:
-                    return downloader or self.get_default_config_name(), torrent_hash, "获取种子文件失败，下载任务可能在暂停状态"
+                    return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "获取种子文件失败，下载任务可能在暂停状态"
                 # 需要的文件信息
                 file_ids = []
                 unwanted_file_ids = []
@@ -187,9 +190,9 @@ class TransmissionModule(_ModuleBase, _DownloaderBase[Transmission]):
                 server.set_unwanted_files(torrent_hash, unwanted_file_ids)
                 # 开始任务
                 server.start_torrents(torrent_hash)
-                return downloader or self.get_default_config_name(), torrent_hash, "添加下载任务成功"
+                return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
             else:
-                return downloader or self.get_default_config_name(), torrent_hash, "添加下载任务成功"
+                return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,
