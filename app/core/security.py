@@ -286,7 +286,7 @@ def decrypt(data: bytes, key: bytes) -> Optional[bytes]:
         return None
 
 
-def encrypt_message(message: str, key: bytes):
+def encrypt_message(message: str, key: bytes) -> str:
     """
     使用给定的key对消息进行加密，并返回加密后的字符串
     """
@@ -295,14 +295,14 @@ def encrypt_message(message: str, key: bytes):
     return encrypted_message.decode()
 
 
-def hash_sha256(message):
+def hash_sha256(message: str) -> str:
     """
     对字符串做hash运算
     """
     return hashlib.sha256(message.encode()).hexdigest()
 
 
-def aes_decrypt(data, key):
+def aes_decrypt(data: str, key: str) -> str:
     """
     AES解密
     """
@@ -322,7 +322,7 @@ def aes_decrypt(data, key):
     return result.decode('utf-8')
 
 
-def aes_encrypt(data, key):
+def aes_encrypt(data: str, key: str) -> str:
     """
     AES加密
     """
@@ -338,7 +338,7 @@ def aes_encrypt(data, key):
     return base64.b64encode(cipher.iv + result).decode('utf-8')
 
 
-def nexusphp_encrypt(data_str: str, key):
+def nexusphp_encrypt(data_str: str, key: bytes) -> str:
     """
     NexusPHP加密
     """
