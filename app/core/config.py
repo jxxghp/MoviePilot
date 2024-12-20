@@ -481,6 +481,7 @@ class Settings(BaseSettings, ConfigModel):
                 "refresh": 100,
                 "tmdb": 1024,
                 "douban": 512,
+                "bangumi": 512,
                 "fanart": 512,
                 "meta": (self.META_CACHE_EXPIRE or 24) * 3600
             }
@@ -489,6 +490,7 @@ class Settings(BaseSettings, ConfigModel):
             "refresh": 50,
             "tmdb": 256,
             "douban": 256,
+            "bangumi": 256,
             "fanart": 128,
             "meta": (self.META_CACHE_EXPIRE or 2) * 3600
         }

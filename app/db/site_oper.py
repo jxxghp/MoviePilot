@@ -114,7 +114,8 @@ class SiteOper(DbOper):
             "domain": domain,
             "name": name,
             "updated_day": current_day,
-            "updated_time": current_time
+            "updated_time": current_time,
+            "err_msg": payload.get("err_msg") or ""
         })
         # 按站点+天判断是否存在数据
         siteuserdatas = SiteUserData.get_by_domain(self._db, domain=domain, workdate=current_day)

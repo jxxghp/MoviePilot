@@ -395,15 +395,17 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             return
         # 当前下载资源的优先级
         priority = max([item.torrent_info.pri_order for item in downloads])
+        # 订阅存在待定策略，不管是否已完成，均需更新订阅信息
+        self.subscribeoper.update(subscribe.id, {
+            "current_priority": priority,
+            "last_update": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
         if priority == 100:
             # 洗版完成
-            self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo, bestversion=True)
+            self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
         else:
             # 正在洗版，更新资源优先级
             logger.info(f'{mediainfo.title_year} 正在洗版，更新资源优先级为 {priority}')
-            self.subscribeoper.update(subscribe.id, {
-                "current_priority": priority
-            })
 
     def finish_subscribe_or_not(self, subscribe: Subscribe, meta: MetaInfo, mediainfo: MediaInfo,
                                 downloads: List[Context] = None,
@@ -432,9 +434,12 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 # 未下载到内容且不完整
                 logger.info(f'{mediainfo.title_year} 未下载完整，继续订阅 ...')
         elif downloads:
-            # 洗板，下载到了内容，更新资源优先级
+            # 洗版下载到了内容，更新资源优先级
             self.update_subscribe_priority(subscribe=subscribe, meta=meta,
                                            mediainfo=mediainfo, downloads=downloads)
+        elif subscribe.current_priority == 100:
+            # 洗版完成
+            self.__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
         else:
             # 洗版，未下载到内容
             logger.info(f'{mediainfo.title_year} 继续洗版 ...')
@@ -818,6 +823,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         """
         获取已下载过的集数或电影
         """
+        if subscribe.best_version:
+            return []
         note = subscribe.note or []
         if not note:
             return []
@@ -861,13 +868,12 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                 lack_episode = len(left_episodes)
                             logger.info(f"{mediainfo.title_year} 季 {season} 更新缺失集数为{lack_episode} ...")
                             break
-            update_data = {"lack_episode": lack_episode}
+            update_data["lack_episode"] = lack_episode
         # 更新数据库
         if update_data:
             self.subscribeoper.update(subscribe.id, update_data)
 
-    def __finish_subscribe(self, subscribe: Subscribe, mediainfo: MediaInfo,
-                           meta: MetaBase, bestversion: bool = False):
+    def __finish_subscribe(self, subscribe: Subscribe, mediainfo: MediaInfo, meta: MetaBase):
         """
         完成订阅
         """
@@ -875,9 +881,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         if subscribe.state == "P":
             return
         # 完成订阅
-        msgstr = "订阅"
-        if bestversion:
-            msgstr = "洗版"
+        msgstr = "订阅" if not subscribe.best_version else "洗版"
         logger.info(f'{mediainfo.title_year} 完成{msgstr}')
         # 新增订阅历史
         self.subscribeoper.add_history(**subscribe.to_dict())
@@ -1291,25 +1295,30 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 totals=totals
             )
         else:
-            # 洗版
-            exist_flag = False
-            if meta.type == MediaType.TV:
-                # 对于电视剧，构造缺失的媒体信息
-                no_exists = {
-                    mediakey: {
-                        subscribe.season: NotExistMediaInfo(
-                            season=subscribe.season,
-                            episodes=[],
-                            total_episode=subscribe.total_episode,
-                            start_episode=subscribe.start_episode or 1)
-                    }
-                }
-            else:
+            # 洗版，如果已经满足了优先级，则认为已经洗版完成
+            if subscribe.current_priority == 100:
+                exist_flag = True
                 no_exists = {}
+            else:
+                exist_flag = False
+                if meta.type == MediaType.TV:
+                    # 对于电视剧，构造缺失的媒体信息
+                    no_exists = {
+                        mediakey: {
+                            subscribe.season: NotExistMediaInfo(
+                                season=subscribe.season,
+                                episodes=[],
+                                total_episode=subscribe.total_episode,
+                                start_episode=subscribe.start_episode or 1)
+                        }
+                    }
+                else:
+                    no_exists = {}
 
         # 如果媒体已存在，执行订阅完成操作
         if exist_flag:
-            logger.info(f'{mediainfo.title_year} 媒体库中已存在')
+            if not subscribe.best_version:
+                logger.info(f'{mediainfo.title_year} 媒体库中已存在')
             self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
             return True, no_exists
 
