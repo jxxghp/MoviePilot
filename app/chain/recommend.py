@@ -64,12 +64,12 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         self.bangumi_calendar()
         self.douban_movies()
         self.douban_tvs()
-        self.movie_top250()
-        self.tv_weekly_chinese()
-        self.tv_weekly_global()
-        self.tv_animation()
-        self.movie_hot()
-        self.tv_hot()
+        self.douban_movie_top250()
+        self.douban_tv_weekly_chinese()
+        self.douban_tv_weekly_global()
+        self.douban_tv_animation()
+        self.douban_movie_hot()
+        self.douban_tv_hot()
 
     @log_execution_time(logger=logger)
     @cached_with_empty_check
@@ -119,7 +119,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached_with_empty_check
-    def movie_showing(self, page: int = 1, count: int = 30) -> Any:
+    def douban_movie_showing(self, page: int = 1, count: int = 30) -> Any:
         """
         豆瓣正在热映
         """
@@ -148,7 +148,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached_with_empty_check
-    def movie_top250(self, page: int = 1, count: int = 30) -> Any:
+    def douban_movie_top250(self, page: int = 1, count: int = 30) -> Any:
         """
         豆瓣电影TOP250
         """
@@ -157,7 +157,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached_with_empty_check
-    def tv_weekly_chinese(self, page: int = 1, count: int = 30) -> Any:
+    def douban_tv_weekly_chinese(self, page: int = 1, count: int = 30) -> Any:
         """
         豆瓣国产剧集榜
         """
@@ -166,7 +166,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached_with_empty_check
-    def tv_weekly_global(self, page: int = 1, count: int = 30) -> Any:
+    def douban_tv_weekly_global(self, page: int = 1, count: int = 30) -> Any:
         """
         豆瓣全球剧集榜
         """
@@ -175,7 +175,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached_with_empty_check
-    def tv_animation(self, page: int = 1, count: int = 30) -> Any:
+    def douban_tv_animation(self, page: int = 1, count: int = 30) -> Any:
         """
         豆瓣热门动漫
         """
@@ -184,7 +184,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached_with_empty_check
-    def movie_hot(self, page: int = 1, count: int = 30) -> Any:
+    def douban_movie_hot(self, page: int = 1, count: int = 30) -> Any:
         """
         豆瓣热门电影
         """
@@ -193,7 +193,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached_with_empty_check
-    def tv_hot(self, page: int = 1, count: int = 30) -> Any:
+    def douban_tv_hot(self, page: int = 1, count: int = 30) -> Any:
         """
         豆瓣热门电视剧
         """
