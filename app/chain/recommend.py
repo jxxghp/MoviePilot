@@ -18,7 +18,7 @@ recommend_ttl = 6 * 3600
 recommend_cache = TTLCache(maxsize=256, ttl=recommend_ttl)
 
 
-# 推荐缓存装饰器，避免偶发网络获取数据为空时，页面由于缓存长时间渲染异常问题
+# 推荐缓存装饰器，避免偶发网络获取数据为空时，页面由于缓存为空长时间渲染异常问题
 def cached_with_empty_check(func: Callable):
     """
     缓存装饰器，用于缓存函数的返回结果，仅在结果非空时进行缓存
