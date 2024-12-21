@@ -1,5 +1,6 @@
 import time
-from typing import Any
+from functools import wraps
+from typing import Any, Callable
 
 from app.schemas import ImmediateException
 
@@ -36,3 +37,27 @@ def retry(ExceptionToCheck: Any,
         return f_retry
 
     return deco_retry
+
+
+def log_execution_time(logger: Any = None):
+    """
+    记录函数执行时间的装饰器
+    :param logger: 日志记录器对象，用于记录异常信息
+    """
+
+    def decorator(func: Callable):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start_time = time.time()
+            result = func(*args, **kwargs)
+            end_time = time.time()
+            msg = f"{func.__name__} execution time: {end_time - start_time:.2f} seconds"
+            if logger:
+                logger.debug(msg)
+            else:
+                print(msg)
+            return result
+
+        return wrapper
+
+    return decorator
