@@ -318,16 +318,18 @@ class DownloadChain(ChainBase):
             _downloader, _hash, _layout, error_msg = None, None, None, "未找到下载器"
 
         if _hash:
-            # 下载文件路径
+            # `不创建子文件夹` 或 `不存在子文件夹`
             if _layout == "NoSubfolder" or not _folder_name:
-                # `不创建子文件夹` 或 `不存在子文件夹` 则记录至文件
+                # 下载路径记录至文件
                 download_path = download_dir / _file_list[0] if _file_list else download_dir
+            # 原始布局
             elif _folder_name:
-                # 原始布局
                 download_path = download_dir / _folder_name
+            # 创建子文件夹
             else:
-                # 创建子文件夹
                 download_path = download_dir / Path(_file_list[0]).stem if _file_list else download_dir
+            # 文件保存路径
+            _save_path = download_dir if _layout == "NoSubfolder" or not _folder_name else download_path
 
             # 登记下载记录
             self.downloadhis.add(
@@ -367,18 +369,6 @@ class DownloadChain(ChainBase):
                 if not Path(file).suffix \
                         or Path(file).suffix.lower() not in settings.RMT_MEDIAEXT:
                     continue
-
-                # savepath 包含子文件夹, 不含文件
-                if _layout == "NoSubfolder" or not _folder_name:
-                    # `不创建子文件夹` 或 `不存在子文件夹` 则记录至文件
-                    _save_path = download_dir
-                elif _folder_name:
-                    # 原始布局
-                    _save_path = download_dir / _folder_name
-                else:
-                    # 创建子文件夹
-                    _save_path = download_dir / Path(_file_list[0]).stem if _file_list else download_dir
-
                 files_to_add.append({
                     "download_hash": _hash,
                     "downloader": _downloader,

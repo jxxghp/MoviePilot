@@ -1185,7 +1185,7 @@ class FileManagerModule(_ModuleBase):
             # 集号
             "episode": meta.episode_seqs,
             # 季集 SxxExx
-            "season_episode": "%s%s" % (meta.season, meta.episodes),
+            "season_episode": "%s%s" % (meta.season, meta.episode),
             # 段/节
             "part": meta.part,
             # 剧集标题

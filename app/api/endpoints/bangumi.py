@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.bangumi import BangumiChain
+from app.chain.recommend import RecommendChain
 from app.core.context import MediaInfo
 from app.core.security import verify_token
 
@@ -17,10 +18,7 @@ def calendar(page: int = 1,
     """
     浏览Bangumi每日放送
     """
-    medias = BangumiChain().calendar()
-    if medias:
-        return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
-    return []
+    return RecommendChain().bangumi_calendar(page=page, count=count)
 
 
 @router.get("/credits/{bangumiid}", summary="查询Bangumi演职员表", response_model=List[schemas.MediaPerson])
