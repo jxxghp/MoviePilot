@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.core.config import global_vars, settings
 from app.core.module import ModuleManager
+from app.log import logger
 from app.utils.system import SystemUtils
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
@@ -78,13 +79,15 @@ def user_auth():
     """
     用户认证检查
     """
-    if SitesHelper().auth_level >= 2:
+    sites_helper = SitesHelper()
+    if sites_helper.auth_level >= 2:
         return
     auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
-    if auth_conf:
-        SitesHelper().check_user(**auth_conf)
+    status, msg = sites_helper.check_user(**auth_conf) if auth_conf else sites_helper.check_user()
+    if status:
+        logger.info(f"{msg} 用户认证成功")
     else:
-        SitesHelper().check_user()
+        logger.info(f"用户认证失败：{msg}")
 
 
 def check_auth():
