@@ -62,6 +62,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         self.tmdb_tvs()
         self.tmdb_trending()
         self.bangumi_calendar()
+        self.douban_movie_showing()
         self.douban_movies()
         self.douban_tvs()
         self.douban_movie_top250()
@@ -88,7 +89,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
     @log_execution_time(logger=logger)
     @cached_with_empty_check
     def tmdb_tvs(self, sort_by: str = "popularity.desc", with_genres: str = "",
-                 with_original_language: str = "", page: int = 1) -> Any:
+                 with_original_language: str = "zh|en|ja|ko", page: int = 1) -> Any:
         """
         TMDB热门电视剧
         """
