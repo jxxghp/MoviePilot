@@ -1,3 +1,4 @@
+import inspect
 from functools import wraps
 from typing import Any, Callable
 
@@ -29,8 +30,18 @@ def cached_with_empty_check(func: Callable):
 
     @wraps(func)
     def wrapper(*args, **kwargs):
+        signature = inspect.signature(func)
+        resolved_kwargs = {}
+        # 获取默认值并结合传递的参数（如果有）
+        for param, value in signature.parameters.items():
+            if param in kwargs:
+                # 使用显式传递的参数
+                resolved_kwargs[param] = kwargs[param]
+            elif value.default is not inspect.Parameter.empty:
+                # 没有传递参数时使用默认值
+                resolved_kwargs[param] = value.default
         # 使用 cachetools 缓存，构造缓存键
-        cache_key = hashkey(*args, **kwargs)
+        cache_key = f"{func.__name__}_{hashkey(*args, **resolved_kwargs)}"
         if cache_key in recommend_cache:
             return recommend_cache[cache_key]
         result = func(*args, **kwargs)
@@ -58,6 +69,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         刷新推荐
         """
+        logger.debug("Starting to refresh Recommend data.")
+        recommend_cache.clear()
+        logger.debug("Recommend Cache has been cleared.")
         self.tmdb_movies()
         self.tmdb_tvs()
         self.tmdb_trending()
@@ -71,6 +85,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         self.douban_tv_animation()
         self.douban_movie_hot()
         self.douban_tv_hot()
+        logger.debug("Recommend data refresh completed.")
 
     @log_execution_time(logger=logger)
     @cached_with_empty_check
