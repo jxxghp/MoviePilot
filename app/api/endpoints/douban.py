@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app import schemas
 from app.chain.douban import DoubanChain
+from app.chain.recommend import RecommendChain
 from app.core.context import MediaInfo
 from app.core.security import verify_token
 from app.schemas import MediaType
@@ -40,10 +41,7 @@ def movie_showing(page: int = 1,
     """
     浏览豆瓣正在热映
     """
-    movies = DoubanChain().movie_showing(page=page, count=count)
-    if movies:
-        return [media.to_dict() for media in movies]
-    return []
+    return RecommendChain().douban_movie_showing(page=page, count=count)
 
 
 @router.get("/movies", summary="豆瓣电影", response_model=List[schemas.MediaInfo])
@@ -55,11 +53,7 @@ def douban_movies(sort: str = "R",
     """
     浏览豆瓣电影信息
     """
-    movies = DoubanChain().douban_discover(mtype=MediaType.MOVIE,
-                                           sort=sort, tags=tags, page=page, count=count)
-    if movies:
-        return [media.to_dict() for media in movies]
-    return []
+    return RecommendChain().douban_movies(sort=sort, tags=tags, page=page, count=count)
 
 
 @router.get("/tvs", summary="豆瓣剧集", response_model=List[schemas.MediaInfo])
@@ -71,11 +65,7 @@ def douban_tvs(sort: str = "R",
     """
     浏览豆瓣剧集信息
     """
-    tvs = DoubanChain().douban_discover(mtype=MediaType.TV,
-                                        sort=sort, tags=tags, page=page, count=count)
-    if tvs:
-        return [media.to_dict() for media in tvs]
-    return []
+    return RecommendChain().douban_tvs(sort=sort, tags=tags, page=page, count=count)
 
 
 @router.get("/movie_top250", summary="豆瓣电影TOP250", response_model=List[schemas.MediaInfo])
@@ -85,10 +75,7 @@ def movie_top250(page: int = 1,
     """
     浏览豆瓣剧集信息
     """
-    movies = DoubanChain().movie_top250(page=page, count=count)
-    if movies:
-        return [media.to_dict() for media in movies]
-    return []
+    return RecommendChain().douban_movie_top250(page=page, count=count)
 
 
 @router.get("/tv_weekly_chinese", summary="豆瓣国产剧集周榜", response_model=List[schemas.MediaInfo])
@@ -98,10 +85,7 @@ def tv_weekly_chinese(page: int = 1,
     """
     中国每周剧集口碑榜
     """
-    tvs = DoubanChain().tv_weekly_chinese(page=page, count=count)
-    if tvs:
-        return [media.to_dict() for media in tvs]
-    return []
+    return RecommendChain().douban_tv_weekly_chinese(page=page, count=count)
 
 
 @router.get("/tv_weekly_global", summary="豆瓣全球剧集周榜", response_model=List[schemas.MediaInfo])
@@ -111,10 +95,7 @@ def tv_weekly_global(page: int = 1,
     """
     全球每周剧集口碑榜
     """
-    tvs = DoubanChain().tv_weekly_global(page=page, count=count)
-    if tvs:
-        return [media.to_dict() for media in tvs]
-    return []
+    return RecommendChain().douban_tv_weekly_global(page=page, count=count)
 
 
 @router.get("/tv_animation", summary="豆瓣动画剧集", response_model=List[schemas.MediaInfo])
@@ -124,10 +105,7 @@ def tv_animation(page: int = 1,
     """
     热门动画剧集
     """
-    tvs = DoubanChain().tv_animation(page=page, count=count)
-    if tvs:
-        return [media.to_dict() for media in tvs]
-    return []
+    return RecommendChain().douban_tv_animation(page=page, count=count)
 
 
 @router.get("/movie_hot", summary="豆瓣热门电影", response_model=List[schemas.MediaInfo])
@@ -137,10 +115,7 @@ def movie_hot(page: int = 1,
     """
     热门电影
     """
-    movies = DoubanChain().movie_hot(page=page, count=count)
-    if movies:
-        return [media.to_dict() for media in movies]
-    return []
+    return RecommendChain().douban_movie_hot(page=page, count=count)
 
 
 @router.get("/tv_hot", summary="豆瓣热门电视剧", response_model=List[schemas.MediaInfo])
@@ -150,10 +125,7 @@ def tv_hot(page: int = 1,
     """
     热门电视剧
     """
-    tvs = DoubanChain().tv_hot(page=page, count=count)
-    if tvs:
-        return [media.to_dict() for media in tvs]
-    return []
+    return RecommendChain().douban_tv_hot(page=page, count=count)
 
 
 @router.get("/credits/{doubanid}/{type_name}", summary="豆瓣演员阵容", response_model=List[schemas.MediaPerson])

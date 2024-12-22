@@ -3,6 +3,7 @@ from typing import List, Any
 from fastapi import APIRouter, Depends
 
 from app import schemas
+from app.chain.recommend import RecommendChain
 from app.chain.tmdb import TmdbChain
 from app.core.security import verify_token
 from app.schemas.types import MediaType
@@ -108,14 +109,10 @@ def tmdb_movies(sort_by: str = "popularity.desc",
     """
     浏览TMDB电影信息
     """
-    movies = TmdbChain().tmdb_discover(mtype=MediaType.MOVIE,
-                                       sort_by=sort_by,
-                                       with_genres=with_genres,
-                                       with_original_language=with_original_language,
-                                       page=page)
-    if not movies:
-        return []
-    return [movie.to_dict() for movie in movies]
+    return RecommendChain().tmdb_movies(sort_by=sort_by,
+                                        with_genres=with_genres,
+                                        with_original_language=with_original_language,
+                                        page=page)
 
 
 @router.get("/tvs", summary="TMDB剧集", response_model=List[schemas.MediaInfo])
@@ -127,26 +124,19 @@ def tmdb_tvs(sort_by: str = "popularity.desc",
     """
     浏览TMDB剧集信息
     """
-    tvs = TmdbChain().tmdb_discover(mtype=MediaType.TV,
-                                    sort_by=sort_by,
-                                    with_genres=with_genres,
-                                    with_original_language=with_original_language,
-                                    page=page)
-    if not tvs:
-        return []
-    return [tv.to_dict() for tv in tvs]
+    return RecommendChain().tmdb_tvs(sort_by=sort_by,
+                                     with_genres=with_genres,
+                                     with_original_language=with_original_language,
+                                     page=page)
 
 
 @router.get("/trending", summary="TMDB流行趋势", response_model=List[schemas.MediaInfo])
 def tmdb_trending(page: int = 1,
                   _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    浏览TMDB剧集信息
+    TMDB流行趋势
     """
-    infos = TmdbChain().tmdb_trending(page=page)
-    if not infos:
-        return []
-    return [info.to_dict() for info in infos]
+    return RecommendChain().tmdb_trending(page=page)
 
 
 @router.get("/{tmdbid}/{season}", summary="TMDB季所有集", response_model=List[schemas.TmdbEpisode])
