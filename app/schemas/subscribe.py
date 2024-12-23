@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Subscribe(BaseModel):
@@ -53,7 +53,7 @@ class Subscribe(BaseModel):
     # 订阅用户
     username: Optional[str] = None
     # 订阅站点
-    sites: Optional[List[int]] = []
+    sites: Optional[List[int]] = Field(default_factory=list)
     # 下载器
     downloader: Optional[str] = None
     # 是否洗版
@@ -71,7 +71,7 @@ class Subscribe(BaseModel):
     # 自定义媒体类别
     media_category: Optional[str] = None
     # 过滤规则组
-    filter_groups: Optional[List[str]] = []
+    filter_groups: Optional[List[str]] = Field(default_factory=list)
 
     class Config:
         orm_mode = True
@@ -157,13 +157,13 @@ class SubscribeEpisodeInfo(BaseModel):
     # 背景图
     backdrop: Optional[str] = None
     # 下载文件信息
-    download: Optional[List[SubscribeDownloadFileInfo]] = []
+    download: Optional[List[SubscribeDownloadFileInfo]] = Field(default_factory=list)
     # 媒体库文件信息
-    library: Optional[List[SubscribeLibraryFileInfo]] = []
+    library: Optional[List[SubscribeLibraryFileInfo]] = Field(default_factory=list)
 
 
 class SubscrbieInfo(BaseModel):
     # 订阅信息
     subscribe: Optional[Subscribe] = None
     # 集信息 {集号: {download: 文件路径，library: 文件路径, backdrop: url, title: 标题, description: 描述}}
-    episodes: Optional[Dict[int, SubscribeEpisodeInfo]] = {}
+    episodes: Optional[Dict[int, SubscribeEpisodeInfo]] = Field(default_factory=dict)

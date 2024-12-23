@@ -1,6 +1,6 @@
 from typing import Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.types import NotificationType, MessageChannel
 
@@ -101,7 +101,7 @@ class Subscription(BaseModel):
     客户端消息订阅
     """
     endpoint: Optional[str]
-    keys: Optional[dict] = {}
+    keys: Optional[dict] = Field(default_factory=dict)
 
 
 class SubscriptionMessage(BaseModel):
@@ -112,4 +112,4 @@ class SubscriptionMessage(BaseModel):
     body: Optional[str]
     icon: Optional[str]
     url: Optional[str]
-    data: Optional[dict] = {}
+    data: Optional[dict] = Field(default_factory=dict)

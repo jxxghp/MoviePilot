@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional, Dict, Union, List, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.types import MediaType
 
@@ -13,7 +13,7 @@ class ExistMediaInfo(BaseModel):
     # 类型 电影、电视剧
     type: Optional[MediaType]
     # 季
-    seasons: Optional[Dict[int, list]] = {}
+    seasons: Optional[Dict[int, list]] = Field(default_factory=dict)
     # 媒体服务器类型：plex、jellyfin、emby
     server_type: Optional[str] = None
     # 媒体服务器名称
@@ -29,7 +29,7 @@ class NotExistMediaInfo(BaseModel):
     # 季
     season: Optional[int] = None
     # 剧集列表
-    episodes: Optional[list] = []
+    episodes: Optional[list] = Field(default_factory=list)
     # 总集数
     total_episode: Optional[int] = 0
     # 开始集
@@ -132,7 +132,7 @@ class MediaServerSeasonInfo(BaseModel):
     媒体服务器媒体剧集信息
     """
     season: Optional[int] = None
-    episodes: Optional[List[int]] = []
+    episodes: Optional[List[int]] = Field(default_factory=list)
 
 
 class WebhookEventInfo(BaseModel):
@@ -173,4 +173,4 @@ class MediaServerPlayItem(BaseModel):
     image: Optional[str] = None
     link: Optional[str] = None
     percent: Optional[float] = None
-    BackdropImageTags: Optional[list] = []
+    BackdropImageTags: Optional[list] = Field(default_factory=list)

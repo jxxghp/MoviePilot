@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RadarrMovie(BaseModel):
@@ -28,9 +28,9 @@ class SonarrSeries(BaseModel):
     overview: Optional[str]
     network: Optional[str]
     airTime: Optional[str]
-    images: list = []
+    images: list = Field(default_factory=list)
     remotePoster: Optional[str]
-    seasons: list = []
+    seasons: list = Field(default_factory=list)
     year: Optional[str]
     path: Optional[str]
     profileId: Optional[int]
@@ -49,9 +49,9 @@ class SonarrSeries(BaseModel):
     cleanTitle: Optional[str]
     titleSlug: Optional[str]
     certification: Optional[str]
-    genres: list = []
-    tags: list = []
+    genres: list = Field(default_factory=list)
+    tags: list = Field(default_factory=list)
     added: Optional[str]
     ratings: Optional[dict]
     qualityProfileId: Optional[int]
-    statistics: dict = {}
+    statistics: dict = Field(default_factory=dict)
