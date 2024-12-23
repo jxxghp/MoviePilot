@@ -1,4 +1,3 @@
-import asyncio
 from typing import List, Any
 
 import cn2an
@@ -147,12 +146,8 @@ def update_subscribe_status(
     return schemas.Response(success=True)
 
 
-# 控制最大并发数
-semaphore = asyncio.Semaphore(10)
-
-
 @router.get("/media/{mediaid}", summary="查询订阅", response_model=schemas.Subscribe)
-async def subscribe_mediaid(
+def subscribe_mediaid(
         mediaid: str,
         season: int = None,
         title: str = None,
@@ -161,36 +156,35 @@ async def subscribe_mediaid(
     """
     根据 TMDBID/豆瓣ID/BangumiId 查询订阅 tmdb:/douban:
     """
-    async with semaphore:
-        result = None
-        title_check = False
-        if mediaid.startswith("tmdb:"):
-            tmdbid = mediaid[5:]
-            if not tmdbid or not str(tmdbid).isdigit():
-                return Subscribe()
-            result = Subscribe.exists(db, tmdbid=int(tmdbid), season=season)
-        elif mediaid.startswith("douban:"):
-            doubanid = mediaid[7:]
-            if not doubanid:
-                return Subscribe()
-            result = Subscribe.get_by_doubanid(db, doubanid)
-            if not result and title:
-                title_check = True
-        elif mediaid.startswith("bangumi:"):
-            bangumiid = mediaid[8:]
-            if not bangumiid or not str(bangumiid).isdigit():
-                return Subscribe()
-            result = Subscribe.get_by_bangumiid(db, int(bangumiid))
-            if not result and title:
-                title_check = True
-        # 使用名称检查订阅
-        if title_check and title:
-            meta = MetaInfo(title)
-            if season:
-                meta.begin_season = season
-            result = Subscribe.get_by_title(db, title=meta.name, season=meta.begin_season)
+    result = None
+    title_check = False
+    if mediaid.startswith("tmdb:"):
+        tmdbid = mediaid[5:]
+        if not tmdbid or not str(tmdbid).isdigit():
+            return Subscribe()
+        result = Subscribe.exists(db, tmdbid=int(tmdbid), season=season)
+    elif mediaid.startswith("douban:"):
+        doubanid = mediaid[7:]
+        if not doubanid:
+            return Subscribe()
+        result = Subscribe.get_by_doubanid(db, doubanid)
+        if not result and title:
+            title_check = True
+    elif mediaid.startswith("bangumi:"):
+        bangumiid = mediaid[8:]
+        if not bangumiid or not str(bangumiid).isdigit():
+            return Subscribe()
+        result = Subscribe.get_by_bangumiid(db, int(bangumiid))
+        if not result and title:
+            title_check = True
+    # 使用名称检查订阅
+    if title_check and title:
+        meta = MetaInfo(title)
+        if season:
+            meta.begin_season = season
+        result = Subscribe.get_by_title(db, title=meta.name, season=meta.begin_season)
 
-        return result if result else Subscribe()
+    return result if result else Subscribe()
 
 
 @router.get("/refresh", summary="刷新订阅", response_model=schemas.Response)

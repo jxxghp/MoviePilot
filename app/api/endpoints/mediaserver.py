@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any, List, Dict
 
 from fastapi import APIRouter, Depends
@@ -43,12 +42,8 @@ def play_item(itemid: str, _: schemas.TokenPayload = Depends(verify_token)) -> s
     return schemas.Response(success=False, message="未找到播放地址")
 
 
-# 控制最大并发数
-semaphore = asyncio.Semaphore(10)
-
-
 @router.get("/exists", summary="查询本地是否存在（数据库）", response_model=schemas.Response)
-async def exists_local(title: str = None,
+def exists_local(title: str = None,
                  year: int = None,
                  mtype: str = None,
                  tmdbid: int = None,
@@ -58,23 +53,22 @@ async def exists_local(title: str = None,
     """
     判断本地是否存在
     """
-    async with semaphore:
-        meta = MetaInfo(title)
-        if not season:
-            season = meta.begin_season
-        # 返回对象
-        ret_info = {}
-        # 本地数据库是否存在
-        exist: MediaServerItem = MediaServerOper(db).exists(
-            title=meta.name, year=year, mtype=mtype, tmdbid=tmdbid, season=season
-        )
-        if exist:
-            ret_info = {
-                "id": exist.item_id
-            }
-        return schemas.Response(success=True if exist else False, data={
-            "item": ret_info
-        })
+    meta = MetaInfo(title)
+    if not season:
+        season = meta.begin_season
+    # 返回对象
+    ret_info = {}
+    # 本地数据库是否存在
+    exist: MediaServerItem = MediaServerOper(db).exists(
+        title=meta.name, year=year, mtype=mtype, tmdbid=tmdbid, season=season
+    )
+    if exist:
+        ret_info = {
+            "id": exist.item_id
+        }
+    return schemas.Response(success=True if exist else False, data={
+        "item": ret_info
+    })
 
 
 @router.post("/exists_remote", summary="查询已存在的剧集信息（媒体服务器）", response_model=Dict[int, list])
