@@ -13,7 +13,7 @@ connect_args = {
 # 启用 WAL 模式时的额外配置
 if settings.DB_WAL_ENABLE:
     connect_args["check_same_thread"] = False
-kwargs = {
+db_kwargs = {
     "url": f"sqlite:///{settings.CONFIG_PATH}/user.db",
     "pool_pre_ping": settings.DB_POOL_PRE_PING,
     "echo": settings.DB_ECHO,
@@ -23,13 +23,13 @@ kwargs = {
 }
 # 当使用 QueuePool 时，添加 QueuePool 特有的参数
 if pool_class == QueuePool:
-    kwargs.update({
+    db_kwargs.update({
         "pool_size": settings.DB_POOL_SIZE,
         "pool_timeout": settings.DB_POOL_TIMEOUT,
         "max_overflow": settings.DB_MAX_OVERFLOW
     })
 # 创建数据库引擎
-Engine = create_engine(**kwargs)
+Engine = create_engine(**db_kwargs)
 # 根据配置设置日志模式
 journal_mode = "WAL" if settings.DB_WAL_ENABLE else "DELETE"
 with Engine.connect() as connection:
@@ -198,7 +198,7 @@ class Base:
     @classmethod
     @db_query
     def get(cls, db: Session, rid: int) -> Self:
-        return db.query(cls).filter(cls.id == rid).first()
+        return db.query(cls).filter(and_(cls.id == rid)).first()
 
     @db_update
     def update(self, db: Session, payload: dict):

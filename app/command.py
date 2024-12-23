@@ -15,8 +15,7 @@ from app.helper.message import MessageHelper
 from app.helper.thread import ThreadHelper
 from app.log import logger
 from app.scheduler import Scheduler
-from app.schemas import Notification
-from app.schemas.event import CommandRegisterEventData
+from app.schemas import Notification, CommandRegisterEventData
 from app.schemas.types import EventType, MessageChannel, ChainEventType
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton

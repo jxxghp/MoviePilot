@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Optional, List, Union, Dict, Tuple
+from typing import Optional, List, Dict, Tuple
 
 from app import schemas
 from app.helper.storage import StorageHelper

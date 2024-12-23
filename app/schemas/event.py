@@ -89,7 +89,7 @@ class AuthInterceptCredentials(ChainEventData):
     channel: str = Field(..., description="认证渠道")
     service: str = Field(..., description="服务名称")
     status: str = Field(..., description="认证状态, 包含 'triggered' 表示认证触发，'completed' 表示认证成功")
-    token: Optional[str] = Field(None, description="认证令牌")
+    token: Optional[str] = Field(default=None, description="认证令牌")
 
     # 输出参数
     source: str = Field(default="未知拦截源", description="拦截源")

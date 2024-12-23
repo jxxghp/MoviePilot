@@ -53,7 +53,7 @@ class Site(BaseModel):
 
 class SiteStatistic(BaseModel):
     # 站点ID
-    domain: Optional[str]
+    domain: Optional[str] = None
     # 成功次数
     success: Optional[int] = 0
     # 失败次数
@@ -63,7 +63,7 @@ class SiteStatistic(BaseModel):
     # 最后状态
     lst_state: Optional[int] = 0
     # 最后修改时间
-    lst_mod_date: Optional[str]
+    lst_mod_date: Optional[str] = None
     # 备注
     note: Optional[Any] = None
 
@@ -73,15 +73,15 @@ class SiteStatistic(BaseModel):
 
 class SiteUserData(BaseModel):
     # 站点域名
-    domain: Optional[str]
+    domain: Optional[str] = None
     # 用户名
-    username: Optional[str]
+    username: Optional[str] = None
     # 用户ID
-    userid: Optional[Union[int, str]]
+    userid: Optional[Union[int, str]] = None
     # 用户等级
-    user_level: Optional[str]
+    user_level: Optional[str] = None
     # 加入时间
-    join_at: Optional[str]
+    join_at: Optional[str] = None
     # 积分
     bonus: Optional[float] = 0.0
     # 上传量

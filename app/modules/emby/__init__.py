@@ -6,7 +6,6 @@ from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.emby.emby import Emby
-from app.schemas.event import AuthCredentials, AuthInterceptCredentials
 from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType
 
 
@@ -73,8 +72,8 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
                 logger.info(f"Emby服务器 {name} 连接断开，尝试重连 ...")
                 server.reconnect()
 
-    def user_authenticate(self, credentials: AuthCredentials, service_name: Optional[str] = None) \
-            -> Optional[AuthCredentials]:
+    def user_authenticate(self, credentials: schemas.AuthCredentials, service_name: Optional[str] = None) \
+            -> Optional[schemas.AuthCredentials]:
         """
         使用Emby用户辅助完成用户认证
         :param credentials: 认证数据
@@ -96,11 +95,11 @@ class EmbyModule(_ModuleBase, _MediaServerBase[Emby]):
             # 触发认证拦截事件
             intercept_event = eventmanager.send_event(
                 etype=ChainEventType.AuthIntercept,
-                data=AuthInterceptCredentials(username=credentials.username, channel=self.get_name(),
-                                              service=name, status="triggered")
+                data=schemas.AuthInterceptCredentials(username=credentials.username, channel=self.get_name(),
+                                                      service=name, status="triggered")
             )
             if intercept_event and intercept_event.event_data:
-                intercept_data: AuthInterceptCredentials = intercept_event.event_data
+                intercept_data: schemas.AuthInterceptCredentials = intercept_event.event_data
                 if intercept_data.cancel:
                     continue
             token = server.authenticate(credentials.username, credentials.password)

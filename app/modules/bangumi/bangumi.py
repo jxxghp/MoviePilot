@@ -1,5 +1,4 @@
 from datetime import datetime
-from functools import lru_cache
 
 import requests
 from cachetools import TTLCache, cached

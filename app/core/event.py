@@ -13,7 +13,7 @@ from typing import Callable, Dict, List, Optional, Union
 from app.helper.message import MessageHelper
 from app.helper.thread import ThreadHelper
 from app.log import logger
-from app.schemas.event import ChainEventData
+from app.schemas import ChainEventData
 from app.schemas.types import ChainEventType, EventType
 from app.utils.limit import ExponentialBackoffRateLimiter
 from app.utils.singleton import Singleton
