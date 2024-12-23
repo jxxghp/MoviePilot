@@ -34,15 +34,15 @@ class VersionUtils:
                 result.append(value)
         return result
 
-    def version_comparison(self, input_ver: str = None, targe_ver: str = None, verbose: bool = True, logger: any = None,
-                           compare_type: str = None) -> tuple[bool, str] | bool | tuple[None, Exception] | None:
+    def version_comparison(self, input_ver: str = APP_VERSION, targe_ver: str = APP_VERSION, verbose: bool = True,
+                           logger: any = None, compare_type: str = '==') -> tuple[bool, str] | bool | tuple[None, Exception] | None:
         """
         版本比对
 
-        :param targe_ver: 目标版本号
-        :param input_ver: 输入版本号
+        :param targe_ver: 目标版本号；默认为当前后端版本号
+        :param input_ver: 输入版本号；默认为当前后端版本号
         :param verbose: 是否输出比对结果的时候输出详细消息
-        :param compare_type: 识别模式。支持直接使用符号进行比对。
+        :param compare_type: 识别模式。支持直接使用符号进行比对；默认为'=='，即输入 == 目标。
         'ge' or '>=' ：输入 >= 目标；
         'le' or '<=' ：输入 <= 目标；
         'eq' or '==' ：输入 == 目标。
@@ -52,21 +52,6 @@ class VersionUtils:
         :return:
         """
         try:
-            if not input_ver:
-                not_input_ver_msg = "输入版本号为空，默认使用当前项目后端版本号！"
-                input_ver = APP_VERSION
-                logger.warning(not_input_ver_msg) if logger else print(not_input_ver_msg)
-
-            if not targe_ver:
-                not_targe_ver_msg = "目标版本号为空，默认使用当前项目后端版本号！"
-                targe_ver = APP_VERSION
-                logger.warning(not_targe_ver_msg) if logger else print(not_targe_ver_msg)
-
-            if not compare_type:
-                not_compare_type_msg = "未设置版本比对模式，默认使用 '==' 模式！"
-                compare_type = "=="
-                logger.warning(not_compare_type_msg) if logger else print(not_compare_type_msg)
-
             if compare_type not in {"ge", "gt", "le", "lt", "eq", "==", ">=", ">", "<=", "<"}:
                 raise ValueError(f"设置的版本比对模式 {compare_type} 不是有效的模式！")
 
