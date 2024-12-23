@@ -120,7 +120,7 @@ class TransferHistoryOper(DbOper):
 
     def add_success(self, fileitem: FileItem, mode: str, meta: MetaBase,
                     mediainfo: MediaInfo, transferinfo: TransferInfo,
-                    download_hash: str = None):
+                    downloader: str = None, download_hash: str = None):
         """
         新增转移成功历史记录
         """
@@ -143,13 +143,14 @@ class TransferHistoryOper(DbOper):
             seasons=meta.season,
             episodes=meta.episode,
             image=mediainfo.get_poster_image(),
+            downloader=downloader,
             download_hash=download_hash,
             status=1,
             files=transferinfo.file_list
         )
 
     def add_fail(self, fileitem: FileItem, mode: str, meta: MetaBase, mediainfo: MediaInfo = None,
-                 transferinfo: TransferInfo = None, download_hash: str = None):
+                 transferinfo: TransferInfo = None, downloader: str = None, download_hash: str = None):
         """
         新增转移失败历史记录
         """
@@ -173,6 +174,7 @@ class TransferHistoryOper(DbOper):
                 seasons=meta.season,
                 episodes=meta.episode,
                 image=mediainfo.get_poster_image(),
+                downloader=downloader,
                 download_hash=download_hash,
                 status=0,
                 errmsg=transferinfo.message or '未知错误',
@@ -188,6 +190,7 @@ class TransferHistoryOper(DbOper):
                 mode=mode,
                 seasons=meta.season,
                 episodes=meta.episode,
+                downloader=downloader,
                 download_hash=download_hash,
                 status=0,
                 errmsg="未识别到媒体信息"
