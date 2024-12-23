@@ -11,6 +11,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app import schemas
 from app.chain import ChainBase
 from app.chain.mediaserver import MediaServerChain
+from app.chain.recommend import RecommendChain
 from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
@@ -120,6 +121,11 @@ class Scheduler(metaclass=Singleton):
             "sitedata_refresh": {
                 "name": "站点数据刷新",
                 "func": SiteChain().refresh_userdatas,
+                "running": False,
+            },
+            "recommend_refresh": {
+                "name": "推荐缓存",
+                "func": RecommendChain().refresh_recommend,
                 "running": False,
             }
         }
@@ -309,6 +315,19 @@ class Scheduler(metaclass=Singleton):
                     'job_id': 'sitedata_refresh'
                 }
             )
+
+        # 推荐缓存
+        self._scheduler.add_job(
+            self.start,
+            "interval",
+            id="recommend_refresh",
+            name="推荐缓存",
+            hours=6,
+            next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+            kwargs={
+                'job_id': 'recommend_refresh'
+            }
+        )
 
         self.init_plugin_jobs()
 
