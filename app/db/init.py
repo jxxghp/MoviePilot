@@ -11,6 +11,8 @@ from app.db import Engine, Base
 from app.log import logger
 from app.utils.version import VersionUtils
 
+from version import APP_VERSION
+
 
 def init_db():
     """
@@ -45,8 +47,8 @@ def init_alembic_script():
                 # 如果是文件，覆盖目标路径中的文件
                 shutil.copy2(item, target_path)
 
-    inner_database_path = settings.INNER_DATABASE_PATH / 'versions'
-    database_path = settings.DATABASE_PATH / 'versions'
+    inner_database_path = settings.INNER_DATABASE_PATH
+    database_path = settings.DATABASE_PATH
     try:
         # database 不存在，则直接 copy（初始化）
         if not database_path.exists():
@@ -59,6 +61,8 @@ def init_alembic_script():
         # 执行合并
         else:
             try:
+                # TODO: 有可能会出现文件名相同，但是高版本将低版本的迁移文件内容迭代了的情况
+                # Todo: 增加同步版本判断，如果version.txt的版本号低于当前版本，则不执行覆盖，只执行合并，出现同名文件则以原文件为准
                 merge_database(src=inner_database_path, dst=database_path)
             except Exception as e:
                 raise e
@@ -227,3 +231,7 @@ def __conversion_version(script_vers: dict) -> Dict:
         new_script_vers[new_key] = value
 
     return new_script_vers
+
+
+if __name__ == '__main__':
+    init_alembic_script()
