@@ -27,7 +27,7 @@ from app.schemas import Notification, NotificationType
 from app.schemas.types import SystemConfigKey
 from app.db import close_database
 from app.db.systemconfig_oper import SystemConfigOper
-from app.chain.command import CommandChain
+from app.command import Command, CommandChain
 
 
 def start_frontend():
@@ -159,7 +159,7 @@ def start_modules(_: FastAPI):
     # 启动定时服务
     Scheduler()
     # 加载命令
-    CommandChain()
+    Command()
     # 启动前端服务
     start_frontend()
     # 检查认证状态

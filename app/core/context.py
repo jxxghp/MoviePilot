@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Dict, Any, Tuple
 
@@ -142,7 +142,7 @@ class TorrentInfo:
         """
         返回字典
         """
-        dicts = asdict(self)
+        dicts = vars(self).copy()
         dicts["volume_factor"] = self.volume_factor
         dicts["freedate_diff"] = self.freedate_diff
         return dicts
@@ -740,7 +740,7 @@ class MediaInfo:
         """
         返回字典
         """
-        dicts = asdict(self)
+        dicts = vars(self).copy()
         dicts["type"] = self.type.value if self.type else None
         dicts["detail_link"] = self.detail_link
         dicts["title_year"] = self.title_year

@@ -210,7 +210,7 @@ class LoggerManager:
         """
         输出警告级别日志（兼容）
         """
-        self.logger("warning", msg, *args, **kwargs)
+        self.warning(msg, *args, **kwargs)
 
     def error(self, msg: str, *args, **kwargs):
         """

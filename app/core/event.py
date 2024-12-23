@@ -438,12 +438,15 @@ class EventManager(metaclass=Singleton):
 
         # 如果类不在全局变量中，尝试动态导入模块并创建实例
         try:
-            # 导入模块，除了插件，只有chain能响应事件
-            if not class_name.endswith("Chain"):
+            if class_name == "Command":
+                module_name = "app.command"
+                module = importlib.import_module(module_name)
+            elif class_name.endswith("Chain"):
+                module_name = f"app.chain.{class_name[:-5].lower()}"
+                module = importlib.import_module(module_name)
+            else:
                 logger.debug(f"事件处理出错：无效的 Chain 类名: {class_name}，类名必须以 'Chain' 结尾")
                 return None
-            module_name = f"app.chain.{class_name[:-5].lower()}"
-            module = importlib.import_module(module_name)
             if hasattr(module, class_name):
                 class_obj = getattr(module, class_name)()
                 return class_obj
