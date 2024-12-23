@@ -130,7 +130,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
             'download_hash': task.download_hash,
         })
 
-        # 整理完成一个媒体项时
+        # TODO 整理完成一个媒体项时
         if True:
             # 移动模式删除空目录
             if transferinfo.transfer_type in ["move"]:
@@ -382,13 +382,13 @@ class TransferChain(ChainBase, metaclass=Singleton):
             """
             return True if re.search(r"BDMV[/\\]STREAM", _path, re.IGNORECASE) else False
 
-        def __get_bluray_dir(_path: Path) -> Optional[Path]:
+        def __get_bluray_dir(_storage: str, _path: Path) -> Optional[FileItem]:
             """
             获取蓝光原盘BDMV目录的上级目录
             """
             for p in _path.parents:
                 if p.name == "BDMV":
-                    return p.parent
+                    return self.storagechain.get_file_item(storage=_storage, path=p.parent)
             return None
 
         if not self.storagechain.get_item(fileitem):
@@ -481,7 +481,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
-        # 处理所有待整理目录或文件，默认一个整理路径或文件只有一个媒体信息
+        # 处理所有待整理目录或文件
         for trans_item, bluray_dir in trans_items:
             # 如果是目录且不是⼀蓝光原盘，获取所有文件并整理
             if trans_item.type == "dir" and not bluray_dir:
