@@ -103,13 +103,14 @@ def upgrade_db_or_downgrade_db(script_num_ver: str, script_hash_ver: str, script
     """
     try:
         db_hash_ver = __get_alembic_version_table_value()
+        # 数据库中没有记录版本信息，则直接升级（一般为初始化）
+        if not db_hash_ver:
+            return 'upgrade'
         # 反转字典，数字版本号与hash版本号 应该都是唯一的？
         script_vers = {v: k for k, v in script_vers.items()}
         db_num_ver = script_vers.get(db_hash_ver)
         if not db_num_ver:
             raise ValueError('数据库中的 hash 版本号在不在当前的迁移脚本中，无法进行升降级操作！')
-        if not db_hash_ver:
-            return 'upgrade'
         # hash 版本号相同时，则无需再进行版本号比较；解决已经迭代多个版本，但未需要迁移数据库的问题
         if db_hash_ver == script_hash_ver:
             return 'no_need'
