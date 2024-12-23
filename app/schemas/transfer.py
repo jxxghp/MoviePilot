@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel, Field
 
-from app.core.meta import MetaBase
+from app.schemas import TmdbEpisode, MetaInfo, MediaInfo
+from app.schemas.system import TransferDirectoryConf
 from app.schemas.file import FileItem
 
 
@@ -46,12 +47,32 @@ class TransferTask(BaseModel):
     文件整理任务
     """
     fileitem: Optional[FileItem] = None
-    meta: Optional[MetaBase] = None
+    meta: Optional[MetaInfo] = None
+    mediainfo: Optional[MediaInfo] = None
+    target_directory: Optional[TransferDirectoryConf] = None
+    target_storage: Optional[str] = None
+    target_path: Optional[Path] = None
+    transfer_type: Optional[str] = None
+    scrape: Optional[bool] = None
+    library_type_folder: Optional[bool] = None
+    library_category_folder: Optional[bool] = None
+    episodes_info: Optional[List[TmdbEpisode]] = None
+
+    def to_dict(self):
+        """
+        返回字典
+        """
+        dicts = vars(self).copy()
+        dicts["fileitem"] = self.fileitem.dict() if self.fileitem else None
+        dicts["meta"] = self.meta.dict() if self.meta else None
+        dicts["mediainfo"] = self.mediainfo.dict() if self.mediainfo else None
+        dicts["target_directory"] = self.target_directory.dict() if self.target_directory else None
+        return dicts
 
 
 class TransferInfo(BaseModel):
     """
-    文件整理结果信息
+    文件整理结果
     """
     # 是否成功标志
     success: bool = True
@@ -88,6 +109,16 @@ class TransferInfo(BaseModel):
         dicts["fileitem"] = self.fileitem.dict() if self.fileitem else None
         dicts["target_item"] = self.target_item.dict() if self.target_item else None
         return dicts
+
+
+class AsyncTransferCallback(BaseModel):
+    """
+    异步整理回调信息
+    """
+    # 任务信息
+    task: Optional[TransferTask] = None
+    # 结果信息
+    result: Optional[TransferInfo] = None
 
 
 class EpisodeFormat(BaseModel):
