@@ -46,9 +46,9 @@ class AuthCredentials(ChainEventData):
 
     # 输出参数
     # grant_type 为 authorization_code 时，输出参数包括 username、token、channel、service
-    token: Optional[str] = Field(None, description="认证令牌")
-    channel: Optional[str] = Field(None, description="认证渠道")
-    service: Optional[str] = Field(None, description="服务名称")
+    token: Optional[str] = Field(default=None, description="认证令牌")
+    channel: Optional[str] = Field(default=None, description="认证渠道")
+    service: Optional[str] = Field(default=None, description="服务名称")
 
     @root_validator(pre=True)
     def check_fields_based_on_grant_type(cls, values):
@@ -92,8 +92,8 @@ class AuthInterceptCredentials(ChainEventData):
     token: Optional[str] = Field(None, description="认证令牌")
 
     # 输出参数
-    source: str = Field("未知拦截源", description="拦截源")
-    cancel: bool = Field(False, description="是否取消认证")
+    source: str = Field(default="未知拦截源", description="拦截源")
+    cancel: bool = Field(default=False, description="是否取消认证")
 
 
 class CommandRegisterEventData(ChainEventData):
@@ -116,8 +116,8 @@ class CommandRegisterEventData(ChainEventData):
     service: Optional[str] = Field(..., description="服务名称")
 
     # 输出参数
-    cancel: bool = Field(False, description="是否取消注册")
-    source: str = Field("未知拦截源", description="拦截源")
+    cancel: bool = Field(default=False, description="是否取消注册")
+    source: str = Field(default="未知拦截源", description="拦截源")
 
 
 class TransferRenameEventData(ChainEventData):
@@ -143,9 +143,9 @@ class TransferRenameEventData(ChainEventData):
     render_str: str = Field(..., description="渲染生成的字符串")
 
     # 输出参数
-    updated: bool = Field(False, description="是否已更新")
-    updated_str: Optional[str] = Field(None, description="更新后的字符串")
-    source: Optional[str] = Field("未知拦截源", description="拦截源")
+    updated: bool = Field(default=False, description="是否已更新")
+    updated_str: Optional[str] = Field(default=None, description="更新后的字符串")
+    source: Optional[str] = Field(default="未知拦截源", description="拦截源")
 
 
 class ResourceSelectionEventData(BaseModel):
@@ -168,9 +168,9 @@ class ResourceSelectionEventData(BaseModel):
     origin: Optional[str] = Field(None, description="来源")
 
     # 输出参数
-    updated: bool = Field(False, description="是否已更新")
-    updated_contexts: Optional[List[Context]] = Field(None, description="已更新的资源上下文列表")
-    source: Optional[str] = Field("未知拦截源", description="拦截源")
+    updated: bool = Field(default=False, description="是否已更新")
+    updated_contexts: Optional[List[Context]] = Field(default=None, description="已更新的资源上下文列表")
+    source: Optional[str] = Field(default="未知拦截源", description="拦截源")
 
 
 class ResourceDownloadEventData(ChainEventData):
@@ -200,6 +200,6 @@ class ResourceDownloadEventData(ChainEventData):
     options: Optional[dict] = Field(None, description="其他参数")
 
     # 输出参数
-    cancel: bool = Field(False, description="是否取消下载")
-    source: str = Field("未知拦截源", description="拦截源")
-    reason: str = Field("", description="拦截原因")
+    cancel: bool = Field(default=False, description="是否取消下载")
+    source: str = Field(default="未知拦截源", description="拦截源")
+    reason: str = Field(default="", description="拦截原因")

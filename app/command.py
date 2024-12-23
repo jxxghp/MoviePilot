@@ -23,7 +23,11 @@ from app.utils.singleton import Singleton
 from app.utils.structures import DictUtils
 
 
-class CommandChain(ChainBase, metaclass=Singleton):
+class CommandChain(ChainBase):
+    pass
+
+
+class Command(metaclass=Singleton):
     """
     全局命令管理，消费事件
     """
@@ -210,7 +214,7 @@ class CommandChain(ChainBase, metaclass=Singleton):
                 if filtered_initial_commands != self._registered_commands or force_register:
                     logger.debug("Command set has changed or force registration is enabled.")
                     self._registered_commands = filtered_initial_commands
-                    super().register_commands(commands=filtered_initial_commands)
+                    CommandChain().register_commands(commands=filtered_initial_commands)
                 else:
                     logger.debug("Command set unchanged, skipping broadcast registration.")
         except Exception as e:
@@ -248,7 +252,7 @@ class CommandChain(ChainBase, metaclass=Singleton):
         event = eventmanager.send_event(ChainEventType.CommandRegister, event_data)
         return event, commands
 
-    def __build_plugin_commands(self, pid: Optional[str] = None) -> Dict[str, dict]:
+    def __build_plugin_commands(self, _: Optional[str] = None) -> Dict[str, dict]:
         """
         构建插件命令
         """
@@ -277,7 +281,7 @@ class CommandChain(ChainBase, metaclass=Singleton):
         if command.get("type") == "scheduler":
             # 定时服务
             if userid:
-                self.post_message(
+                CommandChain().post_message(
                     Notification(
                         channel=channel,
                         source=source,
@@ -290,7 +294,7 @@ class CommandChain(ChainBase, metaclass=Singleton):
             self.scheduler.start(job_id=command.get("id"))
 
             if userid:
-                self.post_message(
+                CommandChain().post_message(
                     Notification(
                         channel=channel,
                         source=source,

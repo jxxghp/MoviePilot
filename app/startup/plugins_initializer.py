@@ -1,6 +1,6 @@
 import asyncio
 
-from app.chain.command import CommandChain
+from app.command import Command
 from app.core.plugin import PluginManager
 from app.log import logger
 from app.scheduler import Scheduler
@@ -14,7 +14,7 @@ async def init_plugins_async():
         loop = asyncio.get_event_loop()
         plugin_manager = PluginManager()
         scheduler = Scheduler()
-        command = CommandChain()
+        command = Command()
 
         sync_result = await execute_task(loop, plugin_manager.sync, "插件同步到本地")
         resolved_dependencies = await execute_task(loop, plugin_manager.install_plugin_missing_dependencies,
