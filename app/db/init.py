@@ -59,7 +59,7 @@ def init_alembic_script():
         # 执行合并
         else:
             try:
-                merge_directories(src=inner_database_path, dst=database_path)
+                merge_database(src=inner_database_path, dst=database_path)
             except Exception as e:
                 raise e
     except Exception as err:
