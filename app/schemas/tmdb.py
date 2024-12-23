@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TmdbSeason(BaseModel):
@@ -28,5 +28,5 @@ class TmdbEpisode(BaseModel):
     season_number: Optional[int] = None
     still_path: Optional[str] = None
     vote_average: Optional[float] = None
-    crew: Optional[list] = []
-    guest_stars: Optional[list] = []
+    crew: Optional[list] = Field(default_factory=list)
+    guest_stars: Optional[list] = Field(default_factory=list)

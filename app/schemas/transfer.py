@@ -1,8 +1,9 @@
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.core.meta import MetaBase
 from app.schemas.file import FileItem
 
 
@@ -34,15 +35,23 @@ class DownloadingTorrent(BaseModel):
     state: Optional[str] = 'downloading'
     upspeed: Optional[str] = None
     dlspeed: Optional[str] = None
-    media: Optional[dict] = {}
+    media: Optional[dict] = Field(default_factory=dict)
     userid: Optional[str] = None
     username: Optional[str] = None
     left_time: Optional[str] = None
 
 
+class TransferTask(BaseModel):
+    """
+    文件整理任务
+    """
+    fileitem: Optional[FileItem] = None
+    meta: Optional[MetaBase] = None
+
+
 class TransferInfo(BaseModel):
     """
-    文件转移结果信息
+    文件整理结果信息
     """
     # 是否成功标志
     success: bool = True
@@ -57,13 +66,13 @@ class TransferInfo(BaseModel):
     # 处理文件数
     file_count: Optional[int] = 0
     # 处理文件清单
-    file_list: Optional[list] = []
+    file_list: Optional[list] = Field(default_factory=list)
     # 目标文件清单
-    file_list_new: Optional[list] = []
+    file_list_new: Optional[list] = Field(default_factory=list)
     # 总文件大小
     total_size: Optional[float] = 0
     # 失败清单
-    fail_list: Optional[list] = []
+    fail_list: Optional[list] = Field(default_factory=list)
     # 错误信息
     message: Optional[str] = None
     # 是否需要刮削

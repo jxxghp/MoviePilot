@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class FileItem(BaseModel):
@@ -21,7 +21,7 @@ class FileItem(BaseModel):
     # 修改时间
     modify_time: Optional[float] = None
     # 子节点
-    children: Optional[list] = []
+    children: Optional[list] = Field(default_factory=list)
     # ID
     fileid: Optional[str] = None
     # 父ID
@@ -45,4 +45,4 @@ class StorageUsage(BaseModel):
 
 class StorageTransType(BaseModel):
     # 传输类型
-    transtype: Optional[dict] = {}
+    transtype: Optional[dict] = Field(default_factory=dict)
