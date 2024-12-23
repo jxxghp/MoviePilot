@@ -24,24 +24,43 @@ def init_alembic_script():
     """
     初始化 alembic 的所有文件
     """
+    def merge_database(src: Path, dst: Path):
+        """
+        将 src（inner_database_path） 目录的内容合并到 dst（database_path） 目录。
+        - 如果 src 和 dst 中存在同名文件，则覆盖 dst 中的文件。
+        - 如果 src 和 dst 中存在同名目录，则递归合并。
+        - dst 中不存在于 src 的文件和目录会被保留。
+
+        :param src: 源目录路径
+        :param dst: 目标目录路径
+        """
+        for item in src.iterdir():
+            target_path = dst / item.name
+
+            if item.is_dir():
+                # 如果是目录，递归合并
+                target_path.mkdir(exist_ok=True, parents=True)
+                merge_database(src=item, dst=target_path)
+            else:
+                # 如果是文件，覆盖目标路径中的文件
+                shutil.copy2(item, target_path)
+
+    inner_database_path = settings.INNER_DATABASE_PATH / 'versions'
+    database_path = settings.DATABASE_PATH / 'versions'
     try:
         # database 不存在，则直接 copy（初始化）
-        if not settings.DATABASE_PATH.exists():
+        if not database_path.exists():
             try:
-                shutil.copytree(src=settings.INNER_DATABASE_PATH, dst=settings.DATABASE_PATH)
+                shutil.copytree(src=inner_database_path, dst=database_path)
             except Exception as e:
-                shutil.rmtree(path=settings.DATABASE_PATH, ignore_errors=True)
+                shutil.rmtree(path=database_path, ignore_errors=True)
                 raise e
 
-        # database 已经存在，则执行覆盖操作，先备份，再 copy ，避免出现异常
+        # 执行合并
         else:
             try:
-                shutil.move(src=settings.DATABASE_PATH, dst=settings.DATABASE_PATH.parent / "database_bak")
-                shutil.copytree(src=settings.INNER_DATABASE_PATH, dst=settings.DATABASE_PATH)
-                shutil.rmtree(path=settings.DATABASE_PATH.parent / "database_bak", ignore_errors=True)
+                merge_directories(src=inner_database_path, dst=database_path)
             except Exception as e:
-                shutil.rmtree(path=settings.DATABASE_PATH, ignore_errors=True)
-                shutil.move(src=settings.DATABASE_PATH.parent / "database_bak", dst=settings.DATABASE_PATH)
                 raise e
     except Exception as err:
         logger.warn(f"初始化 database 出错：{str(err)}", exc_info=True)
