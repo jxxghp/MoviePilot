@@ -440,6 +440,14 @@ class Settings(BaseSettings, ConfigModel):
         return self.ROOT_PATH / "config"
 
     @property
+    def INNER_DATABASE_PATH(self):
+        return self.ROOT_PATH / "database"
+
+    @property
+    def DATABASE_PATH(self):
+        return self.CONFIG_PATH / "database"
+
+    @property
     def TEMP_PATH(self):
         return self.CONFIG_PATH / "temp"
 

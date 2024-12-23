@@ -17,6 +17,7 @@ config/sites/**
 config/logs/
 config/temp/
 config/cache/
+config/database/
 *.pyc
 *.log
 .vscode

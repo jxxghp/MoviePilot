@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 
@@ -19,6 +20,33 @@ def init_db():
     Base.metadata.create_all(bind=Engine)
 
 
+def init_alembic_script():
+    """
+    初始化 alembic 的所有文件
+    """
+    try:
+        # database 不存在，则直接 copy（初始化）
+        if not settings.DATABASE_PATH.exists():
+            try:
+                shutil.copytree(src=settings.INNER_DATABASE_PATH, dst=settings.DATABASE_PATH)
+            except Exception as e:
+                shutil.rmtree(path=settings.DATABASE_PATH, ignore_errors=True)
+                raise e
+
+        # database 已经存在，则执行覆盖操作，先备份，再 copy ，避免出现异常
+        else:
+            try:
+                shutil.move(src=settings.DATABASE_PATH, dst=settings.DATABASE_PATH.parent / "database_bak")
+                shutil.copytree(src=settings.INNER_DATABASE_PATH, dst=settings.DATABASE_PATH)
+                shutil.rmtree(path=settings.DATABASE_PATH.parent / "database_bak", ignore_errors=True)
+            except Exception as e:
+                shutil.rmtree(path=settings.DATABASE_PATH, ignore_errors=True)
+                shutil.move(src=settings.DATABASE_PATH.parent / "database_bak", dst=settings.DATABASE_PATH)
+                raise e
+    except Exception as err:
+        logger.warn(f"初始化 database 出错：{str(err)}", exc_info=True)
+
+
 def update_db():
     """
     更新数据库
@@ -26,9 +54,12 @@ def update_db():
     自动化识别是否需要升级或降级数据库
     """
     db_location = settings.CONFIG_PATH / 'user.db'
-    script_location = settings.ROOT_PATH / 'database'
+    script_location = settings.CONFIG_PATH / 'database'
     u_or_d = None
     try:
+        # 检查数据库迁移脚本是否存在
+        if not script_location.exists():
+            raise FileNotFoundError(f"数据库迁移脚本不存在！")
         # 全部迁移脚本版本
         script_vers_dict = __get_alembic_script_versions(script_location=script_location / 'versions')
         # 最接近当前后端版本的迁移脚本的两个版本号
@@ -55,9 +86,9 @@ def update_db():
             raise ValueError("没有找到可处理的版本")
     except Exception as e:
         if not u_or_d:
-            logger.error(f'数据库迁移失败：{str(e)}')
+            logger.error(f'数据库迁移失败：{str(e)}', exc_info=True)
         else:
-            logger.error(f'数据库{ "升级" if u_or_d == "upgrade" else "降级"}失败：{str(e)}')
+            logger.error(f'数据库{ "升级" if u_or_d == "upgrade" else "降级"}失败：{str(e)}', exc_info=True)
 
 
 def upgrade_db_or_downgrade_db(script_num_ver: str, script_hash_ver: str, script_vers: dict) -> str:
@@ -176,7 +207,3 @@ def __conversion_version(script_vers: dict) -> Dict:
         new_script_vers[new_key] = value
 
     return new_script_vers
-
-
-# if __name__ == '__main__':
-#     update_db()
