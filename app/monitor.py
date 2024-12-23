@@ -1,11 +1,9 @@
 import datetime
 import platform
-import queue
 import re
 import threading
 import traceback
 from pathlib import Path
-from queue import Queue
 from threading import Lock
 from typing import Any
 
@@ -28,7 +26,7 @@ from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.log import logger
-from app.schemas import FileItem, TransferInfo, Notification
+from app.schemas import FileItem, TransferInfo, Notification, TransferTask
 from app.schemas.types import SystemConfigKey, MediaType, NotificationType, EventType
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
@@ -52,12 +50,10 @@ class FileMonitorHandler(FileSystemEventHandler):
         self.callback = callback
 
     def on_created(self, event: FileSystemEvent):
-        self.callback.event_handler(event=event, text="创建",
-                                    mon_path=self._watch_path, event_path=Path(event.src_path))
+        self.callback.event_handler(event=event, text="创建", event_path=Path(event.src_path))
 
     def on_moved(self, event: FileSystemMovedEvent):
-        self.callback.event_handler(event=event, text="移动",
-                                    mon_path=self._watch_path, event_path=Path(event.dest_path))
+        self.callback.event_handler(event=event, text="移动", event_path=Path(event.dest_path))
 
 
 class Monitor(metaclass=Singleton):
@@ -79,15 +75,6 @@ class Monitor(metaclass=Singleton):
 
     # 存储过照间隔（分钟）
     _snapshot_interval = 5
-
-    # 待整理任务队列
-    _queue = Queue()
-
-    # 文件整理线程
-    _transfer_thread = None
-
-    # 文件整理间隔（秒）
-    _transfer_interval = 60
 
     # 消息汇总
     _msg_medias = {}
@@ -119,10 +106,6 @@ class Monitor(metaclass=Singleton):
         """
         # 停止现有任务
         self.stop()
-
-        # 启动文件整理线程
-        self._transfer_thread = threading.Thread(target=self.__start_transfer, daemon=True)
-        self._transfer_thread.start()
 
         # 读取目录配置
         monitor_dirs = self.directoryhelper.get_download_dirs()
@@ -212,16 +195,6 @@ class Monitor(metaclass=Singleton):
             logger.warn(f"导入模块错误：{error}，将使用 PollingObserver 监控目录")
         return PollingObserver()
 
-    def put_to_queue(self, storage: str, filepath: Path, mon_path: Path):
-        """
-        添加到待整理队列
-        """
-        self._queue.put({
-            "storage": storage,
-            "filepath": filepath,
-            "mon_path": mon_path
-        })
-
     def polling_observer(self, storage: str, mon_path: Path):
         """
         轮询监控
@@ -237,37 +210,95 @@ class Monitor(metaclass=Singleton):
                     new_files = new_snapshot.keys() - old_snapshot.keys()
                     for new_file in new_files:
                         # 添加到待整理队列
-                        self.put_to_queue(storage=storage, filepath=Path(new_file), mon_path=mon_path)
+                        self.__handle_file(storage=storage, event_path=Path(new_file))
                 # 更新快照
                 self._storage_snapshot[storage] = new_snapshot
 
-    def event_handler(self, event, mon_path: Path, text: str, event_path: Path):
+    def event_handler(self, event, text: str, event_path: Path):
         """
         处理文件变化
         :param event: 事件
-        :param mon_path: 监控目录
         :param text: 事件描述
         :param event_path: 事件文件路径
         """
         if not event.is_directory:
             # 文件发生变化
             logger.debug(f"文件 {event_path} 发生了 {text}")
-            # 添加到待整理队列
-            self.put_to_queue(storage="local", filepath=event_path, mon_path=mon_path)
+            # 整理文件
+            self.__handle_file(storage="local", event_path=event_path)
 
-    def __start_transfer(self):
+    def __transfer_queue(self, task: TransferTask):
         """
-        整理队列中的文件
+        添加到整理队列
         """
-        while not self._event.is_set():
-            try:
-                item = self._queue.get(timeout=self._transfer_interval)
-                if item:
-                    self.__handle_file(storage=item.get("storage"), event_path=item.get("filepath"))
-            except queue.Empty:
-                continue
-            except Exception as e:
-                logger.error(f"整理队列处理出现错误：{e}")
+
+        def __callback(_task: TransferTask, _transferinfo: TransferInfo, /):
+            """
+            整理完成后处理
+            """
+            if not _transferinfo:
+                logger.error("文件转移模块运行失败")
+                return
+
+            if not _transferinfo.success:
+                # 转移失败
+                logger.warn(f"{_task.file_path.name} 入库失败：{_transferinfo.message}")
+                # 新增转移失败历史记录
+                self.transferhis.add_fail(
+                    fileitem=_task.fileitem,
+                    mode=_transferinfo.transfer_type if _transferinfo else '',
+                    download_hash=_task.download_hash,
+                    meta=_task.meta,
+                    mediainfo=_task.mediainfo,
+                    transferinfo=_transferinfo
+                )
+                # 发送失败消息
+                self.chain.post_message(Notification(
+                    mtype=NotificationType.Manual,
+                    title=f"{_task.mediainfo.title_year} {_task.meta.season_episode} 入库失败！",
+                    text=f"原因：{_transferinfo.message or '未知'}",
+                    image=_task.mediainfo.get_message_image(),
+                    link=settings.MP_DOMAIN('#/history')
+                ))
+                return
+
+            # 转移成功
+            logger.info(f"{_task.file_path.name} 入库成功：{_transferinfo.target_diritem.path}")
+            # 新增转移成功历史记录
+            self.transferhis.add_success(
+                fileitem=_task.fileitem,
+                mode=_transferinfo.transfer_type if _transferinfo else '',
+                download_hash=_task.download_hash,
+                meta=_task.meta,
+                mediainfo=_task.mediainfo,
+                transferinfo=_transferinfo
+            )
+
+            # 汇总刮削
+            if _transferinfo.need_scrape:
+                self.mediaChain.scrape_metadata(fileitem=_transferinfo.target_diritem,
+                                                meta=_task.meta,
+                                                mediainfo=_task.mediainfo)
+
+            # 广播事件
+            EventManager().send_event(EventType.TransferComplete, {
+                'fileitem': _task.fileitem,
+                'meta': _task.meta,
+                'mediainfo': _task.mediainfo,
+                'transferinfo': _transferinfo
+            })
+
+            # 发送消息汇总
+            if _transferinfo.need_notify:
+                self.__collect_msg_medias(mediainfo=_task.mediainfo, file_meta=_task.meta,
+                                          transferinfo=_transferinfo)
+
+            # 移动模式删除空目录
+            if _transferinfo.transfer_type in ["move"]:
+                self.storagechain.delete_media_file(_task.fileitem, delete_self=False)
+
+        # 加入整理队列
+        self.transferchain.put_to_queue(task=task, callback=__callback)
 
     def __handle_file(self, storage: str, event_path: Path):
         """
@@ -342,8 +373,9 @@ class Monitor(metaclass=Singleton):
                         download_history = self.downloadhis.get_by_hash(download_file.download_hash)
 
                 # 获取下载Hash
-                download_hash = None
+                downloader, download_hash = None, None
                 if download_history:
+                    downloader = download_history.downloader
                     download_hash = download_history.download_hash
 
                 # 识别媒体信息
@@ -413,72 +445,19 @@ class Monitor(metaclass=Singleton):
                 else:
                     episodes_info = None
 
-                # 转移
-                transferinfo: TransferInfo = self.chain.transfer(fileitem=file_item,
-                                                                 meta=file_meta,
-                                                                 mediainfo=mediainfo,
-                                                                 target_directory=dir_info,
-                                                                 episodes_info=episodes_info)
-
-                if not transferinfo:
-                    logger.error("文件转移模块运行失败")
-                    return
-
-                if not transferinfo.success:
-                    # 转移失败
-                    logger.warn(f"{event_path.name} 入库失败：{transferinfo.message}")
-                    # 新增转移失败历史记录
-                    self.transferhis.add_fail(
+                # 进入队列
+                self.__transfer_queue(
+                    TransferTask(
                         fileitem=file_item,
-                        mode=transferinfo.transfer_type if transferinfo else '',
-                        download_hash=download_hash,
+                        file_path=event_path,
                         meta=file_meta,
                         mediainfo=mediainfo,
-                        transferinfo=transferinfo
+                        target_directory=dir_info,
+                        episodes_info=episodes_info,
+                        downloader=downloader,
+                        download_hash=download_hash
                     )
-                    # 发送失败消息
-                    self.chain.post_message(Notification(
-                        mtype=NotificationType.Manual,
-                        title=f"{mediainfo.title_year} {file_meta.season_episode} 入库失败！",
-                        text=f"原因：{transferinfo.message or '未知'}",
-                        image=mediainfo.get_message_image(),
-                        link=settings.MP_DOMAIN('#/history')
-                    ))
-                    return
-
-                # 转移成功
-                logger.info(f"{event_path.name} 入库成功：{transferinfo.target_diritem.path}")
-                # 新增转移成功历史记录
-                self.transferhis.add_success(
-                    fileitem=file_item,
-                    mode=transferinfo.transfer_type if transferinfo else '',
-                    download_hash=download_hash,
-                    meta=file_meta,
-                    mediainfo=mediainfo,
-                    transferinfo=transferinfo
                 )
-
-                # 汇总刮削
-                if transferinfo.need_scrape:
-                    self.mediaChain.scrape_metadata(fileitem=transferinfo.target_diritem,
-                                                    meta=file_meta,
-                                                    mediainfo=mediainfo)
-
-                # 广播事件
-                EventManager().send_event(EventType.TransferComplete, {
-                    'fileitem': file_item,
-                    'meta': file_meta,
-                    'mediainfo': mediainfo,
-                    'transferinfo': transferinfo
-                })
-
-                # 发送消息汇总
-                if transferinfo.need_notify:
-                    self.__collect_msg_medias(mediainfo=mediainfo, file_meta=file_meta, transferinfo=transferinfo)
-
-                # 移动模式删除空目录
-                if transferinfo.transfer_type in ["move"]:
-                    self.storagechain.delete_media_file(file_item, delete_self=False)
 
             except Exception as e:
                 logger.error("目录监控发生错误：%s - %s" % (str(e), traceback.format_exc()))

@@ -8,8 +8,7 @@ from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.wechat.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.modules.wechat.wechat import WeChat
-from app.schemas import MessageChannel, CommingMessage, Notification
-from app.schemas.event import CommandRegisterEventData
+from app.schemas import MessageChannel, CommingMessage, Notification, CommandRegisterEventData
 from app.schemas.types import ModuleType, ChainEventType
 from app.utils.dom import DomUtils
 from app.utils.structures import DictUtils

@@ -6,7 +6,7 @@ from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.jellyfin.jellyfin import Jellyfin
-from app.schemas.event import AuthCredentials, AuthInterceptCredentials
+from app.schemas import AuthCredentials, AuthInterceptCredentials
 from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServerType
 
 

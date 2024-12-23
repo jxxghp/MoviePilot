@@ -282,6 +282,6 @@ class IndexerModule(_ModuleBase):
             leeching_size=site_obj.leeching_size,
             message_unread=site_obj.message_unread,
             message_unread_contents=site_obj.message_unread_contents or [],
-            updated_at=datetime.now().strftime('%Y-%m-%d'),
+            updated_day=datetime.now().strftime('%Y-%m-%d'),
             err_msg=site_obj.err_msg
         )

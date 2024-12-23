@@ -1,7 +1,9 @@
+import queue
 import re
 import threading
 from pathlib import Path
-from typing import List, Optional, Tuple, Union, Dict
+from queue import Queue
+from typing import List, Optional, Tuple, Union, Dict, Callable
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
@@ -20,19 +22,33 @@ from app.helper.directory import DirectoryHelper
 from app.helper.format import FormatParser
 from app.helper.progress import ProgressHelper
 from app.log import logger
-from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem, TransferDirectoryConf
+from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem, TransferDirectoryConf, \
+    TransferTask, TransferQueue
 from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
     SystemConfigKey
+from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
 from app.utils.system import SystemUtils
 
 lock = threading.Lock()
 
 
-class TransferChain(ChainBase):
+class TransferChain(ChainBase, metaclass=Singleton):
     """
     文件整理处理链
     """
+
+    # 可处理的文件后缀
+    all_exts = settings.RMT_MEDIAEXT
+
+    # 待整理任务队列
+    _queue = Queue()
+
+    # 文件整理线程
+    _transfer_thread = None
+
+    # 文件整理检查间隔（秒）
+    _transfer_interval = 5
 
     def __init__(self):
         super().__init__()
@@ -44,7 +60,69 @@ class TransferChain(ChainBase):
         self.storagechain = StorageChain()
         self.systemconfig = SystemConfigOper()
         self.directoryhelper = DirectoryHelper()
-        self.all_exts = settings.RMT_MEDIAEXT
+
+        # 启动整理任务
+        self.__init()
+
+    def __init(self):
+        """
+        初始化
+        """
+        # 启动文件整理线程
+        self._transfer_thread = threading.Thread(target=self.__start_transfer, daemon=True)
+        self._transfer_thread.start()
+
+    def put_to_queue(self, task: TransferTask, callback: Optional[Callable] = None):
+        """
+        添加到待整理队列
+        :param task: 任务信息
+        :param callback: 回调函数
+        """
+        if not task:
+            return
+        self._queue.put(TransferQueue(
+            task=task,
+            callback=callback
+        ))
+
+    def __start_transfer(self):
+        """
+        处理队列
+        """
+        while not global_vars.is_system_stopped:
+            try:
+                item: TransferQueue = self._queue.get(timeout=self._transfer_interval)
+                if item:
+                    self.__handle_transfer(task=item.task, callback=item.callback)
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logger.error(f"整理队列处理出现错误：{e}")
+
+    def __handle_transfer(self, task: TransferTask, callback: Optional[Callable] = None):
+        """
+        处理整理任务
+        """
+        if not task:
+            return
+        # 执行整理
+        transferinfo: TransferInfo = self.transfer(fileitem=task.fileitem,
+                                                   meta=task.meta,
+                                                   mediainfo=task.mediainfo,
+                                                   target_directory=task.target_directory,
+                                                   target_storage=task.target_storage,
+                                                   target_path=task.target_path,
+                                                   transfer_type=task.transfer_type,
+                                                   episodes_info=task.episodes_info,
+                                                   scrape=task.scrape,
+                                                   library_type_folder=task.library_type_folder,
+                                                   library_category_folder=task.library_category_folder)
+        if not transferinfo:
+            logger.error("文件整理模块运行失败")
+            return
+        # 回调，位置传参：任务、整理结果
+        if callback:
+            callback(task, transferinfo)
 
     def recommend_name(self, meta: MetaBase, mediainfo: MediaInfo) -> Optional[str]:
         """
@@ -152,7 +230,8 @@ class TransferChain(ChainBase):
                       library_type_folder: bool = None, library_category_folder: bool = None,
                       season: int = None, epformat: EpisodeFormat = None, min_filesize: int = 0,
                       downloader: str = None, download_hash: str = None,
-                      force: bool = False, src_match: bool = False) -> Tuple[bool, str]:
+                      force: bool = False, src_match: bool = False,
+                      background: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
@@ -172,8 +251,15 @@ class TransferChain(ChainBase):
         :param download_hash: 下载记录hash
         :param force: 是否强制整理
         :param src_match: 是否源目录匹配
+        :param background: 是否后台整理
         返回：成功标识，错误信息
         """
+
+        def __callback(_task: TransferTask, _transferinfo: TransferInfo):
+            """
+            TODO 整理完成回调
+            """
+            pass
 
         # 自定义格式
         formaterHandler = FormatParser(eformat=epformat.format,
@@ -411,7 +497,26 @@ class TransferChain(ChainBase):
                                                             storage=file_item.storage,
                                                             target_storage=target_storage)
 
-            # 执行整理
+            # 后台整理
+            if background:
+                self.__handle_transfer(task=TransferTask(
+                    fileitem=file_item,
+                    meta=file_meta,
+                    mediainfo=file_mediainfo,
+                    target_directory=target_directory or dir_info,
+                    target_storage=target_storage,
+                    target_path=target_path,
+                    transfer_type=transfer_type,
+                    episodes_info=episodes_info,
+                    scrape=scrape,
+                    library_type_folder=library_type_folder,
+                    library_category_folder=library_category_folder,
+                    downloader=downloader,
+                    download_hash=download_hash
+                ), callback=__callback)
+                continue
+
+            # 实时整理
             transferinfo: TransferInfo = self.transfer(fileitem=file_item,
                                                        meta=file_meta,
                                                        mediainfo=file_mediainfo,

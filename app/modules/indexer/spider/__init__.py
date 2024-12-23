@@ -675,7 +675,7 @@ class TorrentSpider:
                 elif method_name == "appendleft":
                     text = f"{args}{text}"
                 elif method_name == "querystring":
-                    parsed_url = urlparse(text)
+                    parsed_url = urlparse(str(text))
                     query_params = parse_qs(parsed_url.query)
                     param_value = query_params.get(args)
                     text = param_value[0] if param_value else ''

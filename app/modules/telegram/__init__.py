@@ -7,8 +7,7 @@ from app.core.event import eventmanager
 from app.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.modules.telegram.telegram import Telegram
-from app.schemas import MessageChannel, CommingMessage, Notification
-from app.schemas.event import CommandRegisterEventData
+from app.schemas import MessageChannel, CommingMessage, Notification, CommandRegisterEventData
 from app.schemas.types import ModuleType, ChainEventType
 from app.utils.structures import DictUtils
 

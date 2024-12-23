@@ -1,11 +1,11 @@
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Any, Callable
 
 from pydantic import BaseModel, Field
 
-from app.schemas import TmdbEpisode, MetaInfo, MediaInfo
-from app.schemas.system import TransferDirectoryConf
+from app.schemas import TmdbEpisode
 from app.schemas.file import FileItem
+from app.schemas.system import TransferDirectoryConf
 
 
 class TransferTorrent(BaseModel):
@@ -47,8 +47,9 @@ class TransferTask(BaseModel):
     文件整理任务
     """
     fileitem: Optional[FileItem] = None
-    meta: Optional[MetaInfo] = None
-    mediainfo: Optional[MediaInfo] = None
+    file_path: Optional[Path] = None
+    meta: Optional[Any] = None
+    mediainfo: Optional[Any] = None
     target_directory: Optional[TransferDirectoryConf] = None
     target_storage: Optional[str] = None
     target_path: Optional[Path] = None
@@ -57,6 +58,8 @@ class TransferTask(BaseModel):
     library_type_folder: Optional[bool] = None
     library_category_folder: Optional[bool] = None
     episodes_info: Optional[List[TmdbEpisode]] = None
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
 
     def to_dict(self):
         """
@@ -111,13 +114,15 @@ class TransferInfo(BaseModel):
         return dicts
 
 
-class AsyncTransferCallback(BaseModel):
+class TransferQueue(BaseModel):
     """
-    异步整理回调信息
+    异步整理队列信息
     """
     # 任务信息
     task: Optional[TransferTask] = None
-    # 结果信息
+    # 回调函数
+    callback: Optional[Callable] = None
+    # 整理结果
     result: Optional[TransferInfo] = None
 
 
