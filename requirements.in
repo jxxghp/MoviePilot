@@ -61,3 +61,4 @@ pywebpush~=2.0.0
 python-115==0.0.9.8.8.4
 aligo~=6.2.4
 aiofiles~=24.1.0
+setuptools~=75.6.0
