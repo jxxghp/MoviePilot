@@ -343,6 +343,7 @@ class DownloadChain(ChainBase):
                 seasons=_meta.season,
                 episodes=download_episodes or _meta.episode,
                 image=_media.get_backdrop_image(),
+                downloader=_downloader,
                 download_hash=_hash,
                 torrent_name=_torrent.title,
                 torrent_description=_torrent.description,

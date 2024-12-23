@@ -3,7 +3,6 @@ from typing import Optional, Dict, Any, List, Set
 
 from pydantic import BaseModel, Field, root_validator
 
-from app.core.context import Context
 from app.schemas import MessageChannel
 
 
@@ -169,7 +168,7 @@ class ResourceSelectionEventData(BaseModel):
 
     # 输出参数
     updated: bool = Field(default=False, description="是否已更新")
-    updated_contexts: Optional[List[Context]] = Field(default=None, description="已更新的资源上下文列表")
+    updated_contexts: Optional[List[Any]] = Field(default=None, description="已更新的资源上下文列表")
     source: Optional[str] = Field(default="未知拦截源", description="拦截源")
 
 
