@@ -84,6 +84,12 @@ class StorageChain(ChainBase):
         """
         return self.run_module("rename_file", fileitem=fileitem, name=name)
 
+    def get_item(self, fileitem: schemas.FileItem) -> Optional[schemas.FileItem]:
+        """
+        查询目录或文件
+        """
+        return self.get_file_item(storage=fileitem.storage, path=Path(fileitem.path))
+
     def get_file_item(self, storage: str, path: Path) -> Optional[schemas.FileItem]:
         """
         根据路径获取文件项
