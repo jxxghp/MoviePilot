@@ -728,6 +728,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 if transferd and transferd.status:
                     all_success = False
                     logger.info(f"{file_item.path} 已成功整理过，如需重新处理，请删除历史记录。")
+                    err_msgs.append("已存在历史记录")
                     continue
 
             if not meta:
