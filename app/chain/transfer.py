@@ -235,10 +235,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
         """
         整理完成后处理
         """
-        if not transferinfo:
-            logger.error("文件转移模块运行失败")
-            return False, "文件转移模块运行失败"
-
         if not transferinfo.success:
             # 转移失败
             logger.warn(f"{task.fileitem.name} 入库失败：{transferinfo.message}")
@@ -260,14 +256,12 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 image=task.mediainfo.get_message_image(),
                 link=settings.MP_DOMAIN('#/history')
             ))
-            # 任务失败
+            # 整理失败
             self.jobview.fail_task(task)
-            # 移除已完成的任务
-            if self.jobview.is_finished(task.mediainfo, task.meta.begin_season):
-                self.jobview.remove_job(task.mediainfo, task.meta.begin_season)
             return False, transferinfo.message
 
         # 转移成功
+        self.jobview.finish_task(task)
         logger.info(f"{task.fileitem.name} 入库成功：{transferinfo.target_diritem.path}")
 
         # 新增转移成功历史记录
@@ -319,8 +313,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     'mediainfo': task.mediainfo,
                     'fileitem': transferinfo.target_diritem
                 })
-            # 清除作业
-            self.jobview.remove_job(task.mediainfo, task.meta.begin_season)
 
         return True, ""
 
@@ -356,8 +348,16 @@ class TransferChain(ChainBase, metaclass=Singleton):
         while not global_vars.is_system_stopped:
             try:
                 item: TransferQueue = self._queue.get(timeout=self._transfer_interval)
-                if item and item.task:
-                    self.jobview.running_task(item.task)
+                if item:
+                    callback = item.callback
+                    task = item.task
+                    if not task:
+                        continue
+                    mediainfo = task.mediainfo
+                    meta = task.meta
+                    fileitem = task.fileitem
+                    # 正在处理
+                    self.jobview.running_task(task)
                     if __queue_start:
                         logger.info("开始整理队列处理...")
                         # 启动进度
@@ -373,18 +373,23 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     # 重新计算总数
                     total_num = self.jobview.total()
                     # 更新进度
-                    __process_msg = f"正在整理 （{processed_num + 1}/{total_num}）{item.task.fileitem.name} ..."
+                    __process_msg = f"正在整理 （{processed_num + 1}/{total_num}）{fileitem.name} ..."
                     logger.info(__process_msg)
                     self.progress.update(value=processed_num / total_num * 100,
                                          text=__process_msg,
                                          key=ProgressKey.FileTransfer)
                     # 整理
-                    state, err_msg = self.__handle_transfer(task=item.task, callback=item.callback)
+                    state, err_msg = self.__handle_transfer(task=task, callback=callback)
                     if state:
+                        # 任务成功
                         processed_num += 1
                     else:
-                        logger.warn(f"{item.task.fileitem.name} 整理失败：{err_msg}")
+                        # 任务失败
+                        logger.warn(f"{fileitem.name} 整理失败：{err_msg}")
                         fail_num += 1
+                    # 移除已完成的任务
+                    if self.jobview.is_finished(mediainfo, meta.begin_season):
+                        self.jobview.remove_job(mediainfo, meta.begin_season)
             except queue.Empty:
                 if not __queue_start:
                     # 结束进度
@@ -409,8 +414,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
         """
         处理整理任务
         """
-        if not task:
-            return False, ""
         # 执行整理
         transferinfo: TransferInfo = self.transfer(fileitem=task.fileitem,
                                                    meta=task.meta,
