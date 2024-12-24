@@ -44,7 +44,7 @@ class SubscribeHelper(metaclass=Singleton):
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return []
-        res = RequestUtils(timeout=15).get_res(self._sub_statistic, params={
+        res = RequestUtils(proxies=settings.PROXY, timeout=15).get_res(self._sub_statistic, params={
             "stype": stype,
             "page": page,
             "count": count
@@ -59,7 +59,7 @@ class SubscribeHelper(metaclass=Singleton):
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return False
-        res = RequestUtils(timeout=5, headers={
+        res = RequestUtils(proxies=settings.PROXY, timeout=5, headers={
             "Content-Type": "application/json"
         }).post_res(self._sub_reg, json=sub)
         if res and res.status_code == 200:
@@ -72,7 +72,7 @@ class SubscribeHelper(metaclass=Singleton):
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return False
-        res = RequestUtils(timeout=5, headers={
+        res = RequestUtils(proxies=settings.PROXY, timeout=5, headers={
             "Content-Type": "application/json"
         }).post_res(self._sub_done, json=sub)
         if res and res.status_code == 200:
@@ -104,7 +104,7 @@ class SubscribeHelper(metaclass=Singleton):
         subscribes = SubscribeOper().list()
         if not subscribes:
             return True
-        res = RequestUtils(content_type="application/json",
+        res = RequestUtils(proxies=settings.PROXY, content_type="application/json",
                            timeout=10).post(self._sub_report,
                                             json={
                                                 "subscribes": [
@@ -125,7 +125,7 @@ class SubscribeHelper(metaclass=Singleton):
             return False, "订阅不存在"
         subscribe_dict = subscribe.to_dict()
         subscribe_dict.pop("id")
-        res = RequestUtils(content_type="application/json",
+        res = RequestUtils(proxies=settings.PROXY, content_type="application/json",
                            timeout=10).post(self._sub_share,
                                             json={
                                                 "share_title": share_title,
@@ -146,7 +146,7 @@ class SubscribeHelper(metaclass=Singleton):
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return False, "当前没有开启订阅数据共享功能"
-        res = RequestUtils(timeout=5, headers={
+        res = RequestUtils(proxies=settings.PROXY, timeout=5, headers={
             "Content-Type": "application/json"
         }).get_res(self._sub_fork % share_id)
         if res is None:
@@ -163,7 +163,7 @@ class SubscribeHelper(metaclass=Singleton):
         """
         if not settings.SUBSCRIBE_STATISTIC_SHARE:
             return []
-        res = RequestUtils(timeout=15).get_res(self._sub_shares, params={
+        res = RequestUtils(proxies=settings.PROXY, timeout=15).get_res(self._sub_shares, params={
             "name": name,
             "page": page,
             "count": count
