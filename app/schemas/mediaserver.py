@@ -132,7 +132,7 @@ class MediaServerSeasonInfo(BaseModel):
     媒体服务器媒体剧集信息
     """
     season: Optional[int] = None
-    episodes: Optional[List[Dict[int, list]]] = Field(default_factory=list)
+    episodes: Optional[List[int]] = Field(default_factory=list)
 
 
 class WebhookEventInfo(BaseModel):
