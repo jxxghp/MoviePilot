@@ -853,20 +853,20 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
             # 后台整理
             transfer_task = TransferTask(
-                        fileitem=file_item,
-                        meta=file_meta,
-                        mediainfo=file_mediainfo,
-                        target_directory=target_directory or dir_info,
-                        target_storage=target_storage,
-                        target_path=target_path,
-                        transfer_type=transfer_type,
-                        episodes_info=episodes_info,
-                        scrape=scrape,
-                        library_type_folder=library_type_folder,
-                        library_category_folder=library_category_folder,
-                        downloader=downloader,
-                        download_hash=download_hash
-                    )
+                fileitem=file_item,
+                meta=file_meta,
+                mediainfo=file_mediainfo,
+                target_directory=target_directory or dir_info,
+                target_storage=target_storage,
+                target_path=target_path,
+                transfer_type=transfer_type,
+                episodes_info=episodes_info,
+                scrape=scrape,
+                library_type_folder=library_type_folder,
+                library_category_folder=library_category_folder,
+                downloader=downloader,
+                download_hash=download_hash
+            )
             if background:
                 self.put_to_queue(
                     task=transfer_task
@@ -968,7 +968,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
             state, errmsg = self.do_transfer(fileitem=FileItem(**history.src_fileitem),
                                              mediainfo=mediainfo,
                                              download_hash=history.download_hash,
-                                             force=True)
+                                             force=True,
+                                             background=False)
             if not state:
                 return False, errmsg
 
@@ -1035,6 +1036,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 library_type_folder=library_type_folder,
                 library_category_folder=library_category_folder,
                 force=force,
+                background=False
             )
             if not state:
                 return False, errmsg
@@ -1054,7 +1056,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                              scrape=scrape,
                                              library_type_folder=library_type_folder,
                                              library_category_folder=library_category_folder,
-                                             force=force)
+                                             force=force,
+                                             background=False)
             return state, errmsg
 
     def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo,
