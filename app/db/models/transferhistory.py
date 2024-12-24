@@ -43,6 +43,8 @@ class TransferHistory(Base):
     episodes = Column(String)
     # 海报
     image = Column(String)
+    # 下载器
+    downloader = Column(String)
     # 下载器hash
     download_hash = Column(String, index=True)
     # 转移成功状态

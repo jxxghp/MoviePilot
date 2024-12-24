@@ -240,7 +240,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         if not transferinfo.success:
             # 转移失败
-            logger.warn(f"{task.file_path.name} 入库失败：{transferinfo.message}")
+            logger.warn(f"{task.fileitem.name} 入库失败：{transferinfo.message}")
             # 新增转移失败历史记录
             self.transferhis.add_fail(
                 fileitem=task.fileitem,
@@ -267,7 +267,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
             return
 
         # 转移成功
-        logger.info(f"{task.file_path.name} 入库成功：{transferinfo.target_diritem.path}")
+        logger.info(f"{task.fileitem.name} 入库成功：{transferinfo.target_diritem.path}")
 
         # 新增转移成功历史记录
         self.transferhis.add_success(
@@ -360,8 +360,10 @@ class TransferChain(ChainBase, metaclass=Singleton):
                         # 启动进度
                         self.progress.start(ProgressKey.FileTransfer)
                         total_num = self.jobview.total()
+                        __process_msg = f"开始整理队列处理，共 {total_num} 个文件或子目录 ..."
+                        logger.info(__process_msg)
                         self.progress.update(value=0,
-                                             text=f"开始整理队列处理，共 {total_num} 个文件或子目录 ...",
+                                             text=__process_msg,
                                              key=ProgressKey.FileTransfer)
                         # 队列已开始
                         __queue_start = False
@@ -853,7 +855,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
             )
             logger.info(f"{file_path.name} 已添加到整理队列")
 
-        return True, "\n".join(err_msgs)
+        return True, "\n".join(err_msgs) if err_msgs else f"{fileitem.name} 已添加到整理任务队列"
 
     def remote_transfer(self, arg_str: str, channel: MessageChannel,
                         userid: Union[str, int] = None, source: str = None):
