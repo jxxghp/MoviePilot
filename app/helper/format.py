@@ -84,22 +84,33 @@ class FormatParser(object):
         拆分集数，返回开始集数，结束集数，Part信息
         """
         # 指定的具体集数，直接返回
-        if self._start_ep is not None and self._start_ep == self._end_ep:
-            if isinstance(self._start_ep, str):
-                s, e = self._start_ep.split("-")
-                start_ep = self.__offset.replace("EP", s)
-                end_ep = self.__offset.replace("EP", e)
-                if int(s) == int(e):
+        if self._start_ep is not None:
+            if self._start_ep == self._end_ep:
+                # `details` 格式为 `X-X` 或者 `X`
+                if isinstance(self._start_ep, str):
+                    # `details` 格式为 `X-X`
+                    s, e = self._start_ep.split("-")
+                    start_ep = self.__offset.replace("EP", s)
+                    end_ep = self.__offset.replace("EP", e)
+                    if int(s) == int(e):
+                        return int(eval(start_ep)), None, self.part
+                    return int(eval(start_ep)), int(eval(end_ep)), self.part
+                else:
+                    # `details` 格式为 `X`
+                    start_ep = self.__offset.replace("EP", str(self._start_ep))
                     return int(eval(start_ep)), None, self.part
-                return int(eval(start_ep)), int(eval(end_ep)), self.part
             else:
+                # `details` 格式为 `X,X`
                 start_ep = self.__offset.replace("EP", str(self._start_ep))
-                return int(eval(start_ep)), None, self.part
+                end_ep = self.__offset.replace("EP", str(self._end_ep))
+                return int(eval(start_ep)), int(eval(end_ep)), self.part
         if not self._format:
+            # 未填入`集数定位` 且没有`指定集数` 仅处理`集数偏移`
             start_ep = eval(self.__offset.replace("EP", str(file_meta.begin_episode))) if file_meta.begin_episode else None
             end_ep = eval(self.__offset.replace("EP", str(file_meta.end_episode))) if file_meta.end_episode else None
             return int(start_ep) if start_ep else None, int(end_ep) if end_ep else None, self.part
         else:
+            # 有`集数定位`
             s, e = self.__handle_single(file_name)
             start_ep = self.__offset.replace("EP", str(s)) if s else None
             end_ep = self.__offset.replace("EP", str(e)) if e else None
