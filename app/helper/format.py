@@ -101,7 +101,9 @@ class FormatParser(object):
                     return int(eval(start_ep)), None, self.part
             else:
                 # `details` 格式为 `X,X`
-                return self.__offset.replace("EP", str(self._start_ep)), self.__offset.replace("EP", str(self._end_ep)), self.part
+                start_ep = self.__offset.replace("EP", str(self._start_ep))
+                end_ep = self.__offset.replace("EP", str(self._end_ep))
+                return int(eval(start_ep)), int(eval(end_ep)), self.part
         if not self._format:
             # 未填入`集数定位` 且没有`指定集数` 仅处理`集数偏移`
             start_ep = eval(self.__offset.replace("EP", str(file_meta.begin_episode))) if file_meta.begin_episode else None
