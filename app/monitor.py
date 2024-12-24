@@ -21,7 +21,7 @@ from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.log import logger
-from app.schemas import FileItem, TransferTask
+from app.schemas import FileItem
 from app.utils.singleton import Singleton
 
 lock = Lock()
@@ -43,10 +43,12 @@ class FileMonitorHandler(FileSystemEventHandler):
         self.callback = callback
 
     def on_created(self, event: FileSystemEvent):
-        self.callback.event_handler(event=event, text="创建", event_path=Path(event.src_path))
+        self.callback.event_handler(event=event, text="创建", event_path=event.src_path,
+                                    size=Path(event.src_path).stat().st_size)
 
     def on_moved(self, event: FileSystemMovedEvent):
-        self.callback.event_handler(event=event, text="移动", event_path=Path(event.dest_path))
+        self.callback.event_handler(event=event, text="移动", event_path=event.dest_path,
+                                    size=Path(event.dest_path).stat().st_size)
 
 
 class Monitor(metaclass=Singleton):
@@ -194,41 +196,36 @@ class Monitor(metaclass=Singleton):
                     new_files = new_snapshot.keys() - old_snapshot.keys()
                     for new_file in new_files:
                         # 添加到待整理队列
-                        self.__handle_file(storage=storage, event_path=Path(new_file))
+                        self.__handle_file(storage=storage, event_path=Path(new_file),
+                                           file_size=new_snapshot.get(new_file))
                 # 更新快照
                 self._storage_snapshot[storage] = new_snapshot
 
-    def event_handler(self, event, text: str, event_path: Path):
+    def event_handler(self, event, text: str, event_path: str, file_size: float = None):
         """
         处理文件变化
         :param event: 事件
         :param text: 事件描述
         :param event_path: 事件文件路径
+        :param file_size: 文件大小
         """
         if not event.is_directory:
             # 文件发生变化
             logger.debug(f"文件 {event_path} 发生了 {text}")
             # 整理文件
-            self.__handle_file(storage="local", event_path=event_path)
+            self.__handle_file(storage="local", event_path=Path(event_path), file_size=file_size)
 
-    def __transfer_queue(self, task: TransferTask):
-        """
-        添加到整理队列
-        """
-        # 加入整理队列，使用默认的回调函数
-        self.transferchain.put_to_queue(task=task)
-
-    def __handle_file(self, storage: str, event_path: Path):
+    def __handle_file(self, storage: str, event_path: Path, file_size: float = None):
         """
         整理一个文件
         :param storage: 存储
         :param event_path: 事件文件路径
+        :param file_size: 文件大小
         """
         # 全程加锁
         with lock:
             try:
                 # 开始整理
-                # TODO 缺少文件大小
                 self.transferchain.do_transfer(
                     fileitem=FileItem(
                         storage=storage,
@@ -236,7 +233,8 @@ class Monitor(metaclass=Singleton):
                         type="file",
                         name=event_path.name,
                         basename=event_path.stem,
-                        extension=event_path.suffix[1:]
+                        extension=event_path.suffix[1:],
+                        size=file_size
                     ),
                     src_match=True
                 )
