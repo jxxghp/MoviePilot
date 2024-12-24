@@ -598,9 +598,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
             # 有子目录时，把当前目录的文件添加到整理任务中
             sub_items = self.storagechain.list_files(fileitem)
             if sub_items:
-                sub_files = [f for f in sub_items if f.type == "file"]
-                if sub_files:
-                    trans_items.extend((sub_files, False))
+                trans_items.extend([(f, False) for f in sub_items if f.type == "file"])
 
         return trans_items
 
