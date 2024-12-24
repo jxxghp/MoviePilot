@@ -120,7 +120,7 @@ class PluginHelper(metaclass=Singleton):
         """
         if not settings.PLUGIN_STATISTIC_SHARE:
             return {}
-        res = RequestUtils(timeout=10).get_res(self._install_statistic)
+        res = RequestUtils(proxies=settings.PROXY, timeout=10).get_res(self._install_statistic)
         if res and res.status_code == 200:
             return res.json()
         return {}
@@ -134,7 +134,7 @@ class PluginHelper(metaclass=Singleton):
         if not pid:
             return False
         install_reg_url = self._install_reg.format(pid=pid)
-        res = RequestUtils(timeout=5).get_res(install_reg_url)
+        res = RequestUtils(proxies=settings.PROXY, timeout=5).get_res(install_reg_url)
         if res and res.status_code == 200:
             return True
         return False
@@ -148,7 +148,8 @@ class PluginHelper(metaclass=Singleton):
         plugins = self.systemconfig.get(SystemConfigKey.UserInstalledPlugins)
         if not plugins:
             return False
-        res = RequestUtils(content_type="application/json",
+        res = RequestUtils(proxies=settings.PROXY,
+                           content_type="application/json",
                            timeout=5).post(self._install_report,
                                            json={"plugins": [{"plugin_id": plugin} for plugin in plugins]})
         return True if res else False
