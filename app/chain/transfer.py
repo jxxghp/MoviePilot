@@ -1032,7 +1032,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                         scrape: bool = None,
                         library_type_folder: bool = None,
                         library_category_folder: bool = None,
-                        force: bool = False) -> Tuple[bool, Union[str, list]]:
+                        force: bool = False,
+                        background: bool = False) -> Tuple[bool, Union[str, list]]:
         """
         手动整理，支持复杂条件，带进度显示
         :param fileitem: 文件项
@@ -1049,6 +1050,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         :param library_type_folder: 是否按类型建立目录
         :param library_category_folder: 是否按类别建立目录
         :param force: 是否强制整理
+        :param background: 是否后台运行
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         if tmdbid or doubanid:
@@ -1079,7 +1081,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 library_type_folder=library_type_folder,
                 library_category_folder=library_category_folder,
                 force=force,
-                background=False
+                background=background
             )
             if not state:
                 return False, errmsg
@@ -1100,7 +1102,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                              library_type_folder=library_type_folder,
                                              library_category_folder=library_category_folder,
                                              force=force,
-                                             background=False)
+                                             background=background)
             return state, errmsg
 
     def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo,

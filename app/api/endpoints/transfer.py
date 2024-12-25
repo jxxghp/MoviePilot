@@ -58,11 +58,13 @@ def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 @router.post("/manual", summary="手动转移", response_model=schemas.Response)
 def manual_transfer(transer_item: ManualTransferItem,
+                    background: bool = False,
                     db: Session = Depends(get_db),
                     _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
     手动转移，文件或历史记录，支持自定义剧集识别格式
     :param transer_item: 手工整理项
+    :param background: 后台运行
     :param db: 数据库
     :param _: Token校验
     """
@@ -139,7 +141,8 @@ def manual_transfer(transer_item: ManualTransferItem,
         scrape=transer_item.scrape,
         library_type_folder=transer_item.library_type_folder,
         library_category_folder=transer_item.library_category_folder,
-        force=force
+        force=force,
+        background=background
     )
     # 失败
     if not state:
