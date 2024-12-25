@@ -728,8 +728,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
             file_items = [f for f in file_items if formaterHandler.match(f[0].name)]
 
         # 过滤后缀和大小
-        file_items = [f for f in file_items
-                      if __is_allow_extensions(f[0].extension) and __is_allow_filesize(f[0].size, min_filesize)]
+        file_items = [f for f in file_items if f[1] # 蓝光目录不过滤
+                      or __is_allow_extensions(f[0].extension) and __is_allow_filesize(f[0].size, min_filesize)]
         if not file_items:
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
