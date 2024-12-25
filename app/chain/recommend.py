@@ -22,7 +22,7 @@ from app.utils.security import SecurityUtils
 from app.utils.singleton import Singleton
 
 # 推荐相关的专用缓存
-recommend_ttl = 6 * 3600
+recommend_ttl = 24 * 3600
 recommend_cache = TTLCache(maxsize=256, ttl=recommend_ttl)
 
 
@@ -71,6 +71,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         self.tmdbchain = TmdbChain()
         self.doubanchain = DoubanChain()
         self.bangumichain = BangumiChain()
+        self.cache_max_pages = 5
 
     def refresh_recommend(self):
         """
@@ -79,21 +80,45 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         logger.debug("Starting to refresh Recommend data.")
         recommend_cache.clear()
         logger.debug("Recommend Cache has been cleared.")
+
+        # 推荐来源方法
+        recommend_methods = [
+            self.tmdb_movies,
+            self.tmdb_tvs,
+            self.tmdb_trending,
+            self.bangumi_calendar,
+            self.douban_movie_showing,
+            self.douban_movies,
+            self.douban_tvs,
+            self.douban_movie_top250,
+            self.douban_tv_weekly_chinese,
+            self.douban_tv_weekly_global,
+            self.douban_tv_animation,
+            self.douban_movie_hot,
+            self.douban_tv_hot,
+        ]
+
         # 缓存并刷新所有推荐数据
         recommends = []
-        recommends.extend(self.tmdb_movies())
-        recommends.extend(self.tmdb_tvs())
-        recommends.extend(self.tmdb_trending())
-        recommends.extend(self.bangumi_calendar())
-        recommends.extend(self.douban_movie_showing())
-        recommends.extend(self.douban_movies())
-        recommends.extend(self.douban_tvs())
-        recommends.extend(self.douban_movie_top250())
-        recommends.extend(self.douban_tv_weekly_chinese())
-        recommends.extend(self.douban_tv_weekly_global())
-        recommends.extend(self.douban_tv_animation())
-        recommends.extend(self.douban_movie_hot())
-        recommends.extend(self.douban_tv_hot())
+        # 记录哪些方法已完成
+        methods_finished = set()
+        # 这里避免区间内连续调用相同来源，因此遍历方案为每页遍历所有推荐来源，再进行页数遍历
+        for page in range(1, self.cache_max_pages + 1):
+            for method in recommend_methods:
+                if method in methods_finished:
+                    continue
+                logger.debug(f"Fetch {method.__name__} data for page {page}.")
+                data = method(page=page)
+                if not data:
+                    logger.debug("All recommendation methods have finished fetching data. Ending pagination early.")
+                    methods_finished.add(method)
+                    continue
+                recommends.extend(data)
+            # 如果所有方法都已经完成，提前结束循环
+            if len(methods_finished) == len(recommend_methods):
+                break
+
+        # 缓存收集到的海报
         self.__cache_posters(recommends)
         logger.debug("Recommend data refresh completed.")
 
