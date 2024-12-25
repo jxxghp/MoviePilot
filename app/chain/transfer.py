@@ -754,7 +754,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
                         is_blocked = True
                         break
             if is_blocked:
-                err_msgs.append(f"{file_item.name} 命中整理屏蔽词")
                 continue
 
             # 整理成功的不再处理
@@ -762,8 +761,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 transferd = self.transferhis.get_by_src(file_item.path, storage=file_item.storage)
                 if transferd and transferd.status:
                     all_success = False
-                    logger.info(f"{file_item.path} 已成功整理过，如需重新处理，请删除历史记录。")
-                    err_msgs.append("已存在历史记录")
+                    logger.info(f"{file_item.path} 已整理过，如需重新处理，请删除历史记录。")
+                    err_msgs.append(f"{fileitem.name} 已整理过")
                     continue
 
             if not meta:
@@ -778,8 +777,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
             if not file_meta:
                 all_success = False
-                logger.error(f"{file_path} 无法识别有效信息")
-                err_msgs.append(f"{file_path} 无法识别有效信息")
+                logger.error(f"{file_path.name} 无法识别有效信息")
+                err_msgs.append(f"{file_path.name} 无法识别有效信息")
                 continue
 
             # 自定义识别
@@ -830,7 +829,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
             if not file_mediainfo:
                 all_success = False
-                logger.warn(f'{file_path} 未识别到媒体信息')
+                logger.warn(f'{file_path.name} 未识别到媒体信息')
+                err_msgs.append(f"{file_path.name} 未识别到媒体信息")
                 # 新增整理失败历史记录
                 his = self.transferhis.add_fail(
                     fileitem=file_item,
@@ -916,10 +916,10 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 )
                 if not state:
                     all_success = False
-                    logger.warn(f"{file_path.name} 整理失败：{err_msg}")
-                    err_msgs.append(err_msg)
+                    logger.warn(f"{file_path.name} {err_msg}")
+                    err_msgs.append(f"{file_path.name} {err_msg}")
 
-        return all_success, "\n".join(err_msgs)
+        return all_success, "，".join(err_msgs)
 
     def remote_transfer(self, arg_str: str, channel: MessageChannel,
                         userid: Union[str, int] = None, source: str = None):
