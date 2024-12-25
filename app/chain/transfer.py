@@ -471,6 +471,12 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         return transferinfo.success, transferinfo.message
 
+    def get_queue_tasks(self) -> List[dict]:
+        """
+        获取整理任务列表
+        """
+        return self.jobview.list_jobs()
+
     def recommend_name(self, meta: MetaBase, mediainfo: MediaInfo) -> Optional[str]:
         """
         获取重命名后的名称

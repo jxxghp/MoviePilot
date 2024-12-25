@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -45,6 +45,15 @@ def query_name(path: str, filetype: str,
     return schemas.Response(success=True, data={
         "name": new_name
     })
+
+
+@router.get("/queue", summary="查询整理队列", response_model=List[dict])
+def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询整理队列
+    :param _: Token校验
+    """
+    return TransferChain().get_queue_tasks()
 
 
 @router.post("/manual", summary="手动转移", response_model=schemas.Response)
