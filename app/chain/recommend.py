@@ -1,7 +1,11 @@
 import inspect
+import io
+import tempfile
 from functools import wraps
-from typing import Any, Callable
+from pathlib import Path
+from typing import Any, Callable, List
 
+from PIL import Image
 from cachetools import TTLCache
 from cachetools.keys import hashkey
 
@@ -9,9 +13,12 @@ from app.chain import ChainBase
 from app.chain.bangumi import BangumiChain
 from app.chain.douban import DoubanChain
 from app.chain.tmdb import TmdbChain
+from app.core.config import settings
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.common import log_execution_time
+from app.utils.http import RequestUtils
+from app.utils.security import SecurityUtils
 from app.utils.singleton import Singleton
 
 # 推荐相关的专用缓存
@@ -72,20 +79,90 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         logger.debug("Starting to refresh Recommend data.")
         recommend_cache.clear()
         logger.debug("Recommend Cache has been cleared.")
-        self.tmdb_movies()
-        self.tmdb_tvs()
-        self.tmdb_trending()
-        self.bangumi_calendar()
-        self.douban_movie_showing()
-        self.douban_movies()
-        self.douban_tvs()
-        self.douban_movie_top250()
-        self.douban_tv_weekly_chinese()
-        self.douban_tv_weekly_global()
-        self.douban_tv_animation()
-        self.douban_movie_hot()
-        self.douban_tv_hot()
+        # 缓存并刷新所有推荐数据
+        recommends = []
+        recommends.extend(self.tmdb_movies())
+        recommends.extend(self.tmdb_tvs())
+        recommends.extend(self.tmdb_trending())
+        recommends.extend(self.bangumi_calendar())
+        recommends.extend(self.douban_movie_showing())
+        recommends.extend(self.douban_movies())
+        recommends.extend(self.douban_tvs())
+        recommends.extend(self.douban_movie_top250())
+        recommends.extend(self.douban_tv_weekly_chinese())
+        recommends.extend(self.douban_tv_weekly_global())
+        recommends.extend(self.douban_tv_animation())
+        recommends.extend(self.douban_movie_hot())
+        recommends.extend(self.douban_tv_hot())
+        self.__cache_posters(recommends)
         logger.debug("Recommend data refresh completed.")
+
+    def __cache_posters(self, datas: List[dict]):
+        """
+        提取 poster_path 并缓存图片
+        :param datas: 数据列表
+        """
+        if not settings.GLOBAL_IMAGE_CACHE:
+            return
+
+        for data in datas:
+            poster_path = data.get("poster_path")
+            if poster_path:
+                poster_url = poster_path.replace("original", "w500")
+                logger.debug(f"Caching poster image: {poster_url}")
+                self.__fetch_and_save_image(poster_url)
+
+    @staticmethod
+    def __fetch_and_save_image(url: str):
+        """
+        请求并保存图片
+        :param url: 图片路径
+        """
+        if not settings.GLOBAL_IMAGE_CACHE or not url:
+            return
+
+        # 生成缓存路径
+        sanitized_path = SecurityUtils.sanitize_url_path(url)
+        cache_path = settings.CACHE_PATH / "images" / sanitized_path
+
+        # 确保缓存路径和文件类型合法
+        if not SecurityUtils.is_safe_path(settings.CACHE_PATH, cache_path, settings.SECURITY_IMAGE_SUFFIXES):
+            logger.debug(f"Invalid cache path or file type for URL: {url}, sanitized path: {sanitized_path}")
+            return
+
+        # 本地存在缓存图片，则直接跳过
+        if cache_path.exists():
+            logger.debug(f"Cache hit: Image already exists at {cache_path}")
+            return
+
+        # 请求远程图片
+        referer = "https://movie.douban.com/" if "doubanio.com" in url else None
+        proxies = settings.PROXY if not referer else None
+        response = RequestUtils(ua=settings.USER_AGENT, proxies=proxies, referer=referer).get_res(url=url)
+        if not response:
+            logger.debug(f"Empty response for URL: {url}")
+            return
+
+        # 验证下载的内容是否为有效图片
+        try:
+            Image.open(io.BytesIO(response.content)).verify()
+        except Exception as e:
+            logger.debug(f"Invalid image format for URL {url}: {e}")
+            return
+
+        if not cache_path:
+            return
+
+        try:
+            if not cache_path.parent.exists():
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=cache_path.parent, delete=False) as tmp_file:
+                tmp_file.write(response.content)
+                temp_path = Path(tmp_file.name)
+            temp_path.replace(cache_path)
+            logger.debug(f"Successfully cached image at {cache_path} for URL: {url}")
+        except Exception as e:
+            logger.debug(f"Failed to write cache file {cache_path} for URL {url}: {e}")
 
     @log_execution_time(logger=logger)
     @cached_with_empty_check
