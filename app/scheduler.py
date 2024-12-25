@@ -322,7 +322,7 @@ class Scheduler(metaclass=Singleton):
             "interval",
             id="recommend_refresh",
             name="推荐缓存",
-            hours=6,
+            hours=24,
             next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=3),
             kwargs={
                 'job_id': 'recommend_refresh'

@@ -728,8 +728,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
             file_items = [f for f in file_items if formaterHandler.match(f[0].name)]
 
         # 过滤后缀和大小
-        file_items = [f for f in file_items
-                      if __is_allow_extensions(f[0].extension) and __is_allow_filesize(f[0].size, min_filesize)]
+        file_items = [f for f in file_items if f[1] # 蓝光目录不过滤
+                      or __is_allow_extensions(f[0].extension) and __is_allow_filesize(f[0].size, min_filesize)]
         if not file_items:
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
@@ -768,7 +768,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 if transferd and transferd.status:
                     all_success = False
                     logger.info(f"{file_item.path} 已整理过，如需重新处理，请删除历史记录。")
-                    err_msgs.append(f"{fileitem.name} 已整理过")
+                    err_msgs.append(f"{file_item.name} 已整理过")
                     continue
 
             if not meta:
