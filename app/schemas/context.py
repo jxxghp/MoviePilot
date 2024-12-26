@@ -39,6 +39,8 @@ class MetaInfo(BaseModel):
     end_episode: Optional[int] = None
     # SxxExx
     season_episode: Optional[str] = None
+    # 集列表
+    episode_list: Optional[List[int]] = Field(default_factory=list)
     # Partx Cd Dvd Disk Disc
     part: Optional[str] = None
     # 识别的资源类型

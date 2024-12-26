@@ -49,7 +49,7 @@ class JobManager:
             "tasks": [
                 {
                     "fileitem": schema.FileItem,
-                    "meta": schema.MetaBase,
+                    "meta": schema.MetaInfo,
                     "state": "running" | "waiting" | "failed" | "completed",
                 }
             ]
@@ -175,7 +175,8 @@ class JobManager:
         移除整理任务
         """
         with job_lock:
-            for mediaid, job in self._job_view.items():
+            for mediaid in list(self._job_view):
+                job = self._job_view[mediaid]
                 for task in job["tasks"]:
                     if task["fileitem"].path == fileitem.path and task["fileitem"].storage == fileitem.storage:
                         job["tasks"].remove(task)
@@ -214,7 +215,7 @@ class JobManager:
         if __mediaid__ not in self._job_view:
             return False
         with job_lock:
-            return all([job["state"] == "completed" for job in self._job_view[__mediaid__]["tasks"]])
+            return all([job["state"] in ["completed", "failed"] for job in self._job_view[__mediaid__]["tasks"]])
 
     def count(self, media: MediaInfo, season: int = None) -> int:
         """
@@ -266,7 +267,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
     _transfer_thread = None
 
     # 文件整理检查间隔（秒）
-    _transfer_interval = 600 if settings.DEV else 10
+    _transfer_interval = 0
 
     def __init__(self):
         super().__init__()
@@ -420,7 +421,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         # 失败数量
         fail_num = 0
 
-        while not global_vars.is_system_stopped:
+        while not global_vars.is_system_stopped and self._transfer_interval:
             try:
                 item: TransferQueue = self._queue.get(timeout=self._transfer_interval)
                 if item:
