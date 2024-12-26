@@ -8,7 +8,7 @@ from app.db import db_query, db_update, Base
 
 class TransferHistory(Base):
     """
-    转移历史记录
+    整理记录
     """
     id = Column(Integer, Sequence('id'), primary_key=True, index=True)
     # 源路径

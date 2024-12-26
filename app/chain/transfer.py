@@ -808,7 +808,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 transferd = self.transferhis.get_by_src(file_item.path, storage=file_item.storage)
                 if transferd and transferd.status:
                     all_success = False
-                    logger.info(f"{file_item.path} 已整理过，如需重新处理，请删除历史记录。")
+                    logger.info(f"{file_item.path} 已整理过，如需重新处理，请删除整理记录。")
                     err_msgs.append(f"{file_item.name} 已整理过")
                     continue
 
@@ -977,7 +977,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         def args_error():
             self.post_message(Notification(channel=channel, source=source,
                                            title="请输入正确的命令格式：/redo [id] [tmdbid/豆瓣id]|[类型]，"
-                                                 "[id]历史记录编号", userid=userid))
+                                                 "[id]整理记录编号", userid=userid))
 
         if not arg_str:
             args_error()
@@ -1021,8 +1021,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
         # 查询历史记录
         history: TransferHistory = self.transferhis.get(logid)
         if not history:
-            logger.error(f"历史记录不存在，ID：{logid}")
-            return False, "历史记录不存在"
+            logger.error(f"整理记录不存在，ID：{logid}")
+            return False, "整理记录不存在"
         # 按源目录路径重新整理
         src_path = Path(history.src)
         if not src_path.exists():
