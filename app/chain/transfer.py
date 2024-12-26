@@ -255,7 +255,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
     _transfer_thread = None
 
     # 文件整理检查间隔（秒）
-    _transfer_interval = 5
+    _transfer_interval = 600 if settings.DEV else 10
 
     def __init__(self):
         super().__init__()
