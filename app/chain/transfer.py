@@ -267,7 +267,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
     _transfer_thread = None
 
     # 文件整理检查间隔（秒）
-    _transfer_interval = 0
+    _transfer_interval = 10
 
     def __init__(self):
         super().__init__()
@@ -421,7 +421,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         # 失败数量
         fail_num = 0
 
-        while not global_vars.is_system_stopped and self._transfer_interval:
+        while not global_vars.is_system_stopped:
             try:
                 item: TransferQueue = self._queue.get(timeout=self._transfer_interval)
                 if item:
