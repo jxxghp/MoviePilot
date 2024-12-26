@@ -22,6 +22,7 @@ class TmdbEpisode(BaseModel):
     """
     air_date: Optional[str] = None
     episode_number: Optional[int] = None
+    episode_type: Optional[str] = None
     name: Optional[str] = None
     overview: Optional[str] = None
     runtime: Optional[int] = None
