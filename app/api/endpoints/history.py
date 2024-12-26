@@ -1,10 +1,12 @@
 from typing import List, Any
 
+import jieba
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain.storage import StorageChain
+from app.core.config import settings
 from app.core.event import eventmanager
 from app.core.security import verify_token
 from app.db import get_db
@@ -57,6 +59,9 @@ def transfer_history(title: str = None,
         status = True
 
     if title:
+        if settings.TOKENIZED_SEARCH:
+            words = jieba.cut(title, HMM=False)
+            title = "%".join(words)
         total = TransferHistory.count_by_title(db, title=title, status=status)
         result = TransferHistory.list_by_title(db, title=title, page=page,
                                                count=count, status=status)
