@@ -589,9 +589,10 @@ class MetaBase(object):
         """
         转为字典
         """
-        dicts = asdict(self)
+        dicts = vars(self).copy()
         dicts["type"] = self.type.value if self.type else None
         dicts["season_episode"] = self.season_episode
         dicts["edition"] = self.edition
         dicts["name"] = self.name
+        dicts["episode_list"] = self.episode_list
         return dicts

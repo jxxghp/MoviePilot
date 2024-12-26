@@ -91,9 +91,7 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
     # 册除媒体库文件
     if deletedest and history.dest_fileitem:
         dest_fileitem = schemas.FileItem(**history.dest_fileitem)
-        state = StorageChain().delete_media_file(fileitem=dest_fileitem, mtype=MediaType(history.type))
-        if not state:
-            return schemas.Response(success=False, message=f"{dest_fileitem.path} 删除失败")
+        StorageChain().delete_media_file(fileitem=dest_fileitem, mtype=MediaType(history.type))
 
     # 删除源文件
     if deletesrc and history.src_fileitem:
