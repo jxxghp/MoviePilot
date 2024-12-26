@@ -170,6 +170,25 @@ class JobManager:
                     set(self._season_episodes[__mediaid__]) - set(task.meta.episode_list)
                 )
 
+    def remove_task(self, fileitem: FileItem):
+        """
+        移除整理任务
+        """
+        with job_lock:
+            for mediaid, job in self._job_view.items():
+                for task in job["tasks"]:
+                    if task["fileitem"].path == fileitem.path and task["fileitem"].storage == fileitem.storage:
+                        job["tasks"].remove(task)
+                        # 如果没有作业了，则移除作业
+                        if not job["tasks"]:
+                            self._job_view.pop(mediaid)
+                        # 移除季集信息
+                        if mediaid in self._season_episodes:
+                            self._season_episodes[mediaid] = list(
+                                set(self._season_episodes[mediaid]) - set(task["meta"].episode_list)
+                            )
+                        break
+
     def remove_job(self, media: MediaInfo, season: int = None) -> Optional[Dict[str, Any]]:
         """
         移除作业
@@ -180,10 +199,10 @@ class JobManager:
         with job_lock:
             # 移除作业
             if __mediaid__ in self._job_view:
+                # 移除季集信息
+                if __mediaid__ in self._season_episodes:
+                    self._season_episodes.pop(__mediaid__)
                 return self._job_view.pop(__mediaid__)
-            # 移除季集信息
-            if __mediaid__ in self._season_episodes:
-                self._season_episodes.pop(__mediaid__)
 
     def is_finished(self, media: MediaInfo, season: int = None) -> bool:
         """
@@ -366,6 +385,14 @@ class TransferChain(ChainBase, metaclass=Singleton):
             task=task,
             callback=callback or self.__default_callback
         ))
+
+    def remove_from_queue(self, fileitem: FileItem):
+        """
+        从待整理队列移除
+        """
+        if not fileitem:
+            return
+        self.jobview.remove_task(fileitem)
 
     def __start_transfer(self):
         """
@@ -728,7 +755,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
             file_items = [f for f in file_items if formaterHandler.match(f[0].name)]
 
         # 过滤后缀和大小
-        file_items = [f for f in file_items if f[1] # 蓝光目录不过滤
+        file_items = [f for f in file_items if f[1]  # 蓝光目录不过滤
                       or __is_allow_extensions(f[0].extension) and __is_allow_filesize(f[0].size, min_filesize)]
         if not file_items:
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")

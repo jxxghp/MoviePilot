@@ -56,6 +56,17 @@ def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     return TransferChain().get_queue_tasks()
 
 
+@router.delete("/queue", summary="从整理队列中删除任务", response_model=schemas.Response)
+def remove_queue(fileitem: schemas.FileItem, _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询整理队列
+    :param fileitem: 文件项
+    :param _: Token校验
+    """
+    TransferChain().remove_from_queue(fileitem)
+    return schemas.Response(success=True)
+
+
 @router.post("/manual", summary="手动转移", response_model=schemas.Response)
 def manual_transfer(transer_item: ManualTransferItem,
                     background: bool = False,
