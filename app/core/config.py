@@ -240,6 +240,8 @@ class ConfigModel(BaseModel):
     RENAME_FORMAT_S0_NAMES: List[str] = Field(
         default_factory=lambda: ["Specials", "SPs"]
     )
+    # 启用分词搜索
+    TOKENIZED_SEARCH: bool = False
 
 
 class Settings(BaseSettings, ConfigModel):
