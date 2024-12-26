@@ -131,6 +131,12 @@ class StorageChain(ChainBase):
             return False
         if fileitem.type == "dir":
             # 本身是目录
+            if _blue_dir := self.list_files(fileitem=fileitem, recursion=False):
+                # 删除蓝光目录
+                for _f in _blue_dir:
+                    if _f.type == "dir" and _f.name in ["BDMV", "CERTIFICATE"]:
+                        logger.warn(f"【{fileitem.storage}】{_f.path} 删除蓝光目录")
+                        self.delete_file(_f)
             if self.any_files(fileitem, extensions=media_exts) is False:
                 logger.warn(f"【{fileitem.storage}】{fileitem.path} 不存在其它媒体文件，删除空目录")
                 return self.delete_file(fileitem)
