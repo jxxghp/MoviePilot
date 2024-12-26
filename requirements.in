@@ -63,3 +63,4 @@ p115client==0.0.3.8.3.3
 python-cookietools==0.0.2.1
 aligo~=6.2.4
 aiofiles~=24.1.0
+jieba~=0.42.1
