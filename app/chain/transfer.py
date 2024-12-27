@@ -255,6 +255,16 @@ class JobManager:
                 [task["state"] in ["completed"] for task in self._job_view[__mediaid__]["tasks"]]
             )
 
+    def get_success_tasks(self, media: MediaInfo, season: int = None) -> List[dict]:
+        """
+        获取某项任务成功的任务
+        """
+        __mediaid__ = self.__get_id(media=media, season=season)
+        with job_lock:
+            if __mediaid__ not in self._job_view:
+                return []
+            return [task for task in self._job_view[__mediaid__]["tasks"] if task["state"] == "completed"]
+
     def count(self, media: MediaInfo, season: int = None) -> int:
         """
         获取某项任务总数
@@ -387,13 +397,16 @@ class TransferChain(ChainBase, metaclass=Singleton):
         if self.jobview.is_success(task.mediainfo, task.meta.begin_season):
             # 移动模式删除空目录
             if transferinfo.transfer_type in ["move"]:
-                # 下载器hash
-                if task.download_hash:
-                    if self.remove_torrents(task.download_hash, downloader=task.downloader):
-                        logger.info(f"移动模式删除种子成功：{task.download_hash} ")
-                # 删除残留目录
-                if task.fileitem:
-                    self.storagechain.delete_media_file(task.fileitem, delete_self=False)
+                # 所有成功的业务
+                tasks = self.jobview.get_success_tasks(task.mediainfo, task.meta.begin_season)
+                for t in tasks:
+                    # 下载器hash
+                    if t.download_hash:
+                        if self.remove_torrents(t.download_hash, downloader=t.downloader):
+                            logger.info(f"移动模式删除种子成功：{t.download_hash} ")
+                    # 删除残留目录
+                    if t.fileitem:
+                        self.storagechain.delete_media_file(t.fileitem, delete_self=False)
 
         # 整理完成且有成功的任务时
         if self.jobview.is_finished(task.mediainfo, task.meta.begin_season):
