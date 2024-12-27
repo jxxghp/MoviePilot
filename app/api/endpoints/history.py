@@ -41,7 +41,7 @@ def delete_download_history(history_in: schemas.DownloadHistory,
     return schemas.Response(success=True)
 
 
-@router.get("/transfer", summary="查询转移历史记录", response_model=schemas.Response)
+@router.get("/transfer", summary="查询整理记录", response_model=schemas.Response)
 def transfer_history(title: str = None,
                      page: int = 1,
                      count: int = 30,
@@ -49,7 +49,7 @@ def transfer_history(title: str = None,
                      db: Session = Depends(get_db),
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    查询转移历史记录
+    查询整理记录
     """
     if title == "失败":
         title = None
@@ -76,14 +76,14 @@ def transfer_history(title: str = None,
                             })
 
 
-@router.delete("/transfer", summary="删除转移历史记录", response_model=schemas.Response)
+@router.delete("/transfer", summary="删除整理记录", response_model=schemas.Response)
 def delete_transfer_history(history_in: schemas.TransferHistory,
                             deletesrc: bool = False,
                             deletedest: bool = False,
                             db: Session = Depends(get_db),
                             _: schemas.TokenPayload = Depends(get_current_active_superuser)) -> Any:
     """
-    删除转移历史记录
+    删除整理记录
     """
     history: TransferHistory = TransferHistory.get(db, history_in.id)
     if not history:
@@ -112,11 +112,11 @@ def delete_transfer_history(history_in: schemas.TransferHistory,
     return schemas.Response(success=True)
 
 
-@router.get("/empty/transfer", summary="清空转移历史记录", response_model=schemas.Response)
+@router.get("/empty/transfer", summary="清空整理记录", response_model=schemas.Response)
 def delete_transfer_history(db: Session = Depends(get_db),
                             _: User = Depends(get_current_active_superuser)) -> Any:
     """
-    清空转移历史记录
+    清空整理记录
     """
     TransferHistory.truncate(db)
     return schemas.Response(success=True)

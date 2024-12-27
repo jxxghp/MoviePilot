@@ -85,7 +85,7 @@ def manual_transfer(transer_item: ManualTransferItem,
         # 查询历史记录
         history: TransferHistory = TransferHistory.get(db, transer_item.logid)
         if not history:
-            return schemas.Response(success=False, message=f"历史记录不存在，ID：{transer_item.logid}")
+            return schemas.Response(success=False, message=f"整理记录不存在，ID：{transer_item.logid}")
         # 强制转移
         force = True
         if history.status and ("move" in history.mode):
