@@ -3,7 +3,7 @@ from typing import Optional, List, Any, Callable
 
 from pydantic import BaseModel, Field
 
-from app.schemas import TmdbEpisode
+from app.schemas import TmdbEpisode, DownloadHistory
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 
@@ -46,20 +46,21 @@ class TransferTask(BaseModel):
     """
     文件整理任务
     """
-    fileitem: Optional[FileItem] = None
-    file_path: Optional[Path] = None
-    meta: Optional[Any] = None
+    fileitem: FileItem = None
+    meta: Any = None
     mediainfo: Optional[Any] = None
     target_directory: Optional[TransferDirectoryConf] = None
     target_storage: Optional[str] = None
     target_path: Optional[Path] = None
     transfer_type: Optional[str] = None
-    scrape: Optional[bool] = None
-    library_type_folder: Optional[bool] = None
-    library_category_folder: Optional[bool] = None
+    src_match: Optional[bool] = False
+    scrape: Optional[bool] = False
+    library_type_folder: Optional[bool] = False
+    library_category_folder: Optional[bool] = False
     episodes_info: Optional[List[TmdbEpisode]] = None
     downloader: Optional[str] = None
     download_hash: Optional[str] = None
+    download_history: Optional[DownloadHistory] = None
 
     def to_dict(self):
         """
