@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from app.schemas import TmdbEpisode, DownloadHistory
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
+from schemas import MediaInfo, MetaInfo
 
 
 class TransferTorrent(BaseModel):
@@ -72,6 +73,26 @@ class TransferTask(BaseModel):
         dicts["mediainfo"] = self.mediainfo.dict() if self.mediainfo else None
         dicts["target_directory"] = self.target_directory.dict() if self.target_directory else None
         return dicts
+
+
+class TransferJobTask(BaseModel):
+    """
+    文件整理作业任务
+    """
+    fileitem: Optional[FileItem] = None
+    meta: Optional[MetaInfo] = None
+    state: Optional[str] = None
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
+
+
+class TransferJob(BaseModel):
+    """
+    文件整理作业
+    """
+    media: Optional[MediaInfo] = None
+    season: Optional[int] = None
+    tasks: Optional[List[TransferJobTask]] = Field(default_factory=list)
 
 
 class TransferInfo(BaseModel):
