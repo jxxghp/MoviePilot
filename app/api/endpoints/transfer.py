@@ -47,7 +47,7 @@ def query_name(path: str, filetype: str,
     })
 
 
-@router.get("/queue", summary="查询整理队列", response_model=List[dict])
+@router.get("/queue", summary="查询整理队列", response_model=List[schemas.TransferJob])
 def query_queue(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     查询整理队列
