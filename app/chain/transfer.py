@@ -467,7 +467,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 # 更新文件数量
                 transferinfo.file_count = self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
                 # 更新文件大小
-                transferinfo.file_size = self.jobview.size(task.mediainfo, task.meta.begin_season) or task.fileitem.size
+                transferinfo.total_size = self.jobview.size(task.mediainfo, task.meta.begin_season) or task.fileitem.size
                 self.send_transfer_message(meta=task.meta,
                                            mediainfo=task.mediainfo,
                                            transferinfo=transferinfo,
