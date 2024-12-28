@@ -1,6 +1,7 @@
 import queue
 import re
 import threading
+import traceback
 from copy import deepcopy
 from pathlib import Path
 from queue import Queue
@@ -62,6 +63,8 @@ class JobManager:
         """
         获取媒体ID
         """
+        if not media:
+            return None, season
         return media.tmdb_id or media.douban_id, season
 
     def __get_id(self, task: TransferTask = None) -> Tuple:
@@ -467,7 +470,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 # 更新文件数量
                 transferinfo.file_count = self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
                 # 更新文件大小
-                transferinfo.total_size = self.jobview.size(task.mediainfo, task.meta.begin_season) or task.fileitem.size
+                transferinfo.total_size = self.jobview.size(task.mediainfo,
+                                                            task.meta.begin_season) or task.fileitem.size
                 self.send_transfer_message(meta=task.meta,
                                            mediainfo=task.mediainfo,
                                            transferinfo=transferinfo,
@@ -583,7 +587,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     __queue_start = True
                 continue
             except Exception as e:
-                logger.error(f"整理队列处理出现错误：{e}")
+                logger.error(f"整理队列处理出现错误：{e} - {traceback.format_exc()}")
 
     def __handle_transfer(self, task: TransferTask,
                           callback: Optional[Callable] = None) -> Tuple[bool, str]:
@@ -624,7 +628,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     text=f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别整理。",
                     link=settings.MP_DOMAIN('#/history')
                 ))
-                # 任务失败
+                # 任务失败，直接移除task
+                self.jobview.remove_task(task.fileitem)
                 return False, "未识别到媒体信息"
 
             # 如果未开启新增已入库媒体是否跟随TMDB信息变化则根据tmdbid查询之前的title
