@@ -200,7 +200,7 @@ class JobManager:
                         # 移除季集信息
                         if mediaid in self._season_episodes:
                             self._season_episodes[mediaid] = list(
-                                set(self._season_episodes[mediaid]) - set(task["meta"].episode_list)
+                                set(self._season_episodes[mediaid]) - set(task.meta.episode_list)
                             )
                         return task
 
@@ -248,7 +248,7 @@ class JobManager:
         __mediaid__ = self.__get_media_id(media=task.mediainfo, season=task.meta.begin_season)
         if __metaid__ in self._job_view:
             meta_finished = all(
-                task["state"] in ["completed", "failed"] for task in self._job_view[__metaid__].tasks
+                task.state in ["completed", "failed"] for task in self._job_view[__metaid__].tasks
             )
         else:
             meta_finished = True
@@ -256,9 +256,9 @@ class JobManager:
             if __mediaid__ in self._job_view:
                 tasks = self._job_view[__mediaid__].tasks
                 media_finished = all(
-                    task["state"] in ["completed", "failed"] for task in tasks
+                    task.state in ["completed", "failed"] for task in tasks
                 ) and any(
-                    task["state"] == "completed" for task in tasks
+                    task.state == "completed" for task in tasks
                 )
             else:
                 media_finished = False
@@ -274,14 +274,14 @@ class JobManager:
         __mediaid__ = self.__get_media_id(media=task.mediainfo, season=task.meta.begin_season)
         if __metaid__ in self._job_view:
             meta_success = all(
-                task["state"] in ["completed"] for task in self._job_view[__metaid__].tasks
+                task.state in ["completed"] for task in self._job_view[__metaid__].tasks
             )
         else:
             meta_success = True
         if __mediaid__ != __metaid__:
             if __mediaid__ in self._job_view:
                 media_success = all(
-                    task["state"] in ["completed"] for task in self._job_view[__mediaid__].tasks
+                    task.state in ["completed"] for task in self._job_view[__mediaid__].tasks
                 )
             else:
                 media_success = False
