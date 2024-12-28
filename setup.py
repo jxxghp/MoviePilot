@@ -1,8 +1,6 @@
 
-from distutils.core import setup
-
 from Cython.Build import cythonize
-
+from setuptools import setup
 
 module_list = ['app/helper/sites.py']
 
