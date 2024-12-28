@@ -310,6 +310,17 @@ class JobManager:
                 return 0
             return len([task for task in self._job_view[__mediaid__].tasks if task.state == "completed"])
 
+    def size(self, media: MediaInfo, season: int = None) -> int:
+        """
+        获取某项任务总大小
+        """
+        __mediaid__ = self.__get_media_id(media=media, season=season)
+        with job_lock:
+            # 计算状态为完成的任务数
+            if __mediaid__ not in self._job_view:
+                return 0
+            return sum([task.fileitem.size for task in self._job_view[__mediaid__].tasks if task.state == "completed"])
+
     def total(self) -> int:
         """
         获取所有task任务总数
@@ -455,6 +466,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                         se_str = f"{task.meta.season}"
                 # 更新文件数量
                 transferinfo.file_count = self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
+                # 更新文件大小
+                transferinfo.file_size = self.jobview.size(task.mediainfo, task.meta.begin_season) or task.fileitem.size
                 self.send_transfer_message(meta=task.meta,
                                            mediainfo=task.mediainfo,
                                            transferinfo=transferinfo,

@@ -10,14 +10,10 @@ from watchdog.events import FileSystemEventHandler, FileSystemMovedEvent, FileSy
 from watchdog.observers.polling import PollingObserver
 
 from app.chain import ChainBase
-from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
-from app.chain.tmdb import TmdbChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
-from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.db.systemconfig_oper import SystemConfigOper
-from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.log import logger
@@ -73,12 +69,7 @@ class Monitor(metaclass=Singleton):
 
     def __init__(self):
         super().__init__()
-        self.chain = MonitorChain()
-        self.transferhis = TransferHistoryOper()
         self.transferchain = TransferChain()
-        self.downloadhis = DownloadHistoryOper()
-        self.mediaChain = MediaChain()
-        self.tmdbchain = TmdbChain()
         self.storagechain = StorageChain()
         self.directoryhelper = DirectoryHelper()
         self.systemmessage = MessageHelper()
