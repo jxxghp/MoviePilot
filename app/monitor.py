@@ -40,11 +40,11 @@ class FileMonitorHandler(FileSystemEventHandler):
 
     def on_created(self, event: FileSystemEvent):
         self.callback.event_handler(event=event, text="创建", event_path=event.src_path,
-                                    size=Path(event.src_path).stat().st_size)
+                                    file_size=Path(event.src_path).stat().st_size)
 
     def on_moved(self, event: FileSystemMovedEvent):
         self.callback.event_handler(event=event, text="移动", event_path=event.dest_path,
-                                    size=Path(event.dest_path).stat().st_size)
+                                    file_size=Path(event.dest_path).stat().st_size)
 
 
 class Monitor(metaclass=Singleton):
