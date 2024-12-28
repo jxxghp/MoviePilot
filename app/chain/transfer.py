@@ -229,12 +229,15 @@ class JobManager:
             )
         else:
             meta_done = True
-        if __mediaid__ in self._job_view:
-            media_done = all(
-                task.state in ["completed", "failed"] for task in self._job_view[__mediaid__].tasks
-            )
+        if __mediaid__ != __metaid__:
+            if __mediaid__ in self._job_view:
+                media_done = all(
+                    task.state in ["completed", "failed"] for task in self._job_view[__mediaid__].tasks
+                )
+            else:
+                media_done = False
         else:
-            media_done = False
+            media_done = True
         return meta_done and media_done
 
     def is_finished(self, task: TransferTask) -> bool:
@@ -249,15 +252,18 @@ class JobManager:
             )
         else:
             meta_finished = True
-        if __mediaid__ in self._job_view:
-            tasks = self._job_view[__mediaid__].tasks
-            media_finished = all(
-                task["state"] in ["completed", "failed"] for task in tasks
-            ) and any(
-                task["state"] == "completed" for task in tasks
-            )
+        if __mediaid__ != __metaid__:
+            if __mediaid__ in self._job_view:
+                tasks = self._job_view[__mediaid__].tasks
+                media_finished = all(
+                    task["state"] in ["completed", "failed"] for task in tasks
+                ) and any(
+                    task["state"] == "completed" for task in tasks
+                )
+            else:
+                media_finished = False
         else:
-            media_finished = False
+            media_finished = True
         return meta_finished and media_finished
 
     def is_success(self, task: TransferTask) -> bool:
@@ -266,21 +272,24 @@ class JobManager:
         """
         __metaid__ = self.__get_meta_id(meta=task.meta, season=task.meta.begin_season)
         __mediaid__ = self.__get_media_id(media=task.mediainfo, season=task.meta.begin_season)
-        if __mediaid__ in self._job_view:
+        if __metaid__ in self._job_view:
             meta_success = all(
                 task["state"] in ["completed"] for task in self._job_view[__metaid__].tasks
             )
         else:
             meta_success = True
-        if __mediaid__ in self._job_view:
-            media_success = all(
-                task["state"] in ["completed"] for task in self._job_view[__mediaid__].tasks
-            )
+        if __mediaid__ != __metaid__:
+            if __mediaid__ in self._job_view:
+                media_success = all(
+                    task["state"] in ["completed"] for task in self._job_view[__mediaid__].tasks
+                )
+            else:
+                media_success = False
         else:
-            media_success = False
+            media_success = True
         return meta_success and media_success
 
-    def get_success_tasks(self, media: MediaInfo, season: int = None) -> List[TransferJobTask]:
+    def success_tasks(self, media: MediaInfo, season: int = None) -> List[TransferJobTask]:
         """
         获取某项任务成功的任务
         """
@@ -423,7 +432,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
             # 移动模式删除空目录
             if transferinfo.transfer_type in ["move"]:
                 # 所有成功的业务
-                tasks = self.jobview.get_success_tasks(task.mediainfo, task.meta.begin_season)
+                tasks = self.jobview.success_tasks(task.mediainfo, task.meta.begin_season)
                 for t in tasks:
                     # 下载器hash
                     if t.download_hash:
