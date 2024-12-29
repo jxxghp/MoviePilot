@@ -732,7 +732,7 @@ class TorrentSpider:
         try:
             # 解析站点文本对象
             if self.encoding:
-                html_doc = PyQuery(html_text.encode('utf-8'))
+                html_doc = PyQuery(html_text.encode(self.encoding))
             else:
                 html_doc = PyQuery(html_text)
             # 种子筛选器
