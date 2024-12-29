@@ -64,8 +64,6 @@ class TorrentSpider:
     torrents_info_array: list = []
     # 搜索超时, 默认: 15秒
     _timeout = 15
-    # 站点解析时是否需要编码
-    encoding: bool = False
 
     def __init__(self,
                  indexer: CommentedMap,
@@ -97,7 +95,6 @@ class TorrentSpider:
         self.domain = indexer.get('domain')
         self.result_num = int(indexer.get('result_num') or 100)
         self._timeout = int(indexer.get('timeout') or 15)
-        self.encoding = indexer.get('encoding', False)
         self.page = page
         if self.domain and not str(self.domain).endswith("/"):
             self.domain = self.domain + "/"
@@ -731,10 +728,7 @@ class TorrentSpider:
         self.torrents_info_array = []
         try:
             # 解析站点文本对象
-            if self.encoding:
-                html_doc = PyQuery(html_text.encode(self.encoding))
-            else:
-                html_doc = PyQuery(html_text)
+            html_doc = PyQuery(html_text)
             # 种子筛选器
             torrents_selector = self.list.get('selector', '')
             # 遍历种子html列表
