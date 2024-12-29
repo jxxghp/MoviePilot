@@ -54,7 +54,6 @@ class TransferTask(BaseModel):
     target_storage: Optional[str] = None
     target_path: Optional[Path] = None
     transfer_type: Optional[str] = None
-    src_match: Optional[bool] = False
     scrape: Optional[bool] = False
     library_type_folder: Optional[bool] = False
     library_category_folder: Optional[bool] = False

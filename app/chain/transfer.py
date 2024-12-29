@@ -657,21 +657,16 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         # 查询整理目标目录
         if not task.target_directory:
-            if task.src_match:
-                # 按源目录匹配，以便找到更合适的目录配置
-                task.target_directory = self.directoryhelper.get_dir(media=task.mediainfo,
-                                                                     storage=task.fileitem.storage,
-                                                                     src_path=Path(task.fileitem.path),
-                                                                     target_storage=task.target_storage)
-            elif task.target_path:
+            if task.target_path:
                 # 指定目标路径，`手动整理`场景下使用，忽略源目录匹配，使用指定目录匹配
                 task.target_directory = self.directoryhelper.get_dir(media=task.mediainfo,
                                                                      dest_path=task.target_path,
                                                                      target_storage=task.target_storage)
             else:
-                # 未指定目标路径，根据媒体信息获取目标目录
+                # 启用源目录匹配时，根据源目录匹配下载目录，否则按源目录同盘优先原则，如无源目录，则根据媒体信息获取目标目录
                 task.target_directory = self.directoryhelper.get_dir(media=task.mediainfo,
                                                                      storage=task.fileitem.storage,
+                                                                     src_path=Path(task.fileitem.path),
                                                                      target_storage=task.target_storage)
 
         # 执行整理
@@ -788,8 +783,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     ),
                     mediainfo=mediainfo,
                     downloader=torrent.downloader,
-                    download_hash=torrent.hash,
-                    src_match=True
+                    download_hash=torrent.hash
                 )
 
                 # 设置下载任务状态
@@ -879,8 +873,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     library_type_folder: bool = None, library_category_folder: bool = None,
                     season: int = None, epformat: EpisodeFormat = None, min_filesize: int = 0,
                     downloader: str = None, download_hash: str = None,
-                    force: bool = False, src_match: bool = False,
-                    background: bool = True) -> Tuple[bool, str]:
+                    force: bool = False, background: bool = True) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
@@ -899,7 +892,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
         :param downloader: 下载器
         :param download_hash: 下载记录hash
         :param force: 是否强制整理
-        :param src_match: 是否源目录匹配
         :param background: 是否后台运行
         返回：成功标识，错误信息
         """
@@ -1072,7 +1064,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 target_storage=target_storage,
                 target_path=target_path,
                 transfer_type=transfer_type,
-                src_match=src_match,
                 scrape=scrape,
                 library_type_folder=library_type_folder,
                 library_category_folder=library_category_folder,
