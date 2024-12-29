@@ -68,10 +68,16 @@ class DirectoryHelper:
         # 电影/电视剧
         media_type = media.type.value
         dirs = self.get_dirs()
+
+        # 如果存在源目录，并源目录为任一下载目录的子目录时，则进行源目录匹配，否则，允许源目录按同盘优先的逻辑匹配
+        matching_dirs = [d for d in dirs if src_path.is_relative_to(d.download_path)] if src_path else []
+        # 根据是否有匹配的源目录，决定要考虑的目录集合
+        dirs_to_consider = matching_dirs if matching_dirs else dirs
+
         # 已匹配的目录
         matched_dirs: List[schemas.TransferDirectoryConf] = []
         # 按照配置顺序查找
-        for d in dirs:
+        for d in dirs_to_consider:
             # 没有启用整理的目录
             if not d.monitor_type and not include_unsorted:
                 continue
@@ -80,9 +86,6 @@ class DirectoryHelper:
                 continue
             # 目标存储类型不匹配
             if target_storage and d.library_storage != target_storage:
-                continue
-            # 有源目录时，源目录不匹配下载目录
-            if src_path and not src_path.is_relative_to(d.download_path):
                 continue
             # 有目标目录时，目标目录不匹配媒体库目录
             if dest_path and dest_path != Path(d.library_path):

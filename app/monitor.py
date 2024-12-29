@@ -226,8 +226,7 @@ class Monitor(metaclass=Singleton):
                         basename=event_path.stem,
                         extension=event_path.suffix[1:],
                         size=file_size
-                    ),
-                    src_match=True
+                    )
                 )
             except Exception as e:
                 logger.error("目录监控发生错误：%s - %s" % (str(e), traceback.format_exc()))

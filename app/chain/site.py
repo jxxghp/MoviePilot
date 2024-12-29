@@ -319,6 +319,7 @@ class SiteChain(ChainBase):
                     continue
                 # 新增站点
                 domain_url = __indexer_domain(inx=indexer, sub_domain=domain)
+                proxy = False
                 res = RequestUtils(cookies=cookie,
                                    ua=settings.USER_AGENT
                                    ).get_res(url=domain_url)
@@ -336,16 +337,37 @@ class SiteChain(ChainBase):
                     logger.warn(f"站点 {indexer.get('name')} 连接状态码：{res.status_code}，无法添加站点")
                     continue
                 else:
-                    _fail_count += 1
-                    logger.warn(f"站点 {indexer.get('name')} 连接失败，无法添加站点")
-                    continue
+                    if not settings.PROXY_HOST:
+                        _fail_count += 1
+                        logger.warn(f"站点 {indexer.get('name')} 连接失败，无法添加站点")
+                        continue
+                    else:
+                        # 如果配置了代理，尝试通过代理重试
+                        logger.info(f"站点 {indexer.get('name')} 初次连接失败，尝试通过代理重试...")
+                        proxy = True
+                        res = RequestUtils(cookies=cookie,
+                                           ua=settings.USER_AGENT,
+                                           proxies=settings.PROXY
+                                           ).get_res(url=domain_url)
+                        if res and res.status_code in [200, 500, 403]:
+                            if not indexer.get("public") and not SiteUtils.is_logged_in(res.text):
+                                logger.warn(f"站点 {indexer.get('name')} 登录失败，即使通过代理，无法添加站点")
+                                _fail_count += 1
+                                continue
+                            logger.info(f"站点 {indexer.get('name')} 通过代理连接成功")
+                        else:
+                            logger.warn(f"站点 {indexer.get('name')} 通过代理连接失败，无法添加站点")
+                            _fail_count += 1
+                            continue
+
                 # 获取rss地址
                 rss_url = None
                 if not indexer.get("public") and domain_url:
                     # 自动生成rss地址
                     rss_url, errmsg = self.rsshelper.get_rss_link(url=domain_url,
                                                                   cookie=cookie,
-                                                                  ua=settings.USER_AGENT)
+                                                                  ua=settings.USER_AGENT,
+                                                                  proxy=proxy)
                     if errmsg:
                         logger.warn(errmsg)
                 # 插入数据库
@@ -355,6 +377,7 @@ class SiteChain(ChainBase):
                                   domain=domain,
                                   cookie=cookie,
                                   rss=rss_url,
+                                  proxy=1 if proxy else 0,
                                   public=1 if indexer.get("public") else 0)
                 _add_count += 1
 
