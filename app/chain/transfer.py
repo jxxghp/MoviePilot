@@ -5,6 +5,7 @@ import traceback
 from copy import deepcopy
 from pathlib import Path
 from queue import Queue
+from time import sleep
 from typing import List, Optional, Tuple, Union, Dict, Callable
 
 from app import schemas
@@ -363,8 +364,11 @@ class TransferChain(ChainBase, metaclass=Singleton):
     # 文件整理线程
     _transfer_thread = None
 
-    # 文件整理检查间隔（秒）
-    _transfer_interval = 15
+    # 队列等待时间（秒）
+    _queue_timeout = 5
+
+    # 队列间隔时间（秒）
+    _transfer_interval = 10
 
     def __init__(self):
         super().__init__()
@@ -532,7 +536,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         while not global_vars.is_system_stopped:
             try:
-                item: TransferQueue = self._queue.get(timeout=self._transfer_interval)
+                item: TransferQueue = self._queue.get(timeout=self._queue_timeout)
                 if item:
                     task = item.task
                     if not task:
@@ -593,6 +597,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     fail_num = 0
                     # 标记为新队列
                     __queue_start = True
+
+                # 等待一定时间，以让其他任务加入队列
+                sleep(self._transfer_interval)
                 continue
             except Exception as e:
                 logger.error(f"整理队列处理出现错误：{e} - {traceback.format_exc()}")
