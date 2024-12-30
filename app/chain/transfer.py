@@ -444,22 +444,21 @@ class TransferChain(ChainBase, metaclass=Singleton):
             'download_hash': task.download_hash,
         })
 
-        # 全部整理成功时
-        if self.jobview.is_success(task):
-            # 移动模式删除空目录
-            if transferinfo.transfer_type in ["move"]:
-                # 所有成功的业务
-                tasks = self.jobview.success_tasks(task.mediainfo, task.meta.begin_season)
-                for t in tasks:
-                    # 下载器hash
-                    if t.download_hash:
-                        if self.remove_torrents(t.download_hash, downloader=t.downloader):
-                            logger.info(f"移动模式删除种子成功：{t.download_hash} ")
-                    # 删除残留目录
-                    if t.fileitem:
-                        self.storagechain.delete_media_file(t.fileitem, delete_self=False)
-
         with task_lock:
+            # 全部整理成功时
+            if self.jobview.is_success(task):
+                # 移动模式删除空目录
+                if transferinfo.transfer_type in ["move"]:
+                    # 所有成功的业务
+                    tasks = self.jobview.success_tasks(task.mediainfo, task.meta.begin_season)
+                    for t in tasks:
+                        # 下载器hash
+                        if t.download_hash:
+                            if self.remove_torrents(t.download_hash, downloader=t.downloader):
+                                logger.info(f"移动模式删除种子成功：{t.download_hash} ")
+                        # 删除残留目录
+                        if t.fileitem:
+                            self.storagechain.delete_media_file(t.fileitem, delete_self=False)
             # 整理完成且有成功的任务时
             if self.jobview.is_finished(task):
                 # 发送通知
@@ -577,8 +576,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                          text=__process_msg,
                                          key=ProgressKey.FileTransfer)
                     # 移除已完成的任务
-                    if self.jobview.is_done(task):
-                        self.jobview.remove_job(task)
+                    with task_lock:
+                        if self.jobview.is_done(task):
+                            self.jobview.remove_job(task)
             except queue.Empty:
                 if not __queue_start:
                     # 结束进度
