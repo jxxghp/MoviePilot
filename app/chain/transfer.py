@@ -34,6 +34,7 @@ from app.utils.string import StringUtils
 
 downloader_lock = threading.Lock()
 job_lock = threading.Lock()
+task_lock = threading.Lock()
 
 
 class JobManager:
@@ -460,31 +461,35 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         # 整理完成且有成功的任务时
         if self.jobview.is_finished(task):
-            # 发送通知
-            if transferinfo.need_notify:
-                se_str = None
-                if task.mediainfo.type == MediaType.TV:
-                    season_episodes = self.jobview.season_episodes(task.mediainfo, task.meta.begin_season)
-                    if season_episodes:
-                        se_str = f"{task.meta.season} {StringUtils.format_ep(season_episodes)}"
-                    else:
-                        se_str = f"{task.meta.season}"
-                # 更新文件数量
-                transferinfo.file_count = self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
-                # 更新文件大小
-                transferinfo.total_size = self.jobview.size(task.mediainfo,
-                                                            task.meta.begin_season) or task.fileitem.size
-                self.send_transfer_message(meta=task.meta,
-                                           mediainfo=task.mediainfo,
-                                           transferinfo=transferinfo,
-                                           season_episode=se_str)
-            # 刮削事件
-            if transferinfo.need_scrape:
-                self.eventmanager.send_event(EventType.MetadataScrape, {
-                    'meta': task.meta,
-                    'mediainfo': task.mediainfo,
-                    'fileitem': transferinfo.target_diritem
-                })
+            with task_lock:
+                # 发送通知
+                if transferinfo.need_notify:
+                    se_str = None
+                    if task.mediainfo.type == MediaType.TV:
+                        season_episodes = self.jobview.season_episodes(task.mediainfo, task.meta.begin_season)
+                        if season_episodes:
+                            se_str = f"{task.meta.season} {StringUtils.format_ep(season_episodes)}"
+                        else:
+                            se_str = f"{task.meta.season}"
+                    # 更新文件数量
+                    transferinfo.file_count = self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
+                    # 更新文件大小
+                    transferinfo.total_size = self.jobview.size(task.mediainfo,
+                                                                task.meta.begin_season) or task.fileitem.size
+                    self.send_transfer_message(meta=task.meta,
+                                               mediainfo=task.mediainfo,
+                                               transferinfo=transferinfo,
+                                               season_episode=se_str)
+                # 刮削事件
+                if transferinfo.need_scrape:
+                    self.eventmanager.send_event(EventType.MetadataScrape, {
+                        'meta': task.meta,
+                        'mediainfo': task.mediainfo,
+                        'fileitem': transferinfo.target_diritem
+                    })
+
+                # 移除已完成的任务
+                self.jobview.remove_job(task)
 
         return True, ""
 
@@ -497,7 +502,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
         if not task:
             return
         # 维护整理任务视图
-        self.jobview.add_task(task)
+        with task_lock:
+            self.jobview.add_task(task)
         # 添加到队列
         self._queue.put(TransferQueue(
             task=task,
