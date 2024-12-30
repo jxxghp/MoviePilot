@@ -26,12 +26,11 @@ from app.helper.format import FormatParser
 from app.helper.progress import ProgressHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem, TransferDirectoryConf, \
-    TransferTask, TransferQueue
+    TransferTask, TransferQueue, TransferJob, TransferJobTask
 from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
     SystemConfigKey
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
-from schemas import TransferJob, TransferJobTask
 
 downloader_lock = threading.Lock()
 job_lock = threading.Lock()
@@ -109,7 +108,7 @@ class JobManager:
         """
         if not any([task, task.meta, task.fileitem]):
             return
-        with (job_lock):
+        with job_lock:
             __mediaid__ = self.__get_id(task)
             if __mediaid__ not in self._job_view:
                 self._job_view[__mediaid__] = TransferJob(
@@ -124,6 +123,9 @@ class JobManager:
                     )]
                 )
             else:
+                # 不重复添加任务
+                if any([t.fileitem == task.fileitem for t in self._job_view[__mediaid__].tasks]):
+                    return
                 self._job_view[__mediaid__].tasks.append(
                     TransferJobTask(
                         fileitem=task.fileitem,
@@ -361,7 +363,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
     _transfer_thread = None
 
     # 文件整理检查间隔（秒）
-    _transfer_interval = 10
+    _transfer_interval = 15
 
     def __init__(self):
         super().__init__()
@@ -691,7 +693,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         return transferinfo.success, transferinfo.message
 
-    def get_queue_tasks(self) -> List[dict]:
+    def get_queue_tasks(self) -> List[TransferJob]:
         """
         获取整理任务列表
         """
