@@ -459,9 +459,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     if t.fileitem:
                         self.storagechain.delete_media_file(t.fileitem, delete_self=False)
 
-        # 整理完成且有成功的任务时
-        if self.jobview.is_finished(task):
-            with task_lock:
+        with task_lock:
+            # 整理完成且有成功的任务时
+            if self.jobview.is_finished(task):
                 # 发送通知
                 if transferinfo.need_notify:
                     se_str = None
