@@ -5,6 +5,7 @@ import traceback
 from copy import deepcopy
 from pathlib import Path
 from queue import Queue
+from time import sleep
 from typing import List, Optional, Tuple, Union, Dict, Callable
 
 from app import schemas
@@ -26,15 +27,15 @@ from app.helper.format import FormatParser
 from app.helper.progress import ProgressHelper
 from app.log import logger
 from app.schemas import TransferInfo, TransferTorrent, Notification, EpisodeFormat, FileItem, TransferDirectoryConf, \
-    TransferTask, TransferQueue
+    TransferTask, TransferQueue, TransferJob, TransferJobTask
 from app.schemas.types import TorrentStatus, EventType, MediaType, ProgressKey, NotificationType, MessageChannel, \
     SystemConfigKey
 from app.utils.singleton import Singleton
 from app.utils.string import StringUtils
-from schemas import TransferJob, TransferJobTask
 
 downloader_lock = threading.Lock()
 job_lock = threading.Lock()
+task_lock = threading.Lock()
 
 
 class JobManager:
@@ -109,7 +110,7 @@ class JobManager:
         """
         if not any([task, task.meta, task.fileitem]):
             return
-        with (job_lock):
+        with job_lock:
             __mediaid__ = self.__get_id(task)
             if __mediaid__ not in self._job_view:
                 self._job_view[__mediaid__] = TransferJob(
@@ -124,6 +125,9 @@ class JobManager:
                     )]
                 )
             else:
+                # 不重复添加任务
+                if any([t.fileitem == task.fileitem for t in self._job_view[__mediaid__].tasks]):
+                    return
                 self._job_view[__mediaid__].tasks.append(
                     TransferJobTask(
                         fileitem=task.fileitem,
@@ -360,7 +364,10 @@ class TransferChain(ChainBase, metaclass=Singleton):
     # 文件整理线程
     _transfer_thread = None
 
-    # 文件整理检查间隔（秒）
+    # 队列等待时间（秒）
+    _queue_timeout = 5
+
+    # 队列间隔时间（秒）
     _transfer_interval = 10
 
     def __init__(self):
@@ -441,48 +448,51 @@ class TransferChain(ChainBase, metaclass=Singleton):
             'download_hash': task.download_hash,
         })
 
-        # 全部整理成功时
-        if self.jobview.is_success(task):
-            # 移动模式删除空目录
-            if transferinfo.transfer_type in ["move"]:
-                # 所有成功的业务
-                tasks = self.jobview.success_tasks(task.mediainfo, task.meta.begin_season)
-                for t in tasks:
-                    # 下载器hash
-                    if t.download_hash:
-                        if self.remove_torrents(t.download_hash, downloader=t.downloader):
-                            logger.info(f"移动模式删除种子成功：{t.download_hash} ")
-                    # 删除残留目录
-                    if t.fileitem:
-                        self.storagechain.delete_media_file(t.fileitem, delete_self=False)
+        with task_lock:
+            # 全部整理成功时
+            if self.jobview.is_success(task):
+                # 移动模式删除空目录
+                if transferinfo.transfer_type in ["move"]:
+                    # 所有成功的业务
+                    tasks = self.jobview.success_tasks(task.mediainfo, task.meta.begin_season)
+                    for t in tasks:
+                        # 下载器hash
+                        if t.download_hash:
+                            if self.remove_torrents(t.download_hash, downloader=t.downloader):
+                                logger.info(f"移动模式删除种子成功：{t.download_hash} ")
+                        # 删除残留目录
+                        if t.fileitem:
+                            self.storagechain.delete_media_file(t.fileitem, delete_self=False)
+            # 整理完成且有成功的任务时
+            if self.jobview.is_finished(task):
+                # 发送通知
+                if transferinfo.need_notify:
+                    se_str = None
+                    if task.mediainfo.type == MediaType.TV:
+                        season_episodes = self.jobview.season_episodes(task.mediainfo, task.meta.begin_season)
+                        if season_episodes:
+                            se_str = f"{task.meta.season} {StringUtils.format_ep(season_episodes)}"
+                        else:
+                            se_str = f"{task.meta.season}"
+                    # 更新文件数量
+                    transferinfo.file_count = self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
+                    # 更新文件大小
+                    transferinfo.total_size = self.jobview.size(task.mediainfo,
+                                                                task.meta.begin_season) or task.fileitem.size
+                    self.send_transfer_message(meta=task.meta,
+                                               mediainfo=task.mediainfo,
+                                               transferinfo=transferinfo,
+                                               season_episode=se_str)
+                # 刮削事件
+                if transferinfo.need_scrape:
+                    self.eventmanager.send_event(EventType.MetadataScrape, {
+                        'meta': task.meta,
+                        'mediainfo': task.mediainfo,
+                        'fileitem': transferinfo.target_diritem
+                    })
 
-        # 整理完成且有成功的任务时
-        if self.jobview.is_finished(task):
-            # 发送通知
-            if transferinfo.need_notify:
-                se_str = None
-                if task.mediainfo.type == MediaType.TV:
-                    season_episodes = self.jobview.season_episodes(task.mediainfo, task.meta.begin_season)
-                    if season_episodes:
-                        se_str = f"{task.meta.season} {StringUtils.format_ep(season_episodes)}"
-                    else:
-                        se_str = f"{task.meta.season}"
-                # 更新文件数量
-                transferinfo.file_count = self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
-                # 更新文件大小
-                transferinfo.total_size = self.jobview.size(task.mediainfo,
-                                                            task.meta.begin_season) or task.fileitem.size
-                self.send_transfer_message(meta=task.meta,
-                                           mediainfo=task.mediainfo,
-                                           transferinfo=transferinfo,
-                                           season_episode=se_str)
-            # 刮削事件
-            if transferinfo.need_scrape:
-                self.eventmanager.send_event(EventType.MetadataScrape, {
-                    'meta': task.meta,
-                    'mediainfo': task.mediainfo,
-                    'fileitem': transferinfo.target_diritem
-                })
+                # 移除已完成的任务
+                self.jobview.remove_job(task)
 
         return True, ""
 
@@ -495,7 +505,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
         if not task:
             return
         # 维护整理任务视图
-        self.jobview.add_task(task)
+        with task_lock:
+            self.jobview.add_task(task)
         # 添加到队列
         self._queue.put(TransferQueue(
             task=task,
@@ -525,7 +536,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         while not global_vars.is_system_stopped:
             try:
-                item: TransferQueue = self._queue.get(timeout=self._transfer_interval)
+                item: TransferQueue = self._queue.get(timeout=self._queue_timeout)
                 if item:
                     task = item.task
                     if not task:
@@ -569,8 +580,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                          text=__process_msg,
                                          key=ProgressKey.FileTransfer)
                     # 移除已完成的任务
-                    if self.jobview.is_done(task):
-                        self.jobview.remove_job(task)
+                    with task_lock:
+                        if self.jobview.is_done(task):
+                            self.jobview.remove_job(task)
             except queue.Empty:
                 if not __queue_start:
                     # 结束进度
@@ -585,6 +597,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     fail_num = 0
                     # 标记为新队列
                     __queue_start = True
+
+                # 等待一定时间，以让其他任务加入队列
+                sleep(self._transfer_interval)
                 continue
             except Exception as e:
                 logger.error(f"整理队列处理出现错误：{e} - {traceback.format_exc()}")
@@ -691,7 +706,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         return transferinfo.success, transferinfo.message
 
-    def get_queue_tasks(self) -> List[dict]:
+    def get_queue_tasks(self) -> List[TransferJob]:
         """
         获取整理任务列表
         """
