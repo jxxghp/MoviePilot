@@ -6,6 +6,7 @@ from threading import Lock
 from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from cachetools import TTLCache
 from watchdog.events import FileSystemEventHandler, FileSystemMovedEvent, FileSystemEvent
 from watchdog.observers.polling import PollingObserver
 
@@ -66,6 +67,9 @@ class Monitor(metaclass=Singleton):
 
     # 存储过照间隔（分钟）
     _snapshot_interval = 5
+
+    # TTL缓存，10秒钟有效
+    _cache = TTLCache(maxsize=1024, ttl=10)
 
     def __init__(self):
         super().__init__()
@@ -215,6 +219,10 @@ class Monitor(metaclass=Singleton):
         """
         # 全程加锁
         with lock:
+            # TTL缓存控重
+            if self._cache.get(str(event_path)):
+                return
+            self._cache[str(event_path)] = True
             try:
                 # 开始整理
                 self.transferchain.do_transfer(

@@ -364,11 +364,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
     # 文件整理线程
     _transfer_thread = None
 
-    # 队列等待时间（秒）
-    _queue_timeout = 5
-
     # 队列间隔时间（秒）
-    _transfer_interval = 10
+    _transfer_interval = 15
 
     def __init__(self):
         super().__init__()
@@ -536,7 +533,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         while not global_vars.is_system_stopped:
             try:
-                item: TransferQueue = self._queue.get(timeout=self._queue_timeout)
+                item: TransferQueue = self._queue.get(block=False)
                 if item:
                     task = item.task
                     if not task:
