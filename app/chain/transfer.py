@@ -1010,7 +1010,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
             if not force:
                 transferd = self.transferhis.get_by_src(file_item.path, storage=file_item.storage)
                 if transferd:
-                    all_success = False
+                    if not transferd.status:
+                        all_success = False
                     logger.info(f"{file_item.path} 已整理过，如需重新处理，请删除整理记录。")
                     err_msgs.append(f"{file_item.name} 已整理过")
                     fail_num += 1
