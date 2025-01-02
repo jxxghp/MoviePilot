@@ -1,9 +1,10 @@
 import platform
+import re
 import threading
 import traceback
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from cachetools import TTLCache
@@ -217,12 +218,35 @@ class Monitor(metaclass=Singleton):
         :param event_path: 事件文件路径
         :param file_size: 文件大小
         """
+
+        def __is_bluray_sub(_path: Path) -> bool:
+            """
+            判断是否蓝光原盘目录内的子目录或文件
+            """
+            return True if re.search(r"BDMV[/\\]STREAM", str(_path), re.IGNORECASE) else False
+
+        def __get_bluray_dir(_path: Path) -> Optional[Path]:
+            """
+            获取蓝光原盘BDMV目录的上级目录
+            """
+            for p in _path.parents:
+                if p.name == "BDMV":
+                    return p.parent
+            return None
+
         # 全程加锁
         with lock:
+            # 蓝光原盘文件处理
+            if __is_bluray_sub(event_path):
+                event_path = __get_bluray_dir(event_path)
+                if not event_path:
+                    return
+
             # TTL缓存控重
             if self._cache.get(str(event_path)):
                 return
             self._cache[str(event_path)] = True
+
             try:
                 # 开始整理
                 self.transferchain.do_transfer(
