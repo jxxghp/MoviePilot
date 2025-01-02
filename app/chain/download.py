@@ -527,8 +527,8 @@ class DownloadChain(ChainBase):
                     downloaded_list.append(context)
 
         # 电视剧整季匹配
-        logger.info(f"开始匹配电视剧整季：{no_exists}")
         if no_exists:
+            logger.info(f"开始匹配电视剧整季：{no_exists}")
             # 先把整季缺失的拿出来，看是否刚好有所有季都满足的种子 {tmdbid: [seasons]}
             need_seasons: Dict[int, list] = {}
             for need_mid, need_tv in no_exists.items():
@@ -631,8 +631,8 @@ class DownloadChain(ChainBase):
                                     # 全部下载完成
                                     break
         # 电视剧季内的集匹配
-        logger.info(f"开始电视剧完整集匹配：{no_exists}")
         if no_exists:
+            logger.info(f"开始电视剧完整集匹配：{no_exists}")
             # TMDBID列表
             need_tv_list = list(no_exists)
             for need_mid in need_tv_list:
@@ -701,8 +701,8 @@ class DownloadChain(ChainBase):
                                     logger.info(f"季 {need_season} 剩余需要集：{need_episodes}")
 
         # 仍然缺失的剧集，从整季中选择需要的集数文件下载，仅支持QB和TR
-        logger.info(f"开始电视剧多集拆包匹配：{no_exists}")
         if no_exists:
+            logger.info(f"开始电视剧多集拆包匹配：{no_exists}")
             # TMDBID列表
             no_exists_list = list(no_exists)
             for need_mid in no_exists_list:
