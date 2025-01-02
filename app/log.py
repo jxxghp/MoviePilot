@@ -142,12 +142,6 @@ class LoggerManager:
         # 创建新实例
         _logger = logging.getLogger(log_file_path.stem)
 
-        # if log_settings.DEBUG:
-        #     _logger.setLevel(logging.DEBUG)
-        # else:
-        #     loglevel = getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO)
-        #     _logger.setLevel(loglevel)
-
         # 移除已有的 handler，避免重复添加
         for handler in _logger.handlers:
             _logger.removeHandler(handler)
