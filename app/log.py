@@ -5,15 +5,19 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 import click
-from pydantic import BaseSettings
+from pydantic import BaseSettings, BaseModel
 
 from app.utils.system import SystemUtils
 
 
-class LogSettings(BaseSettings):
+class LogConfigModel(BaseModel):
     """
-    日志设置
+    Pydantic 配置模型，描述所有配置项及其类型和默认值
     """
+
+    class Config:
+        extra = "ignore"  # 忽略未定义的配置项
+
     # 配置文件目录
     CONFIG_DIR: Optional[str] = None
     # 是否为调试模式
@@ -28,6 +32,12 @@ class LogSettings(BaseSettings):
     LOG_CONSOLE_FORMAT: str = "%(leveltext)s%(message)s"
     # 文件日志格式
     LOG_FILE_FORMAT: str = "【%(levelname)s】%(asctime)s - %(message)s"
+
+
+class LogSettings(BaseSettings, LogConfigModel):
+    """
+    日志设置类
+    """
 
     @property
     def CONFIG_PATH(self):
@@ -132,11 +142,11 @@ class LoggerManager:
         # 创建新实例
         _logger = logging.getLogger(log_file_path.stem)
 
-        if log_settings.DEBUG:
-            _logger.setLevel(logging.DEBUG)
-        else:
-            loglevel = getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO)
-            _logger.setLevel(loglevel)
+        # if log_settings.DEBUG:
+        #     _logger.setLevel(logging.DEBUG)
+        # else:
+        #     loglevel = getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO)
+        #     _logger.setLevel(loglevel)
 
         # 移除已有的 handler，避免重复添加
         for handler in _logger.handlers:
@@ -170,10 +180,15 @@ class LoggerManager:
         """
         # 获取调用者文件名和插件名
         caller_name, plugin_name = self.__get_caller()
+        # 插件日志等级
+        # plugin_log_level = None
         # 区分插件日志
         if plugin_name:
             # 使用插件日志文件
             logfile = Path("plugins") / f"{plugin_name}.log"
+            # Todo: 获取插件的日志等级，不存在则用None，后续调整为使用全局的日志等级，支持每个插件独立设置日志等级，考虑增加数据库字段更好
+            # if not log_settings.DEBUG:
+            #     plugin_log_level = PluginDataOper().get_data(plugin_name, "log_level")
         else:
             # 使用默认日志文件
             logfile = self._default_log_file
@@ -185,6 +200,18 @@ class LoggerManager:
             self._loggers[logfile] = _logger
         # 调用logger的方法打印日志
         if hasattr(_logger, method):
+            # 全局DEBUG模式
+            if log_settings.DEBUG:
+                _logger.setLevel(logging.DEBUG)
+
+            # TODO: 允许插件设置独立的日志级别，支持每个插件独立设置日志级别，用于单个插件的调试，不必影响全局日志级别，产生大量无用日志
+            # elif plugin_log_level and getattr(logging, plugin_log_level.upper()):
+            #     _logger.setLevel(plugin_log_level.upper())
+
+            # 全局日志等级
+            else:
+                loglevel = getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO)
+                _logger.setLevel(loglevel)
             log_method = getattr(_logger, method)
             log_method(f"{caller_name} - {msg}", *args, **kwargs)
 
