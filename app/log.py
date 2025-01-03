@@ -5,15 +5,19 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 import click
-from pydantic import BaseSettings
+from pydantic import BaseSettings, BaseModel
 
 from app.utils.system import SystemUtils
 
 
-class LogSettings(BaseSettings):
+class LogConfigModel(BaseModel):
     """
-    日志设置
+    Pydantic 配置模型，描述所有配置项及其类型和默认值
     """
+
+    class Config:
+        extra = "ignore"  # 忽略未定义的配置项
+
     # 配置文件目录
     CONFIG_DIR: Optional[str] = None
     # 是否为调试模式
@@ -28,6 +32,12 @@ class LogSettings(BaseSettings):
     LOG_CONSOLE_FORMAT: str = "%(leveltext)s%(message)s"
     # 文件日志格式
     LOG_FILE_FORMAT: str = "【%(levelname)s】%(asctime)s - %(message)s"
+
+
+class LogSettings(BaseSettings, LogConfigModel):
+    """
+    日志设置类
+    """
 
     @property
     def CONFIG_PATH(self):
@@ -124,7 +134,8 @@ class LoggerManager:
     def __setup_logger(log_file: str):
         """
         设置日志
-        log_file：日志文件相对路径
+
+        :param log_file：日志文件相对路径
         """
         log_file_path = log_settings.LOG_PATH / log_file
         log_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,6 +145,8 @@ class LoggerManager:
 
         if log_settings.DEBUG:
             _logger.setLevel(logging.DEBUG)
+
+        # 全局日志等级
         else:
             loglevel = getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO)
             _logger.setLevel(loglevel)
@@ -162,6 +175,21 @@ class LoggerManager:
 
         return _logger
 
+    def update_loggers(self):
+        """
+        更新日志实例
+        """
+        _new_loggers: Dict[str, Any] = {}
+        for log_file, _logger in self._loggers.items():
+            # 移除已有的 handler，避免重复添加
+            for handler in _logger.handlers:
+                _logger.removeHandler(handler)
+            # 重新设置日志实例
+            _new_logger = self.__setup_logger(log_file=log_file)
+            _new_loggers[log_file] = _new_logger
+
+        self._loggers = _new_loggers
+
     def logger(self, method: str, msg: str, *args, **kwargs):
         """
         获取模块的logger
@@ -181,7 +209,7 @@ class LoggerManager:
         # 获取调用者的模块的logger
         _logger = self._loggers.get(logfile)
         if not _logger:
-            _logger = self.__setup_logger(logfile)
+            _logger = self.__setup_logger(log_file=logfile)
             self._loggers[logfile] = _logger
         # 调用logger的方法打印日志
         if hasattr(_logger, method):
