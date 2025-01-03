@@ -423,6 +423,11 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             results[k] = self.update_setting(k, v)
             if hasattr(log_settings, k):
                 log_updated = True
+
+            if k in ["PLUGIN_AUTO_RELOAD", "DEV"]:
+                # 解决顶层循环导入问题
+                from app.core.plugin import PluginManager
+                PluginManager().reload_monitor()
         # 本次更新存在日志配置项更新，需要重新加载日志配置
         if log_updated:
             logger.update_loggers()
