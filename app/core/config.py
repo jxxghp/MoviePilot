@@ -418,19 +418,21 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         更新多个配置项
         """
         results = {}
-        log_updated = False
+        log_updated, plugin_monitor_updated = False, False
         for k, v in env.items():
             results[k] = self.update_setting(k, v)
             if hasattr(log_settings, k):
                 log_updated = True
-
             if k in ["PLUGIN_AUTO_RELOAD", "DEV"]:
-                # 解决顶层循环导入问题
-                from app.core.plugin import PluginManager
-                PluginManager().reload_monitor()
+                plugin_monitor_updated = True
         # 本次更新存在日志配置项更新，需要重新加载日志配置
         if log_updated:
             logger.update_loggers()
+        # 本次更新存在插件监控配置项更新，需要重新加载插件监控
+        if plugin_monitor_updated:
+            # 解决顶层循环导入问题
+            from app.core.plugin import PluginManager
+            PluginManager().reload_monitor()
         return results
 
     @property
