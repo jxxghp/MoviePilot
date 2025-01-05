@@ -220,11 +220,23 @@ class PluginManager(metaclass=Singleton):
             self._running_plugins = {}
         logger.info("插件停止完成")
 
+    def reload_monitor(self):
+        """
+        重新加载插件文件修改监测
+        """
+        if settings.DEV or settings.PLUGIN_AUTO_RELOAD:
+            if self._observer and self._observer.is_alive():
+                logger.info("插件文件修改监测已经在运行中...")
+            else:
+                self.__start_monitor()
+        else:
+            self.stop_monitor()
+
     def __start_monitor(self):
         """
-        开发者模式下监测插件文件修改
+        启用监测插件文件修改监测
         """
-        logger.info("开发者模式下开始监测插件文件修改...")
+        logger.info("开始监测插件文件修改...")
         monitor_handler = PluginMonitorHandler()
         self._observer = Observer()
         self._observer.schedule(monitor_handler, str(settings.ROOT_PATH / "app" / "plugins"), recursive=True)
@@ -232,14 +244,16 @@ class PluginManager(metaclass=Singleton):
 
     def stop_monitor(self):
         """
-        停止监测插件修改
+        停止监测插件文件修改监测
         """
         # 停止监测
-        if self._observer:
+        if self._observer and self._observer.is_alive():
             logger.info("正在停止插件文件修改监测...")
             self._observer.stop()
             self._observer.join()
             logger.info("插件文件修改监测停止完成")
+        else:
+            logger.info("未启用插件文件修改监测，无需停止")
 
     @staticmethod
     def __stop_plugin(plugin: Any):
