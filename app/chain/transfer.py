@@ -487,7 +487,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     self.eventmanager.send_event(EventType.MetadataScrape, {
                         'meta': task.meta,
                         'mediainfo': task.mediainfo,
-                        'fileitem': transferinfo.target_diritem
+                        'fileitem': transferinfo.target_diritem,
+                        'overwrite': True if task.manual else False
                     })
 
                 # 移除已完成的任务
@@ -894,7 +895,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     library_type_folder: bool = None, library_category_folder: bool = None,
                     season: int = None, epformat: EpisodeFormat = None, min_filesize: int = 0,
                     downloader: str = None, download_hash: str = None,
-                    force: bool = False, background: bool = True) -> Tuple[bool, str]:
+                    force: bool = False, background: bool = True,
+                    manual: bool = False) -> Tuple[bool, str]:
         """
         执行一个复杂目录的整理操作
         :param fileitem: 文件项
@@ -914,6 +916,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         :param download_hash: 下载记录hash
         :param force: 是否强制整理
         :param background: 是否后台运行
+        :param manual: 是否手动整理
         返回：成功标识，错误信息
         """
 
@@ -1091,7 +1094,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 library_category_folder=library_category_folder,
                 downloader=downloader,
                 download_hash=download_hash,
-                download_history=download_history
+                download_history=download_history,
+                manual=manual
             )
             if background:
                 self.put_to_queue(
@@ -1207,7 +1211,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                              mediainfo=mediainfo,
                                              download_hash=history.download_hash,
                                              force=True,
-                                             background=False)
+                                             background=False,
+                                             manual=True)
             if not state:
                 return False, errmsg
 
@@ -1276,7 +1281,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 library_type_folder=library_type_folder,
                 library_category_folder=library_category_folder,
                 force=force,
-                background=background
+                background=background,
+                manual=True
             )
             if not state:
                 return False, errmsg
@@ -1297,7 +1303,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                              library_type_folder=library_type_folder,
                                              library_category_folder=library_category_folder,
                                              force=force,
-                                             background=background)
+                                             background=background,
+                                             manual=True)
             return state, errmsg
 
     def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo,

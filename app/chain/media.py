@@ -307,6 +307,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         fileitem: FileItem = event_data.get("fileitem")
         meta: MetaBase = event_data.get("meta")
         mediainfo: MediaInfo = event_data.get("mediainfo")
+        overwrite = event_data.get("overwrite", False)
         if not fileitem:
             return
         # 刮削锁
@@ -316,7 +317,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             scraping_files.append(fileitem.path)
         try:
             # 执行刮削
-            self.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
+            self.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo, overwrite=overwrite)
         finally:
             # 释放锁
             with scraping_lock:

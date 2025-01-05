@@ -62,6 +62,7 @@ class TransferTask(BaseModel):
     downloader: Optional[str] = None
     download_hash: Optional[str] = None
     download_history: Optional[DownloadHistory] = None
+    manual: Optional[bool] = False
 
     def to_dict(self):
         """
