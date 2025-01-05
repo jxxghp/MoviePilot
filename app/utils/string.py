@@ -17,6 +17,11 @@ _special_domains = [
     'pt.ecust.pp.ua',
 ]
 
+# 内置版本号转换字典
+_version_map = {"stable": -1, "rc": -2, "beta": -3, "alpha": -4}
+# 不符合的版本号
+_other_version = -5
+
 
 class StringUtils:
 
@@ -740,6 +745,31 @@ class StringUtils:
         return ''.join(common_prefix)
 
     @staticmethod
+    def preprocess_version(version: str) -> list:
+        """
+        预处理版本号，去除首尾空字符串与换行符，去除开头大小写v，并拆分版本号
+        """
+        return re.split(r'[.-]', version.strip().lstrip('vV'))
+
+    @staticmethod
+    def conversion_version(version_list) -> list:
+        """
+        英文字符转换为数字
+
+        :param version_list : 版本号列表，格式：['1', '2', '3', 'beta']
+        """
+        result = []
+        for item in version_list:
+            # stable = -1，rc = -2，beta = -3，alpha = -4
+            if item.isdigit():
+                result.append(int(item))
+            # 其余不符合的，都为-5
+            else:
+                value = _version_map.get(item, _other_version)
+                result.append(value)
+        return result
+
+    @staticmethod
     def compare_version(v1: str, v2: str, compare_type, verbose: bool = False) \
             -> Tuple[Optional[bool], str | Exception] | Optional[bool]:
         """
@@ -756,31 +786,6 @@ class StringUtils:
         'lt' or '<'  ：来源 < 目标
         :return
         """
-        def preprocess_version(version: str) -> list:
-            """
-            预处理版本号，去除首尾空字符串与换行符，去除开头大小写v，并拆分版本号
-            """
-            return re.split(r'[.-]', version.strip().lstrip('vV'))
-
-        def conversion_version(version_list) -> list:
-            """
-            英文字符转换为数字
-            stable = -1，rc = -2，beta = -3，alpha = -4
-            其余不符合的，都为-5
-            """
-            # 内置版本号转换字典
-            version_map = {"stable": -1, "rc": -2, "beta": -3, "alpha": -4}
-            # 不符合的版本号
-            other = -5
-            result = []
-            for item in version_list:
-                if item.isdigit():
-                    result.append(int(item))
-                else:
-                    value = version_map.get(item, other)
-                    result.append(value)
-            return result
-
         try:
             if not v1 or not v2:
                 raise ValueError("要比较的版本号不全")
@@ -790,19 +795,19 @@ class StringUtils:
                 raise ValueError(f"设置的版本比对模式 {compare_type} 不是有效的模式！")
 
             # 拆分获取版本号各个分段值做成列表
-            input_ver_list = conversion_version(preprocess_version(version=v1))
-            targe_ver_list = conversion_version(preprocess_version(version=v2))
+            v1_list = StringUtils.conversion_version(StringUtils.preprocess_version(version=v1))
+            v2_list = StringUtils.conversion_version(StringUtils.preprocess_version(version=v2))
 
             # 补全版本号位置，保持长度一致
-            max_length = max(len(input_ver_list), len(targe_ver_list))
-            input_ver_list += [0] * (max_length - len(input_ver_list))
-            targe_ver_list += [0] * (max_length - len(targe_ver_list))
+            max_length = max(len(v1_list), len(v2_list))
+            v1_list += [0] * (max_length - len(v1_list))
+            v2_list += [0] * (max_length - len(v2_list))
 
             ver_comparison, ver_comparison_err = None, None
-            for i, t in zip(input_ver_list, targe_ver_list):
+            for v1_value, v2_value in zip(v1_list, v2_list):
                 # 来源==目标
                 if compare_type in {"eq", "=="}:
-                    if i != t:
+                    if v1_value != v2_value:
                         ver_comparison, ver_comparison_err = None, "不等于"
                         break
                     else:
@@ -810,10 +815,10 @@ class StringUtils:
 
                 # 来源>=目标
                 elif compare_type in {"ge", ">="}:
-                    if i > t:
+                    if v1_value > v2_value:
                         ver_comparison, ver_comparison_err = "大于", None
                         break
-                    elif i < t:
+                    elif v1_value < v2_value:
                         ver_comparison, ver_comparison_err = None, "小于"
                         break
                     else:
@@ -821,10 +826,10 @@ class StringUtils:
 
                 # 来源>目标
                 elif compare_type in {"gt", ">"}:
-                    if i > t:
+                    if v1_value > v2_value:
                         ver_comparison, ver_comparison_err = "大于", None
                         break
-                    elif i < t:
+                    elif v1_value < v2_value:
                         ver_comparison, ver_comparison_err = None, "小于"
                         break
                     else:
@@ -832,10 +837,10 @@ class StringUtils:
 
                 # 来源<=目标
                 elif compare_type in {"le", "<="}:
-                    if i > t:
+                    if v1_value > v2_value:
                         ver_comparison, ver_comparison_err = None, "大于"
                         break
-                    elif i < t:
+                    elif v1_value < v2_value:
                         ver_comparison, ver_comparison_err = "小于", None
                         break
                     else:
@@ -843,10 +848,10 @@ class StringUtils:
 
                 # 来源<目标
                 elif compare_type in {"lt", "<"}:
-                    if i > t:
+                    if v1_value > v2_value:
                         ver_comparison, ver_comparison_err = None, "大于"
                         break
-                    elif i < t:
+                    elif v1_value < v2_value:
                         ver_comparison, ver_comparison_err = "小于", None
                         break
                     else:
