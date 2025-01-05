@@ -13,7 +13,7 @@ from app.chain import ChainBase
 from app.chain.bangumi import BangumiChain
 from app.chain.douban import DoubanChain
 from app.chain.tmdb import TmdbChain
-from app.core.config import settings
+from app.core.config import settings, global_vars
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.common import log_execution_time
@@ -105,6 +105,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         # 这里避免区间内连续调用相同来源，因此遍历方案为每页遍历所有推荐来源，再进行页数遍历
         for page in range(1, self.cache_max_pages + 1):
             for method in recommend_methods:
+                if global_vars.is_system_stopped:
+                    return
                 if method in methods_finished:
                     continue
                 logger.debug(f"Fetch {method.__name__} data for page {page}.")
