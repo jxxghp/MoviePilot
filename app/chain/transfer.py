@@ -414,6 +414,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 title=f"{task.mediainfo.title_year} {task.meta.season_episode} 入库失败！",
                 text=f"原因：{transferinfo.message or '未知'}",
                 image=task.mediainfo.get_message_image(),
+                username=task.username,
                 link=settings.MP_DOMAIN('#/history')
             ))
             # 整理失败
@@ -479,7 +480,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     self.send_transfer_message(meta=task.meta,
                                                mediainfo=task.mediainfo,
                                                transferinfo=transferinfo,
-                                               season_episode=se_str)
+                                               season_episode=se_str,
+                                               username=task.username)
                 # 刮削事件
                 if transferinfo.need_scrape:
                     self.eventmanager.send_event(EventType.MetadataScrape, {
@@ -608,23 +610,29 @@ class TransferChain(ChainBase, metaclass=Singleton):
         """
         # 识别
         if not task.mediainfo:
+            mediainfo = None
             download_history = task.download_history
-            # 识别媒体信息
-            if download_history and (download_history.tmdbid or download_history.doubanid):
-                # 下载记录中已存在识别信息
-                mediainfo: MediaInfo = self.recognize_media(mtype=MediaType(download_history.type),
-                                                            tmdbid=download_history.tmdbid,
-                                                            doubanid=download_history.doubanid)
-                if mediainfo:
-                    # 更新自定义媒体类别
-                    if download_history.media_category:
-                        mediainfo.category = download_history.media_category
+            # 下载用户
+            if download_history:
+                task.username = download_history.username
+                # 识别媒体信息
+                if download_history.tmdbid or download_history.doubanid:
+                    # 下载记录中已存在识别信息
+                    mediainfo: MediaInfo = self.recognize_media(mtype=MediaType(download_history.type),
+                                                                tmdbid=download_history.tmdbid,
+                                                                doubanid=download_history.doubanid)
+                    if mediainfo:
+                        # 更新自定义媒体类别
+                        if download_history.media_category:
+                            mediainfo.category = download_history.media_category
             else:
                 # 识别媒体信息
                 mediainfo = self.mediachain.recognize_by_meta(task.meta)
+
             # 更新媒体图片
             if mediainfo:
                 self.obtain_images(mediainfo=mediainfo)
+
             if not mediainfo:
                 # 新增整理失败历史记录
                 his = self.transferhis.add_fail(
@@ -638,6 +646,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     mtype=NotificationType.Manual,
                     title=f"{task.fileitem.name} 未识别到媒体信息，无法入库！",
                     text=f"回复：```\n/redo {his.id} [tmdbid]|[类型]\n``` 手动识别整理。",
+                    username=task.username,
                     link=settings.MP_DOMAIN('#/history')
                 ))
                 # 任务失败，直接移除task
@@ -1292,7 +1301,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
             return state, errmsg
 
     def send_transfer_message(self, meta: MetaBase, mediainfo: MediaInfo,
-                              transferinfo: TransferInfo, season_episode: str = None):
+                              transferinfo: TransferInfo, season_episode: str = None, username: str = None):
         """
         发送入库成功的消息
         """
@@ -1313,4 +1322,5 @@ class TransferChain(ChainBase, metaclass=Singleton):
         self.post_message(Notification(
             mtype=NotificationType.Organize,
             title=msg_title, text=msg_str, image=mediainfo.get_message_image(),
+            username=username,
             link=settings.MP_DOMAIN('#/history')))

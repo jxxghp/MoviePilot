@@ -58,6 +58,7 @@ class TransferTask(BaseModel):
     library_type_folder: Optional[bool] = False
     library_category_folder: Optional[bool] = False
     episodes_info: Optional[List[TmdbEpisode]] = None
+    username: Optional[str] = None
     downloader: Optional[str] = None
     download_hash: Optional[str] = None
     download_history: Optional[DownloadHistory] = None
