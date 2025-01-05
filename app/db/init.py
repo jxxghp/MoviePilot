@@ -138,7 +138,7 @@ def upgrade_db_or_downgrade_db(script_num_ver: str, script_hash_ver: str, script
         if db_hash_ver == script_hash_ver:
             return 'no_need'
         # 检查脚本数字版本号 >= 当前的系统版本号，>= 则为升级，< 则为降级
-        status = StringUtils.compare_version(script_num_ver, db_num_ver, ">=")
+        status = StringUtils.compare_version(script_num_ver, ">=", db_num_ver)
         return "upgrade" if status is True else "downgrade"
     except Exception as e:
         raise e
@@ -209,7 +209,7 @@ def __get_update_db_version(script_vers: dict) -> Tuple[Optional[str], ...]:
     status = None
     for script_num_ver, script_hash_version in script_vers.items():
         # 判断当前版本号是否小于等于 APP_VERSION，从而找到最近的脚本版本号
-        if StringUtils.compare_version(script_num_ver, APP_VERSION, "<="):
+        if StringUtils.compare_version(script_num_ver, "<=", APP_VERSION):
             status = True
             break
     return script_num_ver if status else None, script_hash_version if status else None

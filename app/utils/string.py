@@ -770,7 +770,7 @@ class StringUtils:
         return result
 
     @staticmethod
-    def compare_version(v1: str, v2: str, compare_type, verbose: bool = False) \
+    def compare_version(v1: str, compare_type: str, v2: str, verbose: bool = False) \
             -> Tuple[Optional[bool], str | Exception] | Optional[bool]:
         """
         比较两个版本号的大小
