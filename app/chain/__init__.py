@@ -504,7 +504,7 @@ class ChainBase(metaclass=ABCMeta):
                 send_orignal = False
                 for action in actions:
                     send_message = copy.deepcopy(message)
-                    if action == "admin":
+                    if action == "admin" and not admin_sended:
                         # 仅发送管理员
                         logger.info(f"{send_message.mtype} 的消息已设置发送给管理员")
                         # 读取管理员消息IDS
@@ -529,7 +529,8 @@ class ChainBase(metaclass=ABCMeta):
                                 continue
                     else:
                         # 按原消息发送全体
-                        send_orignal = True
+                        if not admin_sended:
+                            send_orignal = True
                         break
                     # 按设定发送
                     self.eventmanager.send_event(etype=EventType.NoticeMessage,
