@@ -487,8 +487,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     self.eventmanager.send_event(EventType.MetadataScrape, {
                         'meta': task.meta,
                         'mediainfo': task.mediainfo,
-                        'fileitem': transferinfo.target_diritem,
-                        'overwrite': True if task.manual else False
+                        'fileitem': transferinfo.target_diritem
                     })
 
                 # 移除已完成的任务
@@ -619,9 +618,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 # 识别媒体信息
                 if download_history.tmdbid or download_history.doubanid:
                     # 下载记录中已存在识别信息
-                    mediainfo: MediaInfo = self.recognize_media(mtype=MediaType(download_history.type),
-                                                                tmdbid=download_history.tmdbid,
-                                                                doubanid=download_history.doubanid)
+                    mediainfo: Optional[MediaInfo] = self.recognize_media(mtype=MediaType(download_history.type),
+                                                                          tmdbid=download_history.tmdbid,
+                                                                          doubanid=download_history.doubanid)
                     if mediainfo:
                         # 更新自定义媒体类别
                         if download_history.media_category:
