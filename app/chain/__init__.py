@@ -501,6 +501,7 @@ class ChainBase(metaclass=ABCMeta):
                 actions = notify_action.split(",")
                 # 是否已发送管理员标志
                 admin_sended = False
+                send_orignal = False
                 for action in actions:
                     send_message = copy.deepcopy(message)
                     if action == "admin":
@@ -528,12 +529,14 @@ class ChainBase(metaclass=ABCMeta):
                                 continue
                     else:
                         # 按原消息发送全体
+                        send_orignal = True
                         break
                     # 按设定发送
                     self.eventmanager.send_event(etype=EventType.NoticeMessage,
                                                  data={**send_message.dict(), "type": send_message.mtype})
                     self.run_module("post_message", message=send_message)
-                return
+                if not send_orignal:
+                    return
         # 发送消息事件
         self.eventmanager.send_event(etype=EventType.NoticeMessage, data={**message.dict(), "type": message.mtype})
         # 按原消息发送
