@@ -1,5 +1,5 @@
-import inspect
 import logging
+import sys
 import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -109,27 +109,46 @@ class LoggerManager:
         caller_name = None
         # 调用者插件名称
         plugin_name = None
-        for i in inspect.stack()[3:]:
-            filepath = Path(i.filename)
+
+        try:
+            frame = sys._getframe(3)
+        except (AttributeError, ValueError):
+            # 如果无法获取帧，返回默认值
+            return "log.py", None
+
+        while frame:
+            filepath = Path(frame.f_code.co_filename)
             parts = filepath.parts
+            # 设定调用者文件名称
             if not caller_name:
-                # 设定调用者文件名称
-                if parts[-1] == "__init__.py":
+                if parts[-1] == "__init__.py" and len(parts) >= 2:
                     caller_name = parts[-2]
                 else:
                     caller_name = parts[-1]
+            # 设定调用者插件名称
             if "app" in parts:
                 if not plugin_name and "plugins" in parts:
-                    # 设定调用者插件名称
-                    plugin_name = parts[parts.index("plugins") + 1]
-                    if plugin_name == "__init__.py":
-                        plugin_name = "plugin"
-                    break
+                    try:
+                        plugins_index = parts.index("plugins")
+                        if plugins_index + 1 < len(parts):
+                            plugin_candidate = parts[plugins_index + 1]
+                            if plugin_candidate == "__init__.py":
+                                plugin_name = "plugin"
+                            else:
+                                plugin_name = plugin_candidate
+                            break
+                    except ValueError:
+                        pass
                 if "main.py" in parts:
-                    # 已经到达程序的入口
+                    # 已经到达程序的入口，停止遍历
                     break
             elif len(parts) != 1:
-                # 已经超出程序范围
+                # 已经超出程序范围，停止遍历
+                break
+            # 获取上一个帧
+            try:
+                frame = frame.f_back
+            except AttributeError:
                 break
         return caller_name or "log.py", plugin_name
 
@@ -137,7 +156,6 @@ class LoggerManager:
     def __setup_logger(log_file: str):
         """
         初始化日志实例
-
         :param log_file：日志文件相对路径
         """
         log_file_path = log_settings.LOG_PATH / log_file
@@ -185,7 +203,6 @@ class LoggerManager:
     def __update_logger_handlers(_logger: logging.Logger):
         """
         更新 Logger 的 handler 配置
-
         :param _logger: 需要更新的 Logger 实例
         """
         # 更新现有 handler
