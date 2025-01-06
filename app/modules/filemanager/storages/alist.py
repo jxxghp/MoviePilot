@@ -553,7 +553,7 @@ class Alist(StorageBase, metaclass=Singleton):
         :param new_name: 上传后文件名
         :param task: 是否为任务，默认为False避免未完成上传时对文件进行操作
         """
-        encoded_path = UrlUtils.quote(fileitem.path + path.name)
+        encoded_path = UrlUtils.quote((Path(fileitem.path) / path.name).as_posix())
         headers = self.__get_header_with_token()
         headers.setdefault("Content-Type", "application/octet-stream")
         headers.setdefault("As-Task", str(task).lower())
@@ -569,7 +569,7 @@ class Alist(StorageBase, metaclass=Singleton):
             return
 
         new_item = self.get_item(Path(fileitem.path) / path.name)
-        if new_name and new_name != path.name:
+        if new_item and new_name and new_name != path.name:
             if self.rename(new_item, new_name):
                 return self.get_item(Path(new_item.path).with_name(new_name))
 
