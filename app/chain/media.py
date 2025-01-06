@@ -366,8 +366,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
             """
             if not _fileitem or not _content or not _path:
                 return
-            # 保存文件到临时目录
-            tmp_file = settings.TEMP_PATH / _path.name
+            # 保存文件到临时目录，文件名随机
+            tmp_file = settings.TEMP_PATH / f"{_path.name}.{StringUtils.generate_random_str(10)}"
             tmp_file.write_bytes(_content)
             # 获取文件的父目录
             try:
