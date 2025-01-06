@@ -1,14 +1,15 @@
-from typing import Optional, Union, Tuple, List
+from typing import Optional, Union, Tuple, List, Literal
 
 import transmission_rpc
 from transmission_rpc import Client, Torrent, File
 from transmission_rpc.session import SessionStats, Session
 
 from app.log import logger
-from app.utils.string import StringUtils
+from app.utils.url import UrlUtils
 
 
 class Transmission:
+    _protocol: Literal["http", "https"] = "http"
     _host: str = None
     _port: int = None
     _username: str = None
@@ -28,9 +29,14 @@ class Transmission:
         若不设置参数，则创建配置文件设置的下载器
         """
         if host and port:
-            self._host, self._port = host, port
+            self._protocol, self._host, self._port = kwargs.get("protocol", self._protocol), host, port
         elif host:
-            self._host, self._port = StringUtils.get_domain_address(address=host, prefix=False)
+            result = UrlUtils.parse_url_params(url=host)
+            if result:
+                self._protocol, self._host, self._port, path = result
+            else:
+                logger.error("Transmission配置不正确！")
+                return
         else:
             logger.error("Transmission配置不完整！")
             return
@@ -46,8 +52,9 @@ class Transmission:
         """
         try:
             # 登录
-            logger.info(f"正在连接 transmission：{self._host}:{self._port}")
-            trt = transmission_rpc.Client(host=self._host,
+            logger.info(f"正在连接 transmission：{self._protocol}://{self._host}:{self._port}")
+            trt = transmission_rpc.Client(protocol=self._protocol,
+                                          host=self._host,
                                           port=self._port,
                                           username=self._username,
                                           password=self._password,
