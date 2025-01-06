@@ -682,7 +682,7 @@ class PluginManager(metaclass=Singleton):
         # 相同 ID 的插件保留版本号最大的版本
         max_versions = {}
         for p in all_plugins:
-            if p.id not in max_versions or StringUtils.compare_version(p.plugin_version, max_versions[p.id]) > 0:
+            if p.id not in max_versions or StringUtils.compare_version(p.plugin_version, ">", max_versions[p.id]):
                 max_versions[p.id] = p.plugin_version
         result = [p for p in all_plugins if p.plugin_version == max_versions[p.id]]
         logger.info(f"共获取到 {len(result)} 个线上插件")
@@ -823,7 +823,7 @@ class PluginManager(metaclass=Singleton):
             plugin.has_update = False
             if plugin_static:
                 installed_version = getattr(plugin_static, "plugin_version")
-                if StringUtils.compare_version(installed_version, plugin_info.get("version")) < 0:
+                if StringUtils.compare_version(installed_version, "<", plugin_info.get("version")):
                     # 需要更新
                     plugin.has_update = True
             # 运行状态

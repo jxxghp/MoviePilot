@@ -70,7 +70,7 @@ class ResourceHelper(metaclass=Singleton):
                 local_version = self.siteshelper.indexer_version
             else:
                 continue
-            if StringUtils.compare_version(version, local_version) > 0:
+            if StringUtils.compare_version(version, ">", local_version):
                 logger.info(f"{rname} 资源包有更新，最新版本：v{version}")
             else:
                 continue
