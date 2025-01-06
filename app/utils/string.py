@@ -745,31 +745,6 @@ class StringUtils:
         return ''.join(common_prefix)
 
     @staticmethod
-    def preprocess_version(version: str) -> list:
-        """
-        预处理版本号，去除首尾空字符串与换行符，去除开头大小写v，并拆分版本号
-        """
-        return re.split(r'[.-]', version.strip().lstrip('vV'))
-
-    @staticmethod
-    def conversion_version(version_list) -> list:
-        """
-        英文字符转换为数字
-
-        :param version_list : 版本号列表，格式：['1', '2', '3', 'beta']
-        """
-        result = []
-        for item in version_list:
-            # stable = -1，rc = -2，beta = -3，alpha = -4
-            if item.isdigit():
-                result.append(int(item))
-            # 其余不符合的，都为-5
-            else:
-                value = _version_map.get(item, _other_version)
-                result.append(value)
-        return result
-
-    @staticmethod
     def compare_version(v1: str, compare_type: str, v2: str, verbose: bool = False) \
             -> Tuple[Optional[bool], str | Exception] | Optional[bool]:
         """
@@ -786,6 +761,29 @@ class StringUtils:
         'lt' or '<'  ：来源 < 目标
         :return
         """
+
+        def __preprocess_version(version: str) -> list:
+            """
+            预处理版本号，去除首尾空字符串与换行符，去除开头大小写v，并拆分版本号
+            """
+            return re.split(r'[.-]', version.strip().lstrip('vV'))
+
+        def __conversion_version(version_list) -> list:
+            """
+            英文字符转换为数字
+            :param version_list : 版本号列表，格式：['1', '2', '3', 'beta']
+            """
+            result = []
+            for item in version_list:
+                # stable = -1，rc = -2，beta = -3，alpha = -4
+                if item.isdigit():
+                    result.append(int(item))
+                # 其余不符合的，都为-5
+                else:
+                    value = _version_map.get(item, _other_version)
+                    result.append(value)
+            return result
+
         try:
             if not v1 or not v2:
                 raise ValueError("要比较的版本号不全")
@@ -795,8 +793,8 @@ class StringUtils:
                 raise ValueError(f"设置的版本比对模式 {compare_type} 不是有效的模式！")
 
             # 拆分获取版本号各个分段值做成列表
-            v1_list = StringUtils.conversion_version(StringUtils.preprocess_version(version=v1))
-            v2_list = StringUtils.conversion_version(StringUtils.preprocess_version(version=v2))
+            v1_list = __conversion_version(__preprocess_version(version=v1))
+            v2_list = __conversion_version(__preprocess_version(version=v2))
 
             # 补全版本号位置，保持长度一致
             max_length = max(len(v1_list), len(v2_list))
