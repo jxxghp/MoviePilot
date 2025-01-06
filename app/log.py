@@ -1,5 +1,6 @@
-import inspect
 import logging
+import sys
+import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -95,6 +96,8 @@ class LoggerManager:
     _loggers: Dict[str, Any] = {}
     # 默认日志文件名称
     _default_log_file = "moviepilot.log"
+    # 线程锁
+    _lock = threading.Lock()
 
     @staticmethod
     def __get_caller():
@@ -106,35 +109,53 @@ class LoggerManager:
         caller_name = None
         # 调用者插件名称
         plugin_name = None
-        for i in inspect.stack()[3:]:
-            filepath = Path(i.filename)
+
+        try:
+            frame = sys._getframe(3)
+        except (AttributeError, ValueError):
+            # 如果无法获取帧，返回默认值
+            return "log.py", None
+
+        while frame:
+            filepath = Path(frame.f_code.co_filename)
             parts = filepath.parts
+            # 设定调用者文件名称
             if not caller_name:
-                # 设定调用者文件名称
-                if parts[-1] == "__init__.py":
+                if parts[-1] == "__init__.py" and len(parts) >= 2:
                     caller_name = parts[-2]
                 else:
                     caller_name = parts[-1]
+            # 设定调用者插件名称
             if "app" in parts:
                 if not plugin_name and "plugins" in parts:
-                    # 设定调用者插件名称
-                    plugin_name = parts[parts.index("plugins") + 1]
-                    if plugin_name == "__init__.py":
-                        plugin_name = "plugin"
-                    break
+                    try:
+                        plugins_index = parts.index("plugins")
+                        if plugins_index + 1 < len(parts):
+                            plugin_candidate = parts[plugins_index + 1]
+                            if plugin_candidate == "__init__.py":
+                                plugin_name = "plugin"
+                            else:
+                                plugin_name = plugin_candidate
+                            break
+                    except ValueError:
+                        pass
                 if "main.py" in parts:
-                    # 已经到达程序的入口
+                    # 已经到达程序的入口，停止遍历
                     break
             elif len(parts) != 1:
-                # 已经超出程序范围
+                # 已经超出程序范围，停止遍历
+                break
+            # 获取上一个帧
+            try:
+                frame = frame.f_back
+            except AttributeError:
                 break
         return caller_name or "log.py", plugin_name
 
     @staticmethod
     def __setup_logger(log_file: str):
         """
-        设置日志
-
+        初始化日志实例
         :param log_file：日志文件相对路径
         """
         log_file_path = log_settings.LOG_PATH / log_file
@@ -143,13 +164,8 @@ class LoggerManager:
         # 创建新实例
         _logger = logging.getLogger(log_file_path.stem)
 
-        if log_settings.DEBUG:
-            _logger.setLevel(logging.DEBUG)
-
-        # 全局日志等级
-        else:
-            loglevel = getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO)
-            _logger.setLevel(loglevel)
+        # 设置日志级别
+        _logger.setLevel(LoggerManager.__get_log_level())
 
         # 移除已有的 handler，避免重复添加
         for handler in _logger.handlers:
@@ -179,16 +195,41 @@ class LoggerManager:
         """
         更新日志实例
         """
-        _new_loggers: Dict[str, Any] = {}
-        for log_file, _logger in self._loggers.items():
-            # 移除已有的 handler，避免重复添加
-            for handler in _logger.handlers:
-                _logger.removeHandler(handler)
-            # 重新设置日志实例
-            _new_logger = self.__setup_logger(log_file=log_file)
-            _new_loggers[log_file] = _new_logger
+        with LoggerManager._lock:
+            for _logger in self._loggers.values():
+                self.__update_logger_handlers(_logger)
 
-        self._loggers = _new_loggers
+    @staticmethod
+    def __update_logger_handlers(_logger: logging.Logger):
+        """
+        更新 Logger 的 handler 配置
+        :param _logger: 需要更新的 Logger 实例
+        """
+        # 更新现有 handler
+        for handler in _logger.handlers:
+            try:
+                if isinstance(handler, RotatingFileHandler):
+                    # 更新最大文件大小和备份数量
+                    handler.maxBytes = log_settings.LOG_MAX_FILE_SIZE_BYTES
+                    handler.backupCount = log_settings.LOG_BACKUP_COUNT
+                    # 更新日志文件输出格式
+                    file_formatter = CustomFormatter(log_settings.LOG_FILE_FORMAT)
+                    handler.setFormatter(file_formatter)
+                elif isinstance(handler, logging.StreamHandler):
+                    # 更新控制台输出格式
+                    console_formatter = CustomFormatter(log_settings.LOG_CONSOLE_FORMAT)
+                    handler.setFormatter(console_formatter)
+            except Exception as e:
+                logger.error(f"Failed to update handler: {handler}. Error: {e}")
+        # 更新日志级别
+        _logger.setLevel(LoggerManager.__get_log_level())
+
+    @staticmethod
+    def __get_log_level():
+        """
+        获取当前日志级别
+        """
+        return logging.DEBUG if log_settings.DEBUG else getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO)
 
     def logger(self, method: str, msg: str, *args, **kwargs):
         """
