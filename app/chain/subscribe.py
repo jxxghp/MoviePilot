@@ -6,6 +6,8 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
 
+from cachetools import TTLCache
+
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
@@ -508,7 +510,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             return
 
         # 记录重新识别过的种子
-        _recognize_cached = []
+        _recognize_cached = TTLCache(maxsize=1024, ttl=6 * 3600)
 
         with self._rlock:
             logger.debug(f"match lock acquired at {datetime.now()}")
@@ -572,14 +574,15 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
 
                         # 有自定义识别词时，需要判断是否需要重新识别
                         if subscribe.custom_words:
+                            custom_words_list = subscribe.custom_words.split("\n")
                             _, apply_words = WordsMatcher().prepare(torrent_info.title,
-                                                                    custom_words=subscribe.custom_words.split("\n"))
+                                                                    custom_words=custom_words_list)
                             if apply_words:
                                 logger.info(
                                     f'{torrent_info.site_name} - {torrent_info.title} 因订阅存在自定义识别词，重新识别元数据...')
                                 # 重新识别元数据
                                 torrent_meta = MetaInfo(title=torrent_info.title, subtitle=torrent_info.description,
-                                                        custom_words=subscribe.custom_words)
+                                                        custom_words=custom_words_list)
                                 # 媒体信息需要重新识别
                                 torrent_mediainfo = None
 
@@ -588,8 +591,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                 or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
                             # 避免重复处理
                             _cache_key = f"{torrent_meta.org_string}_{torrent_info.description}"
-                            if _cache_key not in _recognize_cached:
-                                _recognize_cached.append(_cache_key)
+                            if not _recognize_cached.get(_cache_key):
+                                _recognize_cached[_cache_key] = True
                                 # 重新识别媒体信息
                                 torrent_mediainfo = self.recognize_media(meta=torrent_meta)
                                 if torrent_mediainfo:

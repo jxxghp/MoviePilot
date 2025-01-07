@@ -1,4 +1,3 @@
-
 """
     Simple-to-use Python interface to The TVDB's API (thetvdb.com)
 """
@@ -6,19 +5,20 @@
 __author__ = "dbr/Ben"
 __version__ = "3.1.0"
 
-import sys
+import getpass
+import hashlib
+import logging
 import os
+import sys
+import tempfile
 import time
 import types
-import getpass
-import tempfile
 import warnings
-import logging
-import hashlib
+from typing import Optional, Union
 
 import requests
 import requests_cache
-from requests_cache.backends.base import _to_bytes, _DEFAULT_HEADERS
+from requests_cache.backends.base import _to_bytes, _DEFAULT_HEADERS # noqa
 
 IS_PY2 = sys.version_info[0] == 2
 
@@ -176,7 +176,8 @@ class ConsoleUI(BaseUI):
     """Interactively allows the user to select a show from a console based UI
     """
 
-    def _displaySeries(self, allSeries, limit=6):
+    @staticmethod
+    def _displaySeries(allSeries, limit: Optional[int] = 6):
         """Helper function, lists series with corresponding ID
         """
         if limit is not None:
@@ -267,6 +268,7 @@ class ShowContainer(dict):
     """
 
     def __init__(self):
+        super().__init__()
         self._stack = []
         self._lastgc = time.time()
 
@@ -336,42 +338,6 @@ class Show(dict):
 
         Search terms are converted to lower case (unicode) strings.
 
-        # Examples
-
-        These examples assume t is an instance of Tvdb():
-
-        >>> t = Tvdb()
-        >>>
-
-        To search for all episodes of Scrubs with a bit of data
-        containing "my first day":
-
-        >>> t['Scrubs'].search("my first day")
-        [<Episode 01x01 - u'My First Day'>]
-        >>>
-
-        Search for "My Name Is Earl" episode named "Faked His Own Death":
-
-        >>> t['My Name Is Earl'].search('Faked My Own Death', key='episodeName')
-        [<Episode 01x04 - u'Faked My Own Death'>]
-        >>>
-
-        To search Scrubs for all episodes with "mentor" in the episode name:
-
-        >>> t['scrubs'].search('mentor', key='episodeName')
-        [<Episode 01x02 - u'My Mentor'>, <Episode 03x15 - u'My Tormented Mentor'>]
-        >>>
-
-        # Using search results
-
-        >>> results = t['Scrubs'].search("my first")
-        >>> print results[0]['episodeName']
-        My First Day
-        >>> for x in results: print x['episodeName']
-        My First Day
-        My First Step
-        My First Kill
-        >>>
         """
         results = []
         for cur_season in self.values():
@@ -386,6 +352,7 @@ class Season(dict):
     def __init__(self, show=None):
         """The show attribute points to the parent show
         """
+        super().__init__()
         self.show = show
 
     def __repr__(self):
@@ -420,6 +387,7 @@ class Episode(dict):
     def __init__(self, season=None):
         """The season attribute points to the parent season
         """
+        super().__init__()
         self.season = season
 
     def __repr__(self):
@@ -540,7 +508,7 @@ class Tvdb:
             self,
             interactive=False,
             select_first=False,
-            cache=True,
+            cache: Union[str, bool, requests.Session] = True,
             banners=False,
             actors=False,
             custom_ui=None,
@@ -690,7 +658,7 @@ class Tvdb:
             LOG.debug("Using specified requests.Session")
             self.session = cache
             try:
-                self.session.get
+                self.session.get # noqa
             except AttributeError:
                 raise ValueError(
                     (
@@ -776,7 +744,7 @@ class Tvdb:
                     cache_key = self.session.cache.create_key(
                         fake_session_for_key.prepare_request(requests.Request('GET', url))
                     )
-                except Exception:
+                except Exception: # noqa
                     # FIXME: Can this just check for hasattr(self.session, "cache") instead?
                     pass
 
@@ -956,6 +924,7 @@ class Tvdb:
         banners_resp = self._getetsrc(self.config['url_seriesBanner'] % sid)
         banners = {}
         for cur_banner in banners_resp.keys():
+            btype = None
             banners_info = self._getetsrc(self.config['url_seriesBannerInfo'] % (sid, cur_banner))
             for banner_info in banners_info:
                 bid = banner_info.get('id')
@@ -981,31 +950,13 @@ class Tvdb:
                         LOG.debug("Transforming %s to %s" % (k, new_key))
                         new_url = self.config['url_artworkPrefix'] % v
                         banners[btype][btype2][bid][new_key] = new_url
-
-            banners[btype]['raw'] = banners_info
-            self._setShowData(sid, "_banners", banners)
+            if btype:
+                banners[btype]['raw'] = banners_info
+                self._setShowData(sid, "_banners", banners)
 
     def _parseActors(self, sid):
         """Parsers actors XML, from
         http://thetvdb.com/api/[APIKEY]/series/[SERIES ID]/actors.xml
-
-        Actors are retrieved using t['show name]['_actors'], for example:
-
-        >>> t = Tvdb(actors = True)
-        >>> actors = t['scrubs']['_actors']
-        >>> type(actors)
-        <class 'tvdb_api.Actors'>
-        >>> type(actors[0])
-        <class 'tvdb_api.Actor'>
-        >>> actors[0]
-        <Actor u'John C. McGinley'>
-        >>> sorted(actors[0].keys())
-        [u'id', u'image', u'imageAdded', u'imageAuthor', u'lastUpdated', u'name', u'role',
-        u'seriesId', u'sortOrder']
-        >>> actors[0]['name']
-        u'John C. McGinley'
-        >>> actors[0]['image']
-        u'http://thetvdb.com/banners/actors/43638.jpg'
 
         Any key starting with an underscore has been processed (not the raw
         data from the XML)

@@ -96,7 +96,7 @@ class SiteChain(ChainBase):
                 ))
         return userdata
 
-    def refresh_userdatas(self) -> Dict[str, SiteUserData]:
+    def refresh_userdatas(self) -> Optional[Dict[str, SiteUserData]]:
         """
         刷新所有站点的用户数据
         """
@@ -105,7 +105,7 @@ class SiteChain(ChainBase):
         result = {}
         for site in sites:
             if global_vars.is_system_stopped:
-                return
+                return None
             if site.get("is_active"):
                 userdata = self.refresh_userdata(site)
                 if userdata:

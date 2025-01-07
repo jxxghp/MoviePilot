@@ -179,7 +179,7 @@ class DoubanCache(metaclass=Singleton):
             return
 
         with open(self._meta_path, 'wb') as f:
-            pickle.dump(new_meta_data, f, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(new_meta_data, f, pickle.HIGHEST_PROTOCOL) # noqa
 
     def _random_sample(self, new_meta_data: dict) -> bool:
         """

@@ -62,7 +62,7 @@ class ChainBase(metaclass=ABCMeta):
         """
         try:
             with open(settings.TEMP_PATH / filename, 'wb') as f:
-                pickle.dump(cache, f)
+                pickle.dump(cache, f) # noqa
         except Exception as err:
             logger.error(f"保存缓存 {filename} 出错：{str(err)}")
         finally:

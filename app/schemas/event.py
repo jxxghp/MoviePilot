@@ -50,7 +50,7 @@ class AuthCredentials(ChainEventData):
     service: Optional[str] = Field(default=None, description="服务名称")
 
     @root_validator(pre=True)
-    def check_fields_based_on_grant_type(cls, values):
+    def check_fields_based_on_grant_type(cls, values): # noqa
         grant_type = values.get("grant_type")
         if not grant_type:
             values["grant_type"] = "password"

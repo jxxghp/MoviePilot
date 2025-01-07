@@ -227,7 +227,7 @@ class StringUtils:
                 size = float(size)
                 d = [(1024 - 1, 'K'), (1024 ** 2 - 1, 'M'), (1024 ** 3 - 1, 'G'), (1024 ** 4 - 1, 'T')]
                 s = [x[0] for x in d]
-                index = bisect.bisect_left(s, size) - 1
+                index = bisect.bisect_left(s, size) - 1 # noqa
                 if index == -1:
                     return str(size) + "B"
                 else:

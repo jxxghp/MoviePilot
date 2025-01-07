@@ -28,7 +28,7 @@ class DoubanScraper:
                 # 电视剧元数据文件
                 doc = self.__gen_tv_nfo_file(mediainfo=mediainfo)
         if doc:
-            return doc.toprettyxml(indent="  ", encoding="utf-8")
+            return doc.toprettyxml(indent="  ", encoding="utf-8") # noqa
 
         return None
 
