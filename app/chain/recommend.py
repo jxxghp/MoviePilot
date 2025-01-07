@@ -133,6 +133,8 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             return
 
         for data in datas:
+            if global_vars.is_system_stopped:
+                return
             poster_path = data.get("poster_path")
             if poster_path:
                 poster_url = poster_path.replace("original", "w500")
