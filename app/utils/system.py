@@ -451,7 +451,7 @@ class SystemUtils:
         """
         执行Docker重启操作
         """
-        os.kill(os.getpid(), signal.SIGHUB)
+        os.kill(os.getpid(), signal.SIGHUP)
         return True
 
         if not SystemUtils.is_docker():
