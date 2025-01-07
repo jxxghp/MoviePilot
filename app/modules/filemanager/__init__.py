@@ -109,7 +109,7 @@ class FileManagerModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def support_transtype(self, storage: str) -> Optional[Dict[str, str]]:
+    def support_transtype(self, storage: str) -> Optional[dict]:
         """
         支持的整理方式
         """
