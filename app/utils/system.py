@@ -3,6 +3,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from glob import glob
@@ -449,6 +450,9 @@ class SystemUtils:
         """
         执行Docker重启操作
         """
+        os.kill(os.getpid(), signal.SIGHUB)
+        return True
+
         if not SystemUtils.is_docker():
             return False, "非Docker环境，无法重启！"
         try:
