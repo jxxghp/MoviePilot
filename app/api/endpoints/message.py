@@ -106,17 +106,18 @@ def wechat_verify(echostr: str, msg_signature: str, timestamp: Union[str, int], 
         return str(err)
 
 
-def vocechat_verify() -> Any:
+def vocechat_verify(token: str) -> Any:
     """
     VoceChat验证响应
     """
-    return {"status": "OK"}
+    if token == settings.API_TOKEN:
+        return {"status": "OK"}
+    return {"status": "API_TOKEN ERROR"}
 
 
 @router.get("/", summary="回调请求验证")
 def incoming_verify(token: str = None, echostr: str = None, msg_signature: str = None,
-                    timestamp: Union[str, int] = None, nonce: str = None, source: str = None,
-                    _: schemas.TokenPayload = Depends(verify_apitoken)) -> Any:
+                    timestamp: Union[str, int] = None, nonce: str = None, source: str = None) -> Any:
     """
     微信/VoceChat等验证响应
     """
@@ -124,7 +125,7 @@ def incoming_verify(token: str = None, echostr: str = None, msg_signature: str =
                 f"msg_signature={msg_signature}, timestamp={timestamp}, nonce={nonce}")
     if echostr and msg_signature and timestamp and nonce:
         return wechat_verify(echostr, msg_signature, timestamp, nonce, source)
-    return vocechat_verify()
+    return vocechat_verify(token)
 
 
 @router.post("/webpush/subscribe", summary="客户端webpush通知订阅", response_model=schemas.Response)
