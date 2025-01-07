@@ -796,7 +796,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 state, errmsg = self.do_transfer(
                     fileitem=FileItem(
                         storage="local",
-                        path=str(file_path),
+                        path=str(file_path).replace("\\", "/"),
                         type="dir" if not file_path.is_file() else "file",
                         name=file_path.name,
                         size=file_path.stat().st_size,
@@ -804,7 +804,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     ),
                     mediainfo=mediainfo,
                     downloader=torrent.downloader,
-                    download_hash=torrent.hash
+                    download_hash=torrent.hash,
+                    background=False,
                 )
 
                 # 设置下载任务状态
