@@ -30,6 +30,7 @@ class AliPan(StorageBase, metaclass=Singleton):
 
     # 支持的整理方式
     transtype = {
+        "copy": "复制",
         "move": "移动",
     }
 

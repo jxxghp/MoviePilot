@@ -114,7 +114,7 @@ class StorageChain(ChainBase):
         """
         return self.run_module("storage_usage", storage=storage)
 
-    def support_transtype(self, storage: str) -> Optional[str]:
+    def support_transtype(self, storage: str) -> Optional[dict]:
         """
         获取支持的整理方式
         """

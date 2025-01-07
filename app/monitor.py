@@ -252,7 +252,7 @@ class Monitor(metaclass=Singleton):
                 self.transferchain.do_transfer(
                     fileitem=FileItem(
                         storage=storage,
-                        path=str(event_path),
+                        path=str(event_path).replace("\\", "/"),
                         type="file",
                         name=event_path.name,
                         basename=event_path.stem,
