@@ -3,7 +3,7 @@ from typing import Optional, List, Any, Callable
 
 from pydantic import BaseModel, Field
 
-from app.schemas import TmdbEpisode, DownloadHistory
+from app.schemas import TmdbEpisode, DownloadHistory, MetaInfo, MediaInfo
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 
