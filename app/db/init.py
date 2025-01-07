@@ -11,7 +11,7 @@ def init_db():
     初始化数据库
     """
     # 全量建表
-    Base.metadata.create_all(bind=Engine)
+    Base.metadata.create_all(bind=Engine) # noqa
 
 
 def update_db():

@@ -111,7 +111,7 @@ class LoggerManager:
         plugin_name = None
 
         try:
-            frame = sys._getframe(3)
+            frame = sys._getframe(3)  # noqa
         except (AttributeError, ValueError):
             # 如果无法获取帧，返回默认值
             return "log.py", None

@@ -293,7 +293,7 @@ class EventManager(metaclass=Singleton):
 
         # 对于类实例（实现了 __call__ 方法）
         if not inspect.isfunction(handler) and hasattr(handler, "__call__"):
-            handler_cls = handler.__class__
+            handler_cls = handler.__class__ # noqa
             return cls.__get_handler_identifier(handler_cls)
 
         # 对于未绑定方法、静态方法、类方法，使用 __qualname__ 提取类信息

@@ -45,4 +45,4 @@ class StorageUsage(BaseModel):
 
 class StorageTransType(BaseModel):
     # 传输类型
-    transtype: Optional[dict] = Field(default_factory=dict)
+    transtype: Optional[str] = None
