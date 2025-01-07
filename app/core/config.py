@@ -351,7 +351,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             return default, True
 
     @validator('*', pre=True, always=True)
-    def generic_type_validator(cls, value: Any, field):
+    def generic_type_validator(cls, value: Any, field): # noqa
         """
         通用校验器，尝试将配置值转换为期望的类型
         """
