@@ -443,6 +443,7 @@ class SystemUtils:
         """
         判断是否可以内部重启
         """
+        return True
         return Path("/var/run/docker.sock").exists()
 
     @staticmethod
