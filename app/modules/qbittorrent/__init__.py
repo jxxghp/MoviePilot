@@ -134,10 +134,9 @@ class QbittorrentModule(_ModuleBase, _DownloaderBase[Qbittorrent]):
             category=category,
             ignore_category_check=False
         )
-        # 获取下载器全局设置
-        application = server.qbc.application.preferences
+
         # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
-        torrent_layout = application.get("torrent_content_layout", "Original")
+        torrent_layout = server.get_content_layout()
 
         if not state:
             # 读取种子的名称

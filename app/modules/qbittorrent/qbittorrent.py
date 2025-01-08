@@ -448,3 +448,14 @@ class Qbittorrent:
         except Exception as err:
             logger.error(f"修改tracker出错：{str(err)}")
             return False
+
+    def get_content_layout(self) -> Optional[str]:
+        """
+        获取内容布局
+        """
+        if not self.qbc:
+            return None
+        # 获取下载器全局设置
+        application = self.qbc.application.preferences
+        # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
+        return application.get("torrent_content_layout", "Original")
