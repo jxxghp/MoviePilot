@@ -495,11 +495,10 @@ class TransferChain(ChainBase, metaclass=Singleton):
 
         return True, ""
 
-    def put_to_queue(self, task: TransferTask, callback: Optional[Callable] = None):
+    def put_to_queue(self, task: TransferTask):
         """
         添加到待整理队列
         :param task: 任务信息
-        :param callback: 回调函数
         """
         if not task:
             return
@@ -508,7 +507,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         # 添加到队列
         self._queue.put(TransferQueue(
             task=task,
-            callback=callback or self.__default_callback
+            callback=self.__default_callback
         ))
 
     def __put_to_jobview(self, task: TransferTask):
@@ -612,7 +611,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
         """
         try:
             # 维护整理任务视图
-            if task.background:
+            if not task.background:
                 self.__put_to_jobview(task)
             # 识别
             if not task.mediainfo:
