@@ -30,6 +30,8 @@ class SubscribeHelper(metaclass=Singleton):
 
     _sub_fork = f"{settings.MP_SERVER_HOST}/subscribe/fork/%s"
 
+    _shares_cache = TTLCache(maxsize=20, ttl=1800)
+
     def __init__(self):
         self.systemconfig = SystemConfigOper()
         if settings.SUBSCRIBE_STATISTIC_SHARE:
@@ -136,6 +138,8 @@ class SubscribeHelper(metaclass=Singleton):
         if res is None:
             return False, "连接MoviePilot服务器失败"
         if res.ok:
+            # 清除 get_shares 的缓存，以便实时看到结果
+            self._shares_cache.clear()
             return True, ""
         else:
             return False, res.json().get("message")
@@ -156,7 +160,7 @@ class SubscribeHelper(metaclass=Singleton):
         else:
             return False, res.json().get("message")
 
-    @cached(cache=TTLCache(maxsize=20, ttl=1800))
+    @cached(cache=_shares_cache)
     def get_shares(self, name: str, page: int = 1, count: int = 30) -> List[dict]:
         """
         获取订阅分享数据

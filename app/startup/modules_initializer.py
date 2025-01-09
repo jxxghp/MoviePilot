@@ -88,7 +88,7 @@ def user_auth():
     if status:
         logger.info(f"{msg} 用户认证成功")
     else:
-        logger.info(f"用户认证失败：{msg}")
+        logger.info(f"用户认证失败，{msg}")
 
 
 def check_auth():

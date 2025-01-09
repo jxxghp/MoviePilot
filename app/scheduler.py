@@ -587,6 +587,6 @@ class Scheduler(metaclass=Singleton):
 
         else:
             self._auth_count += 1
-            logger.error(f"用户认证失败：{msg}，共失败 {self._auth_count} 次")
+            logger.error(f"用户认证失败，{msg}，共失败 {self._auth_count} 次")
             if self._auth_count >= __max_try__:
                 logger.error("用户认证失败次数过多，将不再尝试认证！")
