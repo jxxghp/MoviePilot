@@ -545,8 +545,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     task = item.task
                     if not task:
                         continue
-                    # 正在处理
-                    self.jobview.running_task(task)
                     # 文件信息
                     fileitem = task.fileitem
                     # 开始新队列
@@ -691,7 +689,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                                                          storage=task.fileitem.storage,
                                                                          src_path=Path(task.fileitem.path),
                                                                          target_storage=task.target_storage)
-
+            # 正在处理
+            self.jobview.running_task(task)
             # 执行整理
             transferinfo: TransferInfo = self.transfer(fileitem=task.fileitem,
                                                        meta=task.meta,
