@@ -545,8 +545,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     task = item.task
                     if not task:
                         continue
-                    # 正在处理
-                    self.jobview.running_task(task)
                     # 文件信息
                     fileitem = task.fileitem
                     # 开始新队列
@@ -610,9 +608,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
         处理整理任务
         """
         try:
-            # 维护整理任务视图
-            if not task.background:
-                self.__put_to_jobview(task)
             # 识别
             if not task.mediainfo:
                 mediainfo = None
@@ -694,6 +689,9 @@ class TransferChain(ChainBase, metaclass=Singleton):
                                                                          storage=task.fileitem.storage,
                                                                          src_path=Path(task.fileitem.path),
                                                                          target_storage=task.target_storage)
+
+            # 正在处理
+            self.jobview.running_task(task)
 
             # 执行整理
             transferinfo: TransferInfo = self.transfer(fileitem=task.fileitem,
@@ -986,23 +984,10 @@ class TransferChain(ChainBase, metaclass=Singleton):
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
-        # 总数量
-        total_num = len(file_items)
-        # 已处理数量
-        processed_num = 0
-        # 失败数量
-        fail_num = 0
-        logger.info(f"正在计划整理 {total_num} 个文件...")
-        if not background:
-            # 启动进度
-            self.progress.start(ProgressKey.FileTransfer)
-            __process_msg = f"开始整理，共 {total_num} 个文件 ..."
-            logger.info(__process_msg)
-            self.progress.update(value=0,
-                                 text=__process_msg,
-                                 key=ProgressKey.FileTransfer)
+        logger.info(f"正在计划整理 {len(file_items)} 个文件...")
 
         # 整理所有文件
+        transfer_tasks: List[TransferTask] = []
         for file_item, bluray_dir in file_items:
             if global_vars.is_system_stopped:
                 break
@@ -1026,7 +1011,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
                         is_blocked = True
                         break
             if is_blocked:
-                fail_num += 1
                 continue
 
             # 整理成功的不再处理
@@ -1037,16 +1021,7 @@ class TransferChain(ChainBase, metaclass=Singleton):
                         all_success = False
                     logger.info(f"{file_item.path} 已整理过，如需重新处理，请删除整理记录。")
                     err_msgs.append(f"{file_item.name} 已整理过")
-                    fail_num += 1
                     continue
-
-            # 更新进度
-            if not background:
-                __process_msg = f"正在整理 （{processed_num + 1}/{total_num}）{file_item.name} ..."
-                logger.info(__process_msg)
-                self.progress.update(value=processed_num / total_num * 100,
-                                     text=__process_msg,
-                                     key=ProgressKey.FileTransfer)
 
             if not meta:
                 # 文件元数据
@@ -1062,7 +1037,6 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 all_success = False
                 logger.error(f"{file_path.name} 无法识别有效信息")
                 err_msgs.append(f"{file_path.name} 无法识别有效信息")
-                fail_num += 1
                 continue
 
             # 自定义识别
@@ -1113,20 +1087,49 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 self.put_to_queue(task=transfer_task)
                 logger.info(f"{file_path.name} 已添加到整理队列")
             else:
+                # 加入列表
+                self.__put_to_jobview(transfer_task)
+                transfer_tasks.append(transfer_task)
+
+        # 实时整理
+        if transfer_tasks:
+            # 总数量
+            total_num = len(transfer_tasks)
+            # 已处理数量
+            processed_num = 0
+            # 失败数量
+            fail_num = 0
+
+            # 启动进度
+            self.progress.start(ProgressKey.FileTransfer)
+            __process_msg = f"开始整理，共 {total_num} 个文件 ..."
+            logger.info(__process_msg)
+            self.progress.update(value=0,
+                                 text=__process_msg,
+                                 key=ProgressKey.FileTransfer)
+
+            for transfer_task in transfer_tasks:
+                if global_vars.is_system_stopped:
+                    break
+                # 更新进度
+                __process_msg = f"正在整理 （{processed_num + fail_num + 1}/{total_num}）{transfer_task.fileitem.name} ..."
+                logger.info(__process_msg)
+                self.progress.update(value=(processed_num + fail_num) / total_num * 100,
+                                     text=__process_msg,
+                                     key=ProgressKey.FileTransfer)
                 state, err_msg = self.__handle_transfer(
                     task=transfer_task,
                     callback=self.__default_callback
                 )
                 if not state:
                     all_success = False
-                    logger.warn(f"{file_path.name} {err_msg}")
-                    err_msgs.append(f"{file_path.name} {err_msg}")
+                    logger.warn(f"{transfer_task.fileitem.name} {err_msg}")
+                    err_msgs.append(f"{transfer_task.fileitem.name} {err_msg}")
                     fail_num += 1
-            # 完成计数
-            processed_num += 1
+                else:
+                    processed_num += 1
 
-        # 整理结束
-        if not background:
+            # 整理结束
             __end_msg = f"整理队列处理完成，共整理 {total_num} 个文件，失败 {fail_num} 个"
             logger.info(__end_msg)
             self.progress.update(value=100,
