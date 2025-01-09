@@ -463,8 +463,8 @@ class TransferChain(ChainBase, metaclass=Singleton):
                             self.storagechain.delete_media_file(t.fileitem, delete_self=False)
             # 整理完成且有成功的任务时
             if self.jobview.is_finished(task):
-                # 发送通知
-                if transferinfo.need_notify:
+                # 发送通知，实时手动整理时不发
+                if transferinfo.need_notify and (task.background or not task.manual):
                     se_str = None
                     if task.mediainfo.type == MediaType.TV:
                         season_episodes = self.jobview.season_episodes(task.mediainfo, task.meta.begin_season)

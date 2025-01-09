@@ -1,5 +1,6 @@
 import json
 import re
+from pathlib import Path
 from typing import Union
 
 from app.chain import ChainBase
@@ -161,4 +162,15 @@ class SystemChain(ChainBase, metaclass=Singleton):
         """
         获取前端版本
         """
+        if SystemUtils.is_frozen() and SystemUtils.is_windows():
+            version_file = settings.CONFIG_PATH.parent / "nginx" / "html" / "version.txt"
+        else:
+            version_file = Path(settings.FRONTEND_PATH) / "version.txt"
+        if version_file.exists():
+            try:
+                with open(version_file, 'r') as f:
+                    version = str(f.read()).strip()
+                return version
+            except Exception as err:
+                logger.debug(f"加载版本文件 {version_file} 出错：{str(err)}")
         return FRONTEND_VERSION
