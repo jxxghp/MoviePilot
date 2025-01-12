@@ -1,6 +1,7 @@
 import base64
 import re
 from datetime import datetime
+from time import time
 from typing import Optional, Tuple, Union, Dict
 from urllib.parse import urljoin
 
@@ -172,27 +173,37 @@ class SiteChain(ChainBase):
             "Content-Type": "application/json",
             "User-Agent": user_agent,
             "Accept": "application/json, text/plain, */*",
-            "Authorization": site.token
+            "Authorization": site.token,
+            "x-api-key": site.apikey,
+            "ts": str(int(time()))
         }
         res = RequestUtils(
             headers=headers,
             proxies=settings.PROXY if site.proxy else None,
             timeout=site.timeout or 15
         ).post_res(url=url)
+        state = False
+        message = "鉴权已过期或无效"
         if res and res.status_code == 200:
-            user_info = res.json()
-            if user_info and user_info.get("data"):
+            user_info = res.json() or {}
+            if user_info.get("data"):
                 # 更新最后访问时间
+                del headers["x-api-key"]
                 res = RequestUtils(headers=headers,
                                    timeout=site.timeout or 15,
                                    proxies=settings.PROXY if site.proxy else None,
                                    referer=f"{site.url}index"
                                    ).post_res(url=f"https://api.{domain}/api/member/updateLastBrowse")
-                if res:
-                    return True, "连接成功"
-                else:
-                    return True, f"连接成功，但更新状态失败"
-        return False, "鉴权已过期或无效"
+                state = True
+                message = "连接成功，但更新状态失败"
+                if res and res.status_code == 200:
+                    update_info = res.json() or {}
+                    if "code" in update_info and int(update_info["code"]) == 0:
+                        message = "连接成功"
+            elif user_info.get("message"):
+                # 使用馒头的错误提示
+                message = user_info.get("message")
+        return state, message
 
     @staticmethod
     def __yema_test(site: Site) -> Tuple[bool, str]:
