@@ -43,7 +43,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             message_text = message_labels[0].xpath("string(.)")
 
             logger.debug(f"{self._site_name} 消息原始信息 {message_text}")
-            message_unread_match = re.findall(r"[^Date](信息箱\s*|\(|你有\xa0)(\d+)", message_text)
+            message_unread_match = re.findall(r"[^Date](信息箱\s*|\((?![^)]*:)|你有\xa0)(\d+)", message_text)
 
             if message_unread_match and len(message_unread_match[-1]) == 2:
                 self.message_unread = StringUtils.str_int(message_unread_match[-1][1])
