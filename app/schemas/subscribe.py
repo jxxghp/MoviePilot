@@ -127,6 +127,8 @@ class SubscribeShare(BaseModel):
     custom_words: Optional[str] = None
     # 自定义媒体类别
     media_category: Optional[str] = None
+    # 复用人次
+    count: Optional[int] = 0
 
 
 class SubscribeDownloadFileInfo(BaseModel):
