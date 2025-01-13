@@ -574,6 +574,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                             continue
 
                         # 有自定义识别词时，需要判断是否需要重新识别
+                        apply_words = None
                         if custom_words_list:
                             _, apply_words = WordsMatcher().prepare(torrent_info.title,
                                                                     custom_words=custom_words_list)
@@ -593,8 +594,9 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                             torrent_mediainfo = self.recognize_media(meta=torrent_meta)
                             if torrent_mediainfo:
                                 # 更新种子缓存
-                                context.media_info = torrent_mediainfo
-                            if not torrent_mediainfo:
+                                if not apply_words:
+                                    context.media_info = torrent_mediainfo
+                            else:
                                 # 通过标题匹配兜底
                                 logger.warn(
                                     f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
@@ -604,9 +606,10 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                     # 匹配成功
                                     logger.info(
                                         f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
-                                    # 更新种子缓存
                                     torrent_mediainfo = mediainfo
-                                    context.media_info = mediainfo
+                                    # 更新种子缓存
+                                    if not apply_words:
+                                        context.media_info = mediainfo
                                 else:
                                     continue
 
