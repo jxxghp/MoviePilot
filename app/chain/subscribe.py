@@ -6,8 +6,6 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Tuple
 
-from cachetools import TTLCache
-
 from app.chain import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
@@ -509,9 +507,6 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             logger.warn('没有缓存资源，无法匹配订阅')
             return
 
-        # 记录重新识别过的种子
-        _recognize_cached = TTLCache(maxsize=1024, ttl=6 * 3600)
-
         with self._rlock:
             logger.debug(f"match lock acquired at {datetime.now()}")
             # 所有订阅
@@ -552,6 +547,12 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                 if exist_flag:
                     continue
 
+                # 订阅识别词
+                if subscribe.custom_words:
+                    custom_words_list = subscribe.custom_words.split("\n")
+                else:
+                    custom_words_list = None
+
                 # 遍历缓存种子
                 _match_context = []
                 for domain, contexts in torrents.items():
@@ -573,8 +574,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                             continue
 
                         # 有自定义识别词时，需要判断是否需要重新识别
-                        if subscribe.custom_words:
-                            custom_words_list = subscribe.custom_words.split("\n")
+                        if custom_words_list:
                             _, apply_words = WordsMatcher().prepare(torrent_info.title,
                                                                     custom_words=custom_words_list)
                             if apply_words:
@@ -589,30 +589,26 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                         # 先判断是否有没识别的种子，否则重新识别
                         if not torrent_mediainfo \
                                 or (not torrent_mediainfo.tmdb_id and not torrent_mediainfo.douban_id):
-                            # 避免重复处理
-                            _cache_key = f"{torrent_meta.org_string}_{torrent_info.description}"
-                            if not _recognize_cached.get(_cache_key):
-                                _recognize_cached[_cache_key] = True
-                                # 重新识别媒体信息
-                                torrent_mediainfo = self.recognize_media(meta=torrent_meta)
-                                if torrent_mediainfo:
+                            # 重新识别媒体信息
+                            torrent_mediainfo = self.recognize_media(meta=torrent_meta)
+                            if torrent_mediainfo:
+                                # 更新种子缓存
+                                context.media_info = torrent_mediainfo
+                            if not torrent_mediainfo:
+                                # 通过标题匹配兜底
+                                logger.warn(
+                                    f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
+                                if self.torrenthelper.match_torrent(mediainfo=mediainfo,
+                                                                    torrent_meta=torrent_meta,
+                                                                    torrent=torrent_info):
+                                    # 匹配成功
+                                    logger.info(
+                                        f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
                                     # 更新种子缓存
-                                    context.media_info = torrent_mediainfo
-                                if not torrent_mediainfo:
-                                    # 通过标题匹配兜底
-                                    logger.warn(
-                                        f'{torrent_info.site_name} - {torrent_info.title} 重新识别失败，尝试通过标题匹配...')
-                                    if self.torrenthelper.match_torrent(mediainfo=mediainfo,
-                                                                        torrent_meta=torrent_meta,
-                                                                        torrent=torrent_info):
-                                        # 匹配成功
-                                        logger.info(
-                                            f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
-                                        # 更新种子缓存
-                                        torrent_mediainfo = mediainfo
-                                        context.media_info = mediainfo
-                                    else:
-                                        continue
+                                    torrent_mediainfo = mediainfo
+                                    context.media_info = mediainfo
+                                else:
+                                    continue
 
                         # 直接比对媒体信息
                         if torrent_mediainfo and (torrent_mediainfo.tmdb_id or torrent_mediainfo.douban_id):
