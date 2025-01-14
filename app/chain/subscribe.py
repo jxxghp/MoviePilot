@@ -384,7 +384,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                     self.message.put('没有找到订阅！', title="订阅搜索", role="system")
             logger.debug(f"search Lock released at {datetime.now()}")
 
-    def update_subscribe_priority(self, subscribe: Subscribe, meta: MetaInfo,
+    def update_subscribe_priority(self, subscribe: Subscribe, meta: MetaBase,
                                   mediainfo: MediaInfo, downloads: List[Context]):
         """
         更新订阅已下载资源的优先级
@@ -407,7 +407,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             # 正在洗版，更新资源优先级
             logger.info(f'{mediainfo.title_year} 正在洗版，更新资源优先级为 {priority}')
 
-    def finish_subscribe_or_not(self, subscribe: Subscribe, meta: MetaInfo, mediainfo: MediaInfo,
+    def finish_subscribe_or_not(self, subscribe: Subscribe, meta: MetaBase, mediainfo: MediaInfo,
                                 downloads: List[Context] = None,
                                 lefts: Dict[Union[int | str], Dict[int, NotExistMediaInfo]] = None,
                                 force: bool = False):
@@ -1266,7 +1266,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         subscribe_info.episodes = episodes
         return subscribe_info
 
-    def check_and_handle_existing_media(self, subscribe: Subscribe, meta: MetaInfo,
+    def check_and_handle_existing_media(self, subscribe: Subscribe, meta: MetaBase,
                                         mediainfo: MediaInfo, mediakey: str):
         """
         检查媒体是否已经存在，并根据情况执行相应的操作
