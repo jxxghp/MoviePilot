@@ -584,6 +584,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                 # 重新识别元数据
                                 torrent_meta = MetaInfo(title=torrent_info.title, subtitle=torrent_info.description,
                                                         custom_words=custom_words_list)
+                                # 更新识别元数据缓存
+                                context.meta_info = torrent_meta
                                 # 媒体信息需要重新识别
                                 torrent_mediainfo = None
 
@@ -1145,16 +1147,17 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         # 默认过滤规则
         default_rule = self.systemconfig.get(SystemConfigKey.SubscribeDefaultParams) or {}
         return {
-            "include": subscribe.include or default_rule.get("include"),
-            "exclude": subscribe.exclude or default_rule.get("exclude"),
-            "quality": subscribe.quality or default_rule.get("quality"),
-            "resolution": subscribe.resolution or default_rule.get("resolution"),
-            "effect": subscribe.effect or default_rule.get("effect"),
-            "tv_size": default_rule.get("tv_size"),
-            "movie_size": default_rule.get("movie_size"),
-            "min_seeders": default_rule.get("min_seeders"),
-            "min_seeders_time": default_rule.get("min_seeders_time"),
-        }
+            key: value for key, value in {
+                "include": subscribe.include or default_rule.get("include"),
+                "exclude": subscribe.exclude or default_rule.get("exclude"),
+                "quality": subscribe.quality or default_rule.get("quality"),
+                "resolution": subscribe.resolution or default_rule.get("resolution"),
+                "effect": subscribe.effect or default_rule.get("effect"),
+                "tv_size": default_rule.get("tv_size"),
+                "movie_size": default_rule.get("movie_size"),
+                "min_seeders": default_rule.get("min_seeders"),
+                "min_seeders_time": default_rule.get("min_seeders_time"),
+            }.items() if value is not None}
 
     def subscribe_files_info(self, subscribe: Subscribe) -> Optional[SubscrbieInfo]:
         """
