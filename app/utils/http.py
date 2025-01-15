@@ -207,6 +207,32 @@ class RequestUtils:
                             raise_exception=raise_exception,
                             **kwargs)
 
+    def delete_res(self,
+                   url: str,
+                   data: Any = None,
+                   params: dict = None,
+                   allow_redirects: bool = True,
+                   raise_exception: bool = False,
+                   **kwargs) -> Optional[Response]:
+        """
+        发送DELETE请求并返回响应对象
+        :param url: 请求的URL
+        :param data: 请求的数据
+        :param params: 请求的参数
+        :param allow_redirects: 是否允许重定向
+        :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
+        :param kwargs: 其他请求参数，如headers, cookies, proxies等
+        :return: HTTP响应对象，若发生RequestException则返回None
+        :raises: requests.exceptions.RequestException 仅raise_exception为True时会抛出
+        """
+        return self.request(method="delete",
+                            url=url,
+                            data=data,
+                            params=params,
+                            allow_redirects=allow_redirects,
+                            raise_exception=raise_exception,
+                            **kwargs)
+
     @staticmethod
     def cookie_parse(cookies_str: str, array: bool = False) -> Union[list, dict]:
         """

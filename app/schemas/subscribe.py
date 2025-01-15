@@ -88,6 +88,8 @@ class SubscribeShare(BaseModel):
     share_comment: Optional[str] = None
     # 分享人
     share_user: Optional[str] = None
+    # 分享人唯一ID
+    share_uid: Optional[str] = None
     # 订阅名称
     name: Optional[str] = None
     # 订阅年份

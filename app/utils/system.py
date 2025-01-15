@@ -1,10 +1,12 @@
 import datetime
+import hashlib
 import os
 import platform
 import re
 import shutil
 import subprocess
 import sys
+import uuid
 from glob import glob
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -556,3 +558,45 @@ class SystemUtils:
             # 确保是空文件夹
             if folder.is_dir() and not any(folder.iterdir()):
                 folder.rmdir()
+
+    @staticmethod
+    def generate_user_unique_id():
+        """
+        根据优先级依次尝试生成稳定唯一ID：
+        1. 文件系统唯一标识符。
+        2. MAC 地址。
+        3. 主机名。
+        """
+
+        def get_filesystem_unique_id():
+            """
+            获取文件系统的唯一标识符。
+            使用根目录的设备号和 inode。
+            """
+            try:
+                stat_info = os.stat("/")
+                fs_id = f"{stat_info.st_dev}-{stat_info.st_ino}"
+                return hashlib.sha256(fs_id.encode("utf-8")).hexdigest()
+            except Exception as e:
+                print(str(e))
+                return None
+
+        def get_mac_address_id():
+            """
+            获取设备的 MAC 地址并生成唯一标识符。
+            """
+            try:
+                mac_address = uuid.getnode()
+                if (mac_address >> 40) % 2:  # 检查是否是虚拟MAC地址
+                    raise ValueError("MAC地址可能是虚拟地址")
+                mac_str = f"{mac_address:012x}"
+                return hashlib.sha256(mac_str.encode("utf-8")).hexdigest()
+            except Exception as e:
+                print(str(e))
+                return None
+
+        for method in [get_filesystem_unique_id, get_mac_address_id]:
+            unique_id = method()
+            if unique_id:
+                return unique_id
+        return None
