@@ -48,9 +48,9 @@ class TransferTask(BaseModel):
     """
     文件整理任务
     """
-    fileitem: FileItem = None
-    meta: Any = None
-    mediainfo: Optional[Any] = None
+    fileitem: Optional[FileItem] = None
+    meta: Optional[MetaInfo] = None
+    mediainfo: Optional[MediaInfo] = None
     target_directory: Optional[TransferDirectoryConf] = None
     target_storage: Optional[str] = None
     target_path: Optional[Path] = None

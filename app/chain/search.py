@@ -125,7 +125,6 @@ class SearchChain(ChainBase):
             """
             return self.filter_torrents(rule_groups=rule_groups,
                                         torrent_list=torrent_list,
-                                        season_episodes=season_episodes,
                                         mediainfo=mediainfo) or []
 
         # 豆瓣标题处理
@@ -185,7 +184,10 @@ class SearchChain(ChainBase):
         # 开始过滤
         self.progress.update(value=0, text=f'开始过滤，总 {len(torrents)} 个资源，请稍候...',
                              key=ProgressKey.Search)
-
+        # 匹配订阅附加参数
+        if filter_params:
+            logger.info(f'开始附加参数过滤，附加参数：{filter_params} ...')
+            torrents = [torrent for torrent in torrents if self.torrenthelper.filter_torrent(torrent, filter_params)]
         # 开始过滤规则过滤
         if rule_groups is None:
             # 取搜索过滤规则
@@ -222,16 +224,18 @@ class SearchChain(ChainBase):
                 if not torrent.title:
                     continue
 
-                # 匹配订阅附加参数
-                if filter_params and not self.torrenthelper.filter_torrent(torrent_info=torrent,
-                                                                           filter_params=filter_params):
-                    continue
-
                 # 识别元数据
                 torrent_meta = MetaInfo(title=torrent.title, subtitle=torrent.description,
                                         custom_words=custom_words)
                 if torrent.title != torrent_meta.org_string:
                     logger.info(f"种子名称应用识别词后发生改变：{torrent.title} => {torrent_meta.org_string}")
+                # 季集数过滤
+                if season_episodes \
+                    and not self.torrenthelper.match_season_episodes(
+                        torrent=torrent,
+                        meta=torrent_meta,
+                        season_episodes=season_episodes):
+                    continue
                 # 比对IMDBID
                 if torrent.imdbid \
                         and mediainfo.imdb_id \
