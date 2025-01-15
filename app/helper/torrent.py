@@ -9,6 +9,7 @@ from torrentool.api import Torrent
 
 from app.core.config import settings
 from app.core.context import Context, TorrentInfo, MediaInfo
+from app.core.meta import MetaBase
 from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -444,4 +445,39 @@ class TorrentHelper(metaclass=Singleton):
                 logger.info(f"{torrent_info.title} 不匹配特效规则 {effect}")
                 return False
 
+        return True
+
+    @staticmethod
+    def match_season_episodes(torrent: TorrentInfo, meta: MetaBase, season_episodes: Dict[int, list]) -> bool:
+        """
+        判断种子是否匹配季集数
+        :param torrent: 种子信息
+        :param meta: 种子元数据
+        :param season_episodes: 季集数 {season:[episodes]}
+        """
+        # 匹配季
+        seasons = season_episodes.keys()
+        # 种子季
+        torrent_seasons = meta.season_list
+        if not torrent_seasons:
+            # 按第一季处理
+            torrent_seasons = [1]
+        # 种子集
+        torrent_episodes = meta.episode_list
+        if not set(torrent_seasons).issubset(set(seasons)):
+            # 种子季不在过滤季中
+            logger.debug(
+                f"种子 {torrent.site_name} - {torrent.title} 包含季 {torrent_seasons} 不是需要的季 {list(seasons)}")
+            return False
+        if not torrent_episodes:
+            # 整季按匹配处理
+            return True
+        if len(torrent_seasons) == 1:
+            need_episodes = season_episodes.get(torrent_seasons[0])
+            if need_episodes \
+                    and not set(torrent_episodes).intersection(set(need_episodes)):
+                # 单季集没有交集的不要
+                logger.debug(f"种子 {torrent.site_name} - {torrent.title} "
+                             f"集 {torrent_episodes} 没有需要的集：{need_episodes}")
+                return False
         return True

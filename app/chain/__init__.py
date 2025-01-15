@@ -326,19 +326,16 @@ class ChainBase(metaclass=ABCMeta):
 
     def filter_torrents(self, rule_groups: List[str],
                         torrent_list: List[TorrentInfo],
-                        season_episodes: Dict[int, list] = None,
                         mediainfo: MediaInfo = None) -> List[TorrentInfo]:
         """
         过滤种子资源
         :param rule_groups:  过滤规则组名称列表
         :param torrent_list:  资源列表
-        :param season_episodes:  季集数过滤 {season:[episodes]}
         :param mediainfo:  识别的媒体信息
         :return: 过滤后的资源列表，添加资源优先级
         """
         return self.run_module("filter_torrents", rule_groups=rule_groups,
-                               torrent_list=torrent_list, season_episodes=season_episodes,
-                               mediainfo=mediainfo)
+                               torrent_list=torrent_list, mediainfo=mediainfo)
 
     def download(self, content: Union[Path, str], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: str = None,
