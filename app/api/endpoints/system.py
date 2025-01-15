@@ -174,6 +174,10 @@ def get_global_setting():
         exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY", "API_TOKEN", "TMDB_API_KEY", "TVDB_API_KEY", "FANART_API_KEY",
                  "COOKIECLOUD_KEY", "COOKIECLOUD_PASSWORD", "GITHUB_TOKEN", "REPO_GITHUB_TOKEN"}
     )
+    # 追加用户唯一ID
+    info.update({
+        "USER_UNIQUE_ID": SystemUtils.generate_user_unique_id()
+    })
     return schemas.Response(success=True,
                             data=info)
 

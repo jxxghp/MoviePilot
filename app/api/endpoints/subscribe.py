@@ -462,6 +462,17 @@ def subscribe_share(
     return schemas.Response(success=state, message=errmsg)
 
 
+@router.delete("/share/{share_id}", summary="删除分享", response_model=schemas.Response)
+def subscribe_share_delete(
+        share_id: int,
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    删除分享
+    """
+    state, errmsg = SubscribeHelper().share_delete(share_id=share_id)
+    return schemas.Response(success=state, message=errmsg)
+
+
 @router.post("/fork", summary="复用订阅", response_model=schemas.Response)
 def subscribe_fork(
         sub: schemas.SubscribeShare,

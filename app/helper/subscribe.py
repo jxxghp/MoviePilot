@@ -9,6 +9,7 @@ from app.db.systemconfig_oper import SystemConfigOper
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
+from app.utils.system import SystemUtils
 
 
 class SubscribeHelper(metaclass=Singleton):
@@ -34,6 +35,7 @@ class SubscribeHelper(metaclass=Singleton):
 
     def __init__(self):
         self.systemconfig = SystemConfigOper()
+        self.share_user_id = SystemUtils.generate_user_unique_id()
         if settings.SUBSCRIBE_STATISTIC_SHARE:
             if not self.systemconfig.get(SystemConfigKey.SubscribeReport):
                 if self.sub_report():
@@ -133,8 +135,27 @@ class SubscribeHelper(metaclass=Singleton):
                                                 "share_title": share_title,
                                                 "share_comment": share_comment,
                                                 "share_user": share_user,
+                                                "share_uid": self.share_user_id,
                                                 **subscribe_dict
                                             })
+        if res is None:
+            return False, "连接MoviePilot服务器失败"
+        if res.ok:
+            # 清除 get_shares 的缓存，以便实时看到结果
+            self._shares_cache.clear()
+            return True, ""
+        else:
+            return False, res.json().get("message")
+
+    def share_delete(self, share_id: int) -> Tuple[bool, str]:
+        """
+        删除分享
+        """
+        if not settings.SUBSCRIBE_STATISTIC_SHARE:
+            return False, "当前没有开启订阅数据共享功能"
+        res = RequestUtils(proxies=settings.PROXY,
+                           timeout=5).delete_res(f"{self._sub_share}/{share_id}",
+                                                 params={"share_uid": self.share_user_id})
         if res is None:
             return False, "连接MoviePilot服务器失败"
         if res.ok:
