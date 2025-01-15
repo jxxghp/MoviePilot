@@ -122,6 +122,11 @@ def update_subscribe(
     if subscribe_in.total_episode != subscribe.total_episode:
         subscribe_dict["manual_total_episode"] = 1
     subscribe.update(db, subscribe_dict)
+    # 发送订阅调整事件
+    eventmanager.send_event(EventType.SubscribeModified, {
+        "subscribe_id": subscribe.id,
+        "subscribe_info": subscribe_dict,
+    })
     return schemas.Response(success=True)
 
 
