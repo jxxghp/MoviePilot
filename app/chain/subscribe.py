@@ -584,8 +584,6 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                 # 重新识别元数据
                                 torrent_meta = MetaInfo(title=torrent_info.title, subtitle=torrent_info.description,
                                                         custom_words=custom_words_list)
-                                # 更新识别元数据缓存
-                                context.meta_info = torrent_meta
                                 # 媒体信息需要重新识别
                                 torrent_mediainfo = None
 

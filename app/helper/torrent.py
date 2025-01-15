@@ -9,7 +9,8 @@ from torrentool.api import Torrent
 
 from app.core.config import settings
 from app.core.context import Context, TorrentInfo, MediaInfo
-from app.core.metainfo import MetaBase, MetaInfo
+from app.core.meta import MetaBase
+from app.core.metainfo import MetaInfo
 from app.db.site_oper import SiteOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
@@ -477,6 +478,6 @@ class TorrentHelper(metaclass=Singleton):
                     and not set(torrent_episodes).intersection(set(need_episodes)):
                 # 单季集没有交集的不要
                 logger.debug(f"种子 {torrent.site_name} - {torrent.title} "
-                            f"集 {torrent_episodes} 没有需要的集：{need_episodes}")
+                             f"集 {torrent_episodes} 没有需要的集：{need_episodes}")
                 return False
         return True
