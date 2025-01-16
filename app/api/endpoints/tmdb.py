@@ -60,6 +60,20 @@ def tmdb_recommend(tmdbid: int,
     return []
 
 
+@router.get("/collection/{collection_id}", summary="系列合集详情", response_model=List[schemas.MediaInfo])
+def tmdb_collection(collection_id: int,
+                    page: int = 1,
+                    count: int = 20,
+                    _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    根据合集ID查询合集详情
+    """
+    medias = TmdbChain().tmdb_collection(collection_id=collection_id)
+    if medias:
+        return [media.to_dict() for media in medias][(page - 1) * count:page * count]
+    return []
+
+
 @router.get("/credits/{tmdbid}/{type_name}", summary="演员阵容", response_model=List[schemas.MediaPerson])
 def tmdb_credits(tmdbid: int,
                  type_name: str,

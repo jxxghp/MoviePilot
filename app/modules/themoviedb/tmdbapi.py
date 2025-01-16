@@ -11,7 +11,7 @@ from app.log import logger
 from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
-from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending, Person
+from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending, Person, Collection
 from .tmdbv3api.exceptions import TMDbException
 
 
@@ -44,6 +44,7 @@ class TmdbApi:
         self.discover = Discover()
         self.trending = Trending()
         self.person = Person()
+        self.collection = Collection()
 
     def search_multiis(self, title: str) -> List[dict]:
         """
@@ -100,6 +101,32 @@ class TmdbApi:
         if not name:
             return []
         return self.search.people(term=name) or []
+
+    def search_collections(self, name: str) -> List[dict]:
+        """
+        查询模糊匹配的所有合集TMDB信息
+        """
+        if not name:
+            return []
+        collections = self.search.collections(term=name) or []
+        for collection in collections:
+            collection['media_type'] = MediaType.COLLECTION
+            collection['collection_id'] = collection.get("id")
+        return collections
+
+    def get_collection(self, collection_id: int) -> List[dict]:
+        """
+        根据合集ID查询合集详情
+        """
+        if not collection_id:
+            return []
+        try:
+            return self.collection.details(collection_id=collection_id)
+        except TMDbException as err:
+            logger.error(f"连接TMDB出错：{str(err)}")
+        except Exception as e:
+            logger.error(f"连接TMDB出错：{str(e)}")
+        return []
 
     @staticmethod
     def __compare_names(file_name: str, tmdb_names: list) -> bool:

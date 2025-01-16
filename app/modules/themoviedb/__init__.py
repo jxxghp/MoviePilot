@@ -311,6 +311,27 @@ class TheMovieDbModule(_ModuleBase):
             return [MediaPerson(source='themoviedb', **person) for person in results]
         return []
 
+    def search_collections(self, name: str) -> Optional[List[MediaInfo]]:
+        """
+        搜索集合信息
+        """
+        if not name:
+            return []
+        results = self.tmdb.search_collections(name)
+        if results:
+            return [MediaInfo(tmdb_info=info) for info in results]
+        return []
+
+    def tmdb_collection(self, collection_id: int) -> Optional[List[MediaInfo]]:
+        """
+        根据合集ID查询集合
+        :param collection_id:  合集ID
+        """
+        results = self.tmdb.get_collection(collection_id)
+        if results:
+            return [MediaInfo(tmdb_info=info) for info in results]
+        return []
+
     def metadata_nfo(self, meta: MetaBase, mediainfo: MediaInfo,
                      season: int = None, episode: int = None) -> Optional[str]:
         """

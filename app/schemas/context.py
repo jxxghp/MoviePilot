@@ -67,7 +67,7 @@ class MediaInfo(BaseModel):
     """
     # 来源：themoviedb、douban、bangumi
     source: Optional[str] = None
-    # 类型 电影、电视剧
+    # 类型 电影、电视剧、合集
     type: Optional[str] = None
     # 媒体标题
     title: Optional[str] = None
@@ -79,6 +79,8 @@ class MediaInfo(BaseModel):
     title_year: Optional[str] = None
     # 当前指定季，如有
     season: Optional[int] = None
+    # 合集等id
+    collection_id: Optional[int] = None
     # TMDB ID
     tmdb_id: Optional[int] = None
     # IMDB ID

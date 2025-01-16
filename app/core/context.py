@@ -178,6 +178,8 @@ class MediaInfo:
     douban_id: str = None
     # Bangumi ID
     bangumi_id: int = None
+    # 合集ID
+    collection_id: int = None
     # 媒体原语种
     original_language: str = None
     # 媒体原发行标题
@@ -397,6 +399,8 @@ class MediaInfo:
         if info.get("external_ids"):
             self.tvdb_id = info.get("external_ids", {}).get("tvdb_id")
             self.imdb_id = info.get("external_ids", {}).get("imdb_id")
+        # 合集ID
+        self.collection_id = info.get('collection_id')
         # 评分
         self.vote_average = round(float(info.get('vote_average')), 1) if info.get('vote_average') else 0
         # 描述

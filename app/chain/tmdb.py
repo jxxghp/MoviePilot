@@ -38,6 +38,13 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("tmdb_trending", page=page)
 
+    def tmdb_collection(self, collection_id: int) -> Optional[List[MediaInfo]]:
+        """
+        根据合集ID查询集合
+        :param collection_id:  合集ID
+        """
+        return self.run_module("tmdb_collection", collection_id=collection_id)
+
     def tmdb_seasons(self, tmdbid: int) -> List[schemas.TmdbSeason]:
         """
         根据TMDBID查询themoviedb所有季信息
