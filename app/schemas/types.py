@@ -5,7 +5,7 @@ from enum import Enum
 class MediaType(Enum):
     MOVIE = '电影'
     TV = '电视剧'
-    COLLECTION = '合集'
+    COLLECTION = '系列'
     UNKNOWN = '未知'
 
 
