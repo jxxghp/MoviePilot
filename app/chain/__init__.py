@@ -301,6 +301,13 @@ class ChainBase(metaclass=ABCMeta):
         """
         return self.run_module("search_persons", name=name)
 
+    def search_collections(self, name: str) -> Optional[List[MediaInfo]]:
+        """
+        搜索集合信息
+        :param name:  集合名称
+        """
+        return self.run_module("search_collections", name=name)
+
     def search_torrents(self, site: CommentedMap,
                         keywords: List[str],
                         mtype: MediaType = None,
