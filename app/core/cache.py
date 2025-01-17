@@ -249,7 +249,7 @@ def get_cache_backend(maxsize: int = 1000, ttl: int = 1800) -> CacheBackend:
 
 
 def cached(region: str = DEFAULT_CACHE_REGION, maxsize: int = 1000, ttl: int = 1800,
-           skip_none: bool = True, skip_empty: bool = True):
+           skip_none: bool = True, skip_empty: bool = False):
     """
     自定义缓存装饰器，支持为每个 key 动态传递 maxsize 和 ttl
 
@@ -257,7 +257,7 @@ def cached(region: str = DEFAULT_CACHE_REGION, maxsize: int = 1000, ttl: int = 1
     :param maxsize: 缓存的最大条目数，默认值为 1000
     :param ttl: 缓存的存活时间，单位秒，默认值为 1800
     :param skip_none: 跳过 None 缓存，默认为 True
-    :param skip_empty: 跳过空值缓存（如 [], {}, "", set()），默认为 True
+    :param skip_empty: 跳过空值缓存（如 [], {}, "", set()），默认为 False
     :return: 装饰器函数
     """
 
