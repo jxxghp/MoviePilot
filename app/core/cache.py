@@ -9,6 +9,9 @@ import redis
 from cachetools import TTLCache
 from cachetools.keys import hashkey
 
+# 默认缓存区
+DEFAULT_CACHE_REGION = "DEFAULT"
+
 
 class CacheBackend(ABC):
     """
@@ -16,7 +19,7 @@ class CacheBackend(ABC):
     """
 
     @abstractmethod
-    def set(self, key: str, value: Any, ttl: int, region: str = "default", **kwargs) -> None:
+    def set(self, key: str, value: Any, ttl: int, region: str = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
         设置缓存
 
@@ -29,7 +32,7 @@ class CacheBackend(ABC):
         pass
 
     @abstractmethod
-    def get(self, key: str, region: str = "default") -> Any:
+    def get(self, key: str, region: str = DEFAULT_CACHE_REGION) -> Any:
         """
         获取缓存
 
@@ -40,7 +43,7 @@ class CacheBackend(ABC):
         pass
 
     @abstractmethod
-    def delete(self, key: str, region: str = "default") -> None:
+    def delete(self, key: str, region: str = DEFAULT_CACHE_REGION) -> None:
         """
         删除缓存
 
@@ -59,7 +62,7 @@ class CacheBackend(ABC):
         pass
 
     @staticmethod
-    def get_region(region: str = "default"):
+    def get_region(region: str = DEFAULT_CACHE_REGION):
         """
         获取缓存的区
         """
@@ -83,7 +86,7 @@ class CacheToolsBackend(CacheBackend):
         # 存储各个 region 的缓存实例，region -> {key -> TTLCache}
         self._region_caches: Dict[str, Dict[str, TTLCache]] = defaultdict(dict)
 
-    def set(self, key: str, value: Any, ttl: int = None, region: str = "default", **kwargs) -> None:
+    def set(self, key: str, value: Any, ttl: int = None, region: str = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
         设置缓存值支持每个 key 独立配置 TTL 和 Maxsize
 
@@ -105,7 +108,7 @@ class CacheToolsBackend(CacheBackend):
         # 设置缓存值
         cache[key] = value
 
-    def get(self, key: str, region: str = "default") -> Any:
+    def get(self, key: str, region: str = DEFAULT_CACHE_REGION) -> Any:
         """
         获取缓存的值
 
@@ -121,7 +124,7 @@ class CacheToolsBackend(CacheBackend):
         cache = region_cache[key]
         return cache.get(key)
 
-    def delete(self, key: str, region: str = "default") -> None:
+    def delete(self, key: str, region: str = DEFAULT_CACHE_REGION) -> None:
         """
         删除缓存
 
@@ -143,6 +146,7 @@ class CacheToolsBackend(CacheBackend):
         :param region: 缓存的区
         """
         if region:
+            region = self.get_region(region)
             region_cache = self._region_caches[region]
             for cache in region_cache.values():
                 cache.clear()
@@ -176,7 +180,7 @@ class RedisBackend(CacheBackend):
         # 使用 region 作为缓存键的一部分
         return f"region:{region}:key:{key}"
 
-    def set(self, key: str, value: Any, ttl: int = None, region: str = "default", **kwargs) -> None:
+    def set(self, key: str, value: Any, ttl: int = None, region: str = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
         设置缓存
 
@@ -190,7 +194,7 @@ class RedisBackend(CacheBackend):
         redis_key = self.get_redis_key(region, key)
         self.client.setex(redis_key, ttl, value)
 
-    def get(self, key: str, region: str = "default") -> Any:
+    def get(self, key: str, region: str = DEFAULT_CACHE_REGION) -> Any:
         """
         获取缓存的值
 
@@ -202,7 +206,7 @@ class RedisBackend(CacheBackend):
         value = self.client.get(redis_key)
         return value
 
-    def delete(self, key: str, region: str = "default") -> None:
+    def delete(self, key: str, region: str = DEFAULT_CACHE_REGION) -> None:
         """
         删除缓存
 
@@ -244,11 +248,7 @@ def get_cache_backend(maxsize: int = 1000, ttl: int = 1800) -> CacheBackend:
     return CacheToolsBackend(maxsize=maxsize, ttl=ttl)
 
 
-# 缓存后端实例
-cache_backend = get_cache_backend()
-
-
-def cached(region: str = "default", maxsize: int = 1000, ttl: int = 1800,
+def cached(region: str = DEFAULT_CACHE_REGION, maxsize: int = 1000, ttl: int = 1800,
            skip_none: bool = True, skip_empty: bool = True):
     """
     自定义缓存装饰器，支持为每个 key 动态传递 maxsize 和 ttl
@@ -318,3 +318,7 @@ def cached(region: str = "default", maxsize: int = 1000, ttl: int = 1800,
         return wrapper
 
     return decorator
+
+
+# 缓存后端实例
+cache_backend = get_cache_backend()
