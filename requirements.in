@@ -65,3 +65,4 @@ aligo~=6.2.4
 aiofiles~=24.1.0
 jieba~=0.42.1
 rsa~=4.9
+redis~=5.2.1

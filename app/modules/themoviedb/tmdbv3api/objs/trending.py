@@ -1,4 +1,4 @@
-from cachetools import cached, TTLCache
+from app.core.cache import cached
 
 from ..tmdb import TMDb
 
@@ -6,7 +6,7 @@ from ..tmdb import TMDb
 class Trending(TMDb):
     _urls = {"trending": "/trending/%s/%s"}
 
-    @cached(cache=TTLCache(maxsize=1, ttl=43200))
+    @cached(maxsize=1, ttl=43200)
     def _trending(self, media_type="all", time_window="day", page=1):
         """
         Get trending, TTLCache 12 hours
