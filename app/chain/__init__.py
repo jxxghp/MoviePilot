@@ -531,6 +531,9 @@ class ChainBase(metaclass=ABCMeta):
                                 # 管理员发过了，此消息不发了
                                 logger.info(f"用户 {send_message.username} 不存在，消息无法发送到对应用户")
                                 continue
+                        elif send_message.username == settings.SUPERUSER:
+                            # 管理员同名已发送
+                            admin_sended = True
                     else:
                         # 按原消息发送全体
                         if not admin_sended:
