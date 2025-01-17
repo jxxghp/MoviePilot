@@ -99,7 +99,7 @@ class FormatParser(object):
                     # `details` 格式为 `X`
                     start_ep = self.__offset.replace("EP", str(self._start_ep))
                     return int(eval(start_ep)), None, self.part
-            else:
+            elif not self._format:
                 # `details` 格式为 `X,X`
                 start_ep = self.__offset.replace("EP", str(self._start_ep))
                 end_ep = self.__offset.replace("EP", str(self._end_ep))
