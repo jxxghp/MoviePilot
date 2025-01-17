@@ -1273,7 +1273,11 @@ class FileManagerModule(_ModuleBase):
             fileitem = storage_oper.get_item(media_path)
             if not fileitem:
                 continue
-            media_files = self.list_files(fileitem, True)
+            try:
+                media_files = self.list_files(fileitem, True)
+            except Exception as e:
+                logger.debug(f"获取媒体文件列表失败：{str(e)}")
+                continue
             if media_files:
                 for media_file in media_files:
                     if f".{media_file.extension.lower()}" in settings.RMT_MEDIAEXT:
