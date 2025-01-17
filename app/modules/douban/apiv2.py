@@ -7,8 +7,8 @@ from random import choice
 from urllib import parse
 
 import requests
-from cachetools import TTLCache, cached
 
+from app.core.cache import cached
 from app.core.config import settings
 from app.utils.http import RequestUtils
 from app.utils.singleton import Singleton
@@ -174,14 +174,14 @@ class DoubanApi(metaclass=Singleton):
             ).digest()
         ).decode()
 
-    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"]))
+    @cached(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"])
     def __invoke_recommend(self, url: str, **kwargs) -> dict:
         """
         推荐/发现类API
         """
         return self.__invoke(url, **kwargs)
 
-    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"]))
+    @cached(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"])
     def __invoke_search(self, url: str, **kwargs) -> dict:
         """
         搜索类API
@@ -216,7 +216,7 @@ class DoubanApi(metaclass=Singleton):
             return resp.json()
         return resp.json() if resp else {}
 
-    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"]))
+    @cached(maxsize=settings.CACHE_CONF["douban"], ttl=settings.CACHE_CONF["meta"])
     def __post(self, url: str, **kwargs) -> dict:
         """
         POST请求

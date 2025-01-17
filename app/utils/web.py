@@ -1,6 +1,6 @@
 from typing import Optional, List
 
-from cachetools import TTLCache, cached
+from app.core.cache import cached
 
 from app.utils.http import RequestUtils
 
@@ -75,7 +75,7 @@ class WebUtils:
             return ""
 
     @staticmethod
-    @cached(cache=TTLCache(maxsize=1, ttl=3600))
+    @cached(maxsize=1, ttl=3600)
     def get_bing_wallpaper() -> Optional[str]:
         """
         获取Bing每日壁纸
@@ -93,7 +93,7 @@ class WebUtils:
         return None
 
     @staticmethod
-    @cached(cache=TTLCache(maxsize=1, ttl=3600))
+    @cached(maxsize=1, ttl=3600)
     def get_bing_wallpapers(num: int = 7) -> List[str]:
         """
         获取7天的Bing每日壁纸

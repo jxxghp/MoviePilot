@@ -4,10 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict
 
-from cachetools import cached, TTLCache
 from requests import Response
 
 from app import schemas
+from app.core.cache import cached
 from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase
@@ -67,7 +67,7 @@ class Alist(StorageBase, metaclass=Singleton):
         return self.__generate_token
 
     @property
-    @cached(cache=TTLCache(maxsize=1, ttl=60 * 60 * 24 * 2 - 60 * 5))
+    @cached(maxsize=1, ttl=60 * 60 * 24 * 2 - 60 * 5)
     def __generate_token(self) -> str:
         """
         使用账号密码生成一个临时token

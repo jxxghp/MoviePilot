@@ -4,11 +4,11 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
 
-from cachetools import TTLCache, cached
 from packaging.specifiers import SpecifierSet, InvalidSpecifier
 from packaging.version import Version, InvalidVersion
 from pkg_resources import Requirement, working_set
 
+from app.core.cache import cached
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
@@ -38,24 +38,26 @@ class PluginHelper(metaclass=Singleton):
                 if self.install_report():
                     self.systemconfig.set(SystemConfigKey.PluginInstallReport, "1")
 
-    @cached(cache=TTLCache(maxsize=1000, ttl=1800))
-    def get_plugins(self, repo_url: str, package_version: str = None) -> Dict[str, dict]:
+    @cached(maxsize=1000, ttl=1800)
+    def get_plugins(self, repo_url: str, package_version: str = None) -> Optional[Dict[str, dict]]:
         """
         获取Github所有最新插件列表
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
         if not repo_url:
-            return {}
+            return None
 
         user, repo = self.get_repo_info(repo_url)
         if not user or not repo:
-            return {}
+            return None
 
         raw_url = self._base_url.format(user=user, repo=repo)
         package_url = f"{raw_url}package.{package_version}.json" if package_version else f"{raw_url}package.json"
 
         res = self.__request_with_fallback(package_url, headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"))
+        if res is None:
+            return None
         if res:
             try:
                 return json.loads(res.text)
@@ -113,7 +115,7 @@ class PluginHelper(metaclass=Singleton):
             return None, None
         return user, repo
 
-    @cached(cache=TTLCache(maxsize=1, ttl=1800))
+    @cached(maxsize=1, ttl=1800)
     def get_statistic(self) -> Dict:
         """
         获取插件安装统计

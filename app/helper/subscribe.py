@@ -1,8 +1,7 @@
 from threading import Thread
 from typing import List, Tuple
 
-from cachetools import TTLCache, cached
-
+from app.core.cache import cached, cache_backend
 from app.core.config import settings
 from app.db.subscribe_oper import SubscribeOper
 from app.db.systemconfig_oper import SystemConfigOper
@@ -31,7 +30,7 @@ class SubscribeHelper(metaclass=Singleton):
 
     _sub_fork = f"{settings.MP_SERVER_HOST}/subscribe/fork/%s"
 
-    _shares_cache = TTLCache(maxsize=20, ttl=1800)
+    _shares_cache_region = "subscribe_share"
 
     def __init__(self):
         self.systemconfig = SystemConfigOper()
@@ -41,7 +40,7 @@ class SubscribeHelper(metaclass=Singleton):
                 if self.sub_report():
                     self.systemconfig.set(SystemConfigKey.SubscribeReport, "1")
 
-    @cached(cache=TTLCache(maxsize=20, ttl=1800))
+    @cached(maxsize=20, ttl=1800)
     def get_statistic(self, stype: str, page: int = 1, count: int = 30) -> List[dict]:
         """
         获取订阅统计数据
@@ -129,6 +128,7 @@ class SubscribeHelper(metaclass=Singleton):
             return False, "订阅不存在"
         subscribe_dict = subscribe.to_dict()
         subscribe_dict.pop("id")
+        cache_backend.clear(region=self._shares_cache_region)
         res = RequestUtils(proxies=settings.PROXY, content_type="application/json",
                            timeout=10).post(self._sub_share,
                                             json={
@@ -142,7 +142,7 @@ class SubscribeHelper(metaclass=Singleton):
             return False, "连接MoviePilot服务器失败"
         if res.ok:
             # 清除 get_shares 的缓存，以便实时看到结果
-            self._shares_cache.clear()
+            cache_backend.clear(region=self._shares_cache_region)
             return True, ""
         else:
             return False, res.json().get("message")
@@ -160,7 +160,7 @@ class SubscribeHelper(metaclass=Singleton):
             return False, "连接MoviePilot服务器失败"
         if res.ok:
             # 清除 get_shares 的缓存，以便实时看到结果
-            self._shares_cache.clear()
+            cache_backend.clear(region=self._shares_cache_region)
             return True, ""
         else:
             return False, res.json().get("message")
@@ -181,7 +181,7 @@ class SubscribeHelper(metaclass=Singleton):
         else:
             return False, res.json().get("message")
 
-    @cached(cache=_shares_cache)
+    @cached(region=_shares_cache_region)
     def get_shares(self, name: str, page: int = 1, count: int = 30) -> List[dict]:
         """
         获取订阅分享数据
