@@ -7,8 +7,8 @@ from datetime import datetime
 
 import requests
 import requests.exceptions
-from cachetools import TTLCache, cached
 
+from app.core.cache import cached
 from app.core.config import settings
 from app.utils.http import RequestUtils
 from .exceptions import TMDbException
@@ -137,7 +137,7 @@ class TMDb(object):
     def cache(self, cache):
         os.environ[self.TMDB_CACHE_ENABLED] = str(cache)
 
-    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["tmdb"], ttl=settings.CACHE_CONF["meta"]))
+    @cached(maxsize=settings.CACHE_CONF["tmdb"], ttl=settings.CACHE_CONF["meta"])
     def cached_request(self, method, url, data, json,
                        _ts=datetime.strftime(datetime.now(), '%Y%m%d')):
         """

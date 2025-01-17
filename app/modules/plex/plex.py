@@ -3,13 +3,13 @@ from pathlib import Path
 from typing import List, Optional, Dict, Tuple, Generator, Any, Union
 from urllib.parse import quote_plus
 
-from cachetools import TTLCache, cached
 from plexapi import media
 from plexapi.myplex import MyPlexAccount
 from plexapi.server import PlexServer
 from requests import Response, Session
 
 from app import schemas
+from app.core.cache import cached
 from app.log import logger
 from app.schemas import MediaType
 from app.utils.http import RequestUtils
@@ -83,7 +83,7 @@ class Plex:
             logger.error(f"Authentication failed: {e}")
         return None
 
-    @cached(cache=TTLCache(maxsize=100, ttl=86400))
+    @cached(maxsize=100, ttl=86400)
     def __get_library_images(self, library_key: str, mtype: int) -> Optional[List[str]]:
         """
         获取媒体服务器最近添加的媒体的图片列表
@@ -293,7 +293,7 @@ class Plex:
             season_episodes[episode.seasonNumber].append(episode.index)
         return videos.key, season_episodes
 
-    def get_remote_image_by_id(self, 
+    def get_remote_image_by_id(self,
                                item_id: str,
                                image_type: str,
                                depth: int = 0,

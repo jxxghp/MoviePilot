@@ -3,9 +3,9 @@ from typing import Optional, List
 from urllib.parse import quote
 
 import zhconv
-from cachetools import TTLCache, cached
 from lxml import etree
 
+from app.core.cache import cached
 from app.core.config import settings
 from app.log import logger
 from app.schemas.types import MediaType
@@ -491,7 +491,7 @@ class TmdbApi:
 
             return ret_info
 
-    @cached(cache=TTLCache(maxsize=settings.CACHE_CONF["tmdb"], ttl=settings.CACHE_CONF["meta"]))
+    @cached(maxsize=settings.CACHE_CONF["tmdb"], ttl=settings.CACHE_CONF["meta"])
     def match_web(self, name: str, mtype: MediaType) -> Optional[dict]:
         """
         搜索TMDB网站，直接抓取结果，结果只有一条时才返回
@@ -678,14 +678,14 @@ class TmdbApi:
         else:
             en_title = __get_tmdb_lang_title(tmdb_info, "US")
             tmdb_info['en_title'] = en_title or org_title
-        
+
         # 查找香港台湾译名
         tmdb_info['hk_title'] = __get_tmdb_lang_title(tmdb_info, "HK")
         tmdb_info['tw_title'] = __get_tmdb_lang_title(tmdb_info, "TW")
 
         # 查找新加坡名（用于替代中文名）
         tmdb_info['sg_title'] = __get_tmdb_lang_title(tmdb_info, "SG") or org_title
-                                                      
+
     def __get_movie_detail(self,
                            tmdbid: int,
                            append_to_response: str = "images,"
