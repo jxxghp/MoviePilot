@@ -197,7 +197,7 @@ class RedisBackend(CacheBackend):
         try:
             self.client = redis.Redis.from_url(
                 redis_url,
-                decode_responses=True,
+                decode_responses=False,
                 socket_timeout=30,
                 socket_connect_timeout=5,
                 max_connections=100,
@@ -207,7 +207,7 @@ class RedisBackend(CacheBackend):
             self.client.ping()
             logger.debug(f"Successfully connected to Redis")
             self.set_memory_limit()
-        except redis.RedisError as e:
+        except Exception as e:
             logger.error(f"Failed to connect to Redis: {e}")
             raise RuntimeError("Redis connection failed") from e
 
@@ -222,36 +222,41 @@ class RedisBackend(CacheBackend):
             self.client.config_set("maxmemory", maxmemory)
             self.client.config_set("maxmemory-policy", policy)
             logger.debug(f"Redis maxmemory set to {maxmemory}, policy: {policy}")
-        except redis.RedisError as e:
+        except Exception as e:
             logger.error(f"Failed to set Redis maxmemory or policy: {e}")
 
     @staticmethod
-    def serialize(value: Any) -> str:
+    def serialize(value: Any) -> bytes:
         """
-        将非字符串类型的值序列化为字符串
+        将值序列化为二进制数据，根据序列化方式标识格式
         """
-        if isinstance(value, str):
-            return value
         try:
             # 尝试 JSON 序列化
-            return json.dumps(value)
+            return b"JSON" + b"\x00" + json.dumps(value).encode("utf-8")
         except TypeError:
-            # 对象无法直接 JSON 序列化，使用 pickle，用 latin1 以确保它是可存储的字符串
-            serialized_value = pickle.dumps(value).decode("latin1")
-            return serialized_value
+            # 如果 JSON 序列化失败，使用 Pickle 序列化
+            return b"PICKLE" + b"\x00" + pickle.dumps(value)
 
     @staticmethod
-    def deserialize(value: str) -> Any:
+    def deserialize(value: bytes) -> Any:
         """
-        将存储的字符串反序列化为原始值
+        将二进制数据反序列化为原始值，根据格式标识区分序列化方式
         """
-        try:
-            # 尝试 JSON 反序列化
-            return json.loads(value)
-        except (TypeError, json.JSONDecodeError):
-            # 如果 JSON 反序列化失败，尝试 pickle 反序列化
-            deserialized_value = pickle.loads(value.encode("latin1"))
-            return deserialized_value
+        format_marker, data = value.split(b"\x00", 1)
+        if format_marker == b"JSON":
+            return json.loads(data.decode("utf-8"))
+        elif format_marker == b"PICKLE":
+            return pickle.loads(data)
+        else:
+            raise ValueError("Unknown serialization format")
+
+    # @staticmethod
+    # def serialize(value: Any) -> bytes:
+    #     return msgpack.packb(value, use_bin_type=True)
+    #
+    # @staticmethod
+    # def deserialize(value: bytes) -> Any:
+    #     return msgpack.unpackb(value, raw=False)
 
     def get_redis_key(self, region: str, key: str) -> str:
         """
@@ -278,7 +283,7 @@ class RedisBackend(CacheBackend):
             serialized_value = self.serialize(value)
             kwargs.pop("maxsize", None)
             self.client.set(redis_key, serialized_value, ex=ttl, **kwargs)
-        except redis.RedisError as e:
+        except Exception as e:
             logger.error(f"Failed to set key: {key} in region: {region}, error: {e}")
 
     def get(self, key: str, region: str = DEFAULT_CACHE_REGION) -> Optional[Any]:
@@ -295,7 +300,7 @@ class RedisBackend(CacheBackend):
             if value is not None:
                 return self.deserialize(value)  # noqa
             return None
-        except redis.RedisError as e:
+        except Exception as e:
             logger.error(f"Failed to get key: {key} in region: {region}, error: {e}")
             return None
 
@@ -309,7 +314,7 @@ class RedisBackend(CacheBackend):
         try:
             redis_key = self.get_redis_key(region, key)
             self.client.delete(redis_key)
-        except redis.RedisError as e:
+        except Exception as e:
             logger.error(f"Failed to delete key: {key} in region: {region}, error: {e}")
 
     def clear(self, region: Optional[str] = None) -> None:
@@ -331,7 +336,7 @@ class RedisBackend(CacheBackend):
             else:
                 self.client.flushdb()
                 logger.info("Cleared all Redis cache")
-        except redis.RedisError as e:
+        except Exception as e:
             logger.error(f"Failed to clear cache, region: {region}, error: {e}")
 
     def close(self) -> None:
