@@ -183,6 +183,15 @@ class CacheToolsBackend(CacheBackend):
 class RedisBackend(CacheBackend):
     """
     基于 Redis 实现的缓存后端，支持通过 Redis 存储缓存
+
+    特性：
+    - 支持动态设置缓存的 TTL（Time To Live，存活时间）
+    - 支持分区域（region）管理缓存，不同的 region 采用独立的命名空间
+    - 支持自定义最大内存限制（maxmemory）和内存淘汰策略（如 allkeys-lru）
+
+    限制：
+    - 由于 Redis 的分布式特性，写入和读取可能受到网络延迟的影响
+    - Pickle 反序列化可能存在安全风险，需进一步重构调用来源，避免复杂对象缓存
     """
 
     def __init__(self, redis_url: str = "redis://localhost", ttl: int = 1800):
