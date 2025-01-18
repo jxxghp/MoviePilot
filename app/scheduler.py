@@ -549,7 +549,6 @@ class Scheduler(metaclass=Singleton):
         """
         清理缓存
         """
-        TorrentsChain().clear_cache()
         SchedulerChain().clear_cache()
 
     def user_auth(self):

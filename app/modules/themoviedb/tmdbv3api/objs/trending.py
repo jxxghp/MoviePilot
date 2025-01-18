@@ -6,7 +6,7 @@ from ..tmdb import TMDb
 class Trending(TMDb):
     _urls = {"trending": "/trending/%s/%s"}
 
-    @cached(maxsize=1, ttl=43200)
+    @cached(maxsize=1024, ttl=43200)
     def _trending(self, media_type="all", time_window="day", page=1):
         """
         Get trending, TTLCache 12 hours
