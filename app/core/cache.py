@@ -1,4 +1,6 @@
 import inspect
+import json
+import pickle
 from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Any, Dict, Optional
@@ -204,17 +206,60 @@ class RedisBackend(CacheBackend):
             # 测试连接，确保 Redis 可用
             self.client.ping()
             logger.debug(f"Successfully connected to Redis")
+            self.set_memory_limit()
         except redis.RedisError as e:
             logger.error(f"Failed to connect to Redis: {e}")
             raise RuntimeError("Redis connection failed") from e
+
+    def set_memory_limit(self, policy: str = "allkeys-lru"):
+        """
+        动态设置 Redis 最大内存和内存淘汰策略
+        :param policy: 淘汰策略（如 'allkeys-lru'）
+        """
+        try:
+            # 如果有显式值，则直接使用，为 0 时说明不限制，如果未配置，开启 BIG_MEMORY_MODE 时为 "512mb"，未开启时为 "128mb"
+            maxmemory = settings.CACHE_REDIS_MAXMEMORY or ("512mb" if settings.BIG_MEMORY_MODE else "128mb")
+            self.client.config_set("maxmemory", maxmemory)
+            self.client.config_set("maxmemory-policy", policy)
+            logger.debug(f"Redis maxmemory set to {maxmemory}, policy: {policy}")
+        except redis.RedisError as e:
+            logger.error(f"Failed to set Redis maxmemory or policy: {e}")
+
+    @staticmethod
+    def serialize(value: Any) -> str:
+        """
+        将非字符串类型的值序列化为字符串
+        """
+        if isinstance(value, str):
+            return value
+        try:
+            # 尝试 JSON 序列化
+            return json.dumps(value)
+        except TypeError:
+            # 对象无法直接 JSON 序列化，使用 pickle，用 latin1 以确保它是可存储的字符串
+            serialized_value = pickle.dumps(value).decode("latin1")
+            return serialized_value
+
+    @staticmethod
+    def deserialize(value: str) -> Any:
+        """
+        将存储的字符串反序列化为原始值
+        """
+        try:
+            # 尝试 JSON 反序列化
+            return json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            # 如果 JSON 反序列化失败，尝试 pickle 反序列化
+            deserialized_value = pickle.loads(value.encode("latin1"))
+            return deserialized_value
 
     def get_redis_key(self, region: str, key: str) -> str:
         """
         获取缓存 Key
         """
         # 使用 region 作为缓存键的一部分
-        region = self.get_region(region)
-        return quote(f"region:{region}:key:{key}")
+        region = self.get_region(quote(region))
+        return f"{region}:key:{quote(key)}"
 
     def set(self, key: str, value: Any, ttl: int = None, region: str = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
@@ -229,8 +274,10 @@ class RedisBackend(CacheBackend):
         try:
             ttl = ttl or self.ttl
             redis_key = self.get_redis_key(region, key)
-            kwargs.pop("maxsize")
-            self.client.set(redis_key, value, ex=ttl, **kwargs)
+            # 对值进行序列化
+            serialized_value = self.serialize(value)
+            kwargs.pop("maxsize", None)
+            self.client.set(redis_key, serialized_value, ex=ttl, **kwargs)
         except redis.RedisError as e:
             logger.error(f"Failed to set key: {key} in region: {region}, error: {e}")
 
@@ -245,7 +292,9 @@ class RedisBackend(CacheBackend):
         try:
             redis_key = self.get_redis_key(region, key)
             value = self.client.get(redis_key)
-            return value
+            if value is not None:
+                return self.deserialize(value)  # noqa
+            return None
         except redis.RedisError as e:
             logger.error(f"Failed to get key: {key} in region: {region}, error: {e}")
             return None
@@ -271,7 +320,8 @@ class RedisBackend(CacheBackend):
         """
         try:
             if region:
-                redis_key = self.get_redis_key(region, "*")
+                cache_region = self.get_region(quote(region))
+                redis_key = f"{cache_region}:key:*"
                 # self.client.delete(*self.client.keys(redis_key))
                 with self.client.pipeline() as pipe:
                     for key in self.client.scan_iter(redis_key):
