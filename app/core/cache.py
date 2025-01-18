@@ -1,7 +1,6 @@
 import inspect
 import os
 from abc import ABC, abstractmethod
-from collections import defaultdict
 from functools import wraps
 from typing import Any, Dict, Optional
 
@@ -83,8 +82,15 @@ class CacheToolsBackend(CacheBackend):
         """
         self.maxsize = maxsize
         self.ttl = ttl
-        # 存储各个 region 的缓存实例，region -> {key -> TTLCache}
-        self._region_caches: Dict[str, Dict[str, TTLCache]] = defaultdict(dict)
+        # 存储各个 region 的缓存实例，region -> TTLCache
+        self._region_caches: Dict[str, TTLCache] = {}
+
+    def __get_region_cache(self, region: str) -> Optional[TTLCache]:
+        """
+        获取指定区域的缓存实例，如果不存在则返回 None
+        """
+        region = self.get_region(region)
+        return self._region_caches.get(region)
 
     def set(self, key: str, value: Any, ttl: int = None, region: str = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
@@ -100,13 +106,9 @@ class CacheToolsBackend(CacheBackend):
         maxsize = kwargs.get("maxsize", self.maxsize)
         region = self.get_region(region)
         # 如果该 key 尚未有缓存实例，则创建一个新的 TTLCache 实例
-        region_cache = self._region_caches[region]
-        if key not in region_cache:
-            region_cache[key] = TTLCache(maxsize=maxsize, ttl=ttl)
-        # 为每个 key 获取独立的缓存实例
-        cache = region_cache[key]
+        region_cache = self._region_caches.setdefault(region, TTLCache(maxsize=maxsize, ttl=ttl))
         # 设置缓存值
-        cache[key] = value
+        region_cache[key] = value
 
     def get(self, key: str, region: str = DEFAULT_CACHE_REGION) -> Any:
         """
@@ -116,13 +118,10 @@ class CacheToolsBackend(CacheBackend):
         :param region: 缓存的区
         :return: 返回缓存的值，如果缓存不存在返回 None
         """
-        region = self.get_region(region)
-        region_cache = self._region_caches[region]
-        if key not in region_cache:
+        region_cache = self.__get_region_cache(region)
+        if region_cache is None:
             return None
-        # 获取缓存实例并返回缓存值
-        cache = region_cache[key]
-        return cache.get(key)
+        return region_cache.get(key)
 
     def delete(self, key: str, region: str = DEFAULT_CACHE_REGION) -> None:
         """
@@ -131,13 +130,10 @@ class CacheToolsBackend(CacheBackend):
         :param key: 缓存的键
         :param region: 缓存的区
         """
-        region = self.get_region(region)
-        region_cache = self._region_caches[region]
-        if key not in region_cache:
+        region_cache = self.__get_region_cache(region)
+        if region_cache is None:
             return None
-        # 获取缓存实例并删除指定的缓存
-        cache = region_cache[key]
-        del cache[key]
+        del region_cache[key]
 
     def clear(self, region: Optional[str] = None) -> None:
         """
@@ -146,14 +142,14 @@ class CacheToolsBackend(CacheBackend):
         :param region: 缓存的区
         """
         if region:
-            region = self.get_region(region)
-            region_cache = self._region_caches[region]
-            for cache in region_cache.values():
-                cache.clear()
+            # 清理指定缓存区
+            region_cache = self.__get_region_cache(region)
+            if region_cache:
+                region_cache.clear()
         else:
+            # 清除所有区域的缓存
             for region_cache in self._region_caches.values():
-                for cache in region_cache.values():
-                    cache.clear()
+                region_cache.clear()
 
 
 class RedisBackend(CacheBackend):
@@ -248,7 +244,7 @@ def get_cache_backend(maxsize: int = 1000, ttl: int = 1800) -> CacheBackend:
     return CacheToolsBackend(maxsize=maxsize, ttl=ttl)
 
 
-def cached(region: str = DEFAULT_CACHE_REGION, maxsize: int = 1000, ttl: int = 1800,
+def cached(region: Optional[str] = None, maxsize: int = 1000, ttl: int = 1800,
            skip_none: bool = True, skip_empty: bool = False):
     """
     自定义缓存装饰器，支持为每个 key 动态传递 maxsize 和 ttl
@@ -294,16 +290,21 @@ def cached(region: str = DEFAULT_CACHE_REGION, maxsize: int = 1000, ttl: int = 1
             elif value.default is not inspect.Parameter.empty:
                 # 没有传递参数时使用默认值
                 resolved_kwargs[param] = value.default
-        # 构造缓存键
-        return f"{func.__name__}_{hashkey(*args, **resolved_kwargs)}"
+        # 构造缓存键，忽略实例（self 或 cls）
+        params_to_hash = args[1:] if len(args) > 1 else []
+        return f"{func.__name__}_{hashkey(*params_to_hash, **resolved_kwargs)}"
 
     def decorator(func):
+
+        # 获取缓存区
+        cache_region = region if region is not None else f"{func.__module__}.{func.__name__}"
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             # 获取缓存键
             cache_key = get_cache_key(func, args, kwargs)
             # 尝试获取缓存
-            cached_value = cache_backend.get(cache_key, region=region)
+            cached_value = cache_backend.get(cache_key, region=cache_region)
             if should_cache(cached_value):
                 return cached_value
             # 执行函数并缓存结果
@@ -312,9 +313,19 @@ def cached(region: str = DEFAULT_CACHE_REGION, maxsize: int = 1000, ttl: int = 1
             if not should_cache(result):
                 return result
             # 设置缓存（如果有传入的 maxsize 和 ttl，则覆盖默认值）
-            cache_backend.set(cache_key, result, ttl=ttl, maxsize=maxsize, region=region)
+            cache_backend.set(cache_key, result, ttl=ttl, maxsize=maxsize, region=cache_region)
             return result
 
+        def cache_clear():
+            """
+            清理缓存区
+            """
+            # 清理缓存区
+            cache_backend.clear(region=cache_region)
+            print(f"{cache_region} region cache is cleared")
+
+        wrapper.cache_region = cache_region
+        wrapper.cache_clear = cache_clear
         return wrapper
 
     return decorator
