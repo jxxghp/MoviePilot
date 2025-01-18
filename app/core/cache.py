@@ -2,6 +2,7 @@ import inspect
 from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Any, Dict, Optional
+from urllib.parse import quote
 
 import redis
 from cachetools import TTLCache
@@ -213,7 +214,7 @@ class RedisBackend(CacheBackend):
         """
         # 使用 region 作为缓存键的一部分
         region = self.get_region(region)
-        return f"region:{region}:key:{key}"
+        return quote(f"region:{region}:key:{key}")
 
     def set(self, key: str, value: Any, ttl: int = None, region: str = DEFAULT_CACHE_REGION, **kwargs) -> None:
         """
@@ -270,9 +271,12 @@ class RedisBackend(CacheBackend):
         """
         try:
             if region:
-                pattern = f"region:{region}:key:*"
-                for key in self.client.scan_iter(pattern):
-                    self.client.delete(key)
+                redis_key = self.get_redis_key(region, "*")
+                # self.client.delete(*self.client.keys(redis_key))
+                with self.client.pipeline() as pipe:
+                    for key in self.client.scan_iter(redis_key):
+                        pipe.delete(key)
+                    pipe.execute()
                 logger.info(f"Cleared Redis cache for region: {region}")
             else:
                 self.client.flushdb()
