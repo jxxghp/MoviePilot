@@ -70,7 +70,15 @@ class CacheBackend(ABC):
 
 class CacheToolsBackend(CacheBackend):
     """
-    基于 `cachetools.TTLCache` 实现的缓存后端，支持动态 TTL 和 Maxsize
+    基于 `cachetools.TTLCache` 实现的缓存后端
+
+    特性：
+    - 支持动态设置缓存的 TTL（Time To Live，存活时间）和最大条目数（Maxsize）
+    - 缓存实例按区域（region）划分，不同 region 拥有独立的缓存实例
+    - 同一 region 共享相同的 TTL 和 Maxsize，设置时只能作用于整个 region
+
+    限制：
+    - 不支持按 `key` 独立隔离 TTL 和 Maxsize，仅支持作用于 region 级别
     """
 
     def __init__(self, maxsize: int = 1000, ttl: int = 1800):
