@@ -209,7 +209,6 @@ class RedisBackend(CacheBackend):
                 decode_responses=False,
                 socket_timeout=30,
                 socket_connect_timeout=5,
-                max_connections=100,
                 health_check_interval=60,
             )
             # 测试连接，确保 Redis 可用
@@ -226,8 +225,8 @@ class RedisBackend(CacheBackend):
         :param policy: 淘汰策略（如 'allkeys-lru'）
         """
         try:
-            # 如果有显式值，则直接使用，为 0 时说明不限制，如果未配置，开启 BIG_MEMORY_MODE 时为 "512mb"，未开启时为 "128mb"
-            maxmemory = settings.CACHE_REDIS_MAXMEMORY or ("512mb" if settings.BIG_MEMORY_MODE else "128mb")
+            # 如果有显式值，则直接使用，为 0 时说明不限制，如果未配置，开启 BIG_MEMORY_MODE 时为 "1024mb"，未开启时为 "256mb"
+            maxmemory = settings.CACHE_REDIS_MAXMEMORY or ("1024mb" if settings.BIG_MEMORY_MODE else "256mb")
             self.client.config_set("maxmemory", maxmemory)
             self.client.config_set("maxmemory-policy", policy)
             logger.debug(f"Redis maxmemory set to {maxmemory}, policy: {policy}")
