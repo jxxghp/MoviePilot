@@ -71,6 +71,12 @@ class ConfigModel(BaseModel):
     DB_TIMEOUT: int = 60
     # SQLite 是否启用 WAL 模式，默认关闭
     DB_WAL_ENABLE: bool = False
+    # 缓存类型，支持 cachetools 和 redis，默认使用 cachetools
+    CACHE_BACKEND_TYPE: str = "cachetools"
+    # 缓存连接字符串，仅外部缓存（如 Redis、Memcached）需要
+    CACHE_BACKEND_URL: Optional[str] = None
+    # Redis 缓存最大内存限制，未配置时，如开启大内存模式时为 "1024mb"，未开启时为 "256mb"
+    CACHE_REDIS_MAXMEMORY: Optional[str] = None
     # 配置文件目录
     CONFIG_DIR: Optional[str] = None
     # 超级管理员
@@ -351,7 +357,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             return default, True
 
     @validator('*', pre=True, always=True)
-    def generic_type_validator(cls, value: Any, field): # noqa
+    def generic_type_validator(cls, value: Any, field):  # noqa
         """
         通用校验器，尝试将配置值转换为期望的类型
         """
