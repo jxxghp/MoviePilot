@@ -67,27 +67,6 @@ class UserOper(DbOper):
     def get_permissions(self, name: str) -> dict:
         """
         获取用户权限
-        {
-            "admin": "管理员",
-            "usermanage": "用户管理",
-            "dashboard": "仪表板",
-            "ranking": "推荐榜单",
-            "resource": {
-                "search": "搜索站点资源",
-                "download": "下载站点资源",
-            },
-            "subscribe": {
-                "request": "提交订阅请求",
-                "autopass": "订阅请求自动批准"
-                "approve": "审批订阅请求",
-                "calendar": "查看订阅日历",
-                "manage": "管理所有订阅"
-            },
-            "downloading": {
-                "view": "查看正在下载任务",
-                "manager": "管理正在下载任务"
-            }
-        }
         """
         user = User.get_by_name(self._db, name)
         if user:
