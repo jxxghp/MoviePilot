@@ -69,7 +69,7 @@ class MetaBase(object):
     _subtitle_flag = False
     _title_episodel_re = r"Episode\s+(\d{1,4})"
     _subtitle_season_re = r"(?<![全共]\s*)[第\s]+([0-9一二三四五六七八九十S\-]+)\s*季(?!\s*[全共])"
-    _subtitle_season_all_re = r"[全共]\s*([0-9一二三四五六七八九十]+)\s*季|([0-9一二三四五六七八九十]+)\s*季\s*全"
+    _subtitle_season_all_re = r"[全共]\s*([0-9一二三四五六七八九十]+)\s*季"
     _subtitle_episode_re = r"(?<![全共]\s*)[第\s]+([0-9一二三四五六七八九十百零EP]+)\s*[集话話期幕](?!\s*[全共])"
     _subtitle_episode_between_re = r"[第]*\s*([0-9一二三四五六七八九十百零]+)\s*[集话話期幕]?\s*-\s*第*\s*([0-9一二三四五六七八九十百零]+)\s*[集话話期幕]"
     _subtitle_episode_all_re = r"([0-9一二三四五六七八九十百零]+)\s*集\s*全|[全共]\s*([0-9一二三四五六七八九十百零]+)\s*[集话話期幕]"
@@ -247,7 +247,7 @@ class MetaBase(object):
                 self.type = MediaType.TV
                 self._subtitle_flag = True
                 return
-            # x集全
+            # x集全/全x集
             episode_all_str = re.search(r'%s' % self._subtitle_episode_all_re, title_text, re.IGNORECASE)
             if episode_all_str:
                 episode_all = episode_all_str.group(1)
@@ -259,8 +259,9 @@ class MetaBase(object):
                     except Exception as err:
                         logger.debug(f'识别集失败：{str(err)} - {traceback.format_exc()}')
                         return
-                    self.begin_episode = None
-                    self.end_episode = None
+                    if self.total_episode:
+                        self.begin_episode = 1
+                        self.end_episode = self.total_episode
                     self.type = MediaType.TV
                     self._subtitle_flag = True
                 return
