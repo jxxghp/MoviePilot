@@ -208,9 +208,16 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         # 是否存在下页数据
         next_page = None
         next_page_text = html.xpath('//a[contains(.//text(), "下一页") or contains(.//text(), "下一頁") or contains(.//text(), ">")]/@href')
-        if next_page_text:
-            next_page = next_page_text[-1].strip()
-            # fix up page url
+        
+       #防止识别到详情页
+        while next_page_text:
+            next_page = next_page_text.pop().strip()
+            if not next_page.startswith('details.php'):
+                break;
+            next_page = None
+
+        # fix up page url
+        if next_page:
             if self.userid not in next_page:
                 next_page = f'{next_page}&userid={self.userid}&type=seeding'
 
