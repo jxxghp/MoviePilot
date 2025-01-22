@@ -368,7 +368,7 @@ class FileManagerModule(_ModuleBase):
             # 覆盖模式
             overwrite_mode = target_directory.overwrite_mode
             # 是否需要刮削
-            need_scrape = scrape or target_directory.scraping
+            need_scrape = target_directory.scraping if scrape is None else scrape
             # 目标存储类型
             if not target_storage:
                 target_storage = target_directory.library_storage
