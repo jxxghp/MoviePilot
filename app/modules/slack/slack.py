@@ -340,7 +340,7 @@ class Slack:
             return ""
         conversation_id = ""
         try:
-            for result in self._client.conversations_list():
+            for result in self._client.conversations_list(types="public_channel,private_channel"):
                 if conversation_id:
                     break
                 for channel in result["channels"]:

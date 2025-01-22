@@ -8,8 +8,10 @@ from lxml import etree
 from app.core.cache import cached
 from app.core.config import settings
 from app.log import logger
+from app.schemas import APIRateLimitException
 from app.schemas.types import MediaType
 from app.utils.http import RequestUtils
+from app.utils.limit import rate_limit_exponential
 from app.utils.string import StringUtils
 from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending, Person, Collection
 from .tmdbv3api.exceptions import TMDbException
@@ -492,6 +494,7 @@ class TmdbApi:
             return ret_info
 
     @cached(maxsize=settings.CACHE_CONF["tmdb"], ttl=settings.CACHE_CONF["meta"])
+    @rate_limit_exponential(source="match_tmdb_web", max_wait=1800, enable_logging=True)
     def match_web(self, name: str, mtype: MediaType) -> Optional[dict]:
         """
         搜索TMDB网站，直接抓取结果，结果只有一条时才返回
@@ -504,51 +507,56 @@ class TmdbApi:
             return {}
         logger.info("正在从TheDbMovie网站查询：%s ..." % name)
         tmdb_url = "https://www.themoviedb.org/search?query=%s" % quote(name)
-        res = RequestUtils(timeout=5, ua=settings.USER_AGENT).get_res(url=tmdb_url)
-        if res and res.status_code == 200:
-            html_text = res.text
-            if not html_text:
-                return None
-            try:
-                tmdb_links = []
-                html = etree.HTML(html_text)
-                if mtype == MediaType.TV:
-                    links = html.xpath("//a[@data-id and @data-media-type='tv']/@href")
-                else:
-                    links = html.xpath("//a[@data-id]/@href")
-                for link in links:
-                    if not link or (not link.startswith("/tv") and not link.startswith("/movie")):
-                        continue
-                    if link not in tmdb_links:
-                        tmdb_links.append(link)
-                if len(tmdb_links) == 1:
-                    tmdbinfo = self.get_info(
-                        mtype=MediaType.TV if tmdb_links[0].startswith("/tv") else MediaType.MOVIE,
-                        tmdbid=tmdb_links[0].split("/")[-1])
-                    if tmdbinfo:
-                        if mtype == MediaType.TV and tmdbinfo.get('media_type') != MediaType.TV:
-                            return {}
-                        if tmdbinfo.get('media_type') == MediaType.MOVIE:
-                            logger.info("%s 从WEB识别到 电影：TMDBID=%s, 名称=%s, 上映日期=%s" % (
-                                name,
-                                tmdbinfo.get('id'),
-                                tmdbinfo.get('title'),
-                                tmdbinfo.get('release_date')))
-                        else:
-                            logger.info("%s 从WEB识别到 电视剧：TMDBID=%s, 名称=%s, 首播日期=%s" % (
-                                name,
-                                tmdbinfo.get('id'),
-                                tmdbinfo.get('name'),
-                                tmdbinfo.get('first_air_date')))
-                    return tmdbinfo
-                elif len(tmdb_links) > 1:
-                    logger.info("%s TMDB网站返回数据过多：%s" % (name, len(tmdb_links)))
-                else:
-                    logger.info("%s TMDB网站未查询到媒体信息！" % name)
-            except Exception as err:
-                logger.error(f"从TheDbMovie网站查询出错：{str(err)}")
-                return None
-        return None
+        res = RequestUtils(timeout=5, ua=settings.USER_AGENT, proxies=settings.PROXY).get_res(url=tmdb_url)
+        if res is None:
+            return None
+        if res.status_code == 429:
+            raise APIRateLimitException("触发TheDbMovie网站限流，获取媒体信息失败")
+        if res.status_code != 200:
+            return {}
+        html_text = res.text
+        if not html_text:
+            return {}
+        try:
+            tmdb_links = []
+            html = etree.HTML(html_text)
+            if mtype == MediaType.TV:
+                links = html.xpath("//a[@data-id and @data-media-type='tv']/@href")
+            else:
+                links = html.xpath("//a[@data-id]/@href")
+            for link in links:
+                if not link or (not link.startswith("/tv") and not link.startswith("/movie")):
+                    continue
+                if link not in tmdb_links:
+                    tmdb_links.append(link)
+            if len(tmdb_links) == 1:
+                tmdbinfo = self.get_info(
+                    mtype=MediaType.TV if tmdb_links[0].startswith("/tv") else MediaType.MOVIE,
+                    tmdbid=tmdb_links[0].split("/")[-1])
+                if tmdbinfo:
+                    if mtype == MediaType.TV and tmdbinfo.get('media_type') != MediaType.TV:
+                        return {}
+                    if tmdbinfo.get('media_type') == MediaType.MOVIE:
+                        logger.info("%s 从WEB识别到 电影：TMDBID=%s, 名称=%s, 上映日期=%s" % (
+                            name,
+                            tmdbinfo.get('id'),
+                            tmdbinfo.get('title'),
+                            tmdbinfo.get('release_date')))
+                    else:
+                        logger.info("%s 从WEB识别到 电视剧：TMDBID=%s, 名称=%s, 首播日期=%s" % (
+                            name,
+                            tmdbinfo.get('id'),
+                            tmdbinfo.get('name'),
+                            tmdbinfo.get('first_air_date')))
+                return tmdbinfo
+            elif len(tmdb_links) > 1:
+                logger.info("%s TMDB网站返回数据过多：%s" % (name, len(tmdb_links)))
+            else:
+                logger.info("%s TMDB网站未查询到媒体信息！" % name)
+        except Exception as err:
+            logger.error(f"从TheDbMovie网站查询出错：{str(err)}")
+            return {}
+        return {}
 
     def get_info(self,
                  mtype: MediaType,

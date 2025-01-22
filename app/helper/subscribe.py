@@ -182,7 +182,7 @@ class SubscribeHelper(metaclass=Singleton):
             return False, res.json().get("message")
 
     @cached(region=_shares_cache_region)
-    def get_shares(self, name: str, page: int = 1, count: int = 30) -> List[dict]:
+    def get_shares(self, name: str = None, page: int = 1, count: int = 30) -> List[dict]:
         """
         获取订阅分享数据
         """

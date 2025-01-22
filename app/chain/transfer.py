@@ -453,9 +453,12 @@ class TransferChain(ChainBase, metaclass=Singleton):
                 if transferinfo.transfer_type in ["move"]:
                     # 所有成功的业务
                     tasks = self.jobview.success_tasks(task.mediainfo, task.meta.begin_season)
+                    # 记录已处理的种子hash
+                    processed_hashes = set()
                     for t in tasks:
                         # 下载器hash
-                        if t.download_hash:
+                        if t.download_hash and t.download_hash not in processed_hashes:
+                            processed_hashes.add(t.download_hash)
                             if self.remove_torrents(t.download_hash, downloader=t.downloader):
                                 logger.info(f"移动模式删除种子成功：{t.download_hash} ")
                         # 删除残留目录
