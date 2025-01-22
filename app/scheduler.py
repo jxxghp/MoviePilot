@@ -92,6 +92,11 @@ class Scheduler(metaclass=Singleton):
                 "func": SubscribeChain().refresh,
                 "running": False,
             },
+            "subscribe_follow": {
+                "name": "Follow分享订阅",
+                "func": SubscribeChain().follow,
+                "running": False,
+            },
             "transfer": {
                 "name": "下载文件整理",
                 "func": TransferChain().process,
@@ -240,6 +245,18 @@ class Scheduler(metaclass=Singleton):
                     'job_id': 'subscribe_refresh'
                 }
             )
+
+        # Follow分享订阅（每6小时）
+        self._scheduler.add_job(
+            self.start,
+            "interval",
+            id="subscribe_follow",
+            name="Follow分享订阅",
+            hours=6,
+            kwargs={
+                'job_id': 'subscribe_follow'
+            }
+        )
 
         # 下载器文件转移（每5分钟）
         self._scheduler.add_job(

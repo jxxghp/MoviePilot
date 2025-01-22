@@ -135,6 +135,8 @@ class SystemConfigKey(Enum):
     DefaultTvSubscribeConfig = "DefaultTvSubscribeConfig"
     # 用户站点认证参数
     UserSiteAuthParams = "UserSiteAuthParams"
+    # Follow订阅分享者
+    FollowSubscribers = "FollowSubscribers"
 
 
 # 处理进度Key字典
