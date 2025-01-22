@@ -259,9 +259,6 @@ class MetaBase(object):
                     except Exception as err:
                         logger.debug(f'识别集失败：{str(err)} - {traceback.format_exc()}')
                         return
-                    if self.total_episode:
-                        self.begin_episode = 1
-                        self.end_episode = self.total_episode
                     self.type = MediaType.TV
                     self._subtitle_flag = True
                 return
