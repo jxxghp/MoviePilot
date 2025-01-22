@@ -494,7 +494,7 @@ class TmdbApi:
             return ret_info
 
     @cached(maxsize=settings.CACHE_CONF["tmdb"], ttl=settings.CACHE_CONF["meta"])
-    @rate_limit_exponential(source="match_tmdb_web", max_wait=1800, enable_logging=True)
+    @rate_limit_exponential(source="match_tmdb_web", base_wait=5, max_wait=1800, enable_logging=True)
     def match_web(self, name: str, mtype: MediaType) -> Optional[dict]:
         """
         搜索TMDB网站，直接抓取结果，结果只有一条时才返回
