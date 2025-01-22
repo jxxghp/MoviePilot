@@ -402,7 +402,10 @@ class MediaInfo:
         # 合集ID
         self.collection_id = info.get('collection_id')
         # 评分
-        self.vote_average = round(float(info.get('vote_average')), 1) if info.get('vote_average') else 0
+        if info.get("vote_average") and info.get('vote_count') > 10:
+            self.vote_average = round(float(info.get("vote_average")), 1)
+        else:
+            self.vote_average = 0
         # 描述
         self.overview = info.get('overview')
         # 风格
