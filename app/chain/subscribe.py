@@ -573,9 +573,9 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                             continue
 
                         # 有自定义识别词时，需要判断是否需要重新识别
-                        apply_words = None
                         if custom_words_list:
-                            _, apply_words = WordsMatcher().prepare(torrent_info.title,
+                            # 使用org_string，应用一次后理论上不能再次应用
+                            _, apply_words = WordsMatcher().prepare(torrent_meta.org_string,
                                                                     custom_words=custom_words_list)
                             if apply_words:
                                 logger.info(
@@ -583,6 +583,8 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                 # 重新识别元数据
                                 torrent_meta = MetaInfo(title=torrent_info.title, subtitle=torrent_info.description,
                                                         custom_words=custom_words_list)
+                                # 更新元数据缓存
+                                context.meta_info = torrent_meta
                                 # 媒体信息需要重新识别
                                 torrent_mediainfo = None
 
@@ -593,8 +595,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                             torrent_mediainfo = self.recognize_media(meta=torrent_meta)
                             if torrent_mediainfo:
                                 # 更新种子缓存
-                                if not apply_words:
-                                    context.media_info = torrent_mediainfo
+                                context.media_info = torrent_mediainfo
                             else:
                                 # 通过标题匹配兜底
                                 logger.warn(
@@ -606,9 +607,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                     logger.info(
                                         f'{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}')
                                     torrent_mediainfo = mediainfo
-                                    # 更新种子缓存
-                                    if not apply_words:
-                                        context.media_info = mediainfo
+                                    context.media_info = torrent_mediainfo
                                 else:
                                     continue
 
