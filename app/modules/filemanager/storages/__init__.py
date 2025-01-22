@@ -102,7 +102,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         获取父目录
         """
-        return self.get_folder(Path(fileitem.path).parent)
+        return self.get_item(Path(fileitem.path).parent)
 
     @abstractmethod
     def delete(self, fileitem: schemas.FileItem) -> bool:
