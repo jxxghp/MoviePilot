@@ -90,6 +90,30 @@ class CacheBackend(ABC):
         """
         return f"region:{region}" if region else "region:default"
 
+    @staticmethod
+    def get_cache_key(func, args, kwargs):
+        """
+        获取缓存的键，通过哈希函数对函数的参数进行处理
+        :param func: 被装饰的函数
+        :param args: 位置参数
+        :param kwargs: 关键字参数
+        :return: 缓存键
+        """
+        signature = inspect.signature(func)
+        # 绑定传入的参数并应用默认值
+        bound = signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+        # 忽略第一个参数，如果它是实例(self)或类(cls)
+        parameters = list(signature.parameters.keys())
+        if parameters and parameters[0] in ("self", "cls"):
+            bound.arguments.pop(parameters[0], None)
+        # 按照函数签名顺序提取参数值列表
+        keys = [
+            bound.arguments[param] for param in signature.parameters if param in bound.arguments
+        ]
+        # 使用有序参数生成缓存键
+        return f"{func.__name__}_{hashkey(*keys)}"
+
 
 class CacheToolsBackend(CacheBackend):
     """
@@ -476,29 +500,6 @@ def cached(region: Optional[str] = None, maxsize: int = 1000, ttl: int = 1800,
             return False
         return True
 
-    def get_cache_key(func, args, kwargs):
-        """
-        获取缓存的键，通过哈希函数对函数的参数进行处理
-        :param func: 被装饰的函数
-        :param args: 位置参数
-        :param kwargs: 关键字参数
-        :return: 缓存键
-        """
-        # 获取方法签名
-        signature = inspect.signature(func)
-        resolved_kwargs = {}
-        # 获取默认值并结合传递的参数（如果有）
-        for param, value in signature.parameters.items():
-            if param in kwargs:
-                # 使用显式传递的参数
-                resolved_kwargs[param] = kwargs[param]
-            elif value.default is not inspect.Parameter.empty:
-                # 没有传递参数时使用默认值
-                resolved_kwargs[param] = value.default
-        # 构造缓存键，忽略实例（self 或 cls）
-        params_to_hash = args[1:] if len(args) > 1 else []
-        return f"{func.__name__}_{hashkey(*params_to_hash, **resolved_kwargs)}"
-
     def decorator(func):
 
         # 获取缓存区
@@ -507,7 +508,7 @@ def cached(region: Optional[str] = None, maxsize: int = 1000, ttl: int = 1800,
         @wraps(func)
         def wrapper(*args, **kwargs):
             # 获取缓存键
-            cache_key = get_cache_key(func, args, kwargs)
+            cache_key = cache_backend.get_cache_key(func, args, kwargs)
             # 尝试获取缓存
             cached_value = cache_backend.get(cache_key, region=cache_region)
             if should_cache(cached_value):
