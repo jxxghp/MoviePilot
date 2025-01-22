@@ -93,7 +93,7 @@ class Scheduler(metaclass=Singleton):
                 "running": False,
             },
             "subscribe_follow": {
-                "name": "Follow分享订阅",
+                "name": "关注的订阅分享",
                 "func": SubscribeChain().follow,
                 "running": False,
             },
@@ -246,13 +246,13 @@ class Scheduler(metaclass=Singleton):
                 }
             )
 
-        # Follow分享订阅（每6小时）
+        # 关注订阅分享（每1小时）
         self._scheduler.add_job(
             self.start,
             "interval",
             id="subscribe_follow",
-            name="Follow分享订阅",
-            hours=6,
+            name="关注的订阅分享",
+            hours=1,
             kwargs={
                 'job_id': 'subscribe_follow'
             }
