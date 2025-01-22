@@ -36,6 +36,17 @@ class CacheBackend(ABC):
         pass
 
     @abstractmethod
+    def exists(self, key: str, region: str = DEFAULT_CACHE_REGION) -> bool:
+        """
+        判断缓存键是否存在
+
+        :param key: 缓存的键
+        :param region: 缓存的区
+        :return: 存在返回 True，否则返回 False
+        """
+        pass
+
+    @abstractmethod
     def get(self, key: str, region: str = DEFAULT_CACHE_REGION) -> Any:
         """
         获取缓存
@@ -129,6 +140,19 @@ class CacheToolsBackend(CacheBackend):
         region_cache = self._region_caches.setdefault(region, TTLCache(maxsize=maxsize, ttl=ttl))
         # 设置缓存值
         region_cache[key] = value
+
+    def exists(self, key: str, region: str = DEFAULT_CACHE_REGION) -> bool:
+        """
+        判断缓存键是否存在
+
+        :param key: 缓存的键
+        :param region: 缓存的区
+        :return: 存在返回 True，否则返回 False
+        """
+        region_cache = self.__get_region_cache(region)
+        if region_cache is None:
+            return False
+        return key in region_cache
 
     def get(self, key: str, region: str = DEFAULT_CACHE_REGION) -> Any:
         """
@@ -294,6 +318,21 @@ class RedisBackend(CacheBackend):
         except Exception as e:
             logger.error(f"Failed to set key: {key} in region: {region}, error: {e}")
 
+    def exists(self, key: str, region: str = DEFAULT_CACHE_REGION) -> bool:
+        """
+        判断缓存键是否存在
+
+        :param key: 缓存的键
+        :param region: 缓存的区
+        :return: 存在返回 True，否则返回 False
+        """
+        try:
+            redis_key = self.get_redis_key(region, key)
+            return self.client.exists(redis_key) == 1
+        except Exception as e:
+            logger.error(f"Failed to exists key: {key} region: {region}, error: {e}")
+            return False
+
     def get(self, key: str, region: str = DEFAULT_CACHE_REGION) -> Optional[Any]:
         """
         获取缓存的值
@@ -392,7 +431,7 @@ def cached(region: Optional[str] = None, maxsize: int = 1000, ttl: int = 1800,
     :param maxsize: 缓存的最大条目数，默认值为 1000
     :param ttl: 缓存的存活时间，单位秒，默认值为 1800
     :param skip_none: 跳过 None 缓存，默认为 True
-    :param skip_empty: 跳过空值缓存（如 [], {}, "", set()），默认为 False
+    :param skip_empty: 跳过空值缓存（如 None, [], {}, "", set()），默认为 False
     :return: 装饰器函数
     """
 
@@ -405,7 +444,7 @@ def cached(region: Optional[str] = None, maxsize: int = 1000, ttl: int = 1800,
         """
         if skip_none and value is None:
             return False
-        # if disable_empty and value in [[], {}, "", set()]:
+        # if skip_empty and value in [None, [], {}, "", set()]:
         if skip_empty and not value:
             return False
         return True
