@@ -218,6 +218,10 @@ class RedisBackend(CacheBackend):
     - Pickle 反序列化可能存在安全风险，需进一步重构调用来源，避免复杂对象缓存
     """
 
+    # 类型缓存集合，针对非容器简单类型
+    _complex_serializable_types = set()
+    _simple_serializable_types = set()
+
     def __init__(self, redis_url: str = "redis://localhost", ttl: int = 1800):
         """
         初始化 Redis 缓存实例
@@ -258,19 +262,42 @@ class RedisBackend(CacheBackend):
             logger.error(f"Failed to set Redis maxmemory or policy: {e}")
 
     @staticmethod
-    def serialize(value: Any) -> bytes:
+    def is_container_type(t):
+        return t in (list, dict, tuple, set)
+
+    @classmethod
+    def serialize(cls, value: Any) -> bytes:
         """
         将值序列化为二进制数据，根据序列化方式标识格式
         """
-        try:
-            # 尝试 JSON 序列化
-            return b"JSON" + b"\x00" + json.dumps(value).encode("utf-8")
-        except TypeError:
-            # 如果 JSON 序列化失败，使用 Pickle 序列化
-            return b"PICKLE" + b"\x00" + pickle.dumps(value)
+        vt = type(value)
+        # 针对非容器类型使用缓存策略
+        if not cls.is_container_type(vt):
+            # 如果已知需要复杂序列化
+            if vt in cls._complex_serializable_types:
+                return b"PICKLE" + b"\x00" + pickle.dumps(value)
+            # 如果已知可以简单序列化
+            if vt in cls._simple_serializable_types:
+                json_data = json.dumps(value).encode("utf-8")
+                return b"JSON" + b"\x00" + json_data
+            # 对于未知的非容器类型，尝试简单序列化，如抛出异常，再使用复杂序列化
+            try:
+                json_data = json.dumps(value).encode("utf-8")
+                cls._simple_serializable_types.add(vt)
+                return b"JSON" + b"\x00" + json_data
+            except TypeError:
+                cls._complex_serializable_types.add(vt)
+                return b"PICKLE" + b"\x00" + pickle.dumps(value)
+        # 针对容器类型，每次尝试简单序列化，不使用缓存
+        else:
+            try:
+                json_data = json.dumps(value).encode("utf-8")
+                return b"JSON" + b"\x00" + json_data
+            except TypeError:
+                return b"PICKLE" + b"\x00" + pickle.dumps(value)
 
-    @staticmethod
-    def deserialize(value: bytes) -> Any:
+    @classmethod
+    def deserialize(cls, value: bytes) -> Any:
         """
         将二进制数据反序列化为原始值，根据格式标识区分序列化方式
         """
