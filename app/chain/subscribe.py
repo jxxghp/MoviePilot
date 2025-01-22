@@ -463,18 +463,16 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         """
         # 从系统配置获取默认订阅站点
         default_sites = self.systemconfig.get(SystemConfigKey.RssSites) or []
-        # 如果订阅未指定站点信息，直接返回默认站点
+        # 如果订阅未指定站点，直接返回默认站点
         if not subscribe.sites:
             return default_sites
+        # 如果默认订阅站点未设置，直接返回订阅指定站点
+        if not default_sites:
+            return subscribe.sites or []
         # 尝试解析订阅中的站点数据
         user_sites = subscribe.sites
         # 计算 user_sites 和 default_sites 的交集
         intersection_sites = [site for site in user_sites if site in default_sites]
-        # 如果交集与原始订阅不一致，更新数据库
-        if set(intersection_sites) != set(user_sites):
-            self.subscribeoper.update(subscribe.id, {
-                "sites": intersection_sites
-            })
         # 如果交集为空，返回默认站点
         return intersection_sites if intersection_sites else default_sites
 
