@@ -798,6 +798,11 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
                                              doubanid=share_sub.get("doubanid"),
                                              season=share_sub.get("season")):
                     continue
+                # 已经订阅过跳过
+                if self.subscribeoper.exist_history(tmdbid=share_sub.get("tmdbid"),
+                                                    doubanid=share_sub.get("doubanid"),
+                                                    season=share_sub.get("season")):
+                    continue
                 # 去除无效属性
                 for key in list(share_sub.keys()):
                     if not hasattr(schemas.Subscribe(), key):

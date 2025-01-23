@@ -118,3 +118,16 @@ class SubscribeOper(DbOper):
             kwargs.pop("id")
         subscribe = SubscribeHistory(**kwargs)
         subscribe.create(self._db)
+
+    def exist_history(self, tmdbid: int = None, doubanid: str = None, season: int = None):
+        """
+        判断是否存在订阅历史
+        """
+        if tmdbid:
+            if season:
+                return True if SubscribeHistory.exists(self._db, tmdbid=tmdbid, season=season) else False
+            else:
+                return True if SubscribeHistory.exists(self._db, tmdbid=tmdbid) else False
+        elif doubanid:
+            return True if SubscribeHistory.exists(self._db, doubanid=doubanid) else False
+        return False

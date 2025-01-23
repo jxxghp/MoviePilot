@@ -73,6 +73,18 @@ class SubscribeHistory(Base):
         result = db.query(SubscribeHistory).filter(
             SubscribeHistory.type == mtype
         ).order_by(
-                SubscribeHistory.date.desc()
+            SubscribeHistory.date.desc()
         ).offset((page - 1) * count).limit(count).all()
         return list(result)
+
+    @staticmethod
+    @db_query
+    def exists(db: Session, tmdbid: int = None, doubanid: str = None, season: int = None):
+        if tmdbid:
+            if season:
+                return db.query(SubscribeHistory).filter(SubscribeHistory.tmdbid == tmdbid,
+                                                         SubscribeHistory.season == season).first()
+            return db.query(SubscribeHistory).filter(SubscribeHistory.tmdbid == tmdbid).first()
+        elif doubanid:
+            return db.query(SubscribeHistory).filter(SubscribeHistory.doubanid == doubanid).first()
+        return None
