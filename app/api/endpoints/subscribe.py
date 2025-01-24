@@ -109,6 +109,7 @@ def update_subscribe(
     if not subscribe:
         return schemas.Response(success=False, message="订阅不存在")
     # 避免更新缺失集数
+    old_subscribe_dict = subscribe.to_dict()
     subscribe_dict = subscribe_in.dict()
     if not subscribe_in.lack_episode:
         # 没有缺失集数时，缺失集数清空，避免更新为0
@@ -126,7 +127,8 @@ def update_subscribe(
     # 发送订阅调整事件
     eventmanager.send_event(EventType.SubscribeModified, {
         "subscribe_id": subscribe.id,
-        "subscribe_info": subscribe_dict,
+        "old_subscribe_info": old_subscribe_dict,
+        "subscribe_info": subscribe.to_dict(),
     })
     return schemas.Response(success=True)
 
@@ -146,8 +148,15 @@ def update_subscribe_status(
     valid_states = ["R", "P", "S"]
     if state not in valid_states:
         return schemas.Response(success=False, message="无效的订阅状态")
+    old_subscribe_dict = subscribe.to_dict()
     subscribe.update(db, {
         "state": state
+    })
+    # 发送订阅调整事件
+    eventmanager.send_event(EventType.SubscribeModified, {
+        "subscribe_id": subscribe.id,
+        "old_subscribe_info": old_subscribe_dict,
+        "subscribe_info": subscribe.to_dict(),
     })
     return schemas.Response(success=True)
 
@@ -213,10 +222,17 @@ def reset_subscribes(
     """
     subscribe = Subscribe.get(db, subid)
     if subscribe:
+        old_subscribe_dict = subscribe.to_dict()
         subscribe.update(db, {
             "note": [],
             "lack_episode": subscribe.total_episode,
             "state": "R"
+        })
+        # 发送订阅调整事件
+        eventmanager.send_event(EventType.SubscribeModified, {
+            "subscribe_id": subscribe.id,
+            "old_subscribe_info": old_subscribe_dict,
+            "subscribe_info": subscribe.to_dict(),
         })
         return schemas.Response(success=True)
     return schemas.Response(success=False, message="订阅不存在")
