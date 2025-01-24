@@ -1,3 +1,4 @@
+import copy
 import threading
 import traceback
 from typing import Any, Union, Dict, Optional
@@ -303,7 +304,7 @@ class Command(metaclass=Singleton):
                 )
         else:
             # 命令
-            cmd_data = command['data'] if command.get('data') else {}
+            cmd_data = copy.deepcopy(command['data']) if command.get('data') else {}
             args_num = ObjectUtils.arguments(command['func'])
             if args_num > 0:
                 if cmd_data:
