@@ -128,7 +128,7 @@ def update_subscribe(
     eventmanager.send_event(EventType.SubscribeModified, {
         "subscribe_id": subscribe.id,
         "old_subscribe_info": old_subscribe_dict,
-        "subscribe_info": subscribe_dict,
+        "subscribe_info": subscribe.to_dict(),
     })
     return schemas.Response(success=True)
 
@@ -152,12 +152,11 @@ def update_subscribe_status(
     subscribe.update(db, {
         "state": state
     })
-    subscribe_dict = subscribe.to_dict()
     # 发送订阅调整事件
     eventmanager.send_event(EventType.SubscribeModified, {
         "subscribe_id": subscribe.id,
         "old_subscribe_info": old_subscribe_dict,
-        "subscribe_info": subscribe_dict,
+        "subscribe_info": subscribe.to_dict(),
     })
     return schemas.Response(success=True)
 
@@ -229,12 +228,11 @@ def reset_subscribes(
             "lack_episode": subscribe.total_episode,
             "state": "R"
         })
-        subscribe_dict = subscribe.to_dict()
         # 发送订阅调整事件
         eventmanager.send_event(EventType.SubscribeModified, {
             "subscribe_id": subscribe.id,
             "old_subscribe_info": old_subscribe_dict,
-            "subscribe_info": subscribe_dict,
+            "subscribe_info": subscribe.to_dict(),
         })
         return schemas.Response(success=True)
     return schemas.Response(success=False, message="订阅不存在")
