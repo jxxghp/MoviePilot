@@ -26,14 +26,14 @@ def bangumi_subjects(type: int = 2,
                      cat: int = None,
                      sort: str = 'rank',
                      year: int = None,
-                     limit: int = 30,
-                     offset: int = 0,
+                     page: int = 1,
+                     count: int = 30,
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     搜索Bangumi
     """
     return RecommendChain().bangumi_discover(type=type, cat=cat, sort=sort, year=year,
-                                             limit=limit, offset=offset)
+                                             page=page, count=count)
 
 
 @router.get("/credits/{bangumiid}", summary="查询Bangumi演职员表", response_model=List[schemas.MediaPerson])
