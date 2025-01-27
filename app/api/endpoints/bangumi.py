@@ -21,6 +21,23 @@ def calendar(page: int = 1,
     return RecommendChain().bangumi_calendar(page=page, count=count)
 
 
+@router.get("/subjects", summary="搜索Bangumi", response_model=List[schemas.MediaInfo])
+def bangumi_subjects(type: int,
+                     cat: int,
+                     sort: str,
+                     year: int,
+                     page: int = 1,
+                     count: int = 20,
+                     _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    搜索Bangumi
+    """
+    medias = BangumiChain().bangumi_discover(type=type, cat=cat, sort=sort, year=year)
+    if medias:
+        return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
+    return []
+
+
 @router.get("/credits/{bangumiid}", summary="查询Bangumi演职员表", response_model=List[schemas.MediaPerson])
 def bangumi_credits(bangumiid: int,
                     page: int = 1,

@@ -357,25 +357,35 @@ class TheMovieDbModule(_ModuleBase):
         return self.scraper.get_metadata_img(mediainfo=mediainfo, season=season, episode=episode)
 
     def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str, with_original_language: str,
-                      page: int = 1) -> Optional[List[MediaInfo]]:
+                      vote_average: float, release_date: str, page: int = 1) -> Optional[List[MediaInfo]]:
         """
         :param mtype:  媒体类型
         :param sort_by:  排序方式
         :param with_genres:  类型
         :param with_original_language:  语言
+        :param vote_average:  评分
+        :param release_date:  发布日期
         :param page:  页码
         :return: 媒体信息列表
         """
         if mtype == MediaType.MOVIE:
-            infos = self.tmdb.discover_movies(sort_by=sort_by,
-                                              with_genres=with_genres,
-                                              with_original_language=with_original_language,
-                                              page=page)
+            infos = self.tmdb.discover_movies({
+                "sort_by": sort_by,
+                "with_genres": with_genres,
+                "with_original_language": with_original_language,
+                "vote_average.gte": vote_average,
+                "release_date.gte": release_date,
+                "page": page
+            })
         elif mtype == MediaType.TV:
-            infos = self.tmdb.discover_tvs(sort_by=sort_by,
-                                           with_genres=with_genres,
-                                           with_original_language=with_original_language,
-                                           page=page)
+            infos = self.tmdb.discover_tvs({
+                "sort_by": sort_by,
+                "with_genres": with_genres,
+                "with_original_language": with_original_language,
+                "vote_average.gte": vote_average,
+                "release_date.gte": release_date,
+                "page": page
+            })
         else:
             return []
         if infos:

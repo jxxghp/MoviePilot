@@ -17,6 +17,12 @@ class BangumiChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("bangumi_calendar")
 
+    def bangumi_discover(self, **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        发现Bangumi番剧
+        """
+        return self.run_module("bangumi_discover", **kwargs)
+
     def bangumi_info(self, bangumiid: int) -> Optional[dict]:
         """
         获取Bangumi信息

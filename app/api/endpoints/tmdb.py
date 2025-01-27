@@ -118,6 +118,8 @@ def tmdb_person_credits(person_id: int,
 def tmdb_movies(sort_by: str = "popularity.desc",
                 with_genres: str = "",
                 with_original_language: str = "",
+                vote_average: float = 0,
+                release_date: str = "",
                 page: int = 1,
                 _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -126,6 +128,8 @@ def tmdb_movies(sort_by: str = "popularity.desc",
     return RecommendChain().tmdb_movies(sort_by=sort_by,
                                         with_genres=with_genres,
                                         with_original_language=with_original_language,
+                                        vote_average=vote_average,
+                                        release_date=release_date,
                                         page=page)
 
 
@@ -133,6 +137,8 @@ def tmdb_movies(sort_by: str = "popularity.desc",
 def tmdb_tvs(sort_by: str = "popularity.desc",
              with_genres: str = "",
              with_original_language: str = "",
+             vote_average: float = 0,
+             release_date: str = "",
              page: int = 1,
              _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -141,6 +147,8 @@ def tmdb_tvs(sort_by: str = "popularity.desc",
     return RecommendChain().tmdb_tvs(sort_by=sort_by,
                                      with_genres=with_genres,
                                      with_original_language=with_original_language,
+                                     vote_average=vote_average,
+                                     release_date=release_date,
                                      page=page)
 
 

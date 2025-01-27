@@ -13,6 +13,7 @@ class BangumiApi(object):
     """
 
     _urls = {
+        "discover": "v0/subjects",
         "search": "search/subjects/%s?type=2",
         "calendar": "calendar",
         "detail": "v0/subjects/%s",
@@ -194,3 +195,9 @@ class BangumiApi(object):
             for item in result:
                 ret_list.append(item)
         return ret_list
+
+    def discover(self, **kwargs):
+        """
+        发现
+        """
+        return self.__invoke("discover", **kwargs)
