@@ -165,3 +165,12 @@ class BangumiModule(_ModuleBase):
         if credits_info:
             return [MediaInfo(bangumi_info=credit) for credit in credits_info]
         return []
+
+    def bangumi_discover(self, **kwargs) -> Optional[List[MediaInfo]]:
+        """
+        发现Bangumi番剧
+        """
+        infos = self.bangumiapi.discover(**kwargs)
+        if infos:
+            return [MediaInfo(bangumi_info=info) for info in infos]
+        return []

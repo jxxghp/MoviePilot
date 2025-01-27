@@ -158,7 +158,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
     def tmdb_movies(self, sort_by: str = "popularity.desc", with_genres: str = "",
-                    with_original_language: str = "", page: int = 1) -> Any:
+                    with_original_language: str = "", vote_average: float = 0, page: int = 1) -> Any:
         """
         TMDB热门电影
         """
@@ -166,6 +166,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                                               sort_by=sort_by,
                                               with_genres=with_genres,
                                               with_original_language=with_original_language,
+                                              vote_average=vote_average,
                                               page=page)
         return [movie.to_dict() for movie in movies] if movies else []
 

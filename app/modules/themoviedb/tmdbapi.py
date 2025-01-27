@@ -1080,18 +1080,17 @@ class TmdbApi:
             logger.error(str(e))
             return {}
 
-    def discover_movies(self, **kwargs) -> List[dict]:
+    def discover_movies(self, params: dict) -> List[dict]:
         """
         发现电影
-        :param kwargs:
+        :param params: 参数
         :return:
         """
         if not self.discover:
             return []
         try:
-            logger.debug(f"正在发现电影：{kwargs}...")
-            params_tuple = tuple(kwargs.items())
-            tmdbinfo = self.discover.discover_movies(params_tuple)
+            logger.debug(f"正在发现电影：{params}...")
+            tmdbinfo = self.discover.discover_movies(tuple(params.items()))
             if tmdbinfo:
                 for info in tmdbinfo:
                     info['media_type'] = MediaType.MOVIE
@@ -1100,18 +1099,17 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    def discover_tvs(self, **kwargs) -> List[dict]:
+    def discover_tvs(self, params: dict) -> List[dict]:
         """
         发现电视剧
-        :param kwargs:
+        :param params: 参数
         :return:
         """
         if not self.discover:
             return []
         try:
-            logger.debug(f"正在发现电视剧：{kwargs}...")
-            params_tuple = tuple(kwargs.items())
-            tmdbinfo = self.discover.discover_tv_shows(params_tuple)
+            logger.debug(f"正在发现电视剧：{params}...")
+            tmdbinfo = self.discover.discover_tv_shows(tuple(params.items()))
             if tmdbinfo:
                 for info in tmdbinfo:
                     info['media_type'] = MediaType.TV
