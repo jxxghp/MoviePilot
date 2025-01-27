@@ -22,20 +22,18 @@ def calendar(page: int = 1,
 
 
 @router.get("/subjects", summary="搜索Bangumi", response_model=List[schemas.MediaInfo])
-def bangumi_subjects(type: int,
-                     cat: int,
-                     sort: str,
-                     year: int,
-                     page: int = 1,
-                     count: int = 20,
+def bangumi_subjects(type: int = 2,
+                     cat: int = None,
+                     sort: str = 'rank',
+                     year: int = None,
+                     limit: int = 30,
+                     offset: int = 0,
                      _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     搜索Bangumi
     """
-    medias = BangumiChain().bangumi_discover(type=type, cat=cat, sort=sort, year=year)
-    if medias:
-        return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
-    return []
+    return RecommendChain().bangumi_discover(type=type, cat=cat, sort=sort, year=year,
+                                             limit=limit, offset=offset)
 
 
 @router.get("/credits/{bangumiid}", summary="查询Bangumi演职员表", response_model=List[schemas.MediaPerson])
@@ -78,13 +76,14 @@ def bangumi_person(person_id: int,
 @router.get("/person/credits/{person_id}", summary="人物参演作品", response_model=List[schemas.MediaInfo])
 def bangumi_person_credits(person_id: int,
                            page: int = 1,
+                           count: int = 20,
                            _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据人物ID查询人物参演作品
     """
     medias = BangumiChain().person_credits(person_id=person_id)
     if medias:
-        return [media.to_dict() for media in medias[(page - 1) * 20: page * 20]]
+        return [media.to_dict() for media in medias[(page - 1) * count: page * count]]
     return []
 
 

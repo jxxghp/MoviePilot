@@ -161,6 +161,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                     with_genres: str = "",
                     with_original_language: str = "",
                     with_keywords: str = "",
+                    with_watch_providers: str = "",
                     vote_average: float = 0,
                     vote_count: int = 0,
                     release_date: str = "",
@@ -173,6 +174,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                                               with_genres=with_genres,
                                               with_original_language=with_original_language,
                                               with_keywords=with_keywords,
+                                              with_watch_providers=with_watch_providers,
                                               vote_average=vote_average,
                                               vote_count=vote_count,
                                               release_date=release_date,
@@ -185,6 +187,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                  with_genres: str = "",
                  with_original_language: str = "zh|en|ja|ko",
                  with_keywords: str = "",
+                 with_watch_providers: str = "",
                  vote_average: float = 0,
                  vote_count: int = 0,
                  release_date: str = "",
@@ -197,6 +200,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                                            with_genres=with_genres,
                                            with_original_language=with_original_language,
                                            with_keywords=with_keywords,
+                                           with_watch_providers=with_watch_providers,
                                            vote_average=vote_average,
                                            vote_count=vote_count,
                                            release_date=release_date,
@@ -220,6 +224,23 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         medias = self.bangumichain.calendar()
         return [media.to_dict() for media in medias[(page - 1) * count: page * count]] if medias else []
+
+    @log_execution_time(logger=logger)
+    @cached(ttl=recommend_ttl, region=recommend_cache_region)
+    def bangumi_discover(self, type: int = 2,
+                         cat: int = None,
+                         sort: str = 'rank',
+                         year: int = None,
+                         count: int = 30,
+                         page: int = 1) -> Any:
+        """
+        搜索Bangumi
+        """
+        medias = self.bangumichain.discover(type=type, cat=cat, sort=sort, year=year,
+                                            limit=count, offset=(page - 1) * count)
+        if medias:
+            return [media.to_dict() for media in medias]
+        return []
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)

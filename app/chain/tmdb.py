@@ -19,6 +19,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
                       with_genres: str,
                       with_original_language: str,
                       with_keywords: str,
+                      with_watch_providers: str,
                       vote_average: float,
                       vote_count: int,
                       release_date: str,
@@ -29,6 +30,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         :param with_genres:  类型
         :param with_original_language:  语言
         :param with_keywords:  关键字
+        :param with_watch_providers:  提供商
         :param vote_average:  评分
         :param vote_count:  评分人数
         :param release_date:  上映日期
@@ -36,10 +38,15 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         :return: 媒体信息列表
         """
         return self.run_module("tmdb_discover", mtype=mtype,
-                               sort_by=sort_by, with_genres=with_genres,
-                               with_original_language=with_original_language, with_keywords=with_keywords,
-                               vote_average=vote_average, vote_count=vote_count,
-                               release_date=release_date, page=page)
+                               sort_by=sort_by,
+                               with_genres=with_genres,
+                               with_original_language=with_original_language,
+                               with_keywords=with_keywords,
+                               with_watch_providers=with_watch_providers,
+                               vote_average=vote_average,
+                               vote_count=vote_count,
+                               release_date=release_date,
+                               page=page)
 
     def tmdb_trending(self, page: int = 1) -> Optional[List[MediaInfo]]:
         """
