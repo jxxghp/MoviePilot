@@ -14,24 +14,32 @@ class TmdbChain(ChainBase, metaclass=Singleton):
     TheMovieDB处理链，单例运行
     """
 
-    def tmdb_discover(self, mtype: MediaType, sort_by: str, with_genres: str,
-                      with_original_language: str, vote_average: float,
-                      release_date: str, page: int = 1) -> Optional[List[MediaInfo]]:
+    def tmdb_discover(self, mtype: MediaType,
+                      sort_by: str,
+                      with_genres: str,
+                      with_original_language: str,
+                      with_keywords: str,
+                      vote_average: float,
+                      vote_count: int,
+                      release_date: str,
+                      page: int = 1) -> Optional[List[MediaInfo]]:
         """
         :param mtype:  媒体类型
         :param sort_by:  排序方式
         :param with_genres:  类型
         :param with_original_language:  语言
+        :param with_keywords:  关键字
         :param vote_average:  评分
+        :param vote_count:  评分人数
         :param release_date:  上映日期
         :param page:  页码
         :return: 媒体信息列表
         """
         return self.run_module("tmdb_discover", mtype=mtype,
                                sort_by=sort_by, with_genres=with_genres,
-                               with_original_language=with_original_language,
-                               vote_average=vote_average, release_date=release_date,
-                               page=page)
+                               with_original_language=with_original_language, with_keywords=with_keywords,
+                               vote_average=vote_average, vote_count=vote_count,
+                               release_date=release_date, page=page)
 
     def tmdb_trending(self, page: int = 1) -> Optional[List[MediaInfo]]:
         """

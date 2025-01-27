@@ -157,8 +157,14 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def tmdb_movies(self, sort_by: str = "popularity.desc", with_genres: str = "",
-                    with_original_language: str = "", vote_average: float = 0, page: int = 1) -> Any:
+    def tmdb_movies(self, sort_by: str = "popularity.desc",
+                    with_genres: str = "",
+                    with_original_language: str = "",
+                    with_keywords: str = "",
+                    vote_average: float = 0,
+                    vote_count: int = 0,
+                    release_date: str = "",
+                    page: int = 1) -> Any:
         """
         TMDB热门电影
         """
@@ -166,14 +172,23 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                                               sort_by=sort_by,
                                               with_genres=with_genres,
                                               with_original_language=with_original_language,
+                                              with_keywords=with_keywords,
                                               vote_average=vote_average,
+                                              vote_count=vote_count,
+                                              release_date=release_date,
                                               page=page)
         return [movie.to_dict() for movie in movies] if movies else []
 
     @log_execution_time(logger=logger)
     @cached(ttl=recommend_ttl, region=recommend_cache_region)
-    def tmdb_tvs(self, sort_by: str = "popularity.desc", with_genres: str = "",
-                 with_original_language: str = "zh|en|ja|ko", page: int = 1) -> Any:
+    def tmdb_tvs(self, sort_by: str = "popularity.desc",
+                 with_genres: str = "",
+                 with_original_language: str = "zh|en|ja|ko",
+                 with_keywords: str = "",
+                 vote_average: float = 0,
+                 vote_count: int = 0,
+                 release_date: str = "",
+                 page: int = 1) -> Any:
         """
         TMDB热门电视剧
         """
@@ -181,6 +196,10 @@ class RecommendChain(ChainBase, metaclass=Singleton):
                                            sort_by=sort_by,
                                            with_genres=with_genres,
                                            with_original_language=with_original_language,
+                                           with_keywords=with_keywords,
+                                           vote_average=vote_average,
+                                           vote_count=vote_count,
+                                           release_date=release_date,
                                            page=page)
         return [tv.to_dict() for tv in tvs] if tvs else []
 
