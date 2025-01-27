@@ -326,7 +326,7 @@ class JobManager:
             # 计算状态为完成的任务数
             if __mediaid__ not in self._job_view:
                 return 0
-            return sum([task.fileitem.size for task in self._job_view[__mediaid__].tasks if task.state == "completed"])
+            return sum([task.fileitem.size for task in self._job_view[__mediaid__].tasks if task.state == "completed" and task.fileitem.size is not None])
 
     def total(self) -> int:
         """
