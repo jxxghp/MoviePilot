@@ -165,7 +165,9 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             'downloader': self.__get_default_subscribe_config(mediainfo.type, "downloader") if not kwargs.get(
                 "downloader") else kwargs.get("downloader"),
             'save_path': self.__get_default_subscribe_config(mediainfo.type, "save_path") if not kwargs.get(
-                "save_path") else kwargs.get("save_path")
+                "save_path") else kwargs.get("save_path"),
+            'filter_groups': self.__get_default_subscribe_config(mediainfo.type, "filter_groups") if not kwargs.get(
+                "filter_groups") else kwargs.get("filter_groups"),
         })
         sid, err_msg = self.subscribeoper.add(mediainfo=mediainfo, season=season, username=username, **kwargs)
         if not sid:
