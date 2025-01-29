@@ -601,12 +601,76 @@ class TmdbApi:
             tmdb_info['genre_ids'] = __get_genre_ids(tmdb_info.get('genres'))
             # 别名和译名
             tmdb_info['names'] = self.__get_names(tmdb_info)
+            # 内容分级
+            tmdb_info['content_rating'] = self.__get_content_rating(tmdb_info)
             # 转换多语种标题
             self.__update_tmdbinfo_extra_title(tmdb_info)
             # 转换中文标题
             self.__update_tmdbinfo_cn_title(tmdb_info)
 
         return tmdb_info
+
+    @staticmethod
+    def __get_content_rating(tmdb_info: dict) -> Optional[str]:
+        """
+        获得tmdb中的内容评级
+        :param tmdb_info: TMDB信息
+        :return: 内容评级
+        """
+        if not tmdb_info:
+            return None
+        # dict[地区:分级]
+        ratings = {}
+        if results := (tmdb_info.get("release_dates") or {}).get("results"):
+            """
+            [
+                {
+                    "iso_3166_1": "AR",
+                    "release_dates": [
+                        {
+                            "certification": "+13",
+                            "descriptors": [],
+                            "iso_639_1": "",
+                            "note": "",
+                            "release_date": "2025-01-23T00:00:00.000Z",
+                            "type": 3
+                        }
+                    ]
+                }
+            ]
+            """
+            for item in results:
+                iso_3166_1 = item.get("iso_3166_1")
+                if not iso_3166_1:
+                    continue
+                dates = item.get("release_dates")
+                if not dates:
+                    continue
+                certification = dates[0].get("certification")
+                if not certification:
+                    continue
+                ratings[iso_3166_1] = certification
+        elif results := (tmdb_info.get("content_ratings") or {}).get("results"):
+            """
+            [
+                {
+                    "descriptors": [],
+                    "iso_3166_1": "US",
+                    "rating": "TV-MA"
+                }
+            ]
+            """
+            for item in results:
+                iso_3166_1 = item.get("iso_3166_1")
+                if not iso_3166_1:
+                    continue
+                rating = item.get("rating")
+                if not rating:
+                    continue
+                ratings[iso_3166_1] = rating
+        if not ratings:
+            return None
+        return ratings.get("CN") or ratings.get("US")
 
     @staticmethod
     def __update_tmdbinfo_cn_title(tmdb_info: dict):
@@ -700,6 +764,7 @@ class TmdbApi:
                                                      "credits,"
                                                      "alternative_titles,"
                                                      "translations,"
+                                                     "release_dates,"
                                                      "external_ids") -> Optional[dict]:
         """
         获取电影的详情
@@ -812,6 +877,7 @@ class TmdbApi:
                                                   "credits,"
                                                   "alternative_titles,"
                                                   "translations,"
+                                                  "content_ratings,"
                                                   "external_ids") -> Optional[dict]:
         """
         获取电视剧的详情
