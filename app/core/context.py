@@ -262,6 +262,8 @@ class MediaInfo:
     runtime: int = None
     # 下一集
     next_episode_to_air: dict = field(default_factory=dict)
+    # 内容分级
+    content_rating: str = None
 
     def __post_init__(self):
         # 设置媒体信息

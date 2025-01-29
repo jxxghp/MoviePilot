@@ -170,6 +170,9 @@ class TmdbScraper:
             DomUtils.add_node(doc, root, "genre", genre.get("name") or "")
         # 评分
         DomUtils.add_node(doc, root, "rating", mediainfo.vote_average or "0")
+        # 内容分级
+        if content_rating := mediainfo.content_rating:
+            DomUtils.add_node(doc, root, "mpaa", content_rating)
 
         return doc
 
