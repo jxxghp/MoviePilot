@@ -399,7 +399,7 @@ class TheMovieDbModule(_ModuleBase):
                 "with_watch_providers": with_watch_providers,
                 "vote_average.gte": vote_average,
                 "vote_count.gte": vote_count,
-                "release_date.gte": release_date,
+                "first_air_date.gte": release_date,
                 "page": page
             })
         else:
