@@ -106,6 +106,6 @@ class UserOper(DbOper):
             user_setting = user.settings
             if user_setting:
                 for k, v in kwargs.items():
-                    if user_setting.get(k) == v:
+                    if user_setting.get(k) == str(v):
                         return user.name
         return None
