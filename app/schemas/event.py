@@ -221,6 +221,7 @@ class TransferInterceptEventData(ChainEventData):
         source (str): 拦截源，默认值为 "未知拦截源"
         reason (str): 拦截原因，描述拦截的具体原因
     """
+    # 输入参数
     fileitem: FileItem = Field(..., description="源文件")
     target_storage: str = Field(..., description="目标存储")
     target_path: Path = Field(..., description="目标路径")
