@@ -296,7 +296,7 @@ class MessageChain(ChainBase):
                 else:
                     best_version = True
                 # 转换用户名
-                mp_name = self.useroper.get_name(**{f"{source}_userid": userid})
+                mp_name = self.useroper.get_name(**{f"{channel.name.lower()}_userid": userid}) if channel else None
                 # 添加订阅，状态为N
                 self.subscribechain.add(title=mediainfo.title,
                                         year=mediainfo.year,
@@ -508,7 +508,7 @@ class MessageChain(ChainBase):
             else:
                 note = None
             # 转换用户名
-            mp_name = self.useroper.get_name(**{f"{source}_userid": userid})
+            mp_name = self.useroper.get_name(**{f"{channel.name.lower()}_userid": userid}) if channel else None
             # 添加订阅，状态为R
             self.subscribechain.add(title=_current_media.title,
                                     year=_current_media.year,
