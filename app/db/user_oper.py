@@ -96,3 +96,16 @@ class UserOper(DbOper):
         if settings:
             return settings.get(key)
         return None
+
+    def get_name(self, **kwargs) -> Optional[str]:
+        """
+        根据绑定账号获取用户名称
+        """
+        users = self.list()
+        for user in users:
+            user_setting = user.settings
+            if user_setting:
+                for k, v in kwargs.items():
+                    if user_setting.get(k) == v:
+                        return user.name
+        return None
