@@ -16,7 +16,8 @@ from app.helper.module import ModuleHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
-from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage, TransferRenameEventData
+from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage, \
+    TransferRenameEventData, TransferInterceptEventData
 from app.schemas.types import MediaType, ModuleType, ChainEventType, OtherModulesType
 from app.utils.system import SystemUtils
 
@@ -763,6 +764,21 @@ class FileManagerModule(_ModuleBase):
         target_item = target_oper.get_folder(target_path)
         if not target_item:
             return None, f"获取目标目录失败：{target_path}"
+        event_data = TransferInterceptEventData(
+            fileitem=fileitem,
+            target_storage=target_storage,
+            target_path=target_path,
+            transfer_type=transfer_type
+        )
+        event = eventmanager.send_event(ChainEventType.TransferRename, event_data)
+        if event and event.event_data:
+            event_data = event.event_data
+            # 如果事件被取消，跳过文件整理
+            if event_data.cancel:
+                logger.debug(
+                    f"Transfer dir canceled by event: {event_data.source},"
+                    f"Reason: {event_data.reason}")
+                return None, event_data.reason
         # 处理所有文件
         state, errmsg = self.__transfer_dir_files(fileitem=fileitem,
                                                   target_storage=target_storage,
@@ -830,6 +846,24 @@ class FileManagerModule(_ModuleBase):
                 target_file.unlink()
         logger.info(f"正在整理文件：【{fileitem.storage}】{fileitem.path} 到 【{target_storage}】{target_file}，"
                     f"操作类型：{transfer_type}")
+        event_data = TransferInterceptEventData(
+            fileitem=fileitem,
+            target_storage=target_storage,
+            target_path=target_file,
+            transfer_type=transfer_type,
+            options={
+                "over_flag": over_flag
+            }
+        )
+        event = eventmanager.send_event(ChainEventType.TransferRename, event_data)
+        if event and event.event_data:
+            event_data = event.event_data
+            # 如果事件被取消，跳过文件整理
+            if event_data.cancel:
+                logger.debug(
+                    f"Transfer file canceled by event: {event_data.source},"
+                    f"Reason: {event_data.reason}")
+                return None, event_data.reason
         new_item, errmsg = self.__transfer_command(fileitem=fileitem,
                                                    target_storage=target_storage,
                                                    target_file=target_file,
@@ -1127,7 +1161,7 @@ class FileManagerModule(_ModuleBase):
                 if episode.episode_number == meta.begin_episode:
                     episode_date = episode.air_date
                     break
-        
+
         return {
             # 标题
             "title": __convert_invalid_characters(mediainfo.title),
