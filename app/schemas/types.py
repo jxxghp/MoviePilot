@@ -75,6 +75,8 @@ class ChainEventType(Enum):
     CommandRegister = "command.register"
     # 整理重命名
     TransferRename = "transfer.rename"
+    # 整理拦截
+    TransferIntercept = "transfer.intercept"
     # 资源选择
     ResourceSelection = "resource.selection"
     # 资源下载

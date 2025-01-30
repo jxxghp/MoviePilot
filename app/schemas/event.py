@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any, List, Set
 
 from pydantic import BaseModel, Field, root_validator
 
-from app.schemas import MessageChannel
+from app.schemas import MessageChannel, FileItem
 
 
 class BaseEventData(BaseModel):
@@ -50,7 +50,7 @@ class AuthCredentials(ChainEventData):
     service: Optional[str] = Field(default=None, description="服务名称")
 
     @root_validator(pre=True)
-    def check_fields_based_on_grant_type(cls, values): # noqa
+    def check_fields_based_on_grant_type(cls, values):  # noqa
         grant_type = values.get("grant_type")
         if not grant_type:
             values["grant_type"] = "password"
@@ -200,5 +200,34 @@ class ResourceDownloadEventData(ChainEventData):
 
     # 输出参数
     cancel: bool = Field(default=False, description="是否取消下载")
+    source: str = Field(default="未知拦截源", description="拦截源")
+    reason: str = Field(default="", description="拦截原因")
+
+
+class TransferInterceptEventData(ChainEventData):
+    """
+    TransferIntercept 事件的数据模型
+
+    Attributes:
+        # 输入参数
+        fileitem (FileItem): 源文件
+        target_storage (str): 目标存储
+        target_path (Path): 目标路径
+        transfer_type (str): 整理方式（copy、move、link、softlink等）
+        options (dict): 其他参数
+
+        # 输出参数
+        cancel (bool): 是否取消下载，默认值为 False
+        source (str): 拦截源，默认值为 "未知拦截源"
+        reason (str): 拦截原因，描述拦截的具体原因
+    """
+    fileitem: FileItem = Field(..., description="源文件")
+    target_storage: str = Field(..., description="目标存储")
+    target_path: Path = Field(..., description="目标路径")
+    transfer_type: str = Field(..., description="整理方式")
+    options: Optional[dict] = Field(None, description="其他参数")
+
+    # 输出参数
+    cancel: bool = Field(default=False, description="是否取消整理")
     source: str = Field(default="未知拦截源", description="拦截源")
     reason: str = Field(default="", description="拦截原因")
