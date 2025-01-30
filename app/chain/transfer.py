@@ -663,21 +663,21 @@ class TransferChain(ChainBase, metaclass=Singleton):
                     if transfer_history:
                         mediainfo.title = transfer_history.title
 
-                # 获取集数据
-                if not task.episodes_info and mediainfo.type == MediaType.TV:
-                    if task.meta.begin_season is None:
-                        task.meta.begin_season = 1
-                    mediainfo.season = mediainfo.season or task.meta.begin_season
-                    task.episodes_info = self.tmdbchain.tmdb_episodes(
-                        tmdbid=mediainfo.tmdb_id,
-                        season=mediainfo.season
-                    )
-
                 # 更新任务信息
                 task.mediainfo = mediainfo
                 # 更新队列任务
                 curr_task = self.jobview.remove_task(task.fileitem)
                 self.jobview.add_task(task, state=curr_task.state if curr_task else "waiting")
+
+            # 获取集数据
+            if not task.episodes_info and task.mediainfo.type == MediaType.TV:
+                if task.meta.begin_season is None:
+                    task.meta.begin_season = 1
+                task.mediainfo.season = task.mediainfo.season or task.meta.begin_season
+                task.episodes_info = self.tmdbchain.tmdb_episodes(
+                    tmdbid=task.mediainfo.tmdb_id,
+                    season=task.mediainfo.season
+                )
 
             # 查询整理目标目录
             if not task.target_directory:

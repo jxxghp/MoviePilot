@@ -444,7 +444,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     for file in files:
                         self.scrape_metadata(fileitem=file,
                                              meta=meta, mediainfo=mediainfo,
-                                             init_folder=False, parent=fileitem)
+                                             init_folder=False, parent=fileitem,
+                                             overwrite=overwrite)
                 # 生成目录内图片文件
                 if init_folder:
                     # 图片
@@ -515,7 +516,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
                     self.scrape_metadata(fileitem=file,
                                          meta=meta, mediainfo=mediainfo,
                                          parent=fileitem if file.type == "file" else None,
-                                         init_folder=True if file.type == "dir" else False)
+                                         init_folder=True if file.type == "dir" else False,
+                                         overwrite=overwrite)
                 # 生成目录的nfo和图片
                 if init_folder:
                     # 识别文件夹名称
