@@ -770,7 +770,7 @@ class FileManagerModule(_ModuleBase):
             target_path=target_path,
             transfer_type=transfer_type
         )
-        event = eventmanager.send_event(ChainEventType.TransferRename, event_data)
+        event = eventmanager.send_event(ChainEventType.TransferIntercept, event_data)
         if event and event.event_data:
             event_data = event.event_data
             # 如果事件被取消，跳过文件整理
@@ -855,7 +855,7 @@ class FileManagerModule(_ModuleBase):
                 "over_flag": over_flag
             }
         )
-        event = eventmanager.send_event(ChainEventType.TransferRename, event_data)
+        event = eventmanager.send_event(ChainEventType.TransferIntercept, event_data)
         if event and event.event_data:
             event_data = event.event_data
             # 如果事件被取消，跳过文件整理
