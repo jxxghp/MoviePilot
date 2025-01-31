@@ -138,7 +138,9 @@ class SiteChain(ChainBase):
             proxies=settings.PROXY if site.proxy else None,
             timeout=site.timeout or 15
         ).get_res(url=site.url)
-        if res and res.status_code == 200:
+        if res is None:
+            return False, "无法打开网站！"
+        if res.status_code == 200:
             csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
             if csrf_token:
                 token = csrf_token.group(1)
@@ -155,7 +157,9 @@ class SiteChain(ChainBase):
             proxies=settings.PROXY if site.proxy else None,
             timeout=site.timeout or 15
         ).get_res(url=f"{site.url}api/user/getInfo")
-        if user_res and user_res.status_code == 200:
+        if user_res is None:
+            return False, "无法打开网站！"
+        if user_res.status_code == 200:
             user_info = user_res.json()
             if user_info and user_info.get("data"):
                 return True, "连接成功"
@@ -182,9 +186,11 @@ class SiteChain(ChainBase):
             proxies=settings.PROXY if site.proxy else None,
             timeout=site.timeout or 15
         ).post_res(url=url)
+        if res is None:
+            return False, "无法打开网站！"
         state = False
         message = "鉴权已过期或无效"
-        if res and res.status_code == 200:
+        if res.status_code == 200:
             user_info = res.json() or {}
             if user_info.get("data"):
                 # 更新最后访问时间
@@ -223,7 +229,9 @@ class SiteChain(ChainBase):
             proxies=settings.PROXY if site.proxy else None,
             timeout=site.timeout or 15
         ).get_res(url=url)
-        if res and res.status_code == 200:
+        if res is None:
+            return False, "无法打开网站！"
+        if res.status_code == 200:
             user_info = res.json()
             if user_info and user_info.get("success"):
                 return True, "连接成功"
