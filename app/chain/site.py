@@ -144,6 +144,8 @@ class SiteChain(ChainBase):
             csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
             if csrf_token:
                 token = csrf_token.group(1)
+        else:
+            return False, f"错误：{res.status_code} {res.reason}"
         if not token:
             return False, "无法获取Token"
         # 调用查询用户信息接口
@@ -163,7 +165,9 @@ class SiteChain(ChainBase):
             user_info = user_res.json()
             if user_info and user_info.get("data"):
                 return True, "连接成功"
-        return False, "Cookie已失效"
+            return False, "Cookie已失效"
+        else:
+            return False, f"错误：{user_res.status_code} {user_res.reason}"
 
     @staticmethod
     def __mteam_test(site: Site) -> Tuple[bool, str]:
@@ -188,9 +192,9 @@ class SiteChain(ChainBase):
         ).post_res(url=url)
         if res is None:
             return False, "无法打开网站！"
-        state = False
-        message = "鉴权已过期或无效"
         if res.status_code == 200:
+            state = False
+            message = "鉴权已过期或无效"
             user_info = res.json() or {}
             if user_info.get("data"):
                 # 更新最后访问时间
@@ -209,7 +213,9 @@ class SiteChain(ChainBase):
             elif user_info.get("message"):
                 # 使用馒头的错误提示
                 message = user_info.get("message")
-        return state, message
+            return state, message
+        else:
+            return False, f"错误：{res.status_code} {res.reason}"
 
     @staticmethod
     def __yema_test(site: Site) -> Tuple[bool, str]:
@@ -235,7 +241,9 @@ class SiteChain(ChainBase):
             user_info = res.json()
             if user_info and user_info.get("success"):
                 return True, "连接成功"
-        return False, "Cookie已过期"
+            return False, "Cookie已过期"
+        else:
+            return False, f"错误：{res.status_code} {res.reason}"
 
     def __indexphp_test(self, site: Site) -> Tuple[bool, str]:
         """
@@ -565,12 +573,12 @@ class SiteChain(ChainBase):
                     elif res.status_code == 200:
                         msg = "Cookie已失效"
                     else:
-                        msg = f"状态码：{res.status_code}"
+                        msg = f"错误：{res.status_code} {res.reason}"
                     return False, f"{msg}！"
                 elif public and res.status_code != 200:
-                    return False, f"状态码：{res.status_code}！"
+                    return False, f"错误：{res.status_code} {res.reason}！"
             elif res is not None:
-                return False, f"状态码：{res.status_code}！"
+                return False, f"错误：{res.status_code} {res.reason}！"
             else:
                 return False, f"无法打开网站！"
         return True, "连接成功"
