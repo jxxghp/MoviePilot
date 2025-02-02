@@ -746,11 +746,12 @@ class FileManagerModule(_ModuleBase):
                 logger.error(f"音轨文件 {org_path.name} 整理失败：{str(error)}")
         return True, ""
 
-    def __transfer_dir(self, fileitem: FileItem, transfer_type: str,
+    def __transfer_dir(self, fileitem: FileItem, mediainfo: MediaInfo, transfer_type: str,
                        target_storage: str, target_path: Path) -> Tuple[Optional[FileItem], str]:
         """
         整理整个文件夹
         :param fileitem: 源文件
+        :param mediainfo: 媒体信息
         :param transfer_type: 整理方式
         :param target_storage: 目标存储
         :param target_path: 目标路径
@@ -766,6 +767,7 @@ class FileManagerModule(_ModuleBase):
             return None, f"获取目标目录失败：{target_path}"
         event_data = TransferInterceptEventData(
             fileitem=fileitem,
+            mediainfo=mediainfo,
             target_storage=target_storage,
             target_path=target_path,
             transfer_type=transfer_type
@@ -827,27 +829,22 @@ class FileManagerModule(_ModuleBase):
         # 返回成功
         return True, ""
 
-    def __transfer_file(self, fileitem: FileItem, target_storage: str, target_file: Path,
+    def __transfer_file(self, fileitem: FileItem, mediainfo: MediaInfo, target_storage: str, target_file: Path,
                         transfer_type: str, over_flag: bool = False) -> Tuple[Optional[FileItem], str]:
         """
         整理一个文件，同时处理其他相关文件
         :param fileitem: 原文件
+        :param mediainfo: 媒体信息
         :param target_storage: 目标存储
         :param target_file: 新文件
         :param transfer_type: 整理方式
         :param over_flag: 是否覆盖，为True时会先删除再整理
         """
-        if target_storage == "local" and (target_file.exists() or target_file.is_symlink()):
-            if not over_flag:
-                logger.warn(f"文件已存在：{target_file}")
-                return None, f"{target_file} 已存在"
-            else:
-                logger.info(f"正在删除已存在的文件：{target_file}")
-                target_file.unlink()
         logger.info(f"正在整理文件：【{fileitem.storage}】{fileitem.path} 到 【{target_storage}】{target_file}，"
                     f"操作类型：{transfer_type}")
         event_data = TransferInterceptEventData(
             fileitem=fileitem,
+            mediainfo=mediainfo,
             target_storage=target_storage,
             target_path=target_file,
             transfer_type=transfer_type,
@@ -864,6 +861,13 @@ class FileManagerModule(_ModuleBase):
                     f"Transfer file canceled by event: {event_data.source},"
                     f"Reason: {event_data.reason}")
                 return None, event_data.reason
+        if target_storage == "local" and (target_file.exists() or target_file.is_symlink()):
+            if not over_flag:
+                logger.warn(f"文件已存在：{target_file}")
+                return None, f"{target_file} 已存在"
+            else:
+                logger.info(f"正在删除已存在的文件：{target_file}")
+                target_file.unlink()
         new_item, errmsg = self.__transfer_command(fileitem=fileitem,
                                                    target_storage=target_storage,
                                                    target_file=target_file,
@@ -968,6 +972,7 @@ class FileManagerModule(_ModuleBase):
                 new_path = target_path / fileitem.name
             # 整理目录
             new_diritem, errmsg = self.__transfer_dir(fileitem=fileitem,
+                                                      mediainfo=mediainfo,
                                                       target_storage=target_storage,
                                                       target_path=new_path,
                                                       transfer_type=transfer_type)
@@ -1097,6 +1102,7 @@ class FileManagerModule(_ModuleBase):
                     self.__delete_version_files(target_storage, new_file)
             # 整理文件
             new_item, err_msg = self.__transfer_file(fileitem=fileitem,
+                                                     mediainfo=mediainfo,
                                                      target_storage=target_storage,
                                                      target_file=new_file,
                                                      transfer_type=transfer_type,

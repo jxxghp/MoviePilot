@@ -223,6 +223,7 @@ class TransferInterceptEventData(ChainEventData):
     """
     # 输入参数
     fileitem: FileItem = Field(..., description="源文件")
+    mediainfo: Any = Field(..., description="媒体信息")
     target_storage: str = Field(..., description="目标存储")
     target_path: Path = Field(..., description="目标路径")
     transfer_type: str = Field(..., description="整理方式")
