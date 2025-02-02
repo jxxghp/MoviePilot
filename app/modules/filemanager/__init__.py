@@ -837,13 +837,6 @@ class FileManagerModule(_ModuleBase):
         :param transfer_type: 整理方式
         :param over_flag: 是否覆盖，为True时会先删除再整理
         """
-        if target_storage == "local" and (target_file.exists() or target_file.is_symlink()):
-            if not over_flag:
-                logger.warn(f"文件已存在：{target_file}")
-                return None, f"{target_file} 已存在"
-            else:
-                logger.info(f"正在删除已存在的文件：{target_file}")
-                target_file.unlink()
         logger.info(f"正在整理文件：【{fileitem.storage}】{fileitem.path} 到 【{target_storage}】{target_file}，"
                     f"操作类型：{transfer_type}")
         event_data = TransferInterceptEventData(
@@ -864,6 +857,13 @@ class FileManagerModule(_ModuleBase):
                     f"Transfer file canceled by event: {event_data.source},"
                     f"Reason: {event_data.reason}")
                 return None, event_data.reason
+        if target_storage == "local" and (target_file.exists() or target_file.is_symlink()):
+            if not over_flag:
+                logger.warn(f"文件已存在：{target_file}")
+                return None, f"{target_file} 已存在"
+            else:
+                logger.info(f"正在删除已存在的文件：{target_file}")
+                target_file.unlink()
         new_item, errmsg = self.__transfer_command(fileitem=fileitem,
                                                    target_storage=target_storage,
                                                    target_file=target_file,
