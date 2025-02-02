@@ -420,16 +420,19 @@ class FanartModule(_ModuleBase):
         return result
 
     @classmethod
-    @cached(maxsize=settings.CACHE_CONF["fanart"], ttl=settings.CACHE_CONF["meta"], skip_none=False)
+    @cached(maxsize=settings.CACHE_CONF["fanart"], ttl=settings.CACHE_CONF["meta"])
     def __request_fanart(cls, media_type: MediaType, queryid: Union[str, int]) -> Optional[dict]:
         if media_type == MediaType.MOVIE:
             image_url = cls._movie_url % queryid
         else:
             image_url = cls._tv_url % queryid
         try:
-            ret = RequestUtils(proxies=cls._proxies, timeout=10).get_res(image_url)
+            ret = RequestUtils(proxies=cls._proxies, timeout=10).get_res(image_url, raise_exception=True)
             if ret:
                 return ret.json()
+            else:
+                logger.debug(f"未能获取到 {queryid} 的Fanart图片")
+                return {}
         except Exception as err:
             logger.error(f"获取{queryid}的Fanart图片失败：{str(err)}")
-        return None
+            return None

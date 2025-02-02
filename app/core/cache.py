@@ -500,6 +500,21 @@ def cached(region: Optional[str] = None, maxsize: int = 1000, ttl: int = 1800,
             return False
         return True
 
+    def is_valid_cache_value(cache_key: str, cached_value: Any, cache_region: str) -> bool:
+        """
+        判断指定的值是否为一个有效的缓存值
+
+        :param cache_key: 缓存的键
+        :param cached_value: 缓存的值
+        :param cache_region: 缓存的区
+        :return: 若值是有效的缓存值返回 True，否则返回 False
+        """
+        # 如果 skip_none 为 False，且 value 为 None，需要判断缓存实际是否存在
+        if not skip_none and cached_value is None:
+            if not cache_backend.exists(key=cache_key, region=cache_region):
+                return False
+        return True
+
     def decorator(func):
 
         # 获取缓存区
@@ -511,7 +526,7 @@ def cached(region: Optional[str] = None, maxsize: int = 1000, ttl: int = 1800,
             cache_key = cache_backend.get_cache_key(func, args, kwargs)
             # 尝试获取缓存
             cached_value = cache_backend.get(cache_key, region=cache_region)
-            if should_cache(cached_value):
+            if should_cache(cached_value) and is_valid_cache_value(cache_key, cached_value, cache_region):
                 return cached_value
             # 执行函数并缓存结果
             result = func(*args, **kwargs)
