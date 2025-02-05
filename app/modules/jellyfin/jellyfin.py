@@ -671,10 +671,8 @@ class Jellyfin:
         elif message.get("ItemType") == 'Audio':
             # 音乐
             eventItem.item_type = "AUD"
-            album = message.get('Album')
-            file_name = message.get('Name')
-            eventItem.item_name = album
-            eventItem.overview = file_name
+            eventItem.item_name = message.get('Album')
+            eventItem.overview = message.get('Name')
             eventItem.item_id = message.get('ItemId')
         else:
             # 电影
