@@ -668,6 +668,14 @@ class Jellyfin:
                 "S" + str(eventItem.season_id),
                 "E" + str(eventItem.episode_id),
                 message.get('Name'))
+        elif message.get("ItemType") == 'Audio':
+            # 音乐
+            eventItem.item_type = "AUD"
+            album = message.get('Album')
+            file_name = message.get('Name')
+            eventItem.item_name = album
+            eventItem.overview = file_name
+            eventItem.item_id = message.get('ItemId')
         else:
             # 电影
             eventItem.item_type = "MOV"
