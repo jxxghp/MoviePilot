@@ -239,6 +239,7 @@ class DiscoverMediaSource(BaseModel):
     """
     探索媒体数据源的基类
     """
+    name: str = Field(..., description="数据源名称")
     mediaid_prefix: str = Field(..., description="媒体ID的前缀，不含:")
     api_path: str = Field(..., description="媒体数据源API地址")
     filter_params: Optional[Dict[str, Any]] = Field(default=None, description="过滤参数")

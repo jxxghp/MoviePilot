@@ -11,10 +11,10 @@ from app.schemas.types import ChainEventType
 router = APIRouter()
 
 
-@router.get("/source", summary="获取发现数据源", response_model=List[schemas.DiscoverMediaSource])
+@router.get("/source", summary="获取探索数据源", response_model=List[schemas.DiscoverMediaSource])
 def source(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
-    获取发现数据源
+    获取探索数据源
     """
     # 广播事件，请示额外的发现数据源支持
     event_data = DiscoverSourceEventData()
