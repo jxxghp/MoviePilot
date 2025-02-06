@@ -6,8 +6,10 @@ from app import schemas
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
 from app.core.config import settings
+from app.core.event import eventmanager
 from app.core.security import verify_token
-from app.schemas.types import MediaType
+from app.schemas import MediaRecognizeConvertEventData
+from app.schemas.types import MediaType, ChainEventType
 
 router = APIRouter()
 
@@ -34,6 +36,8 @@ def search_by_id(mediaid: str,
         mtype = MediaType(mtype)
     if season:
         season = int(season)
+    torrents = None
+    # 根据前缀识别媒体ID
     if mediaid.startswith("tmdb:"):
         tmdbid = int(mediaid.replace("tmdb:", ""))
         if settings.RECOGNIZE_SOURCE == "douban":
@@ -79,8 +83,26 @@ def search_by_id(mediaid: str,
             else:
                 return schemas.Response(success=False, message="未识别到豆瓣媒体信息")
     else:
-        return schemas.Response(success=False, message="未知的媒体ID")
-
+        # 未知前缀，广播事件解析媒体信息
+        event_data = MediaRecognizeConvertEventData(
+            mediaid=mediaid,
+            convert_type=settings.RECOGNIZE_SOURCE
+        )
+        event = eventmanager.send_event(ChainEventType.MediaRecognizeConvert, event_data)
+        # 使用事件返回的上下文数据
+        if event and event.event_data:
+            event_data: MediaRecognizeConvertEventData = event.event_data
+            if event_data.media_dict:
+                search_id = event_data.media_dict.get("id")
+                if event_data.convert_type == "themoviedb":
+                    torrents = SearchChain().search_by_id(tmdbid=search_id,
+                                                          mtype=mtype, area=area, season=season)
+                else:
+                    torrents = SearchChain().search_by_id(doubanid=search_id,
+                                                          mtype=mtype, area=area, season=season)
+        else:
+            return schemas.Response(success=False, message="未知的媒体ID")
+    # 返回搜索结果
     if not torrents:
         return schemas.Response(success=False, message="未搜索到任何资源")
     else:
