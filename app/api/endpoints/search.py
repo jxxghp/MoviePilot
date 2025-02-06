@@ -7,6 +7,7 @@ from app.chain.media import MediaChain
 from app.chain.search import SearchChain
 from app.core.config import settings
 from app.core.event import eventmanager
+from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
 from app.schemas import MediaRecognizeConvertEventData
 from app.schemas.types import MediaType, ChainEventType
@@ -27,6 +28,8 @@ def search_latest(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 def search_by_id(mediaid: str,
                  mtype: str = None,
                  area: str = "title",
+                 title: str = None,
+                 year: int = None,
                  season: str = None,
                  _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
@@ -101,7 +104,25 @@ def search_by_id(mediaid: str,
                     torrents = SearchChain().search_by_id(doubanid=search_id,
                                                           mtype=mtype, area=area, season=season)
         else:
-            return schemas.Response(success=False, message="未知的媒体ID")
+            if not title:
+                return schemas.Response(success=False, message="未知的媒体ID")
+            # 使用名称识别兜底
+            meta = MetaInfo(title)
+            if year:
+                meta.year = year
+            if mtype:
+                meta.type = mtype
+            if season:
+                meta.type = MediaType.TV
+                meta.begin_season = season
+            mediainfo = MediaChain().recognize_media(meta=meta)
+            if mediainfo:
+                if settings.RECOGNIZE_SOURCE == "themoviedb":
+                    torrents = SearchChain().search_by_id(tmdbid=mediainfo.tmdb_id,
+                                                          mtype=mtype, area=area, season=season)
+                else:
+                    torrents = SearchChain().search_by_id(doubanid=mediainfo.douban_id,
+                                                          mtype=mtype, area=area, season=season)
     # 返回搜索结果
     if not torrents:
         return schemas.Response(success=False, message="未搜索到任何资源")

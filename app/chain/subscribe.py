@@ -134,7 +134,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
 
         # 使用名称识别兜底
         if not mediainfo:
-            mediainfo = self.recognize_media(meta=metainfo, mtype=mtype)
+            mediainfo = self.recognize_media(meta=metainfo)
 
         # 识别失败
         if not mediainfo:
