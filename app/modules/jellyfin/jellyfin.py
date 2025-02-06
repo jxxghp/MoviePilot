@@ -149,16 +149,17 @@ class Jellyfin:
             match library.get("CollectionType"):
                 case "movies":
                     library_type = MediaType.MOVIE.value
+                    link = f"{self._playhost or self._host}web/index.html#!" \
+                           f"/movies.html?topParentId={library.get('Id')}"
                 case "tvshows":
                     library_type = MediaType.TV.value
+                    link = f"{self._playhost or self._host}web/index.html#!" \
+                           f"/tv.html?topParentId={library.get('Id')}"
                 case _:
-                    continue
+                    library_type = MediaType.UNKNOWN.value
+                    link = f"{self._playhost or self._host}web/index.html#!" \
+                           f"/library.html?topParentId={library.get('Id')}"
             image = self.__get_local_image_by_id(library.get("Id"))
-            link = f"{self._playhost or self._host}web/index.html#!" \
-                   f"/movies.html?topParentId={library.get('Id')}" \
-                if library_type == MediaType.MOVIE.value \
-                else f"{self._playhost or self._host}web/index.html#!" \
-                     f"/tv.html?topParentId={library.get('Id')}"
             libraries.append(
                 schemas.MediaServerLibrary(
                     server="jellyfin",
@@ -671,10 +672,8 @@ class Jellyfin:
         elif message.get("ItemType") == 'Audio':
             # 音乐
             eventItem.item_type = "AUD"
-            album = message.get('Album')
-            file_name = message.get('Name')
-            eventItem.item_name = album
-            eventItem.overview = file_name
+            eventItem.item_name = message.get('Album')
+            eventItem.overview = message.get('Name')
             eventItem.item_id = message.get('ItemId')
         else:
             # 电影
