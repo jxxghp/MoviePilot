@@ -134,7 +134,7 @@ def category(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/{mediaid}", summary="查询媒体详情", response_model=schemas.MediaInfo)
-def media_info(mediaid: str, type_name: str,
+def media_info(mediaid: str, type_name: str, title: str = None, year: int = None,
                _: schemas.TokenPayload = Depends(verify_token)) -> Any:
     """
     根据媒体ID查询themoviedb或豆瓣媒体信息，type_name: 电影/电视剧
@@ -163,6 +163,14 @@ def media_info(mediaid: str, type_name: str,
                     mediainfo = MediaChain().recognize_media(tmdbid=new_id, mtype=mtype)
                 elif event_data.convert_type == "douban":
                     mediainfo = MediaChain().recognize_media(doubanid=new_id, mtype=mtype)
+        elif title:
+            # 使用名称识别兜底
+            meta = MetaInfo(title)
+            if year:
+                meta.year = year
+            if mtype:
+                meta.type = mtype
+            mediainfo = MediaChain().recognize_media(meta=meta)
     # 识别
     if mediainfo:
         MediaChain().obtain_images(mediainfo)
