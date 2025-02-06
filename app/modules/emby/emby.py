@@ -155,7 +155,7 @@ class Emby:
                 case "tvshows":
                     library_type = MediaType.TV.value
                 case _:
-                    continue
+                    library_type = MediaType.UNKNOWN.value
             image = self.__get_local_image_by_id(library.get("Id"))
             libraries.append(
                 schemas.MediaServerLibrary(

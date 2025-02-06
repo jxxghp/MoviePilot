@@ -149,16 +149,18 @@ class Jellyfin:
             match library.get("CollectionType"):
                 case "movies":
                     library_type = MediaType.MOVIE.value
+                    link = f"{self._playhost or self._host}web/index.html#!" \
+                           f"/movies.html?topParentId={library.get('Id')}"
                 case "tvshows":
                     library_type = MediaType.TV.value
+                    link = f"{self._playhost or self._host}web/index.html#!" \
+                           f"/tv.html?topParentId={library.get('Id')}"
                 case _:
-                    continue
+                    # FIXME
+                    library_type = MediaType.UNKNOWN.value
+                    link = f"{self._playhost or self._host}web/index.html#!" \
+                           f"/movies.html?topParentId={library.get('Id')}"
             image = self.__get_local_image_by_id(library.get("Id"))
-            link = f"{self._playhost or self._host}web/index.html#!" \
-                   f"/movies.html?topParentId={library.get('Id')}" \
-                if library_type == MediaType.MOVIE.value \
-                else f"{self._playhost or self._host}web/index.html#!" \
-                     f"/tv.html?topParentId={library.get('Id')}"
             libraries.append(
                 schemas.MediaServerLibrary(
                     server="jellyfin",
