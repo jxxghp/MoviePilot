@@ -79,8 +79,6 @@ class MediaInfo(BaseModel):
     title_year: Optional[str] = None
     # 当前指定季，如有
     season: Optional[int] = None
-    # 合集等id
-    collection_id: Optional[int] = None
     # TMDB ID
     tmdb_id: Optional[int] = None
     # IMDB ID
@@ -91,6 +89,12 @@ class MediaInfo(BaseModel):
     douban_id: Optional[str] = None
     # Bangumi ID
     bangumi_id: Optional[int] = None
+    # 合集ID
+    collection_id: Optional[int] = None
+    # 其它媒体ID前缀
+    mediaid_prefix: Optional[str] = None
+    # 其它媒体ID值
+    media_id: Optional[str] = None
     # 媒体原语种
     original_language: Optional[str] = None
     # 媒体原发行标题

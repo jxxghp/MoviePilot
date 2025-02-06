@@ -24,6 +24,7 @@ class Subscribe(Base):
     tvdbid = Column(Integer)
     doubanid = Column(String, index=True)
     bangumiid = Column(Integer, index=True)
+    mediaid = Column(String, index=True)
     # 季号
     season = Column(Integer)
     # 海报
@@ -109,6 +110,14 @@ class Subscribe(Base):
 
     @staticmethod
     @db_query
+    def get_by_title(db: Session, title: str, season: int = None):
+        if season:
+            return db.query(Subscribe).filter(Subscribe.name == title,
+                                              Subscribe.season == season).first()
+        return db.query(Subscribe).filter(Subscribe.name == title).first()
+
+    @staticmethod
+    @db_query
     def get_by_tmdbid(db: Session, tmdbid: int, season: int = None):
         if season:
             result = db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid,
@@ -116,14 +125,6 @@ class Subscribe(Base):
         else:
             result = db.query(Subscribe).filter(Subscribe.tmdbid == tmdbid).all()
         return list(result)
-
-    @staticmethod
-    @db_query
-    def get_by_title(db: Session, title: str, season: int = None):
-        if season:
-            return db.query(Subscribe).filter(Subscribe.name == title,
-                                              Subscribe.season == season).first()
-        return db.query(Subscribe).filter(Subscribe.name == title).first()
 
     @staticmethod
     @db_query
@@ -135,6 +136,11 @@ class Subscribe(Base):
     def get_by_bangumiid(db: Session, bangumiid: int):
         return db.query(Subscribe).filter(Subscribe.bangumiid == bangumiid).first()
 
+    @staticmethod
+    @db_query
+    def get_by_mediaid(db: Session, mediaid: str):
+        return db.query(Subscribe).filter(Subscribe.mediaid == mediaid).first()
+
     @db_update
     def delete_by_tmdbid(self, db: Session, tmdbid: int, season: int):
         subscrbies = self.get_by_tmdbid(db, tmdbid, season)
@@ -145,6 +151,13 @@ class Subscribe(Base):
     @db_update
     def delete_by_doubanid(self, db: Session, doubanid: str):
         subscribe = self.get_by_doubanid(db, doubanid)
+        if subscribe:
+            subscribe.delete(db, subscribe.id)
+        return True
+
+    @db_update
+    def delete_by_mediaid(self, db: Session, mediaid: str):
+        subscribe = self.get_by_mediaid(db, mediaid)
         if subscribe:
             subscribe.delete(db, subscribe.id)
         return True

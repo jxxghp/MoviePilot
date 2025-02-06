@@ -37,7 +37,7 @@ class SearchChain(ChainBase):
     def search_by_id(self, tmdbid: int = None, doubanid: str = None,
                      mtype: MediaType = None, area: str = "title", season: int = None) -> List[Context]:
         """
-        根据TMDBID/豆瓣ID搜索资源，精确匹配，但不不过滤本地存在的资源
+        根据TMDBID/豆瓣ID搜索资源，精确匹配，不过滤本地存在的资源
         :param tmdbid: TMDB ID
         :param doubanid: 豆瓣 ID
         :param mtype: 媒体，电影 or 电视剧

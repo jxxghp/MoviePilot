@@ -97,7 +97,7 @@ def search_by_id(mediaid: str,
                 if event_data.convert_type == "themoviedb":
                     torrents = SearchChain().search_by_id(tmdbid=search_id,
                                                           mtype=mtype, area=area, season=season)
-                else:
+                elif event_data.convert_type == "douban":
                     torrents = SearchChain().search_by_id(doubanid=search_id,
                                                           mtype=mtype, area=area, season=season)
         else:

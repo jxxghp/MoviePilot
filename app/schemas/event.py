@@ -268,7 +268,7 @@ class MediaRecognizeConvertEventData(ChainEventData):
         convert_type (str): 转换类型 仅支持：themoviedb/douban，需要转换为对应的媒体数据并返回
 
         # 输出参数
-        media_dict (dict): TheMovieDb或豆瓣的媒体数据
+        media_dict (dict): TheMovieDb/豆瓣的媒体数据
     """
     # 输入参数
     mediaid: str = Field(..., description="媒体ID")

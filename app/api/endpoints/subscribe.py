@@ -82,6 +82,7 @@ def create_subscribe(
                                         season=subscribe_in.season,
                                         doubanid=subscribe_in.doubanid,
                                         bangumiid=subscribe_in.bangumiid,
+                                        mediaid=subscribe_in.mediaid,
                                         username=current_user.name,
                                         best_version=subscribe_in.best_version,
                                         save_path=subscribe_in.save_path,
@@ -171,7 +172,6 @@ def subscribe_mediaid(
     """
     根据 TMDBID/豆瓣ID/BangumiId 查询订阅 tmdb:/douban:
     """
-    result = None
     title_check = False
     if mediaid.startswith("tmdb:"):
         tmdbid = mediaid[5:]
@@ -190,6 +190,10 @@ def subscribe_mediaid(
         if not bangumiid or not str(bangumiid).isdigit():
             return Subscribe()
         result = Subscribe.get_by_bangumiid(db, int(bangumiid))
+        if not result and title:
+            title_check = True
+    else:
+        result = Subscribe.get_by_mediaid(db, mediaid)
         if not result and title:
             title_check = True
     # 使用名称检查订阅
@@ -309,6 +313,10 @@ def delete_subscribe_by_mediaid(
         if not doubanid:
             return schemas.Response(success=False)
         subscribe = Subscribe().get_by_doubanid(db, doubanid)
+        if subscribe:
+            delete_subscribes.append(subscribe)
+    else:
+        subscribe = Subscribe().get_by_mediaid(db, mediaid)
         if subscribe:
             delete_subscribes.append(subscribe)
     for subscribe in delete_subscribes:
