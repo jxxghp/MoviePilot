@@ -28,7 +28,8 @@ from app.helper.message import MessageHelper
 from app.helper.subscribe import SubscribeHelper
 from app.helper.torrent import TorrentHelper
 from app.log import logger
-from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType
+from app.schemas import MediaRecognizeConvertEventData
+from app.schemas.types import MediaType, SystemConfigKey, MessageChannel, NotificationType, EventType, ChainEventType
 from app.utils.singleton import Singleton
 
 
@@ -58,6 +59,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             tmdbid: int = None,
             doubanid: str = None,
             bangumiid: int = None,
+            mediaid: str = None,
             season: int = None,
             channel: MessageChannel = None,
             source: str = None,
@@ -69,7 +71,29 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         """
         识别媒体信息并添加订阅
         """
+
+        def __get_event_meida(_mediaid: str, _meta: MetaBase) -> Optional[MediaInfo]:
+            """
+            广播事件解析媒体信息
+            """
+            event_data = MediaRecognizeConvertEventData(
+                mediaid=_mediaid,
+                convert_type=settings.RECOGNIZE_SOURCE
+            )
+            event = eventmanager.send_event(ChainEventType.MediaRecognizeConvert, event_data)
+            # 使用事件返回的上下文数据
+            if event and event.event_data:
+                event_data: MediaRecognizeConvertEventData = event.event_data
+                if event_data.media_dict:
+                    new_id = event_data.media_dict.get("id")
+                    if event_data.convert_type == "themoviedb":
+                        return self.mediachain.recognize_media(meta=_meta, tmdbid=new_id)
+                    elif event_data.convert_type == "douban":
+                        return self.mediachain.recognize_media(meta=_meta, doubanid=new_id)
+            return None
+
         logger.info(f'开始添加订阅，标题：{title} ...')
+
         mediainfo = None
         metainfo = MetaInfo(title)
         if year:
@@ -82,27 +106,41 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         # 识别媒体信息
         if settings.RECOGNIZE_SOURCE == "themoviedb":
             # TMDB识别模式
-            if not tmdbid and doubanid:
-                # 将豆瓣信息转换为TMDB信息
-                tmdbinfo = self.mediachain.get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
-                if tmdbinfo:
-                    mediainfo = MediaInfo(tmdb_info=tmdbinfo)
+            if not tmdbid:
+                if doubanid:
+                    # 将豆瓣信息转换为TMDB信息
+                    tmdbinfo = self.mediachain.get_tmdbinfo_by_doubanid(doubanid=doubanid, mtype=mtype)
+                    if tmdbinfo:
+                        mediainfo = MediaInfo(tmdb_info=tmdbinfo)
+                elif mediaid:
+                    # 未知前缀，广播事件解析媒体信息
+                    mediainfo = __get_event_meida(mediaid, metainfo)
             else:
-                # 识别TMDB信息，不使用缓存
+                # 使用TMDBID识别
                 mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, tmdbid=tmdbid, cache=False)
         else:
-            # 豆瓣识别模式，不使用缓存
-            mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, doubanid=doubanid, cache=False)
+            if doubanid:
+                # 豆瓣识别模式，不使用缓存
+                mediainfo = self.recognize_media(meta=metainfo, mtype=mtype, doubanid=doubanid, cache=False)
+            elif mediaid:
+                # 未知前缀，广播事件解析媒体信息
+                mediainfo = __get_event_meida(mediaid, metainfo)
             if mediainfo:
                 # 豆瓣标题处理
                 meta = MetaInfo(mediainfo.title)
                 mediainfo.title = meta.name
                 if not season:
                     season = meta.begin_season
+
+        # 使用名称识别兜底
+        if not mediainfo:
+            mediainfo = self.recognize_media(meta=metainfo, mtype=mtype)
+
         # 识别失败
         if not mediainfo:
             logger.warn(f'未识别到媒体信息，标题：{title}，tmdbid：{tmdbid}，doubanid：{doubanid}')
             return None, "未识别到媒体信息"
+
         # 总集数
         if mediainfo.type == MediaType.TV:
             if not season:
@@ -137,6 +175,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
         else:
             # 避免season为0的问题
             season = None
+
         # 更新媒体图片
         self.obtain_images(mediainfo=mediainfo)
         # 合并信息
@@ -144,6 +183,7 @@ class SubscribeChain(ChainBase, metaclass=Singleton):
             mediainfo.douban_id = doubanid
         if bangumiid:
             mediainfo.bangumi_id = bangumiid
+
         # 添加订阅
         kwargs.update({
             'quality': self.__get_default_subscribe_config(mediainfo.type, "quality") if not kwargs.get(

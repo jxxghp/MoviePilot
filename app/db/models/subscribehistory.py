@@ -22,6 +22,7 @@ class SubscribeHistory(Base):
     tvdbid = Column(Integer)
     doubanid = Column(String, index=True)
     bangumiid = Column(Integer, index=True)
+    mediaid = Column(String, index=True)
     # 季号
     season = Column(Integer)
     # 海报
